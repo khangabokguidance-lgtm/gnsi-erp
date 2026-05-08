@@ -13,7 +13,7 @@ import './styles/main.css'
 const PAGES = {
   dashboard:  Dashboard,
   students:   Students,
-  fees: Fees,
+  fees:       Fees,
   admissions: Admissions,
   attendance: () => <ComingSoon page="✅ Attendance" />,
   accounts:   () => <ComingSoon page="🟡 Accounts" />,
