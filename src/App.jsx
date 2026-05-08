@@ -42,3 +42,18 @@ function AppShell() {
 export default function App() {
   return <AuthProvider><AppShell /></AuthProvider>
 }
+// ── PATCH for src/App.jsx ────────────────────────────────────────────────────
+// 1. Add this import at the top (replace the ComingSoon import for admissions):
+import Admissions from './modules/Admissions'
+
+// 2. Update the PAGES object — replace the admissions entry:
+const PAGES = {
+  dashboard: Dashboard,
+  students: Students,
+  fees: () => <ComingSoon title="Fee Management" />,
+  admissions: Admissions,           // ← CHANGE THIS LINE (was: () => <ComingSoon ...>)
+  exams: () => <ComingSoon title="Examinations" />,
+  reports: () => <ComingSoon title="Reports" />,
+  users: UserManagement,
+}
+// That's it! The Admissions module will now load when the user clicks Admissions in the sidebar.
