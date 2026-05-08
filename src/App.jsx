@@ -27,7 +27,11 @@ function AppShell() {
   const { user, loading } = useAuth()
   const [activePage, setActivePage] = useState('dashboard')
 
-  if (loading) return <div className="loading-spinner"><span>⏳</span> Loading GNSI Portal…</div>
+  if (loading) return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',gap:12,fontSize:15,color:'#6b7280'}}>
+      ⏳ Loading GNSI Portal…
+    </div>
+  )
   if (!user) return <Login />
 
   const PageComponent = PAGES[activePage] || ComingSoon
