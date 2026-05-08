@@ -7,12 +7,13 @@ import Students from './modules/Students'
 import UserManagement from './modules/UserManagement'
 import ComingSoon from './modules/ComingSoon'
 import Admissions from './modules/admissions'
+import Fees from './modules/fees'
 import './styles/main.css'
 
 const PAGES = {
   dashboard:  Dashboard,
   students:   Students,
-  fees:       () => <ComingSoon page="🏦 Fee Management" />,
+  fees: Fees,
   admissions: Admissions,
   attendance: () => <ComingSoon page="✅ Attendance" />,
   accounts:   () => <ComingSoon page="🟡 Accounts" />,
