@@ -3,7 +3,7 @@ import { useAuth } from '../core/auth'
 
 export default function Login() {
   const { login } = useAuth()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -12,7 +12,7 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { error } = await login(email, password)
+    const { error } = await login(username, password)
     if (error) setError(error.message)
     setLoading(false)
   }
@@ -37,27 +37,37 @@ export default function Login() {
 
         <form onSubmit={handleLogin}>
           <div className="form-group">
-            <label>Email</label>
+            <label>Username</label>
             <input
-              type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="admin@gnsi.in" required autoFocus
+              type="text" value={username}
+              onChange={e => setUsername(e.target.value)}
+              placeholder="Enter username" required autoFocus
+              autoComplete="off"
             />
           </div>
           <div className="form-group">
             <label>Password</label>
             <input
-              type="password" value={password} onChange={e => setPassword(e.target.value)}
+              type="password" value={password}
+              onChange={e => setPassword(e.target.value)}
               placeholder="••••••••" required
             />
           </div>
 
           {error && (
-            <div style={{ background: '#fee2e2', color: '#dc2626', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '14px' }}>
+            <div style={{
+              background: '#fee2e2', color: '#dc2626', padding: '10px 14px',
+              borderRadius: '8px', fontSize: '13px', marginBottom: '14px'
+            }}>
               ❌ {error}
             </div>
           )}
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px', fontSize: '15px' }} disabled={loading}>
+          <button
+            type="submit" className="btn btn-primary"
+            style={{ width: '100%', padding: '12px', fontSize: '15px' }}
+            disabled={loading}
+          >
             {loading ? '⏳ Signing in…' : '🔐 Sign In'}
           </button>
         </form>

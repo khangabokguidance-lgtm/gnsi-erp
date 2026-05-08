@@ -3,19 +3,20 @@ import { AuthProvider, useAuth } from './core/auth'
 import Sidebar from './components/Sidebar'
 import Login from './components/Login'
 import Dashboard from './modules/Dashboard'
+import UserManagement from './modules/UserManagement'
 import ComingSoon from './modules/ComingSoon'
 import './styles/main.css'
 
 const PAGES = {
-  dashboard:  { component: Dashboard },
-  students:   { component: () => <ComingSoon page="👨‍🎓 Students" /> },
-  fees:       { component: () => <ComingSoon page="💳 Fee Management" /> },
-  admissions: { component: () => <ComingSoon page="📝 Admissions" /> },
-  attendance: { component: () => <ComingSoon page="✅ Attendance" /> },
-  accounts:   { component: () => <ComingSoon page="📒 Accounts" /> },
-  courses:    { component: () => <ComingSoon page="📖 Courses" /> },
-  reports:    { component: () => <ComingSoon page="📈 Reports" /> },
-  settings:   { component: () => <ComingSoon page="⚙️ Settings" /> },
+  dashboard:  Dashboard,
+  students:   () => <ComingSoon page="👨‍🎓 Students" />,
+  fees:       () => <ComingSoon page="💳 Fee Management" />,
+  admissions: () => <ComingSoon page="📝 Admissions" />,
+  attendance: () => <ComingSoon page="✅ Attendance" />,
+  accounts:   () => <ComingSoon page="📒 Accounts" />,
+  courses:    () => <ComingSoon page="📖 Courses" />,
+  reports:    () => <ComingSoon page="📈 Reports" />,
+  settings:   UserManagement,
 }
 
 function AppShell() {
@@ -23,16 +24,12 @@ function AppShell() {
   const [activePage, setActivePage] = useState('dashboard')
 
   if (loading) {
-    return (
-      <div className="loading-spinner">
-        <span>⏳</span> Loading GNSI Portal…
-      </div>
-    )
+    return <div className="loading-spinner"><span>⏳</span> Loading GNSI Portal…</div>
   }
 
   if (!user) return <Login />
 
-  const PageComponent = PAGES[activePage]?.component || (() => <ComingSoon page={activePage} />)
+  const PageComponent = PAGES[activePage] || (() => <ComingSoon page={activePage} />)
 
   return (
     <div className="app-shell">
