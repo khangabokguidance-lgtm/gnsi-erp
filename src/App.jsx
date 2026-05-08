@@ -5,18 +5,19 @@ import Login from './components/Login'
 import Dashboard from './modules/Dashboard'
 import Students from './modules/Students'
 import UserManagement from './modules/UserManagement'
+import ComingSoon from './modules/ComingSoon'
 import Admissions from './modules/admissions'
 import './styles/main.css'
 
 const PAGES = {
   dashboard:  Dashboard,
   students:   Students,
-  fees:       () => <ComingSoon page="💳 Fee Management" />,
+  fees:       () => <ComingSoon page="🏦 Fee Management" />,
   admissions: Admissions,
   attendance: () => <ComingSoon page="✅ Attendance" />,
-  accounts:   () => <ComingSoon page="📒 Accounts" />,
-  courses:    () => <ComingSoon page="📖 Courses" />,
-  reports:    () => <ComingSoon page="📈 Reports" />,
+  accounts:   () => <ComingSoon page="🟡 Accounts" />,
+  courses:    () => <ComingSoon page="🗂️ Courses" />,
+  reports:    () => <ComingSoon page="📊 Reports" />,
   settings:   UserManagement,
 }
 
@@ -27,7 +28,7 @@ function AppShell() {
   if (loading) return <div className="loading-spinner"><span>⏳</span> Loading GNSI Portal…</div>
   if (!user) return <Login />
 
-  const PageComponent = PAGES[activePage] || (() => <ComingSoon page={activePage} />)
+  const PageComponent = PAGES[activePage] || ComingSoon
 
   return (
     <div className="app-shell">
@@ -42,18 +43,3 @@ function AppShell() {
 export default function App() {
   return <AuthProvider><AppShell /></AuthProvider>
 }
-// ── PATCH for src/App.jsx ────────────────────────────────────────────────────
-// 1. Add this import at the top (replace the ComingSoon import for admissions):
-import Admissions from './modules/Admissions'
-
-// 2. Update the PAGES object — replace the admissions entry:
-const PAGES = {
-  dashboard: Dashboard,
-  students: Students,
-  fees: () => <ComingSoon title="Fee Management" />,
-  admissions: Admissions,           // ← CHANGE THIS LINE (was: () => <ComingSoon ...>)
-  exams: () => <ComingSoon title="Examinations" />,
-  reports: () => <ComingSoon title="Reports" />,
-  users: UserManagement,
-}
-// That's it! The Admissions module will now load when the user clicks Admissions in the sidebar.
