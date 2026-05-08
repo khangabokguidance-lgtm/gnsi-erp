@@ -1,157 +1,178 @@
-// ─── Storage helpers ───────────────────────────────────────────────────────
-const LS_COLS   = 'gnsifeecols'
-const LS_ASGNS  = 'gnsifeeasgns'
-const LS_CONF   = 'gnsifeeconfigls'
-const LS_TXNS   = 'gnsipaymenttxns'
+// feesData.js — GNSI Fee Management data layer
+// Matches legacy fees.js storage keys exactly for cross-compatibility
 
-function ls(key, fb = []) {
-  try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fb } catch { return fb }
-}
-function lsSet(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
-  try { if (typeof gnsiKVPush === 'function') gnsiKVPush(key, val) } catch {}
-}
+const SUPABASE_URL = 'https://pwrldrngqxbvwfztxxrd.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3cmxkcm5ncXhidndmenR4eHJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1MTc5NTUsImV4cCI6MjA5MDA5Mzk1NX0.vQi6N4s5Y_iwU1eIi4g8q_T8bW4j8mBH7BFDamAhB0Y'
 
-// ─── Collections (payment records) ────────────────────────────────────────
-export function loadCols()       { return ls(LS_COLS, []) }
-export function saveCols(cols)   { lsSet(LS_COLS, cols); lsSet('gnsisfacollections', cols) }
-
-// ─── Assignments (enrolled students in fee system) ─────────────────────────
-export function loadAsgns()      { return ls(LS_ASGNS, []) }
-export function saveAsgns(asgns) { lsSet(LS_ASGNS, asgns); lsSet('gnsisfaassignments', asgns) }
-
-// ─── Fee Config ────────────────────────────────────────────────────────────
-export function loadFeeConf() {
-  try {
-    const raw = localStorage.getItem('imsfeeconf') || localStorage.getItem(LS_CONF)
-    if (raw) { const p = JSON.parse(raw); if (p?.feeGroups) return p }
-  } catch {}
-  return {
-    admissionFees: [
-      { id: 'af1', course: 'Sainik Old',    amount: 5000 },
-      { id: 'af2', course: 'Combined New',  amount: 5000 },
-      { id: 'af3', course: 'Navodaya Old',  amount: 4500 },
-      { id: 'af4', course: 'Navodaya New',  amount: 4500 },
-      { id: 'af5', course: 'Foundation V',  amount: 3500 },
-      { id: 'af6', course: 'Foundation IV', amount: 3000 },
-      { id: 'af7', course: 'Combined Old',  amount: 5000 },
-    ],
-    monthlyFees: [
-      { id: 'mf1', course: 'Sainik Old',    amount: 12000, hostelAmount: 5000 },
-      { id: 'mf2', course: 'Combined New',  amount: 12000, hostelAmount: 5000 },
-      { id: 'mf3', course: 'Navodaya Old',  amount: 10000, hostelAmount: 5000 },
-      { id: 'mf4', course: 'Navodaya New',  amount: 10000, hostelAmount: 5000 },
-      { id: 'mf5', course: 'Foundation V',  amount:  8000, hostelAmount: 4000 },
-      { id: 'mf6', course: 'Foundation IV', amount:  7000, hostelAmount: 4000 },
-      { id: 'mf7', course: 'Combined Old',  amount: 12000, hostelAmount: 5000 },
-    ],
-    feeGroups: [],
-    manualFeeTypes: ['Miscellaneous','Late Fee','Exam Fee','Sports Fee','Library Fee','Lab Fee','Uniform','Study Material','Tour/Trip Fee','Other'],
-  }
-}
-export function saveFeeConf(conf) {
-  const s = JSON.stringify(conf)
-  try { localStorage.setItem('imsfeeconf', s); localStorage.setItem(LS_CONF, s) } catch {}
-  try { if (typeof gnsiKVPush === 'function') { gnsiKVPush('imsfeeconf', conf); gnsiKVPush(LS_CONF, conf) } } catch {}
-}
-
-// ─── Online Transactions ────────────────────────────────────────────────────
-export function loadTxns()      { return ls(LS_TXNS, []) }
-export function saveTxns(txns)  { lsSet(LS_TXNS, txns) }
-
-// ─── Student Fee Assignments (fee-group bindings per student) ───────────────
-export function loadStuFeeAsgns() { return ls('gnsistufgasgn', []) }
-export function saveStuFeeAsgns(arr) { lsSet('gnsistufgasgn', arr) }
-export function getStuFeeAsgn(stuId) {
-  return loadStuFeeAsgns().find(a => String(a.stuId) === String(stuId)) || null
-}
-export function setStuFeeAsgn(stuId, feeGroupIds, manualFeeTypes, note) {
-  const arr = loadStuFeeAsgns()
-  const idx = arr.findIndex(a => String(a.stuId) === String(stuId))
-  const rec = { stuId: String(stuId), feeGroupIds, manualFeeTypes, note, updatedAt: new Date().toISOString() }
-  if (idx >= 0) arr[idx] = rec; else arr.push(rec)
-  saveStuFeeAsgns(arr)
-}
-
-// ─── Class-Course Bridge ────────────────────────────────────────────────────
-export function loadBridge() {
-  try {
-    const r = localStorage.getItem('gnsiclassbridge')
-    return r ? JSON.parse(r) : {}
-  } catch { return {} }
-}
-export function saveBridge(map) {
-  try { localStorage.setItem('gnsiclassbridge', JSON.stringify(map)) } catch {}
-  try { if (typeof gnsiKVPush === 'function') gnsiKVPush('gnsiclassbridge', map) } catch {}
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 export const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-export const COURSES = ['Sainik Old','Sainik New','Combined New','Combined Old','Navodaya Old','Navodaya New','Foundation V','Foundation IV']
 
-export function fmtINR(n) { return Math.round(n || 0).toLocaleString('en-IN') }
-export function todayStr() { return new Date().toISOString().split('T')[0] }
+const ls = (k, fallback = null) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback } catch { return fallback } }
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
 
-export function monthsSince(dateStr) {
-  if (!dateStr) return 1
-  const s = new Date(dateStr), n = new Date()
-  return Math.max(1, (n.getFullYear() - s.getFullYear()) * 12 + (n.getMonth() - s.getMonth()) + 1)
+export const todayStr = () => new Date().toISOString().split('T')[0]
+export const fmtINR = n => Number(n || 0).toLocaleString('en-IN')
+
+// ── Fee Config ────────────────────────────────────────────────────────────────
+const DEFAULT_CONF = {
+  admissionFees: [
+    { id: 'af1', course: 'Sainik Old',     amount: 5000 },
+    { id: 'af2', course: 'Combined New',   amount: 5000 },
+    { id: 'af3', course: 'Navodaya Old',   amount: 4500 },
+    { id: 'af4', course: 'Navodaya New',   amount: 4500 },
+    { id: 'af5', course: 'Foundation V',   amount: 3500 },
+    { id: 'af6', course: 'Foundation IV',  amount: 3000 },
+    { id: 'af7', course: 'Combined Old',   amount: 5000 },
+  ],
+  monthlyFees: [
+    { id: 'mf1', course: 'Sainik Old',     amount: 12000, hostelAmount: 5000 },
+    { id: 'mf2', course: 'Combined New',   amount: 12000, hostelAmount: 5000 },
+    { id: 'mf3', course: 'Navodaya Old',   amount: 10000, hostelAmount: 5000 },
+    { id: 'mf4', course: 'Navodaya New',   amount: 10000, hostelAmount: 5000 },
+    { id: 'mf5', course: 'Foundation V',   amount:  8000, hostelAmount: 4000 },
+    { id: 'mf6', course: 'Foundation IV',  amount:  7000, hostelAmount: 4000 },
+    { id: 'mf7', course: 'Combined Old',   amount: 12000, hostelAmount: 5000 },
+  ],
+  feeGroups: [],
+  manualFeeTypes: ['Miscellaneous','Late Fee','Exam Fee','Sports Fee','Library Fee','Lab Fee','Uniform','Study Material','Tour/Trip Fee','Other'],
 }
 
-export function calcFee(asgn, monthIdx) {
-  const conf  = loadFeeConf()
-  const course = asgn.courseId || asgn.course || ''
-  const mf = conf.monthlyFees.find(f => f.course?.toLowerCase().includes(course.toLowerCase()))
-  const base   = mf?.amount || 0
-  const hostel = asgn.hostel ? (mf?.hostelAmount || 0) : 0
-  const total  = base + hostel
-  const af = conf.admissionFees.find(f => f.course?.toLowerCase().includes(course.toLowerCase()))
-  return { base, hostel, total, admFee: af?.amount || 0, breakdown: [`${fmtINR(base)} tuition`, hostel ? `${fmtINR(hostel)} hostel` : null].filter(Boolean) }
+export function loadFeeConf() {
+  // Try both storage keys the legacy portal uses
+  const saved = ls('imsfeeconf') || ls('gnsifeeconfigls')
+  if (saved && saved.monthlyFees && saved.admissionFees) return saved
+  return JSON.parse(JSON.stringify(DEFAULT_CONF))
 }
 
-export function nextReceipt(prefix = 'RCP') {
-  const cols = loadCols()
-  const nums = cols.map(c => parseInt((c.receiptNo || '').replace(/\D/g, ''), 10)).filter(n => !isNaN(n))
-  const next = nums.length ? Math.max(...nums) + 1 : 1
-  return `${prefix}-${String(next).padStart(4, '0')}`
+export function saveFeeConf(conf) {
+  // Save to BOTH keys so legacy portal & React portal stay in sync
+  lsSet('imsfeeconf', conf)
+  lsSet('gnsifeeconfigls', conf)
+
+  // Also push to Supabase gnsifeeconfig table
+  try {
+    const sid = (() => { try { const u = JSON.parse(localStorage.getItem('gnsijwtuser')); return u?.schoolId || u?.schoolid || null } catch { return null } })()
+    const row = {
+      id: sid ? `default${sid}` : 'default',
+      admissionfees:  conf.admissionFees,
+      monthlyfees:    conf.monthlyFees,
+      feegroups:      conf.feeGroups,
+      manualfeetypes: conf.manualFeeTypes,
+      updatedat:      new Date().toISOString(),
+      ...(sid ? { schoolid: sid } : {}),
+    }
+    fetch(`${SUPABASE_URL}/rest/v1/gnsifeeconfig`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(row),
+    }).catch(() => {})
+  } catch {}
 }
 
-export function saveCol(asgnId, extra, prefix = 'RCP') {
+// ── Fee Assignments (enrolled students) ──────────────────────────────────────
+export function loadAsgns() {
+  return ls('gnsifeeassignments') || []
+}
+
+// ── Fee Collections ───────────────────────────────────────────────────────────
+export function loadCols() {
+  return ls('gnsifeecollections') || []
+}
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+
+export function saveCol(asgnId, data, prefix = 'RCP') {
   const asgns = loadAsgns()
-  const a = asgns.find(x => x.id === asgnId)
-  if (!a) return null
+  const asgn  = asgns.find(a => a.id === asgnId)
+  if (!asgn) return null
   const cols = loadCols()
+  const receiptNo = `${prefix}-${new Date().getFullYear()}-${String(cols.length + 1).padStart(4, '0')}`
   const col = {
-    id:          Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    id:          uid(),
     asgnId,
-    receiptNo:   nextReceipt(prefix),
-    studentName: a.studentName || a.name,
-    rollNo:      a.rollNo,
-    admNo:       a.admNo,
-    className:   a.className,
-    subTypeId:   a.subTypeId || null,
-    collectedBy: (typeof currentUser !== 'undefined' && currentUser?.name) || 'Admin',
+    studentName: asgn.studentName || asgn.name || '',
+    rollNo:      asgn.rollNo  || '',
+    admNo:       asgn.admNo   || '',
+    className:   asgn.className || '',
+    receiptNo,
+    collectedBy: (() => { try { return JSON.parse(localStorage.getItem('gnsijwtuser'))?.name || 'Admin' } catch { return 'Admin' } })(),
     createdAt:   new Date().toISOString(),
-    ...extra,
+    ...data,
   }
   cols.push(col)
-  saveCols(cols)
+  lsSet('gnsifeecollections', cols)
+
+  // Push to Supabase gnsifeecollections
+  try {
+    const sid = (() => { try { const u = JSON.parse(localStorage.getItem('gnsijwtuser')); return u?.schoolId || u?.schoolid || null } catch { return null } })()
+    fetch(`${SUPABASE_URL}/rest/v1/gnsifeecollections`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        id:          col.id,
+        asgnid:      col.asgnId,
+        studentname: col.studentName,
+        rollno:      col.rollNo,
+        admno:       col.admNo,
+        classname:   col.className,
+        feetype:     col.feeType,
+        formonth:    col.forMonth,
+        amountpaid:  col.amountPaid,
+        paymode:     col.payMode,
+        paydate:     col.payDate,
+        receiptno:   col.receiptNo,
+        remark:      col.remark,
+        collectedby: col.collectedBy,
+        createdat:   col.createdAt,
+        ...(sid ? { schoolid: sid } : {}),
+      }),
+    }).catch(() => {})
+  } catch {}
+
   return col
 }
 
-// ─── KPI ─────────────────────────────────────────────────────────────────────
+// ── Fee Calculation ───────────────────────────────────────────────────────────
+export function monthsSince(dateStr) {
+  if (!dateStr) return 1
+  const start = new Date(dateStr)
+  const now   = new Date()
+  return Math.max(1, (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1)
+}
+
+export function calcFee(asgn, monthNum) {
+  const conf = loadFeeConf()
+  const course = (asgn.className || asgn.course || '').toLowerCase()
+  const mf = conf.monthlyFees.find(f => course.includes(f.course.toLowerCase())) || conf.monthlyFees[0]
+  const af = conf.admissionFees.find(f => course.includes(f.course.toLowerCase())) || conf.admissionFees[0]
+  const isDay    = (asgn.subTypeId || '').toLowerCase().includes('dayscholar') || (asgn.subTypeId || '').toLowerCase().includes('day')
+  const monthly  = isDay ? (mf?.hostelAmount || 0) : (mf?.amount || 0)
+  const admFee   = monthNum === 1 ? (af?.amount || 0) : 0
+  return { monthly, admFee, total: monthly + admFee }
+}
+
+// ── KPI ───────────────────────────────────────────────────────────────────────
 export function calcKPI() {
-  const cols  = loadCols()
   const asgns = loadAsgns()
-  const collected = cols.reduce((s, c) => s + parseInt(c.amountPaid || 0, 10), 0)
-  let due = 0, overdue = 0
+  const cols  = loadCols()
+  let collected = 0, due = 0, overdue = 0
   asgns.forEach(a => {
-    const m    = monthsSince(a.enrolledAt)
     const paid = cols.filter(c => c.asgnId === a.id).reduce((s, c) => s + parseInt(c.amountPaid || 0, 10), 0)
-    let exp = 0
-    for (let i = 1; i <= m; i++) exp += calcFee(a, i).total
+    collected += paid
+    const m = monthsSince(a.enrolledAt)
+    let exp = 0; for (let i = 1; i <= m; i++) exp += calcFee(a, i).total
     const d = Math.max(0, exp - paid)
-    if (d > 0) { due += d; overdue++ }
+    due += d
+    if (d > 0) overdue++
   })
   return { students: asgns.length, collected, due, overdue, receipts: cols.length }
 }
