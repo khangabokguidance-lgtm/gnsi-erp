@@ -5,14 +5,14 @@ import Login from './components/Login'
 import Dashboard from './modules/Dashboard'
 import Students from './modules/Students'
 import UserManagement from './modules/UserManagement'
-import ComingSoon from './modules/ComingSoon'
+import Admissions from './modules/admissions'
 import './styles/main.css'
 
 const PAGES = {
   dashboard:  Dashboard,
   students:   Students,
   fees:       () => <ComingSoon page="💳 Fee Management" />,
-  admissions: () => <ComingSoon page="📝 Admissions" />,
+  admissions: Admissions,
   attendance: () => <ComingSoon page="✅ Attendance" />,
   accounts:   () => <ComingSoon page="📒 Accounts" />,
   courses:    () => <ComingSoon page="📖 Courses" />,
