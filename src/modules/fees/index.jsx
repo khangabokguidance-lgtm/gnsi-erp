@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  loadCols, saveCols, loadAsgns, loadFeeConf, saveFeeConf,
-  fmtINR, todayStr, monthsSince, calcFee, saveCol, calcKPI, MONTHS,
+  loadCols, saveCol, loadAsgns, loadFeeConf, saveFeeConf,
+  fmtINR, todayStr, monthsSince, calcFee,calcKPI, MONTHS,
 } from './feesData'
 import './fees.css'
 

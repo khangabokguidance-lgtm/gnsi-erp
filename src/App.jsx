@@ -9,6 +9,15 @@ import ComingSoon from './modules/ComingSoon'
 import Admissions from './modules/admissions'
 import Fees from './modules/fees'
 import Attendance from './modules/attendance'
+import Accounts from './modules/accounts'
+import BoarderPage     from './modules/hostel/pages/BoarderPage';
+import KitchenPage     from './modules/hostel/pages/KitchenPage';
+import HostelPage      from './modules/hostel/pages/HostelPage';
+import HousePage       from './modules/hostel/pages/HousePage';
+import HousemasterPage from './modules/hostel/pages/HousemasterPage';
+import DisciplinePage  from './modules/hostel/pages/DisciplinePage';
+import SickbayPage     from './modules/hostel/pages/SickbayPage';
+import NightDutyPage   from './modules/hostel/pages/NightDutyPage';
 import './styles/main.css'
 
 const PAGES = {
@@ -17,7 +26,17 @@ const PAGES = {
   fees:       Fees,
   admissions: Admissions,
   attendance: Attendance,
-  accounts:   () => <ComingSoon page="🟡 Accounts" />,
+  accounts: Accounts,
+
+  // ── Hostel Module ──────────────────
+  boarder:      BoarderPage,
+  kitchen:      KitchenPage,
+  hostel:       HostelPage,
+  house:        HousePage,
+  housemaster:  HousemasterPage,
+  discipline:   DisciplinePage,
+  sickbay:      SickbayPage,
+  nightduty:    NightDutyPage,
   courses:    () => <ComingSoon page="🗂️ Courses" />,
   reports:    () => <ComingSoon page="📊 Reports" />,
   settings:   UserManagement,

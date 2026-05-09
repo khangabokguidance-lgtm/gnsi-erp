@@ -10,6 +10,14 @@ const NAV_ITEMS = [
   { id: 'courses',      icon: '📖', label: 'Courses' },
   { id: 'reports',      icon: '📈', label: 'Reports' },
   { id: 'settings',     icon: '⚙️', label: 'Settings' },
+  { id: 'boarder',      icon: '🛏️', label: 'Boarder Schedule' },
+  { id: 'kitchen',      icon: '🍽️', label: 'Kitchen' },
+  { id: 'hostel',       icon: '🏠', label: 'Hostel' },
+  { id: 'house',        icon: '🏆', label: 'House' },
+  { id: 'housemaster',  icon: '👤', label: 'Housemaster' },
+  { id: 'discipline',   icon: '⚠️', label: 'Discipline' },
+  { id: 'sickbay',      icon: '🏥', label: 'Sick Bay' },
+  { id: 'nightduty',    icon: '🌙', label: 'Night Duty' },
 ]
 
 export default function Sidebar({ activePage, onNavigate }) {

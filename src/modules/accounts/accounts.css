@@ -1,0 +1,23 @@
+/* GNSI Accounts Module Styles */
+
+.acc-page {
+  padding: 24px 28px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* Smooth table row hover */
+tbody tr:hover {
+  background: var(--color-surface-2, #f9f8f5) !important;
+  transition: background .12s;
+}
+
+/* Responsive table on small screens */
+@media (max-width: 640px) {
+  table {
+    font-size: 12px;
+  }
+  th, td {
+    padding: 8px 8px !important;
+  }
+}
