@@ -5,13 +5,19 @@
   --surface: #ffffff;
   --surface-alt: #f8fafc;
   --border: #e2e8f0;
+  --border-soft: #e2e8f0;
+  --surface2: #f8fafc;
   --text: #0f172a;
   --muted: #64748b;
+  --muted2: #94a3b8;
   --danger: #dc2626;
   --success: #16a34a;
   --warning: #d97706;
   --radius: 12px;
+  --radius-sm: 8px;
   --shadow: 0 2px 16px rgba(20,51,168,0.08);
+  --shadow-xs: 0 1px 4px rgba(0,0,0,.06);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,.08);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -79,6 +85,15 @@ body {
 .form-grid.g2 { grid-template-columns: 1fr 1fr; }
 .form-grid.g3 { grid-template-columns: 1fr 1fr 1fr; }
 
+/* filter-sel — shared select/input style used across modules */
+.filter-sel {
+  padding: 8px 12px; border: 1.5px solid var(--border);
+  border-radius: 9px; font-size: 13px; font-family: inherit;
+  background: var(--surface); color: var(--text);
+  transition: border-color 0.15s;
+}
+.filter-sel:focus { outline: none; border-color: var(--accent); }
+
 /* Tables */
 table { width: 100%; border-collapse: collapse; }
 th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; background: var(--surface-alt); }
@@ -112,6 +127,7 @@ tr:hover td { background: var(--surface-alt); }
 }
 .stat-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
 .stat-val { font-size: 24px; font-weight: 900; color: var(--text); }
+.stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
 /* Toast */
 .toast {
@@ -144,4 +160,411 @@ tr:hover td { background: var(--surface-alt); }
   .sidebar.open { transform: translateX(0); }
   .main-content { margin-left: 0; padding: 16px; }
   .form-grid.g2, .form-grid.g3 { grid-template-columns: 1fr; }
+}
+
+
+/* ============================================================
+   EXAM MODULE STYLES
+   ============================================================ */
+
+/* ── Hub root ─────────────────────────────────────────────── */
+.gnsi-exam-hub-root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Masthead ─────────────────────────────────────────────── */
+.gnsi-exam-hub-masthead {
+  position: relative;
+  background: linear-gradient(135deg, #0f1f7a 0%, #1433a8 60%, #1b44cc 100%);
+  border-radius: 18px;
+  padding: 28px 32px 20px;
+  color: #fff;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(20,51,168,0.25);
+}
+
+.gnsi-exam-masthead-top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
+.gnsi-exam-masthead-icon {
+  width: 56px; height: 56px;
+  background: rgba(255,255,255,.15);
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.gnsi-exam-masthead-title {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: -.5px;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.gnsi-exam-masthead-sub {
+  font-size: 13px;
+  opacity: .75;
+  margin-top: 3px;
+}
+
+.gnsi-exam-masthead-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Status pill ──────────────────────────────────────────── */
+.gnsi-exam-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'DM Sans', sans-serif;
+}
+.gnsi-exam-status-pill.green {
+  background: rgba(22,163,74,.2);
+  border: 1px solid rgba(22,163,74,.4);
+  color: #86efac;
+}
+.gnsi-exam-status-pill.amber {
+  background: rgba(217,119,6,.2);
+  border: 1px solid rgba(217,119,6,.4);
+  color: #fde68a;
+}
+.pill-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+
+/* ── Stat strip ───────────────────────────────────────────── */
+.gnsi-exam-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.gnsi-exam-stat-item {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.gnsi-exam-stat-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: rgba(255,255,255,.6);
+  margin-bottom: 6px;
+}
+
+.gnsi-exam-stat-val {
+  font-size: 26px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.gnsi-exam-stat-sub {
+  font-size: 11px;
+  color: rgba(255,255,255,.5);
+  margin-bottom: 10px;
+}
+
+.gnsi-exam-stat-bar {
+  height: 4px;
+  background: rgba(255,255,255,.15);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.gnsi-exam-stat-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width .6s ease;
+}
+
+/* ── Pro tab nav ──────────────────────────────────────────── */
+.gnsi-exam-pro-tabnav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow-xs);
+}
+
+.gnsi-exam-pro-tabgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gnsi-exam-pro-grouplabel {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.gnsi-exam-dash-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gnsi-exam-pro-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px 10px 18px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all .15s;
+  min-width: 110px;
+  overflow: hidden;
+}
+
+.gnsi-exam-pro-tab:hover {
+  border-color: var(--accent-col, var(--accent));
+  background: var(--accent-light);
+}
+
+.gnsi-exam-pro-tab.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.tab-accent-bar {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
+
+.tab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tab-label {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tab-tip {
+  font-size: 10px;
+  opacity: .65;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.gnsi-exam-pro-tab.active .tab-tip { opacity: .8; }
+
+/* ── Context hint ─────────────────────────────────────────── */
+.gnsi-exam-context-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f0f4ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #1433a8;
+}
+
+/* ── Bridge banner ────────────────────────────────────────── */
+.gnsi-exam-bridge-banner {
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.gnsi-exam-bridge-banner.active {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #15803d;
+}
+.gnsi-exam-bridge-banner.inactive {
+  background: #fef9c3;
+  border: 1px solid #fde047;
+  color: #a16207;
+}
+
+/* ── Hub body ─────────────────────────────────────────────── */
+.gnsi-exam-hub-body {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── ERH (Exam Results Hub) ───────────────────────────────── */
+.erh-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface);
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.erh-header {
+  background: linear-gradient(135deg,#0f1f7a,#1433a8);
+  color: #fff;
+  padding-bottom: 0;
+}
+
+.erh-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 24px 16px;
+  flex-wrap: wrap;
+}
+
+.erh-header-logo {
+  width: 48px; height: 48px;
+  background: rgba(255,255,255,.15);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.erh-header-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  opacity: .7;
+  margin-bottom: 4px;
+}
+
+.erh-header-title {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.erh-header-sub {
+  font-size: 12px;
+  opacity: .65;
+  margin-top: 2px;
+}
+
+.erh-summary-strip {
+  display: flex;
+  gap: 12px;
+  padding: 12px 24px;
+  flex-wrap: wrap;
+}
+
+.erh-summary-card {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 10px;
+  padding: 10px 16px;
+  min-width: 100px;
+  text-align: center;
+}
+
+.erh-summary-icon { font-size: 18px; margin-bottom: 4px; }
+.erh-summary-value { font-size: 20px; font-weight: 900; color: #fff; }
+.erh-summary-label { font-size: 10px; opacity: .7; text-transform: uppercase; letter-spacing: .08em; }
+
+.erh-tab-nav-wrap {
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 24px;
+}
+.erh-tab-nav-wrap::-webkit-scrollbar { display: none; }
+
+.erh-tab-nav {
+  display: flex;
+  gap: 4px;
+  padding: 10px 0 0;
+}
+
+.erh-tab-btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  background: rgba(255,255,255,.1);
+  color: rgba(255,255,255,.7);
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.erh-tab-btn:hover {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+}
+
+.erh-tab-btn.active {
+  background: #fff;
+  color: #1433a8;
+  font-weight: 800;
+}
+
+.erh-main {
+  padding: 20px;
+  background: var(--surface-alt);
+  min-height: 300px;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .gnsi-exam-stat-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .gnsi-exam-hub-masthead { padding: 20px 16px 16px; }
+  .gnsi-exam-stat-strip { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .gnsi-exam-masthead-title { font-size: 22px; }
+  .gnsi-exam-pro-tab { min-width: 90px; }
 }
