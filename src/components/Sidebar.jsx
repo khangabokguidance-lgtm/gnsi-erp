@@ -25,6 +25,7 @@ export default function Sidebar({ activePage, onNavigate }) {
 
   return (
     <div className="sidebar">
+
       {/* Logo */}
       <div className="nav-logo">
         <span style={{ color: '#ffd060' }}>GNSI</span>
@@ -33,8 +34,8 @@ export default function Sidebar({ activePage, onNavigate }) {
         </div>
       </div>
 
-      {/* Nav items */}
-      <nav style={{ flex: 1 }}>
+      {/* Nav items — scrollable ✅ */}
+      <nav style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {NAV_ITEMS.map(item => (
           <div
             key={item.id}
@@ -47,7 +48,7 @@ export default function Sidebar({ activePage, onNavigate }) {
         ))}
       </nav>
 
-      {/* User info + logout */}
+      {/* User info + logout — always visible at bottom ✅ */}
       <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
         <div style={{ fontSize: '11px', opacity: 0.6, marginBottom: '4px' }}>Signed in as</div>
         <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '10px', wordBreak: 'break-all' }}>
@@ -65,6 +66,7 @@ export default function Sidebar({ activePage, onNavigate }) {
           🚪 Sign Out
         </button>
       </div>
+
     </div>
   )
 }
