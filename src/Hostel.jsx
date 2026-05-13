@@ -1,0 +1,2373 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from './supabase'
+
+// ─── Shared styles ─────────────────────────────────────────────
+const inp = {
+  width: '100%', padding: '10px 14px', borderRadius: '8px',
+  border: '1px solid #d1d5db', fontSize: '14px',
+  boxSizing: 'border-box', backgroundColor: 'white',
+}
+const lbl = {
+  display: 'block', fontSize: '13px', fontWeight: '600',
+  color: '#374151', marginBottom: '6px',
+}
+const btn = (bg = '#1e3a5f', c = 'white') => ({
+  backgroundColor: bg, color: c, border: 'none', borderRadius: '8px',
+  padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px',
+})
+
+const TABS = [
+  { id: 'allotments',  label: '🛏️ Allotments' },
+  { id: 'schedule',    label: '📅 Daily Schedule' },
+  { id: 'nightduty',   label: '🌙 Night Duty' },
+  { id: 'discipline',  label: '⚠️ Discipline' },
+  { id: 'sickbay',     label: '🏥 Sickbay' },
+  { id: 'house',       label: '🏠 Houses' },
+  { id: 'housemaster', label: '👨‍🏫 Housemasters' },
+  { id: 'kitchen',     label: '🍽️ Kitchen' },
+]
+
+const MONTHS = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+]
+
+const today = () => new Date().toISOString().split('T')[0]
+
+// ─── Helper: get display class for a student ──────────────────
+// Prefers `batch` (real class) over `class_name` (has junk '???' data)
+function getStudentClass(s) {
+  if (!s) return ''
+  const batch = (s.batch || '').trim()
+  const cls   = (s.class_name || '').trim()
+  if (batch && batch !== '???') return batch
+  if (cls   && cls   !== '???') return cls
+  return ''
+}
+
+// ─── Shared: StatCard ─────────────────────────────────────────
+function StatCard({ icon, label, value, color, bg }) {
+  return (
+    <div style={{
+      backgroundColor: bg, borderRadius: '12px', padding: '18px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${color}`,
+    }}>
+      <div style={{ fontSize: '22px', marginBottom: '6px' }}>{icon}</div>
+      <p style={{ fontSize: '13px', color, fontWeight: '600', margin: 0 }}>{label}</p>
+      <h2 style={{ fontSize: '28px', fontWeight: 'bold', color, margin: '4px 0 0' }}>{value}</h2>
+    </div>
+  )
+}
+
+// ─── Shared: Status badge style ───────────────────────────────
+function statusStyle(status) {
+  const map = {
+    Occupied:      { bg: '#dcfce7', color: '#16a34a' },
+    Vacant:        { bg: '#fee2e2', color: '#dc2626' },
+    Shifted:       { bg: '#fef9c3', color: '#ca8a04' },
+    Vacated:       { bg: '#e5e7eb', color: '#374151' },
+    Resolved:      { bg: '#dcfce7', color: '#16a34a' },
+    Open:          { bg: '#fee2e2', color: '#dc2626' },
+    'In Progress': { bg: '#fef9c3', color: '#ca8a04' },
+    Closed:        { bg: '#e5e7eb', color: '#374151' },
+    Discharged:    { bg: '#dcfce7', color: '#16a34a' },
+    Admitted:      { bg: '#dbeafe', color: '#1d4ed8' },
+  }
+  const s = map[status] || { bg: '#e0f2fe', color: '#0891b2' }
+  return {
+    padding: '4px 10px', borderRadius: '999px', fontSize: '12px',
+    fontWeight: '600', backgroundColor: s.bg, color: s.color,
+  }
+}
+
+// ─── Shared: Student Search Dropdown ──────────────────────────
+function StudentSearchInput({
+  students,
+  onSelect,
+  placeholder = 'Type name or GCC No to search student...',
+}) {
+  const [query, setQuery] = useState('')
+
+  const matches = useMemo(() => {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return students
+      .filter(s =>
+        (s.name || '').toLowerCase().includes(q) ||
+        String(s.gcc_no || '').includes(q) ||
+        (s.batch || '').toLowerCase().includes(q) ||
+        (s.course || '').toLowerCase().includes(q) ||
+        String(s.admission_no || '').toLowerCase().includes(q)
+      )
+      .slice(0, 8)
+  }, [query, students])
+
+  const select = s => { onSelect(s); setQuery('') }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder={placeholder}
+        style={inp}
+      />
+      {matches.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0,
+          background: 'white', border: '1px solid #d1d5db', borderRadius: '8px',
+          zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          maxHeight: 220, overflowY: 'auto',
+        }}>
+          {matches.map(s => (
+            <div
+              key={s.id}
+              onClick={() => select(s)}
+              style={{
+                padding: '10px 14px', cursor: 'pointer',
+                borderBottom: '1px solid #f1f5f9', fontSize: '13px',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+              onMouseLeave={e => e.currentTarget.style.background = 'white'}
+            >
+              <strong style={{ color: '#1e293b' }}>{s.name}</strong>
+              <span style={{ color: '#64748b', marginLeft: 8 }}>
+                {s.gcc_no ? `GCC-${s.gcc_no}` : '—'}
+                {' · '}
+                {getStudentClass(s) || '—'}
+                {s.house ? ` · 🏠 ${s.house}` : ''}
+                {s.hostel_type ? ` · ${s.hostel_type}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Shared: Staff Search Dropdown ────────────────────────────
+function StaffSearchInput({
+  staff,
+  onSelect,
+  placeholder = 'Search staff by name...',
+}) {
+  const [query, setQuery] = useState('')
+
+  const matches = useMemo(() => {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return staff
+      .filter(s =>
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.designation || '').toLowerCase().includes(q) ||
+        (s.department || '').toLowerCase().includes(q)
+      )
+      .slice(0, 8)
+  }, [query, staff])
+
+  const select = s => { onSelect(s); setQuery('') }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder={placeholder}
+        style={inp}
+      />
+      {matches.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0,
+          background: 'white', border: '1px solid #d1d5db', borderRadius: '8px',
+          zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          maxHeight: 200, overflowY: 'auto',
+        }}>
+          {matches.map(s => (
+            <div
+              key={s.id}
+              onClick={() => select(s)}
+              style={{
+                padding: '10px 14px', cursor: 'pointer',
+                borderBottom: '1px solid #f1f5f9', fontSize: '13px',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+              onMouseLeave={e => e.currentTarget.style.background = 'white'}
+            >
+              <strong style={{ color: '#1e293b' }}>{s.name}</strong>
+              <span style={{ color: '#64748b', marginLeft: 8 }}>
+                {s.designation || s.department || '—'}
+                {s.status === 'Active' ? ' · ✅ Active' : ' · ⏸ Inactive'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 1 — Hostel Allotments
+// ══════════════════════════════════════════════════════════════
+const emptyAllot = {
+  student_id: null, gcc_no: '', student_name: '', class_name: '',
+  hostel_name: '', room_number: '', bed_number: '',
+  allotment_date: today(), status: 'Occupied', remarks: '',
+}
+
+function AllotmentsTab({ students }) {
+  const [records,      setRecords]      = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [saving,       setSaving]       = useState(false)
+  const [showForm,     setShowForm]     = useState(false)
+  const [editRec,      setEditRec]      = useState(null)
+  const [search,       setSearch]       = useState('')
+  const [statusFilter, setStatusFilter] = useState('All')
+  const [hostelFilter, setHostelFilter] = useState('All')
+  const [form,         setForm]         = useState(emptyAllot)
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('hostel_allotments')
+      .select('*')
+      .order('created_at', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleStudentSelect = s => {
+    setForm(f => ({
+      ...f,
+      student_id:   s.id,
+      gcc_no:       s.gcc_no || '',
+      student_name: s.name || '',
+      class_name:   getStudentClass(s),
+      hostel_name:  s.hostel_type || f.hostel_name,
+    }))
+  }
+
+  const handleSave = async e => {
+    e.preventDefault()
+    setSaving(true)
+    const payload = {
+      student_id:     form.student_id || null,
+      gcc_no:         form.gcc_no || null,
+      student_name:   form.student_name,
+      class_name:     form.class_name,
+      hostel_name:    form.hostel_name,
+      room_number:    form.room_number,
+      bed_number:     form.bed_number,
+      allotment_date: form.allotment_date,
+      status:         form.status,
+      remarks:        form.remarks,
+    }
+    const { error } = editRec
+      ? await supabase.from('hostel_allotments').update(payload).eq('id', editRec.id)
+      : await supabase.from('hostel_allotments').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm(emptyAllot); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleStatusChange = async (id, status) => {
+    await supabase.from('hostel_allotments').update({ status }).eq('id', id)
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this allotment?')) return
+    await supabase.from('hostel_allotments').delete().eq('id', id)
+    load()
+  }
+
+  const openEdit = rec => {
+    setEditRec(rec)
+    setForm({ ...rec })
+    setShowForm(true)
+  }
+
+  const enriched = useMemo(() => records.map(r => {
+    if (r.student_id) {
+      const s = students.find(s => s.id === r.student_id)
+      if (s) return {
+        ...r,
+        student_name: s.name,
+        gcc_no:       s.gcc_no,
+        class_name:   getStudentClass(s) || r.class_name,
+        _house:       s.house,
+        _course:      s.course,
+      }
+    }
+    return r
+  }), [records, students])
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return enriched.filter(r =>
+      (statusFilter === 'All' || r.status === statusFilter) &&
+      (hostelFilter === 'All' || r.hostel_name === hostelFilter) &&
+      [r.student_name, r.class_name, r.hostel_name, r.room_number, r.bed_number, r.gcc_no, r.remarks]
+        .some(v => (v || '').toLowerCase().includes(q))
+    )
+  }, [enriched, search, statusFilter, hostelFilter])
+
+  const uniqueHostels = [...new Set(records.map(r => r.hostel_name).filter(Boolean))]
+  const occupied = records.filter(r => r.status === 'Occupied').length
+  const vacant   = records.filter(r => r.status === 'Vacant').length
+  const shifted  = records.filter(r => r.status === 'Shifted').length
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginBottom: '24px' }}>
+        <StatCard icon="📋" label="Total"    value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🛏️" label="Occupied" value={occupied}       color="#16a34a" bg="#dcfce7" />
+        <StatCard icon="🚪" label="Vacant"   value={vacant}         color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="🔄" label="Shifted"  value={shifted}        color="#ca8a04" bg="#fef9c3" />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+          <input
+            placeholder="🔍 Search student, room, hostel..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ ...inp, flex: 2, minWidth: 200 }}
+          />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Status</option>
+            {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={hostelFilter} onChange={e => setHostelFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Hostels</option>
+            {uniqueHostels.map(h => <option key={h}>{h}</option>)}
+          </select>
+        </div>
+        <button
+          onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyAllot) }}
+          style={btn()}
+        >
+          {showForm ? '✖ Cancel' : '➕ Add Allotment'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: 'white', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '4px' }}>
+            {editRec ? '✏️ Edit Allotment' : '➕ Add Hostel Allotment'}
+          </h3>
+          <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>
+            🔗 Student data is pulled live from the Students module
+          </p>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>🔍 Search & Select Student (live from Students module)</label>
+                <StudentSearchInput students={students} onSelect={handleStudentSelect} />
+                {form.student_id && (
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: '#dcfce7', borderRadius: 8, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                    ✅ Linked: {form.student_name} {form.gcc_no ? `(GCC-${form.gcc_no})` : ''}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={lbl}>GCC No. <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label>
+                <input
+                  value={form.gcc_no || ''}
+                  onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))}
+                  placeholder="e.g. 729"
+                  style={inp}
+                />
+              </div>
+              <div>
+                <label style={lbl}>Student Name *</label>
+                <input
+                  value={form.student_name}
+                  onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))}
+                  required
+                  placeholder="Auto-filled from search"
+                  style={inp}
+                />
+              </div>
+              <div>
+                <label style={lbl}>Batch / Class <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label>
+                <input
+                  value={form.class_name}
+                  onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))}
+                  placeholder="Auto-filled from student"
+                  style={inp}
+                />
+              </div>
+              <div>
+                <label style={lbl}>Hostel Name *</label>
+                <input
+                  value={form.hostel_name}
+                  onChange={e => setForm(f => ({ ...f, hostel_name: e.target.value }))}
+                  required
+                  placeholder="Boarder / Day Scholar"
+                  style={inp}
+                />
+              </div>
+              <div>
+                <label style={lbl}>Room Number *</label>
+                <input
+                  value={form.room_number}
+                  onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))}
+                  required
+                  placeholder="101 / A-12"
+                  style={inp}
+                />
+              </div>
+              <div>
+                <label style={lbl}>Bed Number</label>
+                <input
+                  value={form.bed_number}
+                  onChange={e => setForm(f => ({ ...f, bed_number: e.target.value }))}
+                  placeholder="Bed 1 / Bed A"
+                  style={inp}
+                />
+              </div>
+              <div>
+                <label style={lbl}>Allotment Date *</label>
+                <input
+                  type="date"
+                  value={form.allotment_date}
+                  onChange={e => setForm(f => ({ ...f, allotment_date: e.target.value }))}
+                  required
+                  style={inp}
+                />
+              </div>
+              <div>
+                <label style={lbl}>Status</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
+                  {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>Remarks</label>
+                <textarea
+                  value={form.remarks}
+                  onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
+                  rows={2}
+                  placeholder="Any extra remarks"
+                  style={{ ...inp, resize: 'vertical' }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>
+                {saving ? '⏳ Saving...' : '✅ Save Allotment'}
+              </button>
+              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+        : (
+          <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', minWidth: 1000 }}>
+              <thead>
+                <tr style={{ background: '#1e3a5f' }}>
+                  {['#', 'GCC', 'Student', 'Batch', 'House', 'Course', 'Hostel', 'Room', 'Bed', 'Date', 'Status', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => (
+                  <tr
+                    key={r.id}
+                    style={{ borderBottom: '1px solid #f1f5f9' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                  >
+                    <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 12 }}>{i + 1}</td>
+                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>
+                      {r.gcc_no ? `GCC-${r.gcc_no}` : '—'}
+                    </td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
+                      {r.student_id && <div style={{ fontSize: 10, color: '#94a3b8' }}>🔗 linked</div>}
+                    </td>
+                    <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.class_name || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#7c3aed', fontSize: 12, fontWeight: 600 }}>{r._house || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r._course || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#1e3a5f', fontWeight: 600 }}>{r.hostel_name}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.room_number}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.bed_number || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r.allotment_date}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <select
+                        value={r.status}
+                        onChange={e => handleStatusChange(r.id, e.target.value)}
+                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}
+                      >
+                        {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => openEdit(r)} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                        <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No hostel allotments found</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 2 — Daily Schedule
+// ══════════════════════════════════════════════════════════════
+const DEFAULT_WEEKDAY = [
+  { no: 1,  from: '5:30 AM',  to: '6:00 AM',  activity: 'Wake Up Bell & Morning PT' },
+  { no: 2,  from: '6:00 AM',  to: '6:45 AM',  activity: 'PT / Exercise / Sports' },
+  { no: 3,  from: '6:45 AM',  to: '7:30 AM',  activity: 'Bath & Morning Routine' },
+  { no: 4,  from: '7:30 AM',  to: '8:00 AM',  activity: 'Morning Assembly & Roll Call' },
+  { no: 5,  from: '8:00 AM',  to: '8:45 AM',  activity: 'Breakfast' },
+  { no: 6,  from: '9:00 AM',  to: '1:00 PM',  activity: 'Academic Classes' },
+  { no: 7,  from: '1:00 PM',  to: '2:00 PM',  activity: 'Lunch Break' },
+  { no: 8,  from: '2:00 PM',  to: '5:00 PM',  activity: 'Academic Classes' },
+  { no: 9,  from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break' },
+  { no: 10, from: '5:30 PM',  to: '7:00 PM',  activity: 'Recreation / Sports' },
+  { no: 11, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner' },
+  { no: 12, from: '8:00 PM',  to: '10:00 PM', activity: 'Doubt Class / Assignment' },
+  { no: 13, from: '10:00 PM', to: '',         activity: 'Lights Out' },
+]
+const DEFAULT_SUNDAY = [
+  { no: 1, from: '6:00 AM',  to: '7:00 AM',  activity: 'Wake Up & Morning Routine' },
+  { no: 2, from: '7:00 AM',  to: '8:00 AM',  activity: 'Breakfast' },
+  { no: 3, from: '8:00 AM',  to: '12:00 PM', activity: 'Recreation / Free Time' },
+  { no: 4, from: '12:00 PM', to: '1:00 PM',  activity: 'Lunch' },
+  { no: 5, from: '1:00 PM',  to: '5:00 PM',  activity: 'Rest / Recreation' },
+  { no: 6, from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break' },
+  { no: 7, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner' },
+  { no: 8, from: '8:00 PM',  to: '9:30 PM',  activity: 'Academic Review / Self Study' },
+  { no: 9, from: '10:00 PM', to: '',         activity: 'Lights Out' },
+]
+
+const todayKey  = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const loadCheck = () => {
+  try { return JSON.parse(localStorage.getItem('gnsi_sched_' + todayKey()) || '{}') }
+  catch { return {} }
+}
+const saveCheck = obj => localStorage.setItem('gnsi_sched_' + todayKey(), JSON.stringify(obj))
+
+function ScheduleTab() {
+  const [type,     setType]     = useState('weekday')
+  const [schedule, setSchedule] = useState({ weekday: DEFAULT_WEEKDAY, sunday: DEFAULT_SUNDAY })
+  const [checked,  setChecked]  = useState(loadCheck)
+  const [addForm,  setAddForm]  = useState(false)
+  const [editRow,  setEditRow]  = useState(null)
+  const [newRow,   setNewRow]   = useState({ from: '', to: '', activity: '' })
+
+  const rows = schedule[type]
+  const done = rows.filter(r => checked[`${type}_${r.no}`]).length
+  const pct  = rows.length ? Math.round(done / rows.length * 100) : 0
+
+  const toggle = no => {
+    const k    = `${type}_${no}`
+    const next = { ...checked, [k]: !checked[k] }
+    setChecked(next)
+    saveCheck(next)
+  }
+
+  const saveEdit = no => {
+    const from = document.getElementById(`se-from-${no}`)?.value || ''
+    const to   = document.getElementById(`se-to-${no}`)?.value || ''
+    const act  = document.getElementById(`se-act-${no}`)?.value || ''
+    setSchedule(s => ({
+      ...s,
+      [type]: s[type].map(r => r.no === no ? { ...r, from, to, activity: act } : r),
+    }))
+    setEditRow(null)
+  }
+
+  const deleteRow = no => {
+    if (!window.confirm('Delete this row?')) return
+    setSchedule(s => ({ ...s, [type]: s[type].filter(r => r.no !== no) }))
+  }
+
+  const addRow = () => {
+    if (!newRow.from || !newRow.activity) { alert('From time and activity are required'); return }
+    const maxNo = rows.length ? Math.max(...rows.map(r => r.no)) : 0
+    setSchedule(s => ({ ...s, [type]: [...s[type], { no: maxNo + 1, ...newRow }] }))
+    setNewRow({ from: '', to: '', activity: '' })
+    setAddForm(false)
+  }
+
+  const highlight = a => ['Doubt', 'Academic', 'Lunch', 'Dinner', 'Tea', 'Recreation'].some(k => a.includes(k))
+  const actIcon   = a => {
+    if (a.includes('PT') || a.includes('Exercise') || a.includes('Sports')) return '🏃'
+    if (a.includes('Doubt') || a.includes('Assignment') || a.includes('Study')) return '📖'
+    if (a.includes('Lunch') || a.includes('Dinner') || a.includes('Breakfast')) return '🍽️'
+    if (a.includes('Academic') || a.includes('Class')) return '🏫'
+    if (a.includes('Tea')) return '☕'
+    if (a.includes('Recreation') || a.includes('Free')) return '⚽'
+    if (a.includes('Wake') || a.includes('Bell')) return '🔔'
+    if (a.includes('Assembly') || a.includes('Roll')) return '🎌'
+    if (a.includes('Lights')) return '💡'
+    if (a.includes('Bath') || a.includes('Routine')) return '🚿'
+    if (a.includes('Rest')) return '😴'
+    return '•'
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
+        {[['weekday', '📅 Mon–Sat Schedule'], ['sunday', '🌿 Sunday / Holiday']].map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setType(id)}
+            style={{
+              flex: 1, padding: '9px 18px', border: 'none',
+              borderBottom: type === id ? '3px solid #1e3a5f' : '3px solid transparent',
+              background: 'none', cursor: 'pointer', fontSize: 13,
+              fontWeight: type === id ? 700 : 500,
+              color: type === id ? '#1e3a5f' : '#64748b',
+              marginBottom: -2,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>📋 Today's Schedule Progress</span>
+          <span style={{ fontSize: 12, fontFamily: 'monospace', color: pct === 100 ? '#16a34a' : pct > 50 ? '#ca8a04' : '#64748b' }}>
+            {done} / {rows.length} done · {pct}%
+          </span>
+        </div>
+        <div style={{ height: 8, background: '#e2e8f0', borderRadius: 20, overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', width: `${pct}%`,
+            background: pct === 100 ? '#16a34a' : pct > 50 ? '#ca8a04' : '#1e3a5f',
+            borderRadius: 20, transition: 'width .4s',
+          }} />
+        </div>
+        {pct === 100 && (
+          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, marginTop: 6 }}>
+            🎉 All activities completed for today!
+          </div>
+        )}
+      </div>
+
+      {addForm && (
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 2fr auto', gap: 10, alignItems: 'end' }}>
+          <div>
+            <label style={lbl}>From *</label>
+            <input value={newRow.from} onChange={e => setNewRow(n => ({ ...n, from: e.target.value }))} placeholder="6:00 AM" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>To</label>
+            <input value={newRow.to} onChange={e => setNewRow(n => ({ ...n, to: e.target.value }))} placeholder="7:00 AM" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Activity *</label>
+            <input value={newRow.activity} onChange={e => setNewRow(n => ({ ...n, activity: e.target.value }))} placeholder="e.g. Morning PT" style={inp} />
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={addRow} style={btn('#16a34a')}>✓ Add</button>
+            <button onClick={() => setAddForm(false)} style={btn('#f1f5f9', '#374151')}>✕</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button onClick={() => setAddForm(true)} style={{ ...btn(), fontSize: 13, padding: '8px 16px' }}>➕ Add Row</button>
+      </div>
+
+      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: '#1e3a5f' }}>
+              {['#', 'From', 'To', 'Activity', '', '✓'].map(h => (
+                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const isDone = !!checked[`${type}_${r.no}`]
+              const isEdit = editRow === r.no
+              if (isEdit) return (
+                <tr key={r.no} style={{ background: '#eff6ff' }}>
+                  <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
+                  <td style={{ padding: '8px 14px' }}>
+                    <input id={`se-from-${r.no}`} defaultValue={r.from} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} />
+                  </td>
+                  <td style={{ padding: '8px 14px' }}>
+                    <input id={`se-to-${r.no}`} defaultValue={r.to} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} />
+                  </td>
+                  <td style={{ padding: '8px 14px' }}>
+                    <input id={`se-act-${r.no}`} defaultValue={r.activity} style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
+                  </td>
+                  <td style={{ padding: '8px 14px' }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => saveEdit(r.no)} style={{ ...btn('#16a34a'), fontSize: 11, padding: '4px 10px' }}>✓ Save</button>
+                      <button onClick={() => setEditRow(null)} style={{ ...btn('#f1f5f9', '#374151'), fontSize: 11, padding: '4px 10px' }}>Cancel</button>
+                    </div>
+                  </td>
+                  <td />
+                </tr>
+              )
+              return (
+                <tr
+                  key={r.no}
+                  style={{ background: isDone ? '#f0fdf4' : highlight(r.activity) ? '#eff6ff' : 'white', borderBottom: '1px solid #f1f5f9' }}
+                >
+                  <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
+                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{r.from}</td>
+                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to || '—'}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
+                    <span style={{ fontWeight: highlight(r.activity) ? 700 : 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>
+                      {r.activity}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => setEditRow(r.no)} style={{ background: '#eff6ff', color: '#1e3a5f', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
+                      <button onClick={() => deleteRow(r.no)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✕</button>
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                    <button
+                      onClick={() => toggle(r.no)}
+                      title={isDone ? 'Mark pending' : 'Mark done'}
+                      style={{
+                        width: 32, height: 32, borderRadius: '50%',
+                        border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
+                        background: isDone ? '#16a34a' : 'transparent',
+                        color: isDone ? 'white' : '#94a3b8',
+                        cursor: 'pointer', fontSize: 15, fontWeight: 700,
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'all .15s',
+                      }}
+                    >
+                      {isDone ? '✓' : ''}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 3 — Night Duty
+// ══════════════════════════════════════════════════════════════
+const emptyND = {
+  date: '', shift: 'Full Night',
+  staff1_id: null, staff1: '',
+  staff2_id: null, staff2: '',
+  post: 'Main Gate', notes: '',
+}
+const SHIFTS = ['Full Night', 'First Half', 'Second Half']
+const POSTS  = ['Main Gate', 'Hostel Block A', 'Hostel Block B', 'Kitchen', 'Common Area']
+
+function NightDutyTab({ staffProfiles }) {
+  const [records,  setRecords]  = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec,  setEditRec]  = useState(null)
+  const [form,     setForm]     = useState(emptyND)
+  const [month,    setMonth]    = useState(new Date().getMonth())
+  const [year,     setYear]     = useState(new Date().getFullYear())
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('night_duty').select('*').order('date')
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSave = async e => {
+    e.preventDefault()
+    setSaving(true)
+    const payload = {
+      date:      form.date,
+      shift:     form.shift,
+      staff1_id: form.staff1_id || null,
+      staff1:    form.staff1,
+      staff2_id: form.staff2_id || null,
+      staff2:    form.staff2,
+      post:      form.post,
+      notes:     form.notes,
+    }
+    const { error } = editRec
+      ? await supabase.from('night_duty').update(payload).eq('id', editRec.id)
+      : await supabase.from('night_duty').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm(emptyND); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this duty assignment?')) return
+    await supabase.from('night_duty').delete().eq('id', id)
+    load()
+  }
+
+  const enriched = useMemo(() => records.map(r => {
+    const s1 = r.staff1_id ? staffProfiles.find(s => s.id === r.staff1_id) : null
+    const s2 = r.staff2_id ? staffProfiles.find(s => s.id === r.staff2_id) : null
+    return {
+      ...r,
+      staff1:              s1 ? s1.name : r.staff1,
+      staff2:              s2 ? s2.name : r.staff2,
+      staff1_designation:  s1?.designation || s1?.department || '',
+      staff2_designation:  s2?.designation || s2?.department || '',
+    }
+  }), [records, staffProfiles])
+
+  const monthRoster = enriched.filter(r => {
+    if (!r.date) return false
+    const d = new Date(r.date)
+    return d.getMonth() === month && d.getFullYear() === year
+  })
+
+  const daysInMonth  = new Date(year, month + 1, 0).getDate()
+  const coveredDates = new Set(monthRoster.map(r => r.date))
+  const uncovered    = Array.from({ length: daysInMonth }, (_, i) => {
+    const d   = new Date(year, month, i + 1)
+    const key = d.toISOString().split('T')[0]
+    return coveredDates.has(key) ? null : key
+  }).filter(Boolean)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, background: 'white', padding: '14px 20px', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        <button
+          onClick={() => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }}
+          style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}
+        >‹</button>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f' }}>{MONTHS[month]} {year}</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+            {monthRoster.length} assigned ·{' '}
+            {uncovered.length > 0
+              ? <span style={{ color: '#dc2626', fontWeight: 700 }}>{uncovered.length} nights uncovered</span>
+              : <span style={{ color: '#16a34a', fontWeight: 700 }}>all covered ✓</span>
+            }
+          </div>
+        </div>
+        <button
+          onClick={() => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }}
+          style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}
+        >›</button>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyND) }} style={btn()}>
+          {showForm ? '✖ Cancel' : '➕ Assign Duty'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
+            {editRec ? '✏️ Edit Duty' : '➕ Assign Night Duty'}
+          </h3>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Staff pulled live from Staff Profiles module</p>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={lbl}>Date *</label>
+                <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={inp} />
+              </div>
+              <div>
+                <label style={lbl}>Shift</label>
+                <select value={form.shift} onChange={e => setForm(f => ({ ...f, shift: e.target.value }))} style={inp}>
+                  {SHIFTS.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Staff 1 * <span style={{ color: '#94a3b8', fontWeight: 400 }}>(search from staff profiles)</span></label>
+                <StaffSearchInput
+                  staff={staffProfiles}
+                  onSelect={s => setForm(f => ({ ...f, staff1_id: s.id, staff1: s.name }))}
+                  placeholder="Search staff 1..."
+                />
+                {form.staff1 && (
+                  <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
+                    ✅ {form.staff1}
+                    <button type="button" onClick={() => setForm(f => ({ ...f, staff1: '', staff1_id: null }))} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕ Clear</button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={lbl}>Staff 2 <span style={{ color: '#94a3b8', fontWeight: 400 }}>(optional)</span></label>
+                <StaffSearchInput
+                  staff={staffProfiles}
+                  onSelect={s => setForm(f => ({ ...f, staff2_id: s.id, staff2: s.name }))}
+                  placeholder="Search staff 2..."
+                />
+                {form.staff2 && (
+                  <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
+                    ✅ {form.staff2}
+                    <button type="button" onClick={() => setForm(f => ({ ...f, staff2: '', staff2_id: null }))} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕ Clear</button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={lbl}>Post / Location</label>
+                <select value={form.post} onChange={e => setForm(f => ({ ...f, post: e.target.value }))} style={inp}>
+                  {POSTS.map(p => <option key={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Notes</label>
+                <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes" style={inp} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: '#1e3a5f' }}>
+              {['#', 'Date', 'Shift', 'Staff 1', 'Staff 2', 'Post', 'Notes', 'Actions'].map(h => (
+                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {monthRoster.length === 0 && (
+              <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No duties assigned for {MONTHS[month]} {year}</td></tr>
+            )}
+            {monthRoster.map((r, i) => (
+              <tr
+                key={r.id}
+                style={{ borderBottom: '1px solid #f1f5f9' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                onMouseLeave={e => e.currentTarget.style.background = 'white'}
+              >
+                <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                <td style={{ padding: '11px 14px', fontWeight: 700, color: '#1e293b' }}>{r.date}</td>
+                <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.shift}</td>
+                <td style={{ padding: '11px 14px' }}>
+                  <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staff1}</div>
+                  {r.staff1_designation && <div style={{ fontSize: 10, color: '#94a3b8' }}>{r.staff1_designation}</div>}
+                  {r.staff1_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
+                </td>
+                <td style={{ padding: '11px 14px' }}>
+                  {r.staff2
+                    ? <>
+                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staff2}</div>
+                        {r.staff2_designation && <div style={{ fontSize: 10, color: '#94a3b8' }}>{r.staff2_designation}</div>}
+                      </>
+                    : '—'
+                  }
+                </td>
+                <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.post}</td>
+                <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.notes || '—'}</td>
+                <td style={{ padding: '11px 14px' }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                    <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {uncovered.length > 0 && (
+        <div style={{ marginTop: 16, background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '14px 18px' }}>
+          <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 13, marginBottom: 8 }}>⚠ {uncovered.length} uncovered nights in {MONTHS[month]}:</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {uncovered.map(d => (
+              <span key={d} style={{ padding: '3px 10px', borderRadius: 99, background: '#fee2e2', color: '#dc2626', fontSize: 12, fontWeight: 600 }}>{d}</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 4 — Discipline
+// ══════════════════════════════════════════════════════════════
+const emptyDisc = {
+  date: today(), student_id: null, gcc_no: '', student_name: '', class_name: '',
+  incident: '', action_taken: '', reported_by: '', status: 'Open', remarks: '',
+}
+const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
+
+function DisciplineTab({ students }) {
+  const [records,  setRecords]  = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec,  setEditRec]  = useState(null)
+  const [form,     setForm]     = useState(emptyDisc)
+  const [search,   setSearch]   = useState('')
+  const [filter,   setFilter]   = useState('All')
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('discipline_records').select('*').order('date', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleStudentSelect = s => {
+    setForm(f => ({
+      ...f,
+      student_id:   s.id,
+      gcc_no:       s.gcc_no || '',
+      student_name: s.name || '',
+      class_name:   getStudentClass(s),
+    }))
+  }
+
+  const handleSave = async e => {
+    e.preventDefault()
+    setSaving(true)
+    const payload = {
+      date:         form.date,
+      student_id:   form.student_id || null,
+      gcc_no:       form.gcc_no || null,
+      student_name: form.student_name,
+      class_name:   form.class_name,
+      incident:     form.incident,
+      action_taken: form.action_taken,
+      reported_by:  form.reported_by,
+      status:       form.status,
+      remarks:      form.remarks,
+    }
+    const { error } = editRec
+      ? await supabase.from('discipline_records').update(payload).eq('id', editRec.id)
+      : await supabase.from('discipline_records').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm(emptyDisc); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleStatusChange = async (id, status) => {
+    await supabase.from('discipline_records').update({ status }).eq('id', id)
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this record?')) return
+    await supabase.from('discipline_records').delete().eq('id', id)
+    load()
+  }
+
+  const enriched = useMemo(() => records.map(r => {
+    if (r.student_id) {
+      const s = students.find(s => s.id === r.student_id)
+      if (s) return {
+        ...r,
+        student_name: s.name,
+        gcc_no:       s.gcc_no,
+        class_name:   getStudentClass(s) || r.class_name,
+        _house:       s.house,
+        _course:      s.course,
+      }
+    }
+    return r
+  }), [records, students])
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return enriched.filter(r =>
+      (filter === 'All' || r.status === filter) &&
+      [r.student_name, r.class_name, r.incident, r.reported_by, r.gcc_no]
+        .some(v => (v || '').toLowerCase().includes(q))
+    )
+  }, [enriched, search, filter])
+
+  const open       = records.filter(r => r.status === 'Open').length
+  const inProgress = records.filter(r => r.status === 'In Progress').length
+  const resolved   = records.filter(r => r.status === 'Resolved').length
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+        <StatCard icon="📋" label="Total"       value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🔴" label="Open"        value={open}           color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="🟡" label="In Progress" value={inProgress}     color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="🟢" label="Resolved"    value={resolved}       color="#16a34a" bg="#dcfce7" />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flex: 1 }}>
+          <input placeholder="🔍 Search student, incident..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2 }} />
+          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Status</option>
+            {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyDisc) }} style={btn()}>
+          {showForm ? '✖ Cancel' : '➕ Add Record'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
+            {editRec ? '✏️ Edit Record' : '➕ New Discipline Record'}
+          </h3>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>🔍 Search & Select Student</label>
+                <StudentSearchInput students={students} onSelect={handleStudentSelect} />
+                {form.student_id && (
+                  <div style={{ marginTop: 8, padding: '6px 12px', background: '#dcfce7', borderRadius: 6, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                    ✅ Linked: {form.student_name} {form.gcc_no ? `(GCC-${form.gcc_no})` : ''}
+                  </div>
+                )}
+              </div>
+              <div><label style={lbl}>Date *</label><input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>GCC No. <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label><input value={form.gcc_no} onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))} placeholder="e.g. 729" style={inp} /></div>
+              <div><label style={lbl}>Student Name *</label><input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>Batch / Class <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label><input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Incident Description *</label><textarea value={form.incident} onChange={e => setForm(f => ({ ...f, incident: e.target.value }))} required rows={3} placeholder="Describe the incident..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Action Taken</label><textarea value={form.action_taken} onChange={e => setForm(f => ({ ...f, action_taken: e.target.value }))} rows={2} placeholder="Action taken..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div><label style={lbl}>Reported By</label><input value={form.reported_by} onChange={e => setForm(f => ({ ...f, reported_by: e.target.value }))} placeholder="Staff name" style={inp} /></div>
+              <div>
+                <label style={lbl}>Status</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
+                  {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+        : (
+          <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
+              <thead>
+                <tr style={{ background: '#1e3a5f' }}>
+                  {['#', 'Date', 'GCC', 'Student', 'Batch', 'House', 'Incident', 'Action', 'Reported By', 'Status', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => (
+                  <tr
+                    key={r.id}
+                    style={{ borderBottom: '1px solid #f1f5f9' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                  >
+                    <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                    <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
+                      {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.class_name || '—'}</td>
+                    <td style={{ padding: '10px 14px', color: '#7c3aed', fontSize: 12, fontWeight: 600 }}>{r._house || '—'}</td>
+                    <td style={{ padding: '10px 14px', color: '#374151', maxWidth: 180 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.incident}>{r.incident}</div>
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#64748b', maxWidth: 140 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.action_taken}>{r.action_taken || '—'}</div>
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.reported_by || '—'}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <select
+                        value={r.status}
+                        onChange={e => handleStatusChange(r.id, e.target.value)}
+                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}
+                      >
+                        {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                        <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No discipline records found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 5 — Sickbay
+// ══════════════════════════════════════════════════════════════
+const emptySick = {
+  date: today(), student_id: null, gcc_no: '', student_name: '', class_name: '',
+  complaint: '', treatment: '', referred_to: '', admitted_date: today(),
+  discharge_date: '', status: 'Admitted', attended_by: '',
+}
+
+function SickbayTab({ students }) {
+  const [records,  setRecords]  = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec,  setEditRec]  = useState(null)
+  const [form,     setForm]     = useState(emptySick)
+  const [search,   setSearch]   = useState('')
+  const [filter,   setFilter]   = useState('All')
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('sickbay_records').select('*').order('date', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleStudentSelect = s => {
+    setForm(f => ({
+      ...f,
+      student_id:   s.id,
+      gcc_no:       s.gcc_no || '',
+      student_name: s.name || '',
+      class_name:   getStudentClass(s),
+    }))
+  }
+
+  const handleSave = async e => {
+    e.preventDefault()
+    setSaving(true)
+    const payload = {
+      date:           form.date,
+      student_id:     form.student_id || null,
+      gcc_no:         form.gcc_no || null,
+      student_name:   form.student_name,
+      class_name:     form.class_name,
+      complaint:      form.complaint,
+      treatment:      form.treatment,
+      referred_to:    form.referred_to,
+      admitted_date:  form.admitted_date,
+      discharge_date: form.discharge_date || null,
+      status:         form.status,
+      attended_by:    form.attended_by,
+    }
+    const { error } = editRec
+      ? await supabase.from('sickbay_records').update(payload).eq('id', editRec.id)
+      : await supabase.from('sickbay_records').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm(emptySick); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleDischarge = async id => {
+    await supabase.from('sickbay_records').update({ status: 'Discharged', discharge_date: today() }).eq('id', id)
+    load()
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this record?')) return
+    await supabase.from('sickbay_records').delete().eq('id', id)
+    load()
+  }
+
+  const enriched = useMemo(() => records.map(r => {
+    if (r.student_id) {
+      const s = students.find(s => s.id === r.student_id)
+      if (s) return {
+        ...r,
+        student_name: s.name,
+        gcc_no:       s.gcc_no,
+        class_name:   getStudentClass(s) || r.class_name,
+        _house:       s.house,
+        _hostel_type: s.hostel_type,
+      }
+    }
+    return r
+  }), [records, students])
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return enriched.filter(r =>
+      (filter === 'All' || r.status === filter) &&
+      [r.student_name, r.class_name, r.complaint, r.gcc_no].some(v => (v || '').toLowerCase().includes(q))
+    )
+  }, [enriched, search, filter])
+
+  const admitted   = records.filter(r => r.status === 'Admitted').length
+  const discharged = records.filter(r => r.status === 'Discharged').length
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
+        <StatCard icon="🏥" label="Total Records"      value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🛏️" label="Currently Admitted" value={admitted}       color="#1d4ed8" bg="#dbeafe" />
+        <StatCard icon="✅" label="Discharged"         value={discharged}     color="#16a34a" bg="#dcfce7" />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flex: 1 }}>
+          <input placeholder="🔍 Search student, complaint..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2 }} />
+          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Status</option>
+            <option>Admitted</option>
+            <option>Discharged</option>
+          </select>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptySick) }} style={btn()}>
+          {showForm ? '✖ Cancel' : '➕ Add Record'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
+            {editRec ? '✏️ Edit Record' : '➕ New Sickbay Record'}
+          </h3>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>🔍 Search & Select Student</label>
+                <StudentSearchInput students={students} onSelect={handleStudentSelect} />
+                {form.student_id && (
+                  <div style={{ marginTop: 8, padding: '6px 12px', background: '#dcfce7', borderRadius: 6, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                    ✅ Linked: {form.student_name} {form.gcc_no ? `(GCC-${form.gcc_no})` : ''}
+                  </div>
+                )}
+              </div>
+              <div><label style={lbl}>Date *</label><input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>GCC No. <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label><input value={form.gcc_no} onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))} placeholder="e.g. 729" style={inp} /></div>
+              <div><label style={lbl}>Student Name *</label><input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>Batch / Class <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label><input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Complaint *</label><textarea value={form.complaint} onChange={e => setForm(f => ({ ...f, complaint: e.target.value }))} required rows={2} placeholder="Describe the complaint..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Treatment Given</label><textarea value={form.treatment} onChange={e => setForm(f => ({ ...f, treatment: e.target.value }))} rows={2} placeholder="Treatment / medication given..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div><label style={lbl}>Referred To</label><input value={form.referred_to} onChange={e => setForm(f => ({ ...f, referred_to: e.target.value }))} placeholder="Hospital / doctor name" style={inp} /></div>
+              <div><label style={lbl}>Attended By</label><input value={form.attended_by} onChange={e => setForm(f => ({ ...f, attended_by: e.target.value }))} placeholder="Staff / nurse name" style={inp} /></div>
+              <div><label style={lbl}>Admitted Date</label><input type="date" value={form.admitted_date} onChange={e => setForm(f => ({ ...f, admitted_date: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Discharge Date</label><input type="date" value={form.discharge_date} onChange={e => setForm(f => ({ ...f, discharge_date: e.target.value }))} style={inp} /></div>
+              <div>
+                <label style={lbl}>Status</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
+                  <option>Admitted</option>
+                  <option>Discharged</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+        : (
+          <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1000 }}>
+              <thead>
+                <tr style={{ background: '#1e3a5f' }}>
+                  {['#', 'Date', 'GCC', 'Student', 'Batch', 'House', 'Hostel Type', 'Complaint', 'Treatment', 'Referred', 'Attended By', 'Status', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => (
+                  <tr
+                    key={r.id}
+                    style={{ borderBottom: '1px solid #f1f5f9', background: r.status === 'Admitted' ? '#eff6ff' : 'white' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = r.status === 'Admitted' ? '#eff6ff' : 'white'}
+                  >
+                    <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                    <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
+                      {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.class_name || '—'}</td>
+                    <td style={{ padding: '10px 14px', color: '#7c3aed', fontSize: 12, fontWeight: 600 }}>{r._house || '—'}</td>
+                    <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r._hostel_type || '—'}</td>
+                    <td style={{ padding: '10px 14px', color: '#374151', maxWidth: 160 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.complaint}>{r.complaint}</div>
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#64748b', maxWidth: 140 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.treatment}>{r.treatment || '—'}</div>
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.referred_to || '—'}</td>
+                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.attended_by || '—'}</td>
+                    <td style={{ padding: '10px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', gap: 6, flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => { setEditRec(r); setForm({ ...r, discharge_date: r.discharge_date || '' }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                          <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                        </div>
+                        {r.status === 'Admitted' && (
+                          <button onClick={() => handleDischarge(r.id)} style={{ background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap' }}>✅ Discharge</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={13} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No sickbay records found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 6 — House Management
+// ══════════════════════════════════════════════════════════════
+const HOUSE_COLORS = [
+  { color: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' },
+  { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
+  { color: '#16a34a', bg: '#dcfce7', border: '#6ee7b7' },
+  { color: '#ca8a04', bg: '#fef9c3', border: '#fde047' },
+  { color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
+  { color: '#0891b2', bg: '#e0f2fe', border: '#7dd3fc' },
+]
+const emptyHouse = {
+  name: '', motto: '', color_index: 0, captain: '', vice_captain: '',
+  established_year: new Date().getFullYear(), remarks: '',
+}
+
+function HouseTab({ students: propStudents }) {
+  const [houses,       setHouses]       = useState([])
+  const [students,     setStudents]     = useState(propStudents || [])
+  const [masters,      setMasters]      = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [saving,       setSaving]       = useState(false)
+  const [showForm,     setShowForm]     = useState(false)
+  const [editRec,      setEditRec]      = useState(null)
+  const [form,         setForm]         = useState(emptyHouse)
+  const [activeHouse,  setActiveHouse]  = useState(null)
+  const [search,       setSearch]       = useState('')
+  const [assignSearch, setAssignSearch] = useState('')
+  const [assignFilter, setAssignFilter] = useState('All')
+  const [toast,        setToast]        = useState(null)
+
+  const showToast = (msg, color = '#16a34a') => {
+    setToast({ msg, color })
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  const load = async () => {
+    setLoading(true)
+    const [{ data: h }, { data: s }, { data: m }] = await Promise.all([
+      supabase.from('houses').select('*').order('name'),
+      supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,admission_no').order('name'),
+      supabase.from('housemasters').select('*').order('house'),
+    ])
+    setHouses(h || [])
+    setStudents(s || [])
+    setMasters(m || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSaveHouse = async e => {
+    e.preventDefault()
+    setSaving(true)
+    const payload = {
+      name:             form.name.trim(),
+      motto:            form.motto,
+      color_index:      Number(form.color_index),
+      captain:          form.captain,
+      vice_captain:     form.vice_captain,
+      established_year: Number(form.established_year) || new Date().getFullYear(),
+      remarks:          form.remarks,
+    }
+    const { error } = editRec
+      ? await supabase.from('houses').update(payload).eq('id', editRec.id)
+      : await supabase.from('houses').insert([payload])
+    if (error) { alert('Error: ' + error.message); setSaving(false); return }
+    setForm(emptyHouse); setShowForm(false); setEditRec(null)
+    showToast(editRec ? '✅ House updated' : '✅ House created')
+    load(); setSaving(false)
+  }
+
+  const handleDeleteHouse = async id => {
+    const count = students.filter(s => s.house === houses.find(h => h.id === id)?.name).length
+    if (!window.confirm(`Delete this house?${count > 0 ? ` ${count} students will be unassigned.` : ''}`)) return
+    await supabase.from('houses').delete().eq('id', id)
+    showToast('🗑 House deleted', '#dc2626'); load()
+  }
+
+  const handleAssign = async (studentId, houseName) => {
+    await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, house: houseName || null } : s))
+    showToast(houseName ? `✅ Assigned to ${houseName}` : '✅ Removed from house')
+  }
+
+  const handleBulkAssign = async houseName => {
+    const unassigned = students.filter(s => !s.house)
+    if (!unassigned.length) { showToast('No unassigned students', '#ca8a04'); return }
+    if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
+    await supabase.from('students').update({ house: houseName }).in('id', unassigned.map(s => s.id))
+    setStudents(prev => prev.map(s => !s.house ? { ...s, house: houseName } : s))
+    showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
+  }
+
+  // FIXED: correct operator precedence
+  const getHouseStyle = h => HOUSE_COLORS[(Number(h.color_index) || 0) % HOUSE_COLORS.length]
+
+  const activeHouseObj  = houses.find(h => h.id === activeHouse)
+  const houseStudents   = activeHouseObj ? students.filter(s => s.house === activeHouseObj.name) : []
+  const houseMasters    = activeHouseObj ? masters.filter(m => m.house === activeHouseObj.name) : []
+  const unassignedCount = students.filter(s => !s.house).length
+
+  const assignHits = assignSearch.length > 0
+    ? students.filter(s =>
+        !s.house && (
+          (s.name || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+          String(s.gcc_no || '').includes(assignSearch) ||
+          (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase())
+        )
+      ).slice(0, 10)
+    : []
+
+  const filteredStudents = useMemo(() => {
+    const q = search.toLowerCase()
+    return students.filter(s => {
+      const matchesSearch = [s.name, s.gcc_no, s.batch, s.course]
+        .some(v => (v || '').toString().toLowerCase().includes(q))
+      const matchesFilter =
+        assignFilter === 'All'        ? true :
+        assignFilter === 'Unassigned' ? !s.house :
+        (s.house || '').toLowerCase() === assignFilter.toLowerCase()
+      return matchesSearch && matchesFilter
+    })
+  }, [students, search, assignFilter])
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+
+  return (
+    <div>
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 20, right: 20, zIndex: 99999,
+          background: '#fff', border: `1px solid #e2e8f0`,
+          borderLeft: `3px solid ${toast.color}`, borderRadius: 10,
+          padding: '11px 16px', fontSize: 13, fontWeight: 600,
+          boxShadow: '0 8px 32px rgba(0,0,0,.12)', color: '#1e293b',
+        }}>
+          {toast.msg}
+        </div>
+      )}
+
+      {activeHouse && activeHouseObj && (() => {
+        const hs = getHouseStyle(activeHouseObj)
+        return (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+              <button onClick={() => setActiveHouse(null)} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: 13 }}>← Back</button>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: hs.color }}>🏠 {activeHouseObj.name} House</div>
+                {activeHouseObj.motto && <div style={{ fontSize: 13, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>"{activeHouseObj.motto}"</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }}
+                  style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px 14px' }}
+                >✏️ Edit House</button>
+                <button
+                  onClick={() => handleBulkAssign(activeHouseObj.name)}
+                  style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}
+                >+ Assign Unassigned ({unassignedCount})</button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+              <StatCard icon="👥"  label="Students"     value={houseStudents.length}            color={hs.color} bg={hs.bg} />
+              <StatCard icon="👨‍🏫" label="Housemasters" value={houseMasters.length}             color={hs.color} bg={hs.bg} />
+              <StatCard icon="🎖"  label="Captain"      value={activeHouseObj.captain || '—'}    color={hs.color} bg={hs.bg} />
+              <StatCard icon="🎗"  label="Vice Captain" value={activeHouseObj.vice_captain || '—'} color={hs.color} bg={hs.bg} />
+            </div>
+
+            {houseMasters.length > 0 && (
+              <div style={{ background: 'white', border: `1.5px solid ${hs.border}`, borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: hs.color, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>👨‍🏫 Housemasters</div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {houseMasters.map(m => (
+                    <div key={m.id} style={{ background: hs.bg, border: `1px solid ${hs.border}`, borderRadius: 8, padding: '8px 14px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: hs.color }}>{m.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{m.designation || 'Housemaster'}{m.phone ? ' · ' + m.phone : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ background: 'white', border: `1px solid ${hs.border}`, borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: hs.color, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>➕ Assign Student to {activeHouseObj.name}</div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  value={assignSearch}
+                  onChange={e => setAssignSearch(e.target.value)}
+                  placeholder="Search unassigned student by name, GCC No or batch..."
+                  style={inp}
+                />
+                {assignHits.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #d1d5db', borderRadius: 8, zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,.1)', maxHeight: 200, overflowY: 'auto' }}>
+                    {assignHits.map(s => (
+                      <div
+                        key={s.id}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                      >
+                        <div>
+                          <strong>{s.name}</strong>
+                          <span style={{ color: '#64748b', marginLeft: 8 }}>GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}</span>
+                        </div>
+                        <button
+                          onClick={() => { handleAssign(s.id, activeHouseObj.name); setAssignSearch('') }}
+                          style={{ ...btn(hs.color), fontSize: 11, padding: '4px 12px' }}
+                        >Assign</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+              <div style={{ background: hs.color, padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 700, color: 'white', fontSize: 13 }}>👥 {activeHouseObj.name} Roster — {houseStudents.length} students</span>
+              </div>
+              {houseStudents.length === 0
+                ? <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No students assigned to this house yet</div>
+                : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        {['#', 'GCC', 'Student', 'Batch', 'Course', 'Hostel Type', 'Remove'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 12 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {houseStudents.map((s, i) => (
+                        <tr
+                          key={s.id}
+                          style={{ borderBottom: '1px solid #f1f5f9' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                        >
+                          <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.hostel_type || '—'}</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <button
+                              onClick={() => handleAssign(s.id, '')}
+                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}
+                            >✕ Remove</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              }
+            </div>
+          </div>
+        )
+      })()}
+
+      {!activeHouse && showForm && (
+        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>
+            {editRec ? '✏️ Edit House' : '🏠 Create New House'}
+          </h3>
+          <form onSubmit={handleSaveHouse}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={lbl}>House Name *</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Kombirei" style={inp} />
+              </div>
+              <div>
+                <label style={lbl}>House Color</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {HOUSE_COLORS.map((c, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, color_index: i }))}
+                      style={{
+                        width: 32, height: 32, borderRadius: '50%', background: c.color,
+                        border: Number(form.color_index) === i ? `3px solid #0f172a` : `2px solid ${c.border}`,
+                        cursor: 'pointer', transition: 'transform .1s',
+                        transform: Number(form.color_index) === i ? 'scale(1.2)' : 'scale(1)',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>Motto</label>
+                <input value={form.motto} onChange={e => setForm(f => ({ ...f, motto: e.target.value }))} placeholder="e.g. Unity in Strength" style={inp} />
+              </div>
+              <div><label style={lbl}>House Captain</label><input value={form.captain} onChange={e => setForm(f => ({ ...f, captain: e.target.value }))} placeholder="Student name" style={inp} /></div>
+              <div><label style={lbl}>Vice Captain</label><input value={form.vice_captain} onChange={e => setForm(f => ({ ...f, vice_captain: e.target.value }))} placeholder="Student name" style={inp} /></div>
+              <div><label style={lbl}>Established Year</label><input type="number" value={form.established_year} onChange={e => setForm(f => ({ ...f, established_year: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save House'}</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {!activeHouse && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+            <StatCard icon="🏠"  label="Total Houses"  value={houses.length}                       color="#1e3a5f" bg="#eff6ff" />
+            <StatCard icon="👥"  label="Assigned"      value={students.filter(s => s.house).length} color="#16a34a" bg="#dcfce7" />
+            <StatCard icon="⚠️"  label="Unassigned"    value={unassignedCount}                      color="#dc2626" bg="#fee2e2" />
+            <StatCard icon="👨‍🏫" label="Housemasters"  value={masters.length}                       color="#7c3aed" bg="#f5f3ff" />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+              <input placeholder="🔍 Search students..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, maxWidth: 260 }} />
+              <select value={assignFilter} onChange={e => setAssignFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+                <option value="All">All Students</option>
+                <option value="Unassigned">Unassigned Only</option>
+                {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+              </select>
+            </div>
+            <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHouse) }} style={btn()}>
+              {showForm ? '✖ Cancel' : '🏠 Create House'}
+            </button>
+          </div>
+
+          {houses.length === 0
+            ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>🏠</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>No Houses Created Yet</div>
+                <button onClick={() => setShowForm(true)} style={btn()}>🏠 Create First House</button>
+              </div>
+            )
+            : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, marginBottom: 24 }}>
+                {houses.map(h => {
+                  const hs  = getHouseStyle(h)
+                  const cnt = students.filter(s => s.house === h.name).length
+                  const hms = masters.filter(m => m.house === h.name)
+                  return (
+                    <div
+                      key={h.id}
+                      style={{ background: 'white', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,.08)', border: `1px solid ${hs.border}`, cursor: 'pointer', transition: 'transform .15s, box-shadow .15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,.12)' }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,.08)' }}
+                      onClick={() => setActiveHouse(h.id)}
+                    >
+                      <div style={{ height: 6, background: hs.color }} />
+                      <div style={{ padding: '16px 18px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: hs.color }}>🏠 {h.name}</div>
+                            {h.motto && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>"{h.motto}"</div>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }}
+                              style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}
+                            >✏️</button>
+                            <button
+                              onClick={e => { e.stopPropagation(); handleDeleteHouse(h.id) }}
+                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}
+                            >🗑</button>
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+                          {[
+                            { label: 'Students', value: cnt,              icon: '👥' },
+                            { label: 'Masters',  value: hms.length,       icon: '👨‍🏫' },
+                            { label: 'Est.',     value: h.established_year || '—', icon: '📅' },
+                          ].map(s => (
+                            <div key={s.label} style={{ background: hs.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                              <div style={{ fontSize: 14 }}>{s.icon}</div>
+                              <div style={{ fontSize: 16, fontWeight: 800, color: hs.color }}>{s.value}</div>
+                              <div style={{ fontSize: 10, color: hs.color, opacity: .7 }}>{s.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {(h.captain || h.vice_captain) && (
+                          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                            {h.captain && <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: hs.bg, color: hs.color, fontWeight: 700 }}>🎖 {h.captain}</span>}
+                            {h.vice_captain && <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: hs.bg, color: hs.color, fontWeight: 600 }}>🎗 {h.vice_captain}</span>}
+                          </div>
+                        )}
+                        {hms.length > 0 && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>👨‍🏫 {hms.map(m => m.name).join(', ')}</div>}
+                        <div style={{ fontSize: 12, color: hs.color, fontWeight: 700, textAlign: 'center', padding: '7px', background: hs.bg, borderRadius: 8 }}>View Roster & Manage →</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          }
+
+          {houses.length > 0 && (
+            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+              <div style={{ background: '#1e3a5f', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 700, color: 'white', fontSize: 13 }}>📋 All Students — House Assignment</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{unassignedCount} unassigned</span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    {['#', 'GCC', 'Student', 'Batch', 'Course', 'Current House', 'Assign to House'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 12 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredStudents.map((s, i) => {
+                    const h  = houses.find(h => h.name === s.house)
+                    const hs = h ? getHouseStyle(h) : null
+                    return (
+                      <tr
+                        key={s.id}
+                        style={{ borderBottom: '1px solid #f1f5f9' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                      >
+                        <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.course || '—'}</td>
+                        <td style={{ padding: '9px 14px' }}>
+                          {s.house && hs
+                            ? <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: hs.bg, color: hs.color }}>● {s.house}</span>
+                            : <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>⚠ Not assigned</span>
+                          }
+                        </td>
+                        <td style={{ padding: '9px 14px' }}>
+                          <select
+                            value={s.house || ''}
+                            onChange={e => handleAssign(s.id, e.target.value)}
+                            style={{ ...inp, width: 150, padding: '6px 10px', fontSize: 12 }}
+                          >
+                            <option value="">— Remove / None —</option>
+                            {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+                          </select>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {filteredStudents.length === 0 && (
+                    <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No students found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 7 — Housemasters
+// ══════════════════════════════════════════════════════════════
+const emptyHM = {
+  name: '', house: '', phone: '', email: '', designation: '',
+  assigned_date: today(), status: 'Active', remarks: '',
+}
+
+function HousemasterTab() {
+  const [records,  setRecords]  = useState([])
+  const [houses,   setHouses]   = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec,  setEditRec]  = useState(null)
+  const [form,     setForm]     = useState(emptyHM)
+  const [filter,   setFilter]   = useState('All')
+
+  const load = async () => {
+    setLoading(true)
+    const [{ data: m }, { data: h }] = await Promise.all([
+      supabase.from('housemasters').select('*').order('house'),
+      supabase.from('houses').select('*').order('name'),
+    ])
+    setRecords(m || [])
+    setHouses(h || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSave = async e => {
+    e.preventDefault()
+    setSaving(true)
+    const { error } = editRec
+      ? await supabase.from('housemasters').update(form).eq('id', editRec.id)
+      : await supabase.from('housemasters').insert([form])
+    if (error) alert('Error: ' + error.message)
+    else { setForm(emptyHM); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Remove this housemaster?')) return
+    await supabase.from('housemasters').delete().eq('id', id)
+    load()
+  }
+
+  // FIXED: correct operator precedence
+  const getHouseStyle = houseName => {
+    const h = houses.find(h => h.name === houseName)
+    if (!h) return HOUSE_COLORS[0]
+    return HOUSE_COLORS[(Number(h.color_index) || 0) % HOUSE_COLORS.length]
+  }
+
+  const houseNames = houses.map(h => h.name)
+  const filtered   = filter === 'All' ? records : records.filter(r => r.house === filter)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ fontSize: 14, color: '#64748b' }}>
+            {records.length} housemasters across {[...new Set(records.map(r => r.house))].length} houses
+          </div>
+          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
+            <option value="All">All Houses</option>
+            {houseNames.map(h => <option key={h}>{h}</option>)}
+          </select>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHM) }} style={btn()}>
+          {showForm ? '✖ Cancel' : '➕ Add Housemaster'}
+        </button>
+      </div>
+
+      {houses.length === 0 && (
+        <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
+          ⚠️ No houses created yet. Go to the 🏠 Houses tab first.
+        </div>
+      )}
+
+      {showForm && (
+        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>
+            {editRec ? '✏️ Edit Housemaster' : '➕ Add Housemaster'}
+          </h3>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div><label style={lbl}>Full Name *</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required style={inp} /></div>
+              <div>
+                <label style={lbl}>Assigned House *</label>
+                <select value={form.house} onChange={e => setForm(f => ({ ...f, house: e.target.value }))} required style={inp}>
+                  <option value="">— Select House —</option>
+                  {houseNames.map(h => <option key={h}>{h}</option>)}
+                </select>
+              </div>
+              <div><label style={lbl}>Phone</label><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Email</label><input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Designation</label><input value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))} placeholder="e.g. Senior Housemaster" style={inp} /></div>
+              <div><label style={lbl}>Assigned Date</label><input type="date" value={form.assigned_date} onChange={e => setForm(f => ({ ...f, assigned_date: e.target.value }))} style={inp} /></div>
+              <div>
+                <label style={lbl}>Status</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+              <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+        : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 16 }}>
+            {filtered.map(r => {
+              const hs = getHouseStyle(r.house)
+              return (
+                <div key={r.id} style={{ background: 'white', borderRadius: 12, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.08)', border: `1px solid ${hs.border}` }}>
+                  <div style={{ height: 4, background: hs.color }} />
+                  <div style={{ padding: '16px 18px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: '#1e293b' }}>{r.name}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{r.designation || 'Housemaster'}</div>
+                      </div>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: hs.bg, color: hs.color }}>🏠 {r.house || '—'}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#64748b', marginBottom: 3 }}>
+                      {r.phone && <div>📞 {r.phone}</div>}
+                      {r.email && <div>✉️ {r.email}</div>}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>Since {r.assigned_date || '—'}</div>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: r.status === 'Active' ? '#dcfce7' : '#fee2e2', color: r.status === 'Active' ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{r.status}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                      <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ flex: 1, ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px' }}>✏️ Edit</button>
+                      <button onClick={() => handleDelete(r.id)} style={{ flex: 1, ...btn('#fee2e2', '#dc2626'), fontSize: 12, padding: '7px' }}>🗑 Remove</button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            {filtered.length === 0 && (
+              <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                {records.length === 0 ? 'No housemasters assigned yet' : `No housemasters in ${filter}`}
+              </div>
+            )}
+          </div>
+        )
+      }
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB 8 — Kitchen
+// ══════════════════════════════════════════════════════════════
+const emptyMeal  = { date: today(), meal_type: 'Breakfast', menu: '', prepared_by: '', served_count: 0, remarks: '' }
+const MEAL_TYPES = ['Breakfast', 'Lunch', 'Tea', 'Dinner']
+
+function KitchenTab() {
+  const [records,    setRecords]    = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [saving,     setSaving]     = useState(false)
+  const [showForm,   setShowForm]   = useState(false)
+  const [form,       setForm]       = useState(emptyMeal)
+  const [search,     setSearch]     = useState('')
+  const [mealFilter, setMealFilter] = useState('All')
+  const [dateFilter, setDateFilter] = useState(today())
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('kitchen_records')
+      .select('*')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSave = async e => {
+    e.preventDefault()
+    setSaving(true)
+    const { error } = await supabase
+      .from('kitchen_records')
+      .insert([{ ...form, served_count: Number(form.served_count) || 0 }])
+    if (error) alert('Error: ' + error.message)
+    else { setForm(emptyMeal); setShowForm(false); load() }
+    setSaving(false)
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this kitchen record?')) return
+    await supabase.from('kitchen_records').delete().eq('id', id)
+    load()
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return records.filter(r =>
+      (mealFilter === 'All' || r.meal_type === mealFilter) &&
+      (!dateFilter || r.date === dateFilter) &&
+      [r.menu, r.prepared_by, r.remarks].some(v => (v || '').toLowerCase().includes(q))
+    )
+  }, [records, search, mealFilter, dateFilter])
+
+  const todayRecords = records.filter(r => r.date === today())
+
+  // FIXED: 5 stat cards → use repeat(5,1fr)
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
+        <StatCard icon="📋" label="Total Records" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        {MEAL_TYPES.map((m, i) => {
+          const colors = ['#ca8a04', '#16a34a', '#0891b2', '#7c3aed']
+          const bgs    = ['#fef9c3', '#dcfce7', '#e0f2fe', '#f5f3ff']
+          return (
+            <StatCard
+              key={m}
+              icon={['🌅', '☀️', '☕', '🌙'][i]}
+              label={`Today's ${m}`}
+              value={todayRecords.filter(r => r.meal_type === m).length > 0 ? '✓' : '—'}
+              color={colors[i]}
+              bg={bgs[i]}
+            />
+          )
+        })}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+          <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{ ...inp, width: 'auto' }} />
+          <select value={mealFilter} onChange={e => setMealFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Meals</option>
+            {MEAL_TYPES.map(m => <option key={m}>{m}</option>)}
+          </select>
+          <input placeholder="🔍 Search menu, staff..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2 }} />
+        </div>
+        <button onClick={() => setShowForm(!showForm)} style={btn()}>{showForm ? '✖ Cancel' : '➕ Log Meal'}</button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>➕ Log Kitchen Record</h3>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={lbl}>Date *</label>
+                <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={inp} />
+              </div>
+              <div>
+                <label style={lbl}>Meal Type *</label>
+                <select value={form.meal_type} onChange={e => setForm(f => ({ ...f, meal_type: e.target.value }))} required style={inp}>
+                  {MEAL_TYPES.map(m => <option key={m}>{m}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>Menu / Items *</label>
+                <textarea value={form.menu} onChange={e => setForm(f => ({ ...f, menu: e.target.value }))} required rows={2} placeholder="e.g. Rice, Dal, Sabzi, Roti..." style={{ ...inp, resize: 'vertical' }} />
+              </div>
+              <div>
+                <label style={lbl}>Prepared By</label>
+                <input value={form.prepared_by} onChange={e => setForm(f => ({ ...f, prepared_by: e.target.value }))} placeholder="Cook / staff name" style={inp} />
+              </div>
+              <div>
+                <label style={lbl}>Students Served</label>
+                <input type="number" min={0} value={form.served_count} onChange={e => setForm(f => ({ ...f, served_count: e.target.value }))} style={inp} />
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>Remarks</label>
+                <input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Any remarks..." style={inp} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Log Meal'}</button>
+              <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+        : (
+          <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#1e3a5f' }}>
+                  {['#', 'Date', 'Meal', 'Menu', 'Prepared By', 'Served', 'Remarks', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => (
+                  <tr
+                    key={r.id}
+                    style={{ borderBottom: '1px solid #f1f5f9' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                  >
+                    <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                    <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a5f' }}>{r.meal_type}</span>
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#374151', maxWidth: 200 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.menu}>{r.menu}</div>
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.prepared_by || '—'}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>{r.served_count || '—'}</td>
+                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.remarks || '—'}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No kitchen records found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ROOT — Hostel module
+// ══════════════════════════════════════════════════════════════
+function Hostel() {
+  const [activeTab,     setActiveTab]     = useState('allotments')
+  const [students,      setStudents]      = useState([])
+  const [staffProfiles, setStaffProfiles] = useState([])
+  const [dataLoading,   setDataLoading]   = useState(true)
+
+  useEffect(() => {
+    const fetchShared = async () => {
+      setDataLoading(true)
+      const [{ data: s, error: e1 }, { data: st, error: e2 }] = await Promise.all([
+        supabase
+          .from('students')
+          .select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no')
+          .order('name'),
+        supabase
+          .from('staff_profiles')
+          .select('id,name,designation,department,status')
+          .order('name'),
+      ])
+      if (e1) console.error('Students fetch error:', e1)
+      if (e2) console.error('Staff fetch error:', e2)
+      console.log('Loaded:', s?.length, 'students,', st?.length, 'staff | sample:', s?.[0])
+      setStudents(s || [])
+      setStaffProfiles(st || [])
+      setDataLoading(false)
+    }
+    fetchShared()
+  }, [])
+
+  // Tabs that don't need shared student/staff data can render immediately
+  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster'
+
+  const tabContent = {
+    allotments:  <AllotmentsTab  students={students} />,
+    schedule:    <ScheduleTab />,
+    nightduty:   <NightDutyTab   staffProfiles={staffProfiles} />,
+    discipline:  <DisciplineTab  students={students} />,
+    sickbay:     <SickbayTab     students={students} />,
+    house:       <HouseTab       students={students} />,
+    housemaster: <HousemasterTab />,
+    kitchen:     <KitchenTab />,
+  }
+
+  return (
+    <div style={{ padding: '24px', fontFamily: 'system-ui,sans-serif' }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>🏠 Hostel Management</h1>
+        <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>
+          Allotments · Schedule · Night Duty · Discipline · Sickbay · House · Kitchen
+          {dataLoading
+            ? <span style={{ marginLeft: 12, color: '#f59e0b', fontWeight: 600 }}>⏳ Loading shared data...</span>
+            : <span style={{ marginLeft: 12, color: '#16a34a', fontWeight: 600 }}>✅ {students.length} students · {staffProfiles.length} staff loaded</span>
+          }
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', marginBottom: 24, overflowX: 'auto' }}>
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: '9px 16px', border: 'none',
+              borderBottom: activeTab === t.id ? '3px solid #1e3a5f' : '3px solid transparent',
+              background: 'none', cursor: 'pointer', fontSize: 13,
+              fontWeight: activeTab === t.id ? 700 : 500,
+              color: activeTab === t.id ? '#1e3a5f' : '#64748b',
+              marginBottom: -2, whiteSpace: 'nowrap', transition: 'color .15s',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {dataLoading && !standaloneTab
+        ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Loading student & staff data...</div>
+            <div style={{ fontSize: 13, marginTop: 6, color: '#94a3b8' }}>This only happens once on first load</div>
+          </div>
+        )
+        : tabContent[activeTab]
+      }
+    </div>
+  )
+}
+
+export default Hostel
