@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "./lib/supabase";
+import { supabase } from "./lib/Supabase";
 
 // ─── Constants ───────────────────────────────────────────────
 const COURSE_STRUCTURE = {

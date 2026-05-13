@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useEffect } from "react";
-import { supabase } from "./lib/supabase";
+import { supabase } from "./lib/Supabase";
 
 const NAV_TABS = [
   { id: "basic",      icon: "🏫", label: "Basic Info" },
