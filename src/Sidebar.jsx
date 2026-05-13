@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { supabase } from './lib/Supabase'
 
-const ADMIN_GROUPS = [
+const ALL_GROUPS = [
   {
     group: 'CORE',
     items: [
@@ -57,66 +58,21 @@ const ADMIN_GROUPS = [
   },
 ]
 
-const USER_GROUPS = [
-  {
-    group: 'MY SPACE',
-    items: [
-      { id: 'dashboard',  label: 'Dashboard',  icon: '🏠' },
-      { id: 'attendance', label: 'Attendance', icon: '📅' },
-      { id: 'exams',      label: 'Exams',      icon: '📝' },
-      { id: 'timetable',  label: 'Timetable',  icon: '🕐' },
-    ],
-  },
-  {
-    group: 'FINANCE',
-    items: [
-      { id: 'fees',               label: 'Fees',           icon: '💰' },
-      { id: 'bulk-admission-fee', label: 'Bulk Admission', icon: '📥' },
-    ],
-  },
-  {
-    group: 'ACADEMIC',
-    items: [
-      { id: 'teaching', label: 'Teaching', icon: '📚' },
-      { id: 'courses',  label: 'Courses',  icon: '🎓' },
-    ],
-  },
-  {
-    group: 'PEOPLE',
-    items: [
-      { id: 'staff',  label: 'Staff',  icon: '👨‍🏫' },
-      { id: 'hr',     label: 'HR',     icon: '🗂️' },
-      { id: 'leave',  label: 'Leave',  icon: '🏖️' },
-      { id: 'hostel', label: 'Hostel', icon: '🏨' },
-    ],
-  },
-  {
-    group: 'COMMUNICATION',
-    items: [
-      { id: 'reception', label: 'Reception', icon: '🛎️' },
-      { id: 'notice',    label: 'Notice',    icon: '🔔' },
-      { id: 'social',    label: 'Social',    icon: '📣' },
-      { id: 'connect',   label: 'Connect',   icon: '🔗' },
-    ],
-  },
-]
-
 const BADGES = {
   fees:   { count: 3, bg: '#422006', color: '#fcd34d' },
   leave:  { count: 2, bg: '#422006', color: '#fcd34d' },
   notice: { count: 5, bg: '#422006', color: '#fcd34d' },
 }
 
-// Dark theme with gold accent
 const D = {
   bg:           '#03263a',
   bgSurface:    '#181b23',
   bgHover:      '#1e2130',
-  bgActive:     '#221f10',   // warm gold-tinted active bg
+  bgActive:     '#221f10',
   border:       '#2a2d3a',
   borderStrong: '#363a4f',
-  accent:       '#f59e0b',   // gold
-  accentLight:  '#fbbf24',   // lighter gold for highlights
+  accent:       '#f59e0b',
+  accentLight:  '#fbbf24',
   accentBg:     'hsla(38, 87%, 44%, 0.10)',
   accentBorder: 'rgba(245,158,11,0.28)',
   textPrimary:  '#ffffff',
@@ -124,7 +80,7 @@ const D = {
   textMuted:    '#fbfbfb',
   textFaint:    '#ffffff',
   pill:         '#f59e0b',
-  logoBg:       '#fdd656',   // deeper amber-gold for logo bg
+  logoBg:       '#fdd656',
   scrollbar:    '#2a2d3a',
 }
 
@@ -168,21 +124,15 @@ function NavItem({ item, isActive, onClick }) {
           background: D.pill,
         }} />
       )}
-      <span style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>
-        {item.icon}
-      </span>
-      <span style={{ flex: 1, lineHeight: 1.2 }}>
-        {item.label}
-      </span>
+      <span style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
+      <span style={{ flex: 1, lineHeight: 1.2 }}>{item.label}</span>
       {badge && (
         <span style={{
           fontSize: 10, fontWeight: 700,
           padding: '2px 7px', borderRadius: 99,
           background: badge.bg, color: badge.color,
           flexShrink: 0,
-        }}>
-          {badge.count}
-        </span>
+        }}>{badge.count}</span>
       )}
     </button>
   )
@@ -218,21 +168,57 @@ function LogoutButton({ onLogout }) {
 
 function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
   const [search, setSearch] = useState('')
-  const role = currentUser?.role || 'user'
-  const isAdmin = role === 'admin'
-  const groups = isAdmin ? ADMIN_GROUPS : USER_GROUPS
+  const [allowedModules, setAllowedModules] = useState(null)
+
+ const role = currentUser?.role || 'Teacher'
+
+  useEffect(() => {
+    async function fetchPermissions() {
+      const { data, error } = await supabase
+        .from('role_permissions')
+        .select('module_key')
+        .eq('role', role)
+        .eq('allowed', true)
+
+      if (!error && data) {
+        setAllowedModules(new Set(data.map(r => r.module_key)))
+      } else {
+        // fallback: show only dashboard
+        setAllowedModules(new Set(['dashboard']))
+      }
+    }
+    fetchPermissions()
+  }, [role])
 
   const initials = currentUser?.name
     ? currentUser.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-    : isAdmin ? 'AD' : 'US'
+    : 'US'
 
   const filteredGroups = useMemo(() => {
+    if (!allowedModules) return []
     const q = search.trim().toLowerCase()
-    if (!q) return groups
-    return groups
-      .map(g => ({ ...g, items: g.items.filter(i => i.label.toLowerCase().includes(q)) }))
+    return ALL_GROUPS
+      .map(g => ({
+        ...g,
+        items: g.items.filter(i =>
+          allowedModules.has(i.id) &&
+          (!q || i.label.toLowerCase().includes(q))
+        ),
+      }))
       .filter(g => g.items.length > 0)
-  }, [search, groups])
+  }, [allowedModules, search])
+
+  if (!allowedModules) {
+    return (
+      <div style={{
+        width: 260, height: '100vh', background: D.bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: D.textMuted, fontSize: 13,
+      }}>
+        Loading...
+      </div>
+    )
+  }
 
   return (
     <div style={{
@@ -248,13 +234,11 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
       zIndex: 100,
     }}>
 
-      {/* ── Logo ── */}
+      {/* Logo */}
       <div style={{
-        padding: '0 16px',
-        height: 58,
+        padding: '0 16px', height: 58,
         display: 'flex', alignItems: 'center', gap: 11,
-        borderBottom: `1px solid ${D.border}`,
-        flexShrink: 0,
+        borderBottom: `1px solid ${D.border}`, flexShrink: 0,
       }}>
         <div style={{
           width: 34, height: 34, borderRadius: 8,
@@ -272,7 +256,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         </div>
       </div>
 
-      {/* ── User card ── */}
+      {/* User card */}
       <div style={{
         margin: '10px 10px 0',
         background: D.bgSurface,
@@ -287,32 +271,26 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
           background: D.accentBg,
           border: `1.5px solid ${D.accentBorder}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 13, fontWeight: 700,
-          color: D.accentLight,
+          fontSize: 13, fontWeight: 700, color: D.accentLight,
         }}>{initials}</div>
-
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
             fontSize: 13, fontWeight: 600, color: D.textPrimary,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            lineHeight: 1.3,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3,
           }}>
-            {currentUser?.name || (isAdmin ? 'Administrator' : 'User')}
+            {currentUser?.name || 'User'}
           </div>
           <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            marginTop: 4,
-            background: D.accentBg,
-            border: `1px solid ${D.accentBorder}`,
+            display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4,
+            background: D.accentBg, border: `1px solid ${D.accentBorder}`,
             borderRadius: 4, padding: '2px 7px',
           }}>
             <span style={{ width: 5, height: 5, borderRadius: '50%', background: D.accent, flexShrink: 0 }} />
             <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: D.accent }}>
-              {isAdmin ? 'Administrator' : 'User'}
+              {role}
             </span>
           </div>
         </div>
-
         <div style={{
           width: 7, height: 7, borderRadius: '50%',
           background: '#22c55e', flexShrink: 0,
@@ -320,14 +298,12 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         }} />
       </div>
 
-      {/* ── Search ── */}
+      {/* Search */}
       <div style={{ padding: '8px 10px 4px', flexShrink: 0 }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 7,
-          background: D.bgSurface,
-          border: `1px solid ${D.borderStrong}`,
-          borderRadius: 7,
-          padding: '7px 11px',
+          background: D.bgSurface, border: `1px solid ${D.borderStrong}`,
+          borderRadius: 7, padding: '7px 11px',
         }}>
           <span style={{ fontSize: 13, color: D.textMuted, flexShrink: 0 }}>🔍</span>
           <input
@@ -336,8 +312,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
             placeholder="Search modules…"
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              fontSize: 13, color: D.textPrimary,
-              fontFamily: 'inherit',
+              fontSize: 13, color: D.textPrimary, fontFamily: 'inherit',
             }}
           />
           {search && (
@@ -349,7 +324,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         </div>
       </div>
 
-      {/* ── Nav ── */}
+      {/* Nav */}
       <nav style={{
         flex: 1, overflowY: 'auto', overflowX: 'hidden',
         padding: '4px 8px 8px',
@@ -363,13 +338,10 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         )}
         {filteredGroups.map((grp, gi) => (
           <div key={grp.group} style={{ marginBottom: 4 }}>
-            {gi > 0 && (
-              <div style={{ height: 1, background: D.border, margin: '6px 4px 10px' }} />
-            )}
+            {gi > 0 && <div style={{ height: 1, background: D.border, margin: '6px 4px 10px' }} />}
             <div style={{
               fontSize: 10.5, fontWeight: 600, letterSpacing: '.09em',
-              color: D.textFaint, padding: '4px 12px 5px',
-              textTransform: 'uppercase',
+              color: D.textFaint, padding: '4px 12px 5px', textTransform: 'uppercase',
             }}>{grp.group}</div>
             {grp.items.map(item => (
               <NavItem
@@ -383,7 +355,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         ))}
       </nav>
 
-      {/* ── Footer ── */}
+      {/* Footer */}
       <div style={{
         padding: '8px 8px 12px',
         borderTop: `1px solid ${D.border}`,
