@@ -112,6 +112,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
   // ── Save Admission Fees ──────────────────────────────────────
   const saveAdmission = async () => {
+     if (saving) return
     if (!appId || appId === 'undefined' || appId === '')
       return alert('Student GCC number is missing. Cannot save.')
     const items = FEE_ITEMS.filter(f => selected[f.id])
@@ -151,7 +152,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           note:         `Admission fees — ${name} (GCC-${gcc})`,
           source_ref:   appId,
           source_type:  'admission',
-        }, { onConflict: 'accounts_source_ref_type_unique' })
+        }, { onConflict: 'source_ref,source_type' })
       if (accErr) throw accErr
       setSaved({ rcpt, items: items.map(i => i.label).join(', '), total: admTotal })
       onSaved?.()
@@ -165,6 +166,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
   // ── Save Flat Fees ───────────────────────────────────────────
   const saveFlat = async () => {
+    if (saving) return
     const items = FLAT_FEES.filter(f => flatSel[f.id])
     if (!items.length) return alert('Please select at least one month.')
     setSaving(true)
@@ -201,7 +203,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
             source_ref:   `${appId}_${item.id}`,
             source_type:  'flat',
-          }, { onConflict: 'accounts_source_ref_type_unique' })
+          }, { onConflict: 'source_ref,source_type' })
         if (accErr) throw accErr
       }
       setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
@@ -216,6 +218,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
   // ── Save Course Fee ──────────────────────────────────────────
   const saveCourse = async () => {
+     if (saving) return
     const amt = Number(courseAmt)
     if (!amt || amt <= 0) return alert('Please enter a valid amount.')
     setSaving(true)
@@ -250,7 +253,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           note:         `Course fee (${courseMonth}) — ${name} (GCC-${gcc})`,
           source_ref:   `${appId}_course_${courseMonth.slice(0, 3).toLowerCase()}_${YEAR}`,
           source_type:  'course',
-        }, { onConflict: 'accounts_source_ref_type_unique' })
+        }, { onConflict: 'source_ref,source_type' })
       if (accErr) throw accErr
       setSaved({ rcpt, items: `${course} · ${courseMonth}`, total: amt })
       onSaved?.()
