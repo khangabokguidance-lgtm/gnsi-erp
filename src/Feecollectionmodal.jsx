@@ -139,6 +139,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         })
         if (e) throw e
       }
+      // ✅ source_ref: just appId (GCC) — admission is once per student
       const { error: accErr } = await supabase.from('accounts').insert({
         entry_date:   payDate,
         type:         'Income',
@@ -185,6 +186,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         })
         if (e) throw e
       }
+      // ✅ FIX: source_ref includes month ids so "715_flat_feb" never collides
+      // with "715" (admission) or "715_course_feb" (course fee)
       const { error: accErr } = await supabase.from('accounts').insert({
         entry_date:   payDate,
         type:         'Income',
@@ -192,7 +195,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         amount:       flatTotal,
         payment_mode: payMode,
         note:         `Flat fees — ${name} (GCC-${gcc})`,
-        source_ref:   appId,
+        source_ref:   `${appId}_flat_${items.map(i => i.id).join('_')}`,
         source_type:  'flat',
       })
       if (accErr) throw accErr
@@ -229,6 +232,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         adm_no:       admNo || null,
       })
       if (e) throw e
+      // ✅ FIX: source_ref includes "course" + month so "715_course_feb" never
+      // collides with "715" (admission) or "715_flat_feb" (flat fee)
       const { error: accErr } = await supabase.from('accounts').insert({
         entry_date:   payDate,
         type:         'Income',
@@ -236,7 +241,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         amount:       amt,
         payment_mode: payMode,
         note:         `Course fee (${courseMonth}) — ${name} (GCC-${gcc})`,
-        source_ref:   appId,
+        source_ref:   `${appId}_course_${courseMonth.slice(0, 3).toLowerCase()}`,
         source_type:  'course',
       })
       if (accErr) throw accErr
@@ -306,7 +311,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                 {admNo  && <span style={{ color: C.indigo, fontWeight: 600 }}>{admNo}</span>}
               </div>
             </div>
-            {/* ✅ X button — type="button" prevents form submit */}
             <button
               type="button"
               onClick={handleClose}
@@ -523,7 +527,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
         {/* Footer */}
         <div style={{ padding: '14px 22px', borderTop: `1px solid ${C.slate[100]}`, background: C.slate[50], display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          {/* ✅ Close button */}
           <button
             type="button"
             onClick={handleClose}
@@ -535,7 +538,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           >
             Close
           </button>
-          {/* ✅ Save button */}
           <button
             type="button"
             onClick={tab === 'admission' ? saveAdmission : tab === 'flat' ? saveFlat : saveCourse}
