@@ -9,9 +9,12 @@ const FEE_ITEMS = [
   { id: 'prospectus', label: 'Prospectus Fee',  amount: 200,  type: 'item',      icon: '📖', color: '#7c3aed' },
 ]
 
+const YEAR = new Date().getFullYear()
+
+// ✅ FIX: id now includes year so source_ref is unique per student per month per year
 const FLAT_FEES = [
-  { id: `flat_feb_${new Date().getFullYear()}`, month: 'February', amount: 5500, year: new Date().getFullYear() },
-  { id: `flat_mar_${new Date().getFullYear()}`, month: 'March',    amount: 5500, year: new Date().getFullYear() },
+  { id: `flat_feb_${YEAR}`, month: 'February', amount: 5500, year: YEAR },
+  { id: `flat_mar_${YEAR}`, month: 'March',    amount: 5500, year: YEAR },
 ]
 
 const COURSE_FEES = {
@@ -64,7 +67,6 @@ const inp = {
 // ─── Main Modal ────────────────────────────────────────────────
 export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
-  // ── Derive student info from either app or student prop ──────
   const gcc        = app?.gcc        || student?.gcc_no
   const name       = app?.name       || student?.name
   const course     = app?.course     || student?.course
@@ -79,7 +81,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     ? 'Day Scholar'
     : (student?.hostel_type || 'Day Scholar')
 
-  // ── State ────────────────────────────────────────────────────
   const [tab,         setTab]         = useState('admission')
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState(null)
@@ -105,7 +106,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     .filter(f => flatSel[f.id])
     .reduce((s, f) => s + f.amount, 0)
 
-  // ── Safe close ───────────────────────────────────────────────
   const handleClose = () => {
     if (typeof onClose === 'function') onClose()
   }
@@ -139,17 +139,19 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         })
         if (e) throw e
       }
-      // ✅ source_ref: just appId (GCC) — admission is once per student
-      const { error: accErr } = await supabase.from('accounts').insert({
-        entry_date:   payDate,
-        type:         'Income',
-        category:     'Admission',
-        amount:       admTotal,
-        payment_mode: payMode,
-        note:         `Admission fees — ${name} (GCC-${gcc})`,
-        source_ref:   appId,
-        source_type:  'admission',
-      })
+      // Admission is once per student — appId alone is fine as source_ref
+      const { error: accErr } = await supabase
+        .from('accounts')
+        .upsert({
+          entry_date:   payDate,
+          type:         'Income',
+          category:     'Admission',
+          amount:       admTotal,
+          payment_mode: payMode,
+          note:         `Admission fees — ${name} (GCC-${gcc})`,
+          source_ref:   appId,
+          source_type:  'admission',
+        }, { onConflict: 'source_ref,source_type' })
       if (accErr) throw accErr
       setSaved({ rcpt, items: items.map(i => i.label).join(', '), total: admTotal })
       onSaved?.()
@@ -162,54 +164,56 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   }
 
   // ── Save Flat Fees ───────────────────────────────────────────
- const saveFlat = async () => {
-  const items = FLAT_FEES.filter(f => flatSel[f.id])
-  if (!items.length) return alert('Please select at least one month.')
-  setSaving(true)
-  setError(null)
-  try {
-    const rcpt = rcptNo()
-    for (const item of items) {
-      const { error: e } = await supabase.from('adm_flat_fees').insert({
-        id:           `${rcpt}-${item.id}`,
-        adm_app_id:   appId,
-        month:        item.month,
-        year:         item.year,
-        amount:       item.amount,
-        paid:         true,
-        pay_date:     payDate,
-        pay_mode:     payMode,
-        txn_ref:      txnRef || null,
-        receipt_no:   rcpt,
-        student_name: name,
-        adm_no:       admNo || null,
-      })
-      if (e) throw e
-
-      // ✅ One row per month, upsert so retries never crash
-      const { error: accErr } = await supabase
-        .from('accounts')
-        .upsert({
-          entry_date:   payDate,
-          type:         'Income',
-          category:     'Hostel',
+  const saveFlat = async () => {
+    const items = FLAT_FEES.filter(f => flatSel[f.id])
+    if (!items.length) return alert('Please select at least one month.')
+    setSaving(true)
+    setError(null)
+    try {
+      const rcpt = rcptNo()
+      for (const item of items) {
+        const { error: e } = await supabase.from('adm_flat_fees').insert({
+          id:           `${rcpt}-${item.id}`,
+          adm_app_id:   appId,
+          month:        item.month,
+          year:         item.year,
           amount:       item.amount,
-          payment_mode: payMode,
-          note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
-          source_ref:   `${appId}_${item.id}`,   // e.g. "715_flat_feb_2026"
-          source_type:  'flat',
-        }, { onConflict: 'source_ref,source_type' })
-      if (accErr) throw accErr
+          paid:         true,
+          pay_date:     payDate,
+          pay_mode:     payMode,
+          txn_ref:      txnRef || null,
+          receipt_no:   rcpt,
+          student_name: name,
+          adm_no:       admNo || null,
+        })
+        if (e) throw e
+
+        // ✅ One accounts row per month per student
+        // source_ref = "715_flat_feb_2026" — unique per student per month per year
+        const { error: accErr } = await supabase
+          .from('accounts')
+          .upsert({
+            entry_date:   payDate,
+            type:         'Income',
+            category:     'Hostel',
+            amount:       item.amount,
+            payment_mode: payMode,
+            note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
+            source_ref:   `${appId}_${item.id}`,
+            source_type:  'flat',
+          }, { onConflict: 'source_ref,source_type' })
+        if (accErr) throw accErr
+      }
+      setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
+      onSaved?.()
+    } catch (err) {
+      console.error('saveFlat:', err)
+      setError(err.message || 'Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
     }
-    setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
-    onSaved?.()
-  } catch (err) {
-    console.error('saveFlat:', err)
-    setError(err.message || 'Failed to save. Please try again.')
-  } finally {
-    setSaving(false)
   }
-}
+
   // ── Save Course Fee ──────────────────────────────────────────
   const saveCourse = async () => {
     const amt = Number(courseAmt)
@@ -233,18 +237,20 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         adm_no:       admNo || null,
       })
       if (e) throw e
-      // ✅ FIX: source_ref includes "course" + month so "715_course_feb" never
-      // collides with "715" (admission) or "715_flat_feb" (flat fee)
-      const { error: accErr } = await supabase.from('accounts').insert({
-        entry_date:   payDate,
-        type:         'Income',
-        category:     'Fees',
-        amount:       amt,
-        payment_mode: payMode,
-        note:         `Course fee (${courseMonth}) — ${name} (GCC-${gcc})`,
-        source_ref:   `${appId}_course_${courseMonth.slice(0, 3).toLowerCase()}`,
-        source_type:  'course',
-      })
+
+      // source_ref = "715_course_jan_2026" — unique per student per month per year
+      const { error: accErr } = await supabase
+        .from('accounts')
+        .upsert({
+          entry_date:   payDate,
+          type:         'Income',
+          category:     'Fees',
+          amount:       amt,
+          payment_mode: payMode,
+          note:         `Course fee (${courseMonth}) — ${name} (GCC-${gcc})`,
+          source_ref:   `${appId}_course_${courseMonth.slice(0, 3).toLowerCase()}_${YEAR}`,
+          source_type:  'course',
+        }, { onConflict: 'source_ref,source_type' })
       if (accErr) throw accErr
       setSaved({ rcpt, items: `${course} · ${courseMonth}`, total: amt })
       onSaved?.()
@@ -256,7 +262,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     }
   }
 
-  // ── Tab button ───────────────────────────────────────────────
   const tabBtn = (id, label, icon) => (
     <button
       type="button"
@@ -273,7 +278,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     </button>
   )
 
-  // ── Render ───────────────────────────────────────────────────
   return createPortal(
     <div
       style={{
@@ -294,7 +298,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Accent bar */}
         <div style={{ height: 4, background: `linear-gradient(90deg,${C.navy},${C.indigo},${C.violet})` }} />
 
         {/* Header */}
@@ -325,8 +328,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
               }}
             >×</button>
           </div>
-
-          {/* Tabs */}
           <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
             {tabBtn('admission', 'Admission Fees', '🎓')}
             {tabBtn('flat',      'Flat Fees',      '📅')}
@@ -337,7 +338,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px' }}>
 
-          {/* Error banner */}
           {error && (
             <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '12px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, color: '#b91c1c', fontWeight: 600 }}>❌ {error}</span>
@@ -345,7 +345,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* Success banner */}
           {saved && (
             <div style={{ background: '#ecfdf5', border: '1.5px solid #6ee7b7', borderRadius: 12, padding: '16px 18px', marginBottom: 16 }}>
               <div style={{ fontWeight: 800, color: '#065f46', fontSize: 15, marginBottom: 6 }}>✅ Payment Recorded!</div>
@@ -364,7 +363,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Admission tab ── */}
+          {/* Admission tab */}
           {tab === 'admission' && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
@@ -415,7 +414,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Flat fee tab ── */}
+          {/* Flat fee tab */}
           {tab === 'flat' && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
@@ -460,7 +459,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Course fee tab ── */}
+          {/* Course fee tab */}
           {tab === 'course' && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
@@ -498,7 +497,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Payment Details (shared) ── */}
+          {/* Payment Details */}
           <div style={{ borderTop: `1px solid ${C.slate[100]}`, paddingTop: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
               Payment Details
