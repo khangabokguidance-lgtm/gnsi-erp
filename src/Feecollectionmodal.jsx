@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 
@@ -65,7 +65,6 @@ const inp = {
 
 // ─── Helper: safe update-or-insert for accounts table ──────────
 async function syncAccount({ sourceRef, sourceType, payload }) {
-  // 1) Try to find existing row by source_ref + source_type
   const { data: existing, error: findErr } = await supabase
     .from('accounts')
     .select('id')
@@ -76,14 +75,12 @@ async function syncAccount({ sourceRef, sourceType, payload }) {
   if (findErr) throw findErr
 
   if (existing?.id) {
-    // 2) Update existing
     const { error } = await supabase
       .from('accounts')
       .update(payload)
       .eq('id', existing.id)
     if (error) throw error
   } else {
-    // 3) Insert new
     const { error } = await supabase
       .from('accounts')
       .insert({ ...payload, source_ref: sourceRef, source_type: sourceType })
@@ -122,6 +119,27 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const [courseMonth, setCourseMonth] = useState(MONTHS_LIST[new Date().getMonth()])
   const [courseAmt,   setCourseAmt]   = useState(getCourseFeeAmt(course, hostelType))
 
+  // ── FIX: Track which flat fee months are already paid ────────
+  const [paidMonths,  setPaidMonths]  = useState([])
+  const [loadingPaid, setLoadingPaid] = useState(false)
+
+  useEffect(() => {
+    if (!appId || appId === 'undefined' || appId === '') return
+    setLoadingPaid(true)
+    supabase
+      .from('adm_flat_fees')
+      .select('month, year')
+      .eq('adm_app_id', appId)
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setPaidMonths(data.map(r => `${r.month}_${r.year}`))
+        }
+        setLoadingPaid(false)
+      })
+  }, [appId])
+
+  const isMonthPaid = (fee) => paidMonths.includes(`${fee.month}_${fee.year}`)
+
   const toggleFee  = id => setSelected(p => ({ ...p, [id]: !p[id] }))
   const toggleFlat = id => setFlatSel(p => ({ ...p, [id]: !p[id] }))
 
@@ -129,8 +147,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     .filter(f => selected[f.id])
     .reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
 
+  // ── FIX: Only total unpaid selected months ───────────────────
   const flatTotal = FLAT_FEES
-    .filter(f => flatSel[f.id])
+    .filter(f => flatSel[f.id] && !isMonthPaid(f))
     .reduce((s, f) => s + f.amount, 0)
 
   const handleClose = () => {
@@ -191,18 +210,37 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     }
   }
 
-  // ── Save Flat Fees ───────────────────────────────────────────
+  // ── Save Flat Fees (FIXED) ───────────────────────────────────
   const saveFlat = async () => {
     if (saving) return
     if (!appId || appId === 'undefined' || appId === '')
       return alert('Student GCC number is missing. Cannot save.')
-    const items = FLAT_FEES.filter(f => flatSel[f.id])
-    if (!items.length) return alert('Please select at least one month.')
+
+    // ── FIX: Filter out already-paid months before processing ──
+    const items = FLAT_FEES.filter(f => flatSel[f.id] && !isMonthPaid(f))
+    if (!items.length) return alert('Please select at least one unpaid month.')
+
     setSaving(true)
     setError(null)
     try {
       const rcpt = rcptNo()
       for (const item of items) {
+
+        // ── FIX: Double-check DB before inserting (race condition guard) ──
+        const { data: existing } = await supabase
+          .from('adm_flat_fees')
+          .select('id')
+          .eq('adm_app_id', appId)
+          .eq('month', item.month)
+          .eq('year', item.year)
+          .maybeSingle()
+
+        if (existing) {
+          // Already paid — skip and mark as paid in local state
+          setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])])
+          continue
+        }
+
         const { error: e } = await supabase.from('adm_flat_fees').insert({
           id:           `${rcpt}-${item.id}`,
           adm_app_id:   appId,
@@ -231,8 +269,13 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
           }
         })
+
+        // ── FIX: Mark as paid in local state immediately ───────
+        setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])])
       }
+
       setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
+      setFlatSel({})
       onSaved?.()
     } catch (err) {
       console.error('saveFlat:', err)
@@ -444,46 +487,86 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* Flat fee tab */}
+          {/* Flat fee tab (FIXED) */}
           {tab === 'flat' && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
                 Select Months
               </div>
+
+              {/* ── FIX: Loading indicator while checking paid status ── */}
+              {loadingPaid && (
+                <div style={{ fontSize: 12, color: C.slate[400], marginBottom: 10, textAlign: 'center' }}>
+                  ⏳ Checking payment history...
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
-                {FLAT_FEES.map(fee => (
-                  <div
-                    key={fee.id}
-                    onClick={() => toggleFlat(fee.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-                      border: `1.5px solid ${flatSel[fee.id] ? C.emerald : C.slate[200]}`,
-                      background: flatSel[fee.id] ? '#ecfdf5' : 'white',
-                      transition: 'all .15s',
-                    }}
-                  >
-                    <div style={{ fontSize: 20 }}>📅</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900] }}>{fee.month} {fee.year}</div>
-                      <div style={{ fontSize: 11, color: C.slate[400] }}>Flat hostel fee</div>
+                {FLAT_FEES.map(fee => {
+                  const paid = isMonthPaid(fee)
+                  return (
+                    <div
+                      key={fee.id}
+                      onClick={() => !paid && toggleFlat(fee.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px 14px', borderRadius: 10,
+                        cursor: paid ? 'default' : 'pointer',
+                        // ── FIX: Visual distinction for paid months ──
+                        border: `1.5px solid ${paid ? '#6ee7b7' : flatSel[fee.id] ? C.emerald : C.slate[200]}`,
+                        background: paid ? '#f0fdf4' : flatSel[fee.id] ? '#ecfdf5' : 'white',
+                        opacity: paid ? 0.75 : 1,
+                        transition: 'all .15s',
+                      }}
+                    >
+                      <div style={{ fontSize: 20 }}>📅</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900] }}>
+                          {fee.month} {fee.year}
+                        </div>
+                        <div style={{ fontSize: 11, color: paid ? C.emerald : C.slate[400] }}>
+                          {paid ? 'Already paid' : 'Flat hostel fee'}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: paid ? C.emerald : C.emerald }}>
+                        ₹{fmt(fee.amount)}
+                      </span>
+
+                      {/* ── FIX: Show PAID badge OR checkbox ── */}
+                      {paid ? (
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, color: C.emerald,
+                          background: '#dcfce7', padding: '3px 8px',
+                          borderRadius: 6, flexShrink: 0, letterSpacing: '.05em',
+                        }}>
+                          ✓ PAID
+                        </span>
+                      ) : (
+                        <div style={{
+                          width: 20, height: 20, borderRadius: 5,
+                          border: `2px solid ${flatSel[fee.id] ? C.emerald : C.slate[300]}`,
+                          background: flatSel[fee.id] ? C.emerald : 'white',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                          {flatSel[fee.id] && <span style={{ color: 'white', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                        </div>
+                      )}
                     </div>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: C.emerald }}>₹{fmt(fee.amount)}</span>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: 5,
-                      border: `2px solid ${flatSel[fee.id] ? C.emerald : C.slate[300]}`,
-                      background: flatSel[fee.id] ? C.emerald : 'white',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
-                      {flatSel[fee.id] && <span style={{ color: 'white', fontSize: 11, fontWeight: 900 }}>✓</span>}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
+
               {flatTotal > 0 && (
                 <div style={{ background: C.slate[50], borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: C.slate[500] }}>Total</span>
                   <span style={{ fontSize: 18, fontWeight: 800, color: C.emerald }}>₹{fmt(flatTotal)}</span>
+                </div>
+              )}
+
+              {/* ── FIX: Show message if all months are paid ── */}
+              {!loadingPaid && FLAT_FEES.every(f => isMonthPaid(f)) && (
+                <div style={{ background: '#f0fdf4', border: '1.5px solid #6ee7b7', borderRadius: 10, padding: '12px 16px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.emerald }}>✅ All flat fees paid for this student</div>
                 </div>
               )}
             </div>
@@ -571,15 +654,15 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           <button
             type="button"
             onClick={tab === 'admission' ? saveAdmission : tab === 'flat' ? saveFlat : saveCourse}
-            disabled={saving}
+            disabled={saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))}
             style={{
               padding: '9px 24px', borderRadius: 9, border: 'none',
               fontSize: 13, fontWeight: 700,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              background: saving ? C.slate[400] : `linear-gradient(135deg,${C.navy},${C.indigo})`,
+              cursor: (saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))) ? 'not-allowed' : 'pointer',
+              background: (saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))) ? C.slate[400] : `linear-gradient(135deg,${C.navy},${C.indigo})`,
               color: 'white',
               boxShadow: saving ? 'none' : '0 4px 12px rgba(79,70,229,.3)',
-              opacity: saving ? 0.7 : 1,
+              opacity: (saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))) ? 0.7 : 1,
             }}
           >
             {saving ? '⏳ Saving...' : '💾 Record Payment'}
