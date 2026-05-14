@@ -151,7 +151,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           note:         `Admission fees — ${name} (GCC-${gcc})`,
           source_ref:   appId,
           source_type:  'admission',
-        }, { onConflict: 'source_ref' })
+        }, { onConflict: 'accounts_source_ref_type_unique' })
       if (accErr) throw accErr
       setSaved({ rcpt, items: items.map(i => i.label).join(', '), total: admTotal })
       onSaved?.()
@@ -201,7 +201,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
             source_ref:   `${appId}_${item.id}`,
             source_type:  'flat',
-          }, { onConflict: 'source_ref' })
+          }, { onConflict: 'accounts_source_ref_type_unique' })
         if (accErr) throw accErr
       }
       setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
@@ -250,7 +250,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           note:         `Course fee (${courseMonth}) — ${name} (GCC-${gcc})`,
           source_ref:   `${appId}_course_${courseMonth.slice(0, 3).toLowerCase()}_${YEAR}`,
           source_type:  'course',
-        }, { onConflict: 'source_ref' })
+        }, { onConflict: 'accounts_source_ref_type_unique' })
       if (accErr) throw accErr
       setSaved({ rcpt, items: `${course} · ${courseMonth}`, total: amt })
       onSaved?.()
