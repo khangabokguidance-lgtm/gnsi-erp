@@ -10,8 +10,8 @@ const FEE_ITEMS = [
 ]
 
 const FLAT_FEES = [
-  { id: 'feb', month: 'February', amount: 5500, year: new Date().getFullYear() },
-  { id: 'mar', month: 'March',    amount: 5500, year: new Date().getFullYear() },
+  { id: `flat_feb_${new Date().getFullYear()}`, month: 'February', amount: 5500, year: new Date().getFullYear() },
+  { id: `flat_mar_${new Date().getFullYear()}`, month: 'March',    amount: 5500, year: new Date().getFullYear() },
 ]
 
 const COURSE_FEES = {
@@ -162,53 +162,54 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   }
 
   // ── Save Flat Fees ───────────────────────────────────────────
-  const saveFlat = async () => {
-    const items = FLAT_FEES.filter(f => flatSel[f.id])
-    if (!items.length) return alert('Please select at least one month.')
-    setSaving(true)
-    setError(null)
-    try {
-      const rcpt = rcptNo()
-      for (const item of items) {
-        const { error: e } = await supabase.from('adm_flat_fees').insert({
-          id:           `${rcpt}-${item.id}`,
-          adm_app_id:   appId,
-          month:        item.month,
-          year:         item.year,
-          amount:       item.amount,
-          paid:         true,
-          pay_date:     payDate,
-          pay_mode:     payMode,
-          txn_ref:      txnRef || null,
-          receipt_no:   rcpt,
-          student_name: name,
-          adm_no:       admNo || null,
-        })
-        if (e) throw e
-      }
-      // ✅ FIX: source_ref includes month ids so "715_flat_feb" never collides
-      // with "715" (admission) or "715_course_feb" (course fee)
-      const { error: accErr } = await supabase.from('accounts').insert({
-        entry_date:   payDate,
-        type:         'Income',
-        category:     'Hostel',
-        amount:       flatTotal,
-        payment_mode: payMode,
-        note:         `Flat fees — ${name} (GCC-${gcc})`,
-        source_ref:   `${appId}_flat_${items.map(i => i.id).join('_')}`,
-        source_type:  'flat',
+ const saveFlat = async () => {
+  const items = FLAT_FEES.filter(f => flatSel[f.id])
+  if (!items.length) return alert('Please select at least one month.')
+  setSaving(true)
+  setError(null)
+  try {
+    const rcpt = rcptNo()
+    for (const item of items) {
+      const { error: e } = await supabase.from('adm_flat_fees').insert({
+        id:           `${rcpt}-${item.id}`,
+        adm_app_id:   appId,
+        month:        item.month,
+        year:         item.year,
+        amount:       item.amount,
+        paid:         true,
+        pay_date:     payDate,
+        pay_mode:     payMode,
+        txn_ref:      txnRef || null,
+        receipt_no:   rcpt,
+        student_name: name,
+        adm_no:       admNo || null,
       })
-      if (accErr) throw accErr
-      setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
-      onSaved?.()
-    } catch (err) {
-      console.error('saveFlat:', err)
-      setError(err.message || 'Failed to save. Please try again.')
-    } finally {
-      setSaving(false)
-    }
-  }
+      if (e) throw e
 
+      // ✅ One row per month, upsert so retries never crash
+      const { error: accErr } = await supabase
+        .from('accounts')
+        .upsert({
+          entry_date:   payDate,
+          type:         'Income',
+          category:     'Hostel',
+          amount:       item.amount,
+          payment_mode: payMode,
+          note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
+          source_ref:   `${appId}_${item.id}`,   // e.g. "715_flat_feb_2026"
+          source_type:  'flat',
+        }, { onConflict: 'source_ref,source_type' })
+      if (accErr) throw accErr
+    }
+    setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
+    onSaved?.()
+  } catch (err) {
+    console.error('saveFlat:', err)
+    setError(err.message || 'Failed to save. Please try again.')
+  } finally {
+    setSaving(false)
+  }
+}
   // ── Save Course Fee ──────────────────────────────────────────
   const saveCourse = async () => {
     const amt = Number(courseAmt)
