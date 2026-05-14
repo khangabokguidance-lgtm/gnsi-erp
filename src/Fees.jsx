@@ -456,7 +456,7 @@ function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefre
           entry_date:payDate, type:'Income', category:'Admission',
           amount:admFeeAmt, payment_mode:payMode,
           note:`${student.name} · Admission Fee · ${rNo}`,
-          source_ref:'col'+Date.now()+'a_adm', source_type:'adm_fee',
+          source_ref:rNo+'_adm', source_type:'adm_fee',
         }).catch(()=>{})
 
         for (let i=0;i<DRESS_ITEMS.length;i++) {
@@ -482,9 +482,10 @@ function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefre
       }
 
       // 2. Flat fees
-      for (const ff of selFlat) {
-        const rec = {
-          id:'flat'+Date.now()+ff.id, appId,
+for (let fi = 0; fi < selFlat.length; fi++) {
+  const ff = selFlat[fi]
+  const rec = {
+    id:'flat'+Date.now()+ff.id+fi, appId,
           month:ff.month, year:ff.year, amount:ff.amount,
           paid:true, date:payDate, mode:payMode, txnRef,
           rcptNo:rNo, studentName:student.name,
@@ -495,7 +496,7 @@ function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefre
           entry_date:payDate, type:'Income', category:'Hostel',
           amount:ff.amount, payment_mode:payMode,
           note:`${student.name} · ${ff.month} ${ff.year} Flat Fee · ${rNo}`,
-          source_ref:rec.id, source_type:'flat_fee',
+          source_ref:rNo+'_flat_'+fi, source_type:'flat_fee',
         }).catch(()=>{})
         insertedFlat.push(ff)
       }
@@ -517,7 +518,7 @@ function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefre
           entry_date:payDate, type:'Income', category:'Fees',
           amount:Number(cf.amount), payment_mode:payMode,
           note:`${student.name} · ${cf.course} ${cf.forMonth} · ${rNo}`,
-          source_ref:rec.id, source_type:'course_fee',
+          source_ref:rNo+'_crsf_'+insertedCrsf.length, source_type:'course_fee',
         }).catch(()=>{})
         insertedCrsf.push({ ...cf, amount:Number(cf.amount) })
       }
