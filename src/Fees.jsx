@@ -46,6 +46,16 @@ const sStyle = status => ({
   color:           status==='Paid'?'#16a34a':status==='Partial'?'#ca8a04':'#dc2626',
 })
 
+// ─── upsertAccount — inserts or updates accounts row by source_ref ─────────
+// This prevents "duplicate key violates unique constraint accounts_source_ref_idx"
+// by using upsert (insert-or-update) instead of plain insert.
+async function upsertAccount(row) {
+  const { error } = await supabase
+    .from('accounts')
+    .upsert(row, { onConflict: 'source_ref' })
+  if (error) throw error
+}
+
 // ─── Student search dropdown ───────────────────────────────────
 function StudentSearch({ students, onSelect, placeholder }) {
   const [q, setQ] = useState('')
@@ -106,7 +116,6 @@ function buildInvoiceHTML(d) {
     <tr><td style="padding:8px 18px;color:#7c3aed;font-weight:600">${c.course}${c.subtype?' &middot; '+c.subtype:''} &mdash; ${c.forMonth}</td>
         <td style="padding:8px 18px;text-align:right;font-weight:700;color:#7c3aed">&#8377;${fmt(c.amount)}</td></tr>`).join('')
 
-  // jsPDF section data — uses Rs. prefix since jsPDF helvetica can't render ₹
   const pdfSections = JSON.stringify([
     ...(admSubtotal > 0 ? [{ label:'Admission Package', rgb:[55,48,163], rows:[
       ['Admission Fee', `Rs.${fmt(admFeeAmt)}`],
@@ -127,12 +136,10 @@ function buildInvoiceHTML(d) {
     ]}] : []),
   ])
 
-  // PATCH 4: robust print function — uses blob fallback if popup is blocked
   const printScript = `
   function doPrint() {
     var pw = window.open('','_blank','width=720,height=840,scrollbars=yes');
     if (!pw) {
-      // Popup blocked — fallback: blob URL in same tab
       var html = document.documentElement.outerHTML;
       var blob = new Blob([html], {type:'text/html'});
       var url  = URL.createObjectURL(blob);
@@ -260,13 +267,11 @@ function buildInvoiceHTML(d) {
   const GRAND = ${grand};
   const RECEIPT = '${receiptNo}';
 
-  // PATCH 3: use Rs. prefix throughout PDF (jsPDF helvetica can't render ₹ glyph)
   async function downloadPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit:'pt', format:'a4' });
     const W = 595;
 
-    // Header
     doc.setFillColor(30,27,75); doc.rect(0,0,W,96,'F');
     doc.setTextColor(255,255,255);
     doc.setFontSize(8); doc.setFont('helvetica','normal');
@@ -277,14 +282,12 @@ function buildInvoiceHTML(d) {
     doc.setFontSize(10); doc.setFont('helvetica','normal');
     doc.text('${INSTITUTE.short} - ' + RECEIPT, 30, 70);
 
-    // Meta band
     doc.setFillColor(248,250,252); doc.rect(0,96,W,30,'F');
     doc.setTextColor(148,163,184); doc.setFontSize(7.5); doc.setFont('helvetica','normal');
     doc.text('DATE', 30,109); doc.text('PAY MODE', 210,109); doc.text('COLLECTED BY', 390,109);
     doc.setTextColor(30,41,59); doc.setFontSize(10); doc.setFont('helvetica','bold');
     doc.text('${date}', 30,123); doc.text('${payMode}', 210,123); doc.text('${collectedBy||'Admin'}', 390,123);
 
-    // Student info
     let y = 144;
     const fields = [
       ['Student','${studentName.replace(/'/g,"\\'")}'],
@@ -302,7 +305,6 @@ function buildInvoiceHTML(d) {
       y += 20;
     });
 
-    // Fee sections
     SECTIONS.forEach(sec => {
       y += 6;
       doc.setFillColor(...sec.rgb); doc.rect(0,y,W,17,'F');
@@ -321,14 +323,12 @@ function buildInvoiceHTML(d) {
       });
     });
 
-    // Grand total — uses Rs. since ₹ glyph not supported
     y += 6;
     doc.setFillColor(30,27,75); doc.rect(0,y,W,28,'F');
     doc.setTextColor(255,255,255); doc.setFontSize(14); doc.setFont('helvetica','bold');
     doc.text('Grand Total', 30, y+19);
     doc.text('Rs.' + GRAND.toLocaleString('en-IN'), W-18, y+19, {align:'right'});
 
-    // Footer
     y += 50;
     doc.setTextColor(148,163,184); doc.setFontSize(8); doc.setFont('helvetica','normal');
     doc.text('${INSTITUTE.name} - ${INSTITUTE.address}', W/2, y, {align:'center'});
@@ -340,12 +340,10 @@ function buildInvoiceHTML(d) {
   </body></html>`
 }
 
-// PATCH 4: printInvoice with blob fallback for popup-blocked browsers
 function printInvoice(data) {
   const html = buildInvoiceHTML(data)
   const pw = window.open('', '_blank', 'width=720,height=840,scrollbars=yes')
   if (!pw) {
-    // Popup blocked — open as blob URL instead
     const blob = new Blob([html], { type: 'text/html' })
     const url  = URL.createObjectURL(blob)
     window.open(url, '_blank')
@@ -360,11 +358,10 @@ function printInvoice(data) {
 //  TAB: Fee Payment
 // ══════════════════════════════════════════════════════════════
 function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefresh }) {
-  const [step,    setStep]    = useState('select') // 'select' | 'pay'
+  const [step,    setStep]    = useState('select')
   const [student, setStudent] = useState(null)
   const [admApp,  setAdmApp]  = useState(null)
 
-  // Payment details
   const [payMode,      setPayMode]      = useState('Cash')
   const [payDate,      setPayDate]      = useState(today())
   const [txnRef,       setTxnRef]       = useState('')
@@ -372,37 +369,27 @@ function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefre
   const [saving,       setSaving]       = useState(false)
   const [toast,        setToast]        = useState(null)
 
-  // Admission package
   const [admFeeAmt,    setAdmFeeAmt]    = useState(ADM_FEE_BASE)
   const [dressChecked, setDressChecked] = useState(DRESS_ITEMS.map(()=>true))
   const [prospChecked, setProspChecked] = useState(true)
-
-  // Flat fees
   const [flatChecked,  setFlatChecked]  = useState([false,false])
-
-  // Course fees rows
-  const [crsfRows, setCrsfRows] = useState([{ course:'', subtype:'', forMonth:'', amount:'' }])
-
-  // Advance
-  const [advAmt, setAdvAmt] = useState('')
-  const [advFor, setAdvFor] = useState('')
+  const [crsfRows,     setCrsfRows]     = useState([{ course:'', subtype:'', forMonth:'', amount:'' }])
+  const [advAmt,       setAdvAmt]       = useState('')
+  const [advFor,       setAdvFor]       = useState('')
 
   const showToast = (msg, color='#16a34a') => { setToast({msg,color}); setTimeout(()=>setToast(null),3500) }
 
-  // ── Derived from existing records ─────────────────────────
   const appId      = admApp ? String(admApp.id) : null
   const myAdmCols  = appId ? admCols.filter(c  => c.adm_app_id === appId) : []
   const myFlatRecs = appId ? flatRecs.filter(r => r.appId === appId && r.paid) : []
   const myCrsfRecs = appId ? crsfRecs.filter(r => r.appId === appId) : []
-  const admPaid = myAdmCols.some(c => c.fee_type === 'admission')
-  const paidMonths  = myFlatRecs.map(r=>r.month)
-  const flatEverPaid= myFlatRecs.reduce((s,r)=>s+(r.amount||0),0)
-  const crsfEverPaid= myCrsfRecs.reduce((s,r)=>s+(Number(r.amountPaid)||0),0)
-  // PATCH 1: use amount_paid (snake_case) to match Supabase column
+  const admPaid       = myAdmCols.some(c => c.fee_type === 'admission')
+  const paidMonths    = myFlatRecs.map(r=>r.month)
+  const flatEverPaid  = myFlatRecs.reduce((s,r)=>s+(r.amount||0),0)
+  const crsfEverPaid  = myCrsfRecs.reduce((s,r)=>s+(Number(r.amountPaid)||0),0)
   const admEverPaid   = myAdmCols.reduce((s,c) => s+(Number(c.amount_paid)||0), 0)
   const totalEverPaid = admEverPaid + flatEverPaid + crsfEverPaid
 
-  // ── Totals for this payment ────────────────────────────────
   const dressTotal = DRESS_ITEMS.reduce((s,i,idx)=>s+(dressChecked[idx]?i.price:0),0)
   const admPkgThis = admPaid ? 0 : (admFeeAmt + dressTotal + (prospChecked?PROSPECTUS_FEE:0))
   const selFlat    = FLAT_FEES.filter((_,i)=>flatChecked[i]&&!paidMonths.includes(FLAT_FEES[i].month))
@@ -415,7 +402,6 @@ function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefre
     setStudent(s)
     const app = admApps.find(a=>String(a.gcc_no)===String(s.gcc_no))||null
     setAdmApp(app)
-    // pre-tick unpaid flat months
     const paid = app ? flatRecs.filter(r=>r.appId===String(app.id)&&r.paid).map(r=>r.month) : []
     setFlatChecked(FLAT_FEES.map(ff=>!paid.includes(ff.month)))
     setStep('pay')
@@ -434,130 +420,172 @@ function FeePaymentTab({ students, admApps, admCols, flatRecs, crsfRecs, onRefre
     setSaving(true)
 
     const rNo = rcptNo('INV')
+    const ts  = Date.now()
     const insertedDress = []
     const insertedFlat  = []
     const insertedCrsf  = []
 
     try {
-      // 1. Admission package
-      // PATCH 1: use amount_paid (snake_case) to match Supabase column name
-      // PATCH 2: use adm_no (snake_case) to match Supabase column name
+      // ── 1. Admission package ───────────────────────────────
       if (!admPaid && admFeeAmt > 0) {
-        await supabase.from('adm_fee_collections').insert({
-          id:'col'+Date.now()+'a', adm_app_id:appId, fee_type:'admission',
-          amount_paid:admFeeAmt,          // ← PATCH 1: was amountPaid
+        const { error: admErr } = await supabase.from('adm_fee_collections').insert({
+          id: `col${ts}a`,
+          adm_app_id: appId,
+          fee_type: 'admission',
+          amount_paid: admFeeAmt,
           payDate, payMode, txnRef,
-          description:'Admission Fee', receiptNo:rNo,
-          studentName:student.name,
-          admNo:admApp.adm_no||'--',      // ← PATCH 2: was admApp.admNo
+          description: 'Admission Fee',
+          receiptNo: rNo,
+          studentName: student.name,
+          admNo: admApp.adm_no || '--',
           collectedBy,
         })
-        await supabase.from('accounts').insert({
-          entry_date:payDate, type:'Income', category:'Admission',
-          amount:admFeeAmt, payment_mode:payMode,
-          note:`${student.name} · Admission Fee · ${rNo}`,
-          source_ref:rNo+'_adm', source_type:'adm_fee',
-        }).catch(()=>{})
+        if (admErr) throw admErr
 
-        for (let i=0;i<DRESS_ITEMS.length;i++) {
+        // upsert so re-runs don't duplicate
+        await upsertAccount({
+          entry_date: payDate, type: 'Income', category: 'Admission',
+          amount: admFeeAmt, payment_mode: payMode,
+          note: `${student.name} · Admission Fee · ${rNo}`,
+          source_ref: `${rNo}_adm`,
+          source_type: 'adm_fee',
+        })
+
+        for (let i = 0; i < DRESS_ITEMS.length; i++) {
           if (!dressChecked[i]) continue
           const item = DRESS_ITEMS[i]
           insertedDress.push(item)
-          await supabase.from('adm_fee_collections').insert({
-            id:'col'+Date.now()+'dk'+i, adm_app_id:appId, fee_type:'item',
-            amount_paid:item.price,       // ← PATCH 1
+          const { error: dkErr } = await supabase.from('adm_fee_collections').insert({
+            id: `col${ts}dk${i}`,
+            adm_app_id: appId,
+            fee_type: 'item',
+            amount_paid: item.price,
             payDate, payMode, txnRef,
-            description:'Dress Kit — '+item.name, receiptNo:rNo, studentName:student.name,
+            description: 'Dress Kit — ' + item.name,
+            receiptNo: rNo,
+            studentName: student.name,
           })
+          if (dkErr) throw dkErr
         }
+
         if (prospChecked) {
           insertedDress.push({ name:'Prospectus', price:PROSPECTUS_FEE })
-          await supabase.from('adm_fee_collections').insert({
-            id:'col'+Date.now()+'p', adm_app_id:appId, fee_type:'item',
-            amount_paid:PROSPECTUS_FEE,   // ← PATCH 1
+          const { error: pErr } = await supabase.from('adm_fee_collections').insert({
+            id: `col${ts}p`,
+            adm_app_id: appId,
+            fee_type: 'item',
+            amount_paid: PROSPECTUS_FEE,
             payDate, payMode,
-            description:'Prospectus', receiptNo:rNo, studentName:student.name,
+            description: 'Prospectus',
+            receiptNo: rNo,
+            studentName: student.name,
           })
+          if (pErr) throw pErr
         }
       }
 
-      // 2. Flat fees
-for (let fi = 0; fi < selFlat.length; fi++) {
-  const ff = selFlat[fi]
-  const rec = {
-    id:'flat'+Date.now()+ff.id+fi, appId,
-          month:ff.month, year:ff.year, amount:ff.amount,
-          paid:true, date:payDate, mode:payMode, txnRef,
-          rcptNo:rNo, studentName:student.name,
-          admNo:admApp.adm_no||'--',      // ← PATCH 2
-        }
-        await supabase.from('adm_flat_fees').insert(rec)
-        await supabase.from('accounts').insert({
-          entry_date:payDate, type:'Income', category:'Hostel',
-          amount:ff.amount, payment_mode:payMode,
-          note:`${student.name} · ${ff.month} ${ff.year} Flat Fee · ${rNo}`,
-          source_ref:rNo+'_flat_'+fi, source_type:'flat_fee',
-        }).catch(()=>{})
+      // ── 2. Flat fees ───────────────────────────────────────
+      for (let fi = 0; fi < selFlat.length; fi++) {
+        const ff    = selFlat[fi]
+        const recId = `flat${ts}${ff.id}${fi}`   // unique: ts + month id + index
+
+        const { error: ffErr } = await supabase.from('adm_flat_fees').insert({
+          id: recId,
+          appId,
+          month: ff.month, year: ff.year, amount: ff.amount,
+          paid: true, date: payDate, mode: payMode, txnRef,
+          rcptNo: rNo,
+          studentName: student.name,
+          admNo: admApp.adm_no || '--',
+        })
+        if (ffErr) throw ffErr
+
+        // upsert — safe even if orphan row exists from a previous failed attempt
+        await upsertAccount({
+          entry_date: payDate, type: 'Income', category: 'Hostel',
+          amount: ff.amount, payment_mode: payMode,
+          note: `${student.name} · ${ff.month} ${ff.year} Flat Fee · ${rNo}`,
+          source_ref: recId,          // same as adm_flat_fees.id — always unique
+          source_type: 'flat_fee',
+        })
+
         insertedFlat.push(ff)
       }
 
-      // 3. Course fees
-      for (const cf of crsfRows) {
+      // ── 3. Course fees ─────────────────────────────────────
+      for (let ci = 0; ci < crsfRows.length; ci++) {
+        const cf = crsfRows[ci]
         if (!cf.course || !cf.forMonth || !Number(cf.amount)) continue
-        const rec = {
-          id:'crsf'+Date.now()+Math.random().toString(36).slice(2),
-          appId, course:cf.course, subtype:cf.subtype||'',
-          forMonth:cf.forMonth,
-          amountPaid:Number(cf.amount),   // adm_course_fees uses amountPaid — keep as-is
-          date:payDate, payMode, txnRef, receiptNo:rNo,
-          studentName:student.name,
-          admNo:admApp.adm_no||'--',      // ← PATCH 2
-        }
-        await supabase.from('adm_course_fees').insert(rec)
-        await supabase.from('accounts').insert({
-          entry_date:payDate, type:'Income', category:'Fees',
-          amount:Number(cf.amount), payment_mode:payMode,
-          note:`${student.name} · ${cf.course} ${cf.forMonth} · ${rNo}`,
-          source_ref:rNo+'_crsf_'+insertedCrsf.length, source_type:'course_fee',
-        }).catch(()=>{})
-        insertedCrsf.push({ ...cf, amount:Number(cf.amount) })
-      }
 
-      // 4. Advance
-      if (advThis > 0) {
-        await supabase.from('adm_fee_collections').insert({
-          id:'col'+Date.now()+'adv', adm_app_id:appId, fee_type:'advance',
-          amount_paid:advThis,            // ← PATCH 1
-          advanceFor:advFor, payDate, payMode,
-          description:'Advance — '+advFor, receiptNo:rNo, studentName:student.name,
+        const recId = `crsf${ts}${ci}`
+
+        const { error: cfErr } = await supabase.from('adm_course_fees').insert({
+          id: recId,
+          appId,
+          course: cf.course,
+          subtype: cf.subtype || '',
+          forMonth: cf.forMonth,
+          amountPaid: Number(cf.amount),
+          date: payDate, payMode, txnRef,
+          receiptNo: rNo,
+          studentName: student.name,
+          admNo: admApp.adm_no || '--',
         })
+        if (cfErr) throw cfErr
+
+        await upsertAccount({
+          entry_date: payDate, type: 'Income', category: 'Fees',
+          amount: Number(cf.amount), payment_mode: payMode,
+          note: `${student.name} · ${cf.course} ${cf.forMonth} · ${rNo}`,
+          source_ref: recId,
+          source_type: 'course_fee',
+        })
+
+        insertedCrsf.push({ ...cf, amount: Number(cf.amount) })
       }
 
-      // 5. Print invoice
+      // ── 4. Advance ─────────────────────────────────────────
+      if (advThis > 0) {
+        const { error: advErr } = await supabase.from('adm_fee_collections').insert({
+          id: `col${ts}adv`,
+          adm_app_id: appId,
+          fee_type: 'advance',
+          amount_paid: advThis,
+          advanceFor: advFor,
+          payDate, payMode,
+          description: 'Advance — ' + advFor,
+          receiptNo: rNo,
+          studentName: student.name,
+        })
+        if (advErr) throw advErr
+      }
+
+      // ── 5. Print invoice ───────────────────────────────────
       printInvoice({
-        receiptNo:rNo, date:payDate, payMode, txnRef, collectedBy,
-        studentName:student.name,
-        admNo:admApp.adm_no||'--',        // ← PATCH 2
-        gccNo:student.gcc_no||'', className:student.class_name||student.cls||'',
-        course:student.course||'',
+        receiptNo: rNo, date: payDate, payMode, txnRef, collectedBy,
+        studentName: student.name,
+        admNo: admApp.adm_no || '--',
+        gccNo: student.gcc_no || '',
+        className: student.class_name || student.cls || '',
+        course: student.course || '',
         admFeeAmt: admPaid ? 0 : admFeeAmt,
-        dressItems: insertedDress, prospectus:false,
+        dressItems: insertedDress,
+        prospectus: false,
         flatMonths: insertedFlat,
         courseFees: insertedCrsf,
-        advAmt:advThis, advFor,
+        advAmt: advThis, advFor,
       })
 
       showToast(`✅ Saved & invoice printed · ${rNo}`)
       onRefresh()
 
-      // Reset dynamic fields, keep student selected
       setCrsfRows([{course:'',subtype:'',forMonth:'',amount:''}])
       setAdvAmt(''); setAdvFor(''); setTxnRef('')
-      const nowPaid=[...paidMonths,...insertedFlat.map(f=>f.month)]
+      const nowPaid = [...paidMonths, ...insertedFlat.map(f=>f.month)]
       setFlatChecked(FLAT_FEES.map(ff=>!nowPaid.includes(ff.month)))
 
     } catch(err) {
-      showToast('Error: '+err.message,'#dc2626')
+      showToast('Error: ' + err.message, '#dc2626')
     }
     setSaving(false)
   }
@@ -593,7 +621,6 @@ for (let fi = 0; fi < selFlat.length; fi++) {
             {student.gcc_no && <span style={{ fontWeight:700, color:'#1e3a5f' }}>GCC-{student.gcc_no}</span>}
             {(student.class_name||student.cls) && <span>{student.class_name||student.cls}</span>}
             {student.course && <span>{student.course}</span>}
-            {/* PATCH 2: use adm_no */}
             {admApp?.adm_no && <span style={{ color:'#4f46e5', fontWeight:600 }}>{admApp.adm_no}</span>}
             {totalEverPaid > 0 && <span style={{ color:'#059669', fontWeight:700 }}>₹{fmt(totalEverPaid)} prev. paid</span>}
           </div>
@@ -623,7 +650,6 @@ for (let fi = 0; fi < selFlat.length; fi++) {
               <div style={{ padding:'12px 16px' }}>
                 {myAdmCols.map((c,i)=>(
                   <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'4px 0', color:'#475569' }}>
-                    {/* PATCH 1: read amount_paid */}
                     <span>{c.description||'Fee'}</span><span style={{ fontWeight:700 }}>₹{fmt(c.amount_paid)}</span>
                   </div>
                 ))}
@@ -894,7 +920,6 @@ export default function Fees() {
   const getLiveFees = s => {
     const app=getAdmApp(s); if(!app) return { admTotal:0,flatTotal:0,crsfTotal:0,grandTotal:0,hasFees:false }
     const id=String(app.id)
-    // PATCH 1: read amount_paid (snake_case)
     const admTotal  = admCols.filter(c => c.adm_app_id === String(app.id)).reduce((a,c) => a+(Number(c.amount_paid)||0), 0)
     const flatTotal = flatRecs.filter(r => r.appId === id && r.paid).reduce((a,r) => a+(r.amount||0), 0)
     const crsfTotal = crsfRecs.filter(r => r.appId === id).reduce((a,r) => a+(Number(r.amountPaid)||0), 0)
@@ -975,12 +1000,10 @@ export default function Fees() {
         ))}
       </div>
 
-      {/* Payment Tab */}
       {tab==='payment' && (
         <FeePaymentTab students={students} admApps={admApps} admCols={admCols} flatRecs={flatRecs} crsfRecs={crsfRecs} onRefresh={loadAll} />
       )}
 
-      {/* Live Summary Tab */}
       {tab==='live' && (
         <>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
@@ -1047,7 +1070,6 @@ export default function Fees() {
         </>
       )}
 
-      {/* Legacy Tab */}
       {tab==='legacy' && (
         <>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:24 }}>
