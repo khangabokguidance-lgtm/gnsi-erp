@@ -1,12 +1,14 @@
-// ============================================================
-//  GNSI Portal — Admissions Module
-// ============================================================
+// Admissions.jsx
+// ─────────────────────────────────────────────────────────────────────────────
+//  Core admissions workflow.
+//  Import path fix: supabase from '../lib/supabase', modal from './FeeCollectionModal'
+// ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from './lib/supabase'
+import { supabase } from '../supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 
-// ─── Design Tokens ────────────────────────────────────────────
+// ─── Design Tokens ────────────────────────────────────────────────────────────
 const T = {
   navy:    { 50:'#EEF2FF', 100:'#C7D2FE', 300:'#818CF8', 500:'#3730A3', 700:'#1E1B4B', 900:'#0F0D26' },
   indigo:  { 50:'#EEF2FF', 100:'#C7D2FE', 400:'#6366F1', 500:'#4F46E5', 600:'#4338CA', 700:'#3730A3' },
@@ -17,9 +19,9 @@ const T = {
   slate:   { 50:'#F8FAFC', 100:'#F1F5F9', 200:'#E2E8F0', 300:'#CBD5E1', 400:'#94A3B8', 500:'#64748B', 600:'#475569', 700:'#334155', 800:'#1E293B', 900:'#0F172A' },
 }
 
-// ─── Constants ────────────────────────────────────────────────
-const ADM_STATUSES  = ['Applied','Under Review','Admitted','Enrolled','Rejected','Waitlisted']
-const STAT_META     = {
+// ─── Constants ────────────────────────────────────────────────────────────────
+const ADM_STATUSES = ['Applied','Under Review','Admitted','Enrolled','Rejected','Waitlisted']
+const STAT_META    = {
   'Applied':      { color: T.indigo[600], bg: T.indigo[50],  icon: '◎' },
   'Under Review': { color: T.amber[600],  bg: T.amber[50],   icon: '◐' },
   'Admitted':     { color: T.violet[600], bg: T.violet[50],  icon: '◈' },
@@ -27,27 +29,27 @@ const STAT_META     = {
   'Rejected':     { color: T.rose[600],   bg: T.rose[50],    icon: '◌' },
   'Waitlisted':   { color: T.slate[500],  bg: T.slate[100],  icon: '◷' },
 }
-const ADM_DOCS      = ['Birth Certificate','Aadhaar Card','Passport Photo','Mark Sheet','Transfer Certificate','Medical Certificate','Caste Certificate','Address Proof']
-const SESSIONS      = ['2024-25','2025-26','2026-27']
-const CATEGORIES    = ['--','General','OBC','SC','ST','EWS','Other']
+const ADM_DOCS     = ['Birth Certificate','Aadhaar Card','Passport Photo','Mark Sheet','Transfer Certificate','Medical Certificate','Caste Certificate','Address Proof']
+const SESSIONS     = ['2024-25','2025-26','2026-27']
+const CATEGORIES   = ['--','General','OBC','SC','ST','EWS','Other']
 const COURSE_STRUCTURE = {
   Navodaya:          { subtypes:['Lakshya','Umeed'],             color:T.indigo[600], bg:T.indigo[50] },
   Sainik:            { subtypes:['Achiever','Leader','Champion'],color:T.emerald[600],bg:T.emerald[50] },
   Foundation:        { subtypes:['Elite','Prime'],               color:T.violet[600], bg:T.violet[50] },
   'Combined Course': { subtypes:[],                              color:T.amber[600],  bg:T.amber[50] },
 }
-const CLASSES_LIST  = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime','Class 6','Class 7','Class 8','Class 9','Class 10']
-const HOUSES_LIST   = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
+const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime','Class 6','Class 7','Class 8','Class 9','Class 10']
+const HOUSES_LIST  = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
 
-// ─── Utilities ────────────────────────────────────────────────
-const fmt    = n  => Number(n||0).toLocaleString('en-IN')
+// ─── Utilities ────────────────────────────────────────────────────────────────
+const fmt    = n  => Number(n || 0).toLocaleString('en-IN')
 const today  = () => new Date().toISOString().split('T')[0]
 const avatarColor = name => {
   const hues = [T.indigo[600], T.violet[600], T.emerald[600], T.amber[600], '#0EA5E9', '#EC4899']
-  return hues[(name||'').charCodeAt(0) % hues.length]
+  return hues[(name || '').charCodeAt(0) % hues.length]
 }
 
-// ─── Field Mappers ────────────────────────────────────────────
+// ─── Field Mappers ────────────────────────────────────────────────────────────
 function mapToDB(app) {
   return {
     gcc_no:         app.gcc ? parseInt(app.gcc) : undefined,
@@ -89,6 +91,7 @@ function mapFromDB(row) {
     house:      row.house,
     session:    row.session,
     hostel:     row.hostel_type === 'Boarder' ? 'Yes' : 'No',
+    hostel_type:row.hostel_type,
     status:     row.status,
     father:     row.father_name,
     mother:     row.mother_name,
@@ -102,7 +105,7 @@ function mapFromDB(row) {
   }
 }
 
-// ─── Supabase helpers ─────────────────────────────────────────
+// ─── Supabase helpers ─────────────────────────────────────────────────────────
 const sbApps = {
   fetch: async () => {
     const { data, error } = await supabase
@@ -114,13 +117,13 @@ const sbApps = {
   },
 }
 
-// ─── Design System Components ─────────────────────────────────
+// ─── Design system components ─────────────────────────────────────────────────
 const styles = {
   inp: {
     width:'100%', padding:'9px 12px', borderRadius:8,
     border:`1.5px solid ${T.slate[200]}`, fontSize:13,
     outline:'none', boxSizing:'border-box', backgroundColor:'#fff',
-    color: T.slate[800], fontFamily:"'DM Sans',system-ui,sans-serif",
+    color: T.slate[800], fontFamily:"system-ui,sans-serif",
     transition:'border-color .15s',
   },
   label: {
@@ -183,7 +186,7 @@ function SectionDivider({ label }) {
   )
 }
 
-// ─── Application Form ─────────────────────────────────────────
+// ─── Application Form ─────────────────────────────────────────────────────────
 function AdmForm({ onSave, onCancel, editing }) {
   const def = (k, fb='') => editing ? (editing[k] || fb) : fb
   const [form, setForm] = useState({
@@ -210,8 +213,8 @@ function AdmForm({ onSave, onCancel, editing }) {
     docs:      editing?.docs || [],
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const toggleDoc = d => set('docs', form.docs.includes(d) ? form.docs.filter(x=>x!==d) : [...form.docs, d])
-  const subtypes = COURSE_STRUCTURE[form.course]?.subtypes ?? []
+  const toggleDoc = d => set('docs', form.docs.includes(d) ? form.docs.filter(x => x !== d) : [...form.docs, d])
+  const subtypes  = COURSE_STRUCTURE[form.course]?.subtypes ?? []
 
   return (
     <div style={{ background:'#fff', border:`1.5px solid ${T.violet[200]}`, borderRadius:14, overflow:'hidden', marginBottom:16 }}>
@@ -301,35 +304,37 @@ function AdmForm({ onSave, onCancel, editing }) {
 
         <SectionDivider label="Family & Contact" />
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:4 }}>
-          <FieldRow label="Father's Name"><input style={styles.inp} value={form.father} onChange={e=>set('father',e.target.value)} placeholder="Father's full name" /></FieldRow>
-          <FieldRow label="Mother's Name"><input style={styles.inp} value={form.mother} onChange={e=>set('mother',e.target.value)} placeholder="Mother's full name" /></FieldRow>
-          <FieldRow label="Phone"><input style={styles.inp} value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="Primary contact" /></FieldRow>
-          <FieldRow label="WhatsApp"><input style={styles.inp} value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} placeholder="WhatsApp number" /></FieldRow>
-          <FieldRow label="Previous School"><input style={styles.inp} value={form.prevSchool} onChange={e=>set('prevSchool',e.target.value)} placeholder="Last attended school" /></FieldRow>
+          <FieldRow label="Father's Name"><input style={styles.inp} value={form.father} onChange={e=>set('father',e.target.value)} /></FieldRow>
+          <FieldRow label="Mother's Name"><input style={styles.inp} value={form.mother} onChange={e=>set('mother',e.target.value)} /></FieldRow>
+          <FieldRow label="Phone"><input style={styles.inp} value={form.phone} onChange={e=>set('phone',e.target.value)} /></FieldRow>
+          <FieldRow label="WhatsApp"><input style={styles.inp} value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} /></FieldRow>
+          <FieldRow label="Previous School"><input style={styles.inp} value={form.prevSchool} onChange={e=>set('prevSchool',e.target.value)} /></FieldRow>
           <div style={{ gridColumn:'1/-1' }}>
             <FieldRow label="Address">
-              <input style={styles.inp} value={form.address} onChange={e=>set('address',e.target.value)} placeholder="Full residential address" />
+              <input style={styles.inp} value={form.address} onChange={e=>set('address',e.target.value)} />
             </FieldRow>
           </div>
           <div style={{ gridColumn:'1/-1' }}>
             <FieldRow label="Remarks">
-              <textarea style={{ ...styles.inp, resize:'vertical' }} rows={2} value={form.remarks} onChange={e=>set('remarks',e.target.value)} placeholder="Any notes or remarks…" />
+              <textarea style={{ ...styles.inp, resize:'vertical' }} rows={2} value={form.remarks} onChange={e=>set('remarks',e.target.value)} />
             </FieldRow>
           </div>
         </div>
 
         <SectionDivider label={`Documents (${form.docs.length}/${ADM_DOCS.length})`} />
         <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:20 }}>
-          {ADM_DOCS.map(d=>(
-            <button key={d} onClick={()=>toggleDoc(d)} style={{ padding:'5px 12px', borderRadius:7, border:`1.5px solid ${form.docs.includes(d)?T.emerald[500]:T.slate[200]}`, background:form.docs.includes(d)?T.emerald[50]:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, color:form.docs.includes(d)?T.emerald[700]:T.slate[600], display:'flex', alignItems:'center', gap:5 }}>
-              {form.docs.includes(d)&&<span style={{ fontSize:10, color:T.emerald[600] }}>✓</span>}
+          {ADM_DOCS.map(d => (
+            <button key={d} onClick={() => toggleDoc(d)}
+              style={{ padding:'5px 12px', borderRadius:7, border:`1.5px solid ${form.docs.includes(d)?T.emerald[500]:T.slate[200]}`, background:form.docs.includes(d)?T.emerald[50]:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, color:form.docs.includes(d)?T.emerald[700]:T.slate[600], display:'flex', alignItems:'center', gap:5 }}>
+              {form.docs.includes(d) && <span style={{ fontSize:10, color:T.emerald[600] }}>✓</span>}
               {d}
             </button>
           ))}
         </div>
 
         <div style={{ display:'flex', gap:10 }}>
-          <button onClick={()=>onSave(editing?.id || null, form)} style={{ padding:'10px 24px', borderRadius:9, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
+          <button onClick={() => onSave(editing?.id || null, form)}
+            style={{ padding:'10px 24px', borderRadius:9, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
             {editing ? 'Update Application' : 'Save Application'}
           </button>
           <button onClick={onCancel} style={{ padding:'10px 16px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', color:T.slate[600] }}>Cancel</button>
@@ -339,100 +344,105 @@ function AdmForm({ onSave, onCancel, editing }) {
   )
 }
 
-// ─── Application Card ─────────────────────────────────────────
+// ─── Application Card ─────────────────────────────────────────────────────────
 function AppCard({ a, cols, onEdit, onDelete, onAdmit, onEnroll, onOpenFee }) {
-  const appId   = String(a.gcc || a.id)
-  const admPaid = cols.some(col => col.adm_app_id === appId && col.fee_type === 'admission')
+  // cols keyed by adm_app_id which equals gcc_no (string)
+  const gcc     = String(a.gcc || a.id)
+  const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(gcc)) && col.fee_type === 'admission')
   const cs      = COURSE_STRUCTURE[a.course]
 
   let actionBtn = null
-  if (a.status==='Applied'||a.status==='Under Review') {
+  if (a.status === 'Applied' || a.status === 'Under Review') {
     actionBtn = <button onClick={e=>{e.stopPropagation();onAdmit(a.id)}} style={{ padding:'6px 14px', borderRadius:7, background:T.violet[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Admit</button>
-  } else if (a.status==='Admitted'&&!admPaid) {
+  } else if (a.status === 'Admitted' && !admPaid) {
     actionBtn = <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'6px 14px', borderRadius:7, background:T.amber[500], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Collect Fee</button>
-  } else if (a.status==='Admitted'&&admPaid) {
+  } else if (a.status === 'Admitted' && admPaid) {
     actionBtn = (
       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
         <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'5px 12px', borderRadius:7, background:T.amber[500], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Fee Account</button>
         <button onClick={e=>{e.stopPropagation();onEnroll(a.id)}} style={{ padding:'5px 12px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Enroll</button>
       </div>
     )
-  } else if (a.status==='Enrolled') {
-    actionBtn = <span style={{ fontSize:11, color:T.emerald[600], fontWeight:700 }}>✓ Enrolled</span>
+  } else if (a.status === 'Enrolled') {
+    actionBtn = (
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        <span style={{ fontSize:11, color:T.emerald[600], fontWeight:700 }}>✓ Enrolled</span>
+        <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>+ Fee</button>
+      </div>
+    )
   }
 
   return (
     <div style={{ background:'#fff', border:`1px solid ${T.slate[200]}`, borderRadius:12, padding:'14px 16px', display:'flex', alignItems:'center', gap:14, transition:'box-shadow .15s', position:'relative' }}
-      onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'}
-      onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}
+      onMouseEnter={e => e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'}
+      onMouseLeave={e => e.currentTarget.style.boxShadow='none'}
     >
       <div style={{ position:'absolute', left:0, top:8, bottom:8, width:3, borderRadius:99, background:STAT_META[a.status]?.color||T.slate[300] }} />
       <Avatar name={a.name} size={40} />
-      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={()=>onOpenFee(a)}>
+      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => onOpenFee(a)}>
         <div style={{ fontWeight:800, fontSize:14, color:T.slate[900] }}>{a.name}</div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:3, fontSize:11.5, color:T.slate[500] }}>
-          {a.gcc&&<span style={{ fontFamily:'monospace' }}>#{a.gcc}</span>}
-          {a.admNo&&<span style={{ fontFamily:'monospace', color:T.indigo[500] }}>{a.admNo}</span>}
-          {a.cls&&<span>{a.cls}</span>}
-          {a.house&&<span style={{ color:T.slate[400] }}>{a.house}</span>}
-          {a.course&&(
+          {a.gcc   && <span style={{ fontFamily:'monospace' }}>#{a.gcc}</span>}
+          {a.admNo && <span style={{ fontFamily:'monospace', color:T.indigo[500] }}>{a.admNo}</span>}
+          {a.cls   && <span>{a.cls}</span>}
+          {a.house && <span style={{ color:T.slate[400] }}>{a.house}</span>}
+          {a.course && (
             <span style={{ color:cs?.color??T.slate[600], fontWeight:600, background:cs?.bg??T.slate[100], borderRadius:4, padding:'1px 6px', fontSize:11 }}>
-              {a.course}{a.subtype?` · ${a.subtype}`:''}
+              {a.course}{a.subtype ? ` · ${a.subtype}` : ''}
             </span>
           )}
-          {a.phone&&<span>{a.phone}</span>}
+          {a.phone && <span>{a.phone}</span>}
         </div>
       </div>
       <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5, flexShrink:0 }}>
         <StatusBadge status={a.status} />
-        {(a.status==='Admitted'||a.status==='Enrolled')&&(
+        {(a.status === 'Admitted' || a.status === 'Enrolled') && (
           admPaid
             ? <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontWeight:700 }}>✓ Fee Paid</span>
             : <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:T.amber[50], color:T.amber[700], border:`1px solid ${T.amber[300]}`, fontWeight:700 }}>⚠ Fee Due</span>
         )}
-        {a.docs?.length>0&&<span style={{ fontSize:10, color:T.slate[400] }}>{a.docs.length}/{ADM_DOCS.length} docs</span>}
+        {a.docs?.length > 0 && <span style={{ fontSize:10, color:T.slate[400] }}>{a.docs.length}/{ADM_DOCS.length} docs</span>}
       </div>
       <div style={{ flexShrink:0, display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end' }}>
         {actionBtn}
         <div style={{ display:'flex', gap:4, marginTop:2 }}>
-          <button onClick={()=>onEdit(a)} style={{ padding:'4px 10px', borderRadius:6, background:T.slate[50], color:T.slate[600], border:`1px solid ${T.slate[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
-          <button onClick={()=>onDelete(a.id)} style={{ padding:'4px 10px', borderRadius:6, background:'#FFF1F2', color:T.rose[600], border:`1px solid #FFE4E6`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
+          <button onClick={() => onEdit(a)} style={{ padding:'4px 10px', borderRadius:6, background:T.slate[50], color:T.slate[600], border:`1px solid ${T.slate[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
+          <button onClick={() => onDelete(a.id)} style={{ padding:'4px 10px', borderRadius:6, background:'#FFF1F2', color:T.rose[600], border:`1px solid #FFE4E6`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Main Admissions Page ─────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Admissions() {
-  const [apps, setApps]           = useState([])
-  const [cols, setCols]           = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
-  const [filterStatus, setFilter] = useState('All')
-  const [formOpen, setFormOpen]   = useState(false)
-  const [editing, setEditing]     = useState(null)
-  const [feePanel, setFeePanel]   = useState(null)
-  const [toast, setToast]         = useState(null)
+  const [apps,       setApps]       = useState([])
+  const [cols,       setCols]       = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [search,     setSearch]     = useState('')
+  const [filterStatus, setFilter]   = useState('All')
+  const [formOpen,   setFormOpen]   = useState(false)
+  const [editing,    setEditing]    = useState(null)
+  const [feePanel,   setFeePanel]   = useState(null)
+  const [toast,      setToast]      = useState(null)
 
   const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
   const loadAll = useCallback(async () => {
-  setLoading(true)
-  const [appsData, colsData] = await Promise.all([
-    sbApps.fetch(),
-    supabase.from('adm_fee_collections').select('*').order('created_at', { ascending: false }),
-  ])
-  console.log('COLS SAMPLE:', colsData.data?.[0])  // ← add this
-  if (appsData) setApps(appsData)
-  if (!colsData.error) setCols(colsData.data)
-  setLoading(false)
-}, [])
+    setLoading(true)
+    const [appsData, colsData] = await Promise.all([
+      sbApps.fetch(),
+      supabase.from('adm_fee_collections').select('*').order('created_at', { ascending: false }),
+    ])
+    if (appsData) setApps(appsData)
+    if (!colsData.error) setCols(colsData.data)
+    setLoading(false)
+  }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
 
   const handleSave = async (eid, obj) => {
-    if (!obj.name?.trim()) { showToast('Name is required', T.rose[600]); return }
+    if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return }
     if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return }
     if (eid) {
       const { error } = await supabase.from('admissions').update(mapToDB(obj)).eq('gcc_no', parseInt(eid))
@@ -443,19 +453,18 @@ export default function Admissions() {
       const row = mapToDB(obj)
       const { data, error } = await supabase.from('admissions').insert(row).select().single()
       if (error) {
-        if (error.code === '23505') { showToast(`GCC No. ${obj.gcc} already exists`, T.rose[600]) }
-        else { showToast('Save failed: ' + error.message, T.rose[600]) }
+        if (error.code === '23505') showToast(`GCC No. ${obj.gcc} already exists`, T.rose[600])
+        else showToast('Save failed: ' + error.message, T.rose[600])
         return
       }
       const newApp = mapFromDB(data)
       setApps(prev => [newApp, ...prev])
       showToast(`Saved! Adm. No: ${newApp.admNo}`, T.violet[600])
     }
-    setFormOpen(false)
-    setEditing(null)
+    setFormOpen(false); setEditing(null)
   }
 
-  const handleAdmit = async (id) => {
+  const handleAdmit = async id => {
     if (!confirm('Mark as Admitted?')) return
     const { error } = await supabase.from('admissions').update({ status: 'Admitted' }).eq('gcc_no', parseInt(id))
     if (error) { showToast('Update failed: ' + error.message, T.rose[600]); return }
@@ -463,19 +472,19 @@ export default function Admissions() {
     showToast('Marked as Admitted', T.violet[600])
   }
 
-  const handleEnroll = async (id) => {
+  const handleEnroll = async id => {
     const a = apps.find(x => String(x.id) === String(id))
     if (!a) return
-    const admPaid = cols.some(c => c.adm_app_id === String(a.gcc || a.id) && c.fee_type === 'admission')
+    const admPaid = cols.some(c => String(parseInt(c.adm_app_id)) === String(parseInt(a.gcc || a.id)) && c.fee_type === 'admission')
     if (!admPaid) { showToast('⚠ Collect admission fee first', T.rose[600]); setFeePanel(a); return }
     if (!confirm(`Enroll ${a.name} as a student?`)) return
     const { error } = await supabase.from('admissions').update({ status: 'Enrolled' }).eq('gcc_no', parseInt(id))
     if (error) { showToast('Enroll failed: ' + error.message, T.rose[600]); return }
     setApps(prev => prev.map(x => String(x.id) === String(id) ? { ...x, status: 'Enrolled' } : x))
-    showToast(`${a.name} enrolled! Student record created automatically.`, T.emerald[600])
+    showToast(`${a.name} enrolled!`, T.emerald[600])
   }
 
-  const handleDelete = async (id) => {
+  const handleDelete = async id => {
     const a = apps.find(x => String(x.id) === String(id))
     if (!confirm(`Delete admission for ${a?.name}? This cannot be undone.`)) return
     const { error } = await supabase.from('admissions').delete().eq('gcc_no', parseInt(id))
@@ -496,7 +505,7 @@ export default function Admissions() {
   })
 
   if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', gap:14, color:T.slate[500], fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', gap:14, color:T.slate[500], fontFamily:'system-ui,sans-serif' }}>
       <div style={{ width:22, height:22, border:`2.5px solid ${T.slate[200]}`, borderTopColor:T.indigo[600], borderRadius:'50%', animation:'spin .7s linear infinite' }} />
       <span style={{ fontWeight:600 }}>Loading admissions…</span>
     </div>
@@ -504,7 +513,6 @@ export default function Admissions() {
 
   return (
     <>
-      {/* FeeCollectionModal — only modal, no FeePanel conflict */}
       {feePanel && (
         <FeeCollectionModal
           app={feePanel}
@@ -513,12 +521,8 @@ export default function Admissions() {
         />
       )}
 
-      <div style={{ padding:'0 24px 32px', fontFamily:"'DM Sans',system-ui,sans-serif", background:T.slate[50], minHeight:'100vh' }}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
-          @keyframes spin { to { transform: rotate(360deg) } }
-          select:focus, input:focus, textarea:focus { border-color: ${T.indigo[400]} !important; box-shadow: 0 0 0 3px ${T.indigo[100]}; }
-        `}</style>
+      <div style={{ padding:'0 24px 32px', fontFamily:'system-ui,sans-serif', background:T.slate[50], minHeight:'100vh' }}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } } select:focus, input:focus, textarea:focus { border-color: ${T.indigo[400]} !important; box-shadow: 0 0 0 3px ${T.indigo[100]}; }`}</style>
 
         {toast && <Toast msg={toast.msg} color={toast.color} />}
 
@@ -528,55 +532,49 @@ export default function Admissions() {
             <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:T.slate[400], marginBottom:5 }}>GNSI Portal</div>
             <div style={{ fontSize:26, fontWeight:800, color:T.slate[900], letterSpacing:'-.03em', lineHeight:1.1 }}>Admissions</div>
             <div style={{ fontSize:13, color:T.slate[500], marginTop:5, display:'flex', gap:6, alignItems:'center' }}>
-              {['Applied','Under Review','Admitted','Fee Collection','Enrolled'].map((s,i,arr)=>(
+              {['Applied','Under Review','Admitted','Fee Collection','Enrolled'].map((s, i, arr) => (
                 <span key={s} style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <span style={{ fontWeight:600, color:[T.indigo[600],T.amber[600],T.violet[600],T.amber[500],T.emerald[600]][i] }}>{s}</span>
-                  {i<arr.length-1&&<span style={{ color:T.slate[300] }}>›</span>}
+                  {i < arr.length - 1 && <span style={{ color:T.slate[300] }}>›</span>}
                 </span>
               ))}
             </div>
           </div>
-          <button onClick={()=>{setEditing(null);setFormOpen(true)}} style={{ padding:'10px 20px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:'0 4px 12px rgba(79,70,229,.3)' }}>
+          <button onClick={() => { setEditing(null); setFormOpen(true) }}
+            style={{ padding:'10px 20px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:'0 4px 12px rgba(79,70,229,.3)' }}>
             <span style={{ fontSize:18, lineHeight:1 }}>+</span> New Application
           </button>
         </div>
 
         {/* KPI Strip */}
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
-          <KpiCard label="Total" value={apps.length} active={filterStatus==='All'} accent={T.indigo[600]} onClick={()=>setFilter('All')} />
-          {ADM_STATUSES.map(s=>(
-            <KpiCard key={s} label={s} value={byStatus[s]||0} active={filterStatus===s} accent={STAT_META[s]?.color} onClick={()=>setFilter(filterStatus===s?'All':s)} />
+          <KpiCard label="Total" value={apps.length} active={filterStatus==='All'} accent={T.indigo[600]} onClick={() => setFilter('All')} />
+          {ADM_STATUSES.map(s => (
+            <KpiCard key={s} label={s} value={byStatus[s]||0} active={filterStatus===s} accent={STAT_META[s]?.color} onClick={() => setFilter(filterStatus===s?'All':s)} />
           ))}
         </div>
 
-        {/* Form */}
         {formOpen && (
-          <AdmForm
-            onSave={handleSave}
-            onCancel={()=>{setFormOpen(false);setEditing(null)}}
-            editing={editing}
-          />
+          <AdmForm onSave={handleSave} onCancel={() => { setFormOpen(false); setEditing(null) }} editing={editing} />
         )}
 
-        {/* Toolbar */}
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', marginBottom:14 }}>
           <div style={{ flex:1, minWidth:220, position:'relative' }}>
             <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:T.slate[400], fontSize:14 }}>🔍</span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, GCC no., house, class…" style={{ ...styles.inp, paddingLeft:36 }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, GCC, house, class…" style={{ ...styles.inp, paddingLeft:36 }} />
           </div>
-          <select value={filterStatus} onChange={e=>setFilter(e.target.value)} style={{ ...styles.inp, width:'auto', minWidth:140 }}>
+          <select value={filterStatus} onChange={e => setFilter(e.target.value)} style={{ ...styles.inp, width:'auto', minWidth:140 }}>
             <option value="All">All Status</option>
-            {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
+            {ADM_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
           <span style={{ fontSize:12, color:T.slate[400], fontWeight:500, whiteSpace:'nowrap' }}>
             {filtered.length} of {apps.length} applicants
           </span>
         </div>
 
-        {/* Cards */}
         {filtered.length > 0 ? (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {filtered.map(a=>(
+            {filtered.map(a => (
               <AppCard
                 key={a.id} a={a} cols={cols}
                 onEdit={app => { setEditing(app); setFormOpen(true) }}
@@ -597,7 +595,7 @@ export default function Admissions() {
               {apps.length === 0 ? 'Click "+ New Application" to add your first applicant.' : 'Try adjusting your search or clearing the filter.'}
             </p>
             {apps.length === 0 && (
-              <button onClick={()=>setFormOpen(true)} style={{ padding:'10px 22px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
+              <button onClick={() => setFormOpen(true)} style={{ padding:'10px 22px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
                 + New Application
               </button>
             )}

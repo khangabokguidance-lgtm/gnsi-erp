@@ -26,6 +26,7 @@ import Reports       from './Reports'
 import Checklist     from './Checklist'
 import SystemSettings from './SystemSettings'
 import AdminPage     from './AdminPage'
+import StudentFeeLedger from './StudentFeeLedger'
 
 // ─── All modules (admin sees all) ─────────────────────────────
 const ALL_MODULES = [
@@ -52,6 +53,8 @@ const ALL_MODULES = [
   { key: 'reports',       icon: '📈',  label: 'Reports'        },
   { key: 'checklist',     icon: '✅',  label: 'Checklist'      },
   { key: 'system',        icon: '⚙️', label: 'System'         },
+  { key: 'studentfeeedger', icon: '🧾', label: 'Student Fee Ledger' }
+
 ]
 
 const MODULE_COMPONENTS = {

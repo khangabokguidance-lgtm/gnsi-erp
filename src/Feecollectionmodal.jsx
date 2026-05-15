@@ -1,51 +1,32 @@
+// FeeCollectionModal.jsx
+// ─────────────────────────────────────────────────────────────────────────────
+//  Fee collection modal — opened from Admissions.jsx and Students.jsx.
+//  Writes to: adm_fee_collections, adm_flat_fees, adm_course_fees, accounts.
+//
+//  All DB columns: snake_case.
+//  accounts: always upserted via upsertAccount() from feeHelpers.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { supabase } from './supabase'
+import { supabase } from '../supabase'
+import {
+  fmt, today, gccStr, rcptNo,
+  upsertAccount, printReceipt,
+  FLAT_FEES, CURRENT_YEAR, PAY_MODES, MONTHS_LIST,
+  getCourseFeeAmt, checkCourseFeeExists,
+} from './shared/feeHelpers'
 
-// ─── Fee Structure ─────────────────────────────────────────────
+// ─── Fee Structure ────────────────────────────────────────────────────────────
+
 const FEE_ITEMS = [
   { id: 'admission',  label: 'Admission Fee',  amount: 6000, type: 'admission', icon: '🎓', color: '#4f46e5' },
   { id: 'dress',      label: 'Dress Fee',       amount: 3000, type: 'item',      icon: '👕', color: '#0891b2' },
   { id: 'prospectus', label: 'Prospectus Fee',  amount: 200,  type: 'item',      icon: '📖', color: '#7c3aed' },
 ]
 
-const YEAR = new Date().getFullYear()
+// ─── Colors ───────────────────────────────────────────────────────────────────
 
-const FLAT_FEES = [
-  { id: `flat_feb_${YEAR}`, month: 'February', amount: 5500, year: YEAR },
-  { id: `flat_mar_${YEAR}`, month: 'March',    amount: 5500, year: YEAR },
-]
-
-const COURSE_FEES = {
-  Sainik:            { Boarder: 6000, 'Day Scholar': 2500, 'Day Boarder': 4500 },
-  Navodaya:          { Boarder: 5500, 'Day Scholar': 2000, 'Day Boarder': 4000 },
-  Foundation:        { Boarder: 5500, 'Day Scholar': 2000, 'Day Boarder': 4000 },
-  'Combined Course': { Boarder: 6500, 'Day Scholar': 3000, 'Day Boarder': 4500 },
-}
-
-const getCourseFeeAmt = (course, hostelType) => {
-  const c = Object.keys(COURSE_FEES).find(k =>
-    course?.toLowerCase().includes(k.toLowerCase())
-  ) || course
-  const h = hostelType === 'Hostel'
-    ? 'Boarder'
-    : hostelType === 'Day Scholar'
-    ? 'Day Scholar'
-    : hostelType || 'Day Scholar'
-  return COURSE_FEES[c]?.[h] || COURSE_FEES[c]?.['Day Scholar'] || 2000
-}
-
-const MONTHS_LIST = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
-]
-const PAY_MODES = ['Cash', 'UPI', 'NEFT', 'RTGS', 'Cheque', 'DD']
-
-const fmt    = n  => Number(n || 0).toLocaleString('en-IN')
-const rcptNo = () => 'GNSI-' + Date.now().toString(36).toUpperCase()
-const today  = () => new Date().toISOString().split('T')[0]
-
-// ─── Colors & Styles ───────────────────────────────────────────
 const C = {
   navy:    '#1e3a5f',
   indigo:  '#4f46e5',
@@ -63,47 +44,19 @@ const inp = {
   fontFamily: 'inherit', background: 'white',
 }
 
-// ─── Helper: safe update-or-insert for accounts table ──────────
-async function syncAccount({ sourceRef, sourceType, payload }) {
-  const { data: existing, error: findErr } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('source_ref', sourceRef)
-    .eq('source_type', sourceType)
-    .maybeSingle()
+// ─── Main Component ───────────────────────────────────────────────────────────
 
-  if (findErr) throw findErr
-
-  if (existing?.id) {
-    const { error } = await supabase
-      .from('accounts')
-      .update(payload)
-      .eq('id', existing.id)
-    if (error) throw error
-  } else {
-    const { error } = await supabase
-      .from('accounts')
-      .insert({ ...payload, source_ref: sourceRef, source_type: sourceType })
-    if (error) throw error
-  }
-}
-
-// ─── Main Modal ────────────────────────────────────────────────
 export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
-  const gcc        = app?.gcc        || student?.gcc_no
-  const name       = app?.name       || student?.name
-  const course     = app?.course     || student?.course
-  const batch      = app?.cls        || student?.batch
-  const admNo      = app?.admNo      || student?.admission_no
-  const appId      = app
-    ? String(app.gcc ?? app.id ?? '')
-    : String(student?.gcc_no ?? '')
-  const hostelType = app?.hostel === 'Yes'
+  // Resolve student identity — works whether opened from Admissions (app) or Students (student)
+  const gcc        = gccStr(app?.gcc ?? app?.gcc_no ?? student?.gcc_no ?? '')
+  const name       = app?.name       ?? app?.applicant_name ?? student?.name       ?? ''
+  const course     = app?.course     ?? student?.course     ?? ''
+  const batch      = app?.cls        ?? app?.batch          ?? student?.batch      ?? ''
+  const admNo      = app?.admNo      ?? app?.adm_no         ?? student?.admission_no ?? ''
+  const hostelType = app?.hostel === 'Yes' || app?.hostel_type === 'Boarder'
     ? 'Boarder'
-    : app?.hostel === 'No'
-    ? 'Day Scholar'
-    : (student?.hostel_type || 'Day Scholar')
+    : student?.hostel_type || 'Day Scholar'
 
   const [tab,         setTab]         = useState('admission')
   const [saving,      setSaving]      = useState(false)
@@ -113,65 +66,81 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const [txnRef,      setTxnRef]      = useState('')
   const [payDate,     setPayDate]     = useState(today())
   const [collectedBy, setCollectedBy] = useState('')
-  const [selected,    setSelected]    = useState({})
-  const [customAmts,  setCustomAmts]  = useState({})
-  const [flatSel,     setFlatSel]     = useState({})
-  const [courseMonth, setCourseMonth] = useState(MONTHS_LIST[new Date().getMonth()])
-  const [courseAmt,   setCourseAmt]   = useState(getCourseFeeAmt(course, hostelType))
 
-  // ── FIX: Track which flat fee months are already paid ────────
+  // Admission tab
+  const [selected,   setSelected]   = useState({})
+  const [customAmts, setCustomAmts] = useState({})
+
+  // Flat fee tab
+  const [flatSel,     setFlatSel]     = useState({})
   const [paidMonths,  setPaidMonths]  = useState([])
   const [loadingPaid, setLoadingPaid] = useState(false)
 
+  // Course fee tab
+  const [courseMonth, setCourseMonth] = useState(MONTHS_LIST[new Date().getMonth()])
+  const [courseYear,  setCourseYear]  = useState(CURRENT_YEAR)
+  const [courseAmt,   setCourseAmt]   = useState(getCourseFeeAmt(course, hostelType))
+
+  // ── Load already-paid flat months ───────────────────────────────────────────
   useEffect(() => {
-    if (!appId || appId === 'undefined' || appId === '') return
+    if (!gcc) return
     setLoadingPaid(true)
     supabase
       .from('adm_flat_fees')
       .select('month, year')
-      .eq('adm_app_id', appId)
+      .eq('adm_app_id', gcc)
       .then(({ data, error }) => {
         if (!error && data) {
           setPaidMonths(data.map(r => `${r.month}_${r.year}`))
         }
         setLoadingPaid(false)
       })
-  }, [appId])
+  }, [gcc])
 
-  const isMonthPaid = (fee) => paidMonths.includes(`${fee.month}_${fee.year}`)
+  const isMonthPaid = fee => paidMonths.includes(`${fee.month}_${fee.year}`)
 
-  const toggleFee  = id => setSelected(p => ({ ...p, [id]: !p[id] }))
-  const toggleFlat = id => setFlatSel(p => ({ ...p, [id]: !p[id] }))
-
-  const admTotal  = FEE_ITEMS
+  // ── Totals ──────────────────────────────────────────────────────────────────
+  const admTotal = FEE_ITEMS
     .filter(f => selected[f.id])
     .reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
 
-  // ── FIX: Only total unpaid selected months ───────────────────
   const flatTotal = FLAT_FEES
     .filter(f => flatSel[f.id] && !isMonthPaid(f))
     .reduce((s, f) => s + f.amount, 0)
 
-  const handleClose = () => {
-    if (typeof onClose === 'function') onClose()
-  }
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  const handleClose = () => typeof onClose === 'function' && onClose()
+  const toggleFee   = id => setSelected(p => ({ ...p, [id]: !p[id] }))
+  const toggleFlat  = id => setFlatSel(p => ({ ...p, [id]: !p[id] }))
 
-  // ── Save Admission Fees ──────────────────────────────────────
+  const commonReceiptFields = rcpt => ({
+    receipt_no:   rcpt,
+    pay_date:     payDate,
+    pay_mode:     payMode,
+    txn_ref:      txnRef   || null,
+    collected_by: collectedBy || null,
+    student_name: name,
+    adm_no:       admNo   || null,
+    gcc_no:       gcc,
+    class_name:   batch   || null,
+  })
+
+  // ── Save: Admission fees ─────────────────────────────────────────────────────
   const saveAdmission = async () => {
     if (saving) return
-    if (!appId || appId === 'undefined' || appId === '')
-      return alert('Student GCC number is missing. Cannot save.')
+    if (!gcc) return alert('Student GCC number is missing.')
     const items = FEE_ITEMS.filter(f => selected[f.id])
-    if (!items.length) return alert('Please select at least one fee item.')
-    setSaving(true)
-    setError(null)
+    if (!items.length) return alert('Select at least one fee item.')
+    setSaving(true); setError(null)
     try {
-      const rcpt = rcptNo()
+      const rcpt  = rcptNo()
+      const total = items.reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
+
       for (const item of items) {
         const amt = Number(customAmts[item.id]) || item.amount
         const { error: e } = await supabase.from('adm_fee_collections').insert({
           id:           `${rcpt}-${item.id}`,
-          adm_app_id:   appId,
+          adm_app_id:   gcc,
           fee_type:     item.type,
           amount_paid:  amt,
           pay_date:     payDate,
@@ -180,161 +149,182 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           description:  item.label,
           receipt_no:   rcpt,
           student_name: name,
-          adm_no:       admNo || null,
-          class_name:   batch || null,
+          adm_no:       admNo  || null,
+          class_name:   batch  || null,
           collected_by: collectedBy || null,
         })
         if (e) throw e
       }
 
-      await syncAccount({
-        sourceRef: appId,
-        sourceType: 'admission',
-        payload: {
-          entry_date:   payDate,
-          type:         'Income',
-          category:     'Admission',
-          amount:       admTotal,
-          payment_mode: payMode,
-          note:         `Admission fees — ${name} (GCC-${gcc})`,
-        }
+      await upsertAccount({
+        entry_date:   payDate,
+        type:         'Income',
+        category:     'Admission',
+        amount:       total,
+        payment_mode: payMode,
+        note:         `Admission fees — ${name} (GCC-${gcc})`,
+        source_ref:   `${gcc}_admission`,
+        source_type:  'admission',
       })
 
-      setSaved({ rcpt, items: items.map(i => i.label).join(', '), total: admTotal })
+      printReceipt({
+        ...commonReceiptFields(rcpt),
+        course,
+        items: items.map(i => ({ label: i.label, amount: Number(customAmts[i.id]) || i.amount })),
+        total,
+      })
+
+      setSaved({ rcpt, items: items.map(i => i.label).join(', '), total })
+      setSelected({})
       onSaved?.()
     } catch (err) {
       console.error('saveAdmission:', err)
-      setError(err.message || 'Failed to save. Please try again.')
+      setError(err.message || 'Failed to save.')
     } finally {
       setSaving(false)
     }
   }
 
-  // ── Save Flat Fees (FIXED) ───────────────────────────────────
+  // ── Save: Flat fees ──────────────────────────────────────────────────────────
   const saveFlat = async () => {
     if (saving) return
-    if (!appId || appId === 'undefined' || appId === '')
-      return alert('Student GCC number is missing. Cannot save.')
-
-    // ── FIX: Filter out already-paid months before processing ──
+    if (!gcc) return alert('Student GCC number is missing.')
     const items = FLAT_FEES.filter(f => flatSel[f.id] && !isMonthPaid(f))
-    if (!items.length) return alert('Please select at least one unpaid month.')
-
-    setSaving(true)
-    setError(null)
+    if (!items.length) return alert('Select at least one unpaid month.')
+    setSaving(true); setError(null)
     try {
       const rcpt = rcptNo()
-      for (const item of items) {
 
-        // ── FIX: Double-check DB before inserting (race condition guard) ──
-        const { data: existing } = await supabase
+      for (const item of items) {
+        // Race-condition guard: double-check before inserting
+        const { data: exists } = await supabase
           .from('adm_flat_fees')
           .select('id')
-          .eq('adm_app_id', appId)
+          .eq('adm_app_id', gcc)
           .eq('month', item.month)
           .eq('year', item.year)
           .maybeSingle()
 
-        if (existing) {
-          // Already paid — skip and mark as paid in local state
+        if (exists) {
           setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])])
           continue
         }
 
         const { error: e } = await supabase.from('adm_flat_fees').insert({
           id:           `${rcpt}-${item.id}`,
-          adm_app_id:   appId,
+          adm_app_id:   gcc,          // ← unified: adm_app_id (not appId)
           month:        item.month,
           year:         item.year,
           amount:       item.amount,
           paid:         true,
-          pay_date:     payDate,
-          pay_mode:     payMode,
+          pay_date:     payDate,      // ← unified: pay_date (not date)
+          pay_mode:     payMode,      // ← unified: pay_mode (not mode)
           txn_ref:      txnRef || null,
-          receipt_no:   rcpt,
+          receipt_no:   rcpt,         // ← unified: receipt_no (not rcptNo)
           student_name: name,
           adm_no:       admNo || null,
         })
         if (e) throw e
 
-        await syncAccount({
-          sourceRef: `${appId}_${item.id}`,
-          sourceType: 'flat',
-          payload: {
-            entry_date:   payDate,
-            type:         'Income',
-            category:     'Hostel',
-            amount:       item.amount,
-            payment_mode: payMode,
-            note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
-          }
+        const recId = `${gcc}_flat_${item.month.toLowerCase()}_${item.year}`
+        await upsertAccount({
+          entry_date:   payDate,
+          type:         'Income',
+          category:     'Hostel',
+          amount:       item.amount,
+          payment_mode: payMode,
+          note:         `Flat fees — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
+          source_ref:   recId,
+          source_type:  'flat_fee',
         })
 
-        // ── FIX: Mark as paid in local state immediately ───────
         setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])])
       }
+
+      const paidItems = items.filter(i => !paidMonths.includes(`${i.month}_${i.year}`) || true)
+      printReceipt({
+        ...commonReceiptFields(rcpt),
+        course,
+        items: items.map(i => ({ label: `${i.month} ${i.year} — Flat fee`, amount: i.amount })),
+        total: items.reduce((s, i) => s + i.amount, 0),
+      })
 
       setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
       setFlatSel({})
       onSaved?.()
     } catch (err) {
       console.error('saveFlat:', err)
-      setError(err.message || 'Failed to save. Please try again.')
+      setError(err.message || 'Failed to save.')
     } finally {
       setSaving(false)
     }
   }
 
-  // ── Save Course Fee ──────────────────────────────────────────
+  // ── Save: Course fee ─────────────────────────────────────────────────────────
   const saveCourse = async () => {
     if (saving) return
-    if (!appId || appId === 'undefined' || appId === '')
-      return alert('Student GCC number is missing. Cannot save.')
+    if (!gcc) return alert('Student GCC number is missing.')
     const amt = Number(courseAmt)
-    if (!amt || amt <= 0) return alert('Please enter a valid amount.')
-    setSaving(true)
-    setError(null)
+    if (!amt || amt <= 0) return alert('Enter a valid amount.')
+    setSaving(true); setError(null)
     try {
-      const rcpt = rcptNo()
+      // Duplicate guard
+      const alreadyPaid = await checkCourseFeeExists(gcc, courseMonth, courseYear)
+      if (alreadyPaid) {
+        setError(`Course fee for ${courseMonth} ${courseYear} already recorded.`)
+        setSaving(false)
+        return
+      }
+
+      const rcpt  = rcptNo()
+      const recId = `${gcc}_course_${courseMonth.slice(0, 3).toLowerCase()}_${courseYear}`
+
       const { error: e } = await supabase.from('adm_course_fees').insert({
-        id:           rcpt,
-        adm_app_id:   appId,
+        id:           recId,
+        adm_app_id:   gcc,           // ← unified: adm_app_id
         course:       course  || '',
         batch:        batch   || '',
-        for_month:    courseMonth,
-        amount_paid:  amt,
-        pay_date:     payDate,
-        pay_mode:     payMode,
+        for_month:    courseMonth,   // ← unified: for_month
+        year:         courseYear,
+        amount_paid:  amt,           // ← unified: amount_paid
+        pay_date:     payDate,       // ← unified: pay_date
+        pay_mode:     payMode,       // ← unified: pay_mode
         txn_ref:      txnRef || null,
-        receipt_no:   rcpt,
+        receipt_no:   rcpt,          // ← unified: receipt_no
         student_name: name,
         adm_no:       admNo || null,
       })
       if (e) throw e
 
-      await syncAccount({
-        sourceRef: `${appId}_course_${courseMonth.slice(0, 3).toLowerCase()}_${YEAR}`,
-        sourceType: 'course',
-        payload: {
-          entry_date:   payDate,
-          type:         'Income',
-          category:     'Fees',
-          amount:       amt,
-          payment_mode: payMode,
-          note:         `Course fee (${courseMonth}) — ${name} (GCC-${gcc})`,
-        }
+      await upsertAccount({
+        entry_date:   payDate,
+        type:         'Income',
+        category:     'Fees',
+        amount:       amt,
+        payment_mode: payMode,
+        note:         `Course fee (${courseMonth} ${courseYear}) — ${name} (GCC-${gcc})`,
+        source_ref:   recId,
+        source_type:  'course_fee',
       })
 
-      setSaved({ rcpt, items: `${course} · ${courseMonth}`, total: amt })
+      printReceipt({
+        ...commonReceiptFields(rcpt),
+        course,
+        items: [{ label: `Course fee — ${course} · ${courseMonth} ${courseYear}`, amount: amt }],
+        total: amt,
+      })
+
+      setSaved({ rcpt, items: `${course} · ${courseMonth} ${courseYear}`, total: amt })
       onSaved?.()
     } catch (err) {
       console.error('saveCourse:', err)
-      setError(err.message || 'Failed to save. Please try again.')
+      setError(err.message || 'Failed to save.')
     } finally {
       setSaving(false)
     }
   }
 
+  // ── UI helpers ───────────────────────────────────────────────────────────────
   const tabBtn = (id, label, icon) => (
     <button
       type="button"
@@ -350,6 +340,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
       {icon} {label}
     </button>
   )
+
+  const allFlatPaid = FLAT_FEES.every(f => isMonthPaid(f))
 
   return createPortal(
     <div
@@ -388,18 +380,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                 {admNo  && <span style={{ color: C.indigo, fontWeight: 600 }}>{admNo}</span>}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              style={{
-                width: 30, height: 30, borderRadius: 8,
-                border: `1px solid ${C.slate[200]}`,
-                background: C.slate[50], cursor: 'pointer',
-                fontSize: 18, color: C.slate[500],
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0, lineHeight: 1,
-              }}
-            >×</button>
+            <button type="button" onClick={handleClose}
+              style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.slate[200]}`, background: C.slate[50], cursor: 'pointer', fontSize: 18, color: C.slate[500], display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              ×
+            </button>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
             {tabBtn('admission', 'Admission Fees', '🎓')}
@@ -420,32 +404,29 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
           {saved && (
             <div style={{ background: '#ecfdf5', border: '1.5px solid #6ee7b7', borderRadius: 12, padding: '16px 18px', marginBottom: 16 }}>
-              <div style={{ fontWeight: 800, color: '#065f46', fontSize: 15, marginBottom: 6 }}>✅ Payment Recorded!</div>
+              <div style={{ fontWeight: 800, color: '#065f46', fontSize: 15, marginBottom: 6 }}>✅ Payment recorded & receipt printed!</div>
               <div style={{ fontSize: 12, color: '#047857', lineHeight: 1.8 }}>
                 <div><strong>Receipt:</strong> {saved.rcpt}</div>
                 <div><strong>Items:</strong> {saved.items}</div>
                 <div><strong>Amount:</strong> ₹{fmt(saved.total)}</div>
               </div>
-              <button
-                type="button"
+              <button type="button"
                 onClick={() => { setSaved(null); setSelected({}); setFlatSel({}) }}
-                style={{ marginTop: 10, padding: '6px 14px', borderRadius: 7, border: 'none', background: '#059669', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-              >
+                style={{ marginTop: 10, padding: '6px 14px', borderRadius: 7, border: 'none', background: '#059669', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                 + Collect More
               </button>
             </div>
           )}
 
-          {/* Admission tab */}
+          {/* ── Admission tab ──────────────────────────────────────────────── */}
           {tab === 'admission' && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
-                Select Fee Items
+                Select fee items
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
                 {FEE_ITEMS.map(fee => (
-                  <div
-                    key={fee.id}
+                  <div key={fee.id}
                     onClick={() => toggleFee(fee.id)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12,
@@ -468,10 +449,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                       style={{ ...inp, width: 100, textAlign: 'right', fontWeight: 700, color: fee.color, borderColor: selected[fee.id] ? fee.color : C.slate[200] }}
                     />
                     <div style={{
-                      width: 20, height: 20, borderRadius: 5,
+                      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
                       border: `2px solid ${selected[fee.id] ? fee.color : C.slate[300]}`,
                       background: selected[fee.id] ? fee.color : 'white',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       {selected[fee.id] && <span style={{ color: 'white', fontSize: 11, fontWeight: 900 }}>✓</span>}
                     </div>
@@ -487,32 +468,27 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* Flat fee tab (FIXED) */}
+          {/* ── Flat fee tab ───────────────────────────────────────────────── */}
           {tab === 'flat' && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
-                Select Months
+                Select months
               </div>
-
-              {/* ── FIX: Loading indicator while checking paid status ── */}
               {loadingPaid && (
                 <div style={{ fontSize: 12, color: C.slate[400], marginBottom: 10, textAlign: 'center' }}>
-                  ⏳ Checking payment history...
+                  ⏳ Checking payment history…
                 </div>
               )}
-
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
                 {FLAT_FEES.map(fee => {
                   const paid = isMonthPaid(fee)
                   return (
-                    <div
-                      key={fee.id}
+                    <div key={fee.id}
                       onClick={() => !paid && toggleFlat(fee.id)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 12,
                         padding: '12px 14px', borderRadius: 10,
                         cursor: paid ? 'default' : 'pointer',
-                        // ── FIX: Visual distinction for paid months ──
                         border: `1.5px solid ${paid ? '#6ee7b7' : flatSel[fee.id] ? C.emerald : C.slate[200]}`,
                         background: paid ? '#f0fdf4' : flatSel[fee.id] ? '#ecfdf5' : 'white',
                         opacity: paid ? 0.75 : 1,
@@ -521,32 +497,22 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                     >
                       <div style={{ fontSize: 20 }}>📅</div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900] }}>
-                          {fee.month} {fee.year}
-                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900] }}>{fee.month} {fee.year}</div>
                         <div style={{ fontSize: 11, color: paid ? C.emerald : C.slate[400] }}>
                           {paid ? 'Already paid' : 'Flat hostel fee'}
                         </div>
                       </div>
-                      <span style={{ fontSize: 15, fontWeight: 800, color: paid ? C.emerald : C.emerald }}>
-                        ₹{fmt(fee.amount)}
-                      </span>
-
-                      {/* ── FIX: Show PAID badge OR checkbox ── */}
+                      <span style={{ fontSize: 15, fontWeight: 800, color: C.emerald }}>₹{fmt(fee.amount)}</span>
                       {paid ? (
-                        <span style={{
-                          fontSize: 10, fontWeight: 800, color: C.emerald,
-                          background: '#dcfce7', padding: '3px 8px',
-                          borderRadius: 6, flexShrink: 0, letterSpacing: '.05em',
-                        }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: C.emerald, background: '#dcfce7', padding: '3px 8px', borderRadius: 6, flexShrink: 0 }}>
                           ✓ PAID
                         </span>
                       ) : (
                         <div style={{
-                          width: 20, height: 20, borderRadius: 5,
+                          width: 20, height: 20, borderRadius: 5, flexShrink: 0,
                           border: `2px solid ${flatSel[fee.id] ? C.emerald : C.slate[300]}`,
                           background: flatSel[fee.id] ? C.emerald : 'white',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
                           {flatSel[fee.id] && <span style={{ color: 'white', fontSize: 11, fontWeight: 900 }}>✓</span>}
                         </div>
@@ -555,16 +521,13 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                   )
                 })}
               </div>
-
               {flatTotal > 0 && (
                 <div style={{ background: C.slate[50], borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: C.slate[500] }}>Total</span>
                   <span style={{ fontSize: 18, fontWeight: 800, color: C.emerald }}>₹{fmt(flatTotal)}</span>
                 </div>
               )}
-
-              {/* ── FIX: Show message if all months are paid ── */}
-              {!loadingPaid && FLAT_FEES.every(f => isMonthPaid(f)) && (
+              {!loadingPaid && allFlatPaid && (
                 <div style={{ background: '#f0fdf4', border: '1.5px solid #6ee7b7', borderRadius: 10, padding: '12px 16px', textAlign: 'center' }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.emerald }}>✅ All flat fees paid for this student</div>
                 </div>
@@ -572,11 +535,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* Course fee tab */}
+          {/* ── Course fee tab ─────────────────────────────────────────────── */}
           {tab === 'course' && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
-                Course Fee Details
+                Course fee details
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
                 <div>
@@ -588,19 +551,21 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                   <input value={batch || ''} readOnly style={{ ...inp, background: C.slate[50], color: C.slate[500] }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>For Month</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>For month</label>
                   <select value={courseMonth} onChange={e => setCourseMonth(e.target.value)} style={inp}>
                     {MONTHS_LIST.map(m => <option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Year</label>
+                  <select value={courseYear} onChange={e => setCourseYear(Number(e.target.value))} style={inp}>
+                    {[CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map(y => <option key={y}>{y}</option>)}
+                  </select>
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Amount (₹)</label>
-                  <input
-                    type="number"
-                    value={courseAmt}
-                    onChange={e => setCourseAmt(e.target.value)}
-                    style={{ ...inp, fontWeight: 700, color: C.violet }}
-                  />
+                  <input type="number" value={courseAmt} onChange={e => setCourseAmt(e.target.value)}
+                    style={{ ...inp, fontWeight: 700, color: C.violet }} />
                 </div>
               </div>
               <div style={{ background: C.slate[50], borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -610,14 +575,14 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* Payment Details */}
+          {/* ── Payment details ────────────────────────────────────────────── */}
           <div style={{ borderTop: `1px solid ${C.slate[100]}`, paddingTop: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
-              Payment Details
+              Payment details
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Payment Mode</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Payment mode</label>
                 <select value={payMode} onChange={e => setPayMode(e.target.value)} style={inp}>
                   {PAY_MODES.map(m => <option key={m}>{m}</option>)}
                 </select>
@@ -627,11 +592,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                 <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp} />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Txn Ref / Cheque No.</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Txn ref / Cheque no.</label>
                 <input value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder="Optional" style={inp} />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Collected By</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: C.slate[500], display: 'block', marginBottom: 5 }}>Collected by</label>
                 <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={inp} />
               </div>
             </div>
@@ -640,35 +605,29 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
         {/* Footer */}
         <div style={{ padding: '14px 22px', borderTop: `1px solid ${C.slate[100]}`, background: C.slate[50], display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={handleClose}
-            style={{
-              padding: '9px 20px', borderRadius: 9,
-              border: `1px solid ${C.slate[200]}`, background: 'white',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer', color: C.slate[500],
-            }}
-          >
+          <button type="button" onClick={handleClose}
+            style={{ padding: '9px 20px', borderRadius: 9, border: `1px solid ${C.slate[200]}`, background: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: C.slate[500] }}>
             Close
           </button>
           <button
             type="button"
             onClick={tab === 'admission' ? saveAdmission : tab === 'flat' ? saveFlat : saveCourse}
-            disabled={saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))}
+            disabled={saving || (tab === 'flat' && allFlatPaid)}
             style={{
               padding: '9px 24px', borderRadius: 9, border: 'none',
               fontSize: 13, fontWeight: 700,
-              cursor: (saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))) ? 'not-allowed' : 'pointer',
-              background: (saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))) ? C.slate[400] : `linear-gradient(135deg,${C.navy},${C.indigo})`,
+              cursor: (saving || (tab === 'flat' && allFlatPaid)) ? 'not-allowed' : 'pointer',
+              background: (saving || (tab === 'flat' && allFlatPaid))
+                ? C.slate[400]
+                : `linear-gradient(135deg,${C.navy},${C.indigo})`,
               color: 'white',
               boxShadow: saving ? 'none' : '0 4px 12px rgba(79,70,229,.3)',
-              opacity: (saving || (tab === 'flat' && FLAT_FEES.every(f => isMonthPaid(f)))) ? 0.7 : 1,
+              opacity: (saving || (tab === 'flat' && allFlatPaid)) ? 0.7 : 1,
             }}
           >
-            {saving ? '⏳ Saving...' : '💾 Record Payment'}
+            {saving ? '⏳ Saving…' : '🖨️ Record & Print Receipt'}
           </button>
         </div>
-
       </div>
     </div>,
     document.body
