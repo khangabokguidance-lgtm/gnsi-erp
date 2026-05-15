@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../supabase'
+import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────

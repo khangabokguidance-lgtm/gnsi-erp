@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '../supabase'
+import { supabase } from './supabase'
 import {
   fmt, today, gccStr, rcptNo,
   upsertAccount, checkCourseFeeExists, printReceipt,

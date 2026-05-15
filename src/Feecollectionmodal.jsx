@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { supabase } from '../supabase'
+import { supabase } from './supabase'
 import {
   fmt, today, gccStr, rcptNo,
   upsertAccount, printReceipt,

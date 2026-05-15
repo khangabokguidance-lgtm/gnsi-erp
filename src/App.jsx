@@ -53,7 +53,7 @@ const ALL_MODULES = [
   { key: 'reports',       icon: '📈',  label: 'Reports'        },
   { key: 'checklist',     icon: '✅',  label: 'Checklist'      },
   { key: 'system',        icon: '⚙️', label: 'System'         },
-  { key: 'studentfeeedger', icon: '🧾', label: 'Student Fee Ledger' }
+  { key: 'studentfeeledger', icon: '🧾', label: 'Student Fee Ledger' }
 
 ]
 
@@ -80,6 +80,7 @@ const MODULE_COMPONENTS = {
   reports:       <Reports />,
   checklist:     <Checklist />,
   system:        <SystemSettings />,
+  studentfeeledger: <StudentFeeLedger />
 }
 
 // ─── Helpers ───────────────────────────────────────────────────

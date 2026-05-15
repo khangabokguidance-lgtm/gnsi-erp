@@ -17,7 +17,7 @@ const ALL_GROUPS = [
       { id: 'fees',     label: 'Fees',     icon: '💰' },
       { id: 'accounts', label: 'Accounts', icon: '🧾' },
       { id: 'salary',   label: 'Salary',   icon: '💵' },
-      { id: 'studentledger', label: 'Student Ledger', icon: '📒' },
+      { id: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒' },
     ],
   },
   {
