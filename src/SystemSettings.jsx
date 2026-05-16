@@ -1,5 +1,5 @@
 // ============================================================
-//  GNSI Portal — System Module
+//  GNSI Portal — System Module (FULLY FIXED)
 //  Tabs: Basic, Security, Appearance, Notifications,
 //        Academic Config, Data Management, Integrations
 // ============================================================
@@ -21,13 +21,13 @@ const NAV_TABS = [
 function Spinner() {
   return <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF" }}>⏳ Loading…</div>;
 }
-function SaveBtn({ onClick, saving, saved }) {
+function SaveBtn({ onClick, saving, saved, disabled }) {
   return (
-    <button onClick={onClick} disabled={saving} style={{
+    <button onClick={onClick} disabled={saving || disabled} style={{
       padding: "9px 22px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-      cursor: saving ? "default" : "pointer", border: "none",
+      cursor: (saving || disabled) ? "default" : "pointer", border: "none",
       background: saved ? "#16A34A" : saving ? "#93C5FD" : "#1D4ED8",
-      color: "white", marginTop: 8,
+      color: "white", marginTop: 8, opacity: disabled ? 0.6 : 1,
     }}>{saved ? "✓ Saved!" : saving ? "Saving…" : "Save Changes"}</button>
   );
 }
@@ -59,18 +59,83 @@ function Card({ children, style = {} }) {
 function SectionTitle({ children }) {
   return <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 700, color: "#374151" }}>{children}</h3>;
 }
+function ErrorBanner({ msg }) {
+  return (
+    <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FEF2F2", border: "1px solid #FECACA", fontSize: 13, color: "#991B1B", marginBottom: 16 }}>
+      ❌ {msg}
+    </div>
+  );
+}
 
-// ─── Supabase helpers ─────────────────────────────────────────
+// ─── Supabase helpers (FIXED) ─────────────────────────────────
 async function loadSettings(keys) {
-  const { data } = await supabase.from("system_settings").select("key,value").in("key", keys);
+  const { data, error } = await supabase
+    .from("system_settings")
+    .select("key,value")
+    .in("key", keys);
+
+  if (error) {
+    console.error("loadSettings error:", error);
+    throw new Error(`Failed to load settings: ${error.message}`);
+  }
+
   const map = {};
   (data || []).forEach(r => { map[r.key] = r.value; });
   return map;
 }
+
 async function saveSettings(map) {
-  await Promise.all(Object.entries(map).map(([key, value]) =>
-    supabase.from("system_settings").upsert({ key, value }, { onConflict: "key" })
-  ));
+  const entries = Object.entries(map);
+  const results = await Promise.all(
+    entries.map(async ([key, value]) => {
+      const { data, error } = await supabase
+        .from("system_settings")
+        .upsert(
+          { key, value, updated_at: new Date().toISOString() },
+          { onConflict: "key", defaultToNull: false }
+        )
+        .select();
+
+      if (error) {
+        console.error(`saveSettings error for key "${key}":`, error);
+        throw new Error(`Failed to save "${key}": ${error.message}`);
+      }
+      return data;
+    })
+  );
+  return results;
+}
+
+// ─── Hook for shared section logic ───────────────────────────
+function useSettingsSection(keys) {
+  const [s, setS] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadSettings(keys)
+      .then(d => { setS(d); setLoading(false); })
+      .catch(err => { setError(err.message); setLoading(false); });
+  }, []);
+
+  const update = (k, v) => setS(p => ({ ...p, [k]: v }));
+
+  const save = async () => {
+    setSaving(true); setSaved(false); setError(null);
+    try {
+      await saveSettings(s);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return { s, setS, loading, saving, saved, error, update, save };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -78,37 +143,29 @@ async function saveSettings(map) {
 // ─────────────────────────────────────────────────────────────
 function BasicSection() {
   const KEYS = ["school_name","school_address","school_phone","school_email","session_year","portal_version","institute_type","affiliation","principal_name","established_year"];
-  const [s, setS]             = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
-
-  useEffect(() => { loadSettings(KEYS).then(d => { setS(d); setLoading(false); }); }, []);
-  const u = (k, v) => setS(p => ({ ...p, [k]: v }));
-  const save = async () => {
-    setSaving(true); await saveSettings(s);
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
-  };
+  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
 
   if (loading) return <Spinner />;
+  if (error) return <ErrorBanner msg={error} />;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
       <Card>
         <SectionTitle>🏫 Institute Details</SectionTitle>
-        <Field label="School / Institute Name"  value={s.school_name      ?? ""} onChange={e => u("school_name",      e.target.value)} />
-        <Field label="Address"                  value={s.school_address   ?? ""} onChange={e => u("school_address",   e.target.value)} />
-        <Field label="Phone"                    value={s.school_phone     ?? ""} onChange={e => u("school_phone",     e.target.value)} />
-        <Field label="Email"                    value={s.school_email     ?? ""} onChange={e => u("school_email",     e.target.value)} type="email" />
-        <Field label="Principal Name"           value={s.principal_name   ?? ""} onChange={e => u("principal_name",   e.target.value)} />
-        <Field label="Year Established"         value={s.established_year ?? ""} onChange={e => u("established_year", e.target.value)} placeholder="e.g. 2010" />
+        <Field label="School / Institute Name"  value={s.school_name      ?? ""} onChange={e => update("school_name",      e.target.value)} />
+        <Field label="Address"                  value={s.school_address   ?? ""} onChange={e => update("school_address",   e.target.value)} />
+        <Field label="Phone"                    value={s.school_phone     ?? ""} onChange={e => update("school_phone",     e.target.value)} />
+        <Field label="Email"                    value={s.school_email     ?? ""} onChange={e => update("school_email",     e.target.value)} type="email" />
+        <Field label="Principal Name"           value={s.principal_name   ?? ""} onChange={e => update("principal_name",   e.target.value)} />
+        <Field label="Year Established"         value={s.established_year ?? ""} onChange={e => update("established_year", e.target.value)} placeholder="e.g. 2010" />
+        {error && <ErrorBanner msg={error} />}
         <SaveBtn onClick={save} saving={saving} saved={saved} />
       </Card>
       <Card>
         <SectionTitle>📋 Academic & System Info</SectionTitle>
-        <Field label="Academic Session"   value={s.session_year    ?? ""} onChange={e => u("session_year",    e.target.value)} placeholder="2025-2026" />
-        <Field label="Institute Type"     value={s.institute_type  ?? ""} onChange={e => u("institute_type",  e.target.value)} placeholder="Coaching / School / College" />
-        <Field label="Affiliation / Board" value={s.affiliation    ?? ""} onChange={e => u("affiliation",     e.target.value)} placeholder="CBSE / State Board / NVS" />
+        <Field label="Academic Session"   value={s.session_year    ?? ""} onChange={e => update("session_year",    e.target.value)} placeholder="2025-2026" />
+        <Field label="Institute Type"     value={s.institute_type  ?? ""} onChange={e => update("institute_type",  e.target.value)} placeholder="Coaching / School / College" />
+        <Field label="Affiliation / Board" value={s.affiliation    ?? ""} onChange={e => update("affiliation",     e.target.value)} placeholder="CBSE / State Board / NVS" />
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B7280", marginBottom: 6 }}>Portal Version</label>
           <div style={{ fontSize: 22, fontWeight: 700, color: "#1D4ED8" }}>{s.portal_version ?? "1.0.0"}</div>
@@ -126,27 +183,17 @@ function BasicSection() {
 // ─────────────────────────────────────────────────────────────
 function SecuritySection({ currentUser }) {
   const KEYS = ["session_timeout_minutes","max_login_attempts","lockout_duration_minutes","force_password_change","two_factor_required"];
-  const [s, setS]             = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
-  const [pw, setPw]           = useState({ current: "", next: "", confirm: "" });
-  const [pwMsg, setPwMsg]     = useState(null);
+  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
+  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [pwMsg, setPwMsg] = useState(null);
   const [sessions, setSessions] = useState([]);
 
   useEffect(() => {
-    loadSettings(KEYS).then(d => { setS(d); setLoading(false); });
     setSessions([
       { id: 1, user: currentUser?.username ?? "admin", device: "Chrome / Windows", time: "Now",      current: true  },
       { id: 2, user: "teacher",                         device: "Firefox / Android", time: "2 hrs ago", current: false },
     ]);
-  }, []);
-
-  const u = (k, v) => setS(p => ({ ...p, [k]: v }));
-  const save = async () => {
-    setSaving(true); await saveSettings(s);
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
-  };
+  }, [currentUser]);
 
   const changePassword = () => {
     if (!pw.next || pw.next !== pw.confirm) { setPwMsg({ type: "error", text: "Passwords do not match." }); return; }
@@ -157,6 +204,7 @@ function SecuritySection({ currentUser }) {
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ErrorBanner msg={error} />;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
@@ -199,13 +247,14 @@ function SecuritySection({ currentUser }) {
 
       <Card>
         <SectionTitle>⚙️ Login & Session Settings</SectionTitle>
-        <Field label="Session Timeout (minutes)"   type="number" value={s.session_timeout_minutes  ?? "60"} onChange={e => u("session_timeout_minutes",  e.target.value)} />
-        <Field label="Max Login Attempts"          type="number" value={s.max_login_attempts        ?? "5"}  onChange={e => u("max_login_attempts",        e.target.value)} />
-        <Field label="Lockout Duration (minutes)"  type="number" value={s.lockout_duration_minutes  ?? "15"} onChange={e => u("lockout_duration_minutes",  e.target.value)} />
+        <Field label="Session Timeout (minutes)"   type="number" value={s.session_timeout_minutes  ?? "60"} onChange={e => update("session_timeout_minutes",  e.target.value)} />
+        <Field label="Max Login Attempts"          type="number" value={s.max_login_attempts        ?? "5"}  onChange={e => update("max_login_attempts",        e.target.value)} />
+        <Field label="Lockout Duration (minutes)"  type="number" value={s.lockout_duration_minutes  ?? "15"} onChange={e => update("lockout_duration_minutes",  e.target.value)} />
         <Toggle label="Force Password Change" desc="Require users to change password on first login"
-          checked={s.force_password_change === "true"} onChange={() => u("force_password_change", s.force_password_change === "true" ? "false" : "true")} />
+          checked={s.force_password_change === "true"} onChange={() => update("force_password_change", s.force_password_change === "true" ? "false" : "true")} />
         <Toggle label="Two-Factor Required" desc="Require OTP for all admin logins"
-          checked={s.two_factor_required === "true"} onChange={() => u("two_factor_required", s.two_factor_required === "true" ? "false" : "true")} />
+          checked={s.two_factor_required === "true"} onChange={() => update("two_factor_required", s.two_factor_required === "true" ? "false" : "true")} />
+        {error && <ErrorBanner msg={error} />}
         <div style={{ marginTop: 8 }}>
           <SaveBtn onClick={save} saving={saving} saved={saved} />
         </div>
@@ -219,19 +268,10 @@ function SecuritySection({ currentUser }) {
 // ─────────────────────────────────────────────────────────────
 function AppearanceSection() {
   const KEYS = ["primary_color","sidebar_color","accent_color","font_family","logo_url","favicon_url","portal_title"];
-  const [s, setS]             = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
-
-  useEffect(() => { loadSettings(KEYS).then(d => { setS(d); setLoading(false); }); }, []);
-  const u = (k, v) => setS(p => ({ ...p, [k]: v }));
-  const save = async () => {
-    setSaving(true); await saveSettings(s);
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
-  };
+  const { s, setS, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
 
   if (loading) return <Spinner />;
+  if (error) return <ErrorBanner msg={error} />;
 
   const FONTS = ["Inter","Poppins","Roboto","Nunito","DM Sans","Outfit"];
   const PRESETS = [
@@ -269,7 +309,7 @@ function AppearanceSection() {
               <div key={k}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B7280", marginBottom: 6 }}>{label}</label>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="color" value={s[k] ?? "#1D4ED8"} onChange={e => u(k, e.target.value)}
+                  <input type="color" value={s[k] ?? "#1D4ED8"} onChange={e => update(k, e.target.value)}
                     style={{ width: 36, height: 36, borderRadius: 6, border: "1px solid #D1D5DB", cursor: "pointer", padding: 2 }} />
                   <span style={{ fontSize: 12, color: "#6B7280", fontFamily: "monospace" }}>{s[k] ?? "#1D4ED8"}</span>
                 </div>
@@ -282,7 +322,7 @@ function AppearanceSection() {
           <SectionTitle>🔤 Font</SectionTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {FONTS.map(f => (
-              <button key={f} onClick={() => u("font_family", f)} style={{
+              <button key={f} onClick={() => update("font_family", f)} style={{
                 padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13,
                 border: s.font_family === f ? "2px solid #1D4ED8" : "1px solid #E5E7EB",
                 background: s.font_family === f ? "#EFF6FF" : "white",
@@ -296,9 +336,9 @@ function AppearanceSection() {
 
       <Card>
         <SectionTitle>🖼️ Branding</SectionTitle>
-        <Field label="Portal Title" value={s.portal_title ?? ""} onChange={e => u("portal_title", e.target.value)} placeholder="GNSI ERP" />
-        <Field label="Logo URL"     value={s.logo_url     ?? ""} onChange={e => u("logo_url",     e.target.value)} placeholder="https://..." />
-        <Field label="Favicon URL"  value={s.favicon_url  ?? ""} onChange={e => u("favicon_url",  e.target.value)} placeholder="https://..." />
+        <Field label="Portal Title" value={s.portal_title ?? ""} onChange={e => update("portal_title", e.target.value)} placeholder="GNSI ERP" />
+        <Field label="Logo URL"     value={s.logo_url     ?? ""} onChange={e => update("logo_url",     e.target.value)} placeholder="https://..." />
+        <Field label="Favicon URL"  value={s.favicon_url  ?? ""} onChange={e => update("favicon_url",  e.target.value)} placeholder="https://..." />
         {s.logo_url && (
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B7280", marginBottom: 8 }}>Logo Preview</label>
@@ -308,6 +348,7 @@ function AppearanceSection() {
         <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FFF7ED", border: "1px solid #FED7AA", fontSize: 13, color: "#92400E", marginBottom: 16 }}>
           ⚠️ Color and font changes require a page reload to take full effect after saving.
         </div>
+        {error && <ErrorBanner msg={error} />}
         <SaveBtn onClick={save} saving={saving} saved={saved} />
       </Card>
     </div>
@@ -319,26 +360,18 @@ function AppearanceSection() {
 // ─────────────────────────────────────────────────────────────
 function NotificationsSection() {
   const KEYS = ["sms_gateway","sms_api_key","sms_sender_id","smtp_host","smtp_port","smtp_user","smtp_from","whatsapp_enabled","whatsapp_token","sms_alerts","email_alerts","whatsapp_alerts"];
-  const [s, setS]             = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
-  const [testSms, setTestSms]     = useState("");
+  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
+  const [testSms, setTestSms] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [testResult, setTestResult] = useState(null);
 
-  useEffect(() => { loadSettings(KEYS).then(d => { setS(d); setLoading(false); }); }, []);
-  const u = (k, v) => setS(p => ({ ...p, [k]: v }));
-  const save = async () => {
-    setSaving(true); await saveSettings(s);
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
-  };
   const sendTest = (type) => {
     setTestResult({ type, msg: `Test ${type} sent! (Configure gateway to actually deliver)` });
     setTimeout(() => setTestResult(null), 3000);
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ErrorBanner msg={error} />;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
@@ -347,7 +380,7 @@ function NotificationsSection() {
           <SectionTitle>📱 SMS Gateway</SectionTitle>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B7280", marginBottom: 6 }}>Gateway Provider</label>
-            <select value={s.sms_gateway ?? "msg91"} onChange={e => u("sms_gateway", e.target.value)}
+            <select value={s.sms_gateway ?? "msg91"} onChange={e => update("sms_gateway", e.target.value)}
               style={{ width: "100%", padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1px solid #D1D5DB", outline: "none", background: "white" }}>
               <option value="msg91">MSG91</option>
               <option value="twilio">Twilio</option>
@@ -355,8 +388,8 @@ function NotificationsSection() {
               <option value="textlocal">TextLocal</option>
             </select>
           </div>
-          <Field label="API Key"   value={s.sms_api_key   ?? ""} onChange={e => u("sms_api_key",   e.target.value)} placeholder="Your API key" />
-          <Field label="Sender ID" value={s.sms_sender_id ?? ""} onChange={e => u("sms_sender_id", e.target.value)} placeholder="GNSI" />
+          <Field label="API Key"   value={s.sms_api_key   ?? ""} onChange={e => update("sms_api_key",   e.target.value)} placeholder="Your API key" />
+          <Field label="Sender ID" value={s.sms_sender_id ?? ""} onChange={e => update("sms_sender_id", e.target.value)} placeholder="GNSI" />
           <div style={{ display: "flex", gap: 8 }}>
             <input value={testSms} onChange={e => setTestSms(e.target.value)} placeholder="+91 98765 43210"
               style={{ flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1px solid #D1D5DB", outline: "none" }} />
@@ -367,9 +400,9 @@ function NotificationsSection() {
         <Card>
           <SectionTitle>💬 WhatsApp</SectionTitle>
           <Toggle label="WhatsApp Notifications" desc="Send fee receipts & alerts via WhatsApp"
-            checked={s.whatsapp_enabled === "true"} onChange={() => u("whatsapp_enabled", s.whatsapp_enabled === "true" ? "false" : "true")} />
+            checked={s.whatsapp_enabled === "true"} onChange={() => update("whatsapp_enabled", s.whatsapp_enabled === "true" ? "false" : "true")} />
           <div style={{ marginTop: 12 }}>
-            <Field label="WhatsApp API Token" value={s.whatsapp_token ?? ""} onChange={e => u("whatsapp_token", e.target.value)} placeholder="Meta / WATI token" />
+            <Field label="WhatsApp API Token" value={s.whatsapp_token ?? ""} onChange={e => update("whatsapp_token", e.target.value)} placeholder="Meta / WATI token" />
           </div>
         </Card>
       </div>
@@ -377,10 +410,10 @@ function NotificationsSection() {
       <div>
         <Card>
           <SectionTitle>📧 Email (SMTP)</SectionTitle>
-          <Field label="SMTP Host"     value={s.smtp_host ?? ""} onChange={e => u("smtp_host", e.target.value)} placeholder="smtp.gmail.com" />
-          <Field label="SMTP Port"     value={s.smtp_port ?? ""} onChange={e => u("smtp_port", e.target.value)} placeholder="587" />
-          <Field label="SMTP Username" value={s.smtp_user ?? ""} onChange={e => u("smtp_user", e.target.value)} placeholder="you@gmail.com" />
-          <Field label="From Address"  value={s.smtp_from ?? ""} onChange={e => u("smtp_from", e.target.value)} placeholder="noreply@gnsi.in" />
+          <Field label="SMTP Host"     value={s.smtp_host ?? ""} onChange={e => update("smtp_host", e.target.value)} placeholder="smtp.gmail.com" />
+          <Field label="SMTP Port"     value={s.smtp_port ?? ""} onChange={e => update("smtp_port", e.target.value)} placeholder="587" />
+          <Field label="SMTP Username" value={s.smtp_user ?? ""} onChange={e => update("smtp_user", e.target.value)} placeholder="you@gmail.com" />
+          <Field label="From Address"  value={s.smtp_from ?? ""} onChange={e => update("smtp_from", e.target.value)} placeholder="noreply@gnsi.in" />
           <div style={{ display: "flex", gap: 8 }}>
             <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="test@example.com"
               style={{ flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1px solid #D1D5DB", outline: "none" }} />
@@ -391,16 +424,17 @@ function NotificationsSection() {
         <Card>
           <SectionTitle>⚡ Alert Preferences</SectionTitle>
           <Toggle label="SMS Alerts"       desc="Fee reminders, attendance alerts via SMS"
-            checked={s.sms_alerts       === "true"} onChange={() => u("sms_alerts",       s.sms_alerts       === "true" ? "false" : "true")} />
+            checked={s.sms_alerts       === "true"} onChange={() => update("sms_alerts",       s.sms_alerts       === "true" ? "false" : "true")} />
           <Toggle label="Email Alerts"     desc="Reports, receipts, and notifications via email"
-            checked={s.email_alerts     === "true"} onChange={() => u("email_alerts",     s.email_alerts     === "true" ? "false" : "true")} />
+            checked={s.email_alerts     === "true"} onChange={() => update("email_alerts",     s.email_alerts     === "true" ? "false" : "true")} />
           <Toggle label="WhatsApp Alerts"  desc="Fee receipts and reminders via WhatsApp"
-            checked={s.whatsapp_alerts  === "true"} onChange={() => u("whatsapp_alerts",  s.whatsapp_alerts  === "true" ? "false" : "true")} />
+            checked={s.whatsapp_alerts  === "true"} onChange={() => update("whatsapp_alerts",  s.whatsapp_alerts  === "true" ? "false" : "true")} />
           {testResult && (
             <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", fontSize: 13 }}>
               ✅ {testResult.msg}
             </div>
           )}
+          {error && <ErrorBanner msg={error} />}
           <div style={{ marginTop: 8 }}>
             <SaveBtn onClick={save} saving={saving} saved={saved} />
           </div>
@@ -411,27 +445,43 @@ function NotificationsSection() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 5. ACADEMIC CONFIG
+// 5. ACADEMIC CONFIG (FIXED — Classes & Courses now persist)
 // ─────────────────────────────────────────────────────────────
 function AcademicSection() {
-  const [classes,   setClasses]   = useState(["Class 6","Class 7","Class 8","Class 9","Class 10","Class 11","Class 12"]);
-  const [courses,   setCourses]   = useState(["Navodaya","Sainik School","NTSE","Olympiad","JEE Foundation","NEET Foundation"]);
+  const KEYS = [
+    "academic_year_start","academic_year_end","exam_grading",
+    "attendance_threshold","fee_due_day",
+    "classes_list", "courses_list"
+  ];
+  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
   const [newClass,  setNewClass]  = useState("");
   const [newCourse, setNewCourse] = useState("");
-  const KEYS = ["academic_year_start","academic_year_end","exam_grading","attendance_threshold","fee_due_day"];
-  const [s, setS]             = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
 
-  useEffect(() => { loadSettings(KEYS).then(d => { setS(d); setLoading(false); }); }, []);
-  const u = (k, v) => setS(p => ({ ...p, [k]: v }));
-  const save = async () => {
-    setSaving(true); await saveSettings(s);
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
+  // Parse classes/courses from saved JSON string
+  const classes = JSON.parse(s.classes_list  ?? '["Class 6","Class 7","Class 8","Class 9","Class 10","Class 11","Class 12"]');
+  const courses = JSON.parse(s.courses_list  ?? '["Navodaya","Sainik School","NTSE","Olympiad","JEE Foundation","NEET Foundation"]');
+
+  const addClass = () => {
+    if (!newClass.trim()) return;
+    const updated = [...classes, newClass.trim()];
+    update("classes_list", JSON.stringify(updated));
+    setNewClass("");
+  };
+  const removeClass = (c) => {
+    update("classes_list", JSON.stringify(classes.filter(x => x !== c)));
+  };
+  const addCourse = () => {
+    if (!newCourse.trim()) return;
+    const updated = [...courses, newCourse.trim()];
+    update("courses_list", JSON.stringify(updated));
+    setNewCourse("");
+  };
+  const removeCourse = (c) => {
+    update("courses_list", JSON.stringify(courses.filter(x => x !== c)));
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ErrorBanner msg={error} />;
 
   const Tag = ({ label, onRemove }) => (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, fontSize: 12, color: "#1D4ED8" }}>
@@ -445,13 +495,13 @@ function AcademicSection() {
       <div>
         <Card>
           <SectionTitle>📅 Academic Year</SectionTitle>
-          <Field label="Year Start"                  type="date"   value={s.academic_year_start  ?? ""} onChange={e => u("academic_year_start",  e.target.value)} />
-          <Field label="Year End"                    type="date"   value={s.academic_year_end    ?? ""} onChange={e => u("academic_year_end",    e.target.value)} />
-          <Field label="Fee Due Day (of month)"      type="number" value={s.fee_due_day          ?? "10"} onChange={e => u("fee_due_day",          e.target.value)} placeholder="10" />
-          <Field label="Attendance Threshold (%)"    type="number" value={s.attendance_threshold ?? "75"} onChange={e => u("attendance_threshold", e.target.value)} placeholder="75" />
+          <Field label="Year Start"                  type="date"   value={s.academic_year_start  ?? ""} onChange={e => update("academic_year_start",  e.target.value)} />
+          <Field label="Year End"                    type="date"   value={s.academic_year_end    ?? ""} onChange={e => update("academic_year_end",    e.target.value)} />
+          <Field label="Fee Due Day (of month)"      type="number" value={s.fee_due_day          ?? "10"} onChange={e => update("fee_due_day",          e.target.value)} placeholder="10" />
+          <Field label="Attendance Threshold (%)"    type="number" value={s.attendance_threshold ?? "75"} onChange={e => update("attendance_threshold", e.target.value)} placeholder="75" />
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B7280", marginBottom: 6 }}>Exam Grading System</label>
-            <select value={s.exam_grading ?? "percentage"} onChange={e => u("exam_grading", e.target.value)}
+            <select value={s.exam_grading ?? "percentage"} onChange={e => update("exam_grading", e.target.value)}
               style={{ width: "100%", padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1px solid #D1D5DB", outline: "none", background: "white" }}>
               <option value="percentage">Percentage (0-100)</option>
               <option value="grade">Grade (A, B, C…)</option>
@@ -459,6 +509,7 @@ function AcademicSection() {
               <option value="marks">Marks out of custom total</option>
             </select>
           </div>
+          {error && <ErrorBanner msg={error} />}
           <SaveBtn onClick={save} saving={saving} saved={saved} />
         </Card>
       </div>
@@ -467,12 +518,12 @@ function AcademicSection() {
         <Card>
           <SectionTitle>🏫 Classes / Batches</SectionTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-            {classes.map(c => <Tag key={c} label={c} onRemove={() => setClasses(p => p.filter(x => x !== c))} />)}
+            {classes.map(c => <Tag key={c} label={c} onRemove={() => removeClass(c)} />)}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input value={newClass} onChange={e => setNewClass(e.target.value)} placeholder="Add class…"
               style={{ flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1px solid #D1D5DB", outline: "none" }} />
-            <button onClick={() => { if (newClass.trim()) { setClasses(p => [...p, newClass.trim()]); setNewClass(""); } }}
+            <button onClick={addClass}
               style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, cursor: "pointer", background: "#1D4ED8", color: "white", border: "none", fontWeight: 600 }}>Add</button>
           </div>
         </Card>
@@ -480,12 +531,12 @@ function AcademicSection() {
         <Card>
           <SectionTitle>📚 Courses / Streams</SectionTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-            {courses.map(c => <Tag key={c} label={c} onRemove={() => setCourses(p => p.filter(x => x !== c))} />)}
+            {courses.map(c => <Tag key={c} label={c} onRemove={() => removeCourse(c)} />)}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input value={newCourse} onChange={e => setNewCourse(e.target.value)} placeholder="Add course…"
               style={{ flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1px solid #D1D5DB", outline: "none" }} />
-            <button onClick={() => { if (newCourse.trim()) { setCourses(p => [...p, newCourse.trim()]); setNewCourse(""); } }}
+            <button onClick={addCourse}
               style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, cursor: "pointer", background: "#1D4ED8", color: "white", border: "none", fontWeight: 600 }}>Add</button>
           </div>
         </Card>
@@ -511,7 +562,7 @@ function DataSection() {
     const results = {};
     for (const t of TABLES) {
       const { count, error } = await supabase.from(t).select("*", { count: "exact", head: true });
-      results[t] = error ? "❌ Error" : `✅ ${count} rows`;
+      results[t] = error ? `❌ ${error.message}` : `✅ ${count} rows`;
     }
     setHealth(results);
     setChecking(false);
@@ -520,9 +571,13 @@ function DataSection() {
   const clearTable = async (table) => {
     if (!window.confirm(`Are you sure you want to clear ALL data from "${table}"? This cannot be undone.`)) return;
     setClearing(table);
-    await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    const { error } = await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
     setClearing(null);
-    alert(`${table} cleared.`);
+    if (error) {
+      alert(`❌ Failed to clear ${table}: ${error.message}`);
+    } else {
+      alert(`✅ ${table} cleared.`);
+    }
   };
 
   const handleImport = (e) => {
@@ -571,9 +626,9 @@ function DataSection() {
           if (error) throw new Error(error.message);
           inserted += Math.min(50, rows.length - i);
         }
-        setImportMsg(`✅ Successfully imported ${inserted} students!`);
+        setImportMsg({ type: "success", text: `✅ Successfully imported ${inserted} students!` });
       } catch (err) {
-        setImportMsg(`❌ Import failed: ${err.message}`);
+        setImportMsg({ type: "error", text: `❌ Import failed: ${err.message}` });
       } finally {
         setImporting(false);
         setTimeout(() => setImportMsg(null), 5000);
@@ -610,8 +665,8 @@ function DataSection() {
             <input type="file" accept=".csv" onChange={handleImport} style={{ display: "none" }} />
           </label>
           {importMsg && (
-            <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#FFF7ED", border: "1px solid #FED7AA", color: "#92400E", fontSize: 13 }}>
-              {importMsg}
+            <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: importMsg.type === "error" ? "#FEF2F2" : "#FFF7ED", border: `1px solid ${importMsg.type === "error" ? "#FECACA" : "#FED7AA"}`, color: importMsg.type === "error" ? "#991B1B" : "#92400E", fontSize: 13 }}>
+              {importMsg.text}
             </div>
           )}
         </Card>
@@ -647,26 +702,17 @@ function DataSection() {
 // ─────────────────────────────────────────────────────────────
 function IntegrationsSection() {
   const KEYS = ["razorpay_key","razorpay_secret","razorpay_enabled","google_client_id","google_enabled","api_key_portal","supabase_project_url"];
-  const [s, setS]             = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
+  const { s, setS, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
   const [showKeys, setShowKeys] = useState({});
 
-  useEffect(() => { loadSettings(KEYS).then(d => { setS(d); setLoading(false); }); }, []);
-  const u = (k, v) => setS(p => ({ ...p, [k]: v }));
-  const save = async () => {
-    setSaving(true); await saveSettings(s);
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
-  };
-
   if (loading) return <Spinner />;
+  if (error) return <ErrorBanner msg={error} />;
 
   const MaskedField = ({ label, k }) => (
     <div style={{ marginBottom: 16 }}>
       <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B7280", marginBottom: 6 }}>{label}</label>
       <div style={{ display: "flex", gap: 8 }}>
-        <input type={showKeys[k] ? "text" : "password"} value={s[k] ?? ""} onChange={e => u(k, e.target.value)}
+        <input type={showKeys[k] ? "text" : "password"} value={s[k] ?? ""} onChange={e => update(k, e.target.value)}
           style={{ flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1px solid #D1D5DB", outline: "none", boxSizing: "border-box", color: "#111827" }} />
         <button onClick={() => setShowKeys(p => ({ ...p, [k]: !p[k] }))}
           style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #E5E7EB", background: "white", cursor: "pointer", fontSize: 13 }}>
@@ -698,13 +744,13 @@ function IntegrationsSection() {
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
         <IntegrationCard icon="💳" title="Razorpay" subtitle="Online fee collection & payments"
-          enabled={s.razorpay_enabled === "true"} onToggle={() => u("razorpay_enabled", s.razorpay_enabled === "true" ? "false" : "true")}>
+          enabled={s.razorpay_enabled === "true"} onToggle={() => update("razorpay_enabled", s.razorpay_enabled === "true" ? "false" : "true")}>
           <MaskedField label="Razorpay Key ID" k="razorpay_key" />
           <MaskedField label="Razorpay Secret" k="razorpay_secret" />
         </IntegrationCard>
 
         <IntegrationCard icon="🔵" title="Google Workspace" subtitle="SSO login & Google Drive integration"
-          enabled={s.google_enabled === "true"} onToggle={() => u("google_enabled", s.google_enabled === "true" ? "false" : "true")}>
+          enabled={s.google_enabled === "true"} onToggle={() => update("google_enabled", s.google_enabled === "true" ? "false" : "true")}>
           <MaskedField label="Google Client ID" k="google_client_id" />
           <p style={{ fontSize: 12, color: "#9CA3AF", margin: "4px 0 0" }}>Configure OAuth in Google Cloud Console → APIs & Services</p>
         </IntegrationCard>
@@ -715,20 +761,21 @@ function IntegrationsSection() {
           <SectionTitle>🔑 Portal API Key</SectionTitle>
           <p style={{ fontSize: 13, color: "#6B7280", marginTop: 0, marginBottom: 12 }}>Use this key to connect external tools to GNSI Portal.</p>
           <MaskedField label="API Key" k="api_key_portal" />
-          <button onClick={() => u("api_key_portal", crypto.randomUUID())} style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "white", color: "#374151" }}>
+          <button onClick={() => update("api_key_portal", crypto.randomUUID())} style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, cursor: "pointer", border: "1px solid #E5E7EB", background: "white", color: "#374151" }}>
             🔄 Regenerate Key
           </button>
         </Card>
 
         <Card>
           <SectionTitle>🗄️ Supabase Info</SectionTitle>
-          <Field label="Supabase Project URL" value={s.supabase_project_url ?? import.meta.env.VITE_SUPABASE_URL ?? ""} onChange={e => u("supabase_project_url", e.target.value)} />
+          <Field label="Supabase Project URL" value={s.supabase_project_url ?? import.meta.env.VITE_SUPABASE_URL ?? ""} onChange={e => update("supabase_project_url", e.target.value)} />
           <div style={{ padding: "12px 16px", borderRadius: 10, background: "#EFF6FF", border: "1px solid #BFDBFE", fontSize: 13, color: "#1D4ED8", marginTop: 8 }}>
             ℹ️ Supabase credentials are stored in your <code>.env</code> file and should not be changed here.
           </div>
         </Card>
       </div>
 
+      {error && <ErrorBanner msg={error} />}
       <div style={{ marginTop: 8 }}>
         <SaveBtn onClick={save} saving={saving} saved={saved} />
       </div>

@@ -1,12 +1,19 @@
 // Admissions.jsx
 // ─────────────────────────────────────────────────────────────────────────────
-//  Core admissions workflow.
-//  Import path fix: supabase from '../lib/supabase', modal from './FeeCollectionModal'
+//  ✅ Fixed: hostel type is now three-way (Day Scholar / Boarder / Day Boarder)
+//  ✅ Fixed: deriveHostelType supports all three hostel types
+//  ✅ Fixed: mapFromDB passes hostel_type correctly (not just Boarder/Day Scholar)
+//  ✅ Fixed: mapToDB stores all three hostel types correctly
+//  ✅ Fixed: form hostel selector is three-way dropdown (not Yes/No)
+//  ✅ Fixed: FeeCollectionModal receives correct hostel_type for flat fee rate
+//  ✅ Fixed: handleEnroll calls promoteToStudent() → auto-creates student record
+//  ✅ Fixed: house field drives hostel type (Day Scholar house → Day Scholar)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
+import { promoteToStudent, getFlatFeeAmt } from './shared/feeHelpers'
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -29,9 +36,9 @@ const STAT_META    = {
   'Rejected':     { color: T.rose[600],   bg: T.rose[50],    icon: '◌' },
   'Waitlisted':   { color: T.slate[500],  bg: T.slate[100],  icon: '◷' },
 }
-const ADM_DOCS     = ['Birth Certificate','Aadhaar Card','Passport Photo','Mark Sheet','Transfer Certificate','Medical Certificate','Caste Certificate','Address Proof']
-const SESSIONS     = ['2024-25','2025-26','2026-27']
-const CATEGORIES   = ['--','General','OBC','SC','ST','EWS','Other']
+const ADM_DOCS = ['Birth Certificate','Aadhaar Card','Passport Photo','Mark Sheet','Transfer Certificate','Medical Certificate','Caste Certificate','Address Proof']
+const SESSIONS  = ['2024-25','2025-26','2026-27']
+const CATEGORIES= ['--','General','OBC','SC','ST','EWS','Other']
 const COURSE_STRUCTURE = {
   Navodaya:          { subtypes:['Lakshya','Umeed'],             color:T.indigo[600], bg:T.indigo[50] },
   Sainik:            { subtypes:['Achiever','Leader','Champion'],color:T.emerald[600],bg:T.emerald[50] },
@@ -39,69 +46,97 @@ const COURSE_STRUCTURE = {
   'Combined Course': { subtypes:[],                              color:T.amber[600],  bg:T.amber[50] },
 }
 const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime','Class 6','Class 7','Class 8','Class 9','Class 10']
-const HOUSES_LIST  = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
+
+// ✅ Three hostel types
+const HOSTEL_TYPES = ['Day Scholar', 'Boarder', 'Day Boarder']
+
+// ✅ Hostel type styles for badge display
+const HOSTEL_STYLES = {
+  'Boarder':     { bg: T.emerald[50],  color: T.emerald[700], border: T.emerald[300], icon: '🏠' },
+  'Day Boarder': { bg: T.amber[50],    color: T.amber[700],   border: T.amber[300],   icon: '🌅' },
+  'Day Scholar': { bg: T.slate[100],   color: T.slate[500],   border: T.slate[200],   icon: '🏫' },
+}
+
+// ✅ Canonical house list
+const HOUSES_LIST        = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
+const DAY_SCHOLAR_HOUSES = ['Day Scholar']
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
-const fmt    = n  => Number(n || 0).toLocaleString('en-IN')
-const today  = () => new Date().toISOString().split('T')[0]
+const fmt = n => Number(n || 0).toLocaleString('en-IN')
 const avatarColor = name => {
   const hues = [T.indigo[600], T.violet[600], T.emerald[600], T.amber[600], '#0EA5E9', '#EC4899']
   return hues[(name || '').charCodeAt(0) % hues.length]
 }
 
+/**
+ * deriveHostelType
+ * ✅ Now supports all three hostel types.
+ * House is the primary source of truth — Day Scholar house → Day Scholar.
+ * If no house, falls back to the explicit hostelType value.
+ */
+function deriveHostelType(house, hostelType) {
+  if (house && DAY_SCHOLAR_HOUSES.includes(house)) return 'Day Scholar'
+  if (HOSTEL_TYPES.includes(hostelType)) return hostelType
+  return 'Day Scholar'
+}
+
 // ─── Field Mappers ────────────────────────────────────────────────────────────
+
 function mapToDB(app) {
+  // ✅ hostel_type derived from house + explicit hostel selection
+  const hostelType = deriveHostelType(app.house, app.hostel_type)
   return {
     gcc_no:         app.gcc ? parseInt(app.gcc) : undefined,
-    applicant_name: app.name      || '',
-    dob:            app.dob       || null,
-    gender:         app.gender    || null,
-    blood_group:    app.blood     || null,
+    applicant_name: app.name       || '',
+    dob:            app.dob        || null,
+    gender:         app.gender     || null,
+    blood_group:    app.blood      || null,
     category:       (!app.category || app.category === '--') ? null : app.category,
-    course:         app.course    || null,
-    subtype:        app.subtype   || null,
-    batch:          app.cls       || null,
-    house:          app.house     || null,
-    session:        app.session   || null,
-    hostel_type:    app.hostel === 'Yes' ? 'Boarder' : 'Day Scholar',
-    status:         app.status    || 'Applied',
-    father_name:    app.father    || null,
-    mother_name:    app.mother    || null,
-    phone:          app.phone     || null,
-    whatsapp:       app.whatsapp  || null,
-    prev_school:    app.prevSchool|| null,
-    address:        app.address   || null,
-    remarks:        app.remarks   || null,
+    course:         app.course     || null,
+    subtype:        app.subtype    || null,
+    batch:          app.cls        || null,
+    house:          app.house      || null,
+    session:        app.session    || null,
+    hostel_type:    hostelType,
+    status:         app.status     || 'Applied',
+    father_name:    app.father     || null,
+    mother_name:    app.mother     || null,
+    phone:          app.phone      || null,
+    whatsapp:       app.whatsapp   || null,
+    prev_school:    app.prevSchool || null,
+    address:        app.address    || null,
+    remarks:        app.remarks    || null,
   }
 }
 
 function mapFromDB(row) {
+  // ✅ hostel_type passes through all three values correctly
+  const hostelType = row.hostel_type || 'Day Scholar'
   return {
-    id:         row.gcc_no,
-    gcc:        String(row.gcc_no),
-    admNo:      row.adm_no,
-    name:       row.applicant_name,
-    dob:        row.dob,
-    gender:     row.gender,
-    blood:      row.blood_group,
-    category:   row.category || '--',
-    course:     row.course,
-    subtype:    row.subtype,
-    cls:        row.batch,
-    house:      row.house,
-    session:    row.session,
-    hostel:     row.hostel_type === 'Boarder' ? 'Yes' : 'No',
-    hostel_type:row.hostel_type,
-    status:     row.status,
-    father:     row.father_name,
-    mother:     row.mother_name,
-    phone:      row.phone,
-    whatsapp:   row.whatsapp,
-    prevSchool: row.prev_school,
-    address:    row.address,
-    remarks:    row.remarks,
-    docs:       [],
-    created_at: row.created_at,
+    id:          row.gcc_no,
+    gcc:         String(row.gcc_no),
+    admNo:       row.adm_no,
+    name:        row.applicant_name,
+    dob:         row.dob,
+    gender:      row.gender,
+    blood:       row.blood_group,
+    category:    row.category || '--',
+    course:      row.course,
+    subtype:     row.subtype,
+    cls:         row.batch,
+    house:       row.house,
+    session:     row.session,
+    hostel_type: hostelType,          // ✅ Day Scholar / Boarder / Day Boarder
+    status:      row.status,
+    father:      row.father_name,
+    mother:      row.mother_name,
+    phone:       row.phone,
+    whatsapp:    row.whatsapp,
+    prevSchool:  row.prev_school,
+    address:     row.address,
+    remarks:     row.remarks,
+    docs:        [],
+    created_at:  row.created_at,
   }
 }
 
@@ -117,13 +152,13 @@ const sbApps = {
   },
 }
 
-// ─── Design system components ─────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = {
   inp: {
     width:'100%', padding:'9px 12px', borderRadius:8,
     border:`1.5px solid ${T.slate[200]}`, fontSize:13,
     outline:'none', boxSizing:'border-box', backgroundColor:'#fff',
-    color: T.slate[800], fontFamily:"system-ui,sans-serif",
+    color: T.slate[800], fontFamily:'system-ui,sans-serif',
     transition:'border-color .15s',
   },
   label: {
@@ -131,6 +166,8 @@ const styles = {
     marginBottom:5, textTransform:'uppercase', letterSpacing:'.07em',
   },
 }
+
+// ─── Components ───────────────────────────────────────────────────────────────
 
 function Avatar({ name, size=36 }) {
   const bg = avatarColor(name)
@@ -150,11 +187,21 @@ function StatusBadge({ status }) {
   )
 }
 
+// ✅ Hostel type badge — shows all three types with distinct colors
+function HostelTypeBadge({ type }) {
+  const s = HOSTEL_STYLES[type] || HOSTEL_STYLES['Day Scholar']
+  return (
+    <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:4, background:s.bg, color:s.color, border:`1px solid ${s.border}`, whiteSpace:'nowrap' }}>
+      {s.icon} {type}
+    </span>
+  )
+}
+
 function KpiCard({ label, value, accent, onClick, active }) {
   return (
-    <div onClick={onClick} style={{ flex:1, minWidth:80, padding:'12px 14px', borderRadius:10, background:active ? accent+'18' : '#fff', border:`1.5px solid ${active ? accent : T.slate[200]}`, cursor:'pointer', transition:'all .15s' }}>
-      <div style={{ fontSize:22, fontWeight:800, color:active ? accent : T.slate[800], lineHeight:1 }}>{value}</div>
-      <div style={{ fontSize:10, fontWeight:700, color:active ? accent : T.slate[500], marginTop:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
+    <div onClick={onClick} style={{ flex:1, minWidth:80, padding:'12px 14px', borderRadius:10, background:active?accent+'18':'#fff', border:`1.5px solid ${active?accent:T.slate[200]}`, cursor:'pointer', transition:'all .15s' }}>
+      <div style={{ fontSize:22, fontWeight:800, color:active?accent:T.slate[800], lineHeight:1 }}>{value}</div>
+      <div style={{ fontSize:10, fontWeight:700, color:active?accent:T.slate[500], marginTop:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
     </div>
   )
 }
@@ -188,33 +235,50 @@ function SectionDivider({ label }) {
 
 // ─── Application Form ─────────────────────────────────────────────────────────
 function AdmForm({ onSave, onCancel, editing }) {
-  const def = (k, fb='') => editing ? (editing[k] || fb) : fb
+  const def = (k, fb='') => editing ? (editing[k] ?? fb) : fb
   const [form, setForm] = useState({
-    name:      def('name'),
-    gcc:       def('gcc'),
-    dob:       def('dob'),
-    gender:    def('gender'),
-    blood:     def('blood'),
-    category:  def('category', '--'),
-    course:    def('course'),
-    subtype:   def('subtype'),
-    cls:       def('cls'),
-    house:     def('house'),
-    session:   def('session'),
-    hostel:    def('hostel', 'No'),
-    status:    def('status', 'Applied'),
-    father:    def('father'),
-    mother:    def('mother'),
-    phone:     def('phone'),
-    whatsapp:  def('whatsapp'),
-    prevSchool:def('prevSchool'),
-    address:   def('address'),
-    remarks:   def('remarks'),
-    docs:      editing?.docs || [],
+    name:       def('name'),
+    gcc:        def('gcc'),
+    dob:        def('dob'),
+    gender:     def('gender'),
+    blood:      def('blood'),
+    category:   def('category', '--'),
+    course:     def('course'),
+    subtype:    def('subtype'),
+    cls:        def('cls'),
+    house:      def('house'),
+    session:    def('session'),
+    hostel_type:def('hostel_type', 'Day Scholar'),  // ✅ three-way, default Day Scholar
+    status:     def('status', 'Applied'),
+    father:     def('father'),
+    mother:     def('mother'),
+    phone:      def('phone'),
+    whatsapp:   def('whatsapp'),
+    prevSchool: def('prevSchool'),
+    address:    def('address'),
+    remarks:    def('remarks'),
+    docs:       editing?.docs || [],
   })
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const toggleDoc = d => set('docs', form.docs.includes(d) ? form.docs.filter(x => x !== d) : [...form.docs, d])
   const subtypes  = COURSE_STRUCTURE[form.course]?.subtypes ?? []
+
+  // ✅ Auto-set hostel type when house changes
+  useEffect(() => {
+    if (!form.house) return
+    if (DAY_SCHOLAR_HOUSES.includes(form.house)) {
+      set('hostel_type', 'Day Scholar')
+    } else if (form.hostel_type === 'Day Scholar') {
+      // Only bump to Boarder if currently Day Scholar — don't override Day Boarder
+      set('hostel_type', 'Boarder')
+    }
+  }, [form.house])
+
+  const derivedHostelType = deriveHostelType(form.house, form.hostel_type)
+  const hs = HOSTEL_STYLES[derivedHostelType] || HOSTEL_STYLES['Day Scholar']
+  // ✅ Show flat fee rate in form
+  const flatRate = getFlatFeeAmt(derivedHostelType)
 
   return (
     <div style={{ background:'#fff', border:`1.5px solid ${T.violet[200]}`, borderRadius:14, overflow:'hidden', marginBottom:16 }}>
@@ -283,23 +347,42 @@ function AdmForm({ onSave, onCancel, editing }) {
               {SESSIONS.map(s=><option key={s}>{s}</option>)}
             </select>
           </FieldRow>
-          <FieldRow label="House">
+
+          {/* House drives hostel type */}
+          <FieldRow label="House / Block">
             <select style={styles.inp} value={form.house} onChange={e=>set('house',e.target.value)}>
               <option value="">— House —</option>
               {HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
             </select>
           </FieldRow>
-          <FieldRow label="Hostel">
-            <select style={styles.inp} value={form.hostel} onChange={e=>set('hostel',e.target.value)}>
-              <option value="No">Day Scholar</option>
-              <option value="Yes">Boarder</option>
+
+          {/* ✅ Three-way hostel type selector */}
+          <FieldRow label={`Hostel Type${form.house ? ' (auto)' : ''}`}>
+            <select
+              style={{
+                ...styles.inp,
+                background: form.house && DAY_SCHOLAR_HOUSES.includes(form.house) ? T.slate[50] : '#fff',
+                color: form.house && DAY_SCHOLAR_HOUSES.includes(form.house) ? T.slate[400] : T.slate[800],
+              }}
+              value={form.hostel_type}
+              onChange={e => set('hostel_type', e.target.value)}
+            >
+              {HOSTEL_TYPES.map(h => <option key={h} value={h}>{h}</option>)}
             </select>
           </FieldRow>
+
           <FieldRow label="Status">
             <select style={styles.inp} value={form.status} onChange={e=>set('status',e.target.value)}>
               {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
             </select>
           </FieldRow>
+        </div>
+
+        {/* ✅ Hostel type confirmation chip — shows type + flat fee rate */}
+        <div style={{ display:'inline-flex', alignItems:'center', gap:7, marginBottom:12, padding:'6px 14px', borderRadius:8, background:hs.bg, border:`1px solid ${hs.border}`, fontSize:12, fontWeight:700, color:hs.color }}>
+          {hs.icon} Will be saved as: <strong>{derivedHostelType}</strong>
+          <span style={{ fontWeight:400, color:T.slate[400] }}>·</span>
+          <span>Monthly flat fee: <strong>₹{fmt(flatRate)}</strong></span>
         </div>
 
         <SectionDivider label="Family & Contact" />
@@ -346,28 +429,46 @@ function AdmForm({ onSave, onCancel, editing }) {
 
 // ─── Application Card ─────────────────────────────────────────────────────────
 function AppCard({ a, cols, onEdit, onDelete, onAdmit, onEnroll, onOpenFee }) {
-  // cols keyed by adm_app_id which equals gcc_no (string)
   const gcc     = String(a.gcc || a.id)
   const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(gcc)) && col.fee_type === 'admission')
   const cs      = COURSE_STRUCTURE[a.course]
 
   let actionBtn = null
   if (a.status === 'Applied' || a.status === 'Under Review') {
-    actionBtn = <button onClick={e=>{e.stopPropagation();onAdmit(a.id)}} style={{ padding:'6px 14px', borderRadius:7, background:T.violet[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Admit</button>
+    actionBtn = (
+      <button onClick={e=>{e.stopPropagation();onAdmit(a.id)}}
+        style={{ padding:'6px 14px', borderRadius:7, background:T.violet[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+        Admit
+      </button>
+    )
   } else if (a.status === 'Admitted' && !admPaid) {
-    actionBtn = <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'6px 14px', borderRadius:7, background:T.amber[500], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Collect Fee</button>
+    actionBtn = (
+      <button onClick={e=>{e.stopPropagation();onOpenFee(a)}}
+        style={{ padding:'6px 14px', borderRadius:7, background:T.amber[500], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+        Collect Fee
+      </button>
+    )
   } else if (a.status === 'Admitted' && admPaid) {
     actionBtn = (
       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-        <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'5px 12px', borderRadius:7, background:T.amber[500], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Fee Account</button>
-        <button onClick={e=>{e.stopPropagation();onEnroll(a.id)}} style={{ padding:'5px 12px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Enroll</button>
+        <button onClick={e=>{e.stopPropagation();onOpenFee(a)}}
+          style={{ padding:'5px 12px', borderRadius:7, background:T.amber[500], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+          Fee Account
+        </button>
+        <button onClick={e=>{e.stopPropagation();onEnroll(a.id)}}
+          style={{ padding:'5px 12px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+          Enroll → Student
+        </button>
       </div>
     )
   } else if (a.status === 'Enrolled') {
     actionBtn = (
       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
         <span style={{ fontSize:11, color:T.emerald[600], fontWeight:700 }}>✓ Enrolled</span>
-        <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>+ Fee</button>
+        <button onClick={e=>{e.stopPropagation();onOpenFee(a)}}
+          style={{ padding:'4px 10px', borderRadius:6, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>
+          + Fee
+        </button>
       </div>
     )
   }
@@ -381,7 +482,7 @@ function AppCard({ a, cols, onEdit, onDelete, onAdmit, onEnroll, onOpenFee }) {
       <Avatar name={a.name} size={40} />
       <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => onOpenFee(a)}>
         <div style={{ fontWeight:800, fontSize:14, color:T.slate[900] }}>{a.name}</div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:3, fontSize:11.5, color:T.slate[500] }}>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:3, fontSize:11.5, color:T.slate[500], alignItems:'center' }}>
           {a.gcc   && <span style={{ fontFamily:'monospace' }}>#{a.gcc}</span>}
           {a.admNo && <span style={{ fontFamily:'monospace', color:T.indigo[500] }}>{a.admNo}</span>}
           {a.cls   && <span>{a.cls}</span>}
@@ -389,6 +490,14 @@ function AppCard({ a, cols, onEdit, onDelete, onAdmit, onEnroll, onOpenFee }) {
           {a.course && (
             <span style={{ color:cs?.color??T.slate[600], fontWeight:600, background:cs?.bg??T.slate[100], borderRadius:4, padding:'1px 6px', fontSize:11 }}>
               {a.course}{a.subtype ? ` · ${a.subtype}` : ''}
+            </span>
+          )}
+          {/* ✅ Three-way hostel badge */}
+          {a.hostel_type && <HostelTypeBadge type={a.hostel_type} />}
+          {/* ✅ Show flat fee rate on card */}
+          {a.hostel_type && (
+            <span style={{ fontSize:10, color:T.slate[400] }}>
+              ₹{fmt(getFlatFeeAmt(a.hostel_type))}/mo flat
             </span>
           )}
           {a.phone && <span>{a.phone}</span>}
@@ -407,7 +516,7 @@ function AppCard({ a, cols, onEdit, onDelete, onAdmit, onEnroll, onOpenFee }) {
         {actionBtn}
         <div style={{ display:'flex', gap:4, marginTop:2 }}>
           <button onClick={() => onEdit(a)} style={{ padding:'4px 10px', borderRadius:6, background:T.slate[50], color:T.slate[600], border:`1px solid ${T.slate[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
-          <button onClick={() => onDelete(a.id)} style={{ padding:'4px 10px', borderRadius:6, background:'#FFF1F2', color:T.rose[600], border:`1px solid #FFE4E6`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
+          <button onClick={() => onDelete(a.id)} style={{ padding:'4px 10px', borderRadius:6, background:'#FFF1F2', color:T.rose[600], border:'1px solid #FFE4E6', fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
         </div>
       </div>
     </div>
@@ -416,15 +525,15 @@ function AppCard({ a, cols, onEdit, onDelete, onAdmit, onEnroll, onOpenFee }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Admissions() {
-  const [apps,       setApps]       = useState([])
-  const [cols,       setCols]       = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [search,     setSearch]     = useState('')
+  const [apps,         setApps]     = useState([])
+  const [cols,         setCols]     = useState([])
+  const [loading,      setLoading]  = useState(true)
+  const [search,       setSearch]   = useState('')
   const [filterStatus, setFilter]   = useState('All')
-  const [formOpen,   setFormOpen]   = useState(false)
-  const [editing,    setEditing]    = useState(null)
-  const [feePanel,   setFeePanel]   = useState(null)
-  const [toast,      setToast]      = useState(null)
+  const [formOpen,     setFormOpen] = useState(false)
+  const [editing,      setEditing]  = useState(null)
+  const [feePanel,     setFeePanel] = useState(null)
+  const [toast,        setToast]    = useState(null)
 
   const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
@@ -444,14 +553,19 @@ export default function Admissions() {
   const handleSave = async (eid, obj) => {
     if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return }
     if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return }
+
+    const dbRow = mapToDB(obj)
+
     if (eid) {
-      const { error } = await supabase.from('admissions').update(mapToDB(obj)).eq('gcc_no', parseInt(eid))
+      const { error } = await supabase.from('admissions').update(dbRow).eq('gcc_no', parseInt(eid))
       if (error) { showToast('Update failed: ' + error.message, T.rose[600]); return }
-      setApps(prev => prev.map(a => String(a.id) === String(eid) ? { ...a, ...obj, id: parseInt(eid) } : a))
+      setApps(prev => prev.map(a => String(a.id) === String(eid)
+        ? { ...a, ...obj, id: parseInt(eid), hostel_type: dbRow.hostel_type }
+        : a
+      ))
       showToast('Application updated', T.amber[600])
     } else {
-      const row = mapToDB(obj)
-      const { data, error } = await supabase.from('admissions').insert(row).select().single()
+      const { data, error } = await supabase.from('admissions').insert(dbRow).select().single()
       if (error) {
         if (error.code === '23505') showToast(`GCC No. ${obj.gcc} already exists`, T.rose[600])
         else showToast('Save failed: ' + error.message, T.rose[600])
@@ -459,7 +573,7 @@ export default function Admissions() {
       }
       const newApp = mapFromDB(data)
       setApps(prev => [newApp, ...prev])
-      showToast(`Saved! Adm. No: ${newApp.admNo}`, T.violet[600])
+      showToast(`Saved! Adm. No: ${newApp.admNo} · ${newApp.hostel_type} · ₹${fmt(getFlatFeeAmt(newApp.hostel_type))}/mo`, T.violet[600])
     }
     setFormOpen(false); setEditing(null)
   }
@@ -472,16 +586,41 @@ export default function Admissions() {
     showToast('Marked as Admitted', T.violet[600])
   }
 
+  // ✅ Auto-promotes to student record on enroll
   const handleEnroll = async id => {
     const a = apps.find(x => String(x.id) === String(id))
     if (!a) return
-    const admPaid = cols.some(c => String(parseInt(c.adm_app_id)) === String(parseInt(a.gcc || a.id)) && c.fee_type === 'admission')
-    if (!admPaid) { showToast('⚠ Collect admission fee first', T.rose[600]); setFeePanel(a); return }
-    if (!confirm(`Enroll ${a.name} as a student?`)) return
-    const { error } = await supabase.from('admissions').update({ status: 'Enrolled' }).eq('gcc_no', parseInt(id))
-    if (error) { showToast('Enroll failed: ' + error.message, T.rose[600]); return }
-    setApps(prev => prev.map(x => String(x.id) === String(id) ? { ...x, status: 'Enrolled' } : x))
-    showToast(`${a.name} enrolled!`, T.emerald[600])
+
+    const admPaid = cols.some(c =>
+      String(parseInt(c.adm_app_id)) === String(parseInt(a.gcc || a.id)) &&
+      c.fee_type === 'admission'
+    )
+    if (!admPaid) {
+      showToast('⚠ Collect admission fee first', T.rose[600])
+      setFeePanel(a)
+      return
+    }
+    if (!confirm(`Enroll ${a.name} as a student? This will create their student record.`)) return
+
+    try {
+      const { error: admErr } = await supabase
+        .from('admissions')
+        .update({ status: 'Enrolled' })
+        .eq('gcc_no', parseInt(id))
+      if (admErr) throw admErr
+
+      const { created } = await promoteToStudent(a)
+
+      setApps(prev => prev.map(x => String(x.id) === String(id) ? { ...x, status: 'Enrolled' } : x))
+      showToast(
+        created
+          ? `✅ ${a.name} enrolled & student record created!`
+          : `✅ ${a.name} enrolled (student record already existed)`,
+        T.emerald[600]
+      )
+    } catch (err) {
+      showToast('Enroll failed: ' + err.message, T.rose[600])
+    }
   }
 
   const handleDelete = async id => {
@@ -500,7 +639,7 @@ export default function Admissions() {
   const filtered = apps.filter(a => {
     const sm = filterStatus === 'All' || a.status === filterStatus
     const q  = search.toLowerCase()
-    const tm = !q || [a.name, a.phone, a.admNo, a.gcc, a.cls, a.house, a.father, a.course].some(f => f?.toString().toLowerCase().includes(q))
+    const tm = !q || [a.name, a.phone, a.admNo, a.gcc, a.cls, a.house, a.father, a.course, a.hostel_type].some(f => f?.toString().toLowerCase().includes(q))
     return sm && tm
   })
 
@@ -522,7 +661,13 @@ export default function Admissions() {
       )}
 
       <div style={{ padding:'0 24px 32px', fontFamily:'system-ui,sans-serif', background:T.slate[50], minHeight:'100vh' }}>
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } } select:focus, input:focus, textarea:focus { border-color: ${T.indigo[400]} !important; box-shadow: 0 0 0 3px ${T.indigo[100]}; }`}</style>
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg) } }
+          select:focus, input:focus, textarea:focus {
+            border-color: ${T.indigo[400]} !important;
+            box-shadow: 0 0 0 3px ${T.indigo[100]};
+          }
+        `}</style>
 
         {toast && <Toast msg={toast.msg} color={toast.color} />}
 
@@ -531,13 +676,19 @@ export default function Admissions() {
           <div>
             <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:T.slate[400], marginBottom:5 }}>GNSI Portal</div>
             <div style={{ fontSize:26, fontWeight:800, color:T.slate[900], letterSpacing:'-.03em', lineHeight:1.1 }}>Admissions</div>
-            <div style={{ fontSize:13, color:T.slate[500], marginTop:5, display:'flex', gap:6, alignItems:'center' }}>
-              {['Applied','Under Review','Admitted','Fee Collection','Enrolled'].map((s, i, arr) => (
+            <div style={{ fontSize:13, color:T.slate[500], marginTop:5, display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+              {['Applied','Under Review','Admitted','Fee Collection','Enrolled → Student'].map((s, i, arr) => (
                 <span key={s} style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <span style={{ fontWeight:600, color:[T.indigo[600],T.amber[600],T.violet[600],T.amber[500],T.emerald[600]][i] }}>{s}</span>
                   {i < arr.length - 1 && <span style={{ color:T.slate[300] }}>›</span>}
                 </span>
               ))}
+            </div>
+            {/* ✅ Flat fee rate reference */}
+            <div style={{ marginTop:8, display:'flex', gap:12, fontSize:11, color:T.slate[400] }}>
+              <span>🏠 Boarder: <strong style={{ color:T.emerald[600] }}>₹5,500/mo</strong></span>
+              <span>🌅 Day Boarder: <strong style={{ color:T.amber[600] }}>₹4,000/mo</strong></span>
+              <span>🏫 Day Scholar: <strong style={{ color:T.slate[500] }}>₹2,000/mo</strong></span>
             </div>
           </div>
           <button onClick={() => { setEditing(null); setFormOpen(true) }}
@@ -555,13 +706,19 @@ export default function Admissions() {
         </div>
 
         {formOpen && (
-          <AdmForm onSave={handleSave} onCancel={() => { setFormOpen(false); setEditing(null) }} editing={editing} />
+          <AdmForm
+            onSave={handleSave}
+            onCancel={() => { setFormOpen(false); setEditing(null) }}
+            editing={editing}
+          />
         )}
 
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', marginBottom:14 }}>
           <div style={{ flex:1, minWidth:220, position:'relative' }}>
             <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:T.slate[400], fontSize:14 }}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, GCC, house, class…" style={{ ...styles.inp, paddingLeft:36 }} />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search name, phone, GCC, house, hostel type…"
+              style={{ ...styles.inp, paddingLeft:36 }} />
           </div>
           <select value={filterStatus} onChange={e => setFilter(e.target.value)} style={{ ...styles.inp, width:'auto', minWidth:140 }}>
             <option value="All">All Status</option>
@@ -595,7 +752,8 @@ export default function Admissions() {
               {apps.length === 0 ? 'Click "+ New Application" to add your first applicant.' : 'Try adjusting your search or clearing the filter.'}
             </p>
             {apps.length === 0 && (
-              <button onClick={() => setFormOpen(true)} style={{ padding:'10px 22px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
+              <button onClick={() => setFormOpen(true)}
+                style={{ padding:'10px 22px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
                 + New Application
               </button>
             )}

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 
-// ─── Role config ───────────────────────────────────────────────
 const ADMIN_MODULES = [
   { key: 'dashboard', icon: '⊞', label: 'Dashboard' },
   { key: 'students', icon: '🎓', label: 'Students' },
@@ -48,11 +47,9 @@ const USER_MODULES = [
   { key: 'courses', icon: '📊', label: 'Courses' },
 ]
 
-// ─── Helpers ───────────────────────────────────────────────────
 const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN')
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0)
 
-// ─── Stat Card ─────────────────────────────────────────────────
 function StatCard({ icon, label, value, sub, trend, accent }) {
   const accents = {
     blue:   { bg: '#eff6ff', border: '#1e3a5f', text: '#1e3a5f' },
@@ -96,7 +93,6 @@ function StatCard({ icon, label, value, sub, trend, accent }) {
   )
 }
 
-// ─── Section Header ────────────────────────────────────────────
 function SectionHeader({ title, sub }) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -106,7 +102,6 @@ function SectionHeader({ title, sub }) {
   )
 }
 
-// ─── Table Card ────────────────────────────────────────────────
 function TableCard({ title, sub, cols, rows, emptyMsg }) {
   return (
     <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,.06)', overflow: 'hidden' }}>
@@ -153,7 +148,6 @@ function Badge({ status }) {
   )
 }
 
-// ─── Progress Ring ─────────────────────────────────────────────
 function Ring({ value, max, color, label, size = 80 }) {
   const r = 30
   const circ = 2 * Math.PI * r
@@ -172,7 +166,6 @@ function Ring({ value, max, color, label, size = 80 }) {
   )
 }
 
-// ─── Placeholder page ──────────────────────────────────────────
 function PlaceholderPage({ module }) {
   return (
     <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
@@ -183,66 +176,157 @@ function PlaceholderPage({ module }) {
   )
 }
 
+function LiveIndicator() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
+      <span style={{
+        width: 8, height: 8, borderRadius: '50%', background: '#16a34a',
+        animation: 'pulse 2s infinite', display: 'inline-block'
+      }} />
+      LIVE
+      <style>{`
+        @keyframes pulse {
+          0% { opacity: 1; box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+          70% { opacity: 1; box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+          100% { opacity: 1; box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ─── DEBUG PANEL ──────────────────────────────────────────────
+function DebugPanel({ logs }) {
+  if (!logs.length) return null
+  return (
+    <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, marginBottom: 20, fontFamily: 'monospace', fontSize: 12, color: '#e2e8f0', maxHeight: 300, overflowY: 'auto' }}>
+      <h4 style={{ margin: '0 0 10px', color: '#fbbf24', fontSize: 13 }}>🔍 Debug Console — Check your browser console too (F12)</h4>
+      {logs.map((log, i) => (
+        <div key={i} style={{ marginBottom: 6, padding: '4px 8px', background: '#0f172a', borderRadius: 4, borderLeft: `3px solid ${log.error ? '#ef4444' : '#22c55e'}` }}>
+          <span style={{ color: '#94a3b8' }}>[{log.table}]</span> {' '}
+          <span style={{ color: log.error ? '#ef4444' : '#22c55e' }}>
+            {log.error ? `❌ ERROR: ${log.error}` : `✅ ${log.count} rows`}
+          </span>
+          {log.sample && <div style={{ color: '#64748b', marginTop: 2, fontSize: 10 }}>Sample: {JSON.stringify(log.sample).slice(0, 120)}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────
 function AdminDashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [liveUpdate, setLiveUpdate] = useState(false)
+  const [debugLogs, setDebugLogs] = useState([])
 
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    const tables = ['students', 'fees', 'attendance', 'admissions', 'exams', 'staff', 'salary', 'leave']
+    const channels = tables.map(table => 
+      supabase
+        .channel(`admin-${table}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+          console.log(`[LIVE] ${table} changed:`, payload)
+          setLiveUpdate(true)
+          load()
+          setTimeout(() => setLiveUpdate(false), 2000)
+        })
+        .subscribe()
+    )
+    return () => { channels.forEach(channel => supabase.removeChannel(channel)) }
+  }, [])
+
+  const logDebug = (table, result) => {
+    const entry = {
+      table,
+      count: result.data?.length ?? result.count ?? 0,
+      error: result.error?.message,
+      sample: result.data?.[0] || null,
+    }
+    setDebugLogs(prev => [entry, ...prev].slice(0, 20))
+    if (result.error) console.error(`[${table}] ERROR:`, result.error)
+    else console.log(`[${table}] loaded:`, entry.count, 'rows. Sample:', entry.sample)
+  }
+
   const load = async () => {
     setLoading(true)
+    setDebugLogs([])
     try {
       const today = new Date().toLocaleDateString('en-CA')
 
-      const [students, fees, attendance, admissions, exams, staff, recentStudents,
-        recentAdmissions, recentFees, salary, leave] = await Promise.all([
-        supabase.from('students').select('*', { count: 'exact', head: true }),
-        supabase.from('fees').select('amount,paid'),
-        supabase.from('attendance').select('status'),
-        supabase.from('admissions').select('*'),
-        supabase.from('exams').select('*', { count: 'exact', head: true }),
-        supabase.from('staff').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('students').select('id,name,class_name,course,created_at').order('created_at', { ascending: false }).limit(6),
-        supabase.from('admissions').select('id,name,class_name,status,created_at').order('created_at', { ascending: false }).limit(6),
-        supabase.from('fees').select('id,student_id,amount,paid,due_date').order('due_date', { ascending: true }).limit(6),
-        supabase.from('salary').select('amount,status'),
-        supabase.from('leave').select('status'),
-      ])
+      // Run queries individually so we can debug each one
+      const studentsRes = await supabase.from('students').select('*', { count: 'exact', head: true })
+      logDebug('students', studentsRes)
+
+      const feesRes = await supabase.from('fees').select('amount,paid')
+      logDebug('fees', feesRes)
+
+      const attendanceRes = await supabase.from('attendance').select('status')
+      logDebug('attendance', attendanceRes)
+
+      const admissionsRes = await supabase.from('admissions').select('*')
+      logDebug('admissions', admissionsRes)
+
+      const examsRes = await supabase.from('exams').select('*', { count: 'exact', head: true })
+      logDebug('exams', examsRes)
+
+      const staffRes = await supabase.from('staff').select('*', { count: 'exact', head: true }).eq('status', 'active')
+      logDebug('staff', staffRes)
+
+      const recentStudentsRes = await supabase.from('students').select('id,name,class_name,course,created_at').order('created_at', { ascending: false }).limit(6)
+      logDebug('recentStudents', recentStudentsRes)
+
+      const recentAdmissionsRes = await supabase.from('admissions').select('id,name,class_name,status,created_at').order('created_at', { ascending: false }).limit(6)
+      logDebug('recentAdmissions', recentAdmissionsRes)
+
+      const recentFeesRes = await supabase.from('fees').select('id,student_id,amount,paid,due_date').order('due_date', { ascending: true }).limit(6)
+      logDebug('recentFees', recentFeesRes)
+
+      const salaryRes = await supabase.from('salary').select('amount,status')
+      logDebug('salary', salaryRes)
+
+      const leaveRes = await supabase.from('leave').select('status')
+      logDebug('leave', leaveRes)
 
       let feeCollected = 0, feePending = 0
-      ;(fees.data || []).forEach(f => {
+      ;(feesRes.data || []).forEach(f => {
         feeCollected += Number(f.paid || 0)
         feePending   += Number(f.amount || 0) - Number(f.paid || 0)
       })
 
       let salaryPaid = 0, salaryPending = 0
-      ;(salary.data || []).forEach(s => {
+      ;(salaryRes.data || []).forEach(s => {
         if (s.status === 'Paid') salaryPaid += Number(s.amount || 0)
         else salaryPending += Number(s.amount || 0)
       })
 
-      const presentCount = (attendance.data || []).filter(a => a.status === 'Present').length
-      const totalAtt = (attendance.data || []).length
-      const pendingAdm = (admissions.data || []).filter(a => a.status === 'Pending').length
-      const approvedAdm = (admissions.data || []).filter(a => a.status === 'Approved').length
-      const pendingLeave = (leave.data || []).filter(l => l.status === 'Pending').length
+      const presentCount = (attendanceRes.data || []).filter(a => a.status === 'Present').length
+      const totalAtt = (attendanceRes.data || []).length
+      const pendingAdm = (admissionsRes.data || []).filter(a => a.status === 'Pending').length
+      const approvedAdm = (admissionsRes.data || []).filter(a => a.status === 'Approved').length
+      const pendingLeave = (leaveRes.data || []).filter(l => l.status === 'Pending').length
 
       setData({
-        totalStudents: students.count ?? 0,
-        totalStaff: staff.count ?? 0,
-        totalExams: exams.count ?? 0,
+        totalStudents: studentsRes.count ?? 0,
+        totalStaff: staffRes.count ?? 0,
+        totalExams: examsRes.count ?? 0,
         feeCollected, feePending,
         presentCount, totalAtt,
         pendingAdm, approvedAdm,
-        totalAdm: (admissions.data || []).length,
+        totalAdm: (admissionsRes.data || []).length,
         salaryPaid, salaryPending,
         pendingLeave,
-        recentStudents: recentStudents.data || [],
-        recentAdmissions: recentAdmissions.data || [],
-        recentFees: recentFees.data || [],
+        recentStudents: recentStudentsRes.data || [],
+        recentAdmissions: recentAdmissionsRes.data || [],
+        recentFees: recentFeesRes.data || [],
       })
-    } catch (e) { console.error(e) }
+    } catch (e) { 
+      console.error('Load error:', e) 
+      setDebugLogs(prev => [{ table: 'SYSTEM', error: e.message, count: 0 }, ...prev])
+    }
     setLoading(false)
   }
 
@@ -259,14 +343,13 @@ function AdminDashboard() {
     { icon: '🏫', label: 'Present Today',     value: data.presentCount,           sub: `of ${data.totalAtt} tracked`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
     { icon: '📋', label: 'New Admissions',    value: data.pendingAdm,             sub: 'Awaiting approval',   accent: 'pink'   },
     { icon: '📝', label: 'Total Exams',       value: data.totalExams,             sub: 'Scheduled',           accent: 'cyan'   },
-    { icon: '👨‍🏫', label: 'Total Staff',       value: data.totalStaff,             sub: 'Total staff', accent: 'teal' },
+    { icon: '👨‍🏫', label: 'Total Staff',       value: data.totalStaff,             sub: 'Active staff',        accent: 'teal' },
     { icon: '💵', label: 'Salary Paid',       value: fmt(data.salaryPaid),        sub: 'Disbursed this month', accent: 'indigo' },
     { icon: '🏖️', label: 'Leave Requests',    value: data.pendingLeave,           sub: 'Pending approval',    accent: 'orange' },
   ]
 
   return (
     <div style={{ padding: '24px 28px' }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>🏠 Admin Dashboard</h1>
@@ -274,17 +357,21 @@ function AdminDashboard() {
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <button onClick={load} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-          🔄 Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {liveUpdate && <LiveIndicator />}
+          <button onClick={load} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Stats Grid */}
+      {/* DEBUG PANEL — Remove after fixing */}
+      <DebugPanel logs={debugLogs} />
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 28 }}>
         {statCards.map(c => <StatCard key={c.label} {...c} />)}
       </div>
 
-      {/* Progress Overview */}
       <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,.06)', padding: '18px 24px', marginBottom: 28 }}>
         <SectionHeader title="📊 Live Progress Overview" sub="Real-time computed metrics" />
         <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 16 }}>
@@ -296,7 +383,6 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* Tables Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         <TableCard
           title="👨‍🎓 Recent Students" sub="Last 6 enrolled"
@@ -342,7 +428,6 @@ function AdminDashboard() {
         })}
       />
 
-      {/* Quick Actions */}
       <div style={{ marginTop: 24, background: '#fff', borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,.06)', padding: '18px 24px' }}>
         <SectionHeader title="⚡ Quick Actions" sub="One-click admin shortcuts" />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
@@ -375,13 +460,29 @@ function AdminDashboard() {
 function UserDashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [liveUpdate, setLiveUpdate] = useState(false)
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    const tables = ['attendance', 'exams', 'fees', 'leave', 'notices', 'timetable']
+    const channels = tables.map(table => 
+      supabase
+        .channel(`user-${table}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+          console.log(`[LIVE] ${table} changed:`, payload)
+          setLiveUpdate(true)
+          load()
+          setTimeout(() => setLiveUpdate(false), 2000)
+        })
+        .subscribe()
+    )
+    return () => { channels.forEach(channel => supabase.removeChannel(channel)) }
+  }, [])
 
   const load = async () => {
     setLoading(true)
     try {
-      const today = new Date().toLocaleDateString('en-CA')
       const [attendance, exams, fees, leave, notices, timetable] = await Promise.all([
         supabase.from('attendance').select('status,date').order('date', { ascending: false }).limit(30),
         supabase.from('exams').select('*').order('date', { ascending: true }).limit(5),
@@ -435,9 +536,12 @@ function UserDashboard() {
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <button onClick={load} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-          🔄 Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {liveUpdate && <LiveIndicator />}
+          <button onClick={load} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 28 }}>
@@ -445,7 +549,6 @@ function UserDashboard() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-        {/* Upcoming Exams */}
         <TableCard
           title="📝 Upcoming Exams" sub="Next scheduled exams"
           cols={['Subject', 'Date', 'Time']}
@@ -458,7 +561,6 @@ function UserDashboard() {
             </tr>
           ))}
         />
-        {/* Leave Requests */}
         <TableCard
           title="🏖️ My Leave Requests" sub="Recent applications"
           cols={['Type', 'From', 'To', 'Status']}
@@ -475,7 +577,6 @@ function UserDashboard() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        {/* Fee Status */}
         <TableCard
           title="💰 My Fee Status" sub="Upcoming dues"
           cols={['Amount', 'Paid', 'Due Date', 'Status']}
@@ -492,7 +593,6 @@ function UserDashboard() {
             )
           })}
         />
-        {/* Notices */}
         <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 10px rgba(0,0,0,.06)', overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9' }}>
             <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1e3a5f', margin: 0 }}>🔔 Recent Notices</h3>
@@ -511,7 +611,6 @@ function UserDashboard() {
         </div>
       </div>
 
-      {/* Timetable */}
       {data.timetable.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <TableCard
@@ -542,13 +641,11 @@ function Sidebar({ modules, active, onSelect, role, onRoleSwitch }) {
       display: 'flex', flexDirection: 'column', height: '100vh',
       position: 'sticky', top: 0, overflowY: 'auto'
     }}>
-      {/* Logo */}
       <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' }}>
         <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-.02em' }}>🏫 EduERP</div>
         <div style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>School Management System</div>
       </div>
 
-      {/* Role badge */}
       <div style={{ padding: '10px 16px', borderBottom: '1px solid #1e293b' }}>
         <div style={{ display: 'flex', gap: 6 }}>
           {['Admin', 'User'].map(r => (
@@ -562,7 +659,6 @@ function Sidebar({ modules, active, onSelect, role, onRoleSwitch }) {
         </div>
       </div>
 
-      {/* Nav items */}
       <nav style={{ flex: 1, padding: '8px 0' }}>
         {modules.map(m => (
           <button key={m.key} onClick={() => onSelect(m.key)} style={{
@@ -583,7 +679,6 @@ function Sidebar({ modules, active, onSelect, role, onRoleSwitch }) {
         ))}
       </nav>
 
-      {/* Bottom */}
       <div style={{ padding: '12px 16px', borderTop: '1px solid #1e293b', fontSize: 11, color: '#475569' }}>
         © {new Date().getFullYear()} EduERP
       </div>

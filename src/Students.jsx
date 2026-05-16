@@ -1,17 +1,24 @@
 // Students.jsx
+// ─────────────────────────────────────────────────────────────────────────────
+//  ✅ Fixed: Day Boarder added to stats row
+//  ✅ Fixed: hostel type shown as colored badge everywhere (table, card, drawer)
+//  ✅ Fixed: flat fee rate shown in profile drawer and card
+//  ✅ Fixed: FeeCollectionModal receives correct hostel_type for flat fee rate
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
+import { getFlatFeeAmt } from './shared/feeHelpers'
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const COURSES      = ['All', 'Sainik', 'Navodaya', 'Foundation', 'Combined Course']
 const HOSTEL_TYPES = ['All', 'Boarder', 'Day Scholar', 'Day Boarder']
 const STATUSES     = ['All', 'Active', 'Inactive', 'Passed Out', 'Withdrawn']
 const GENDERS      = ['All', 'Male', 'Female']
 
-// House colors keyed by actual house names from DB
 const HOUSE_COLORS = {
   KOMBIREI:  '#1d4ed8',
   KANGLA:    '#dc2626',
@@ -30,18 +37,38 @@ const STATUS_COLORS = {
   Withdrawn:    { bg: '#fef2f2', text: '#991b1b', border: '#fca5a5' },
 }
 
-const fmt      = n    => Number(n || 0).toLocaleString('en-IN')
+// ✅ Hostel type badge styles — all three types
+const HOSTEL_STYLES = {
+  'Boarder':     { bg: '#dcfce7', color: '#166534', border: '#86efac', icon: '🏠' },
+  'Day Boarder': { bg: '#fef3c7', color: '#92400e', border: '#fde68a', icon: '🌅' },
+  'Day Scholar': { bg: '#f1f5f9', color: '#475569', border: '#e2e8f0', icon: '🏫' },
+}
+
+const fmt     = n    => Number(n || 0).toLocaleString('en-IN')
 const AVATAR_BG = ['#1e3a5f','#4f46e5','#059669','#7c3aed','#0891b2','#d97706','#dc2626']
 const avatarBg  = name => AVATAR_BG[(name?.charCodeAt(0) || 0) % AVATAR_BG.length]
 const initials  = name => (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ─── Hostel Type Badge ────────────────────────────────────────────────────────
+
+function HostelBadge({ type, showRate = false }) {
+  if (!type) return <span style={{ color: '#94a3b8', fontSize: 12 }}>—</span>
+  const s = HOSTEL_STYLES[type] || HOSTEL_STYLES['Day Scholar']
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.color, border: `1px solid ${s.border}`, whiteSpace: 'nowrap' }}>
+      {s.icon} {type}
+      {showRate && <span style={{ fontWeight: 500, opacity: .8 }}>· ₹{fmt(getFlatFeeAmt(type))}/mo</span>}
+    </span>
+  )
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const S = {
   page:      { minHeight: '100vh', background: '#f7f6f2', fontFamily: "'Satoshi','Inter',sans-serif", padding: 0 },
   topBar:    { background: 'white', borderBottom: '1px solid #e2e8f0', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, position: 'sticky', top: 0, zIndex: 100 },
   content:   { padding: '20px 24px', maxWidth: 1400, margin: '0 auto' },
-  statsRow:  { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12, marginBottom: 20 },
+  statsRow:  { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 12, marginBottom: 20 },
   statCard:  { background: 'white', borderRadius: 12, padding: '14px 16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,.04)' },
   filtersRow:{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' },
   filterSelect: { padding: '7px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, fontFamily: 'inherit', background: 'white', outline: 'none', cursor: 'pointer', minWidth: 130 },
@@ -63,7 +90,7 @@ const S = {
   drawer:        { width: 'min(480px,96vw)', height: '100%', background: 'white', boxShadow: '-8px 0 40px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
 }
 
-// ─── Skeleton ────────────────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 const SkeletonRow = () => (
   <tr>
@@ -75,16 +102,20 @@ const SkeletonRow = () => (
   </tr>
 )
 
-// ─── Profile Drawer ──────────────────────────────────────────────────────────
+// ─── Profile Drawer ───────────────────────────────────────────────────────────
 
 function ProfileDrawer({ student, onClose, onCollectFee }) {
   if (!student) return null
-  const field = (label, value) => (
+
+  const field = (label, value, isNode = false) => (
     <div style={{ display:'flex', flexDirection:'column', gap:2, marginBottom:14 }}>
       <span style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em' }}>{label}</span>
-      <span style={{ fontSize:14, color:'#1e293b', fontWeight:500 }}>{value||'—'}</span>
+      {isNode ? value : <span style={{ fontSize:14, color:'#1e293b', fontWeight:500 }}>{value||'—'}</span>}
     </div>
   )
+
+  const flatRate = getFlatFeeAmt(student.hostel_type)
+
   return createPortal(
     <div style={S.drawerOverlay} onClick={onClose}>
       <div style={S.drawer} onClick={e=>e.stopPropagation()}>
@@ -102,7 +133,18 @@ function ProfileDrawer({ student, onClose, onCollectFee }) {
             {student.admission_no && <span style={{ fontSize:12, color:'#64748b', fontWeight:600 }}>{student.admission_no}</span>}
             {student.status && <span style={S.badge(student.status)}>{student.status}</span>}
           </div>
-          <button type="button" onClick={()=>onCollectFee(student)} style={{ marginTop:14, width:'100%', padding:'10px', borderRadius:9, border:'none', background:'#1e3a5f', color:'white', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+
+          {/* ✅ Flat fee rate shown in drawer header */}
+          {student.hostel_type && (
+            <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#f8fafc', borderRadius:8, border:'1px solid #e2e8f0' }}>
+              <HostelBadge type={student.hostel_type} />
+              <span style={{ fontSize:12, color:'#64748b' }}>
+                Monthly flat fee: <strong style={{ color: HOSTEL_STYLES[student.hostel_type]?.color || '#334155' }}>₹{fmt(flatRate)}</strong>
+              </span>
+            </div>
+          )}
+
+          <button type="button" onClick={()=>onCollectFee(student)} style={{ marginTop:12, width:'100%', padding:'10px', borderRadius:9, border:'none', background:'#1e3a5f', color:'white', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             💰 Collect Fee
           </button>
         </div>
@@ -113,7 +155,8 @@ function ProfileDrawer({ student, onClose, onCollectFee }) {
             {field('Batch / Class', student.batch)}
             {field('Session', student.session)}
             {field('House', student.house)}
-            {field('Hostel Type', student.hostel_type)}
+            {/* ✅ Hostel type as badge in drawer */}
+            {field('Hostel Type', <HostelBadge type={student.hostel_type} showRate />, true)}
             {field('Gender', student.gender)}
           </div>
           <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12, paddingBottom:6, borderBottom:'1px solid #f1f5f9', marginTop:4 }}>Personal Info</div>
@@ -153,7 +196,7 @@ function ProfileDrawer({ student, onClose, onCollectFee }) {
   )
 }
 
-// ─── Add / Edit Student Modal ────────────────────────────────────────────────
+// ─── Add / Edit Student Modal ─────────────────────────────────────────────────
 
 function StudentFormModal({ student, onClose, onSaved, houseOptions = [] }) {
   const isEdit = !!student?.id
@@ -189,12 +232,14 @@ function StudentFormModal({ student, onClose, onSaved, houseOptions = [] }) {
   const lbl = { fontSize:12, fontWeight:600, color:'#64748b', display:'block', marginBottom:4 }
   const grp = { marginBottom:14 }
 
+  const flatRate = getFlatFeeAmt(form.hostel_type)
+  const hs = HOSTEL_STYLES[form.hostel_type] || HOSTEL_STYLES['Day Scholar']
+
   return createPortal(
     <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.6)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(4px)' }} onClick={onClose}>
       <div style={{ width:'min(620px,96vw)', background:'white', borderRadius:18, boxShadow:'0 32px 80px rgba(0,0,0,.25)', overflow:'hidden', display:'flex', flexDirection:'column', maxHeight:'90vh' }} onClick={e=>e.stopPropagation()}>
         <div style={{ height:4, background:'linear-gradient(90deg,#1e3a5f,#4f46e5)' }} />
 
-        {/* Header */}
         <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
             <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.1em' }}>{isEdit?'Edit Student':'Add New Student'}</div>
@@ -203,7 +248,6 @@ function StudentFormModal({ student, onClose, onSaved, houseOptions = [] }) {
           <button type="button" onClick={onClose} style={{ width:30, height:30, borderRadius:8, border:'1px solid #e2e8f0', background:'#f8fafc', cursor:'pointer', fontSize:18, color:'#64748b', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
 
-        {/* Body */}
         <div style={{ flex:1, overflowY:'auto', padding:'18px 22px' }}>
           {err && <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:9, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#b91c1c', fontWeight:600 }}>❌ {err}</div>}
 
@@ -255,6 +299,11 @@ function StudentFormModal({ student, onClose, onSaved, houseOptions = [] }) {
             </div>
           </div>
 
+          {/* ✅ Flat fee rate confirmation in form */}
+          <div style={{ marginBottom:14, padding:'8px 14px', borderRadius:8, background:hs.bg, border:`1px solid ${hs.border}`, display:'inline-flex', alignItems:'center', gap:8, fontSize:12, fontWeight:700, color:hs.color }}>
+            {hs.icon} {form.hostel_type} · Monthly flat fee: <strong>₹{fmt(flatRate)}</strong>
+          </div>
+
           <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12, marginTop:6 }}>Family & Contact</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 14px' }}>
             <div style={grp}><label style={lbl}>Father's Name</label><input value={form.father_name} onChange={e=>set('father_name',e.target.value)} style={inp} /></div>
@@ -265,7 +314,6 @@ function StudentFormModal({ student, onClose, onSaved, houseOptions = [] }) {
           <div style={grp}><label style={lbl}>Remarks</label><textarea value={form.remarks} onChange={e=>set('remarks',e.target.value)} rows={2} placeholder="Any special notes" style={{ ...inp, resize:'vertical' }} /></div>
         </div>
 
-        {/* Footer */}
         <div style={{ padding:'14px 22px', borderTop:'1px solid #f1f5f9', background:'#f8fafc', display:'flex', gap:10, justifyContent:'flex-end' }}>
           <button type="button" onClick={onClose} style={S.btnGhost}>Cancel</button>
           <button type="button" onClick={save} disabled={saving} style={{ ...S.btnPrimary, opacity:saving?.7:1, cursor:saving?'not-allowed':'pointer' }}>
@@ -278,12 +326,12 @@ function StudentFormModal({ student, onClose, onSaved, houseOptions = [] }) {
   )
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Students() {
 
   const [students,     setStudents]     = useState([])
-  const [houseOptions, setHouseOptions] = useState(['All'])   // ← loaded from DB
+  const [houseOptions, setHouseOptions] = useState(['All'])
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
 
@@ -304,7 +352,6 @@ export default function Students() {
   const [formModal, setFormModal] = useState(null)
   const searchRef = useRef(null)
 
-  // ── Load ────────────────────────────────────────────────────────────────
   const loadStudents = useCallback(async () => {
     setLoading(true); setError(null)
     try {
@@ -318,9 +365,7 @@ export default function Students() {
     } catch (err) {
       setError(err.message || 'Failed to load students.')
       setStudents([])
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { loadStudents() }, [loadStudents])
@@ -331,16 +376,15 @@ export default function Students() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // ── Filter + sort ────────────────────────────────────────────────────────
   const filtered = students
     .filter(s => {
       const q = search.toLowerCase()
       if (q && ![s.name,s.gcc_no,s.student_code,s.admission_no,s.father_name,s.batch].some(v=>v?.toLowerCase().includes(q))) return false
-      if (filterCourse!=='All' && s.course!==filterCourse) return false
-      if (filterHouse !=='All' && s.house !==filterHouse)  return false
-      if (filterHostel!=='All' && s.hostel_type!==filterHostel) return false
-      if (filterStatus!=='All' && s.status!==filterStatus) return false
-      if (filterGender!=='All' && s.gender!==filterGender) return false
+      if (filterCourse!=='All' && s.course!==filterCourse)         return false
+      if (filterHouse !=='All' && s.house !==filterHouse)           return false
+      if (filterHostel!=='All' && s.hostel_type!==filterHostel)     return false
+      if (filterStatus!=='All' && s.status!==filterStatus)          return false
+      if (filterGender!=='All' && s.gender!==filterGender)          return false
       return true
     })
     .sort((a,b) => {
@@ -354,10 +398,12 @@ export default function Students() {
   const paginated  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
   const toggleSort = col => { if(sortBy===col) setSortDir(d=>d==='asc'?'desc':'asc'); else{setSortBy(col);setSortDir('asc')} }
 
+  // ✅ Stats now include Day Boarder
   const stats = {
     total:       students.length,
     active:      students.filter(s=>s.status==='Active').length,
     boarders:    students.filter(s=>s.hostel_type==='Boarder').length,
+    dayBoarders: students.filter(s=>s.hostel_type==='Day Boarder').length,
     dayScholars: students.filter(s=>s.hostel_type==='Day Scholar').length,
     male:        students.filter(s=>s.gender==='Male').length,
     female:      students.filter(s=>s.gender==='Female').length,
@@ -392,7 +438,8 @@ export default function Students() {
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
             {s.course && <span style={{ fontSize:11, fontWeight:600, color:'#475569', background:'#f1f5f9', padding:'2px 8px', borderRadius:6 }}>{s.course}</span>}
             {s.house  && <span style={{ fontSize:11, fontWeight:600, color:HOUSE_COLORS[s.house]||'#475569', background:'#f8fafc', padding:'2px 8px', borderRadius:6, border:`1px solid ${HOUSE_COLORS[s.house]||'#e2e8f0'}` }}>{s.house}</span>}
-            {s.hostel_type && <span style={{ fontSize:11, color:'#64748b', background:'#f8fafc', padding:'2px 8px', borderRadius:6, border:'1px solid #e2e8f0' }}>{s.hostel_type}</span>}
+            {/* ✅ Hostel badge with flat fee rate in card */}
+            {s.hostel_type && <HostelBadge type={s.hostel_type} showRate />}
           </div>
           <button type="button" onClick={e=>{e.stopPropagation();setFeeModal(s)}} style={{ ...S.btnFee, width:'100%', justifyContent:'center', display:'flex', gap:5 }}>💰 Collect Fee</button>
         </div>
@@ -400,7 +447,6 @@ export default function Students() {
     </div>
   )
 
-  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div style={S.page}>
       <style>{`
@@ -428,13 +474,14 @@ export default function Students() {
 
       <div style={S.content}>
 
-        {/* Stats */}
+        {/* ✅ Stats — now 7 cards including Day Boarder */}
         <div style={S.statsRow}>
           {[
             { label:'Total Students', value:stats.total,       color:'#1e3a5f' },
             { label:'Active',         value:stats.active,      color:'#059669' },
-            { label:'Boarders',       value:stats.boarders,    color:'#7c3aed' },
-            { label:'Day Scholars',   value:stats.dayScholars, color:'#0891b2' },
+            { label:'Boarders',       value:stats.boarders,    color:'#166534' },
+            { label:'Day Boarders',   value:stats.dayBoarders, color:'#92400e' },
+            { label:'Day Scholars',   value:stats.dayScholars, color:'#475569' },
             { label:'Male',           value:stats.male,        color:'#1d4ed8' },
             { label:'Female',         value:stats.female,      color:'#be185d' },
           ].map(s=>(
@@ -445,7 +492,6 @@ export default function Students() {
           ))}
         </div>
 
-        {/* Error */}
         {error && (
           <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <span style={{ fontSize:13, color:'#b91c1c', fontWeight:600 }}>❌ {error}</span>
@@ -496,7 +542,7 @@ export default function Students() {
                     <SortTh col="course"      label="Course" />
                     <SortTh col="batch"       label="Batch" />
                     <SortTh col="house"       label="House" />
-                    <SortTh col="hostel_type" label="Type" />
+                    <SortTh col="hostel_type" label="Hostel Type" />
                     <SortTh col="status"      label="Status" />
                     <th style={S.th}>Actions</th>
                   </tr>
@@ -505,7 +551,7 @@ export default function Students() {
                   {loading
                     ? Array.from({length:8},(_,i)=><SkeletonRow key={i} />)
                     : !paginated.length
-                    ? <tr><td colSpan={8} style={{ ...S.td, textAlign:'center', padding:'48px 20px', color:'#94a3b8' }}><div style={{ fontSize:36, marginBottom:8 }}>🎓</div><div style={{ fontWeight:700, fontSize:15, color:'#334155', marginBottom:4 }}>No students found</div><div style={{ fontSize:13 }}>Try adjusting your filters or search.</div></td></tr>
+                    ? <tr><td colSpan={8} style={{ ...S.td, textAlign:'center', padding:'48px 20px', color:'#94a3b8' }}><div style={{ fontSize:36, marginBottom:8 }}>🎓</div><div style={{ fontWeight:700, fontSize:15, color:'#334155', marginBottom:4 }}>No students found</div></td></tr>
                     : paginated.map((s,idx)=>(
                       <tr key={s.id||s.gcc_no||idx} className="row-hover" style={{ background:'white', transition:'background .12s' }}>
                         <td style={{ ...S.td, color:'#94a3b8', fontWeight:600, fontSize:12 }}>{(page-1)*PAGE_SIZE+idx+1}</td>
@@ -525,7 +571,8 @@ export default function Students() {
                             ? <span style={{ fontSize:12, fontWeight:600, color:HOUSE_COLORS[s.house]||'#475569' }}>{s.house}</span>
                             : <span style={{ color:'#94a3b8', fontSize:12 }}>—</span>}
                         </td>
-                        <td style={S.td}><span style={{ fontSize:12 }}>{s.hostel_type||'—'}</span></td>
+                        {/* ✅ Hostel type as badge in table */}
+                        <td style={S.td}><HostelBadge type={s.hostel_type} /></td>
                         <td style={S.td}>{s.status?<span style={S.badge(s.status)}>{s.status}</span>:<span style={{ color:'#94a3b8' }}>—</span>}</td>
                         <td style={{ ...S.td, whiteSpace:'nowrap' }}>
                           <div style={{ display:'flex', gap:6 }}>
@@ -541,7 +588,6 @@ export default function Students() {
               </table>
             </div>
 
-            {/* Pagination */}
             {!loading && filtered.length>PAGE_SIZE && (
               <div style={{ padding:'12px 16px', borderTop:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
                 <span style={{ fontSize:12, color:'#64748b' }}>Showing {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE,filtered.length)} of {filtered.length}</span>
@@ -559,13 +605,17 @@ export default function Students() {
         )}
       </div>
 
-      {/* Profile Drawer */}
       {drawer && <ProfileDrawer student={drawer} onClose={()=>setDrawer(null)} onCollectFee={s=>{setDrawer(null);setFeeModal(s)}} />}
 
-      {/* Fee Modal */}
-      {feeModal && <FeeCollectionModal student={feeModal} onClose={()=>setFeeModal(null)} onSaved={()=>{setFeeModal(null);loadStudents()}} />}
+      {feeModal && (
+        <FeeCollectionModal
+          key={feeModal.id || feeModal.gcc_no || 'new'}
+          student={feeModal}
+          onClose={()=>setFeeModal(null)}
+          onSaved={()=>{setFeeModal(null);loadStudents()}}
+        />
+      )}
 
-      {/* Add / Edit Modal */}
       {formModal && (
         <StudentFormModal
           student={formModal==='add'?null:formModal}
@@ -574,7 +624,6 @@ export default function Students() {
           houseOptions={houseOptions}
         />
       )}
-
     </div>
   )
 }
