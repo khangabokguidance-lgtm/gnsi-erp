@@ -567,7 +567,7 @@ function ScoreEntryRow({ staff, score, onChange }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 
-function Staff() {
+function Staff({ currentUser }) {
   const [staff,           setStaff]           = useState([])
   const [loading,         setLoading]         = useState(true)
   const [saving,          setSaving]          = useState(false)
@@ -600,7 +600,11 @@ function Staff() {
   const [toast,           setToast]           = useState('')
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
+// ── Role-based geo-attendance ──
+  const loggedInStaff = staff.find(s => s.id === currentUser?.staff_id)
+                     || staff.find(s => s.name === currentUser?.name)
+                     || null
+  const isAdmin       = currentUser?.role === 'Admin'
   const fetchStaff = async () => {
     setLoading(true)
     const { data, error } = await supabase.from('staff_profiles').select('*').order('created_at', { ascending:false })
