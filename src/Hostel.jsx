@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
-
+import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 // ─── Shared styles ─────────────────────────────────────────────
 const inp = {
   width: '100%', padding: '10px 14px', borderRadius: '8px',
@@ -17,14 +17,16 @@ const btn = (bg = '#1e3a5f', c = 'white') => ({
 })
 
 const TABS = [
-  { id: 'allotments',  label: '🛏️ Allotments' },
   { id: 'schedule',    label: '📅 Daily Schedule' },
-  { id: 'nightduty',   label: '🌙 Night Duty' },
-  { id: 'discipline',  label: '⚠️ Discipline' },
-  { id: 'sickbay',     label: '🏥 Sickbay' },
   { id: 'house',       label: '🏠 Houses' },
   { id: 'housemaster', label: '👨‍🏫 Housemasters' },
+  { id: 'hmactivities', label: '📌 HM Activities' },
+  { id: 'adminmonitor', label: '🖥 Admin Monitor' },
+  { id: 'discipline',  label: '⚠️ Discipline' },
+  { id: 'sickbay',     label: '🏥 Sickbay' },
   { id: 'kitchen',     label: '🍽️ Kitchen' },
+  { id: 'nightduty',   label: '🌙 Night Duty' },
+  { id: 'allotments',  label: '🛏️ Allotments' },
 ]
 
 const MONTHS = [
@@ -285,10 +287,17 @@ function AllotmentsTab({ students }) {
   }
 
   const openEdit = rec => {
-    setEditRec(rec)
-    setForm({ ...rec })
-    setShowForm(true)
-  }
+  setEditRec(rec)
+  setForm({
+    ...rec,
+    housemaster_name: rec.housemaster_name || '',
+    house:            rec.house            || '',
+    description:      rec.description      || '',
+    outcome:          rec.outcome          || '',
+    status:           rec.status           || 'Completed',
+  })
+  setShowForm(true)
+}
 
   const enriched = useMemo(() => records.map(r => {
     if (r.student_id) {
@@ -2156,7 +2165,6 @@ function KitchenTab() {
   }, [records, search, mealFilter, dateFilter])
 
   const todayRecords = records.filter(r => r.date === today())
-
   // FIXED: 5 stat cards → use repeat(5,1fr)
   return (
     <div>
@@ -2277,7 +2285,6 @@ function KitchenTab() {
     </div>
   )
 }
-
 // ══════════════════════════════════════════════════════════════
 //  ROOT — Hostel module
 // ══════════════════════════════════════════════════════════════
@@ -2311,7 +2318,7 @@ function Hostel() {
   }, [])
 
   // Tabs that don't need shared student/staff data can render immediately
-  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster'
+  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor'
 
   const tabContent = {
     allotments:  <AllotmentsTab  students={students} />,
@@ -2322,6 +2329,8 @@ function Hostel() {
     house:       <HouseTab       students={students} />,
     housemaster: <HousemasterTab />,
     kitchen:     <KitchenTab />,
+    hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} />,
+    adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
   }
 
   return (

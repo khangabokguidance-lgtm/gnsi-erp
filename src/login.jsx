@@ -1,22 +1,98 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 
+// ── Tiny CSS-in-JS keyframe injector ──────────────────────────────────────────
+const injectStyles = () => {
+  if (document.getElementById('gnsi-login-styles')) return
+  const style = document.createElement('style')
+  style.id = 'gnsi-login-styles'
+  style.textContent = `
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-8px); }
+      40%      { transform: translateX(8px); }
+      60%      { transform: translateX(-5px); }
+      80%      { transform: translateX(5px); }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .gnsi-card          { animation: fadeInDown .5s cubic-bezier(.22,1,.36,1) both; }
+    .gnsi-card.shake    { animation: shake .4s ease; }
+    .gnsi-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+    .gnsi-btn           { transition: filter .2s, transform .2s, opacity .2s; }
+    .gnsi-input:focus   { border-color: #1e3a5f !important; box-shadow: 0 0 0 3px rgba(30,58,95,.15); }
+    .gnsi-input         { transition: border-color .2s, box-shadow .2s; }
+  `
+  document.head.appendChild(style)
+}
+
+// ── Eye icons ──────────────────────────────────────────────────────────────────
+const EyeOpen = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+  </svg>
+)
+const EyeClosed = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+)
+
+// ── Spinner ────────────────────────────────────────────────────────────────────
+const Spinner = () => (
+  <span style={{
+    display: 'inline-block', width: 14, height: 14, marginRight: 8, verticalAlign: 'middle',
+    border: '2px solid rgba(255,255,255,.35)', borderTopColor: '#fff',
+    borderRadius: '50%', animation: 'spin .7s linear infinite',
+  }}/>
+)
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export default function Login({ onLogin }) {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [error,    setError]    = useState('')
-  const [loading,  setLoading]  = useState(false)
+  const [username,     setUsername]     = useState('')
+  const [password,     setPassword]     = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe,   setRememberMe]   = useState(false)
+  const [error,        setError]        = useState('')
+  const [loading,      setLoading]      = useState(false)
+  const [shakeCard,    setShakeCard]    = useState(false)
 
   const ADMIN_USER = import.meta.env.VITE_ADMIN_USERNAME
 
+  // Inject animations once
+  useEffect(() => { injectStyles() }, [])
+
+  // Restore remembered username
+  useEffect(() => {
+    const saved = localStorage.getItem('gnsi_remembered_user')
+    if (saved) { setUsername(saved); setRememberMe(true) }
+  }, [])
+
+  // ── Shake + show error helper ─────────────────────────────────────────────
+  const showError = (msg) => {
+    setError(msg)
+    setShakeCard(true)
+    setTimeout(() => setShakeCard(false), 450)
+  }
+
+  // ── Main login ────────────────────────────────────────────────────────────
   const handleLogin = async () => {
     setError('')
     if (!username.trim() || !password.trim()) {
-      setError('Enter username and password.'); return
+      showError('Please enter both username and password.'); return
     }
     setLoading(true)
 
-    // ── Admin login path ────────────────────────────────────
+    // Remember me
+    if (rememberMe) localStorage.setItem('gnsi_remembered_user', username.trim())
+    else            localStorage.removeItem('gnsi_remembered_user')
+
+    // Admin path
     if (username.trim() === ADMIN_USER) {
       const { data, error: dbErr } = await supabase
         .from('admin_credentials')
@@ -25,31 +101,22 @@ export default function Login({ onLogin }) {
         .single()
 
       if (dbErr || !data) {
-        setError('Admin credentials not found. Contact system administrator.')
+        showError('Admin credentials not found. Contact system administrator.')
         setLoading(false); return
       }
 
       const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASSWORD
+      const ok = data.is_changed
+        ? password === data.password_hash
+        : password === ADMIN_PASS
 
-      if (data.is_changed) {
-        // .env password permanently blocked — only Supabase password works
-        if (password !== data.password_hash) {
-          setError('Invalid password.')
-          setLoading(false); return
-        }
-      } else {
-        // First time — accept .env password only
-        if (password !== ADMIN_PASS) {
-          setError('Invalid password.')
-          setLoading(false); return
-        }
-      }
+      if (!ok) { showError('Invalid password.'); setLoading(false); return }
 
       onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin' })
       setLoading(false); return
     }
 
-    // ── Staff / Teacher via Supabase ────────────────────────
+    // Staff / Teacher path
     const { data, error: dbErr } = await supabase
       .from('portal_users')
       .select('id, name, username, role, active')
@@ -58,77 +125,158 @@ export default function Login({ onLogin }) {
       .eq('active', true)
       .single()
 
-    if (dbErr || !data) {
-      setError('Invalid username or password.')
-    } else {
-      onLogin(data)
-    }
+    if (dbErr || !data) showError('Invalid username or password.')
+    else                 onLogin(data)
+
     setLoading(false)
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  const cardClass = `gnsi-card${shakeCard ? ' shake' : ''}`
+
+  // ── LOGIN PANEL ───────────────────────────────────────────────────────────
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: "'Segoe UI', system-ui, sans-serif",
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 20, padding: '40px 36px',
-        width: 360, boxShadow: '0 24px 60px rgba(0,0,0,.35)',
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🏫</div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>GNSI ERP</h1>
-          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>School Management System</p>
+    <PageWrapper>
+      <div className={cardClass} style={cardStyle}>
+        <Header icon="🏫" title="GNSI ERP" subtitle="School Management System" />
+
+        {/* Username */}
+        <div style={{ marginBottom: 16 }}>
+          <FieldLabel>Username</FieldLabel>
+          <input
+            className="gnsi-input"
+            type="text"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder="Enter username"
+            autoComplete="username"
+            style={inputStyle}
+          />
         </div>
 
-        {[
-          { label: 'Username', value: username, set: setUsername, type: 'text',     placeholder: 'Enter username' },
-          { label: 'Password', value: password, set: setPassword, type: 'password', placeholder: 'Enter password' },
-        ].map(f => (
-          <div key={f.label} style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
-              {f.label}
-            </label>
+        {/* Password + show/hide */}
+        <div style={{ marginBottom: 8 }}>
+          <FieldLabel>Password</FieldLabel>
+          <div style={{ position: 'relative' }}>
             <input
-              type={f.type}
-              value={f.value}
-              onChange={e => f.set(e.target.value)}
+              className="gnsi-input"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder={f.placeholder}
-              style={{
-                width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 13,
-                border: '1.5px solid #e2e8f0', outline: 'none', boxSizing: 'border-box',
-              }}
-              onFocus={e => e.target.style.borderColor = '#1e3a5f'}
-              onBlur={e  => e.target.style.borderColor = '#e2e8f0'}
+              placeholder="Enter password"
+              autoComplete="current-password"
+              style={{ ...inputStyle, paddingRight: 44 }}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              title={showPassword ? 'Hide password' : 'Show password'}
+              style={{
+                position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#94a3b8', padding: 0, display: 'flex', alignItems: 'center',
+              }}
+            >
+              {showPassword ? <EyeClosed /> : <EyeOpen />}
+            </button>
           </div>
-        ))}
+        </div>
 
-        {error && (
-          <div style={{ background: '#fee2e2', color: '#dc2626', fontSize: 12, borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontWeight: 600 }}>
-            ⚠️ {error}
-          </div>
-        )}
+        {/* Remember me */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={e => setRememberMe(e.target.checked)}
+              style={{ accentColor: '#1e3a5f', width: 14, height: 14, cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>Remember me</span>
+          </label>
+        </div>
 
+        {/* Contact admin hint */}
+        <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', margin: '0 0 14px' }}>
+          🔒 Forgot your password? Contact your administrator.
+        </p>
+
+        {/* Error */}
+        {error && <ErrorBox>{error}</ErrorBox>}
+
+        {/* Sign in button */}
         <button
+          className="gnsi-btn"
           onClick={handleLogin}
           disabled={loading}
-          style={{
-            width: '100%', background: '#1e3a5f', color: '#fff', border: 'none',
-            borderRadius: 8, padding: '12px', fontSize: 14, fontWeight: 700,
-            cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? .7 : 1,
-          }}
+          style={{ ...primaryBtnStyle, opacity: loading ? .7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
         >
-          {loading ? '⏳ Signing in…' : '🔐 Sign In'}
+          {loading ? <><Spinner/>Signing in…</> : '🔐 Sign In'}
         </button>
 
-        <p style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', marginTop: 20 }}>
-          © {new Date().getFullYear()} GNSI School Management System
-        </p>
+        <Footer />
       </div>
-    </div>
+    </PageWrapper>
   )
+}
+
+// ── Shared sub-components ──────────────────────────────────────────────────────
+const PageWrapper = ({ children }) => (
+  <div style={{
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #164e8e 100%)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: "'Segoe UI', system-ui, sans-serif",
+    padding: 16,
+  }}>
+    {children}
+  </div>
+)
+
+const Header = ({ icon, title, subtitle }) => (
+  <div style={{ textAlign: 'center', marginBottom: 28 }}>
+    <div style={{ fontSize: 44, marginBottom: 8, lineHeight: 1 }}>{icon}</div>
+    <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1e3a5f', margin: '0 0 4px' }}>{title}</h1>
+    <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>{subtitle}</p>
+  </div>
+)
+
+const FieldLabel = ({ children }) => (
+  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+    {children}
+  </label>
+)
+
+const ErrorBox = ({ children }) => (
+  <div style={{
+    background: '#fee2e2', color: '#dc2626', fontSize: 12, borderRadius: 8,
+    padding: '9px 12px', marginBottom: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
+  }}>
+    ⚠️ {children}
+  </div>
+)
+
+const Footer = () => (
+  <p style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', marginTop: 20, marginBottom: 0 }}>
+    © {new Date().getFullYear()} GNSI School Management System
+  </p>
+)
+
+// ── Shared styles ──────────────────────────────────────────────────────────────
+const cardStyle = {
+  background: '#fff', borderRadius: 20, padding: '36px 32px',
+  width: '100%', maxWidth: 380, boxShadow: '0 28px 64px rgba(0,0,0,.4)',
+}
+
+const inputStyle = {
+  width: '100%', padding: '10px 14px', borderRadius: 8, fontSize: 13,
+  border: '1.5px solid #e2e8f0', outline: 'none', boxSizing: 'border-box',
+  background: '#f8fafc', color: '#1e293b',
+}
+
+const primaryBtnStyle = {
+  width: '100%', background: 'linear-gradient(135deg, #1e3a5f, #164e8e)',
+  color: '#fff', border: 'none', borderRadius: 8, padding: '12px',
+  fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
 }

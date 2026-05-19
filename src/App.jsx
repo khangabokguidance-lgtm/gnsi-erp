@@ -2,92 +2,94 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 
 // ─── Module imports ────────────────────────────────────────────
-import Login         from './Login'
-import Students      from './Students'
-import Admissions    from './Admissions'
-import BulkAdmission from './BulkAdmission'
-import Fees          from './Fees'
-import Accounts      from './Accounts'
-import Salary        from './Salary'
-import Attendance    from './Attendance'
-import Exams         from './Exams'
-import Timetable     from './Timetable'
-import Teaching      from './Teaching'
-import Staff         from './Staff'
-import HR            from './HR'
-import Leave         from './Leave'
-import Hostel        from './Hostel'
-import Reception     from './Reception'
-import Notice        from './Notice'
-import Social        from './Social'
-import Connect       from './Connect'
-import Courses       from './Courses'
-import Reports       from './Reports'
-import Checklist     from './Checklist'
-import SystemSettings from './SystemSettings'
-import AdminPage     from './AdminPage'
-import StudentFeeLedger from './StudentFeeLedger'
+import Login              from './Login'
+import Students           from './Students'
+import Admissions         from './Admissions'
+import Sessions           from './Sessions'
+import AdmissionSessions  from './AdmissionSessions'
+import BulkAdmission      from './BulkAdmission'
+import Fees               from './Fees'
+import Accounts           from './Accounts'
+import Salary             from './Salary'
+import Staff              from './Staff'
+import HR                 from './HR'
+import Leave              from './Leave'
+import Hostel             from './Hostel'
+import Reception          from './Reception'
+import Notice             from './Notice'
+import Social             from './Social'
+import Connect            from './Connect'
+import Reports            from './Reports'
+import Checklist          from './Checklist'
+import SystemSettings     from './SystemSettings'
+import AdminPage          from './AdminPage'
+import StudentFeeLedger   from './StudentFeeLedger'
+import GNSIDashboard      from './GNSIDashboard'
 
-// ─── All modules (admin sees all) ─────────────────────────────
+// ─── The Five Connected Modules ────────────────────────────────
+//
+//  HOW THEY CONNECT:
+//
+//  App.jsx
+//   ├── Courses.jsx   ──► default export CoursePage  (rendered here as <Courses />)
+//   │                 ──► named export useCourseData  (imported by Teaching + Attendance)
+//   │                 ──► named export CoursePicker   (imported by Teaching + Attendance)
+//   │
+//   ├── Teaching.jsx  ──► imports { useCourseData, CoursePicker } from './Courses'
+//   │                     uses course_batches as single source of truth for dropdowns
+//   │
+//   ├── Attendance.jsx──► imports { useCourseData, CoursePicker } from './Courses'
+//   │                     loads enrolled students from course_enrollments per batch
+//   │
+//   ├── Exams.jsx     ──► standalone — reads students + exam_marks tables directly
+//   │
+//   └── Timetable.jsx ──► standalone — reads timetable_entries table directly
+//
+//  All five share the same supabase.js client.
+//  currentUser is passed as prop to each for role-based UI.
+//
+import Courses    from './Courses'     // default = CoursePage
+import Teaching   from './Teaching'
+import Attendance from './Attendance'
+import Exams      from './Exams'
+import Timetable  from './Timetable'
+
+// ─── All modules sidebar list ──────────────────────────────────
 const ALL_MODULES = [
-  { key: 'dashboard',     icon: '⊞',   label: 'Dashboard'      },
-  { key: 'students',      icon: '🎓',  label: 'Students'       },
-  { key: 'admissions',    icon: '📋',  label: 'Admissions'     },
-  { key: 'bulkadmission', icon: '📥',  label: 'Bulk Admission' },
-  { key: 'fees',          icon: '💰',  label: 'Fees'           },
-  { key: 'accounts',      icon: '🧾',  label: 'Accounts'       },
-  { key: 'salary',        icon: '💵',  label: 'Salary'         },
-  { key: 'attendance',    icon: '📅',  label: 'Attendance'     },
-  { key: 'exams',         icon: '📝',  label: 'Exams'          },
-  { key: 'timetable',     icon: '🕐',  label: 'Timetable'      },
-  { key: 'teaching',      icon: '📚',  label: 'Teaching'       },
-  { key: 'staff',         icon: '👨‍🏫', label: 'Staff'          },
-  { key: 'hr',            icon: '🗂️', label: 'HR'             },
-  { key: 'leave',         icon: '🏖️', label: 'Leave'          },
-  { key: 'hostel',        icon: '🏨',  label: 'Hostel'         },
-  { key: 'reception',     icon: '🛎️', label: 'Reception'      },
-  { key: 'notice',        icon: '🔔',  label: 'Notice'         },
-  { key: 'social',        icon: '📣',  label: 'Social'         },
-  { key: 'connect',       icon: '🔗',  label: 'Connect'        },
-  { key: 'courses',       icon: '📊',  label: 'Courses'        },
-  { key: 'reports',       icon: '📈',  label: 'Reports'        },
-  { key: 'checklist',     icon: '✅',  label: 'Checklist'      },
-  { key: 'system',        icon: '⚙️', label: 'System'         },
-  { key: 'studentfeeledger', icon: '🧾', label: 'Student Fee Ledger' }
-
+  { key: 'dashboard',        icon: '⊞',   label: 'Dashboard'          },
+  { key: 'students',         icon: '🎓',  label: 'Students'           },
+  { key: 'admissions',       icon: '📋',  label: 'Admissions'         },
+  { key: 'sessions',         icon: '📅',  label: 'Sessions'           },
+  { key: 'bulkadmission',    icon: '📥',  label: 'Bulk Admission'     },
+  { key: 'fees',             icon: '💰',  label: 'Fees'               },
+  { key: 'accounts',         icon: '🧾',  label: 'Accounts'           },
+  { key: 'salary',           icon: '💵',  label: 'Salary'             },
+  // ── Five connected modules ──────────────────────────────────
+  { key: 'courses',          icon: '📊',  label: 'Courses'            },
+  { key: 'teaching',         icon: '📚',  label: 'Teaching'           },
+  { key: 'attendance',       icon: '📅',  label: 'Attendance'         },
+  { key: 'exams',            icon: '📝',  label: 'Exams'              },
+  { key: 'timetable',        icon: '🕐',  label: 'Timetable'          },
+  // ────────────────────────────────────────────────────────────
+  { key: 'staff',            icon: '👨‍🏫', label: 'Staff'              },
+  { key: 'hr',               icon: '🗂️', label: 'HR'                 },
+  { key: 'leave',            icon: '🏖️', label: 'Leave'              },
+  { key: 'hostel',           icon: '🏨',  label: 'Hostel'             },
+  { key: 'reception',        icon: '🛎️', label: 'Reception'          },
+  { key: 'notice',           icon: '🔔',  label: 'Notice'             },
+  { key: 'social',           icon: '📣',  label: 'Social'             },
+  { key: 'connect',          icon: '🔗',  label: 'Connect'            },
+  { key: 'reports',          icon: '📈',  label: 'Reports'            },
+  { key: 'checklist',        icon: '✅',  label: 'Checklist'          },
+  { key: 'system',           icon: '⚙️', label: 'System'             },
+  { key: 'studentfeeledger', icon: '🧾',  label: 'Student Fee Ledger' },
 ]
-
-const MODULE_COMPONENTS = {
-  students:      <Students />,
-  admissions:    <Admissions />,
-  bulkadmission: <BulkAdmission />,
-  fees:          <Fees />,
-  accounts:      <Accounts />,
-  salary:        <Salary />,
-  attendance:    <Attendance />,
-  exams:         <Exams />,
-  timetable:     <Timetable />,
-  teaching:      <Teaching />,
-  staff:         <Staff />,
-  hr:            <HR />,
-  leave:         <Leave />,
-  hostel:        <Hostel />,
-  reception:     <Reception />,
-  notice:        <Notice />,
-  social:        <Social />,
-  connect:       <Connect />,
-  courses:       <Courses />,
-  reports:       <Reports />,
-  checklist:     <Checklist />,
-  system:        <SystemSettings />,
-  studentfeeledger: <StudentFeeLedger />
-}
 
 // ─── Helpers ───────────────────────────────────────────────────
 const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN')
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0)
 
-// ─── Shared UI ─────────────────────────────────────────────────
+// ─── Shared UI components ──────────────────────────────────────
 function StatCard({ icon, label, value, sub, trend, accent }) {
   const accents = {
     blue:   { bg: '#eff6ff', border: '#1e3a5f', text: '#1e3a5f' },
@@ -102,10 +104,8 @@ function StatCard({ icon, label, value, sub, trend, accent }) {
   }
   const c = accents[accent] || accents.blue
   return (
-    <div style={{
-      background: c.bg, borderRadius: 10, padding: '11px 14px',
-      borderLeft: `3px solid ${c.border}`, display: 'flex', flexDirection: 'column', gap: 2,
-    }}
+    <div
+      style={{ background: c.bg, borderRadius: 10, padding: '11px 14px', borderLeft: `3px solid ${c.border}`, display: 'flex', flexDirection: 'column', gap: 2, transition: 'transform .15s' }}
       onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
       onMouseLeave={e => e.currentTarget.style.transform = ''}
     >
@@ -188,7 +188,9 @@ function Ring({ value, max, color, label, size = 64 }) {
         <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="8"
           strokeDasharray={`${p * circ} ${circ}`} strokeLinecap="round"
           transform="rotate(-90 40 40)" />
-        <text x="40" y="45" textAnchor="middle" fontSize="14" fontWeight="bold" fill={color}>{Math.round(p * 100)}%</text>
+        <text x="40" y="45" textAnchor="middle" fontSize="14" fontWeight="bold" fill={color}>
+          {Math.round(p * 100)}%
+        </text>
       </svg>
       <span style={{ fontSize: 11, color: '#64748b', textAlign: 'center' }}>{label}</span>
     </div>
@@ -197,7 +199,7 @@ function Ring({ value, max, color, label, size = 64 }) {
 
 // ─── Admin Dashboard ───────────────────────────────────────────
 function AdminDashboard({ onNavigate }) {
-  const [data, setData]       = useState(null)
+  const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { load() }, [])
@@ -205,8 +207,10 @@ function AdminDashboard({ onNavigate }) {
   const load = async () => {
     setLoading(true)
     try {
-      const [students, fees, attendance, admissions, exams, staff,
-        recentStudents, recentAdmissions, recentFees, salary, leave] = await Promise.all([
+      const [
+        students, fees, attendance, admissions, exams, staff,
+        recentStudents, recentAdmissions, recentFees, salary, leave,
+      ] = await Promise.all([
         supabase.from('students').select('*', { count: 'exact', head: true }),
         supabase.from('fees').select('amount,paid'),
         supabase.from('attendance').select('status'),
@@ -266,20 +270,22 @@ function AdminDashboard({ onNavigate }) {
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <button onClick={load} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>🔄 Refresh</button>
+        <button onClick={load} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+          🔄 Refresh
+        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
         {[
-          { icon: '👨‍🎓', label: 'Total Students', value: data.totalStudents,     sub: 'Enrolled',            accent: 'blue'   },
-          { icon: '💰',  label: 'Fee Collected',   value: fmt(data.feeCollected), sub: 'Total paid so far',   accent: 'green',  trend: feeProgress },
-          { icon: '⏳',  label: 'Fee Pending',     value: fmt(data.feePending),   sub: 'Outstanding balance', accent: 'amber'  },
-          { icon: '🏫',  label: 'Present Today',   value: data.presentCount,      sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
-          { icon: '📋',  label: 'New Admissions',  value: data.pendingAdm,        sub: 'Awaiting approval',   accent: 'pink'   },
-          { icon: '📝',  label: 'Total Exams',     value: data.totalExams,        sub: 'Scheduled',           accent: 'cyan'   },
-          { icon: '👨‍🏫', label: 'Total Staff',     value: data.totalStaff,        sub: 'Active staff',        accent: 'teal'   },
-          { icon: '💵',  label: 'Salary Paid',     value: fmt(data.salaryPaid),   sub: 'This month',          accent: 'indigo' },
-          { icon: '🏖️', label: 'Leave Requests',  value: data.pendingLeave,      sub: 'Pending approval',    accent: 'orange' },
+          { icon: '👨‍🎓', label: 'Total Students',  value: data.totalStudents,     sub: 'Enrolled',            accent: 'blue'   },
+          { icon: '💰',  label: 'Fee Collected',    value: fmt(data.feeCollected), sub: 'Total paid so far',   accent: 'green',  trend: feeProgress },
+          { icon: '⏳',  label: 'Fee Pending',      value: fmt(data.feePending),   sub: 'Outstanding balance', accent: 'amber'  },
+          { icon: '🏫',  label: 'Present Today',    value: data.presentCount,      sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
+          { icon: '📋',  label: 'New Admissions',   value: data.pendingAdm,        sub: 'Awaiting approval',   accent: 'pink'   },
+          { icon: '📝',  label: 'Total Exams',      value: data.totalExams,        sub: 'Scheduled',           accent: 'cyan'   },
+          { icon: '👨‍🏫', label: 'Total Staff',      value: data.totalStaff,        sub: 'Active staff',        accent: 'teal'   },
+          { icon: '💵',  label: 'Salary Paid',      value: fmt(data.salaryPaid),   sub: 'This month',          accent: 'indigo' },
+          { icon: '🏖️', label: 'Leave Requests',   value: data.pendingLeave,      sub: 'Pending approval',    accent: 'orange' },
         ].map(c => <StatCard key={c.label} {...c} />)}
       </div>
 
@@ -287,14 +293,16 @@ function AdminDashboard({ onNavigate }) {
         <SectionHeader title="📊 Live Progress Overview" sub="Real-time computed metrics" />
         <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 10 }}>
           <Ring value={data.feeCollected} max={feeTotal || 1}                                     color="#16a34a" label="Fee Collected" />
-          <Ring value={data.presentCount} max={Math.max(data.totalAtt, 1)}                        color="#7c3aed" label="Attendance" />
-          <Ring value={data.approvedAdm}  max={Math.max(data.totalAdm, 1)}                        color="#0891b2" label="Admissions" />
-          <Ring value={data.salaryPaid}   max={Math.max(data.salaryPaid + data.salaryPending, 1)} color="#4f46e5" label="Salary" />
+          <Ring value={data.presentCount} max={Math.max(data.totalAtt, 1)}                        color="#7c3aed" label="Attendance"    />
+          <Ring value={data.approvedAdm}  max={Math.max(data.totalAdm, 1)}                        color="#0891b2" label="Admissions"    />
+          <Ring value={data.salaryPaid}   max={Math.max(data.salaryPaid + data.salaryPending, 1)} color="#4f46e5" label="Salary"        />
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-        <TableCard title="👨‍🎓 Recent Students" sub="Last 6 enrolled" cols={['Name','Class','Course']} emptyMsg="No students"
+        <TableCard
+          title="👨‍🎓 Recent Students" sub="Last 6 enrolled"
+          cols={['Name', 'Class', 'Course']} emptyMsg="No students"
           rows={data.recentStudents.map(s => (
             <tr key={s.id} style={{ borderTop: '1px solid #f1f5f9' }}>
               <td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{s.name}</td>
@@ -303,7 +311,9 @@ function AdminDashboard({ onNavigate }) {
             </tr>
           ))}
         />
-        <TableCard title="📋 Recent Admissions" sub="Last 6" cols={['Name','Class','Status']} emptyMsg="No admissions"
+        <TableCard
+          title="📋 Recent Admissions" sub="Last 6"
+          cols={['Name', 'Class', 'Status']} emptyMsg="No admissions"
           rows={data.recentAdmissions.map(a => (
             <tr key={a.id} style={{ borderTop: '1px solid #f1f5f9' }}>
               <td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{a.name}</td>
@@ -314,24 +324,32 @@ function AdminDashboard({ onNavigate }) {
         />
       </div>
 
+      {/* Quick Actions — each button navigates to its module */}
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', padding: '12px 16px' }}>
         <SectionHeader title="⚡ Quick Actions" sub="One-click shortcuts" />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           {[
-            { label: '➕ Add Student',     color: '#1e3a5f', module: 'students'   },
-            { label: '📋 New Admission',   color: '#7c3aed', module: 'admissions' },
-            { label: '💵 Record Fee',      color: '#16a34a', module: 'fees'       },
-            { label: '📝 Schedule Exam',   color: '#0891b2', module: 'exams'      },
-            { label: '📅 Attendance',      color: '#db2777', module: 'attendance' },
-            { label: '🏖️ Approve Leave',  color: '#b45309', module: 'leave'      },
-            { label: '🔔 Send Notice',     color: '#ea580c', module: 'notice'     },
-            { label: '📈 Reports',         color: '#4f46e5', module: 'reports'    },
+            { label: '➕ Add Student',    color: '#1e3a5f', module: 'students'    },
+            { label: '📋 New Admission',  color: '#7c3aed', module: 'admissions'  },
+            { label: '💵 Record Fee',     color: '#16a34a', module: 'fees'        },
+            { label: '📊 Courses',        color: '#0d9488', module: 'courses'     },
+            { label: '📚 Teaching Log',   color: '#0891b2', module: 'teaching'    },
+            { label: '📅 Attendance',     color: '#db2777', module: 'attendance'  },
+            { label: '📝 Exams',          color: '#16a34a', module: 'exams'       },
+            { label: '🕐 Timetable',      color: '#b45309', module: 'timetable'   },
+            { label: '🏖️ Approve Leave', color: '#b45309', module: 'leave'       },
+            { label: '🔔 Send Notice',    color: '#ea580c', module: 'notice'      },
+            { label: '📈 Reports',        color: '#4f46e5', module: 'reports'     },
           ].map(a => (
-            <button key={a.label} onClick={() => onNavigate(a.module)}
-              style={{ background: a.color, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            <button
+              key={a.label}
+              onClick={() => onNavigate(a.module)}
+              style={{ background: a.color, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'opacity .15s' }}
               onMouseEnter={e => e.currentTarget.style.opacity = '.85'}
               onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-            >{a.label}</button>
+            >
+              {a.label}
+            </button>
           ))}
         </div>
       </div>
@@ -341,7 +359,7 @@ function AdminDashboard({ onNavigate }) {
 
 // ─── User Dashboard ────────────────────────────────────────────
 function UserDashboard({ onNavigate, currentUser }) {
-  const [data, setData]       = useState(null)
+  const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { load() }, [])
@@ -363,14 +381,14 @@ function UserDashboard({ onNavigate, currentUser }) {
         feeDue  += Number(f.amount || 0) - Number(f.paid || 0)
       })
       setData({
-        presentCount: att.filter(a => a.status === 'Present').length,
-        totalAtt: att.length,
-        upcomingExams: exams.data || [],
-        fees: fees.data || [],
+        presentCount:  att.filter(a => a.status === 'Present').length,
+        totalAtt:      att.length,
+        upcomingExams: exams.data   || [],
+        fees:          fees.data    || [],
         feePaid, feeDue,
-        leaveRequests: leave.data || [],
-        pendingLeave: (leave.data || []).filter(l => l.status === 'Pending').length,
-        notices: notices.data || [],
+        leaveRequests: leave.data   || [],
+        pendingLeave:  (leave.data || []).filter(l => l.status === 'Pending').length,
+        notices:       notices.data || [],
       })
     } catch (e) { console.error(e) }
     setLoading(false)
@@ -392,17 +410,19 @@ function UserDashboard({ onNavigate, currentUser }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { icon: '📅', label: 'Days Present',  value: data.presentCount,        sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
-          { icon: '💰', label: 'Fee Due',        value: fmt(data.feeDue),          sub: 'Outstanding',         accent: 'amber'  },
-          { icon: '✅', label: 'Fee Paid',       value: fmt(data.feePaid),         sub: 'Paid so far',         accent: 'green'  },
-          { icon: '📝', label: 'Upcoming Exams', value: data.upcomingExams.length, sub: 'Scheduled',           accent: 'cyan'   },
-          { icon: '🏖️', label: 'Leave Pending', value: data.pendingLeave,         sub: 'Awaiting approval',   accent: 'orange' },
-          { icon: '🔔', label: 'Notices',        value: data.notices.length,       sub: 'Recent',              accent: 'pink'   },
+          { icon: '📅', label: 'Days Present',   value: data.presentCount,        sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
+          { icon: '💰', label: 'Fee Due',         value: fmt(data.feeDue),          sub: 'Outstanding',         accent: 'amber'  },
+          { icon: '✅', label: 'Fee Paid',        value: fmt(data.feePaid),         sub: 'Paid so far',         accent: 'green'  },
+          { icon: '📝', label: 'Upcoming Exams',  value: data.upcomingExams.length, sub: 'Scheduled',           accent: 'cyan'   },
+          { icon: '🏖️', label: 'Leave Pending',  value: data.pendingLeave,         sub: 'Awaiting approval',   accent: 'orange' },
+          { icon: '🔔', label: 'Notices',         value: data.notices.length,       sub: 'Recent',              accent: 'pink'   },
         ].map(c => <StatCard key={c.label} {...c} />)}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <TableCard title="📝 Upcoming Exams" cols={['Subject','Date','Time']} emptyMsg="No exams"
+        <TableCard
+          title="📝 Upcoming Exams"
+          cols={['Subject', 'Date', 'Time']} emptyMsg="No exams"
           rows={data.upcomingExams.map(e => (
             <tr key={e.id} style={{ borderTop: '1px solid #f1f5f9' }}>
               <td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{e.subject || e.name}</td>
@@ -411,7 +431,9 @@ function UserDashboard({ onNavigate, currentUser }) {
             </tr>
           ))}
         />
-        <TableCard title="🏖️ Leave Requests" cols={['Type','From','To','Status']} emptyMsg="No requests"
+        <TableCard
+          title="🏖️ Leave Requests"
+          cols={['Type', 'From', 'To', 'Status']} emptyMsg="No requests"
           rows={data.leaveRequests.map(l => (
             <tr key={l.id} style={{ borderTop: '1px solid #f1f5f9' }}>
               <td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{l.type || '—'}</td>
@@ -451,10 +473,7 @@ function Sidebar({ modules, active, onSelect, currentUser, onLogout }) {
       </div>
 
       <div style={{ padding: '10px 16px', borderBottom: '1px solid #1e293b' }}>
-        <div style={{
-          background: currentUser.role === 'Admin' ? '#1e3a5f' : '#4c1d95',
-          borderRadius: 8, padding: '7px 12px',
-        }}>
+        <div style={{ background: currentUser.role === 'Admin' ? '#1e3a5f' : '#4c1d95', borderRadius: 8, padding: '7px 12px' }}>
           <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#fff' }}>{currentUser.name}</p>
           <p style={{ margin: 0, fontSize: 10, color: '#94a3b8' }}>{currentUser.role}</p>
         </div>
@@ -462,17 +481,30 @@ function Sidebar({ modules, active, onSelect, currentUser, onLogout }) {
 
       <nav style={{ flex: 1, padding: '8px 0' }}>
         {modules.map(m => (
-          <button key={m.key} onClick={() => onSelect(m.key)} style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-            padding: '9px 16px', border: 'none', cursor: 'pointer', textAlign: 'left',
-            background:  active === m.key ? '#1e3a5f' : 'transparent',
-            color:       active === m.key ? '#fff'    : '#94a3b8',
-            fontSize: 13, fontWeight: active === m.key ? 700 : 400,
-            borderLeft:  active === m.key ? '3px solid #3b82f6' : '3px solid transparent',
-            transition: 'all .12s',
-          }}
-            onMouseEnter={e => { if (active !== m.key) { e.currentTarget.style.background = '#1e293b'; e.currentTarget.style.color = '#e2e8f0' } }}
-            onMouseLeave={e => { if (active !== m.key) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8' } }}
+          <button
+            key={m.key}
+            onClick={() => onSelect(m.key)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 16px', border: 'none', cursor: 'pointer', textAlign: 'left',
+              background:  active === m.key ? '#1e3a5f' : 'transparent',
+              color:       active === m.key ? '#fff'    : '#94a3b8',
+              fontSize: 13, fontWeight: active === m.key ? 700 : 400,
+              borderLeft:  active === m.key ? '3px solid #3b82f6' : '3px solid transparent',
+              transition: 'all .12s',
+            }}
+            onMouseEnter={e => {
+              if (active !== m.key) {
+                e.currentTarget.style.background = '#1e293b'
+                e.currentTarget.style.color = '#e2e8f0'
+              }
+            }}
+            onMouseLeave={e => {
+              if (active !== m.key) {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = '#94a3b8'
+              }
+            }}
           >
             <span style={{ fontSize: 15 }}>{m.icon}</span>
             <span>{m.label}</span>
@@ -482,10 +514,12 @@ function Sidebar({ modules, active, onSelect, currentUser, onLogout }) {
 
       <div style={{ padding: '12px 16px', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 11, color: '#475569' }}>© {new Date().getFullYear()} GNSI</span>
-        <button onClick={onLogout} style={{
-          background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6,
-          padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-        }}>Logout</button>
+        <button
+          onClick={onLogout}
+          style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+        >
+          Logout
+        </button>
       </div>
     </div>
   )
@@ -493,10 +527,10 @@ function Sidebar({ modules, active, onSelect, currentUser, onLogout }) {
 
 // ─── App Root ──────────────────────────────────────────────────
 export default function App() {
-  const [currentUser,  setCurrentUser]  = useState(null)
-  const [active,       setActive]       = useState('dashboard')
-  const [permissions,  setPermissions]  = useState({})
-  const [permLoading,  setPermLoading]  = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
+  const [active,      setActive]      = useState('dashboard')
+  const [permissions, setPermissions] = useState({})
+  const [permLoading, setPermLoading] = useState(false)
 
   const loadPermissions = async (role) => {
     if (role === 'Admin') return
@@ -519,7 +553,6 @@ export default function App() {
 
   const isAdmin = currentUser.role === 'Admin'
 
-  // Build sidebar: admin gets all + Admin Panel, others get permitted only
   const sidebarModules = isAdmin
     ? [...ALL_MODULES, { key: 'admin', icon: '🔐', label: 'Admin Panel' }]
     : ALL_MODULES.filter(m => m.key === 'dashboard' || permissions[m.key] === true)
@@ -530,21 +563,115 @@ export default function App() {
     return permissions[key] === true
   }
 
+  // ─────────────────────────────────────────────────────────────
+  //  renderContent — how all modules connect
+  //
+  //  1. App.jsx acts as the router. It holds ONE piece of state:
+  //     `active` (string) — the currently visible module key.
+  //
+  //  2. Sidebar calls setActive(key) when a nav item is clicked.
+  //
+  //  3. renderContent() reads `active` and returns the matching
+  //     React component from moduleMap.
+  //
+  //  4. Each component receives `currentUser` so it knows the
+  //     logged-in user's role and username.
+  //
+  //  5. The five special modules connect to each other like this:
+  //
+  //     Courses ──► exports useCourseData + CoursePicker
+  //                          │                   │
+  //                    Teaching.jsx         Attendance.jsx
+  //                    (imports both)       (imports both)
+  //
+  //     Exams + Timetable are self-contained — they only need
+  //     supabase.js, which all modules share.
+  //
+  //  6. Data never flows through App.jsx between modules.
+  //     Each module fetches its own data from Supabase directly.
+  //     The shared connection is at the DB level (same tables).
+  // ─────────────────────────────────────────────────────────────
   const renderContent = () => {
     if (active === 'dashboard') {
       return isAdmin
-        ? <AdminDashboard onNavigate={setActive} />
-        : <UserDashboard  onNavigate={setActive} currentUser={currentUser} />
+        ? <GNSIDashboard />
+        : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
     }
 
-    // Admin panel — hard blocked for non-admin
     if (active === 'admin') {
       return isAdmin ? <AdminPage currentUser={currentUser} /> : <AccessDenied />
     }
 
     if (!canAccess(active)) return <AccessDenied />
 
-    return MODULE_COMPONENTS[active] || (
+    const moduleMap = {
+      // Standard modules
+      students:          <Students          currentUser={currentUser} />,
+      admissions:        <Admissions        currentUser={currentUser} />,
+      sessions:          <Sessions          currentUser={currentUser} />,
+      admissionsessions: <AdmissionSessions currentUser={currentUser} />,
+      bulkadmission:     <BulkAdmission     currentUser={currentUser} />,
+      fees:              <Fees              currentUser={currentUser} />,
+      accounts:          <Accounts          currentUser={currentUser} />,
+      salary:            <Salary            currentUser={currentUser} />,
+      staff:             <Staff             currentUser={currentUser} />,
+      hr:                <HR                currentUser={currentUser} />,
+      leave:             <Leave             currentUser={currentUser} />,
+      hostel:            <Hostel            currentUser={currentUser} />,
+      reception:         <Reception         currentUser={currentUser} />,
+      notice:            <Notice            currentUser={currentUser} />,
+      social:            <Social            currentUser={currentUser} />,
+      connect:           <Connect           currentUser={currentUser} />,
+      reports:           <Reports           currentUser={currentUser} />,
+      checklist:         <Checklist         currentUser={currentUser} />,
+      system:            <SystemSettings    currentUser={currentUser} />,
+      studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} />,
+
+      // ── Five connected modules ─────────────────────────────────
+      //
+      //  COURSES — the "hub" of the five.
+      //  Renders CoursePage (default export from Courses.jsx).
+      //  Manages course_batches, course_enrollments, course_fees.
+      //  Also exports useCourseData() and CoursePicker component
+      //  which Teaching and Attendance import directly.
+      //
+      courses: <Courses currentUser={currentUser} />,
+
+      //  TEACHING — connected to Courses via shared hook.
+      //  Inside Teaching.jsx:
+      //    import { useCourseData, CoursePicker } from './Courses'
+      //  This means Teaching's batch/class dropdowns always reflect
+      //  whatever batches exist in course_batches table.
+      //  Teaching writes to: teaching_logs, teaching_timetable,
+      //  teaching_syllabus, teaching_missed.
+      //
+      teaching: <Teaching currentUser={currentUser} />,
+
+      //  ATTENDANCE — also connected to Courses via shared hook.
+      //  Inside Attendance.jsx:
+      //    import { useCourseData, CoursePicker } from './Courses'
+      //  When a batch is selected, Attendance loads students from
+      //  course_enrollments for that exact batch.
+      //  Attendance writes to: attendance_sessions, attendance_records.
+      //
+      attendance: <Attendance currentUser={currentUser} />,
+
+      //  EXAMS — standalone, no Courses dependency.
+      //  Reads from: students, exam_marks, exam_types, exam_schedule,
+      //  seat_arrangements, system_settings, exam_remarks.
+      //  Has its own student management tab inside.
+      //
+      exams: <Exams currentUser={currentUser} />,
+
+      //  TIMETABLE — standalone, no Courses dependency.
+      //  Reads/writes: timetable_entries table only.
+      //  Has conflict detection, drag-drop, bulk edit built in.
+      //
+      timetable: <Timetable currentUser={currentUser} />,
+      // ──────────────────────────────────────────────────────────
+    }
+
+    return moduleMap[active] || (
       <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
         <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>

@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import {
   fmt, today, gccStr, rcptNo,
-  upsertAccount, buildReceiptHTML,
+  upsertAccount,
   PAY_MODES, CURRENT_YEAR,
 } from './shared/feeHelpers'
 
@@ -65,21 +65,7 @@ function amountInWords(n) {
 
 function ReceiptPrinter({ receipts, onClose }) {
   const print = () => {
-    const pages = receipts.map(r => buildReceiptHTML({
-      receipt_no:   r.receipt_no,
-      pay_date:     r.pay_date,
-      pay_mode:     r.pay_mode,
-      txn_ref:      r.txn_ref,
-      collected_by: r.collected_by,
-      student_name: r.student_name,
-      adm_no:       r.adm_no,
-      gcc_no:       r.gcc,
-      class_name:   r.batch,
-      course:       r.course,
-      items:        r.items,
-      total:        r.total,
-    }))
-
+  
     // Open all receipts in one print window separated by page breaks
     const combined = `<!DOCTYPE html><html><head><meta charset="UTF-8">
     <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f5f5f0;padding:20px}@page{margin:10mm}@media print{body{padding:0}.break{page-break-after:always}}</style>
