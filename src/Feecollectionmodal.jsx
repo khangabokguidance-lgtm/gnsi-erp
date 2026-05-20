@@ -1,29 +1,15 @@
 // FeeCollectionModal.jsx
-// ─────────────────────────────────────────────────────────────────────────────
-//  ✅ Fixed: flat fees now vary by hostel type via getFlatFees(hostelType)
-//      Boarder     → ₹5500/month
-//      Day Boarder → ₹4000/month
-//      Day Scholar → ₹2000/month
-//  ✅ Fixed: flat fee list re-derives when hostelType changes
-//  ✅ Fixed: uses unified printReceipt from feeHelpers
-//  ✅ Fixed: stable source_refs — no timestamp keys
-//  ✅ Fixed: checkFlatFeeExists guard before saving flat fees
-//  ✅ Fixed: hostelType is useState, editable in modal
-//  ✅ Fixed: cross-checks hostel_allocations to auto-correct hostel type
-// ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import {
   fmt, today, gccStr, rcptNo,
   upsertAccount, printReceipt, sourceRef,
-  getFlatFees, getFlatFeeAmt,
+  getFeeRates, getFlatFees, clearFeeRateCache,
   CURRENT_YEAR, PAY_MODES, MONTHS_LIST,
-  getCourseFeeAmt, checkCourseFeeExists, checkFlatFeeExists,
-} from './shared/feeHelpers'
-
-// ─── Admission fee items ──────────────────────────────────────────────────────
+  checkCourseFeeExists, checkFlatFeeExists,
+} from './feeEngine'
 
 const FEE_ITEMS = [
   { id: 'admission',  label: 'Admission Fee',  amount: 6000, type: 'admission', icon: '🎓', color: '#4f46e5' },
@@ -32,8 +18,6 @@ const FEE_ITEMS = [
 ]
 
 const HOSTEL_TYPES = ['Day Scholar', 'Boarder', 'Day Boarder']
-
-// ─── Colors ───────────────────────────────────────────────────────────────────
 
 const C = {
   navy:    '#1e3a5f',
@@ -50,8 +34,6 @@ const inp = {
   fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box',
   fontFamily: 'inherit', background: 'white',
 }
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 const PaidBadge = () => (
   <span style={{ fontSize:10, fontWeight:800, color:C.emerald, background:'#dcfce7', padding:'3px 8px', borderRadius:6, flexShrink:0, letterSpacing:'.04em' }}>
@@ -89,16 +71,15 @@ function HostelBadge({ type }) {
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
-  // Resolve student identity — works from both Admissions and Students
   const gcc    = gccStr(app?.gcc ?? app?.gcc_no ?? student?.gcc_no ?? '')
   const name   = app?.name       ?? app?.applicant_name ?? student?.name       ?? ''
   const course = app?.course     ?? student?.course     ?? ''
   const batch  = app?.cls        ?? app?.batch          ?? student?.batch      ?? ''
   const admNo  = app?.admNo      ?? app?.adm_no         ?? student?.admission_no ?? ''
+
+  const sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
 
   const resolveInitialHostel = () => {
     if (app?.hostel === 'Yes' || app?.hostel_type === 'Boarder') return 'Boarder'
@@ -110,8 +91,27 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const [hostelWarning,   setHostelWarning]   = useState(null)
   const [hostelAutoFixed, setHostelAutoFixed] = useState(false)
 
-  // ✅ Flat fees derived from hostelType — updates whenever hostelType changes
-  const flatFees = useMemo(() => getFlatFees(hostelType), [hostelType])
+  // ── Rates from DB ─────────────────────────────────────────────────────────
+  const [feeRates,  setFeeRates]  = useState({ flatFee: 0, courseFee: 0, admissionFee: 6000 })
+  const [flatFees,  setFlatFees]  = useState([])
+  const [ratesLoading, setRatesLoading] = useState(true)
+
+  // Load rates whenever hostelType / course / batch changes
+  useEffect(() => {
+    setRatesLoading(true)
+    getFeeRates(sessionYear, course, batch, hostelType)
+      .then(rates => {
+        setFeeRates(rates)
+        setCourseAmt(rates.courseFee)
+      })
+      .finally(() => setRatesLoading(false))
+  }, [hostelType, course, batch])
+
+  // Load flat fee list whenever hostelType / course / batch changes
+  useEffect(() => {
+    getFlatFees(hostelType, course, batch, sessionYear)
+      .then(setFlatFees)
+  }, [hostelType, course, batch])
 
   const [tab,         setTab]         = useState('admission')
   const [saving,      setSaving]      = useState(false)
@@ -129,14 +129,14 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const [loadingAdm,   setLoadingAdm]   = useState(false)
 
   // Flat fee tab
-  const [flatSel,     setFlatSel]     = useState({})
-  const [paidMonths,  setPaidMonths]  = useState([])   // ["February_2026", ...]
+  const [flatSel,    setFlatSel]    = useState({})
+  const [paidMonths, setPaidMonths] = useState([])
   const [loadingPaid, setLoadingPaid] = useState(false)
 
   // Course fee tab
   const [courseMonth,      setCourseMonth]      = useState(MONTHS_LIST[new Date().getMonth()])
   const [courseYear,       setCourseYear]        = useState(CURRENT_YEAR)
-  const [courseAmt,        setCourseAmt]         = useState(() => getCourseFeeAmt(course, resolveInitialHostel()))
+  const [courseAmt,        setCourseAmt]         = useState(0)
   const [paidCourseMonths, setPaidCourseMonths] = useState([])
   const [loadingCourse,    setLoadingCourse]    = useState(false)
 
@@ -162,14 +162,13 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [student?.id])
 
-  // ── Recalculate course fee when hostel type changes ───────────────────────
+  // Reset messages on hostel type change
   useEffect(() => {
-    setCourseAmt(getCourseFeeAmt(course, hostelType))
     setSaved(null)
     setError(null)
-  }, [hostelType, course])
+  }, [hostelType])
 
-  // ── Load paid admission items ────────────────────────────────────────────
+  // ── Load paid admission items ─────────────────────────────────────────────
   useEffect(() => {
     if (!gcc) return
     setLoadingAdm(true)
@@ -177,7 +176,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
       .then(({ data }) => { if (data) setPaidAdmItems(data.map(r => r.description)); setLoadingAdm(false) })
   }, [gcc])
 
-  // ── Load paid flat months ────────────────────────────────────────────────
+  // ── Load paid flat months ─────────────────────────────────────────────────
   useEffect(() => {
     if (!gcc) return
     setLoadingPaid(true)
@@ -188,7 +187,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
       })
   }, [gcc])
 
-  // ── Load paid course months ──────────────────────────────────────────────
+  // ── Load paid course months ───────────────────────────────────────────────
   useEffect(() => {
     if (!gcc) return
     setLoadingCourse(true)
@@ -203,7 +202,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const isMonthPaid       = fee   => paidMonths.includes(`${fee.month}_${fee.year}`)
   const isCourseMonthPaid = ()    => paidCourseMonths.includes(`${courseMonth}_${courseYear}`)
 
-  // ── Totals ────────────────────────────────────────────────────────────────
   const admTotal = FEE_ITEMS
     .filter(f => selected[f.id] && !isAdmItemPaid(f.label))
     .reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
@@ -212,7 +210,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     .filter(f => flatSel[f.id] && !isMonthPaid(f))
     .reduce((s, f) => s + f.amount, 0)
 
-  // ── Common receipt fields ─────────────────────────────────────────────────
   const commonReceiptFields = rcpt => ({
     receipt_no: rcpt, pay_date: payDate, pay_mode: payMode,
     txn_ref: txnRef || null, collected_by: collectedBy || null,
@@ -221,7 +218,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     course, hostel_type: hostelType,
   })
 
-  // ── Save: Admission fees ──────────────────────────────────────────────────
+  // ── Save: Admission ───────────────────────────────────────────────────────
   const saveAdmission = async () => {
     if (saving) return
     if (!gcc) return alert('Student GCC number is missing.')
@@ -271,21 +268,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
       for (const item of items) {
         const alreadyPaid = await checkFlatFeeExists(gcc, item.month, item.year)
         if (alreadyPaid) { setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])]); continue }
-
-        // ✅ Stable id — not timestamp-based
         const flatId = `${gcc}_flat_${item.month.slice(0,3).toLowerCase()}_${item.year}`
-
         const { error: e } = await supabase.from('adm_flat_fees').insert({
           id: flatId, adm_app_id: gcc,
           month: item.month, year: item.year,
-          amount: item.amount,          // ✅ correct amount for their hostel type
-          hostel_type: hostelType,      // ✅ store which hostel type rate was used
+          amount: item.amount, hostel_type: hostelType,
           paid: true, pay_date: payDate, pay_mode: payMode,
           txn_ref: txnRef || null, receipt_no: rcpt,
           student_name: name, adm_no: admNo || null,
         })
         if (e) throw e
-
         await upsertAccount({
           entry_date: payDate, type: 'Income', category: 'Hostel',
           amount: item.amount, payment_mode: payMode,
@@ -295,13 +287,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         })
         setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])])
       }
-
       printReceipt({
         ...commonReceiptFields(rcpt),
         items: items.map(i => ({ label: `${i.month} ${i.year} — Monthly Fee (${hostelType})`, amount: i.amount })),
         total: items.reduce((s, i) => s + i.amount, 0),
       })
-
       setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
       setFlatSel({})
       onSaved?.()
@@ -343,18 +333,17 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
       })
       printReceipt({
         ...commonReceiptFields(rcpt),
-        items: [{ label: `Course fee — ${course} · ${courseMonth} ${courseYear} [${hostelType}]`, amount: amt }],
+        items: [{ label: `Course fee — ${course} · ${batch} · ${courseMonth} ${courseYear} [${hostelType}]`, amount: amt }],
         total: amt,
       })
       setPaidCourseMonths(p => [...new Set([...p, `${courseMonth}_${courseYear}`])])
-      setSaved({ rcpt, items: `${course} · ${courseMonth} ${courseYear}`, total: amt })
+      setSaved({ rcpt, items: `${course} · ${batch} · ${courseMonth} ${courseYear}`, total: amt })
       onSaved?.()
     } catch (err) {
       setError(err.message || 'Failed to save.')
     } finally { setSaving(false) }
   }
 
-  // ── UI helpers ────────────────────────────────────────────────────────────
   const handleClose = () => typeof onClose === 'function' && onClose()
 
   const tabBtn = (id, label, icon) => (
@@ -365,7 +354,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   )
 
   const allAdmPaid      = FEE_ITEMS.every(f => isAdmItemPaid(f.label))
-  const allFlatPaid     = flatFees.every(f => isMonthPaid(f))
+  const allFlatPaid     = flatFees.length > 0 && flatFees.every(f => isMonthPaid(f))
   const courseMonthPaid = isCourseMonthPaid()
   const admPaidCount    = FEE_ITEMS.filter(f => isAdmItemPaid(f.label)).length
   const flatPaidCount   = flatFees.filter(f => isMonthPaid(f)).length
@@ -393,7 +382,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             <button type="button" onClick={handleClose} style={{ width:30, height:30, borderRadius:8, border:`1px solid ${C.slate[200]}`, background:C.slate[50], cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
           </div>
 
-          {/* Hostel warning */}
           {hostelWarning && (
             <div style={{ marginTop:12, background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
               <div style={{ fontSize:12, color:'#92400e', fontWeight:600, flex:1 }}>⚠️ {hostelWarning}</div>
@@ -401,7 +389,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ✅ Hostel type selector — changing this recalculates flat fee amounts */}
+          {/* Hostel type selector */}
           <div style={{ marginTop:12, background:C.slate[50], borderRadius:9, padding:'8px 12px', border:`1px solid ${C.slate[200]}` }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
               <span style={{ fontSize:12, fontWeight:700, color:C.slate[500], whiteSpace:'nowrap' }}>Hostel Type:</span>
@@ -415,10 +403,14 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                 ))}
               </div>
             </div>
-            {/* ✅ Show flat fee rate for selected hostel type */}
             <div style={{ marginTop:8, display:'flex', gap:16, fontSize:11, color:C.slate[500] }}>
-              <span>📅 Flat fee: <strong style={{ color:C.emerald }}>₹{fmt(getFlatFeeAmt(hostelType))}/month</strong></span>
-              <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(getCourseFeeAmt(course, hostelType))}/month</strong></span>
+              {ratesLoading
+                ? <span style={{ color:C.slate[400] }}>⏳ Loading rates…</span>
+                : <>
+                    <span>📅 Flat fee: <strong style={{ color:C.emerald }}>₹{fmt(feeRates.flatFee).replace('₹','')}/month</strong></span>
+                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong></span>
+                  </>
+              }
             </div>
           </div>
 
@@ -454,7 +446,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Admission tab ────────────────────────────────────────────── */}
+          {/* ── Admission tab ── */}
           {tab === 'admission' && (
             <div>
               <PaidSummaryBar paid={admPaidCount} unpaid={FEE_ITEMS.length - admPaidCount} loading={loadingAdm} />
@@ -468,7 +460,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                       <div style={{ fontSize:20 }}>{fee.icon}</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:700, fontSize:13, color:C.slate[900] }}>{fee.label}</div>
-                        <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid?'Already collected':`Standard: ₹${fmt(fee.amount)}`}</div>
+                        <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid?'Already collected':`Standard: ₹${fmt(fee.amount).replace('₹','')}`}</div>
                       </div>
                       {!paid && (
                         <input type="number" value={customAmts[fee.id] ?? fee.amount}
@@ -488,7 +480,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
               {admTotal > 0 && (
                 <div style={{ background:C.slate[50], borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ fontSize:13, fontWeight:600, color:C.slate[500] }}>Total</span>
-                  <span style={{ fontSize:18, fontWeight:800, color:C.navy }}>₹{fmt(admTotal)}</span>
+                  <span style={{ fontSize:18, fontWeight:800, color:C.navy }}>{fmt(admTotal)}</span>
                 </div>
               )}
               {!loadingAdm && allAdmPaid && (
@@ -499,24 +491,17 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Flat fee tab ─────────────────────────────────────────────── */}
+          {/* ── Flat fee tab ── */}
           {tab === 'flat' && (
             <div>
-              {/* ✅ Rate info box — shows hostel type and rate clearly */}
               <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:9, padding:'10px 14px', marginBottom:14 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.emerald, marginBottom:4 }}>
-                  Monthly Fee Rate — {hostelType}
-                </div>
+                <div style={{ fontSize:12, fontWeight:700, color:C.emerald, marginBottom:4 }}>Monthly Flat Fee — {hostelType} · {course} {batch}</div>
                 <div style={{ fontSize:20, fontWeight:800, color:C.emerald }}>
-                  ₹{fmt(getFlatFeeAmt(hostelType))} <span style={{ fontSize:13, fontWeight:500, color:'#047857' }}>per month</span>
-                </div>
-                <div style={{ fontSize:11, color:'#047857', marginTop:4 }}>
-                  Boarder ₹5,500 · Day Boarder ₹4,000 · Day Scholar ₹2,000
+                  {ratesLoading ? '⏳' : `₹${fmt(feeRates.flatFee).replace('₹','')}`}
+                  <span style={{ fontSize:13, fontWeight:500, color:'#047857' }}> per month</span>
                 </div>
               </div>
-
               <PaidSummaryBar paid={flatPaidCount} unpaid={flatFees.length - flatPaidCount} loading={loadingPaid} />
-
               <div style={{ fontSize:11, fontWeight:700, color:C.slate[400], textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>Select months</div>
               <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
                 {flatFees.map(fee => {
@@ -527,12 +512,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                       <div style={{ fontSize:20 }}>📅</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:700, fontSize:13, color:C.slate[900] }}>{fee.month} {fee.year}</div>
-                        <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>
-                          {paid ? 'Already paid' : `${hostelType} rate`}
-                        </div>
+                        <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid ? 'Already paid' : `${hostelType} rate`}</div>
                       </div>
-                      {/* ✅ Shows correct amount for this student's hostel type */}
-                      <span style={{ fontSize:15, fontWeight:800, color:paid?C.emerald:C.emerald }}>₹{fmt(fee.amount)}</span>
+                      <span style={{ fontSize:15, fontWeight:800, color:C.emerald }}>{fmt(fee.amount)}</span>
                       {paid ? <PaidBadge /> : (
                         <div style={{ width:20, height:20, borderRadius:5, flexShrink:0, border:`2px solid ${flatSel[fee.id]?C.emerald:C.slate[300]}`, background:flatSel[fee.id]?C.emerald:'white', display:'flex', alignItems:'center', justifyContent:'center' }}>
                           {flatSel[fee.id] && <span style={{ color:'white', fontSize:11, fontWeight:900 }}>✓</span>}
@@ -545,7 +527,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
               {flatTotal > 0 && (
                 <div style={{ background:C.slate[50], borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ fontSize:13, fontWeight:600, color:C.slate[500] }}>Total</span>
-                  <span style={{ fontSize:18, fontWeight:800, color:C.emerald }}>₹{fmt(flatTotal)}</span>
+                  <span style={{ fontSize:18, fontWeight:800, color:C.emerald }}>{fmt(flatTotal)}</span>
                 </div>
               )}
               {!loadingPaid && allFlatPaid && (
@@ -556,11 +538,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Course fee tab ────────────────────────────────────────────── */}
+          {/* ── Course fee tab ── */}
           {tab === 'course' && (
             <div>
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:9, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#1d4ed8' }}>
-                <span style={{ fontWeight:700 }}>Rate basis:</span> {course} · {hostelType} → ₹{fmt(getCourseFeeAmt(course, hostelType))}/month
+                <span style={{ fontWeight:700 }}>Rate basis:</span> {course} · {batch} · {hostelType} →{' '}
+                {ratesLoading ? '⏳' : `₹${fmt(feeRates.courseFee).replace('₹','')}/month`}
                 <span style={{ color:C.slate[400], marginLeft:8 }}>(change hostel type above to recalculate)</span>
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:18 }}>
@@ -613,12 +596,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
               )}
               <div style={{ background:C.slate[50], borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <span style={{ fontSize:13, fontWeight:600, color:C.slate[500] }}>Total</span>
-                <span style={{ fontSize:18, fontWeight:800, color:C.violet }}>₹{fmt(courseAmt)}</span>
+                <span style={{ fontSize:18, fontWeight:800, color:C.violet }}>{fmt(courseAmt)}</span>
               </div>
             </div>
           )}
 
-          {/* ── Payment details ───────────────────────────────────────────── */}
+          {/* ── Payment details ── */}
           <div style={{ borderTop:`1px solid ${C.slate[100]}`, paddingTop:16 }}>
             <div style={{ fontSize:11, fontWeight:700, color:C.slate[400], textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>Payment details</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -649,12 +632,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           <button type="button" onClick={handleClose} style={{ padding:'9px 20px', borderRadius:9, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>Close</button>
           <button type="button"
             onClick={tab==='admission'?saveAdmission:tab==='flat'?saveFlat:saveCourse}
-            disabled={saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)}
+            disabled={saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading}
             style={{ padding:'9px 24px', borderRadius:9, border:'none', fontSize:13, fontWeight:700,
-              cursor:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid))?'not-allowed':'pointer',
-              background:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid))?C.slate[400]:`linear-gradient(135deg,${C.navy},${C.indigo})`,
-              color:'white', opacity:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid))?.7:1 }}>
-            {saving?'⏳ Saving…':'🖨️ Record & Print Receipt'}
+              cursor:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading)?'not-allowed':'pointer',
+              background:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading)?C.slate[400]:`linear-gradient(135deg,${C.navy},${C.indigo})`,
+              color:'white', opacity:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading)?.7:1 }}>
+            {saving?'⏳ Saving…':ratesLoading?'⏳ Loading…':'🖨️ Record & Print Receipt'}
           </button>
         </div>
       </div>

@@ -1,24 +1,26 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import TabMonthlySyllabus from './TabMonthlySyllabus'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const SUBJECTS = [
-  'Mathematics', 'English', 'General Knowledge', 'General Science',
-  'Social Science', 'Reasoning', 'Current Affairs', 'Hindi',
-  'Computer Science', 'Physical Education',
+  'Mathematics','Mathematics I','Mathematics II', 'English Grammar', 'General Knowledge', 'General Science',
+  'Reasoning', 'Mental Ability', 'Hindi',
+  'Vocabulary', 'Meitei Mayek',
 ]
 
 const DAYS    = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8]
+const PERIODS = [1, 2, 3, 4, 5, 6, 7]
 
 const TABS = [
-  { key: 'logs',      label: '📋 Daily Logs' },
-  { key: 'calendar',  label: '📅 Calendar' },
-  { key: 'syllabus',  label: '📊 Syllabus' },
-  { key: 'timetable', label: '🕐 Timetable' },
-  { key: 'reports',   label: '📈 Reports' },
-  { key: 'search',    label: '🔍 Topic Search' },
+  { key: 'logs',      label: 'Daily Logs',       icon: '📋' },
+  { key: 'calendar',  label: 'Calendar',          icon: '📅' },
+  { key: 'syllabus',  label: 'Syllabus',          icon: '📊' },
+  { key: 'timetable', label: 'Timetable',         icon: '🕐' },
+  { key: 'reports',   label: 'Reports',           icon: '📈' },
+  { key: 'search',    label: 'Topic Search',      icon: '🔍' },
+  { key: 'monthly',   label: 'Monthly Syllabus',  icon: '📆' },
 ]
 
 const today            = () => new Date().toISOString().split('T')[0]
@@ -30,6 +32,7 @@ const emptyLog = {
   subject_name: '', teacher_name: '', staff_id: '',
   teaching_date: today(), topic_taught: '', classwork: '',
   homework: '', remarks: '', period_number: '',
+  needs_doubt_session: false,
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -41,7 +44,6 @@ const S = {
   btnSm:  (color='#1e3a5f') => ({ backgroundColor:color, color:'white', border:'none', borderRadius:'6px', padding:'6px 12px', fontWeight:'600', cursor:'pointer', fontSize:'12px' }),
   input:  { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
   label:  { display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' },
-  tab:    (active) => ({ padding:'10px 18px', fontWeight:'600', fontSize:'13px', cursor:'pointer', background:'none', border:'none', borderBottom: active?'3px solid #1e3a5f':'3px solid transparent', color: active?'#1e3a5f':'#64748b' }),
   select: { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
 }
 
@@ -75,16 +77,40 @@ function useCourseData() {
     )],
   [batches])
 
-  // find the batch_id for a given course+subtype+class combination
   const batchIdFor = useCallback((course, subtype, className) =>
     batches.find(b =>
       b.course === course &&
-      (!subtype    || b.subtype    === subtype) &&
-      (!className  || b.class_name === className)
+      (!subtype   || b.subtype    === subtype) &&
+      (!className || b.class_name === className)
     )?.id || '',
   [batches])
 
   return { batches, courses, subtypesFor, classesFor, batchIdFor, loading }
+}
+
+// ─── Shared Hook: Doubt Sessions ──────────────────────────────────────────────
+
+function useDoubtSessions(logIds) {
+  const [sessions, setSessions] = useState({})
+
+  const refetch = useCallback(async () => {
+    if (!logIds.length) return
+    const { data } = await supabase
+      .from('doubt_sessions')
+      .select('*')
+      .in('log_id', logIds)
+    if (data) {
+      const map = {}
+      data.forEach(s => {
+        if (!map[s.log_id]) map[s.log_id] = []
+        map[s.log_id].push(s)
+      })
+      setSessions(map)
+    }
+  }, [logIds.join(',')])  // eslint-disable-line
+
+  useEffect(() => { refetch() }, [refetch])
+  return { sessions, refetch }
 }
 
 // ─── 3-Level Course Selector ─────────────────────────────────────────────────
@@ -100,7 +126,7 @@ function CoursePicker({ form, setForm, courseData }) {
   }
 
   const handleSubtype = (subtype) => {
-    const cls = classesFor(form.course, subtype)
+    const cls        = classesFor(form.course, subtype)
     const class_name = cls.length === 1 ? cls[0] : ''
     const batch_id   = class_name ? batchIdFor(form.course, subtype, class_name) : ''
     setForm(f => ({ ...f, subtype, class_name, batch_id }))
@@ -113,7 +139,6 @@ function CoursePicker({ form, setForm, courseData }) {
 
   return (
     <>
-      {/* Level 1: Course */}
       <div>
         <label style={S.label}>Course</label>
         <select value={form.course} onChange={e => handleCourse(e.target.value)} required style={S.select}>
@@ -122,7 +147,6 @@ function CoursePicker({ form, setForm, courseData }) {
         </select>
       </div>
 
-      {/* Level 2: Subtype (what was previously called "batch") */}
       <div>
         <label style={S.label}>Subtype / Batch</label>
         <select
@@ -137,7 +161,6 @@ function CoursePicker({ form, setForm, courseData }) {
         </select>
       </div>
 
-      {/* Level 3: Class */}
       <div>
         <label style={S.label}>
           Class
@@ -171,39 +194,141 @@ function CoursePicker({ form, setForm, courseData }) {
   )
 }
 
+// ─── Doubt Session Sub-Row ────────────────────────────────────────────────────
+
+function DoubtSessionSubRow({ logId, sessions, onRefetch, currentUser }) {
+  const [resolvingId, setResolvingId] = useState(null)
+  const [note, setNote]               = useState('')
+
+  const list = sessions[logId] || []
+  if (!list.length) return null
+
+  const handleResolve = async (session) => {
+    if (!note.trim()) { alert('Please enter a resolution note.'); return }
+    setResolvingId(session.id)
+    const { error } = await supabase
+      .from('doubt_sessions')
+      .update({
+        status:          'resolved',
+        resolved_by:     currentUser?.name || 'Staff',
+        resolved_at:     new Date().toISOString(),
+        resolution_note: note,
+      })
+      .eq('id', session.id)
+    if (error) alert('Error: ' + error.message)
+    else { onRefetch(); setNote('') }
+    setResolvingId(null)
+  }
+
+  return (
+    <tr>
+      <td colSpan={10} style={{ padding: '0 16px 12px 48px', background: '#fffbeb' }}>
+        <div style={{ borderLeft: '3px solid #f59e0b', paddingLeft: '14px' }}>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: '#b45309', marginBottom: '8px' }}>
+            🔁 Doubt Sessions
+          </div>
+          {list.map(s => (
+            <div key={s.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: '12px',
+              flexWrap: 'wrap', padding: '10px 14px', marginBottom: '6px',
+              borderRadius: '8px',
+              background: s.status === 'resolved' ? '#f0fdf4' : '#fef9c3',
+              border: `1px solid ${s.status === 'resolved' ? '#bbf7d0' : '#fde68a'}`,
+            }}>
+              {/* House + HM */}
+              <div style={{ minWidth: '160px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#1e293b' }}>
+                  🏠 {s.house_name || s.batch_name || '—'}
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                  HM: {s.hm_name || s.staff_name || '—'}
+                </div>
+              </div>
+
+              {/* Topic */}
+              <div style={{ flex: 1, minWidth: '140px' }}>
+                <div style={{ fontSize: '12px', color: '#374151' }}>📖 {s.topic}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{s.subject_name || s.subject}</div>
+              </div>
+
+              {/* Status badge */}
+              <div style={{ minWidth: '100px' }}>
+                {s.status === 'resolved' ? (
+                  <span style={{ padding: '3px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: '700', background: '#dcfce7', color: '#16a34a' }}>
+                    ✅ Resolved
+                  </span>
+                ) : (
+                  <span style={{ padding: '3px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: '700', background: '#fef9c3', color: '#b45309' }}>
+                    ⏳ Open
+                  </span>
+                )}
+                {s.resolved_by && (
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '3px' }}>by {s.resolved_by}</div>
+                )}
+              </div>
+
+              {/* Resolution note (if resolved) */}
+              {s.status === 'resolved' && s.resolution_note && (
+                <div style={{ fontSize: '11px', color: '#64748b', flex: 1 }}>
+                  📝 {s.resolution_note}
+                </div>
+              )}
+
+              {/* Resolve controls (if open) */}
+              {s.status === 'open' && (
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    value={resolvingId === s.id ? note : ''}
+                    onChange={e => setNote(e.target.value)}
+                    onFocus={() => setResolvingId(s.id)}
+                    placeholder="Resolution note..."
+                    style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '12px', width: '180px' }}
+                  />
+                  <button
+                    onClick={() => handleResolve(s)}
+                    disabled={resolvingId === s.id && !note.trim()}
+                    style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#16a34a', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    ✓ Resolve
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ─── Shared: Log Form ─────────────────────────────────────────────────────────
 
 function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, editMode=false, courseData }) {
   const handlePeriodSelect = (e) => {
-  const pn = parseInt(e.target.value)
-  if (!pn || !form.course || !form.subtype) {
-    setForm(f => ({ ...f, period_number: pn || '' }))
-    return
+    const pn = parseInt(e.target.value)
+    if (!pn || !form.course || !form.subtype) {
+      setForm(f => ({ ...f, period_number: pn || '' }))
+      return
+    }
+    const dayName = DAYS[new Date().getDay() - 1] || 'Monday'
+    const slot = timetable.find(t =>
+      t.class_name === form.subtype &&
+      t.period_name === String(pn) &&
+      t.day_name === dayName
+    )
+    if (slot) {
+      const matchedStaff = staff.find(s => s.name === slot.teacher_name)
+      setForm(f => ({
+        ...f,
+        period_number: pn,
+        subject_name:  slot.subject_name || f.subject_name,
+        teacher_name:  slot.teacher_name || f.teacher_name,
+        staff_id:      matchedStaff?.id  || f.staff_id,
+      }))
+    } else {
+      setForm(f => ({ ...f, period_number: pn }))
+    }
   }
-
-  const dayName = DAYS[new Date().getDay() - 1] || 'Monday'
-
-  // Now reads from timetable_entries
-  // class_name in timetable_entries = batch/subtype name
-  const slot = timetable.find(t =>
-    t.class_name === form.subtype &&   // ← key fix: was t.batch
-    t.period_name === String(pn) &&    // ← key fix: period_name is string
-    t.day_name === dayName             // ← key fix: was t.day_of_week
-  )
-
-  if (slot) {
-    const matchedStaff = staff.find(s => s.name === slot.teacher_name)
-    setForm(f => ({
-      ...f,
-      period_number: pn,
-      subject_name:  slot.subject_name  || f.subject_name,
-      teacher_name:  slot.teacher_name  || f.teacher_name,
-      staff_id:      matchedStaff?.id   || f.staff_id,
-    }))
-  } else {
-    setForm(f => ({ ...f, period_number: pn }))
-  }
-}
 
   const handleTeacherChange = (e) => {
     const selected = staff.find(s => s.name === e.target.value)
@@ -214,10 +339,8 @@ function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, 
     <form onSubmit={onSubmit}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
 
-        {/* 3-level course picker */}
         <CoursePicker form={form} setForm={setForm} courseData={courseData} />
 
-        {/* Period */}
         <div>
           <label style={S.label}>Period (optional — auto-fills subject)</label>
           <select value={form.period_number} onChange={handlePeriodSelect} style={S.select}>
@@ -226,7 +349,6 @@ function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, 
           </select>
         </div>
 
-        {/* Subject */}
         <div>
           <label style={S.label}>Subject</label>
           <select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name: e.target.value }))} required style={S.select}>
@@ -235,7 +357,6 @@ function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, 
           </select>
         </div>
 
-        {/* Teacher */}
         <div>
           <label style={S.label}>Teacher</label>
           <select value={form.teacher_name} onChange={handleTeacherChange} style={S.select}>
@@ -244,35 +365,56 @@ function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, 
           </select>
         </div>
 
-        {/* Date */}
         <div>
           <label style={S.label}>Date</label>
           <input type="date" value={form.teaching_date} onChange={e => setForm(f => ({ ...f, teaching_date: e.target.value }))} required style={S.input} />
         </div>
 
-        {/* Topic */}
         <div style={{ gridColumn: '1/-1' }}>
           <label style={S.label}>Topic Taught</label>
           <input value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught: e.target.value }))} required placeholder="Enter topic" style={S.input} />
         </div>
 
-        {/* Classwork */}
         <div style={{ gridColumn: '1/-1' }}>
           <label style={S.label}>Classwork</label>
           <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork: e.target.value }))} rows={3} style={{ ...S.input, resize: 'vertical' }} placeholder="Classwork details" />
         </div>
 
-        {/* Homework */}
         <div style={{ gridColumn: '1/-1' }}>
           <label style={S.label}>Homework</label>
           <textarea value={form.homework} onChange={e => setForm(f => ({ ...f, homework: e.target.value }))} rows={3} style={{ ...S.input, resize: 'vertical' }} placeholder="Homework details" />
         </div>
 
-        {/* Remarks */}
         <div style={{ gridColumn: '1/-1' }}>
           <label style={S.label}>Remarks</label>
           <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} rows={2} style={{ ...S.input, resize: 'vertical' }} placeholder="Any remarks" />
         </div>
+
+        {/* Doubt Session Flag */}
+        <div style={{ gridColumn: '1/-1' }}>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+            padding: '12px 16px', borderRadius: '8px', transition: 'all 0.2s',
+            background: form.needs_doubt_session ? '#fef9c3' : '#f8fafc',
+            border: `1px solid ${form.needs_doubt_session ? '#f59e0b' : '#e2e8f0'}`,
+          }}>
+            <input
+              type="checkbox"
+              checked={form.needs_doubt_session || false}
+              onChange={e => setForm(f => ({ ...f, needs_doubt_session: e.target.checked }))}
+              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+            />
+            <span style={{ fontWeight: '600', fontSize: '14px', color: form.needs_doubt_session ? '#b45309' : '#374151' }}>
+              🔁 Needs Doubt Session
+            </span>
+            {form.needs_doubt_session && (
+              <span style={{ fontSize: '12px', color: '#92400e' }}>
+                — HM will be notified &amp; session tracked below this log
+              </span>
+            )}
+          </label>
+        </div>
+
       </div>
 
       {/* batch_id linkage indicator */}
@@ -294,17 +436,24 @@ function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, 
 
 // ─── Tab: Daily Logs ──────────────────────────────────────────────────────────
 
-function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm]         = useState({ ...emptyLog, teaching_date: today() })
-  const [saving, setSaving]     = useState(false)
-  const [editId, setEditId]     = useState(null)
-  const [editForm, setEditForm] = useState(null)
+function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, currentUser }) {
+  const [showForm, setShowForm]     = useState(false)
+  const [form, setForm]             = useState({ ...emptyLog, teaching_date: today() })
+  const [saving, setSaving]         = useState(false)
+  const [editId, setEditId]         = useState(null)
+  const [editForm, setEditForm]     = useState(null)
   const [editSaving, setEditSaving] = useState(false)
-  const [search, setSearch]     = useState('')
+  const [search, setSearch]         = useState('')
   const [courseFilter, setCourseFilter]   = useState('All')
   const [subjectFilter, setSubjectFilter] = useState('All')
-  const [dupWarn, setDupWarn]   = useState('')
+  const [dupWarn, setDupWarn]       = useState('')
+
+  // ── Doubt sessions ──
+  const logIds = useMemo(() => logs.map(l => l.id), [logs])
+  const { sessions, refetch: refetchSessions } = useDoubtSessions(logIds)
+  const openDoubtCount = useMemo(() =>
+    Object.values(sessions).flat().filter(s => s.status === 'open').length,
+  [sessions])
 
   const { courses } = courseData
 
@@ -319,19 +468,20 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
   }, [logs, editId])
 
   const buildPayload = (f) => ({
-    course:        f.course,
-    subtype:       f.subtype       || null,
-    class_name:    f.class_name    || null,
-    batch_id:      f.batch_id      || null,
-    subject_name:  f.subject_name,
-    teacher_name:  f.teacher_name  || null,
-    staff_id:      f.staff_id      || null,
-    teaching_date: f.teaching_date,
-    topic_taught:  f.topic_taught,
-    classwork:     f.classwork     || null,
-    homework:      f.homework      || null,
-    remarks:       f.remarks       || null,
-    period_number: f.period_number || null,
+    course:              f.course,
+    subtype:             f.subtype             || null,
+    class_name:          f.class_name          || null,
+    batch_id:            f.batch_id            || null,
+    subject_name:        f.subject_name,
+    teacher_name:        f.teacher_name        || null,
+    staff_id:            f.staff_id            || null,
+    teaching_date:       f.teaching_date,
+    topic_taught:        f.topic_taught,
+    classwork:           f.classwork           || null,
+    homework:            f.homework            || null,
+    remarks:             f.remarks             || null,
+    period_number:       f.period_number       || null,
+    needs_doubt_session: f.needs_doubt_session || false,
   })
 
   const handleAdd = async (e) => {
@@ -342,16 +492,68 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
     }
     setDupWarn('')
     setSaving(true)
-    const { error } = await supabase.from('teaching_logs').insert([buildPayload(form)])
-    if (error) alert('Error: ' + error.message)
-    else { setForm({ ...emptyLog, teaching_date: today() }); setShowForm(false); fetchLogs() }
+
+    const { data: logData, error } = await supabase
+      .from('teaching_logs')
+      .insert([buildPayload(form)])
+      .select()
+      .single()
+
+    if (error) { alert('Error: ' + error.message); setSaving(false); return }
+
+    // Auto-create doubt sessions per house if flagged
+    if (form.needs_doubt_session && logData) {
+      const { data: students } = await supabase
+        .from('students')
+        .select('house')
+        .eq('course', form.course)
+        .eq('batch', form.subtype)
+        .eq('status', 'Active')
+        .not('house', 'is', null)
+
+      const houses = [...new Set((students || []).map(s => s.house).filter(Boolean))]
+
+      const { data: hms } = await supabase
+        .from('housemasters')
+        .select('id, name, house')
+        .eq('status', 'Active')
+        .in('house', houses.length ? houses : ['__none__'])
+
+      const hmMap = {}
+      ;(hms || []).forEach(hm => { hmMap[hm.house] = hm })
+
+      const doubtSessions = houses.map(house => ({
+        log_id:           logData.id,
+        course:           form.course,
+        subtype:          form.subtype        || null,
+        class_name:       form.class_name     || null,
+        subject_name:     form.subject_name,
+        topic:            form.topic_taught,
+        teaching_date:    form.teaching_date,
+        teacher_name:     form.teacher_name   || null,
+        teacher_staff_id: form.staff_id       || null,
+        house_name:       house,
+        hm_id:            hmMap[house]?.id    || null,
+        hm_name:          hmMap[house]?.name  || null,
+        status:           'open',
+      }))
+
+      if (doubtSessions.length) {
+        const { error: dsErr } = await supabase.from('doubt_sessions').insert(doubtSessions)
+        if (dsErr) console.error('Doubt session insert error:', dsErr.message)
+      }
+    }
+
+    setForm({ ...emptyLog, teaching_date: today() })
+    setShowForm(false)
+    fetchLogs()
     setSaving(false)
   }
 
   const handleEdit = async (e) => {
     e.preventDefault()
     if (checkDuplicate(editForm)) {
-      alert(`⚠️ Duplicate log exists.`)
+      alert('⚠️ Duplicate log exists.')
       return
     }
     setEditSaving(true)
@@ -384,6 +586,7 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
       homework:      item.homework      || '',
       remarks:       item.remarks       || '',
       period_number: item.period_number || '',
+      needs_doubt_session: item.needs_doubt_session || false,
     })
   }
 
@@ -410,7 +613,7 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
           { label:'Total Logs',  value:logs.length,  color:'#1e3a5f', bg:'#eff6ff', icon:'📋' },
           { label:'Today Logs',  value:todayCount,   color:'#16a34a', bg:'#dcfce7', icon:'📅' },
           { label:'Subjects',    value:[...new Set(logs.map(l=>l.subject_name).filter(Boolean))].length, color:'#7c3aed', bg:'#f3e8ff', icon:'📚' },
-          { label:'Teachers',   value:[...new Set(logs.map(l=>l.teacher_name).filter(Boolean))].length, color:'#ca8a04', bg:'#fef9c3', icon:'👨‍🏫' },
+          { label:'Teachers',    value:[...new Set(logs.map(l=>l.teacher_name).filter(Boolean))].length, color:'#ca8a04', bg:'#fef9c3', icon:'👨‍🏫' },
         ].map(c => (
           <div key={c.label} style={{ background:c.bg, borderRadius:'12px', padding:'18px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', borderLeft:`4px solid ${c.color}` }}>
             <div style={{ fontSize:'22px', marginBottom:'6px' }}>{c.icon}</div>
@@ -428,7 +631,11 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
             {showForm ? '✖ Cancel' : '➕ Add Log'}
           </button>
         </div>
-        {dupWarn && <div style={{ padding:'10px 14px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:'8px', color:'#92400e', fontSize:'13px', marginBottom:'12px' }}>{dupWarn}</div>}
+        {dupWarn && (
+          <div style={{ padding:'10px 14px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:'8px', color:'#92400e', fontSize:'13px', marginBottom:'12px' }}>
+            {dupWarn}
+          </div>
+        )}
         {showForm && (
           <LogForm
             form={form} setForm={setForm}
@@ -451,7 +658,18 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
           {uniqueSubjects.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
-      <div style={{ fontSize:'13px', color:'#64748b', marginBottom:'10px' }}>Showing {filtered.length} of {logs.length} logs</div>
+
+      <div style={{ fontSize:'13px', color:'#64748b', marginBottom:'10px' }}>
+        Showing {filtered.length} of {logs.length} logs
+      </div>
+
+      {/* Open doubt sessions banner */}
+      {openDoubtCount > 0 && (
+        <div style={{ padding: '10px 16px', background: '#fef9c3', border: '1px solid #f59e0b', borderRadius: '8px', marginBottom: '12px', fontSize: '13px', fontWeight: '700', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          🔁 {openDoubtCount} doubt session{openDoubtCount > 1 ? 's' : ''} pending resolution
+          <span style={{ fontSize: '11px', fontWeight: '400', color: '#b45309' }}>— expand rows below to resolve</span>
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -482,14 +700,38 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
                     <td style={{ padding:'12px 14px', color:'#64748b', maxWidth:'200px' }}>{item.topic_taught}</td>
                     <td style={{ padding:'12px 14px', color:'#64748b', maxWidth:'160px' }}>{item.homework || '-'}</td>
                     <td style={{ padding:'12px 14px' }}>
-                      <div style={{ display:'flex', gap:'6px' }}>
-                        <button onClick={() => editId===item.id ? (setEditId(null),setEditForm(null)) : startEdit(item)} style={S.btnSm('#7c3aed')}>
+                      <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
+                        <button
+                          onClick={() => editId===item.id ? (setEditId(null), setEditForm(null)) : startEdit(item)}
+                          style={S.btnSm('#7c3aed')}
+                        >
                           {editId===item.id ? '✖' : '✏️'}
                         </button>
                         <button onClick={() => handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                        {sessions[item.id]?.length > 0 && (
+                          <span style={{
+                            padding: '2px 7px', borderRadius: '999px', fontSize: '10px', fontWeight: '700',
+                            background: sessions[item.id].some(s => s.status === 'open') ? '#fef9c3' : '#dcfce7',
+                            color:      sessions[item.id].some(s => s.status === 'open') ? '#b45309'  : '#16a34a',
+                            border:     `1px solid ${sessions[item.id].some(s => s.status === 'open') ? '#fde68a' : '#bbf7d0'}`,
+                          }}>
+                            🔁 {sessions[item.id].some(s => s.status === 'open') ? 'open' : 'done'}
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>
+
+                  {/* Doubt session sub-row */}
+                  <DoubtSessionSubRow
+                    key={`ds-${item.id}`}
+                    logId={item.id}
+                    sessions={sessions}
+                    onRefetch={refetchSessions}
+                    currentUser={currentUser}
+                  />
+
+                  {/* Edit sub-row */}
                   {editId===item.id && (
                     <tr key={`edit-${item.id}`} style={{ borderBottom:'1px solid #f1f5f9' }}>
                       <td colSpan={10} style={{ padding:'16px 24px', background:'#f8f4ff' }}>
@@ -521,7 +763,7 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData }) {
 // ─── Tab: Calendar ────────────────────────────────────────────────────────────
 
 function TabCalendar({ logs, missed }) {
-  const [month, setMonth]         = useState(currentYearMonth())
+  const [month, setMonth]             = useState(currentYearMonth())
   const [selectedDay, setSelectedDay] = useState(null)
 
   const [year, mon] = month.split('-').map(Number)
@@ -579,9 +821,9 @@ function TabCalendar({ logs, missed }) {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'4px' }}>
         {Array.from({ length: blanks }).map((_,i) => <div key={`b${i}`} />)}
         {Array.from({ length: daysInMonth }).map((_,i) => {
-          const day       = i + 1
-          const hasLogs   = !!logsByDate[day]?.length
-          const hasMissed = !!missedByDate[day]?.length
+          const day        = i + 1
+          const hasLogs    = !!logsByDate[day]?.length
+          const hasMissed  = !!missedByDate[day]?.length
           const isSelected = selectedDay === day
           const bg    = isSelected ? '#1e3a5f' : hasLogs ? '#dcfce7' : hasMissed ? '#fee2e2' : '#f8fafc'
           const color = isSelected ? 'white'   : hasLogs ? '#16a34a' : hasMissed ? '#dc2626' : '#94a3b8'
@@ -645,8 +887,8 @@ function TabSyllabus({ logs, courseData }) {
     setSaving(true)
     const { error } = await supabase.from('teaching_syllabus').upsert([{
       course:       form.course,
-      subtype:      form.subtype       || null,
-      class_name:   form.class_name    || null,
+      subtype:      form.subtype    || null,
+      class_name:   form.class_name || null,
       subject_name: form.subject_name,
       total_topics: parseInt(form.total_topics),
     }], { onConflict: 'course,subtype,class_name,subject_name' })
@@ -761,64 +1003,61 @@ function TabSyllabus({ logs, courseData }) {
 // ─── Tab: Timetable ───────────────────────────────────────────────────────────
 
 function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
-  const [form, setForm]     = useState({ course:'', subtype:'', class_name:'', batch_id:'', subject_name:'', teacher_name:'', day_of_week:'Monday', period_number:1, start_time:'', end_time:'' })
-  const [saving, setSaving] = useState(false)
+  const [form, setForm]         = useState({ course:'', subtype:'', class_name:'', batch_id:'', subject_name:'', teacher_name:'', day_of_week:'Monday', period_number:1, start_time:'', end_time:'' })
+  const [saving, setSaving]     = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [viewCourse, setViewCourse] = useState('')
+  const [viewCourse, setViewCourse]   = useState('')
   const [viewSubtype, setViewSubtype] = useState('')
   const [viewClass, setViewClass]     = useState('')
 
   const { courses, subtypesFor, classesFor } = courseData
 
-  // init view selectors
   useEffect(() => {
     if (courses.length && !viewCourse) {
-      const c = courses[0]
-      const s = subtypesFor(c)[0] || ''
+      const c  = courses[0]
+      const s  = subtypesFor(c)[0] || ''
       const cl = s ? classesFor(c, s)[0] || '' : ''
       setViewCourse(c); setViewSubtype(s); setViewClass(cl)
     }
-  }, [courses])
+  }, [courses])  // eslint-disable-line
 
   const handleSave = async (e) => {
-  e.preventDefault()
-  setSaving(true)
+    e.preventDefault()
+    setSaving(true)
 
-  // Write to timetable_entries (master Timetable module)
-  const { error: ttErr } = await supabase
-    .from('timetable_entries')
-    .insert([{
-      class_name:   form.subtype || form.class_name, // use subtype as batch name
-      subject_name: form.subject_name,
-      teacher_name: form.teacher_name || null,
-      day_name:     form.day_of_week,
-      period_name:  String(form.period_number),
-    }])
+    const { error: ttErr } = await supabase
+      .from('timetable_entries')
+      .insert([{
+        class_name:   form.subtype || form.class_name,
+        subject_name: form.subject_name,
+        teacher_name: form.teacher_name || null,
+        day_name:     form.day_of_week,
+        period_name:  String(form.period_number),
+      }])
 
-  // Also write to teaching_timetable (Teaching's own table)
-  const { error: teachErr } = await supabase
-    .from('teaching_timetable')
-    .upsert([{
-      course:        form.course,
-      subtype:       form.subtype      || null,
-      class_name:    form.class_name   || null,
-      batch_id:      form.batch_id     || null,
-      subject_name:  form.subject_name,
-      teacher_name:  form.teacher_name || null,
-      day_of_week:   form.day_of_week,
-      period_number: parseInt(form.period_number),
-      start_time:    form.start_time   || null,
-      end_time:      form.end_time     || null,
-    }], { onConflict: 'course,subtype,class_name,day_of_week,period_number' })
+    const { error: teachErr } = await supabase
+      .from('teaching_timetable')
+      .insert([{
+        course:        form.course,
+        subtype:       form.subtype       || null,
+        class_name:    form.class_name    || null,
+        batch_id:      form.batch_id      || null,
+        subject_name:  form.subject_name,
+        teacher_name:  form.teacher_name  || null,
+        day_of_week:   form.day_of_week,
+        period_number: parseInt(form.period_number),
+        start_time:    form.start_time    || null,
+        end_time:      form.end_time      || null,
+      }])
 
-  if (ttErr || teachErr) {
-    alert('Error: ' + (ttErr?.message || teachErr?.message))
-  } else {
-    setShowForm(false)
-    fetchTimetable()
+    if (ttErr || teachErr) {
+      alert('Error: ' + (ttErr?.message || teachErr?.message))
+    } else {
+      setShowForm(false)
+      fetchTimetable()
+    }
+    setSaving(false)
   }
-  setSaving(false)
-}
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this period?')) return
@@ -828,9 +1067,9 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
 
   const getSlot = (day, period) =>
     timetable.find(t =>
-      t.course === viewCourse && t.subtype === viewSubtype &&
-      (!viewClass || t.class_name === viewClass) &&
-      t.day_of_week === day && t.period_number === period
+      t.class_name === viewSubtype &&
+      t.day_name   === day &&
+      t.period_name === String(period)
     )
 
   const viewSubtypes = viewCourse ? subtypesFor(viewCourse) : []
@@ -888,7 +1127,6 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
         </form>
       )}
 
-      {/* View selector */}
       <div style={{ display:'flex', gap:'12px', marginBottom:'16px', alignItems:'center', flexWrap:'wrap' }}>
         <span style={{ fontSize:'13px', fontWeight:'600', color:'#374151' }}>View:</span>
         <select value={viewCourse} onChange={e => { setViewCourse(e.target.value); setViewSubtype(''); setViewClass('') }} style={{ ...S.select, width:'auto' }}>
@@ -906,7 +1144,6 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
         )}
       </div>
 
-      {/* Grid */}
       <div style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
           <thead>
@@ -954,7 +1191,7 @@ function TabReports({ logs, missed, staff, courseData }) {
   const teachers = [...new Set(logs.map(l => l.teacher_name).filter(Boolean))]
 
   const monthLogs   = logs.filter(l => l.teaching_date?.startsWith(month) && (teacher==='All'||l.teacher_name===teacher) && (course==='All'||l.course===course))
-  const monthMissed = missed.filter(m => m.missed_date?.startsWith(month)  && (teacher==='All'||m.teacher_name===teacher))
+  const monthMissed = missed.filter(m => m.missed_date?.startsWith(month) && (teacher==='All'||m.teacher_name===teacher))
 
   const byTeacher = useMemo(() => {
     const map = {}
@@ -1038,10 +1275,70 @@ function TabReports({ logs, missed, staff, courseData }) {
   )
 }
 
-// ─── Tab: Topic Search ────────────────────────────────────────────────────────
+// ─── Tab: Search ──────────────────────────────────────────────────────────────
 
-function TabSearch({ logs }) {
-  const [query, setQuery] = useState('')
+const MONTHS_LABEL_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function SyllabusMatchBadge({ syllabusItem, onMarkDone }) {
+  const monthNum   = parseInt(String(syllabusItem.month).split('-')[1] || syllabusItem.month) - 1
+  const monthLabel = MONTHS_LABEL_SHORT[monthNum] ?? syllabusItem.month
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:'8px', marginTop:'8px', padding:'7px 12px',
+      background: syllabusItem.completed ? '#f0fdf4' : '#fefce8',
+      border: `1px solid ${syllabusItem.completed ? '#bbf7d0' : '#fde68a'}`,
+      borderRadius:'8px', flexWrap:'wrap' }}>
+      <span style={{ fontSize:'13px' }}>📆</span>
+      <span style={{ padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', background:'#eff6ff', color:'#1e3a5f', border:'1px solid #bfdbfe' }}>
+        {syllabusItem.admit_type}
+      </span>
+      <span style={{ padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', background:'#f3e8ff', color:'#7c3aed', border:'1px solid #ddd6fe' }}>
+        {syllabusItem.subject_name}
+      </span>
+      <span style={{ padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', background:'#e0f2fe', color:'#0891b2', border:'1px solid #bae6fd' }}>
+        🗓 {monthLabel}
+      </span>
+      {syllabusItem.completed ? (
+        <span style={{ padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', background:'#dcfce7', color:'#16a34a', border:'1px solid #bbf7d0' }}>
+          ✅ Done
+          {syllabusItem.completed_at && (
+            <span style={{ fontWeight:400, marginLeft:4 }}>
+              {new Date(syllabusItem.completed_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short' })}
+            </span>
+          )}
+        </span>
+      ) : (
+        <span style={{ padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', background:'#fef9c3', color:'#b45309', border:'1px solid #fde68a' }}>
+          ⏳ Pending
+        </span>
+      )}
+      <span style={{ fontSize:'11px', color:'#64748b', flex:1, minWidth:'120px' }}>
+        Syllabus: <em style={{ color:'#1e293b' }}>{syllabusItem.topic}</em>
+      </span>
+      {!syllabusItem.completed && (
+        <button onClick={() => onMarkDone(syllabusItem)} style={{ padding:'3px 10px', borderRadius:'6px', border:'none', background:'#16a34a', color:'white', fontSize:'11px', fontWeight:'700', cursor:'pointer', flexShrink:0 }}>
+          ✓ Mark Done
+        </button>
+      )}
+    </div>
+  )
+}
+
+function TabSearch({ logs, monthlySyllabus = [], onNavigateTab }) {
+  const [query, setQuery]           = useState('')
+  const [marking, setMarking]       = useState(null)
+  const [localSyllabus, setLocalSyllabus] = useState(monthlySyllabus)
+
+  useEffect(() => { setLocalSyllabus(monthlySyllabus) }, [monthlySyllabus])
+
+  const findSyllabusMatch = useCallback((logItem) => {
+    if (!localSyllabus.length || !logItem.topic_taught) return null
+    const topicLower = (logItem.topic_taught || '').toLowerCase()
+    return localSyllabus.find(s =>
+      topicLower.includes(s.topic.toLowerCase().slice(0, 14)) ||
+      s.topic.toLowerCase().includes(topicLower.slice(0, 14))
+    ) || null
+  }, [localSyllabus])
 
   const results = useMemo(() => {
     if (!query.trim()) return []
@@ -1050,35 +1347,81 @@ function TabSearch({ logs }) {
       (l.topic_taught || '').toLowerCase().includes(q) ||
       (l.classwork    || '').toLowerCase().includes(q) ||
       (l.homework     || '').toLowerCase().includes(q)
-    ).sort((a,b) => b.teaching_date?.localeCompare(a.teaching_date))
+    ).sort((a, b) => b.teaching_date?.localeCompare(a.teaching_date))
   }, [logs, query])
+
+  const matchCount = useMemo(() =>
+    results.filter(r => findSyllabusMatch(r)).length,
+  [results, findSyllabusMatch])
+
+  const pendingMatchCount = useMemo(() =>
+    results.filter(r => { const m = findSyllabusMatch(r); return m && !m.completed }).length,
+  [results, findSyllabusMatch])
+
+  const handleMarkDone = async (syllabusItem) => {
+    setMarking(syllabusItem.id)
+    const completed_at = new Date().toISOString()
+    const { error } = await supabase.from('monthly_syllabus').update({ completed: true, completed_at }).eq('id', syllabusItem.id)
+    if (!error) {
+      setLocalSyllabus(prev => prev.map(s => s.id === syllabusItem.id ? { ...s, completed: true, completed_at } : s))
+    } else {
+      alert('Error: ' + error.message)
+    }
+    setMarking(null)
+  }
 
   return (
     <div style={S.card}>
       <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>🔍 Topic Search</h2>
-      <p style={{ color:'#64748b', fontSize:'13px', marginBottom:'16px' }}>Search across all topics, classwork, and homework ever recorded.</p>
+      <p style={{ color:'#64748b', fontSize:'13px', marginBottom:'16px' }}>
+        Search across all topics, classwork, and homework — with live 📆 Monthly Syllabus matching.
+      </p>
       <input
-        value={query} onChange={e => setQuery(e.target.value)}
-        placeholder="e.g. Pythagoras, Photosynthesis, World War..."
-        style={{ ...S.input, fontSize:'16px', padding:'14px 18px', marginBottom:'20px' }}
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="e.g. Pythagoras, Photosynthesis, LCM, Analogy..."
+        style={{ ...S.input, fontSize:'16px', padding:'14px 18px', marginBottom:'16px' }}
         autoFocus
       />
+      {query && results.length > 0 && (
+        <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px', padding:'10px 14px', background:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0', fontSize:'12px' }}>
+          <span style={{ color:'#1e3a5f', fontWeight:'700' }}>📋 {results.length} log{results.length!==1?'s':''} found</span>
+          {matchCount > 0 && <><span style={{ color:'#94a3b8' }}>·</span><span style={{ color:'#7c3aed', fontWeight:'700' }}>📆 {matchCount} match syllabus</span></>}
+          {pendingMatchCount > 0 && <><span style={{ color:'#94a3b8' }}>·</span><span style={{ color:'#b45309', fontWeight:'700' }}>⏳ {pendingMatchCount} pending</span></>}
+          {matchCount > 0 && (
+            <button onClick={() => onNavigateTab?.('monthly')} style={{ marginLeft:'auto', padding:'3px 10px', borderRadius:'6px', background:'#1e3a5f', color:'white', border:'none', fontSize:'11px', fontWeight:'700', cursor:'pointer' }}>
+              Go to Monthly Syllabus →
+            </button>
+          )}
+        </div>
+      )}
       {query && <div style={{ fontSize:'13px', color:'#64748b', marginBottom:'12px' }}>{results.length} result{results.length!==1?'s':''} found</div>}
       <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-        {results.map(l => (
-          <div key={l.id} style={{ border:'1px solid #e2e8f0', borderRadius:'10px', padding:'14px 18px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px' }}>
-              <span style={{ fontWeight:'700', color:'#1e293b' }}>{l.topic_taught}</span>
-              <span style={{ fontSize:'12px', color:'#64748b' }}>{fmtDate(l.teaching_date)}</span>
+        {results.map(l => {
+          const match = findSyllabusMatch(l)
+          return (
+            <div key={l.id} style={{ border:`1px solid ${match?(match.completed?'#bbf7d0':'#fde68a'):'#e2e8f0'}`, borderRadius:'10px', padding:'14px 18px', background: match?(match.completed?'#fafffe':'#fffdf0'):'white' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px' }}>
+                <span style={{ fontWeight:'700', color:'#1e293b' }}>{l.topic_taught}</span>
+                <span style={{ fontSize:'12px', color:'#64748b' }}>{fmtDate(l.teaching_date)}</span>
+              </div>
+              <div style={{ fontSize:'13px', color:'#64748b' }}>
+                {l.course} / {l.subtype} / {l.class_name} | {l.subject_name} | 👨‍🏫 {l.teacher_name || '-'}
+              </div>
+              {l.classwork && <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'4px' }}>📝 CW: {l.classwork}</div>}
+              {l.homework  && <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'2px' }}>📚 HW: {l.homework}</div>}
+              {match && (
+                <SyllabusMatchBadge
+                  syllabusItem={marking === match.id ? { ...match, _loading: true } : match}
+                  onMarkDone={handleMarkDone}
+                />
+              )}
             </div>
-            <div style={{ fontSize:'13px', color:'#64748b' }}>
-              {l.course} / {l.subtype} / {l.class_name} | {l.subject_name} | 👨‍🏫 {l.teacher_name || '-'}
-            </div>
-            {l.classwork && <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'4px' }}>📝 CW: {l.classwork}</div>}
-            {l.homework  && <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'2px' }}>📚 HW: {l.homework}</div>}
-          </div>
-        ))}
-        {query && results.length===0 && <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>No results for "{query}"</div>}
+          )
+        })}
+        {query && results.length === 0 && (
+          <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>No results for "{query}"</div>
+        )}
       </div>
     </div>
   )
@@ -1086,66 +1429,136 @@ function TabSearch({ logs }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-function Teaching() {
-  const [activeTab, setActiveTab] = useState('logs')
-  const [logs,      setLogs]      = useState([])
-  const [missed,    setMissed]    = useState([])
-  const [timetable, setTimetable] = useState([])
-  const [staff,     setStaff]     = useState([])
-  const [loading,   setLoading]   = useState(true)
+function Teaching({ currentUser }) {
+  const [activeTab, setActiveTab] = useState(() => {
+    try { return localStorage.getItem('gnsi_teaching_tab') || 'logs' } catch { return 'logs' }
+  })
+  const [logs,             setLogs]             = useState([])
+  const [missed,           setMissed]           = useState([])
+  const [timetable,        setTimetable]        = useState([])
+  const [staff,            setStaff]            = useState([])
+  const [loading,          setLoading]          = useState(true)
+  const [monthlySyllabus,  setMonthlySyllabus]  = useState([])
 
-  // ── Single source of truth for courses/subtypes/classes ──
   const courseData = useCourseData()
+
+  const handleTabChange = (key) => {
+    setActiveTab(key)
+    try { localStorage.setItem('gnsi_teaching_tab', key) } catch {}
+  }
 
   const fetchLogs = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('teaching_logs').select('*').order('teaching_date', { ascending:false })
+    const { data } = await supabase.from('teaching_logs').select('*').order('teaching_date', { ascending: false })
     if (data) setLogs(data)
     setLoading(false)
   }, [])
 
   const fetchMissed = useCallback(async () => {
-    const { data } = await supabase.from('teaching_missed').select('*').order('missed_date', { ascending:false })
+    const { data } = await supabase.from('teaching_missed').select('*').order('missed_date', { ascending: false })
     if (data) setMissed(data)
   }, [])
 
   const fetchTimetable = useCallback(async () => {
-  // Read from timetable_entries (the master Timetable module table)
-  const { data } = await supabase
-    .from('timetable_entries')
-    .select('*')
-    .order('period_name')
-  if (data) setTimetable(data)
-}, [])
+    const { data } = await supabase.from('timetable_entries').select('*').order('period_name')
+    if (data) setTimetable(data)
+  }, [])
 
   const fetchStaff = useCallback(async () => {
-    const { data } = await supabase.from('staff_profiles').select('id,name,designation').eq('status','Active').order('name')
+    const { data } = await supabase.from('staff_profiles').select('id,name,designation').eq('status', 'Active').order('name')
     if (data) setStaff(data)
   }, [])
 
-  useEffect(() => {
-    fetchLogs(); fetchMissed(); fetchTimetable(); fetchStaff()
+  const fetchMonthlySyllabus = useCallback(async () => {
+    const { data } = await supabase
+      .from('monthly_syllabus')
+      .select('id, admit_type, subject_name, topic, month, completed, completed_at')
+      .order('month')
+    if (data) setMonthlySyllabus(data)
   }, [])
+
+  useEffect(() => {
+    fetchLogs(); fetchMissed(); fetchTimetable(); fetchStaff(); fetchMonthlySyllabus()
+  }, [])  // eslint-disable-line
+
+  const todayStr  = today()
+  const currMonth = currentYearMonth()
+
+  const badges = useMemo(() => {
+    const todayLogs      = logs.filter(l => l.teaching_date === todayStr).length
+    const monthMissed    = missed.filter(m => m.missed_date?.startsWith(currMonth)).length
+    const activeTeachers = new Set(logs.filter(l => l.teaching_date?.startsWith(currMonth)).map(l => l.teacher_name).filter(Boolean)).size
+    return {
+      logs:      todayLogs > 0   ? `${todayLogs} today`    : null,
+      calendar:  null,
+      syllabus:  null,
+      timetable: timetable.length > 0
+        ? `${new Set(timetable.map(t => t.class_name).filter(Boolean)).size} batches`
+        : null,
+      reports:   monthMissed > 0 ? `${monthMissed} missed` : activeTeachers > 0 ? `${activeTeachers} teachers` : null,
+      search:    null,
+      monthly:   null,
+    }
+  }, [logs, missed, timetable, todayStr, currMonth])
 
   return (
     <div style={S.page}>
-      <div style={{ marginBottom:'24px' }}>
-        <h1 style={{ fontSize:'26px', fontWeight:'bold', color:'#1e3a5f', margin:0 }}>📘 Teaching Management</h1>
-        <p style={{ color:'#64748b', fontSize:'14px', margin:'4px 0 0' }}>Daily logs · Syllabus · Timetable · Reports · Topic search</p>
+      <div style={{ marginBottom: '20px' }}>
+        <h1 style={{ fontSize: '26px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>
+          📘 Teaching Management
+        </h1>
+        <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>
+          Daily logs · Syllabus · Timetable · Reports · Topic search
+        </p>
       </div>
 
-      <div style={{ display:'flex', borderBottom:'2px solid #e2e8f0', marginBottom:'24px', gap:'4px', overflowX:'auto' }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={S.tab(activeTab===t.key)}>{t.label}</button>
-        ))}
+      {/* Pill Tab Bar */}
+      <div style={{ display:'flex', gap:'4px', padding:'6px', background:'#f1f5f9', borderRadius:'16px', marginBottom:'24px', overflowX:'auto', scrollbarWidth:'none', msOverflowStyle:'none', WebkitOverflowScrolling:'touch' }}>
+        {TABS.map(t => {
+          const active = activeTab === t.key
+          const badge  = badges[t.key]
+          return (
+            <button
+              key={t.key}
+              onClick={() => handleTabChange(t.key)}
+              style={{ display:'flex', alignItems:'center', gap:'6px', padding:'9px 16px', fontWeight:'600', fontSize:'13px', cursor:'pointer', background: active?'#1e3a5f':'transparent', color: active?'white':'#64748b', border:'none', borderRadius:'12px', whiteSpace:'nowrap', transition:'all 0.18s ease', boxShadow: active?'0 2px 10px rgba(30,58,95,0.28)':'none', flexShrink:0 }}
+            >
+              <span style={{ fontSize:'15px', lineHeight:1 }}>{t.icon}</span>
+              <span>{t.label}</span>
+              {badge && (
+                <span style={{ display:'inline-flex', alignItems:'center', padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', lineHeight:1.4, background: active?'rgba(255,255,255,0.22)':'#1e3a5f', color:'white', marginLeft:'2px' }}>
+                  {badge}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
-      {activeTab==='logs'      && <TabLogs      logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} />}
-      {activeTab==='calendar'  && <TabCalendar  logs={logs} missed={missed} />}
-      {activeTab==='syllabus'  && <TabSyllabus  logs={logs} courseData={courseData} />}
-      {activeTab==='timetable' && <TabTimetable timetable={timetable} fetchTimetable={fetchTimetable} staff={staff} courseData={courseData} />}
-      {activeTab==='reports'   && <TabReports   logs={logs} missed={missed} staff={staff} courseData={courseData} />}
-      {activeTab==='search'    && <TabSearch    logs={logs} />}
+      {/* Tab Content */}
+      {activeTab === 'logs' && (
+        <TabLogs
+          logs={logs} loading={loading} fetchLogs={fetchLogs}
+          timetable={timetable} staff={staff} courseData={courseData}
+          currentUser={currentUser}
+        />
+      )}
+      {activeTab === 'calendar'  && <TabCalendar  logs={logs} missed={missed} />}
+      {activeTab === 'syllabus'  && <TabSyllabus  logs={logs} courseData={courseData} />}
+      {activeTab === 'timetable' && <TabTimetable timetable={timetable} fetchTimetable={fetchTimetable} staff={staff} courseData={courseData} />}
+      {activeTab === 'reports'   && <TabReports   logs={logs} missed={missed} staff={staff} courseData={courseData} />}
+      {activeTab === 'search'    && <TabSearch    logs={logs} monthlySyllabus={monthlySyllabus} onNavigateTab={handleTabChange} />}
+      {activeTab === 'monthly'   && (
+        <TabMonthlySyllabus
+          logs={logs}
+          missed={missed}
+          timetable={timetable}
+          staff={staff}
+          courseData={courseData}
+          currentUser={currentUser}
+          onNavigateTab={key => handleTabChange(key)}
+        />
+      )}
     </div>
   )
 }

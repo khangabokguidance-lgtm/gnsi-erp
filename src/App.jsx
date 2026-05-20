@@ -25,36 +25,13 @@ import SystemSettings     from './SystemSettings'
 import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
 import GNSIDashboard      from './GNSIDashboard'
+import Courses            from './Courses'
+import Teaching           from './Teaching'
+import Attendance         from './Attendance'
+import Exams              from './Exams'
+import Timetable          from './Timetable'
+import FeeSetup from './FeeSetup'
 
-// ─── The Five Connected Modules ────────────────────────────────
-//
-//  HOW THEY CONNECT:
-//
-//  App.jsx
-//   ├── Courses.jsx   ──► default export CoursePage  (rendered here as <Courses />)
-//   │                 ──► named export useCourseData  (imported by Teaching + Attendance)
-//   │                 ──► named export CoursePicker   (imported by Teaching + Attendance)
-//   │
-//   ├── Teaching.jsx  ──► imports { useCourseData, CoursePicker } from './Courses'
-//   │                     uses course_batches as single source of truth for dropdowns
-//   │
-//   ├── Attendance.jsx──► imports { useCourseData, CoursePicker } from './Courses'
-//   │                     loads enrolled students from course_enrollments per batch
-//   │
-//   ├── Exams.jsx     ──► standalone — reads students + exam_marks tables directly
-//   │
-//   └── Timetable.jsx ──► standalone — reads timetable_entries table directly
-//
-//  All five share the same supabase.js client.
-//  currentUser is passed as prop to each for role-based UI.
-//
-import Courses    from './Courses'     // default = CoursePage
-import Teaching   from './Teaching'
-import Attendance from './Attendance'
-import Exams      from './Exams'
-import Timetable  from './Timetable'
-
-// ─── All modules sidebar list ──────────────────────────────────
 const ALL_MODULES = [
   { key: 'dashboard',        icon: '⊞',   label: 'Dashboard'          },
   { key: 'students',         icon: '🎓',  label: 'Students'           },
@@ -64,13 +41,11 @@ const ALL_MODULES = [
   { key: 'fees',             icon: '💰',  label: 'Fees'               },
   { key: 'accounts',         icon: '🧾',  label: 'Accounts'           },
   { key: 'salary',           icon: '💵',  label: 'Salary'             },
-  // ── Five connected modules ──────────────────────────────────
   { key: 'courses',          icon: '📊',  label: 'Courses'            },
   { key: 'teaching',         icon: '📚',  label: 'Teaching'           },
   { key: 'attendance',       icon: '📅',  label: 'Attendance'         },
   { key: 'exams',            icon: '📝',  label: 'Exams'              },
   { key: 'timetable',        icon: '🕐',  label: 'Timetable'          },
-  // ────────────────────────────────────────────────────────────
   { key: 'staff',            icon: '👨‍🏫', label: 'Staff'              },
   { key: 'hr',               icon: '🗂️', label: 'HR'                 },
   { key: 'leave',            icon: '🏖️', label: 'Leave'              },
@@ -83,13 +58,26 @@ const ALL_MODULES = [
   { key: 'checklist',        icon: '✅',  label: 'Checklist'          },
   { key: 'system',           icon: '⚙️', label: 'System'             },
   { key: 'studentfeeledger', icon: '🧾',  label: 'Student Fee Ledger' },
+  { key: 'feesetup', icon: '⚙️', label: 'Fee Setup' },
 ]
 
 // ─── Helpers ───────────────────────────────────────────────────
 const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN')
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0)
 
-// ─── Shared UI components ──────────────────────────────────────
+// ─── Mobile hook ───────────────────────────────────────────────
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.innerWidth <= 768)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const handler = e => setMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return mobile
+}
+
+// ─── Shared UI ─────────────────────────────────────────────────
 function StatCard({ icon, label, value, sub, trend, accent }) {
   const accents = {
     blue:   { bg: '#eff6ff', border: '#1e3a5f', text: '#1e3a5f' },
@@ -141,20 +129,22 @@ function TableCard({ title, sub, cols, rows, emptyMsg }) {
         <h3 style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', margin: 0 }}>{title}</h3>
         <span style={{ fontSize: 10, color: '#94a3b8' }}>{sub}</span>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-        <thead>
-          <tr style={{ background: '#f8fafc' }}>
-            {cols.map(c => (
-              <th key={c} style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 10, whiteSpace: 'nowrap' }}>{c}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0
-            ? <tr><td colSpan={cols.length} style={{ padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: 11 }}>{emptyMsg || 'No data'}</td></tr>
-            : rows}
-        </tbody>
-      </table>
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: '#f8fafc' }}>
+              {cols.map(c => (
+                <th key={c} style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 10, whiteSpace: 'nowrap' }}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0
+              ? <tr><td colSpan={cols.length} style={{ padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: 11 }}>{emptyMsg || 'No data'}</td></tr>
+              : rows}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -275,7 +265,7 @@ function AdminDashboard({ onNavigate }) {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
         {[
           { icon: '👨‍🎓', label: 'Total Students',  value: data.totalStudents,     sub: 'Enrolled',            accent: 'blue'   },
           { icon: '💰',  label: 'Fee Collected',    value: fmt(data.feeCollected), sub: 'Total paid so far',   accent: 'green',  trend: feeProgress },
@@ -299,7 +289,7 @@ function AdminDashboard({ onNavigate }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
         <TableCard
           title="👨‍🎓 Recent Students" sub="Last 6 enrolled"
           cols={['Name', 'Class', 'Course']} emptyMsg="No students"
@@ -324,7 +314,6 @@ function AdminDashboard({ onNavigate }) {
         />
       </div>
 
-      {/* Quick Actions — each button navigates to its module */}
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', padding: '12px 16px' }}>
         <SectionHeader title="⚡ Quick Actions" sub="One-click shortcuts" />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
@@ -408,7 +397,7 @@ function UserDashboard({ onNavigate, currentUser }) {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
           { icon: '📅', label: 'Days Present',   value: data.presentCount,        sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
           { icon: '💰', label: 'Fee Due',         value: fmt(data.feeDue),          sub: 'Outstanding',         accent: 'amber'  },
@@ -419,7 +408,7 @@ function UserDashboard({ onNavigate, currentUser }) {
         ].map(c => <StatCard key={c.label} {...c} />)}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
         <TableCard
           title="📝 Upcoming Exams"
           cols={['Subject', 'Date', 'Time']} emptyMsg="No exams"
@@ -460,30 +449,44 @@ function AccessDenied() {
 }
 
 // ─── Sidebar ───────────────────────────────────────────────────
-function Sidebar({ modules, active, onSelect, currentUser, onLogout }) {
-  return (
-    <div style={{
-      width: 220, flexShrink: 0, background: '#0f172a',
-      display: 'flex', flexDirection: 'column',
-      height: '100vh', position: 'sticky', top: 0, overflowY: 'auto',
-    }}>
-      <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>🏫 GNSI ERP</div>
-        <div style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>School Management System</div>
-      </div>
+function Sidebar({ modules, active, onSelect, currentUser, onLogout, isMobile }) {
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
+  useEffect(() => { setDrawerOpen(false) }, [active])
+  useEffect(() => {
+    document.body.style.overflow = drawerOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [drawerOpen])
+
+  const activeLabel = modules.find(m => m.key === active)?.label || active
+  const activeIcon  = modules.find(m => m.key === active)?.icon  || ''
+
+  const NavList = ({ onItemClick }) => (
+    <>
       <div style={{ padding: '10px 16px', borderBottom: '1px solid #1e293b' }}>
-        <div style={{ background: currentUser.role === 'Admin' ? '#1e3a5f' : '#4c1d95', borderRadius: 8, padding: '7px 12px' }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#fff' }}>{currentUser.name}</p>
-          <p style={{ margin: 0, fontSize: 10, color: '#94a3b8' }}>{currentUser.role}</p>
+        <div style={{
+          background: currentUser.role === 'Admin' ? '#1e3a5f' : '#4c1d95',
+          borderRadius: 8, padding: '7px 12px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#fff' }}>{currentUser.name}</p>
+            <p style={{ margin: 0, fontSize: 10, color: '#94a3b8' }}>{currentUser.role}</p>
+          </div>
+          {isMobile && (
+            <button onClick={() => setDrawerOpen(false)} style={{
+              background: 'none', border: 'none', color: '#94a3b8',
+              fontSize: 18, cursor: 'pointer', padding: 4, lineHeight: 1,
+            }}>✕</button>
+          )}
         </div>
       </div>
 
-      <nav style={{ flex: 1, padding: '8px 0' }}>
+      <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
         {modules.map(m => (
           <button
             key={m.key}
-            onClick={() => onSelect(m.key)}
+            onClick={() => { onSelect(m.key); onItemClick?.() }}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10,
               padding: '9px 16px', border: 'none', cursor: 'pointer', textAlign: 'left',
@@ -521,7 +524,94 @@ function Sidebar({ modules, active, onSelect, currentUser, onLogout }) {
           Logout
         </button>
       </div>
-    </div>
+    </>
+  )
+
+  /* ── DESKTOP ── */
+  if (!isMobile) {
+    return (
+      <div style={{
+        width: 220, flexShrink: 0, background: '#0f172a',
+        display: 'flex', flexDirection: 'column',
+        height: '100vh', position: 'sticky', top: 0, overflowY: 'auto',
+      }}>
+        <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>🏫 GNSI ERP</div>
+          <div style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>School Management System</div>
+        </div>
+        <NavList />
+      </div>
+    )
+  }
+
+  /* ── MOBILE ── */
+  return (
+    <>
+      {/* Top header */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, height: 54,
+        background: '#0f172a', borderBottom: '1px solid #1e293b',
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '0 14px', zIndex: 200,
+        fontFamily: "'Segoe UI', system-ui, sans-serif",
+      }}>
+        {/* Hamburger */}
+        <button
+          onClick={() => setDrawerOpen(true)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 5 }}
+          aria-label="Open menu"
+        >
+          {[0,1,2].map(i => (
+            <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: '#94a3b8' }} />
+          ))}
+        </button>
+
+        <span style={{ fontSize: 18, fontWeight: 800, color: '#fff', flex: 1 }}>🏫 GNSI</span>
+
+        {/* Active module pill */}
+        <span style={{
+          fontSize: 11, fontWeight: 600, color: '#3b82f6',
+          background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)',
+          borderRadius: 5, padding: '3px 9px',
+          maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {activeIcon} {activeLabel}
+        </span>
+      </div>
+
+      {/* Backdrop */}
+      {drawerOpen && (
+        <div
+          onClick={() => setDrawerOpen(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            zIndex: 298,
+            backdropFilter: 'blur(2px)',
+          }}
+        />
+      )}
+
+      {/* Drawer */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0,
+        width: 260, height: '100vh',
+        background: '#0f172a',
+        display: 'flex', flexDirection: 'column',
+        fontFamily: "'Segoe UI', system-ui, sans-serif",
+        borderRight: '1px solid #1e293b',
+        zIndex: 299,
+        transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        willChange: 'transform',
+      }}>
+        <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>🏫 GNSI ERP</div>
+          <div style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>School Management System</div>
+        </div>
+        <NavList onItemClick={() => setDrawerOpen(false)} />
+      </div>
+    </>
   )
 }
 
@@ -531,6 +621,7 @@ export default function App() {
   const [active,      setActive]      = useState('dashboard')
   const [permissions, setPermissions] = useState({})
   const [permLoading, setPermLoading] = useState(false)
+  const isMobile = useIsMobile()
 
   const loadPermissions = async (role) => {
     if (role === 'Admin') return
@@ -563,34 +654,6 @@ export default function App() {
     return permissions[key] === true
   }
 
-  // ─────────────────────────────────────────────────────────────
-  //  renderContent — how all modules connect
-  //
-  //  1. App.jsx acts as the router. It holds ONE piece of state:
-  //     `active` (string) — the currently visible module key.
-  //
-  //  2. Sidebar calls setActive(key) when a nav item is clicked.
-  //
-  //  3. renderContent() reads `active` and returns the matching
-  //     React component from moduleMap.
-  //
-  //  4. Each component receives `currentUser` so it knows the
-  //     logged-in user's role and username.
-  //
-  //  5. The five special modules connect to each other like this:
-  //
-  //     Courses ──► exports useCourseData + CoursePicker
-  //                          │                   │
-  //                    Teaching.jsx         Attendance.jsx
-  //                    (imports both)       (imports both)
-  //
-  //     Exams + Timetable are self-contained — they only need
-  //     supabase.js, which all modules share.
-  //
-  //  6. Data never flows through App.jsx between modules.
-  //     Each module fetches its own data from Supabase directly.
-  //     The shared connection is at the DB level (same tables).
-  // ─────────────────────────────────────────────────────────────
   const renderContent = () => {
     if (active === 'dashboard') {
       return isAdmin
@@ -605,7 +668,6 @@ export default function App() {
     if (!canAccess(active)) return <AccessDenied />
 
     const moduleMap = {
-      // Standard modules
       students:          <Students          currentUser={currentUser} />,
       admissions:        <Admissions        currentUser={currentUser} />,
       sessions:          <Sessions          currentUser={currentUser} />,
@@ -626,49 +688,12 @@ export default function App() {
       checklist:         <Checklist         currentUser={currentUser} />,
       system:            <SystemSettings    currentUser={currentUser} />,
       studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} />,
-
-      // ── Five connected modules ─────────────────────────────────
-      //
-      //  COURSES — the "hub" of the five.
-      //  Renders CoursePage (default export from Courses.jsx).
-      //  Manages course_batches, course_enrollments, course_fees.
-      //  Also exports useCourseData() and CoursePicker component
-      //  which Teaching and Attendance import directly.
-      //
-      courses: <Courses currentUser={currentUser} />,
-
-      //  TEACHING — connected to Courses via shared hook.
-      //  Inside Teaching.jsx:
-      //    import { useCourseData, CoursePicker } from './Courses'
-      //  This means Teaching's batch/class dropdowns always reflect
-      //  whatever batches exist in course_batches table.
-      //  Teaching writes to: teaching_logs, teaching_timetable,
-      //  teaching_syllabus, teaching_missed.
-      //
-      teaching: <Teaching currentUser={currentUser} />,
-
-      //  ATTENDANCE — also connected to Courses via shared hook.
-      //  Inside Attendance.jsx:
-      //    import { useCourseData, CoursePicker } from './Courses'
-      //  When a batch is selected, Attendance loads students from
-      //  course_enrollments for that exact batch.
-      //  Attendance writes to: attendance_sessions, attendance_records.
-      //
-      attendance: <Attendance currentUser={currentUser} />,
-
-      //  EXAMS — standalone, no Courses dependency.
-      //  Reads from: students, exam_marks, exam_types, exam_schedule,
-      //  seat_arrangements, system_settings, exam_remarks.
-      //  Has its own student management tab inside.
-      //
-      exams: <Exams currentUser={currentUser} />,
-
-      //  TIMETABLE — standalone, no Courses dependency.
-      //  Reads/writes: timetable_entries table only.
-      //  Has conflict detection, drag-drop, bulk edit built in.
-      //
-      timetable: <Timetable currentUser={currentUser} />,
-      // ──────────────────────────────────────────────────────────
+      courses:           <Courses           currentUser={currentUser} />,
+      teaching:          <Teaching          currentUser={currentUser} />,
+      attendance:        <Attendance        currentUser={currentUser} />,
+      exams:             <Exams             currentUser={currentUser} />,
+      timetable:         <Timetable         currentUser={currentUser} />,
+      feesetup: <FeeSetup userRole={currentUser.role} />,
     }
 
     return moduleMap[active] || (
@@ -680,15 +705,28 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{
+      display: 'flex',
+      fontFamily: "'Segoe UI', system-ui, sans-serif",
+      minHeight: '100vh',
+      background: '#f8fafc',
+    }}>
       <Sidebar
         modules={sidebarModules}
         active={active}
         onSelect={setActive}
         currentUser={currentUser}
         onLogout={handleLogout}
+        isMobile={isMobile}
       />
-      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh' }}>
+      <main style={{
+        flex: 1,
+        overflowY: 'auto',
+        minHeight: '100vh',
+        // On mobile: no left margin (sidebar is a drawer), add top padding for header bar
+        marginLeft: isMobile ? 0 : 0,
+        paddingTop: isMobile ? 54 : 0,
+      }}>
         {renderContent()}
       </main>
     </div>

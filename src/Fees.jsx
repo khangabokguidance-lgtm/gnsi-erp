@@ -1,17 +1,4 @@
 // Fees.jsx
-// ─────────────────────────────────────────────────────────────────────────────
-//  ✅ Fixed: flat fees now vary by student hostel type via getFlatFees()
-//  ✅ Fixed: flat fee list re-derives when student is selected
-//  ✅ Fixed: stable source_refs via sourceRef helpers
-//  ✅ Fixed: checkFlatFeeExists guard on flat fee saves
-//  ✅ Fixed: uses unified printReceipt from feeHelpers
-//  ✅ Fixed: upsertAccount dedup works correctly on retry
-//  ✅ Fixed: course fee amount now auto-fills from getCourseFeeAmt(course, hostelType)
-//  ✅ Fixed: COURSE_STRUCTURE subtypes still shown; amount re-calculates on subtype change
-//  ✅ Fixed: payments now mirrored into fee_invoices so Fee Statement shows data
-//  ✅ Fixed: session_year derived correctly (Apr–Mar academic year)
-//  ✅ Fixed: fmt now includes ₹ symbol — no more double ₹ in UI
-// ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
@@ -19,22 +6,19 @@ import {
   fmt, today, gccStr, rcptNo,
   upsertAccount, checkCourseFeeExists, checkFlatFeeExists,
   printReceipt, sourceRef,
-  getFlatFees, getFlatFeeAmt,
-  getCourseFeeAmt,
+  getFlatFees, getFeeRates,
+  COURSE_RATES, FLAT_RATES,
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
-} from './shared/feeHelpers'
+} from './feeEngine'
 
-// ─── Session year helper ───────────────────────────────────────────────────
-// April–March academic year: if current month >= April → "YYYY-YYYY+1"
+// ── Sync helpers for display/hints only (not used for saving) ─────────────────
+const syncCourseFeeAmt = (course, hostelType) => COURSE_RATES[course]?.[hostelType] ?? 0
+const syncFlatFeeAmt   = (hostelType) => FLAT_RATES[hostelType] ?? 0
 
 const getSessionYear = () => {
   const yr = new Date().getFullYear()
-  return new Date().getMonth() + 1 >= 4
-    ? `${yr}-${yr + 1}`
-    : `${yr - 1}-${yr}`
+  return new Date().getMonth() + 1 >= 4 ? `${yr}-${yr + 1}` : `${yr - 1}-${yr}`
 }
-
-// ─── Fee constants ─────────────────────────────────────────────────────────
 
 const DRESS_ITEMS = [
   { id: 'dk1', name: 'Aqua T-Shirt',     price: 450 },
@@ -70,8 +54,6 @@ const sStyle = status => ({
   color:           status === 'Paid' ? '#16a34a' : status === 'Partial' ? '#ca8a04' : '#dc2626',
 })
 
-// ─── Hostel type badge ───────────────────────────────────────────────────────
-
 function HostelBadge({ type }) {
   if (!type) return null
   const s = {
@@ -85,8 +67,6 @@ function HostelBadge({ type }) {
     </span>
   )
 }
-
-// ─── Student search ─────────────────────────────────────────────────────────
 
 function StudentSearch({ students, onSelect, placeholder }) {
   const [q, setQ] = useState('')
@@ -123,12 +103,12 @@ function StudentSearch({ students, onSelect, placeholder }) {
   )
 }
 
-// ─── Tab: Fee Payment ───────────────────────────────────────────────────────
+// ─── Tab: Fee Payment ─────────────────────────────────────────────────────────
 
 function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh }) {
-  const [step,      setStep]      = useState('select')
-  const [student,   setStudent]   = useState(null)
-  const [admRec,    setAdmRec]    = useState(null)
+  const [step,    setStep]    = useState('select')
+  const [student, setStudent] = useState(null)
+  const [admRec,  setAdmRec]  = useState(null)
 
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
@@ -145,7 +125,21 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [advFor,       setAdvFor]       = useState('')
 
   const hostelType = student?.hostel_type || 'Day Scholar'
-  const flatFees   = useMemo(() => getFlatFees(hostelType), [hostelType])
+
+  // ── Async flat fees + rates ───────────────────────────────────────────────
+  const [flatFees,  setFlatFees]  = useState([])
+  const [feeRates,  setFeeRates]  = useState({ flatFee: 0, courseFee: 0, admissionFee: ADM_FEE_BASE })
+
+  useEffect(() => {
+    if (!student) return
+    getFlatFees(hostelType, student.course || '', student.batch || '')
+      .then(setFlatFees)
+    getFeeRates(
+      `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
+      student.course || '', student.batch || '', hostelType
+    ).then(setFeeRates)
+  }, [student, hostelType])
+
   const [flatChecked, setFlatChecked] = useState([])
 
   const showToast = (msg, color = '#16a34a') => {
@@ -169,18 +163,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const dressTotal = DRESS_ITEMS.reduce((s, i, idx) => s + (dressChecked[idx] ? i.price : 0), 0)
   const admPkgThis = admPaid ? 0 : (admFeeAmt + dressTotal + (prospChecked ? PROSPECTUS_FEE : 0))
 
-  const selFlat  = flatFees.filter((_, i) => flatChecked[i] && !paidMonths.includes(flatFees[i].month))
+  const selFlat  = flatFees.filter((_, i) => flatChecked[i] && !paidMonths.includes(flatFees[i]?.month))
   const flatThis = selFlat.reduce((s, f) => s + f.amount, 0)
   const crsfThis = crsfRows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const advThis  = Number(advAmt) || 0
   const grandThis = admPkgThis + flatThis + crsfThis + advThis
 
-  const handleSelect = s => {
+  const handleSelect = async s => {
     setStudent(s)
     const rec = admissions.find(a => gccStr(a.gcc_no) === gccStr(s.gcc_no)) || null
     setAdmRec(rec)
 
-    const studentFlatFees = getFlatFees(s.hostel_type || 'Day Scholar')
+    const studentFlatFees = await getFlatFees(s.hostel_type || 'Day Scholar', s.course || '', s.batch || '')
     const paid = adm_flat_fees
       .filter(r => gccStr(r.adm_app_id) === gccStr(s.gcc_no) && r.paid)
       .map(r => r.month)
@@ -188,12 +182,28 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
     const defaultCourse     = s.course && COURSE_STRUCTURE[s.course] ? s.course : ''
     const defaultHostelType = s.hostel_type || 'Day Scholar'
+    const defaultBatch      = s.batch || ''
+
+    // Fetch real rate from DB for this student's course+batch+hostelType
+    let defaultAmt = ''
+    if (defaultCourse && defaultHostelType) {
+      try {
+        const rates = await getFeeRates(
+          `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
+          defaultCourse, defaultBatch, defaultHostelType
+        )
+        defaultAmt = rates.courseFee || syncCourseFeeAmt(defaultCourse, defaultHostelType)
+      } catch (_) {
+        defaultAmt = syncCourseFeeAmt(defaultCourse, defaultHostelType)
+      }
+    }
+
     setCrsfRows([{
       course:     defaultCourse,
-      subtype:    '',
+      subtype:    defaultBatch,
       hostelType: defaultHostelType,
       for_month:  '',
-      amount:     defaultCourse ? getCourseFeeAmt(defaultCourse, defaultHostelType) : '',
+      amount:     defaultAmt,
     }])
 
     setStep('pay')
@@ -205,29 +215,46 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setDressChecked(DRESS_ITEMS.map(() => true))
     setProspChecked(true)
     setFlatChecked([])
+    setFlatFees([])
     setCrsfRows([{ course: '', subtype: '', hostelType: '', for_month: '', amount: '' }])
     setAdvAmt(''); setAdvFor(''); setTxnRef('')
   }
 
-  const updateCrsfRow = (i, field, value) => {
+  const updateCrsfRow = async (i, field, value) => {
+    // Update the field immediately for responsive UI
     setCrsfRows(rows => {
       const updated = [...rows]
       const row = { ...updated[i], [field]: value }
-
-      if (field === 'course') {
-        row.subtype = ''
-        row.amount = value ? getCourseFeeAmt(value, row.hostelType || hostelType) : ''
-      }
-      if (field === 'hostelType') {
-        if (row.course) row.amount = getCourseFeeAmt(row.course, value)
-      }
-      if (field === 'subtype') {
-        if (row.course) row.amount = getCourseFeeAmt(row.course, row.hostelType || hostelType)
-      }
-
+      if (field === 'course') row.subtype = ''
       updated[i] = row
       return updated
     })
+
+    // Fetch DB rate when course, hostelType or subtype changes
+    if (field === 'course' || field === 'hostelType' || field === 'subtype') {
+      const currentRow = crsfRows[i]
+      const course     = field === 'course'     ? value : currentRow.course
+      const ht         = field === 'hostelType' ? value : currentRow.hostelType || hostelType
+      const batch      = field === 'subtype'    ? value : (field === 'course' ? '' : currentRow.subtype || '')
+      if (course && ht) {
+        try {
+          const rates = await getFeeRates(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, course, batch, ht)
+          const amt = rates.courseFee || syncCourseFeeAmt(course, ht)
+          setCrsfRows(rows => {
+            const updated = [...rows]
+            updated[i] = { ...updated[i], amount: amt }
+            return updated
+          })
+        } catch (_) {
+          const amt = syncCourseFeeAmt(course, ht)
+          setCrsfRows(rows => {
+            const updated = [...rows]
+            updated[i] = { ...updated[i], amount: amt }
+            return updated
+          })
+        }
+      }
+    }
   }
 
   const handleSave = async () => {
@@ -244,18 +271,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       // ── 1. Admission package ──────────────────────────────────────────────
       if (!admPaid && admFeeAmt > 0) {
         const { error: admErr } = await supabase.from('adm_fee_collections').insert({
-          id:           `${rNo}-adm`,
-          adm_app_id:   gcc,
-          fee_type:     'admission',
-          amount_paid:  admFeeAmt,
-          pay_date:     payDate,
-          pay_mode:     payMode,
-          txn_ref:      txnRef || null,
-          description:  'Admission Fee',
-          receipt_no:   rNo,
-          student_name: student.name,
-          adm_no:       admRec.adm_no || '--',
-          collected_by: collectedBy,
+          id: `${rNo}-adm`, adm_app_id: gcc, fee_type: 'admission',
+          amount_paid: admFeeAmt, pay_date: payDate, pay_mode: payMode,
+          txn_ref: txnRef || null, description: 'Admission Fee',
+          receipt_no: rNo, student_name: student.name,
+          adm_no: admRec.adm_no || '--', collected_by: collectedBy,
         })
         if (admErr) throw admErr
 
@@ -263,8 +283,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           entry_date: payDate, type: 'Income', category: 'Admission',
           amount: admFeeAmt, payment_mode: payMode,
           note: `${student.name} · Admission Fee · ${rNo}`,
-          source_ref:  sourceRef.admission(gcc),
-          source_type: 'adm_fee',
+          source_ref: sourceRef.admission(gcc), source_type: 'adm_fee',
         })
 
         for (let i = 0; i < DRESS_ITEMS.length; i++) {
@@ -272,49 +291,33 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           const item = DRESS_ITEMS[i]
           insertedDress.push(item)
           const { error: dkErr } = await supabase.from('adm_fee_collections').insert({
-            id:           `${rNo}-dk${i}`,
-            adm_app_id:   gcc,
-            fee_type:     'item',
-            amount_paid:  item.price,
-            pay_date:     payDate,
-            pay_mode:     payMode,
-            txn_ref:      txnRef || null,
-            description:  'Dress Kit — ' + item.name,
-            receipt_no:   rNo,
-            student_name: student.name,
+            id: `${rNo}-dk${i}`, adm_app_id: gcc, fee_type: 'item',
+            amount_paid: item.price, pay_date: payDate, pay_mode: payMode,
+            txn_ref: txnRef || null, description: 'Dress Kit — ' + item.name,
+            receipt_no: rNo, student_name: student.name,
           })
           if (dkErr) throw dkErr
-
           await upsertAccount({
             entry_date: payDate, type: 'Income', category: 'Admission',
             amount: item.price, payment_mode: payMode,
             note: `${student.name} · ${item.name} · ${rNo}`,
-            source_ref:  sourceRef.admItem(gcc, item.name),
-            source_type: 'adm_fee',
+            source_ref: sourceRef.admItem(gcc, item.name), source_type: 'adm_fee',
           })
         }
 
         if (prospChecked) {
           insertedDress.push({ name: 'Prospectus', price: PROSPECTUS_FEE })
           const { error: pErr } = await supabase.from('adm_fee_collections').insert({
-            id:           `${rNo}-prosp`,
-            adm_app_id:   gcc,
-            fee_type:     'item',
-            amount_paid:  PROSPECTUS_FEE,
-            pay_date:     payDate,
-            pay_mode:     payMode,
-            description:  'Prospectus',
-            receipt_no:   rNo,
-            student_name: student.name,
+            id: `${rNo}-prosp`, adm_app_id: gcc, fee_type: 'item',
+            amount_paid: PROSPECTUS_FEE, pay_date: payDate, pay_mode: payMode,
+            description: 'Prospectus', receipt_no: rNo, student_name: student.name,
           })
           if (pErr) throw pErr
-
           await upsertAccount({
             entry_date: payDate, type: 'Income', category: 'Admission',
             amount: PROSPECTUS_FEE, payment_mode: payMode,
             note: `${student.name} · Prospectus · ${rNo}`,
-            source_ref:  sourceRef.admItem(gcc, 'prospectus'),
-            source_type: 'adm_fee',
+            source_ref: sourceRef.admItem(gcc, 'prospectus'), source_type: 'adm_fee',
           })
         }
       }
@@ -322,27 +325,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       // ── 2. Flat fees ──────────────────────────────────────────────────────
       for (const ff of selFlat) {
         const alreadyPaid = await checkFlatFeeExists(gcc, ff.month, ff.year)
-        if (alreadyPaid) {
-          showToast(`${ff.month} flat fee already recorded — skipped`, '#ca8a04')
-          continue
-        }
+        if (alreadyPaid) { showToast(`${ff.month} flat fee already recorded — skipped`, '#ca8a04'); continue }
 
         const flatId = `${gcc}_flat_${ff.month.slice(0, 3).toLowerCase()}_${ff.year}`
-
         const { error: ffErr } = await supabase.from('adm_flat_fees').insert({
-          id:           flatId,
-          adm_app_id:   gcc,
-          month:        ff.month,
-          year:         ff.year,
-          amount:       ff.amount,
-          hostel_type:  hostelType,
-          paid:         true,
-          pay_date:     payDate,
-          pay_mode:     payMode,
-          txn_ref:      txnRef || null,
-          receipt_no:   rNo,
-          student_name: student.name,
-          adm_no:       admRec.adm_no || '--',
+          id: flatId, adm_app_id: gcc, month: ff.month, year: ff.year,
+          amount: ff.amount, hostel_type: hostelType, paid: true,
+          pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
+          receipt_no: rNo, student_name: student.name, adm_no: admRec.adm_no || '--',
         })
         if (ffErr) throw ffErr
 
@@ -350,10 +340,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           entry_date: payDate, type: 'Income', category: 'Hostel',
           amount: ff.amount, payment_mode: payMode,
           note: `${student.name} · ${ff.month} ${ff.year} Flat Fee [${hostelType}] · ${rNo}`,
-          source_ref:  sourceRef.flatFee(gcc, ff.month, ff.year),
-          source_type: 'flat_fee',
+          source_ref: sourceRef.flatFee(gcc, ff.month, ff.year), source_type: 'flat_fee',
         })
-
         insertedFlat.push(ff)
       }
 
@@ -363,28 +351,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         if (!cf.course || !cf.for_month || !Number(cf.amount)) continue
 
         const alreadyPaid = await checkCourseFeeExists(gcc, cf.for_month, CURRENT_YEAR)
-        if (alreadyPaid) {
-          showToast(`Course fee for ${cf.for_month} already recorded — skipped`, '#ca8a04')
-          continue
-        }
+        if (alreadyPaid) { showToast(`Course fee for ${cf.for_month} already recorded — skipped`, '#ca8a04'); continue }
 
         const recId = `${gcc}_course_${cf.for_month.slice(0, 3).toLowerCase()}_${CURRENT_YEAR}`
-
         const { error: cfErr } = await supabase.from('adm_course_fees').insert({
-          id:           recId,
-          adm_app_id:   gcc,
-          course:       cf.course,
-          subtype:      cf.subtype || '',
-          hostel_type:  cf.hostelType || hostelType,
-          for_month:    cf.for_month,
-          year:         CURRENT_YEAR,
-          amount_paid:  Number(cf.amount),
-          pay_date:     payDate,
-          pay_mode:     payMode,
-          txn_ref:      txnRef || null,
-          receipt_no:   rNo,
-          student_name: student.name,
-          adm_no:       admRec.adm_no || '--',
+          id: recId, adm_app_id: gcc, course: cf.course,
+          subtype: cf.subtype || '', hostel_type: cf.hostelType || hostelType,
+          for_month: cf.for_month, year: CURRENT_YEAR,
+          amount_paid: Number(cf.amount), pay_date: payDate, pay_mode: payMode,
+          txn_ref: txnRef || null, receipt_no: rNo,
+          student_name: student.name, adm_no: admRec.adm_no || '--',
         })
         if (cfErr) throw cfErr
 
@@ -392,10 +368,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           entry_date: payDate, type: 'Income', category: 'Fees',
           amount: Number(cf.amount), payment_mode: payMode,
           note: `${student.name} · ${cf.course} ${cf.for_month} · ${rNo}`,
-          source_ref:  sourceRef.courseFee(gcc, cf.for_month, CURRENT_YEAR),
-          source_type: 'course_fee',
+          source_ref: sourceRef.courseFee(gcc, cf.for_month, CURRENT_YEAR), source_type: 'course_fee',
         })
-
         insertedCrsf.push({ ...cf, amount: Number(cf.amount) })
       }
 
@@ -403,34 +377,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       if (advThis > 0) {
         const advId = sourceRef.advance(gcc, Date.now())
         const { error: advErr } = await supabase.from('adm_fee_collections').insert({
-          id:           advId,
-          adm_app_id:   gcc,
-          fee_type:     'advance',
-          amount_paid:  advThis,
-          advance_for:  advFor,
-          pay_date:     payDate,
-          pay_mode:     payMode,
-          description:  'Advance — ' + advFor,
-          receipt_no:   rNo,
-          student_name: student.name,
+          id: advId, adm_app_id: gcc, fee_type: 'advance',
+          amount_paid: advThis, advance_for: advFor, pay_date: payDate,
+          pay_mode: payMode, description: 'Advance — ' + advFor,
+          receipt_no: rNo, student_name: student.name,
         })
         if (advErr) throw advErr
       }
 
-      // ── 5. Mirror into fee_invoices (fixes Fee Statement showing ₹0) ─────
-      //
-      //  The Fee Statement reads from fee_invoices exclusively.
-      //  This block writes one invoice row per fee type per save,
-      //  and updates existing rows on retry (idempotent via source_ref).
-      //
-      //  SQL to run once in Supabase:
-      //    ALTER TABLE fee_invoices ADD COLUMN IF NOT EXISTS source_ref text;
-      //    CREATE UNIQUE INDEX IF NOT EXISTS fee_invoices_source_ref_idx
-      //      ON fee_invoices(source_ref);
+      // ── 5. Mirror into fee_invoices ───────────────────────────────────────
       try {
         const invoiceMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
         const sessionYear  = getSessionYear()
-
         const feeTypes = [
           admPkgThis > 0 && { type: 'Admission',        amount: admPkgThis },
           flatThis    > 0 && { type: 'Monthly Flat Fee', amount: flatThis   },
@@ -440,51 +398,24 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
         for (const ft of feeTypes) {
           const invRef = `${gcc}_${ft.type.toLowerCase().replace(/\s+/g, '_')}_${invoiceMonth}`
-
-          const { data: existingInv } = await supabase
-            .from('fee_invoices')
-            .select('id, amount_paid, total_amount')
-            .eq('source_ref', invRef)
-            .maybeSingle()
-
+          const { data: existingInv } = await supabase.from('fee_invoices').select('id, amount_paid, total_amount').eq('source_ref', invRef).maybeSingle()
           if (existingInv) {
-            // Partial/retry — add to existing invoice
             const newPaid = parseFloat(existingInv.amount_paid || 0) + ft.amount
-            await supabase.from('fee_invoices').update({
-              amount_paid:     newPaid,
-              amount_due:      0,
-              status:          'Paid',
-              last_payment_at: new Date().toISOString(),
-            }).eq('id', existingInv.id)
+            await supabase.from('fee_invoices').update({ amount_paid: newPaid, amount_due: 0, status: 'Paid', last_payment_at: new Date().toISOString() }).eq('id', existingInv.id)
           } else {
-            // First time — create invoice row
             await supabase.from('fee_invoices').insert({
-              source_ref:      invRef,
-              student_id:      student.id,
-              student_name:    student.name,
-              gcc_no:          student.gcc_no,
-              course:          student.course     || '',
-              hostel_type:     hostelType,
-              class_name:      student.class_name || student.batch || '',
-              session_year:    sessionYear,
-              invoice_month:   invoiceMonth,
-              fee_type:        ft.type,
-              base_amount:     ft.amount,
-              discount_amount: 0,
-              penalty_amount:  0,
-              total_amount:    ft.amount,
-              amount_paid:     ft.amount,
-              amount_due:      0,
-              due_date:        payDate,
-              status:          'Paid',
-              generated_at:    new Date().toISOString(),
-              generated_by:    'collection',
+              source_ref: invRef, student_id: student.id, student_name: student.name,
+              gcc_no: student.gcc_no, course: student.course || '', hostel_type: hostelType,
+              class_name: student.class_name || student.batch || '', session_year: sessionYear,
+              invoice_month: invoiceMonth, fee_type: ft.type, base_amount: ft.amount,
+              discount_amount: 0, penalty_amount: 0, total_amount: ft.amount,
+              amount_paid: ft.amount, amount_due: 0, due_date: payDate, status: 'Paid',
+              generated_at: new Date().toISOString(), generated_by: 'collection',
               last_payment_at: new Date().toISOString(),
             })
           }
         }
       } catch (invErr) {
-        // Don't block receipt — log only
         console.error('fee_invoices mirror failed:', invErr.message)
       }
 
@@ -498,7 +429,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       if (insertedFlat.length > 0) {
         sections.push({
           title: `Monthly Flat Fees — ${hostelType}`, color: '#059669',
-          items: insertedFlat.map(f => ({ label: `${f.month} ${f.year} (${getFlatFeeAmt(hostelType).toLocaleString('en-IN')}/mo)`, amount: f.amount })),
+          items: insertedFlat.map(f => ({ label: `${f.month} ${f.year} (₹${feeRates.flatFee.toLocaleString('en-IN')}/mo)`, amount: f.amount })),
           subtotal: insertedFlat.reduce((s, f) => s + f.amount, 0),
         })
       }
@@ -514,20 +445,12 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       }
 
       printReceipt({
-        receipt_no:   rNo,
-        pay_date:     payDate,
-        pay_mode:     payMode,
-        txn_ref:      txnRef || null,
-        collected_by: collectedBy,
-        student_name: student.name,
-        adm_no:       admRec.adm_no || '--',
-        gcc_no:       student.gcc_no || '',
-        class_name:   student.class_name || student.batch || '',
-        course:       student.course || '',
-        hostel_type:  hostelType,
-        sections,
-        items: [],
-        total: grandThis,
+        receipt_no: rNo, pay_date: payDate, pay_mode: payMode,
+        txn_ref: txnRef || null, collected_by: collectedBy,
+        student_name: student.name, adm_no: admRec.adm_no || '--',
+        gcc_no: student.gcc_no || '', class_name: student.class_name || student.batch || '',
+        course: student.course || '', hostel_type: hostelType,
+        sections, items: [], total: grandThis,
       })
 
       showToast(`✅ Saved & invoice printed · ${rNo}`)
@@ -543,7 +466,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setSaving(false)
   }
 
-  // ── Select screen ──────────────────────────────────────────────────────────
+  // ── Select screen ─────────────────────────────────────────────────────────
   if (step === 'select') return (
     <div style={{ maxWidth: 540, margin: '48px auto', textAlign: 'center' }}>
       <div style={{ fontSize: 52, marginBottom: 16 }}>💳</div>
@@ -553,7 +476,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     </div>
   )
 
-  // ── Payment screen ─────────────────────────────────────────────────────────
+  // ── Payment screen ────────────────────────────────────────────────────────
   return (
     <div>
       {toast && (
@@ -576,9 +499,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             {admRec?.adm_no && <span style={{ color: '#4f46e5', fontWeight: 600 }}>{admRec.adm_no}</span>}
             {hostelType && <HostelBadge type={hostelType} />}
             <span style={{ fontSize: 11, color: '#059669', fontWeight: 700 }}>
-              Flat fee: {getFlatFeeAmt(hostelType).toLocaleString('en-IN')}/mo
+              Flat fee: ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo
             </span>
-            {totalEverPaid > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>{totalEverPaid.toLocaleString('en-IN')} prev. paid</span>}
+            {totalEverPaid > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>₹{totalEverPaid.toLocaleString('en-IN')} prev. paid</span>}
           </div>
         </div>
         <button onClick={handleBack} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b' }}>← Change</button>
@@ -607,11 +530,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                 {myAdmCols.map((c, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', color: '#475569' }}>
                     <span>{c.description || 'Fee'}</span>
-                    <span style={{ fontWeight: 700 }}>{Number(c.amount_paid || 0).toLocaleString('en-IN')}</span>
+                    <span style={{ fontWeight: 700 }}>₹{Number(c.amount_paid || 0).toLocaleString('en-IN')}</span>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 800, color: '#3730a3', borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
-                  <span>Total paid</span><span>{admEverPaid.toLocaleString('en-IN')}</span>
+                  <span>Total paid</span><span>₹{admEverPaid.toLocaleString('en-IN')}</span>
                 </div>
               </div>
             ) : (
@@ -650,37 +573,39 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 800, fontSize: 14, color: '#047857' }}>Monthly flat fees</div>
                 <div style={{ fontSize: 11, color: '#047857', marginTop: 2 }}>
-                  {hostelType} rate · ₹{getFlatFeeAmt(hostelType).toLocaleString('en-IN')}/month
+                  {hostelType} rate · ₹{feeRates.flatFee.toLocaleString('en-IN')}/month
                 </div>
               </div>
               {flatEverPaid > 0 && <span style={{ fontSize: 11, color: '#047857', fontWeight: 700 }}>₹{flatEverPaid.toLocaleString('en-IN')} paid</span>}
             </div>
             <div style={{ padding: '12px 16px' }}>
-              {flatFees.map((ff, i) => {
-                const paid = paidMonths.includes(ff.month)
-                return (
-                  <label key={ff.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < flatFees.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: paid ? 'default' : 'pointer' }}>
-                    <input type="checkbox"
-                      checked={paid || !!flatChecked[i]}
-                      disabled={paid}
-                      onChange={() => setFlatChecked(c => { const n = [...c]; n[i] = !n[i]; return n })}
-                      style={{ accentColor: '#059669', width: 14, height: 14 }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{ff.month} {ff.year}</div>
-                      <div style={{ fontSize: 11, color: paid ? '#16a34a' : '#94a3b8', marginTop: 1 }}>
-                        {paid ? '✅ Already collected' : `${hostelType} rate`}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: paid ? '#16a34a' : '#059669' }}>
-                      ₹{ff.amount.toLocaleString('en-IN')}
-                    </span>
-                  </label>
-                )
-              })}
+              {flatFees.length === 0
+                ? <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 16 }}>⏳ Loading months…</div>
+                : flatFees.map((ff, i) => {
+                    const paid = paidMonths.includes(ff.month)
+                    return (
+                      <label key={ff.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < flatFees.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: paid ? 'default' : 'pointer' }}>
+                        <input type="checkbox"
+                          checked={paid || !!flatChecked[i]}
+                          disabled={paid}
+                          onChange={() => setFlatChecked(c => { const n = [...c]; n[i] = !n[i]; return n })}
+                          style={{ accentColor: '#059669', width: 14, height: 14 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{ff.month} {ff.year}</div>
+                          <div style={{ fontSize: 11, color: paid ? '#16a34a' : '#94a3b8', marginTop: 1 }}>
+                            {paid ? '✅ Already collected' : `${hostelType} rate`}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: paid ? '#16a34a' : '#059669' }}>
+                          ₹{ff.amount.toLocaleString('en-IN')}
+                        </span>
+                      </label>
+                    )
+                  })
+              }
               {flatThis > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, color: '#047857', background: '#ecfdf5', padding: '9px 12px', borderRadius: 8, marginTop: 10 }}>
-                  <span>Flat total</span>
-                  <span>₹{flatThis.toLocaleString('en-IN')}</span>
+                  <span>Flat total</span><span>₹{flatThis.toLocaleString('en-IN')}</span>
                 </div>
               )}
             </div>
@@ -692,9 +617,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               <span style={{ fontSize: 18 }}>📚</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 800, fontSize: 14, color: '#6d28d9' }}>Course fees</div>
-                <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>
-                  Select course + hostel type → amount auto-fills · editable
-                </div>
+                <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>Select course + hostel type → amount auto-fills · editable</div>
               </div>
               {crsfEverPaid > 0 && <span style={{ fontSize: 11, color: '#6d28d9', fontWeight: 700 }}>₹{crsfEverPaid.toLocaleString('en-IN')} prev.</span>}
             </div>
@@ -715,22 +638,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                     <div>
                       <label style={{ ...lbl, fontSize: 11 }}>Course</label>
-                      <select value={row.course}
-                        onChange={e => updateCrsfRow(i, 'course', e.target.value)}
-                        style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
+                      <select value={row.course} onChange={e => updateCrsfRow(i, 'course', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
                         <option value="">— Select —</option>
                         {Object.keys(COURSE_STRUCTURE).map(c => <option key={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
                       <label style={{ ...lbl, fontSize: 11 }}>Hostel Type</label>
-                      <select value={row.hostelType}
-                        onChange={e => updateCrsfRow(i, 'hostelType', e.target.value)}
-                        style={{ ...inp, fontSize: 12, padding: '7px 10px', borderColor: row.hostelType ? '#a78bfa' : '#d1d5db', background: row.hostelType ? '#faf5ff' : 'white' }}>
+                      <select value={row.hostelType} onChange={e => updateCrsfRow(i, 'hostelType', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
                         <option value="">— Select —</option>
-                        <option value="Boarder">Boarder</option>
-                        <option value="Day Boarder">Day Boarder</option>
-                        <option value="Day Scholar">Day Scholar</option>
+                        <option>Boarder</option><option>Day Boarder</option><option>Day Scholar</option>
                       </select>
                     </div>
                   </div>
@@ -738,22 +655,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                     <div>
                       <label style={{ ...lbl, fontSize: 11 }}>Subtype</label>
                       {(COURSE_STRUCTURE[row.course]?.subtypes || []).length > 0
-                        ? <select value={row.subtype}
-                            onChange={e => updateCrsfRow(i, 'subtype', e.target.value)}
-                            style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
+                        ? <select value={row.subtype} onChange={e => updateCrsfRow(i, 'subtype', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
                             <option value="">—</option>
                             {COURSE_STRUCTURE[row.course].subtypes.map(s => <option key={s}>{s}</option>)}
                           </select>
-                        : <input value={row.subtype}
-                            onChange={e => updateCrsfRow(i, 'subtype', e.target.value)}
-                            style={{ ...inp, fontSize: 12, padding: '7px 10px' }} placeholder="Optional" />
+                        : <input value={row.subtype} onChange={e => updateCrsfRow(i, 'subtype', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }} placeholder="Optional" />
                       }
                     </div>
                     <div>
                       <label style={{ ...lbl, fontSize: 11 }}>Month</label>
-                      <select value={row.for_month}
-                        onChange={e => updateCrsfRow(i, 'for_month', e.target.value)}
-                        style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
+                      <select value={row.for_month} onChange={e => updateCrsfRow(i, 'for_month', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
                         <option value="">— Month —</option>
                         {MONTHS_LIST.map(m => <option key={m}>{m}</option>)}
                       </select>
@@ -764,28 +675,24 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                       Amount (₹)
                       {row.course && row.hostelType && (
                         <span style={{ fontWeight: 400, color: '#7c3aed', marginLeft: 6 }}>
-                          · {row.hostelType} rate: ₹{getCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
+                          · {row.hostelType} rate: ₹{syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
                         </span>
                       )}
                     </label>
-                    <input
-                      type="number"
-                      value={row.amount || ''}
+                    <input type="number" value={row.amount || ''}
                       onChange={e => updateCrsfRow(i, 'amount', e.target.value)}
-                      style={{
-                        ...inp, fontSize: 12, padding: '7px 10px',
+                      style={{ ...inp, fontSize: 12, padding: '7px 10px',
                         borderColor: row.course && row.hostelType && row.amount !== '' &&
-                          Number(row.amount) !== getCourseFeeAmt(row.course, row.hostelType)
-                          ? '#f59e0b' : '#d1d5db',
-                      }}
+                          Number(row.amount) !== syncCourseFeeAmt(row.course, row.hostelType)
+                          ? '#f59e0b' : '#d1d5db' }}
                       placeholder={row.course && row.hostelType
-                        ? `Auto: ₹${getCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}`
+                        ? `Auto: ₹${syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}`
                         : 'Select course & hostel type first'}
                     />
                     {row.course && row.hostelType && row.amount !== '' &&
-                      Number(row.amount) !== getCourseFeeAmt(row.course, row.hostelType) && (
+                      Number(row.amount) !== syncCourseFeeAmt(row.course, row.hostelType) && (
                       <div style={{ fontSize: 10, color: '#b45309', marginTop: 3 }}>
-                        ⚠ Overriding standard rate of ₹{getCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
+                        ⚠ Overriding standard rate of ₹{syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
                       </div>
                     )}
                   </div>
@@ -873,7 +780,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   )
 }
 
-// ─── Root: Fees page ─────────────────────────────────────────────────────────
+// ─── Root: Fees page ──────────────────────────────────────────────────────────
 
 export default function Fees() {
   const [fees,                setFees]         = useState([])
@@ -1020,10 +927,10 @@ export default function Fees() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
             {[
-              { label: 'Total students',  value: students.length,        color: '#1e3a5f', bg: '#eff6ff', icon: '👨‍🎓' },
-              { label: 'Total collected', value: `₹${n(liveTtl)}`,       color: '#16a34a', bg: '#dcfce7', icon: '✅' },
-              { label: 'Fees pending',    value: liveP,                  color: '#dc2626', bg: '#fee2e2', icon: '⚠️' },
-              { label: 'Fully paid',      value: liveP2,                 color: '#7c3aed', bg: '#f5f3ff', icon: '🎉' },
+              { label: 'Total students',  value: students.length,  color: '#1e3a5f', bg: '#eff6ff', icon: '👨‍🎓' },
+              { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅' },
+              { label: 'Fees pending',    value: liveP,            color: '#dc2626', bg: '#fee2e2', icon: '⚠️' },
+              { label: 'Fully paid',      value: liveP2,           color: '#7c3aed', bg: '#f5f3ff', icon: '🎉' },
             ].map(c => (
               <div key={c.label} style={{ backgroundColor: c.bg, borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderLeft: `4px solid ${c.color}` }}>
                 <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
@@ -1052,8 +959,7 @@ export default function Fees() {
                   {filteredLive.map((s, i) => (
                     <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                    >
+                      onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                       <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
@@ -1138,8 +1044,7 @@ export default function Fees() {
                     return (
                       <tr key={f.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                         onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                      >
+                        onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                         <td style={{ padding: '12px 16px', color: '#64748b' }}>{i + 1}</td>
                         <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{f.gcc_no ? `GCC-${f.gcc_no}` : '—'}</td>
                         <td style={{ padding: '12px 16px', fontWeight: 600, color: '#1e293b' }}>{f.name || '—'}</td>

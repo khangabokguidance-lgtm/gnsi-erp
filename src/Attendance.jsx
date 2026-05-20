@@ -1,491 +1,623 @@
 // ============================================================
-//  GNSI Portal — Attendance Module
-//  Fixed: CoursePicker + useCourseData imported from Courses.jsx
-//  Fixed: timetable auto-fill matches class_name === subtype
+//  GNSI Portal — Attendance Module (Advanced)
+//  Design: Navy system from FeeSetup.jsx (Outfit font, #1e3a5f)
+//  Features:
+//    • Course/Batch picker from COURSE_STRUCTURE (FeeSetup)
+//    • Timetable auto-fill (subject + teacher per period/day)
+//    • Per-student status toggle with live stats bar
+//    • Bulk-action toolbar (Mark All, Invert selection)
+//    • View Sessions tab with inline expand + edit
+//    • Reports tab with bar charts, risk table, month picker
+//    • Consistent 3-column header / card layout
 // ============================================================
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
-import { useCourseData } from './Courses'   // ← single source of truth
 
-// ─── Constants ────────────────────────────────────────────────
+// ─── COURSE STRUCTURE (mirrors FeeSetup.jsx) ─────────────────
+
+const COURSE_STRUCTURE = {
+  Sainik:            ['Achiever', 'Leader', 'Champion'],
+  Navodaya:          ['Umeed', 'Lakshya'],
+  Foundation:        ['Prime', 'Elite'],
+  'Combined Course': ['—'],
+}
+const COURSES      = Object.keys(COURSE_STRUCTURE)
+const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
+
+// ─── Design Tokens ────────────────────────────────────────────
+
+const C = {
+  navy:    '#1e3a5f',
+  navyMid: '#2a4f7c',
+  indigo:  '#4f46e5',
+  emerald: '#059669',
+  amber:   '#d97706',
+  red:     '#dc2626',
+  violet:  '#7c3aed',
+  sky:     '#0284c7',
+  gold:    '#ffd060',
+  slate: {
+    50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0',
+    300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b',
+    600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a',
+  },
+}
+
+const COURSE_COLORS = {
+  Sainik:            { accent: '#4f46e5', light: '#eff6ff', badge: '#1d4ed8' },
+  Navodaya:          { accent: '#059669', light: '#f0fdf4', badge: '#15803d' },
+  Foundation:        { accent: '#d97706', light: '#fffbeb', badge: '#b45309' },
+  'Combined Course': { accent: '#7c3aed', light: '#f5f3ff', badge: '#6d28d9' },
+}
+
+const HOSTEL_COLORS = {
+  Boarder:       { bg: '#dcfce7', color: '#166534', border: '#86efac' },
+  'Day Boarder': { bg: '#fef3c7', color: '#92400e', border: '#fde68a' },
+  'Day Scholar': { bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
+}
+
+const STATUS_META = {
+  Present: { bg: '#dcfce7', color: '#16a34a', border: '#86efac', icon: '✓', label: 'Present' },
+  Absent:  { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5', icon: '✗', label: 'Absent'  },
+  Late:    { bg: '#fef9c3', color: '#92400e', border: '#fde68a', icon: '◷', label: 'Late'    },
+  Leave:   { bg: '#f3e8ff', color: '#7c3aed', border: '#ddd6fe', icon: '☰', label: 'Leave'   },
+}
+const STATUSES = ['Present', 'Absent', 'Late', 'Leave']
+
+const SESSION_TYPES = ['Class']
+const PERIODS       = [1]
 
 const SUBJECTS = [
-  'Mathematics', 'English', 'General Knowledge', 'General Science',
-  'Social Science', 'Reasoning', 'Current Affairs', 'Hindi',
-  'Computer Science', 'Physical Education',
+  'Mathematics','English Grammar','General Knowledge','General Science',
+  'Vocabulary','Reasoning','Foundation Mathematics','Hindi',
+  'Mental Ability','Meitei Mayek','Mathematics I','Mathematics II',
 ]
 
-const ATTENDANCE_STATUSES = ['Present', 'Absent', 'Late', 'Leave']
+const today    = () => new Date().toISOString().split('T')[0]
+const fmtDate  = d  => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'
+const fmtMonth = m  => { const [y,mo] = m.split('-'); return new Date(y, mo-1).toLocaleDateString('en-IN',{month:'long',year:'numeric'}) }
+const todayDay = () => new Date().toLocaleDateString('en-US', { weekday:'long' })
 
-const STATUS_STYLE = {
-  Present: { bg: '#dcfce7', color: '#16a34a', border: '#bbf7d0' },
-  Absent:  { bg: '#fee2e2', color: '#dc2626', border: '#fecaca' },
-  Late:    { bg: '#fef9c3', color: '#92400e', border: '#fde68a' },
-  Leave:   { bg: '#f3e8ff', color: '#7c3aed', border: '#ddd6fe' },
-}
+// ─── Shared UI Primitives ─────────────────────────────────────
 
-const STATUS_ICON = { Present: '✅', Absent: '❌', Late: '⏰', Leave: '📋' }
+const font = "'Outfit', system-ui, sans-serif"
 
-const today  = () => new Date().toISOString().split('T')[0]
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'
+const inp = (extra={}) => ({
+  padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.slate[200]}`,
+  fontSize: 13, fontFamily: font, outline: 'none', background: 'white',
+  color: C.slate[800], boxSizing: 'border-box', width: '100%', ...extra,
+})
 
-const TABS = [
-  { key: 'mark',   label: '✏️ Mark Attendance' },
-  { key: 'view',   label: '📋 View Sessions' },
-  { key: 'report', label: '📊 Reports' },
-]
-
-// ─── Styles ───────────────────────────────────────────────────
-
-const S = {
-  page:   { padding:'24px', fontFamily:"'Segoe UI', sans-serif", background:'#f8fafc', minHeight:'100vh' },
-  card:   { background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', padding:'24px', marginBottom:'20px' },
-  btn:    (color='#1e3a5f', disabled=false) => ({ backgroundColor:disabled?'#94a3b8':color, color:'white', border:'none', borderRadius:'8px', padding:'10px 20px', fontWeight:'600', cursor:disabled?'not-allowed':'pointer', fontSize:'14px' }),
-  btnSm:  (color='#1e3a5f') => ({ backgroundColor:color, color:'white', border:'none', borderRadius:'6px', padding:'6px 12px', fontWeight:'600', cursor:'pointer', fontSize:'12px' }),
-  input:  { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
-  label:  { display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' },
-  select: { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
-  tab:    (active) => ({ padding:'10px 18px', fontWeight:'600', fontSize:'13px', cursor:'pointer', background:'none', border:'none', borderBottom:active?'3px solid #1e3a5f':'3px solid transparent', color:active?'#1e3a5f':'#64748b' }),
-}
-
-// ─── Status Toggle Button ──────────────────────────────────────
-
-function StatusBtn({ status, onChange }) {
-  const st  = STATUS_STYLE[status] || STATUS_STYLE.Present
-  const idx  = ATTENDANCE_STATUSES.indexOf(status)
-  const next = ATTENDANCE_STATUSES[(idx + 1) % ATTENDANCE_STATUSES.length]
+function Label({ children, badge }) {
   return (
-    <button onClick={() => onChange(next)}
-      style={{ padding:'6px 14px', borderRadius:'999px', border:`1.5px solid ${st.border}`, background:st.bg, color:st.color, fontWeight:'700', fontSize:'12px', cursor:'pointer', minWidth:'80px', transition:'all 0.15s' }}>
-      {STATUS_ICON[status]} {status}
+    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: C.slate[400], marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+      {children}
+      {badge && <span style={{ fontSize: 9, fontWeight: 800, background: '#dcfce7', color: '#16a34a', padding: '1px 6px', borderRadius: 4, letterSpacing: '.04em' }}>{badge}</span>}
+    </div>
+  )
+}
+
+function Select({ value, onChange, disabled, children, style={} }) {
+  return (
+    <select value={value} onChange={onChange} disabled={disabled}
+      style={{ ...inp(), cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .5 : 1, ...style }}>
+      {children}
+    </select>
+  )
+}
+
+function Chip({ label, color, bg, border }) {
+  return (
+    <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', padding: '2px 9px', borderRadius: 5, background: bg, color, border: `1px solid ${border}` }}>
+      {label}
+    </span>
+  )
+}
+
+function CoursePill({ course }) {
+  const cc = COURSE_COLORS[course] || COURSE_COLORS.Sainik
+  return <Chip label={course} color={cc.badge} bg={cc.light} border={`${cc.accent}30`} />
+}
+
+// ─── Status Cycle Button ──────────────────────────────────────
+
+function StatusCycle({ status, onChange }) {
+  const sm  = STATUS_META[status] || STATUS_META.Present
+  const idx = STATUSES.indexOf(status)
+  return (
+    <button onClick={() => onChange(STATUSES[(idx + 1) % STATUSES.length])}
+      style={{
+        padding: '5px 16px', borderRadius: 999, border: `1.5px solid ${sm.border}`,
+        background: sm.bg, color: sm.color, fontWeight: 800, fontSize: 12,
+        cursor: 'pointer', minWidth: 90, transition: 'all .12s',
+        fontFamily: font, letterSpacing: '.02em',
+      }}>
+      {sm.icon} {sm.label}
     </button>
   )
 }
 
-// ─── Tab: Mark Attendance ─────────────────────────────────────
+// ─── Mini Stat Bar ────────────────────────────────────────────
 
-function TabMark({ courseData, staff }) {
-  const [session, setSession] = useState({
-    session_date: today(), course:'', subtype:'', class_name:'', batch_id:'',
-    subject_name:'', teacher_name:'', staff_id:'', period_number:'',
-    session_type:'Class', remarks:'',
+function StatBar({ records }) {
+  const counts = useMemo(() => {
+    const c = { Present:0, Absent:0, Late:0, Leave:0 }
+    Object.values(records).forEach(s => { if (c[s] !== undefined) c[s]++ })
+    return c
+  }, [records])
+  const total = Object.values(counts).reduce((a,b)=>a+b,0)
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      {/* stacked bar */}
+      {total > 0 && (
+        <div style={{ flex: 1, minWidth: 120, height: 8, borderRadius: 999, overflow: 'hidden', display: 'flex', background: C.slate[100] }}>
+          {STATUSES.map(s => counts[s] > 0 && (
+            <div key={s} style={{ width: `${(counts[s]/total)*100}%`, height: '100%', background: STATUS_META[s].color, transition: 'width .3s' }} />
+          ))}
+        </div>
+      )}
+      {STATUSES.map(s => (
+        <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_META[s].color }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: STATUS_META[s].color }}>{counts[s]}</span>
+          <span style={{ fontSize: 11, color: C.slate[400] }}>{s}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Attendance Mini Chart (bar) ──────────────────────────────
+
+function MiniBar({ pct }) {
+  const color = pct >= 75 ? C.emerald : pct >= 50 ? C.amber : C.red
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, height: 7, background: C.slate[100], borderRadius: 999, overflow: 'hidden', minWidth: 60 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width .4s' }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 800, color, minWidth: 34 }}>{pct}%</span>
+    </div>
+  )
+}
+
+// ─── Section Card ─────────────────────────────────────────────
+
+function Card({ children, style={} }) {
+  return (
+    <div style={{
+      background: 'white', borderRadius: 14, border: `1px solid ${C.slate[200]}`,
+      boxShadow: '0 2px 12px rgba(0,0,0,.06)', overflow: 'hidden', ...style,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function CardHead({ icon, title, sub, right }) {
+  return (
+    <div style={{ padding: '16px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 4, height: 24, background: `linear-gradient(180deg,${C.navy},${C.indigo})`, borderRadius: 2 }} />
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{icon && <span style={{ marginRight: 7 }}>{icon}</span>}{title}</div>
+          {sub && <div style={{ fontSize: 12, color: C.slate[400], marginTop: 2 }}>{sub}</div>}
+        </div>
+      </div>
+      {right && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{right}</div>}
+    </div>
+  )
+}
+
+// ─── Alert Banner ─────────────────────────────────────────────
+
+function Alert({ type='info', children, onClose }) {
+  const styles = {
+    info:    { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8' },
+    success: { bg: '#f0fdf4', border: '#86efac', color: '#166534' },
+    warn:    { bg: '#fffbeb', border: '#fde68a', color: '#92400e' },
+    error:   { bg: '#fef2f2', border: '#fca5a5', color: '#b91c1c' },
+  }
+  const s = styles[type]
+  return (
+    <div style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 10, padding: '11px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: s.color }}>{children}</span>
+      {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.color, fontSize: 16, lineHeight: 1 }}>×</button>}
+    </div>
+  )
+}
+
+// ─── Btn ──────────────────────────────────────────────────────
+
+function Btn({ children, onClick, disabled, variant='primary', small }) {
+  const base = {
+    borderRadius: small ? 7 : 9, border: 'none', fontFamily: font,
+    fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: small ? 12 : 13, padding: small ? '6px 14px' : '9px 20px',
+    transition: 'all .12s', display: 'inline-flex', alignItems: 'center', gap: 6,
+  }
+  const vars = {
+    primary:  { background: disabled ? C.slate[200] : `linear-gradient(135deg,${C.navy},${C.indigo})`, color: disabled ? C.slate[400] : 'white' },
+    success:  { background: disabled ? C.slate[200] : `linear-gradient(135deg,${C.emerald},#16a34a)`, color: 'white' },
+    danger:   { background: '#fee2e2', color: C.red, border: `1px solid #fca5a5` },
+    ghost:    { background: C.slate[50], color: C.slate[600], border: `1px solid ${C.slate[200]}` },
+    amber:    { background: '#fef3c7', color: '#92400e', border: `1px solid #fde68a` },
+  }
+  return (
+    <button onClick={disabled ? undefined : onClick} disabled={disabled}
+      style={{ ...base, ...vars[variant] }}>
+      {children}
+    </button>
+  )
+}
+
+// ─── TAB: MARK ATTENDANCE ─────────────────────────────────────
+
+function TabMark({ staff }) {
+  const [form, setForm]       = useState({
+    session_date: today(), course: '', subtype: '', class_name: '', batch_id: '',
+    subject_name: '', teacher_name: '', staff_id: '', period_number: '',
+    session_type: 'Class', remarks: '',
   })
   const [students,  setStudents]  = useState([])
   const [records,   setRecords]   = useState({})
-  const [saving,    setSaving]    = useState(false)
   const [timetable, setTimetable] = useState([])
+  const [saving,    setSaving]    = useState(false)
+  const [toast,     setToast]     = useState(null)
+  const [search,    setSearch]    = useState('')
+  const [batchId,   setBatchId]   = useState(null) // from course_batches.id
 
-  // ── Re-resolve batch_id once courseData.batches finishes loading ──
-  // batchIdFor returns '' if batches array is still empty (async load),
-  // so we watch batches and fill in batch_id if it's missing
-  useEffect(() => {
-    if (!courseData.batches.length) return          // still loading
-    if (session.batch_id) return                    // already resolved
-    if (!session.course || !session.subtype) return // nothing selected yet
-    const classes = courseData.classesFor(session.course, session.subtype)
-    if (classes.length > 0 && !session.class_name) return  // needs class selection
-    const batch_id = courseData.batchIdFor(session.course, session.subtype, session.class_name)
-    if (batch_id) setSession(prev => ({ ...prev, batch_id }))
-  }, [courseData.batches, session.course, session.subtype, session.class_name, session.batch_id])
+  // Derived
+  const subtypes   = form.course ? COURSE_STRUCTURE[form.course] || [] : []
+  const cc         = COURSE_COLORS[form.course] || COURSE_COLORS.Sainik
 
-  // Subjects derived live from timetable entries for the selected batch
+  // Timetable-derived subjects & staff
   const batchSubjects = useMemo(() =>
-  timetable.length > 0
-    ? [...new Set(timetable.map(t => t.subject_name).filter(Boolean))].sort()
-    : SUBJECTS,
-[timetable])
+    timetable.length ? [...new Set(timetable.map(t=>t.subject_name).filter(Boolean))].sort() : SUBJECTS
+  , [timetable])
 
-  // Teachers: only staff who appear in this batch's timetable
-  // Falls back to all staff if batch has no timetable yet
   const batchStaff = useMemo(() => {
-  if (!timetable.length) return staff  // already returns all staff as fallback
-  const timetableNames = new Set(timetable.map(t => t.teacher_name).filter(Boolean))
-  const matched = staff.filter(s => timetableNames.has(s.name))
-  return matched.length > 0 ? matched : staff
-}, [timetable, staff])
+    if (!timetable.length) return staff
+    const names = new Set(timetable.map(t=>t.teacher_name).filter(Boolean))
+    const matched = staff.filter(s => names.has(s.name))
+    return matched.length ? matched : staff
+  }, [timetable, staff])
 
-  // ── Load timetable entries when batch changes ─────────────────
-  // timetable_entries.class_name stores the batch_name from course_batches
+  // ── Load batch + timetable ────────────────────────────────
   useEffect(() => {
-    if (!session.batch_id) { setTimetable([]); return }
-    // Resolve batch_id → batch_name first, then query timetable_entries
-    const fetchTimetable = async () => {
-      const { data: batch } = await supabase
-        .from('course_batches')
-        .select('batch_name')
-        .eq('id', session.batch_id)
-        .single()
-      if (!batch?.batch_name) return
-      const { data } = await supabase
-        .from('timetable_entries')
-        .select('*')
-        .eq('class_name', batch.batch_name)   // ← batch_name stored as class_name in timetable_entries
-      setTimetable(data || [])
+    if (!form.course || !form.subtype) { setTimetable([]); setBatchId(null); return }
+    const fetch = async () => {
+      let q = supabase.from('course_batches').select('id,batch_name')
+        .eq('course', form.course).eq('subtype', form.subtype)
+      if (form.class_name) q = q.eq('class_name', form.class_name)
+      const { data } = await q.limit(1).single()
+      const id = data?.id || null
+      setBatchId(id)
+      if (!id) { setTimetable([]); return }
+      const { data: tt } = await supabase.from('timetable_entries').select('*')
+        .eq('class_name', data.batch_name)
+      setTimetable(tt || [])
     }
-    fetchTimetable()
-  }, [session.batch_id])
+    fetch()
+  }, [form.course, form.subtype, form.class_name])
 
-  // ── Load enrolled students ────────────────────────────────────
+  // ── Load students ─────────────────────────────────────────
   useEffect(() => {
-    if (!session.course) { setStudents([]); setRecords({}); return }
-    const fetchStudents = async () => {
-      let q = supabase
-        .from('course_enrollments')
-        .select('id, student_name, gcc_no, student_id, hostel_type')
-        .eq('status', 'Active')
-        .eq('course', session.course)
-      if (session.subtype)    q = q.eq('subtype',    session.subtype)
-      if (session.class_name) q = q.eq('class_name', session.class_name)
+    if (!form.course) { setStudents([]); setRecords({}); return }
+    const fetch = async () => {
+      let q = supabase.from('course_enrollments')
+        .select('id,student_name,gcc_no,student_id,hostel_type')
+        .eq('status','Active').eq('course', form.course)
+      if (form.subtype)    q = q.eq('subtype',    form.subtype)
+      if (form.class_name) q = q.eq('class_name', form.class_name)
       const { data } = await q.order('student_name')
-      if (data && data.length > 0) {
-        setStudents(data)
-        const init = {}
-        data.forEach(s => { init[s.student_name] = 'Present' })
-        setRecords(init)
-      } else {
-        setStudents([])
-        setRecords({})
-      }
+      setStudents(data || [])
+      const init = {}
+      ;(data||[]).forEach(s => { init[s.student_id || s.student_name] = 'Present' })
+      setRecords(init)
     }
-    fetchStudents()
-  }, [session.course, session.subtype, session.class_name])
+    fetch()
+  }, [form.course, form.subtype, form.class_name])
 
-  // ── Period selected → auto-fill subject + teacher ─────────────
-  // timetable is already filtered to this batch; just match day + period
-  const handlePeriodChange = (periodNumber) => {
-    setSession(prev => ({ ...prev, period_number: periodNumber }))
-    if (!periodNumber || !timetable.length) return
-
-    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' })
-
-    const slot = timetable.find(t =>
-      t.period_name === String(periodNumber) &&
-      t.day_name    === dayName
-    )
-
+  // ── Period auto-fill ──────────────────────────────────────
+  const handlePeriod = (period) => {
+    setForm(prev => ({ ...prev, period_number: period }))
+    if (!period || !timetable.length) return
+    const slot = timetable.find(t => t.period_name === String(period) && t.day_name === todayDay())
     if (slot) {
-      const matchedStaff = staff.find(s => s.name === slot.teacher_name)
-      setSession(prev => ({
-        ...prev,
-        period_number: periodNumber,
+      const matched = staff.find(s => s.name === slot.teacher_name)
+      setForm(prev => ({
+        ...prev, period_number: period,
         subject_name:  slot.subject_name || prev.subject_name,
         teacher_name:  slot.teacher_name || prev.teacher_name,
-        staff_id:      matchedStaff?.id  || prev.staff_id,
+        staff_id:      matched?.id || prev.staff_id,
       }))
     }
   }
 
-  const handleTeacher = (e) => {
-    const s = staff.find(x => x.name === e.target.value)
-    setSession(prev => ({ ...prev, teacher_name: e.target.value, staff_id: s?.id || '' }))
+  const handleTeacher = v => {
+    const s = staff.find(x => x.name === v)
+    setForm(prev => ({ ...prev, teacher_name: v, staff_id: s?.id || '' }))
   }
 
-  const handleSave = async () => {
-    if (!session.course || students.length === 0) {
-      alert('Select a course and ensure students are loaded.')
-      return
-    }
-    setSaving(true)
-    const { data: sess, error: sessErr } = await supabase
-      .from('attendance_sessions')
-      .insert([{
-        session_date:  session.session_date,
-        course:        session.course,
-        subtype:       session.subtype       || null,
-        class_name:    session.class_name    || null,
-        batch_id:      session.batch_id      || null,
-        subject_name:  session.subject_name  || null,
-        teacher_name:  session.teacher_name  || null,
-        staff_id:      session.staff_id      || null,
-        period_number: session.period_number || null,
-        session_type:  session.session_type,
-        remarks:       session.remarks       || null,
-      }])
-      .select()
-      .single()
-
-    if (sessErr) { alert('Error creating session: ' + sessErr.message); setSaving(false); return }
-
-    const rows = students.map(s => ({
-      session_id:   sess.id,
-      student_id:   s.student_id || null,
-      student_name: s.student_name,
-      gcc_no:       s.gcc_no || null,
-      status:       records[s.student_name] || 'Present',
-    }))
-
-    const { error: recErr } = await supabase.from('attendance_records').insert(rows)
-    if (recErr) { alert('Error saving records: ' + recErr.message); setSaving(false); return }
-
-    setSaving(false)
-    alert(`✅ Attendance saved for ${students.length} students!`)
-    setSession(prev => ({ ...prev, subject_name:'', teacher_name:'', staff_id:'', period_number:'', remarks:'' }))
-  }
-
-  const stats = useMemo(() => {
-    const counts = { Present:0, Absent:0, Late:0, Leave:0 }
-    Object.values(records).forEach(s => { if (counts[s] !== undefined) counts[s]++ })
-    return counts
-  }, [records])
-
-  const markAll = (status) => {
+  const markAll = status => {
     const next = {}
-    students.forEach(s => { next[s.student_name] = status })
+    students.forEach(s => { next[s.student_id || s.student_name] = status })
     setRecords(next)
   }
 
+  const invertSelection = () => {
+    const next = {}
+    students.forEach(s => {
+      const k = s.student_id || s.student_name
+      const cur = records[k] || 'Present'
+      next[k] = cur === 'Present' ? 'Absent' : 'Present'
+    })
+    setRecords(next)
+  }
+
+  const handleSave = async () => {
+    if (!form.course || !students.length) { setToast({ type:'warn', msg:'Select a course and ensure students are loaded.' }); return }
+    setSaving(true)
+    const { data: sess, error: e1 } = await supabase.from('attendance_sessions')
+      .insert([{
+        session_date:  form.session_date,
+        course:        form.course,
+        subtype:       form.subtype       || null,
+        class_name:    form.class_name    || null,
+        batch_id:      batchId            || null,
+        subject_name:  form.subject_name  || null,
+        teacher_name:  form.teacher_name  || null,
+        staff_id:      form.staff_id      || null,
+        period_number: form.period_number || null,
+        session_type:  form.session_type,
+        remarks:       form.remarks       || null,
+      }]).select().single()
+    if (e1) { setSaving(false); setToast({ type:'error', msg: e1.message }); return }
+
+    const rows = students.map(s => ({
+      session_id:   sess.id,
+      student_id:   s.student_id   || null,
+      student_name: s.student_name,
+      gcc_no:       s.gcc_no       || null,
+      status:       records[s.student_id || s.student_name] || 'Present',
+    }))
+    const { error: e2 } = await supabase.from('attendance_records').insert(rows)
+    setSaving(false)
+    if (e2) { setToast({ type:'error', msg: e2.message }); return }
+    setToast({ type:'success', msg: `✅ Attendance saved for ${students.length} students!` })
+    setForm(prev => ({ ...prev, subject_name:'', teacher_name:'', staff_id:'', period_number:'', remarks:'' }))
+  }
+
+  // filtered students
+  const filteredStudents = useMemo(() =>
+    search.trim() ? students.filter(s => s.student_name.toLowerCase().includes(search.toLowerCase()) || (s.gcc_no||'').includes(search))
+    : students
+  , [students, search])
+
+  const counts = useMemo(() => {
+    const c = { Present:0, Absent:0, Late:0, Leave:0 }
+    Object.values(records).forEach(s => { if (c[s] !== undefined) c[s]++ })
+    return c
+  }, [records])
+
   return (
-    <div>
-      <div style={S.card}>
-        <h2 style={{ fontSize:'16px', fontWeight:'700', color:'#1e3a5f', marginTop:0, marginBottom:'20px' }}>
-          Step 1 — Session Details
-        </h2>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Inline course picker — auto-resolves batch_id even when class_name is null */}
-          <div>
-            <label style={S.label}>Course *</label>
-            <select value={session.course} onChange={e => {
-              setSession(prev => ({ ...prev, course: e.target.value, subtype:'', class_name:'', batch_id:'' }))
-            }} style={S.select}>
-              <option value="">Select Course</option>
-              {courseData.courses.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+      {/* ── Session Details Card ── */}
+      <Card>
+        <CardHead icon="📋" title="Session Details" sub="Configure course, period and session metadata" />
+        <div style={{ padding: '20px 22px' }}>
+          {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
-          <div>
-            <label style={S.label}>Subtype / Batch</label>
-            <select value={session.subtype} onChange={e => {
-              const subtype = e.target.value
-              const classes = courseData.classesFor(session.course, subtype)
-              // If no classes exist (class_name is null in DB), resolve batch_id immediately
-              const batch_id = classes.length === 0
-                ? courseData.batchIdFor(session.course, subtype, '')
-                : ''
-              setSession(prev => ({ ...prev, subtype, class_name:'', batch_id }))
-            }} disabled={!session.course || courseData.loading} style={{ ...S.select, opacity: session.course ? 1 : 0.5 }}>
-              <option value="">{courseData.loading ? '⏳ Loading...' : 'Select Subtype'}</option>
-              {(session.course ? courseData.subtypesFor(session.course) : []).map(s =>
-                <option key={s} value={s}>{s}</option>
-              )}
-            </select>
-          </div>
-
-          {/* Only show Class if this course+subtype actually has class_name values */}
-          {session.subtype && courseData.classesFor(session.course, session.subtype).length > 0 ? (
+          {/* Row 1: course + subtype + class */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
             <div>
-              <label style={S.label}>
-                Class
-                {session.batch_id && <span style={{ marginLeft:'6px', fontSize:'10px', color:'#16a34a', fontWeight:'600' }}>✓ linked</span>}
-              </label>
-              <select value={session.class_name} onChange={e => {
-                const class_name = e.target.value
-                const batch_id = courseData.batchIdFor(session.course, session.subtype, class_name)
-                setSession(prev => ({ ...prev, class_name, batch_id }))
-              }} style={S.select}>
-                <option value="">Select Class</option>
-                {courseData.classesFor(session.course, session.subtype).map(c =>
-                  <option key={c} value={c}>{c}</option>
-                )}
-              </select>
+              <Label>Course *</Label>
+              <Select value={form.course} onChange={e => setForm(prev => ({ ...prev, course: e.target.value, subtype:'', class_name:'' }))}>
+                <option value="">Select Course</option>
+                {COURSES.map(c => <option key={c}>{c}</option>)}
+              </Select>
             </div>
-          ) : (
             <div>
-              <label style={S.label}>
-                Class
-                {session.batch_id
-                  ? <span style={{ marginLeft:'6px', fontSize:'10px', color:'#16a34a', fontWeight:'600' }}>✓ batch resolved</span>
-                  : session.subtype
-                    ? <span style={{ marginLeft:'6px', fontSize:'10px', color:'#f59e0b', fontWeight:'600' }}>select subtype above</span>
-                    : null
-                }
-              </label>
-              <div style={{ ...S.input, background:'#f8fafc', color:'#94a3b8', display:'flex', alignItems:'center', height:'42px' }}>
-                {session.batch_id ? '— not required for this batch —' : '— select course + subtype first —'}
-              </div>
+              <Label>Batch / Subtype</Label>
+              <Select value={form.subtype} disabled={!form.course}
+                onChange={e => setForm(prev => ({ ...prev, subtype: e.target.value, class_name:'' }))}>
+                <option value="">Select Batch</option>
+                {subtypes.map(s => <option key={s}>{s}</option>)}
+              </Select>
+            </div>
+            <div>
+              <Label>Class {batchId && <span style={{ fontSize:10, color: C.emerald, fontWeight:800 }}>✓ linked</span>}</Label>
+              <input value={form.class_name}
+                onChange={e => setForm(prev => ({ ...prev, class_name: e.target.value }))}
+                placeholder="e.g. 9A (optional)"
+                style={inp()} />
+            </div>
+          </div>
+
+          {/* Row 2: date + period + subject */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+            <div>
+              <Label>Date</Label>
+              <input type="date" value={form.session_date}
+                onChange={e => setForm(prev => ({ ...prev, session_date: e.target.value }))}
+                style={inp()} />
+            </div>
+            <div>
+              <Label badge={form.period_number && timetable.length ? 'AUTO-FILL' : ''}>Period</Label>
+              <Select value={form.period_number} onChange={e => handlePeriod(e.target.value)}>
+                <option value="">— No Period —</option>
+                {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
+              </Select>
+            </div>
+            <div>
+              <Label badge={form.period_number && form.subject_name && timetable.length ? '✓ TIMETABLE' : ''}>Subject</Label>
+              <Select value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
+                <option value="">Select Subject</option>
+                {batchSubjects.map(s => <option key={s}>{s}</option>)}
+              </Select>
+            </div>
+          </div>
+
+          {/* Row 3: teacher + type + remarks */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+            <div>
+              <Label badge={form.period_number && form.teacher_name && timetable.length ? '✓ TIMETABLE' : ''}>Teacher</Label>
+              <Select value={form.teacher_name} onChange={e => handleTeacher(e.target.value)}>
+                <option value="">Select Teacher</option>
+                {batchStaff.map(s => <option key={s.id} value={s.name}>{s.name}{s.designation ? ` — ${s.designation}` : ''}</option>)}
+              </Select>
+            </div>
+            <div>
+              <Label>Session Type</Label>
+              <Select value={form.session_type} onChange={e => setForm(prev => ({ ...prev, session_type: e.target.value }))}>
+                {SESSION_TYPES.map(t => <option key={t}>{t}</option>)}
+              </Select>
+            </div>
+            <div>
+              <Label>Remarks</Label>
+              <input value={form.remarks}
+                onChange={e => setForm(prev => ({ ...prev, remarks: e.target.value }))}
+                placeholder="Optional notes..."
+                style={inp()} />
+            </div>
+          </div>
+
+          {/* Status banner */}
+          {form.course && (
+            <div style={{ marginTop: 16, padding: '10px 16px', borderRadius: 9,
+              background: students.length ? '#f0fdf4' : '#fffbeb',
+              border: `1px solid ${students.length ? '#86efac' : '#fde68a'}`,
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: students.length ? C.emerald : C.amber }}>
+                {students.length
+                  ? `${students.length} students enrolled`
+                  : '⚠️ No students found — check Course → Enrollments'}
+              </span>
+              {timetable.length > 0 && (
+                <span style={{ fontSize: 11, color: C.sky, fontWeight: 700 }}>
+                  📅 {timetable.length} timetable slots · {batchSubjects.length} subjects
+                </span>
+              )}
+              {form.course && <CoursePill course={form.course} />}
             </div>
           )}
-
-          <div>
-            <label style={S.label}>Date</label>
-            <input type="date" value={session.session_date}
-              onChange={e => setSession(prev => ({ ...prev, session_date: e.target.value }))}
-              style={S.input} />
-          </div>
-
-          {/* Period — triggers auto-fill of subject + teacher */}
-          <div>
-            <label style={S.label}>Period (auto-fills subject + teacher)</label>
-            <select value={session.period_number} onChange={e => handlePeriodChange(e.target.value)} style={S.select}>
-              <option value="">— No Period —</option>
-              {[1,2,3,4,5,6,7,8].map(p => (
-                <option key={p} value={p}>Period {p}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Subject — populated from timetable_entries for this batch */}
-          <div>
-            <label style={S.label}>
-              Subject
-              {session.period_number && session.subject_name && (
-                <span style={{ marginLeft:'8px', fontSize:'10px', color:'#16a34a', fontWeight:'600' }}>✓ from timetable</span>
-              )}
-            </label>
-            <select value={session.subject_name}
-              onChange={e => setSession(prev => ({ ...prev, subject_name: e.target.value }))}
-              style={S.select}>
-              <option value="">Select Subject</option>
-              {batchSubjects.length > 0
-                ? batchSubjects.map(s => <option key={s} value={s}>{s}</option>)
-                : session.batch_id
-                  ? <option disabled value="">No subjects in timetable yet</option>
-                  : <option disabled value="">Select a batch first</option>
-              }
-            </select>
-          </div>
-
-          {/* Teacher — populated from staff_profiles, auto-fills from timetable */}
-          <div>
-            <label style={S.label}>
-              Teacher
-              {session.period_number && session.teacher_name && (
-                <span style={{ marginLeft:'8px', fontSize:'10px', color:'#16a34a', fontWeight:'600' }}>✓ from timetable</span>
-              )}
-            </label>
-            <select value={session.teacher_name} onChange={handleTeacher} style={S.select}>
-              <option value="">Select Teacher</option>
-              {batchStaff.map(s => <option key={s.id} value={s.name}>{s.name}{s.designation ? ' — ' + s.designation : ''}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label style={S.label}>Session Type</label>
-            <select value={session.session_type}
-              onChange={e => setSession(prev => ({ ...prev, session_type: e.target.value }))}
-              style={S.select}>
-              {['Class','Test','Activity','Event'].map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-
         </div>
+      </Card>
 
-        {/* Status banner */}
-        {session.course && (
-          <div style={{ marginTop:'16px', padding:'10px 14px', borderRadius:'8px', fontSize:'13px', fontWeight:'600',
-            background: students.length > 0 ? '#f0fdf4' : '#fef9c3',
-            border: `1px solid ${students.length > 0 ? '#bbf7d0' : '#fde68a'}`,
-            color: students.length > 0 ? '#16a34a' : '#92400e'
-          }}>
-            {students.length > 0
-              ? `✅ ${students.length} enrolled students found for ${session.course}${session.subtype ? ' / ' + session.subtype : ''}${session.class_name ? ' / ' + session.class_name : ''}`
-              : `⚠️ No enrolled students found. Check Course → Enrollments.`
-            }
-            {timetable.length > 0 && (
-              <span style={{ marginLeft:'16px', fontSize:'11px', color:'#0891b2', fontWeight:'600' }}>
-                📅 {timetable.length} timetable slots · {batchSubjects.length} subjects loaded
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
+      {/* ── Mark Attendance Card ── */}
       {students.length > 0 && (
-        <div style={S.card}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
-            <h2 style={{ fontSize:'16px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>
-              Step 2 — Mark Attendance
-              <span style={{ marginLeft:'10px', fontSize:'13px', color:'#64748b', fontWeight:'400' }}>
-                {session.course}{session.subtype ? ' / ' + session.subtype : ''}{session.class_name ? ' / ' + session.class_name : ''} · {fmtDate(session.session_date)}
-                {session.subject_name && ` · ${session.subject_name}`}
-              </span>
-            </h2>
-            <div style={{ display:'flex', gap:'8px' }}>
-              {ATTENDANCE_STATUSES.map(s => (
-                <button key={s} onClick={() => markAll(s)}
-                  style={{ ...S.btnSm(STATUS_STYLE[s].color), background:STATUS_STYLE[s].bg, border:`1px solid ${STATUS_STYLE[s].border}`, color:STATUS_STYLE[s].color }}>
-                  Mark All {s}
-                </button>
-              ))}
-            </div>
-          </div>
+        <Card>
+          <CardHead
+            icon="✏️"
+            title="Mark Attendance"
+            sub={`${form.course}${form.subtype ? ' / '+form.subtype : ''}${form.class_name ? ' / '+form.class_name : ''} · ${fmtDate(form.session_date)}${form.subject_name ? ' · '+form.subject_name : ''}`}
+            right={
+              <>
+                <Btn small variant="ghost" onClick={invertSelection}>⇄ Invert</Btn>
+                {STATUSES.map(s => {
+                  const sm = STATUS_META[s]
+                  return (
+                    <button key={s} onClick={() => markAll(s)}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: `1.5px solid ${sm.border}`, background: sm.bg, color: sm.color, cursor: 'pointer', fontFamily: font }}>
+                      All {sm.icon}
+                    </button>
+                  )
+                })}
+              </>
+            }
+          />
 
-          {/* Stats summary */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'12px', marginBottom:'20px' }}>
-            {ATTENDANCE_STATUSES.map(s => {
-              const st = STATUS_STYLE[s]
+          {/* Stat counters */}
+          <div style={{ padding: '14px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+            {STATUSES.map(s => {
+              const sm = STATUS_META[s]
+              const pct = students.length ? Math.round((counts[s]/students.length)*100) : 0
               return (
-                <div key={s} style={{ background:st.bg, border:`1px solid ${st.border}`, borderRadius:'10px', padding:'12px 16px', textAlign:'center' }}>
-                  <div style={{ fontSize:'22px', fontWeight:'800', color:st.color }}>{stats[s]}</div>
-                  <div style={{ fontSize:'12px', color:st.color, fontWeight:'600' }}>{STATUS_ICON[s]} {s}</div>
+                <div key={s} style={{ background: sm.bg, border: `1px solid ${sm.border}`, borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: sm.color, lineHeight: 1, fontFamily: font }}>{counts[s]}</div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: sm.color }}>{sm.icon} {sm.label}</div>
+                    <div style={{ fontSize: 10, color: sm.color, opacity: .7 }}>{pct}%</div>
+                  </div>
                 </div>
               )
             })}
+          </div>
+
+          {/* Progress bar */}
+          <div style={{ padding: '10px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
+            <StatBar records={records} />
+          </div>
+
+          {/* Search */}
+          <div style={{ padding: '12px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="🔍 Search student name or GCC…"
+              style={inp({ maxWidth: 340 })} />
           </div>
 
           {/* Student list */}
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-            {students.map((s, i) => {
-              const status = records[s.student_name] || 'Present'
-              const st = STATUS_STYLE[status]
+          <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {filteredStudents.map((s, i) => {
+              const key    = s.student_id || s.student_name
+              const status = records[key] || 'Present'
+              const sm     = STATUS_META[status]
+              const hc     = HOSTEL_COLORS[s.hostel_type] || HOSTEL_COLORS['Day Scholar']
               return (
-                <div key={s.id || i} style={{
-                  display:'flex', alignItems:'center', gap:'12px', padding:'12px 16px',
-                  borderRadius:'10px', transition:'all 0.2s',
-                  background: status === 'Absent' ? '#fff5f5' : 'white',
-                  border: `1px solid ${status === 'Absent' ? '#fecaca' : '#e2e8f0'}`,
+                <div key={key} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+                  borderRadius: 10, border: `1px solid ${status === 'Absent' ? '#fca5a5' : C.slate[100]}`,
+                  background: status === 'Absent' ? '#fff5f5' : status === 'Late' ? '#fffbeb' : status === 'Leave' ? '#faf5ff' : 'white',
+                  transition: 'all .15s',
                 }}>
-                  <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:st.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'13px', fontWeight:'800', color:st.color, flexShrink:0 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: sm.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: sm.color, flexShrink: 0 }}>
                     {i + 1}
                   </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:'600', color:'#1e293b', fontSize:'14px' }}>{s.student_name}</div>
-                    <div style={{ fontSize:'11px', color:'#94a3b8', marginTop:'2px' }}>
-                      {s.gcc_no && <span style={{ fontWeight:'700', color:'#1d4ed8', marginRight:'8px' }}>GCC-{s.gcc_no}</span>}
-                      {s.hostel_type && <span>{s.hostel_type}</span>}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: C.slate[800], fontSize: 13 }}>{s.student_name}</div>
+                    <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', gap: 8, marginTop: 2 }}>
+                      {s.gcc_no && <span style={{ fontWeight: 800, color: C.navy }}>GCC-{s.gcc_no}</span>}
+                      {s.hostel_type && <Chip label={s.hostel_type} color={hc.color} bg={hc.bg} border={hc.border} />}
                     </div>
                   </div>
-                  <StatusBtn status={status} onChange={next => setRecords(prev => ({ ...prev, [s.student_name]: next }))} />
+                  <StatusCycle status={status} onChange={next => setRecords(prev => ({ ...prev, [key]: next }))} />
                 </div>
               )
             })}
+            {filteredStudents.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: C.slate[400], fontSize: 13 }}>No students match your search.</div>
+            )}
           </div>
 
-          {/* Remarks + Save */}
-          <div style={{ marginTop:'20px', borderTop:'1px solid #e2e8f0', paddingTop:'20px', display:'flex', gap:'16px', alignItems:'flex-end' }}>
-            <div style={{ flex:1 }}>
-              <label style={S.label}>Session Remarks</label>
-              <input value={session.remarks}
-                onChange={e => setSession(prev => ({ ...prev, remarks: e.target.value }))}
-                placeholder="Any notes about this session..."
-                style={S.input} />
-            </div>
-            <button onClick={handleSave} disabled={saving} style={S.btn('#16a34a', saving)}>
-              {saving ? '⏳ Saving...' : `✅ Save Attendance (${students.length} students)`}
-            </button>
+          {/* Save row */}
+          <div style={{ padding: '14px 22px', borderTop: `1px solid ${C.slate[100]}`, display: 'flex', justifyContent: 'flex-end' }}>
+            <Btn variant="success" disabled={saving} onClick={handleSave}>
+              {saving ? '⏳ Saving…' : `✅ Save Attendance (${students.length} students)`}
+            </Btn>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   )
 }
 
-// ─── Tab: View Sessions ───────────────────────────────────────
+// ─── TAB: VIEW SESSIONS ───────────────────────────────────────
 
-function TabView({ courseData }) {
-  const [sessions,     setSessions]     = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [expanded,     setExpanded]     = useState(null)
-  const [records,      setRecords]      = useState({})
-  const [dateFilter,   setDateFilter]   = useState('')
+function TabView() {
+  const [sessions,     setSessions]   = useState([])
+  const [loading,      setLoading]    = useState(true)
+  const [expanded,     setExpanded]   = useState(null)
+  const [records,      setRecords]    = useState({})
+  const [dateFilter,   setDateFilter] = useState('')
   const [courseFilter, setCourseFilter] = useState('All')
 
-  const { courses } = courseData
-
-  const fetchSessions = useCallback(async () => {
+  const fetch = useCallback(async () => {
     setLoading(true)
-    let q = supabase.from('attendance_sessions').select('*').order('session_date', { ascending: false }).limit(100)
+    let q = supabase.from('attendance_sessions').select('*').order('session_date',{ascending:false}).limit(150)
     if (dateFilter)             q = q.eq('session_date', dateFilter)
     if (courseFilter !== 'All') q = q.eq('course', courseFilter)
     const { data } = await q
@@ -493,237 +625,272 @@ function TabView({ courseData }) {
     setLoading(false)
   }, [dateFilter, courseFilter])
 
-  useEffect(() => { fetchSessions() }, [fetchSessions])
+  useEffect(() => { fetch() }, [fetch])
 
-  const loadRecords = async (sessionId) => {
-    if (records[sessionId]) { setExpanded(expanded === sessionId ? null : sessionId); return }
-    const { data } = await supabase.from('attendance_records').select('*').eq('session_id', sessionId).order('student_name')
-    setRecords(prev => ({ ...prev, [sessionId]: data || [] }))
-    setExpanded(sessionId)
+  const expand = async (id) => {
+    if (expanded === id) { setExpanded(null); return }
+    if (!records[id]) {
+      const { data } = await supabase.from('attendance_records').select('*').eq('session_id', id).order('student_name')
+      setRecords(prev => ({ ...prev, [id]: data || [] }))
+    }
+    setExpanded(id)
   }
 
   const deleteSession = async (id) => {
     if (!window.confirm('Delete this session and all its records?')) return
     await supabase.from('attendance_sessions').delete().eq('id', id)
-    fetchSessions()
     if (expanded === id) setExpanded(null)
-  }
-
-  const sessionStats = (recs) => {
-    const counts = { Present:0, Absent:0, Late:0, Leave:0 }
-    recs.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })
-    return counts
+    fetch()
   }
 
   return (
-    <div>
-      <div style={{ display:'flex', gap:'12px', marginBottom:'20px', flexWrap:'wrap', alignItems:'center' }}>
-        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-          style={{ padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px' }} />
-        <select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ ...S.select, width:'auto' }}>
+    <Card>
+      <CardHead icon="📁" title="Sessions" sub="All recorded attendance sessions" right={
+        <span style={{ fontSize: 12, color: C.slate[400], fontWeight: 600 }}>{sessions.length} total</span>
+      } />
+
+      {/* Filters */}
+      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={inp({ width: 'auto' })} />
+        <Select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto' }}>
           <option value="All">All Courses</option>
-          {courses.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+          {COURSES.map(c => <option key={c}>{c}</option>)}
+        </Select>
         {(dateFilter || courseFilter !== 'All') && (
-          <button onClick={() => { setDateFilter(''); setCourseFilter('All') }} style={S.btnSm('#64748b')}>✕ Clear</button>
+          <Btn small variant="ghost" onClick={() => { setDateFilter(''); setCourseFilter('All') }}>✕ Clear</Btn>
         )}
-        <span style={{ fontSize:'13px', color:'#64748b', marginLeft:'auto' }}>{sessions.length} sessions</span>
       </div>
 
-      {loading ? (
-        <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading...</div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-          {sessions.map(sess => {
-            const isOpen = expanded === sess.id
-            const recs   = records[sess.id] || []
-            const stats  = isOpen ? sessionStats(recs) : null
-            return (
-              <div key={sess.id} style={{ border:'1px solid #e2e8f0', borderRadius:'12px', overflow:'hidden', background:'white' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:'12px', padding:'14px 18px', cursor:'pointer' }}
-                  onClick={() => loadRecords(sess.id)}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
-                      <span style={{ fontWeight:'700', color:'#1e293b', fontSize:'14px' }}>{fmtDate(sess.session_date)}</span>
-                      <span style={{ padding:'2px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', background:'#eff6ff', color:'#1e3a5f' }}>{sess.course}</span>
-                      {sess.subtype    && <span style={{ fontSize:'12px', color:'#64748b' }}>{sess.subtype}</span>}
-                      {sess.class_name && <span style={{ fontSize:'12px', color:'#64748b' }}>{sess.class_name}</span>}
-                      {sess.subject_name && <span style={{ fontSize:'12px', color:'#7c3aed', fontWeight:'600' }}>{sess.subject_name}</span>}
-                      <span style={{ padding:'2px 8px', borderRadius:'6px', fontSize:'11px', fontWeight:'600', background:'#f1f5f9', color:'#64748b' }}>{sess.session_type}</span>
-                    </div>
-                    <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'4px' }}>
-                      {sess.teacher_name && `👨‍🏫 ${sess.teacher_name}`}
-                      {sess.period_number && ` · P${sess.period_number}`}
-                      {sess.batch_id && ' · ✓ batch linked'}
-                    </div>
+      <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {loading ? (
+          <div style={{ textAlign:'center', padding: '48px 0', color: C.slate[400], fontSize: 13 }}>⏳ Loading sessions…</div>
+        ) : sessions.length === 0 ? (
+          <div style={{ textAlign:'center', padding: '48px 0', color: C.slate[400], fontSize: 13 }}>No sessions found for selected filters.</div>
+        ) : sessions.map(sess => {
+          const isOpen = expanded === sess.id
+          const recs   = records[sess.id] || []
+          const counts = { Present:0, Absent:0, Late:0, Leave:0 }
+          if (isOpen) recs.forEach(r => { if (counts[r.status]!==undefined) counts[r.status]++ })
+          const total  = recs.length
+          const pct    = total > 0 ? Math.round((counts.Present / total)*100) : null
+
+          return (
+            <div key={sess.id} style={{ border: `1px solid ${C.slate[200]}`, borderRadius: 12, overflow: 'hidden' }}>
+              {/* Row header */}
+              <div onClick={() => expand(sess.id)}
+                style={{ display:'flex', alignItems:'center', gap:12, padding:'13px 18px', cursor:'pointer', background: isOpen ? C.slate[50] : 'white', transition:'background .15s' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:3 }}>
+                    <span style={{ fontWeight:800, color:C.navy, fontSize:14 }}>{fmtDate(sess.session_date)}</span>
+                    <CoursePill course={sess.course} />
+                    {sess.subtype    && <span style={{ fontSize:12, color:C.slate[500] }}>{sess.subtype}</span>}
+                    {sess.class_name && <span style={{ fontSize:12, color:C.slate[500] }}>{sess.class_name}</span>}
+                    {sess.subject_name && <span style={{ fontSize:12, fontWeight:700, color:C.violet }}>{sess.subject_name}</span>}
+                    <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:C.slate[100], color:C.slate[500] }}>{sess.session_type}</span>
                   </div>
-                  <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
-                    <button onClick={e => { e.stopPropagation(); deleteSession(sess.id) }} style={S.btnSm('#dc2626')}>🗑</button>
-                    <span style={{ fontSize:'18px', color:'#94a3b8', transform: isOpen ? 'rotate(180deg)' : 'none', transition:'transform 0.2s' }}>▾</span>
+                  <div style={{ fontSize:11, color:C.slate[400] }}>
+                    {sess.teacher_name && `👨‍🏫 ${sess.teacher_name}`}
+                    {sess.period_number && ` · P${sess.period_number}`}
+                    {sess.batch_id && <span style={{ color:C.emerald, fontWeight:700 }}> · ✓ linked</span>}
                   </div>
                 </div>
-
-                {isOpen && (
-                  <div style={{ borderTop:'1px solid #f1f5f9', padding:'16px 18px' }}>
-                    <div style={{ display:'flex', gap:'10px', marginBottom:'14px', flexWrap:'wrap' }}>
-                      {ATTENDANCE_STATUSES.map(s => {
-                        const st = STATUS_STYLE[s]
-                        return stats[s] > 0 ? (
-                          <span key={s} style={{ padding:'4px 12px', borderRadius:'999px', fontSize:'12px', fontWeight:'700', background:st.bg, color:st.color, border:`1px solid ${st.border}` }}>
-                            {STATUS_ICON[s]} {stats[s]} {s}
-                          </span>
-                        ) : null
-                      })}
-                    </div>
-                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:'8px' }}>
-                      {recs.map(r => {
-                        const st = STATUS_STYLE[r.status] || STATUS_STYLE.Present
-                        return (
-                          <div key={r.id} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'8px 12px', borderRadius:'8px', background:st.bg, border:`1px solid ${st.border}` }}>
-                            <span style={{ fontSize:'14px' }}>{STATUS_ICON[r.status]}</span>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontSize:'12px', fontWeight:'600', color:'#1e293b' }}>{r.student_name}</div>
-                              {r.gcc_no && <div style={{ fontSize:'10px', color:'#64748b' }}>GCC-{r.gcc_no}</div>}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
+                <Btn small variant="danger" onClick={e => { e.stopPropagation(); deleteSession(sess.id) }}>🗑</Btn>
+                <span style={{ color:C.slate[300], fontSize:18, transform: isOpen?'rotate(180deg)':'none', transition:'transform .2s' }}>▾</span>
               </div>
-            )
-          })}
-          {sessions.length === 0 && <div style={{ textAlign:'center', padding:'48px', color:'#94a3b8' }}>No sessions found.</div>}
-        </div>
-      )}
-    </div>
+
+              {/* Expanded records */}
+              {isOpen && (
+                <div style={{ borderTop:`1px solid ${C.slate[100]}`, padding:'16px 18px', background: C.slate[50] }}>
+                  {/* Stat pills */}
+                  <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
+                    {STATUSES.map(s => counts[s] > 0 && (
+                      <span key={s} style={{ padding:'4px 12px', borderRadius:999, fontSize:12, fontWeight:700,
+                        background:STATUS_META[s].bg, color:STATUS_META[s].color, border:`1px solid ${STATUS_META[s].border}` }}>
+                        {STATUS_META[s].icon} {counts[s]} {s}
+                      </span>
+                    ))}
+                    {pct !== null && (
+                      <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color: pct>=75?C.emerald:pct>=50?C.amber:C.red }}>
+                        {pct}% attendance
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:7 }}>
+                    {recs.map(r => {
+                      const sm = STATUS_META[r.status] || STATUS_META.Present
+                      return (
+                        <div key={r.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', borderRadius:8, background:sm.bg, border:`1px solid ${sm.border}` }}>
+                          <span style={{ fontSize:14, fontWeight:900, color:sm.color }}>{sm.icon}</span>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:12, fontWeight:700, color:C.slate[800] }}>{r.student_name}</div>
+                            {r.gcc_no && <div style={{ fontSize:10, color:C.slate[400] }}>GCC-{r.gcc_no}</div>}
+                          </div>
+                          <span style={{ fontSize:10, fontWeight:800, color:sm.color }}>{r.status}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Card>
   )
 }
 
-// ─── Tab: Reports ─────────────────────────────────────────────
+// ─── TAB: REPORTS ─────────────────────────────────────────────
 
-function TabReport({ courseData }) {
-  const [month,          setMonth]    = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` })
-  const [courseFilter,   setCourse]   = useState('All')
-  const [subtypeFilter,  setSubtype]  = useState('All')
-  const [data,           setData]     = useState([])
-  const [loading,        setLoading]  = useState(false)
+function TabReport() {
+  const [month,   setMonth]  = useState(() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` })
+  const [course,  setCourse] = useState('All')
+  const [subtype, setSubtype]= useState('All')
+  const [data,    setData]   = useState([])
+  const [loading, setLoading]= useState(false)
+  const [sort,    setSort]   = useState({ by:'pct', asc:true })
 
-  const { courses, subtypesFor } = courseData
-  const subtypes = courseFilter !== 'All' ? subtypesFor(courseFilter) : []
+  const subtypes = course !== 'All' ? (COURSE_STRUCTURE[course]||[]) : []
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('attendance_sessions')
-      .select('id,session_date,course,subtype,class_name,subject_name')
-      .gte('session_date', `${month}-01`)
-      .lte('session_date', `${month}-31`)
-    if (courseFilter  !== 'All') q = q.eq('course',  courseFilter)
-    if (subtypeFilter !== 'All') q = q.eq('subtype', subtypeFilter)
+      .select('id,session_date,course,subtype')
+      .gte('session_date',`${month}-01`)
+      .lte('session_date',`${month}-31`)
+    if (course  !== 'All') q = q.eq('course',  course)
+    if (subtype !== 'All') q = q.eq('subtype', subtype)
     const { data: sessions } = await q
-
     if (!sessions?.length) { setData([]); setLoading(false); return }
 
-    const sessionIds = sessions.map(s => s.id)
+    const ids = sessions.map(s=>s.id)
     const { data: recs } = await supabase.from('attendance_records')
-      .select('session_id, student_name, gcc_no, status')
-      .in('session_id', sessionIds)
+      .select('session_id,student_name,gcc_no,status').in('session_id', ids)
 
     const map = {}
     recs?.forEach(r => {
-      if (!map[r.student_name]) map[r.student_name] = { student_name: r.student_name, gcc_no: r.gcc_no, Present:0, Absent:0, Late:0, Leave:0, total:0 }
-      map[r.student_name][r.status] = (map[r.student_name][r.status] || 0) + 1
+      if (!map[r.student_name]) map[r.student_name] = { name:r.student_name, gcc:r.gcc_no, Present:0,Absent:0,Late:0,Leave:0,total:0 }
+      map[r.student_name][r.status]++
       map[r.student_name].total++
     })
-
-    const rows = Object.values(map).map(s => ({
-      ...s,
-      pct: s.total > 0 ? Math.round((s.Present / s.total) * 100) : 0,
-    })).sort((a,b) => a.pct - b.pct)
-
+    const rows = Object.values(map).map(r => ({ ...r, pct: r.total>0?Math.round((r.Present/r.total)*100):0 }))
     setData(rows)
     setLoading(false)
-  }, [month, courseFilter, subtypeFilter])
+  }, [month, course, subtype])
 
   useEffect(() => { fetchReport() }, [fetchReport])
 
+  const sorted = useMemo(() => {
+    return [...data].sort((a,b) => {
+      const v = sort.by === 'pct' ? a.pct - b.pct
+        : sort.by === 'name' ? a.name.localeCompare(b.name)
+        : a[sort.by] - b[sort.by]
+      return sort.asc ? v : -v
+    })
+  }, [data, sort])
+
+  const toggleSort = col => setSort(s => ({ by: col, asc: s.by===col ? !s.asc : true }))
+  const SortTh = ({ col, children }) => (
+    <th onClick={() => toggleSort(col)}
+      style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'.06em', color: sort.by===col ? C.navy : C.slate[400], cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}>
+      {children} {sort.by===col ? (sort.asc?'↑':'↓') : ''}
+    </th>
+  )
+
+  const stats = useMemo(() => ({
+    total: data.length,
+    good:  data.filter(r=>r.pct>=75).length,
+    mid:   data.filter(r=>r.pct>=50&&r.pct<75).length,
+    risk:  data.filter(r=>r.pct<50).length,
+  }), [data])
+
   return (
-    <div style={S.card}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'12px' }}>
-        <h2 style={{ fontSize:'16px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📊 Monthly Attendance Report</h2>
-        <div style={{ display:'flex', gap:'12px', flexWrap:'wrap', alignItems:'center' }}>
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            style={{ padding:'8px 12px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px' }} />
-          <select value={courseFilter} onChange={e => { setCourse(e.target.value); setSubtype('All') }} style={{ ...S.select, width:'auto' }}>
+    <Card>
+      <CardHead icon="📊" title="Monthly Report" sub={`Attendance summary for ${fmtMonth(month)}`} right={
+        <>
+          <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={inp({width:'auto'})} />
+          <Select value={course} onChange={e=>{setCourse(e.target.value);setSubtype('All')}} style={{width:'auto'}}>
             <option value="All">All Courses</option>
-            {courses.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+            {COURSES.map(c=><option key={c}>{c}</option>)}
+          </Select>
           {subtypes.length > 0 && (
-            <select value={subtypeFilter} onChange={e => setSubtype(e.target.value)} style={{ ...S.select, width:'auto' }}>
-              <option value="All">All Subtypes</option>
-              {subtypes.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <Select value={subtype} onChange={e=>setSubtype(e.target.value)} style={{width:'auto'}}>
+              <option value="All">All Batches</option>
+              {subtypes.map(s=><option key={s}>{s}</option>)}
+            </Select>
           )}
-          <button onClick={() => window.print()} style={S.btn('#7c3aed')}>🖨️ Print</button>
-        </div>
-      </div>
+          <Btn small onClick={() => window.print()}>🖨️ Print</Btn>
+        </>
+      } />
 
       {loading ? (
-        <div style={{ textAlign:'center', padding:'32px', color:'#64748b' }}>⏳ Loading...</div>
+        <div style={{ textAlign:'center', padding:'48px', color:C.slate[400], fontSize:13 }}>⏳ Generating report…</div>
       ) : data.length === 0 ? (
-        <div style={{ textAlign:'center', padding:'48px', color:'#94a3b8' }}>No attendance data for this period.</div>
+        <div style={{ textAlign:'center', padding:'60px', color:C.slate[400], fontSize:13 }}>No attendance data for this period.</div>
       ) : (
         <>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'12px', marginBottom:'20px' }}>
+          {/* Summary cards */}
+          <div style={{ padding:'18px 22px', borderBottom:`1px solid ${C.slate[100]}`, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
             {[
-              { label:'Students',        value:data.length,                             color:'#1e3a5f', bg:'#eff6ff' },
-              { label:'≥75% Attendance', value:data.filter(r=>r.pct>=75).length,        color:'#16a34a', bg:'#dcfce7' },
-              { label:'50–74%',          value:data.filter(r=>r.pct>=50&&r.pct<75).length, color:'#ca8a04', bg:'#fef9c3' },
-              { label:'<50% (Risk)',     value:data.filter(r=>r.pct<50).length,         color:'#dc2626', bg:'#fee2e2' },
-            ].map(c => (
-              <div key={c.label} style={{ background:c.bg, borderRadius:'10px', padding:'14px 16px', borderLeft:`4px solid ${c.color}` }}>
-                <div style={{ fontSize:'12px', color:c.color, fontWeight:'600' }}>{c.label}</div>
-                <div style={{ fontSize:'24px', fontWeight:'800', color:c.color }}>{c.value}</div>
+              { label:'Students',    value:stats.total, color:C.navy,    bg:'#eff6ff'  },
+              { label:'≥75% (Good)', value:stats.good,  color:C.emerald, bg:'#f0fdf4'  },
+              { label:'50–74% (Low)',value:stats.mid,   color:C.amber,   bg:'#fffbeb'  },
+              { label:'<50% (Risk)', value:stats.risk,  color:C.red,     bg:'#fef2f2'  },
+            ].map(s => (
+              <div key={s.label} style={{ background:s.bg, borderRadius:10, padding:'14px 18px', borderLeft:`4px solid ${s.color}` }}>
+                <div style={{ fontSize:11, fontWeight:700, color:s.color, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>{s.label}</div>
+                <div style={{ fontSize:28, fontWeight:900, color:s.color, fontFamily:font }}>{s.value}</div>
               </div>
             ))}
           </div>
 
-          <div style={{ border:'1px solid #e2e8f0', borderRadius:'10px', overflow:'hidden' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+          {/* Distribution bar */}
+          {data.length > 0 && (
+            <div style={{ padding:'12px 22px', borderBottom:`1px solid ${C.slate[100]}` }}>
+              <div style={{ fontSize:11, fontWeight:700, color:C.slate[400], marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>Distribution</div>
+              <div style={{ height:12, borderRadius:999, overflow:'hidden', display:'flex' }}>
+                {[['good', C.emerald, stats.good], ['mid', C.amber, stats.mid], ['risk', C.red, stats.risk]].map(([k,color,val]) => (
+                  val > 0 ? <div key={k} style={{ flex:val, background:color, transition:'flex .4s' }} title={`${val} students`} /> : null
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Table */}
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
-                <tr style={{ background:'#f8fafc' }}>
-                  {['#','Student','GCC','Present','Absent','Late','Leave','Total','%','Status'].map(h => (
-                    <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
-                  ))}
+                <tr style={{ background:C.slate[50], borderBottom:`1px solid ${C.slate[200]}` }}>
+                  <th style={{ padding:'10px 12px', fontSize:11, fontWeight:700, color:C.slate[400], textAlign:'left', textTransform:'uppercase', letterSpacing:'.06em' }}>#</th>
+                  <SortTh col="name">Student</SortTh>
+                  <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'.06em', color:C.slate[400] }}>GCC</th>
+                  <SortTh col="Present">Present</SortTh>
+                  <SortTh col="Absent">Absent</SortTh>
+                  <SortTh col="Late">Late</SortTh>
+                  <SortTh col="Leave">Leave</SortTh>
+                  <SortTh col="total">Total</SortTh>
+                  <SortTh col="pct">Attendance %</SortTh>
+                  <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'.06em', color:C.slate[400] }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {data.map((row, i) => {
-                  const color = row.pct >= 75 ? '#16a34a' : row.pct >= 50 ? '#ca8a04' : '#dc2626'
-                  const bg    = row.pct < 50 ? '#fff5f5' : 'white'
+                {sorted.map((row,i) => {
+                  const color = row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red
                   return (
-                    <tr key={row.student_name} style={{ borderBottom:'1px solid #f1f5f9', background:bg }}>
-                      <td style={{ padding:'10px 14px', color:'#94a3b8' }}>{i+1}</td>
-                      <td style={{ padding:'10px 14px', fontWeight:'600', color:'#1e293b' }}>{row.student_name}</td>
-                      <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:'12px', color:'#1d4ed8', fontWeight:'700' }}>{row.gcc_no ? `GCC-${row.gcc_no}` : '—'}</td>
-                      <td style={{ padding:'10px 14px', color:'#16a34a', fontWeight:'700' }}>{row.Present}</td>
-                      <td style={{ padding:'10px 14px', color:'#dc2626', fontWeight:'700' }}>{row.Absent}</td>
-                      <td style={{ padding:'10px 14px', color:'#92400e', fontWeight:'700' }}>{row.Late}</td>
-                      <td style={{ padding:'10px 14px', color:'#7c3aed', fontWeight:'700' }}>{row.Leave}</td>
-                      <td style={{ padding:'10px 14px', color:'#64748b' }}>{row.total}</td>
-                      <td style={{ padding:'10px 14px' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                          <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden', minWidth:'60px' }}>
-                            <div style={{ width:`${row.pct}%`, height:'100%', background:color, borderRadius:'3px' }} />
-                          </div>
-                          <span style={{ fontWeight:'700', color, minWidth:'36px' }}>{row.pct}%</span>
-                        </div>
-                      </td>
-                      <td style={{ padding:'10px 14px' }}>
-                        <span style={{ fontSize:'11px', fontWeight:'700', padding:'3px 8px', borderRadius:'999px',
-                          background: row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', color }}>
-                          {row.pct >= 75 ? '✅ Good' : row.pct >= 50 ? '⚠️ Low' : '🚨 Risk'}
+                    <tr key={row.name} style={{ borderBottom:`1px solid ${C.slate[100]}`, background: row.pct<50?'#fff5f5':row.pct<75?'#fffbeb':'white' }}>
+                      <td style={{ padding:'10px 12px', color:C.slate[400], fontSize:12 }}>{i+1}</td>
+                      <td style={{ padding:'10px 12px', fontWeight:700, color:C.slate[800] }}>{row.name}</td>
+                      <td style={{ padding:'10px 12px', fontFamily:'monospace', fontSize:12, fontWeight:700, color:C.navy }}>{row.gcc ? `GCC-${row.gcc}` : '—'}</td>
+                      <td style={{ padding:'10px 12px', fontWeight:700, color:C.emerald }}>{row.Present}</td>
+                      <td style={{ padding:'10px 12px', fontWeight:700, color:C.red     }}>{row.Absent}</td>
+                      <td style={{ padding:'10px 12px', fontWeight:700, color:C.amber   }}>{row.Late}</td>
+                      <td style={{ padding:'10px 12px', fontWeight:700, color:C.violet  }}>{row.Leave}</td>
+                      <td style={{ padding:'10px 12px', color:C.slate[500] }}>{row.total}</td>
+                      <td style={{ padding:'10px 12px', minWidth:160 }}><MiniBar pct={row.pct} /></td>
+                      <td style={{ padding:'10px 12px' }}>
+                        <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:999,
+                          background:row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', color }}>
+                          {row.pct>=75?'✅ Good':row.pct>=50?'⚠️ Low':'🚨 Risk'}
                         </span>
                       </td>
                     </tr>
@@ -734,43 +901,57 @@ function TabReport({ courseData }) {
           </div>
         </>
       )}
-    </div>
+    </Card>
   )
 }
 
-// ─── Main ─────────────────────────────────────────────────────
+// ─── MAIN ─────────────────────────────────────────────────────
 
-function Attendance() {
+const TABS = [
+  { key:'mark',   label:'✏️ Mark Attendance' },
+  { key:'view',   label:'📁 Sessions'        },
+  { key:'report', label:'📊 Reports'         },
+]
+
+export default function Attendance() {
   const [activeTab, setActiveTab] = useState('mark')
   const [staff,     setStaff]     = useState([])
-  const courseData                = useCourseData()   // from Courses.jsx
 
   useEffect(() => {
-    supabase
-      .from('staff_profiles')
-      .select('id, name, designation')
-      .order('name')
+    supabase.from('staff_profiles').select('id,name,designation').order('name')
       .then(({ data }) => setStaff(data || []))
   }, [])
 
   return (
-    <div style={S.page}>
-      <div style={{ marginBottom:'24px' }}>
-        <h1 style={{ fontSize:'26px', fontWeight:'bold', color:'#1e3a5f', margin:0 }}>📅 Attendance</h1>
-        <p style={{ color:'#64748b', fontSize:'14px', margin:'4px 0 0' }}>Mark · View · Reports — tied to course batches</p>
+    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '24px 20px', fontFamily: font }}>
+
+      {/* ── Page header ── */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: C.slate[400], marginBottom: 4 }}>GNSI Portal</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: C.navy }}>Attendance</div>
+        <div style={{ fontSize: 13, color: C.slate[400], marginTop: 3 }}>Mark, view, and analyse session attendance across all batches</div>
       </div>
 
-      <div style={{ display:'flex', borderBottom:'2px solid #e2e8f0', marginBottom:'24px', gap:'4px' }}>
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `2px solid ${C.slate[200]}` }}>
         {TABS.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={S.tab(activeTab===t.key)}>{t.label}</button>
+          <button key={t.key} onClick={() => setActiveTab(t.key)}
+            style={{
+              padding: '10px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              background: 'none', border: 'none', fontFamily: font,
+              borderBottom: activeTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent',
+              color: activeTab===t.key ? C.navy : C.slate[400], marginBottom: -2,
+              transition: 'color .12s',
+            }}>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      {activeTab === 'mark'   && <TabMark   courseData={courseData} staff={staff} />}
-      {activeTab === 'view'   && <TabView   courseData={courseData} />}
-      {activeTab === 'report' && <TabReport courseData={courseData} />}
+      {/* ── Tab content ── */}
+      {activeTab === 'mark'   && <TabMark   staff={staff} />}
+      {activeTab === 'view'   && <TabView   />}
+      {activeTab === 'report' && <TabReport />}
     </div>
   )
 }
-
-export default Attendance

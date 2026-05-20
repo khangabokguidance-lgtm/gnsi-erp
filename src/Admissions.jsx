@@ -18,7 +18,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { promoteToStudent, getFlatFeeAmt } from './shared/feeHelpers'
+import { promoteToStudent, getFlatFeeAmt } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────

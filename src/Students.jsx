@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { getFlatFeeAmt } from './shared/feeHelpers'
+import { getFlatFeeAmt } from "./feeEngine";
 
 const fmt  = n => Number(n||0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}) : '—'
@@ -94,10 +94,9 @@ const COURSE_STRUCTURE = {
 
 const PROMOTION_MAP = {
   'Lakshya':'Umeed','Achiever':'Leader','Leader':'Champion','Elite':'Prime',
-  'Class 6':'Class 7','Class 7':'Class 8','Class 8':'Class 9','Class 9':'Class 10',
 }
 
-const CLASSES_LIST       = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime','Class 6','Class 7','Class 8','Class 9','Class 10']
+const CLASSES_LIST       = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime',]
 const HOUSES_LIST        = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
 
