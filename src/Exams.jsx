@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
+import { staffDB, useStaffDB } from './staffDB'
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import TabMonthlySyllabus from './TabMonthlySyllabus'
+import { staffDB, useStaffDB } from './staffDB'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

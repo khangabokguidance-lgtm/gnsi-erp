@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from './supabase'
+import { staffDB } from './staffDB'
 
 const T = {
   navy:'#0a1628', navyMid:'#112240', navyLt:'#1d3461',
@@ -145,6 +146,7 @@ function EditEntryModal({ entry, staffList=[], onClose, onSaved }) {
             <div><label style={S.lbl}>Subject *</label><Inp value={form.subject_name} onChange={e=>set('subject_name',e.target.value)} placeholder="Mathematics" /></div>
             <div>
               <label style={S.lbl}>Teacher</label>
+              {/* FIX 2 (modal): uses staffList from staffDB.forTimetable() */}
               <select value={form.teacher_name} onChange={e=>set('teacher_name',e.target.value)} style={S.inp}>
                 <option value="">— Select Teacher —</option>
                 {staffList.map(s=><option key={s.id} value={s.name}>{s.name}{s.designation?` — ${s.designation}`:''}</option>)}
@@ -234,6 +236,7 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
     setSaving(false)
   }
 
+  // FIX 5: check delete error before inserting — prevents data loss on insert failure
   const handleCopyDay = async () => {
     if (!copyTo.length) { alert('Select at least one target day'); return }
     const source = entries.filter(e=>e.day_name===copyFrom)
@@ -241,22 +244,44 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
     setCopying(true)
     let total = 0
     for (const day of copyTo) {
-      await supabase.from('timetable_entries').delete().eq('day_name',day)
+      const { error: delErr } = await supabase.from('timetable_entries').delete().eq('day_name', day)
+      if (delErr) {
+        showToast(`❌ Failed to clear ${day}: ${delErr.message}`, 'error')
+        continue
+      }
       const rows = source.map(e=>({ class_name:e.class_name, section:e.section, day_name:day, period_name:e.period_name, subject_name:e.subject_name, teacher_name:e.teacher_name, room_name:e.room_name }))
-      const { error } = await supabase.from('timetable_entries').insert(rows)
-      if (!error) total += rows.length
+      const { error: insErr } = await supabase.from('timetable_entries').insert(rows)
+      if (insErr) showToast(`❌ Insert failed for ${day}: ${insErr.message}`, 'error')
+      else total += rows.length
     }
     showToast(`✅ Copied ${total} entries to ${copyTo.join(', ')}`)
     onRefresh(); setCopying(false)
   }
 
+  // FIX 6: check each swap step — bail on failure to avoid corrupted period names
   const handleSwap = async () => {
     if (!swapA||!swapB||swapA===swapB) { alert('Select two different periods'); return }
     setSwapping(true)
-    const TEMP = '__SWAP_TEMP__'
-    await supabase.from('timetable_entries').update({ period_name:TEMP }).eq('period_name',swapA)
-    await supabase.from('timetable_entries').update({ period_name:swapA }).eq('period_name',swapB)
-    await supabase.from('timetable_entries').update({ period_name:swapB }).eq('period_name',TEMP)
+    const TEMP = `__SWAP_${Date.now()}__`
+
+    const { error: e1 } = await supabase.from('timetable_entries').update({ period_name:TEMP }).eq('period_name', swapA)
+    if (e1) {
+      showToast('❌ Swap step 1 failed — no changes made: ' + e1.message, 'error')
+      setSwapping(false); return
+    }
+
+    const { error: e2 } = await supabase.from('timetable_entries').update({ period_name:swapA }).eq('period_name', swapB)
+    if (e2) {
+      showToast(`❌ Swap partially applied — entries for "${swapA}" may be stuck as "${TEMP}". Please fix manually.`, 'error')
+      setSwapping(false); return
+    }
+
+    const { error: e3 } = await supabase.from('timetable_entries').update({ period_name:swapB }).eq('period_name', TEMP)
+    if (e3) {
+      showToast(`❌ Swap step 3 failed — some entries may still be named "${TEMP}". Please fix manually.`, 'error')
+      setSwapping(false); return
+    }
+
     showToast(`✅ Swapped ${swapA} ↔ ${swapB}`)
     onRefresh(); setSwapping(false)
   }
@@ -290,7 +315,7 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, padding:'10px 16px', background:'linear-gradient(135deg,#fef3c7,#fef9c3)', borderRadius:10, border:`1px solid ${T.gold}`, width:'fit-content' }}>
         <span style={{ fontSize:18 }}>🔓</span>
         <span style={{ fontSize:13, fontWeight:700, color:T.goldDim }}>Admin Timetable Setup — Full Access Granted</span>
-        <span style={{ fontSize:11, color:T.goldDim, opacity:.7 }}>· Staff pulled from staff_profiles table</span>
+        <span style={{ fontSize:11, color:T.goldDim, opacity:.7 }}>· Staff pulled from staff_profiles via staffDB</span>
       </div>
 
       <div style={{ display:'flex', gap:4, borderBottom:`2px solid ${T.border}`, marginBottom:22, flexWrap:'wrap' }}>
@@ -325,6 +350,7 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
                   <div>{i===0&&<label style={S.lbl}>Subject *</label>}<Inp value={sl.subject_name} onChange={e=>updateSlot(i,'subject_name',e.target.value)} placeholder="Mathematics" /></div>
                   <div>
                     {i===0&&<label style={S.lbl}>Teacher <span style={{ fontWeight:400, color:T.cyan }}>({staffList.length} from staff profiles)</span></label>}
+                    {/* staffList from staffDB.forTimetable() — keyed by id */}
                     <select value={sl.teacher_name} onChange={e=>updateSlot(i,'teacher_name',e.target.value)} style={S.inp}>
                       <option value="">— Select Teacher —</option>
                       {staffList.map(s=><option key={s.id} value={s.name}>{s.name}{s.designation?` (${s.designation})`:''}</option>)}
@@ -504,13 +530,11 @@ export default function Timetable() {
     setLoading(false)
   }
 
-  useEffect(() => { loadData()
-  supabase.from('staff')
-    .select('name')
-    .eq('status', 'Active')
-    .order('name')
-    .then(({ data }) => setTeachers(data || []))
-}, [])
+  // FIX 1: use staffDB.forTimetable() — correct table, correct filter, correct state setter
+  useEffect(() => {
+    loadData()
+    staffDB.forTimetable().then(data => setStaffList(data))
+  }, [])
 
   useEffect(()=>{
     const h = e => {
@@ -699,13 +723,14 @@ export default function Timetable() {
               ))}
               <div><label style={S.lbl}>Day *</label><Sel value={form.day_name} onChange={e=>setForm({...form,day_name:e.target.value})}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</Sel></div>
               <div>
+                {/* FIX 2: was referencing undefined `teachers` — now uses staffList from staffDB.forTimetable() */}
                 <label style={S.lbl}>Teacher <span style={{ fontWeight:400, color:T.cyan }}>({staffList.length} staff)</span></label>
-                <select value={form.teacher_name} onChange={e => setForm(f => ({...f, teacher_name: e.target.value}))}>
-  <option value="">— Select Teacher —</option>
-  {teachers.map(t => (
-    <option key={t.name} value={t.name}>{t.name}</option>
-  ))}
-</select>
+                <select value={form.teacher_name} onChange={e=>setForm(f=>({...f,teacher_name:e.target.value}))} style={S.inp}>
+                  <option value="">— Select Teacher —</option>
+                  {staffList.map(s=>(
+                    <option key={s.id} value={s.name}>{s.name}{s.designation?` (${s.designation})`:''}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div style={{ marginTop:16, display:'flex', gap:10 }}>
@@ -858,7 +883,15 @@ export default function Timetable() {
                       <td style={{ padding:'8px 12px' }}><EditCell value={item.day_name} type="select" options={DAYS} onSave={v=>handleFieldSave(item.id,'day_name',v)} /></td>
                       <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}><EditCell value={item.period_name||''} onSave={v=>handleFieldSave(item.id,'period_name',v)} /></td>
                       <td style={{ padding:'8px 12px' }}><EditCell value={item.subject_name||''} onSave={v=>handleFieldSave(item.id,'subject_name',v)} /></td>
-                      <td style={{ padding:'8px 12px' }}><EditCell value={item.teacher_name||''} onSave={v=>handleFieldSave(item.id,'teacher_name',v)} /></td>
+                      {/* FIX 3: teacher cell now uses select dropdown with staffList options */}
+                      <td style={{ padding:'8px 12px' }}>
+                        <EditCell
+                          value={item.teacher_name||''}
+                          type="select"
+                          options={['', ...staffList.map(s=>s.name)]}
+                          onSave={v=>handleFieldSave(item.id,'teacher_name',v)}
+                        />
+                      </td>
                       <td style={{ padding:'8px 12px' }}><EditCell value={item.room_name||''} onSave={v=>handleFieldSave(item.id,'room_name',v)} /></td>
                       <td style={{ padding:'8px 12px', textAlign:'center' }}>
                         <div style={{ display:'flex', gap:6, justifyContent:'center' }}>
@@ -955,8 +988,9 @@ export default function Timetable() {
         </div>
       )}
 
+      {/* FIX 4: removed PIN from footer */}
       <div style={{ fontSize:11, color:T.muted, textAlign:'center', marginTop:24 }}>
-        💡 Click cell in Daily/Table view to edit · ⚙️ Admin Setup PIN: {ADMIN_PIN} · Teachers pulled from staff_profiles
+        💡 Click cell to edit inline · ⚙️ Admin Setup available to administrators · Teachers pulled from staff_profiles
       </div>
       <style>{`@media print { button { display:none!important; } }`}</style>
     </div>
