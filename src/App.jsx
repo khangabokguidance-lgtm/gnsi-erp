@@ -674,7 +674,7 @@ export default function App() {
       admissionsessions: <AdmissionSessions currentUser={currentUser} />,
       bulkadmission:     <BulkAdmission     currentUser={currentUser} />,
       fees:              <Fees              currentUser={currentUser} />,
-      accounts:          <Accounts          currentUser={currentUser} />,
+      accounts:           <Accounts         role={currentUser.role?.toLowerCase()} />,
       salary:            <Salary            currentUser={currentUser} />,
       staff:             <Staff             currentUser={currentUser} />,
       hr:                <HR                currentUser={currentUser} />,
