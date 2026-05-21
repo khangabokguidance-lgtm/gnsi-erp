@@ -882,6 +882,7 @@ async function loadAllData() {
     totalStaff, activeStaffCnt, totalSalaryBill,
     taskPending, taskDone, taskOverdue,
     taskByDept, topStaff, latestMonth,
+    allTasks,
     salaryTrend, leaveBreakdown, recruitmentFunnel, trainingHours, staffRadar, slaBreach,
 
     // Attendance
@@ -1364,9 +1365,9 @@ export default function GNSIDashboard({ scrollToSection }) {
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
             <Panel title="Management Checklist" sub="From management_checklist table">
-              {allTasks.length===0?<EmptyState msg="No checklist data"/>:(
+              {data.allTasks?.length===0?<EmptyState msg="No checklist data"/>:(
                 <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                  {allTasks.map((t,i)=>(
+                  {data.allTasks?.map((t,i)=>(
                     <div key={i} style={{padding:"9px 12px",borderRadius:10,background:t.status==="Done"?`${T.emerald}08`:`${T.amber}08`,border:`1px solid ${t.status==="Done"?T.emerald:T.amber}18`}}>
                       <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
                         <span style={{fontSize:12,fontWeight:700,color:T.white}}>{t.task||"—"}</span>
