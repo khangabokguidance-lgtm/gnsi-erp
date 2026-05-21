@@ -260,14 +260,16 @@ export const checkCourseFeeExists = async (gcc, forMonth, year) => {
 export const upsertAccount = async ({
   entry_date, type, category, amount,
   payment_mode, note, source_ref: sRef, source_type,
+  is_recurring = false, receipt_url = null,  // ← add these
 }) => {
   const { error } = await supabase
     .from(TABLES.accounts)
     .upsert(
       {
-        entry_date: new Date().toISOString().slice(0, 10), // ← always today, ignore passed entry_date
+        entry_date: new Date().toISOString().slice(0, 10),
         type, category, amount, payment_mode, note,
         source_ref: sRef, source_type,
+        is_recurring, receipt_url,  // ← add these
       },
       { onConflict: 'source_ref,source_type', ignoreDuplicates: false }
     )
