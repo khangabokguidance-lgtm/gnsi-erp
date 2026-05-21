@@ -1,152 +1,223 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 
-// ─── SQL migration hint (run once in Supabase SQL editor) ────────────────────
-// create table if not exists staff_tasks (
-//   id bigint generated always as identity primary key,
-//   title text not null,
-//   description text,
-//   assigned_to text not null,
-//   assigned_by text not null default 'Admin',
-//   department text,
-//   priority text default 'Medium',
-//   status text default 'Pending',
-//   due_date date,
-//   completion_note text,
-//   completed_at timestamptz,
-//   created_at timestamptz default now(),
-//   updated_at timestamptz default now()
-// );
-// ─────────────────────────────────────────────────────────────────────────────
-
-const STAFF_LIST = [
-  'Principal','Vice Principal','Head Teacher','Accounts Manager',
-  'Receptionist','Hostel Warden','Science Teacher','Maths Teacher',
-  'English Teacher','Hindi Teacher','Librarian','Lab Assistant',
-  'Sports Coach','Admin Staff','Peon / Helper',
-]
-
-const DEPARTMENTS = ['All','Administration','Academics','Accounts','Hostel','Library','Sports','Support']
-const PRIORITIES = ['High','Medium','Low']
-const STATUSES = ['Pending','In Progress','Done','Overdue']
+// ─── Constants ────────────────────────────────────────────────────────────────
+const PRIORITIES  = ['High', 'Medium', 'Low']
+const STATUSES    = ['Pending', 'In Progress', 'Done']
+const DEPARTMENTS = ['Administration','Academic','Accounts','Hostel','Reception','Transport','Maintenance']
 
 const PRIORITY_META = {
-  High:   { color: '#ef4444', bg: '#fef2f2', ring: '#fca5a5', icon: '🔴' },
-  Medium: { color: '#f59e0b', bg: '#fffbeb', ring: '#fcd34d', icon: '🟡' },
-  Low:    { color: '#22c55e', bg: '#f0fdf4', ring: '#86efac', icon: '🟢' },
+  High:   { color: '#dc2626', bg: '#fee2e2', icon: '🔴' },
+  Medium: { color: '#d97706', bg: '#fef3c7', icon: '🟡' },
+  Low:    { color: '#16a34a', bg: '#dcfce7', icon: '🟢' },
 }
-
 const STATUS_META = {
-  Pending:     { color: '#6366f1', bg: '#eef2ff', label: 'Pending',     icon: '⏳' },
-  'In Progress': { color: '#0ea5e9', bg: '#f0f9ff', label: 'In Progress', icon: '🔄' },
-  Done:        { color: '#16a34a', bg: '#dcfce7', label: 'Done',        icon: '✅' },
-  Overdue:     { color: '#dc2626', bg: '#fee2e2', label: 'Overdue',     icon: '🚨' },
+  Pending:       { color: '#6366f1', bg: '#eef2ff', icon: '⏳' },
+  'In Progress': { color: '#0ea5e9', bg: '#f0f9ff', icon: '🔄' },
+  Done:          { color: '#16a34a', bg: '#dcfce7', icon: '✅' },
+  Overdue:       { color: '#dc2626', bg: '#fee2e2', icon: '🚨' },
 }
 
-function formatDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const today     = () => new Date().toISOString().split('T')[0]
+const fmtDate   = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+const daysDiff  = d => { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000) }
+const initials  = name => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?'
+const isOverdue = t => t.status !== 'Done' && t.due_date && daysDiff(t.due_date) < 0
+
+// ─── Shared Styles ────────────────────────────────────────────────────────────
+const S = {
+  page:  { padding: '24px', fontFamily: "'Segoe UI', sans-serif", background: '#f0f4f8', minHeight: '100vh' },
+  card:  { background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', marginBottom: '16px', overflow: 'hidden' },
+  btn:   (color = '#1e3a5f', disabled = false) => ({ backgroundColor: disabled ? '#94a3b8' : color, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 18px', fontWeight: '600', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '13px', fontFamily: 'inherit' }),
+  btnSm: (color = '#1e3a5f') => ({ backgroundColor: color, color: 'white', border: 'none', borderRadius: '6px', padding: '5px 11px', fontWeight: '600', cursor: 'pointer', fontSize: '11px', fontFamily: 'inherit', whiteSpace: 'nowrap' }),
+  inp:   { width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit', background: 'white' },
+  lbl:   { display: 'block', fontSize: '12px', fontWeight: '600', color: '#374151', marginBottom: '5px' },
+  th:    { padding: '10px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', whiteSpace: 'nowrap' },
+  td:    { padding: '11px 14px', fontSize: '13px', color: '#334155', verticalAlign: 'middle' },
 }
 
-function daysDiff(dateStr) {
-  if (!dateStr) return null
-  const diff = Math.ceil((new Date(dateStr) - new Date()) / 86400000)
-  return diff
-}
-
-// ─── Stat Card ───────────────────────────────────────────────────────────────
-function StatCard({ label, value, icon, accent, sub }) {
+// ─── Badge ────────────────────────────────────────────────────────────────────
+function Badge({ label, type = 'status' }) {
+  const meta = type === 'priority' ? PRIORITY_META[label] : STATUS_META[label]
+  if (!meta) return <span style={{ fontSize: 11, color: '#94a3b8' }}>{label || '—'}</span>
   return (
-    <div style={{
-      background: '#fff', borderRadius: '16px', padding: '20px 22px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.07)', borderLeft: `4px solid ${accent}`,
-      display: 'flex', flexDirection: 'column', gap: '4px', position: 'relative', overflow: 'hidden'
-    }}>
-      <div style={{ fontSize: '22px', marginBottom: '2px' }}>{icon}</div>
-      <div style={{ fontSize: '32px', fontWeight: '800', color: '#0f172a', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>{label}</div>
-      {sub && <div style={{ fontSize: '11px', color: accent, fontWeight: '600', marginTop: '2px' }}>{sub}</div>}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: meta.bg, color: meta.color, whiteSpace: 'nowrap' }}>
+      {meta.icon} {label}
+    </span>
+  )
+}
+
+// ─── Mini progress bar ────────────────────────────────────────────────────────
+function MiniBar({ done, total, overdue }) {
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0
+  const color = overdue > 0 ? '#ef4444' : pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#6366f1'
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{done}/{total}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color }}>{pct}%</span>
+      </div>
+      <div style={{ height: 5, borderRadius: 99, background: '#e2e8f0', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 99, transition: 'width .4s' }} />
+      </div>
+      {overdue > 0 && <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 700, marginTop: 2 }}>🚨 {overdue} overdue</div>}
     </div>
   )
 }
 
-// ─── Staff Performance Bar ────────────────────────────────────────────────────
-function StaffBar({ name, tasks, done, overdue }) {
-  const pct = tasks > 0 ? Math.round((done / tasks) * 100) : 0
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function Toast({ msg }) {
+  if (!msg) return null
   return (
-    <div style={{ marginBottom: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-        <span style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>{name}</span>
-        <span style={{ fontSize: '12px', color: '#64748b' }}>{done}/{tasks} done {overdue > 0 && <span style={{ color: '#ef4444', fontWeight: '700' }}>· {overdue} overdue</span>}</span>
-      </div>
-      <div style={{ height: '8px', borderRadius: '99px', background: '#e2e8f0', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, borderRadius: '99px', background: overdue > 0 ? 'linear-gradient(90deg,#ef4444,#f97316)' : 'linear-gradient(90deg,#6366f1,#0ea5e9)', transition: 'width 0.6s ease' }} />
-      </div>
+    <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 3000, background: '#1e293b', color: 'white', padding: '13px 20px', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.25)', fontSize: 14, fontWeight: 600 }}>
+      {msg}
     </div>
   )
 }
 
-// ─── Task Row ─────────────────────────────────────────────────────────────────
-function TaskRow({ task, onStatusChange, onDelete, onViewDetail }) {
-  const diff = daysDiff(task.due_date)
-  const isOverdue = diff !== null && diff < 0 && task.status !== 'Done'
-  const sm = STATUS_META[isOverdue ? 'Overdue' : task.status] || STATUS_META.Pending
-  const pm = PRIORITY_META[task.priority] || PRIORITY_META.Medium
+// ─── Admin Alert Banner ───────────────────────────────────────────────────────
+function AlertBanner({ staff, tasks, onDismiss }) {
+  const warnings = useMemo(() => {
+    const out = []
+    staff.forEach(s => {
+      const st = tasks.filter(t => t.assigned_to === s.name)
+      const overdue = st.filter(t => isOverdue(t))
+      const dueSoon = st.filter(t => !isOverdue(t) && t.status !== 'Done' && daysDiff(t.due_date) !== null && daysDiff(t.due_date) <= 1)
+      const pending = st.filter(t => t.status === 'Pending' && !isOverdue(t))
+      if (overdue.length >= 2) out.push({ id: `ov_${s.id}`, type: 'danger',  staff: s.name, msg: `${overdue.length} overdue tasks — immediate action needed`, tasks: overdue })
+      if (dueSoon.length > 0)  out.push({ id: `ds_${s.id}`, type: 'warning', staff: s.name, msg: `${dueSoon.length} task${dueSoon.length > 1 ? 's' : ''} due within 24h`, tasks: dueSoon })
+      if (pending.length >= 4) out.push({ id: `pl_${s.id}`, type: 'info',    staff: s.name, msg: `${pending.length} pending tasks — workload review suggested`, tasks: pending })
+    })
+    return out
+  }, [staff, tasks])
+
+  const [dismissed, setDismissed] = useState([])
+  const visible = warnings.filter(w => !dismissed.includes(w.id))
+  if (!visible.length) return null
+
+  const typeStyle = {
+    danger:  { bg: '#fef2f2', border: '#fecaca', color: '#dc2626', icon: '🔴' },
+    warning: { bg: '#fffbeb', border: '#fde68a', color: '#d97706', icon: '⚠️' },
+    info:    { bg: '#eff6ff', border: '#bfdbfe', color: '#2563eb', icon: 'ℹ️' },
+  }
 
   return (
-    <tr style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }}
-      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-      <td style={td}>
-        <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '13px', marginBottom: '2px' }}>{task.title}</div>
-        <div style={{ fontSize: '11px', color: '#94a3b8' }}>{task.department || 'General'}</div>
-      </td>
-      <td style={td}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px', fontWeight: '700', flexShrink: 0 }}>
-            {task.assigned_to?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
-          </div>
-          <span style={{ fontSize: '13px', color: '#334155', fontWeight: '500' }}>{task.assigned_to}</span>
-        </div>
-      </td>
-      <td style={td}>
-        <span style={{ ...badge, background: pm.bg, color: pm.color }}>
-          {pm.icon} {task.priority}
-        </span>
-      </td>
-      <td style={td}>
-        <span style={{ ...badge, background: sm.bg, color: sm.color }}>
-          {sm.icon} {isOverdue ? 'Overdue' : task.status}
-        </span>
-      </td>
-      <td style={td}>
-        {task.due_date ? (
-          <div>
-            <div style={{ fontSize: '13px', color: isOverdue ? '#ef4444' : '#334155', fontWeight: isOverdue ? '700' : '400' }}>{formatDate(task.due_date)}</div>
-            {diff !== null && task.status !== 'Done' && (
-              <div style={{ fontSize: '11px', color: isOverdue ? '#ef4444' : diff <= 2 ? '#f59e0b' : '#94a3b8' }}>
-                {isOverdue ? `${Math.abs(diff)}d overdue` : diff === 0 ? 'Due today!' : `${diff}d left`}
+    <div style={{ ...S.card, padding: '14px 18px' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        🔔 Admin Alerts
+        <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 99, fontSize: 11, padding: '2px 8px', fontWeight: 800 }}>{visible.length}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {visible.map(w => {
+          const ts = typeStyle[w.type]
+          return (
+            <div key={w.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', background: ts.bg, border: `1px solid ${ts.border}`, borderRadius: 10 }}>
+              <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{ts.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: ts.color, fontSize: 13 }}>{w.staff}</div>
+                <div style={{ fontSize: 12, color: ts.color, opacity: .85 }}>{w.msg}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                  {w.tasks.map(t => (
+                    <span key={t.id} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(0,0,0,.06)', color: ts.color, fontWeight: 600 }}>{t.title}</span>
+                  ))}
+                </div>
               </div>
-            )}
+              <button onClick={() => setDismissed(d => [...d, w.id])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: ts.color, fontSize: 16, lineHeight: 1, flexShrink: 0, opacity: .6, fontFamily: 'inherit' }}>✕</button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Assign Task Modal ────────────────────────────────────────────────────────
+function AssignModal({ staffList, preselected, onClose, onSave }) {
+  const [form, setForm] = useState({
+    title: '', description: '', priority: 'Medium', status: 'Pending',
+    due_date: '', department: preselected?.department || 'Administration',
+    assigned_to: preselected?.name || (staffList[0]?.name || ''),
+    assigned_by: 'Admin',
+  })
+  const [saving, setSaving] = useState(false)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSave = async () => {
+    if (!form.title.trim() || !form.assigned_to) { alert('Title and Assigned To are required'); return }
+    setSaving(true)
+    const { data, error } = await supabase.from('staff_tasks').insert([{
+      ...form, due_date: form.due_date || null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }]).select()
+    setSaving(false)
+    if (error) { alert('Error: ' + error.message); return }
+    onSave(data?.[0])
+    onClose()
+  }
+
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
+  const modal   = { background: 'white', borderRadius: 16, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.22)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }
+
+  return (
+    <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={modal}>
+        <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#6366f1)', padding: '20px 24px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 11, opacity: .7, textTransform: 'uppercase', letterSpacing: 1 }}>GNSI · Staff Tasks</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>Assign New Task</div>
+            {preselected && <div style={{ fontSize: 12, opacity: .8, marginTop: 2 }}>→ {preselected.name}</div>}
           </div>
-        ) : '—'}
-      </td>
-      <td style={td}>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          <button onClick={() => onViewDetail(task)} style={{ ...actionBtn, background: '#6366f1' }}>View</button>
-          {task.status !== 'Done' && (
-            <button onClick={() => onStatusChange(task, task.status === 'Pending' ? 'In Progress' : 'Done')}
-              style={{ ...actionBtn, background: task.status === 'Pending' ? '#0ea5e9' : '#16a34a' }}>
-              {task.status === 'Pending' ? 'Start' : 'Done'}
-            </button>
-          )}
-          {task.status === 'Done' && (
-            <button onClick={() => onStatusChange(task, 'Pending')} style={{ ...actionBtn, background: '#64748b' }}>Reopen</button>
-          )}
-          <button onClick={() => onDelete(task.id)} style={{ ...actionBtn, background: '#ef4444' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,.18)', border: 'none', color: 'white', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16, fontFamily: 'inherit' }}>✕</button>
         </div>
-      </td>
-    </tr>
+        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={S.lbl}>Task Title *</label>
+            <input style={S.inp} value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Submit lesson plan for June" />
+          </div>
+          <div>
+            <label style={S.lbl}>Description / Instructions</label>
+            <textarea style={{ ...S.inp, resize: 'vertical', minHeight: 60 }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Detailed instructions..." />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={S.lbl}>Assign To *</label>
+              <select style={{ ...S.inp, backgroundColor: 'white' }} value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}>
+                {staffList.map(s => <option key={s.id} value={s.name}>{s.name} — {s.designation}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={S.lbl}>Assigned By</label>
+              <input style={S.inp} value={form.assigned_by} onChange={e => set('assigned_by', e.target.value)} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={S.lbl}>Department</label>
+              <select style={{ ...S.inp, backgroundColor: 'white' }} value={form.department} onChange={e => set('department', e.target.value)}>
+                {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={S.lbl}>Priority</label>
+              <select style={{ ...S.inp, backgroundColor: 'white' }} value={form.priority} onChange={e => set('priority', e.target.value)}>
+                {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={S.lbl}>Due Date</label>
+              <input type="date" style={S.inp} value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: '14px 24px 20px', display: 'flex', gap: 10 }}>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 1, background: 'linear-gradient(135deg,#1e3a5f,#6366f1)', color: 'white', border: 'none', borderRadius: 10, padding: 13, cursor: 'pointer', fontWeight: 800, fontSize: 14, fontFamily: 'inherit' }}>
+            {saving ? '⏳ Assigning…' : '✅ Assign Task'}
+          </button>
+          <button onClick={onClose} style={{ padding: '13px 20px', background: '#f1f5f9', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 600, color: '#64748b', fontFamily: 'inherit' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -154,81 +225,66 @@ function TaskRow({ task, onStatusChange, onDelete, onViewDetail }) {
 function TaskDetailModal({ task, onClose, onStatusChange }) {
   const [note, setNote] = useState(task.completion_note || '')
   const [saving, setSaving] = useState(false)
-  const diff = daysDiff(task.due_date)
-  const isOverdue = diff !== null && diff < 0 && task.status !== 'Done'
-  const sm = STATUS_META[isOverdue ? 'Overdue' : task.status] || STATUS_META.Pending
+  const overdue = isOverdue(task)
+  const sm = STATUS_META[overdue ? 'Overdue' : task.status] || STATUS_META.Pending
   const pm = PRIORITY_META[task.priority] || PRIORITY_META.Medium
+  const diff = daysDiff(task.due_date)
 
-  async function saveNote() {
+  const saveNote = async () => {
     setSaving(true)
     await supabase.from('staff_tasks').update({ completion_note: note, updated_at: new Date().toISOString() }).eq('id', task.id)
     setSaving(false)
     alert('Note saved!')
   }
 
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)', zIndex: 2001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '560px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
-        <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0ea5e9)', padding: '24px', color: '#fff' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: '11px', letterSpacing: '1px', opacity: 0.7, marginBottom: '6px', textTransform: 'uppercase' }}>Task Detail</div>
-              <div style={{ fontSize: '20px', fontWeight: '700', lineHeight: 1.3 }}>{task.title}</div>
-            </div>
-            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: '8px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+    <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,.2)', overflow: 'hidden' }}>
+        <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0ea5e9)', padding: '20px 22px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 11, opacity: .7, textTransform: 'uppercase', letterSpacing: 1 }}>Task Detail</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginTop: 4, lineHeight: 1.3 }}>{task.title}</div>
           </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: 'white', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
         </div>
-        <div style={{ padding: '24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-            {[
-              { label: 'Assigned To', value: task.assigned_to },
-              { label: 'Assigned By', value: task.assigned_by || 'Admin' },
-              { label: 'Department', value: task.department || 'General' },
-              { label: 'Due Date', value: formatDate(task.due_date) },
-            ].map(({ label, value }) => (
-              <div key={label} style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px' }}>
-                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>{label}</div>
-                <div style={{ fontSize: '14px', color: '#1e293b', fontWeight: '600' }}>{value || '—'}</div>
+        <div style={{ padding: '20px 22px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            {[['Assigned To', task.assigned_to], ['Assigned By', task.assigned_by || 'Admin'], ['Department', task.department || 'General'], ['Due Date', fmtDate(task.due_date)]].map(([l, v]) => (
+              <div key={l} style={{ background: '#f8fafc', borderRadius: 8, padding: '9px 12px' }}>
+                <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, marginBottom: 2 }}>{l}</div>
+                <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 600 }}>{v || '—'}</div>
               </div>
             ))}
           </div>
-
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <span style={{ ...badge, background: pm.bg, color: pm.color, fontSize: '13px', padding: '6px 14px' }}>{pm.icon} {task.priority} Priority</span>
-            <span style={{ ...badge, background: sm.bg, color: sm.color, fontSize: '13px', padding: '6px 14px' }}>{sm.icon} {isOverdue ? 'Overdue' : task.status}</span>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <Badge label={task.priority} type="priority" />
+            <Badge label={overdue ? 'Overdue' : task.status} />
+            {diff !== null && task.status !== 'Done' && (
+              <span style={{ fontSize: 11, color: overdue ? '#ef4444' : diff <= 2 ? '#f59e0b' : '#94a3b8', fontWeight: 700 }}>
+                {overdue ? `${Math.abs(diff)}d overdue` : diff === 0 ? 'Due today!' : `${diff}d left`}
+              </span>
+            )}
           </div>
-
-          {task.description && (
-            <div style={{ marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '14px', fontSize: '14px', color: '#475569', lineHeight: 1.6 }}>
-              {task.description}
-            </div>
-          )}
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Completion Note / Remarks</label>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
-              placeholder="Add progress note or remarks..."
-              style={{ width: '100%', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-            <button onClick={saveNote} disabled={saving} style={{ marginTop: '8px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-              {saving ? 'Saving…' : 'Save Note'}
-            </button>
+          {task.description && <div style={{ marginBottom: 14, background: '#f8fafc', borderRadius: 8, padding: 12, fontSize: 13, color: '#475569', lineHeight: 1.6 }}>{task.description}</div>}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ ...S.lbl, marginBottom: 5 }}>Completion Note</label>
+            <textarea style={{ ...S.inp, minHeight: 70, resize: 'vertical' }} value={note} onChange={e => setNote(e.target.value)} placeholder="Add progress note..." />
+            <button onClick={saveNote} disabled={saving} style={{ ...S.btn('#1e3a5f', saving), marginTop: 7, padding: '7px 14px', fontSize: 12 }}>{saving ? 'Saving…' : 'Save Note'}</button>
           </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
             {task.status !== 'Done' && (
               <button onClick={() => { onStatusChange(task, task.status === 'Pending' ? 'In Progress' : 'Done'); onClose() }}
-                style={{ flex: 1, background: 'linear-gradient(135deg,#6366f1,#0ea5e9)', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
-                {task.status === 'Pending' ? '▶ Start Task' : '✅ Mark as Done'}
+                style={{ flex: 1, background: 'linear-gradient(135deg,#6366f1,#0ea5e9)', color: 'white', border: 'none', borderRadius: 10, padding: 11, cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
+                {task.status === 'Pending' ? '▶ Start Task' : '✅ Mark Done'}
               </button>
             )}
             {task.status === 'Done' && (
               <button onClick={() => { onStatusChange(task, 'Pending'); onClose() }}
-                style={{ flex: 1, background: '#64748b', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
-                ↩ Reopen Task
-              </button>
+                style={{ flex: 1, background: '#64748b', color: 'white', border: 'none', borderRadius: 10, padding: 11, cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' }}>↩ Reopen</button>
             )}
-            <button onClick={onClose} style={{ padding: '12px 20px', background: '#f1f5f9', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', color: '#64748b' }}>Close</button>
+            <button onClick={onClose} style={{ padding: '11px 18px', background: '#f1f5f9', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 600, color: '#64748b', fontFamily: 'inherit' }}>Close</button>
           </div>
         </div>
       </div>
@@ -236,437 +292,404 @@ function TaskDetailModal({ task, onClose, onStatusChange }) {
   )
 }
 
-// ─── Assign Task Modal ────────────────────────────────────────────────────────
-function AssignModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ title: '', description: '', assigned_to: STAFF_LIST[0], assigned_by: 'Admin', department: 'Administration', priority: 'Medium', status: 'Pending', due_date: '' })
-  const [saving, setSaving] = useState(false)
-
-  async function handleSave() {
-    if (!form.title || !form.assigned_to) { alert('Title and Assigned To are required'); return }
-    setSaving(true)
-    const { data, error } = await supabase.from('staff_tasks').insert([{ ...form, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]).select()
-    setSaving(false)
-    if (error) { alert('Error: ' + error.message); return }
-    onSave(data?.[0])
-    onClose()
-  }
-
-  const f = (label, children) => (
-    <div key={label}>
-      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>{label}</label>
-      {children}
-    </div>
-  )
+// ─── Staff Checklist Row ──────────────────────────────────────────────────────
+function StaffChecklistRow({ staffMember, tasks, onAssign, onStatusChange, onDelete, onDetail, onWarn }) {
+  const [expanded, setExpanded] = useState(false)
+  const overdueTasks = tasks.filter(t => isOverdue(t))
+  const done         = tasks.filter(t => t.status === 'Done').length
+  const inprog       = tasks.filter(t => t.status === 'In Progress' && !isOverdue(t)).length
+  const pending      = tasks.filter(t => t.status === 'Pending' && !isOverdue(t)).length
+  const total        = tasks.length
+  const hasWarning   = overdueTasks.length > 0
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '620px', boxShadow: '0 24px 64px rgba(0,0,0,0.22)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#6366f1)', padding: '22px 28px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: '11px', opacity: 0.7, letterSpacing: '1px', textTransform: 'uppercase' }}>GNSI Portal</div>
-            <div style={{ fontSize: '20px', fontWeight: '800' }}>Assign New Task</div>
-          </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', borderRadius: '8px', width: '34px', height: '34px', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+    <div style={{ borderBottom: '1px solid #f1f5f9' }}>
+      {/* Main row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: expanded ? '#fafbff' : 'white', transition: 'background .1s' }}
+        onClick={() => setExpanded(v => !v)}>
+        <div style={{ width: 36, height: 36, borderRadius: '50%', background: hasWarning ? '#fee2e2' : 'linear-gradient(135deg,#1e3a5f,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: hasWarning ? '#dc2626' : '#c9a84c', flexShrink: 0 }}>
+          {initials(staffMember.name)}
         </div>
-
-        <div style={{ padding: '24px 28px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {f('Task Title', <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Update student fee records" style={inp} />)}
-          {f('Description / Instructions', <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Detailed instructions..." style={{ ...inp, resize: 'vertical', height: '70px' }} />)}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            {f('Assign To', (
-              <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} style={inp}>
-                {STAFF_LIST.map(s => <option key={s}>{s}</option>)}
-              </select>
-            ))}
-            {f('Assigned By', <input value={form.assigned_by} onChange={e => setForm({ ...form, assigned_by: e.target.value })} style={inp} />)}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {staffMember.name}
+            {hasWarning && <span style={{ fontSize: 10, background: '#fee2e2', color: '#dc2626', padding: '2px 7px', borderRadius: 99, fontWeight: 800 }}>🚨 {overdueTasks.length} overdue</span>}
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-            {f('Department', (
-              <select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} style={inp}>
-                {DEPARTMENTS.filter(d => d !== 'All').map(d => <option key={d}>{d}</option>)}
-              </select>
-            ))}
-            {f('Priority', (
-              <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} style={inp}>
-                {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-              </select>
-            ))}
-            {f('Due Date', <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} style={inp} />)}
-          </div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>{staffMember.designation} · {staffMember.department}</div>
         </div>
+        <div style={{ minWidth: 120 }}>
+          <MiniBar done={done} total={total} overdue={overdueTasks.length} />
+        </div>
+        <div style={{ display: 'flex', gap: 6, fontSize: 11, color: '#64748b', minWidth: 110, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {done > 0     && <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>✅ {done}</span>}
+          {inprog > 0   && <span style={{ background: '#f0f9ff', color: '#0369a1', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>🔄 {inprog}</span>}
+          {pending > 0  && <span style={{ background: '#eef2ff', color: '#4338ca', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>⏳ {pending}</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => onAssign(staffMember)} style={S.btnSm('#6366f1')} title="Assign task">+ Task</button>
+          <button onClick={() => onWarn(staffMember)} style={S.btnSm(hasWarning ? '#dc2626' : '#64748b')} title="Send warning">🔔</button>
+        </div>
+        <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
+      </div>
 
-        <div style={{ padding: '16px 28px 24px', display: 'flex', gap: '12px' }}>
-          <button onClick={handleSave} disabled={saving}
-            style={{ flex: 1, background: 'linear-gradient(135deg,#1e3a5f,#6366f1)', color: '#fff', border: 'none', borderRadius: '12px', padding: '14px', cursor: 'pointer', fontWeight: '800', fontSize: '15px', letterSpacing: '0.3px' }}>
-            {saving ? '⏳ Assigning…' : '✅ Assign Task'}
-          </button>
-          <button onClick={onClose} style={{ padding: '14px 24px', background: '#f1f5f9', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', color: '#64748b' }}>Cancel</button>
+      {/* Expanded task list */}
+      {expanded && (
+        <div style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+          {tasks.length === 0
+            ? <div style={{ padding: '14px 20px', fontSize: 13, color: '#94a3b8' }}>No tasks assigned. <button onClick={() => onAssign(staffMember)} style={{ ...S.btnSm('#6366f1'), marginLeft: 8 }}>+ Assign now</button></div>
+            : tasks.map(t => {
+              const ov   = isOverdue(t)
+              const diff = daysDiff(t.due_date)
+              const sm   = STATUS_META[ov ? 'Overdue' : t.status] || STATUS_META.Pending
+              const pm   = PRIORITY_META[t.priority] || PRIORITY_META.Medium
+              return (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 20px', borderBottom: '1px solid #f1f5f9', background: ov ? '#fff8f8' : 'white' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: ov ? '#dc2626' : '#1e293b' }}>{t.title}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {t.department && <span>{t.department}</span>}
+                      {t.due_date   && <span style={{ color: ov ? '#dc2626' : diff !== null && diff <= 2 ? '#f59e0b' : '#94a3b8', fontWeight: ov ? 700 : 400 }}>
+                        {ov ? `${Math.abs(diff)}d overdue` : diff === 0 ? '⚠ Due today' : diff !== null && diff <= 2 ? `${diff}d left` : fmtDate(t.due_date)}
+                      </span>}
+                    </div>
+                  </div>
+                  <Badge label={t.priority} type="priority" />
+                  <Badge label={ov ? 'Overdue' : t.status} />
+                  <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                    <button onClick={() => onDetail(t)} style={S.btnSm('#6366f1')}>View</button>
+                    {t.status !== 'Done' && <button onClick={() => onStatusChange(t, t.status === 'Pending' ? 'In Progress' : 'Done')} style={S.btnSm(t.status === 'Pending' ? '#0ea5e9' : '#16a34a')}>{t.status === 'Pending' ? 'Start' : '✅'}</button>}
+                    {t.status === 'Done'  && <button onClick={() => onStatusChange(t, 'Pending')} style={S.btnSm('#64748b')}>↩</button>}
+                    <button onClick={() => onDelete(t.id)} style={S.btnSm('#ef4444')}>✕</button>
+                  </div>
+                </div>
+              )
+            })
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Monitoring View ──────────────────────────────────────────────────────────
+function MonitoringView({ staff, tasks, onAssign, onWarn }) {
+  const tasksWithOverdue = tasks.map(t => ({ ...t, _overdue: isOverdue(t) }))
+
+  const staffMonitor = staff.map(s => {
+    const st = tasksWithOverdue.filter(t => t.assigned_to === s.name)
+    return { ...s, total: st.length, done: st.filter(t => t.status === 'Done').length, inprog: st.filter(t => t.status === 'In Progress' && !t._overdue).length, pending: st.filter(t => t.status === 'Pending' && !t._overdue).length, overdue: st.filter(t => t._overdue).length }
+  }).sort((a, b) => b.overdue - a.overdue || b.total - a.total)
+
+  const deptMap = {}
+  tasksWithOverdue.forEach(t => {
+    const d = t.department || 'General'
+    if (!deptMap[d]) deptMap[d] = { total: 0, done: 0, inprog: 0, pending: 0, overdue: 0 }
+    deptMap[d].total++
+    if (t.status === 'Done') deptMap[d].done++
+    else if (t._overdue) deptMap[d].overdue++
+    else if (t.status === 'In Progress') deptMap[d].inprog++
+    else deptMap[d].pending++
+  })
+
+  const highRisk = staffMonitor.filter(s => s.overdue >= 1)
+
+  return (
+    <div>
+      {/* High risk panel */}
+      {highRisk.length > 0 && (
+        <div style={S.card}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, fontSize: 14, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 8 }}>
+            🚨 High-Risk Staff
+            <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 99, fontSize: 11, padding: '2px 8px' }}>{highRisk.length}</span>
+          </div>
+          {highRisk.map(s => (
+            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderBottom: '1px solid #f1f5f9' }}>
+              <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, color: '#dc2626', flexShrink: 0 }}>{initials(s.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{s.name}</div>
+                <div style={{ fontSize: 11, color: '#dc2626' }}>{s.overdue} overdue · {s.pending} pending</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => onWarn(s)} style={S.btnSm('#dc2626')}>🔔 Warn</button>
+                <button onClick={() => onAssign(s)} style={S.btnSm('#6366f1')}>+ Task</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Staff cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 14, marginBottom: 16 }}>
+        {staffMonitor.map(s => {
+          const pct   = s.total > 0 ? Math.round((s.done / s.total) * 100) : 0
+          const color = s.overdue > 0 ? '#ef4444' : pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#6366f1'
+          return (
+            <div key={s.id} style={{ background: 'white', borderRadius: 12, padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderTop: `4px solid ${color}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: s.overdue > 0 ? '#fee2e2' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color, flexShrink: 0 }}>{initials(s.name)}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.designation}</div>
+                  </div>
+                </div>
+                <span style={{ fontSize: 20, fontWeight: 800, color }}>{pct}%</span>
+              </div>
+              <MiniBar done={s.done} total={s.total} overdue={s.overdue} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, marginTop: 12 }}>
+                {[['Done', s.done, '#22c55e'], ['Active', s.inprog, '#0ea5e9'], ['Pending', s.pending, '#f59e0b'], ['Overdue', s.overdue, '#ef4444']].map(([l, v, c]) => (
+                  <div key={l} style={{ textAlign: 'center', background: '#f8fafc', borderRadius: 8, padding: '8px 4px' }}>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: c }}>{v}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              {s.overdue > 0 && <div style={{ marginTop: 10, padding: '7px 10px', background: '#fef2f2', borderRadius: 7, fontSize: 11, color: '#dc2626', fontWeight: 700 }}>🚨 {s.overdue} overdue — follow up required</div>}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Department table */}
+      <div style={S.card}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, fontSize: 14, color: '#1e3a5f' }}>🏢 Department Summary</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>{['Department', 'Total', 'Done', 'In Progress', 'Pending', 'Overdue', 'Rate'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {Object.entries(deptMap).map(([dept, d]) => {
+                const rate = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0
+                return (
+                  <tr key={dept} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ ...S.td, fontWeight: 700 }}>{dept}</td>
+                    <td style={{ ...S.td, textAlign: 'center' }}>{d.total}</td>
+                    <td style={{ ...S.td, textAlign: 'center', color: '#22c55e', fontWeight: 700 }}>{d.done}</td>
+                    <td style={{ ...S.td, textAlign: 'center', color: '#0ea5e9', fontWeight: 700 }}>{d.inprog}</td>
+                    <td style={{ ...S.td, textAlign: 'center', color: '#f59e0b', fontWeight: 700 }}>{d.pending}</td>
+                    <td style={{ ...S.td, textAlign: 'center', color: d.overdue > 0 ? '#ef4444' : '#94a3b8', fontWeight: d.overdue > 0 ? 700 : 400 }}>{d.overdue}</td>
+                    <td style={S.td}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 99 }}>
+                          <div style={{ height: '100%', width: `${rate}%`, background: rate >= 80 ? '#22c55e' : rate >= 50 ? '#f59e0b' : '#ef4444', borderRadius: 99 }} />
+                        </div>
+                        <span style={{ fontWeight: 700, color: '#334155', fontSize: 12, minWidth: 32 }}>{rate}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {Object.keys(deptMap).length === 0 && <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#94a3b8', padding: 28 }}>No task data available</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
 export default function StaffTaskMonitor() {
-  const [tasks, setTasks] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState('')
-  const [view, setView] = useState('tasks') // 'tasks' | 'monitoring'
+  const [staff,           setStaff]           = useState([])
+  const [tasks,           setTasks]           = useState([])
+  const [loading,         setLoading]         = useState(true)
+  const [toast,           setToast]           = useState('')
+  const [activeView,      setActiveView]      = useState('checklist')
   const [showAssignModal, setShowAssignModal] = useState(false)
-  const [detailTask, setDetailTask] = useState(null)
+  const [assignTarget,    setAssignTarget]    = useState(null)
+  const [detailTask,      setDetailTask]      = useState(null)
+  const [filterDept,      setFilterDept]      = useState('All')
+  const [filterStatus,    setFilterStatus]    = useState('All')
+  const [search,          setSearch]          = useState('')
 
-  // Filters
-  const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('All')
-  const [filterPriority, setFilterPriority] = useState('All')
-  const [filterStaff, setFilterStaff] = useState('All')
-  const [filterDept, setFilterDept] = useState('All')
+  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
-  useEffect(() => {
-    fetchTasks()
+  const fetchStaff = useCallback(async () => {
+    const { data } = await supabase.from('staff_profiles').select('id,name,designation,department,status').eq('status', 'Active').order('name')
+    setStaff(data || [])
   }, [])
 
-  async function fetchTasks() {
+  const fetchTasks = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase.from('staff_tasks').select('*').order('created_at', { ascending: false })
     if (!error) setTasks(data || [])
-    else showToast('⚠️ Could not load tasks. Check if staff_tasks table exists.')
+    else showToast('⚠️ Could not load tasks. Check staff_tasks table.')
     setLoading(false)
-  }
+  }, [])
 
-  async function handleStatusChange(task, newStatus) {
+  useEffect(() => { fetchStaff(); fetchTasks() }, [fetchStaff, fetchTasks])
+
+  const handleStatusChange = useCallback(async (task, newStatus) => {
     const update = { status: newStatus, updated_at: new Date().toISOString() }
     if (newStatus === 'Done') update.completed_at = new Date().toISOString()
     const { data, error } = await supabase.from('staff_tasks').update(update).eq('id', task.id).select()
     if (error) { showToast('❌ Update failed'); return }
     setTasks(prev => prev.map(t => t.id === task.id ? (data?.[0] || t) : t))
-    showToast(`✅ Task marked as ${newStatus}`)
-  }
+    showToast(`✅ Marked as ${newStatus}`)
+  }, [])
 
-  async function handleDelete(id) {
+  const handleDelete = useCallback(async id => {
     if (!window.confirm('Delete this task?')) return
     const { error } = await supabase.from('staff_tasks').delete().eq('id', id)
     if (error) { showToast('❌ Delete failed'); return }
     setTasks(prev => prev.filter(t => t.id !== id))
     showToast('🗑️ Task deleted')
-  }
+  }, [])
 
-  function handleNewTask(task) {
+  const handleNewTask = useCallback(task => {
     if (task) setTasks(prev => [task, ...prev])
-    showToast('✅ Task assigned successfully!')
-  }
+    showToast('✅ Task assigned!')
+  }, [])
 
-  // Auto-detect overdue
-  const tasksWithOverdue = useMemo(() => tasks.map(t => {
-    const diff = daysDiff(t.due_date)
-    if (diff !== null && diff < 0 && t.status !== 'Done') return { ...t, _overdue: true }
-    return { ...t, _overdue: false }
-  }), [tasks])
+  const handleWarn = useCallback(s => {
+    const overdueTasks = tasks.filter(t => t.assigned_to === s.name && isOverdue(t))
+    if (overdueTasks.length > 0) alert(`⚠️ Warning sent to ${s.name}\n\nOverdue tasks:\n${overdueTasks.map(t => `• ${t.title}`).join('\n')}\n\n(In production, connect to your notification system)`)
+    else alert(`🔔 Reminder sent to ${s.name} about pending tasks.\n\n(In production, connect to your notification system)`)
+  }, [tasks])
 
-  const filteredTasks = useMemo(() => tasksWithOverdue.filter(t => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || (t.title || '').toLowerCase().includes(q) || (t.assigned_to || '').toLowerCase().includes(q) || (t.department || '').toLowerCase().includes(q)
-    const effectiveStatus = t._overdue ? 'Overdue' : t.status
-    const matchStatus = filterStatus === 'All' || effectiveStatus === filterStatus
-    const matchPriority = filterPriority === 'All' || t.priority === filterPriority
-    const matchStaff = filterStaff === 'All' || t.assigned_to === filterStaff
-    const matchDept = filterDept === 'All' || t.department === filterDept
-    return matchSearch && matchStatus && matchPriority && matchStaff && matchDept
-  }), [tasksWithOverdue, search, filterStatus, filterPriority, filterStaff, filterDept])
+  const tasksWithOverdue = useMemo(() => tasks.map(t => ({ ...t, _overdue: isOverdue(t) })), [tasks])
 
-  // Stats
-  const stats = useMemo(() => {
-    const all = tasksWithOverdue
-    return {
-      total: all.length,
-      done: all.filter(t => t.status === 'Done').length,
-      inProgress: all.filter(t => t.status === 'In Progress').length,
-      pending: all.filter(t => t.status === 'Pending').length,
-      overdue: all.filter(t => t._overdue).length,
-      high: all.filter(t => t.priority === 'High').length,
-      completionRate: all.length > 0 ? Math.round((all.filter(t => t.status === 'Done').length / all.length) * 100) : 0,
+  const stats = useMemo(() => ({
+    total:   tasksWithOverdue.length,
+    done:    tasksWithOverdue.filter(t => t.status === 'Done').length,
+    inprog:  tasksWithOverdue.filter(t => t.status === 'In Progress' && !t._overdue).length,
+    pending: tasksWithOverdue.filter(t => t.status === 'Pending' && !t._overdue).length,
+    overdue: tasksWithOverdue.filter(t => t._overdue).length,
+    high:    tasksWithOverdue.filter(t => t.priority === 'High' && t.status !== 'Done').length,
+  }), [tasksWithOverdue])
+
+  const depts = useMemo(() => ['All', ...new Set(staff.map(s => s.department).filter(Boolean))], [staff])
+
+  const filteredStaff = useMemo(() => {
+    let list = staff
+    if (filterDept !== 'All') list = list.filter(s => s.department === filterDept)
+    if (search) list = list.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || (s.designation || '').toLowerCase().includes(search.toLowerCase()))
+    return list
+  }, [staff, filterDept, search])
+
+  const getStaffTasks = useCallback(staffName => {
+    let list = tasksWithOverdue.filter(t => t.assigned_to === staffName)
+    if (filterStatus !== 'All') {
+      if (filterStatus === 'Overdue') list = list.filter(t => t._overdue)
+      else list = list.filter(t => t.status === filterStatus && !t._overdue)
     }
-  }, [tasksWithOverdue])
+    return list
+  }, [tasksWithOverdue, filterStatus])
 
-  // Staff monitoring data
-  const staffMonitor = useMemo(() => {
-    const map = {}
-    tasksWithOverdue.forEach(t => {
-      if (!map[t.assigned_to]) map[t.assigned_to] = { name: t.assigned_to, total: 0, done: 0, inProgress: 0, pending: 0, overdue: 0 }
-      map[t.assigned_to].total++
-      if (t.status === 'Done') map[t.assigned_to].done++
-      else if (t.status === 'In Progress') map[t.assigned_to].inProgress++
-      else map[t.assigned_to].pending++
-      if (t._overdue) map[t.assigned_to].overdue++
-    })
-    return Object.values(map).sort((a, b) => b.total - a.total)
-  }, [tasksWithOverdue])
-
-  const activeStaff = STAFF_LIST.filter(s => tasksWithOverdue.some(t => t.assigned_to === s))
-
-  const tabBtn = (id, label, icon) => (
-    <button onClick={() => setView(id)} style={{
-      padding: '10px 20px', borderRadius: '10px', border: 'none', cursor: 'pointer',
-      fontWeight: '700', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px',
-      background: view === id ? 'linear-gradient(135deg,#1e3a5f,#6366f1)' : '#f1f5f9',
-      color: view === id ? '#fff' : '#64748b', transition: 'all 0.2s'
-    }}>{icon} {label}</button>
+  const tabBtn = (id, label) => (
+    <button key={id} onClick={() => setActiveView(id)} style={{
+      padding: '9px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer', background: 'none', border: 'none',
+      borderBottom: `3px solid ${activeView === id ? '#1e3a5f' : 'transparent'}`,
+      color: activeView === id ? '#1e3a5f' : '#64748b', fontFamily: 'inherit',
+    }}>{label}</button>
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f4f8', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
+    <div style={S.page}>
+      <Toast msg={toast} />
+
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0f1e3c,#1e3a5f)', padding: '24px 28px', color: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-          <div>
-            <div style={{ fontSize: '11px', letterSpacing: '2px', opacity: 0.6, textTransform: 'uppercase', marginBottom: '4px' }}>GNSI — Guidance Navodaya & Sainik Institute</div>
-            <h1 style={{ fontSize: '26px', fontWeight: '800', margin: 0, letterSpacing: '-0.5px' }}>📋 Staff Task Monitor</h1>
-            <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '4px' }}>Advanced Task Assignment & Monitoring System</div>
-          </div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={fetchTasks} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px', padding: '10px 16px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>🔄 Refresh</button>
-            <button onClick={() => setShowAssignModal(true)} style={{ background: 'linear-gradient(135deg,#6366f1,#0ea5e9)', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 20px', cursor: 'pointer', fontWeight: '700', fontSize: '14px', boxShadow: '0 4px 14px rgba(99,102,241,0.4)' }}>
-              ＋ Assign Task
-            </button>
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>📋 Staff Task Monitor</h1>
+          <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>Checklist · Monitoring · Admin Warnings · GNSI Portal</p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => { fetchStaff(); fetchTasks() }} style={{ ...S.btn('#64748b'), padding: '9px 16px' }}>🔄 Refresh</button>
+          <button onClick={() => { setAssignTarget(null); setShowAssignModal(true) }} style={{ ...S.btn(), background: 'linear-gradient(135deg,#1e3a5f,#6366f1)' }}>＋ Assign Task</button>
         </div>
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 2000, background: '#1e293b', color: '#fff', padding: '14px 20px', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: '14px', fontWeight: '600', animation: 'fadeIn 0.2s ease' }}>
-          {toast}
-        </div>
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 12, marginBottom: 16 }}>
+        {[
+          { label: 'Total Tasks',   value: stats.total,   color: '#6366f1', icon: '📋' },
+          { label: 'Done',          value: stats.done,    color: '#22c55e', icon: '✅' },
+          { label: 'In Progress',   value: stats.inprog,  color: '#0ea5e9', icon: '🔄' },
+          { label: 'Pending',       value: stats.pending, color: '#f59e0b', icon: '⏳' },
+          { label: 'Overdue',       value: stats.overdue, color: '#ef4444', icon: '🚨' },
+          { label: 'High Priority', value: stats.high,    color: '#f97316', icon: '🔴' },
+        ].map(c => (
+          <div key={c.label} style={{ background: 'white', borderRadius: 12, padding: '14px 16px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}>
+            <div style={{ fontSize: 16, marginBottom: 4 }}>{c.icon}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: c.color, lineHeight: 1 }}>{c.value}</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 3, fontWeight: 600 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Admin Alerts */}
+      <AlertBanner staff={staff} tasks={tasks} />
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 16 }}>
+        {tabBtn('checklist',  '✅ Checklist')}
+        {tabBtn('monitoring', '📊 Monitoring')}
+      </div>
+
+      {/* Checklist View */}
+      {activeView === 'checklist' && (
+        <>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+            <input style={{ ...S.inp, maxWidth: 260 }} placeholder="🔍 Search staff…" value={search} onChange={e => setSearch(e.target.value)} />
+            <select style={{ ...S.inp, maxWidth: 180, backgroundColor: 'white' }} value={filterDept} onChange={e => setFilterDept(e.target.value)}>
+              {depts.map(d => <option key={d}>{d}</option>)}
+            </select>
+            <select style={{ ...S.inp, maxWidth: 180, backgroundColor: 'white' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              {['All', 'Pending', 'In Progress', 'Done', 'Overdue'].map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div style={S.card}>
+            {loading
+              ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading…</div>
+              : filteredStaff.length === 0
+              ? <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff match current filters</div>
+              : filteredStaff.map(s => (
+                <StaffChecklistRow
+                  key={s.id}
+                  staffMember={s}
+                  tasks={getStaffTasks(s.name)}
+                  onAssign={sm => { setAssignTarget(sm); setShowAssignModal(true) }}
+                  onStatusChange={handleStatusChange}
+                  onDelete={handleDelete}
+                  onDetail={setDetailTask}
+                  onWarn={handleWarn}
+                />
+              ))
+            }
+          </div>
+        </>
       )}
 
-      <div style={{ padding: '24px 28px' }}>
-        {/* Stat Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '16px', marginBottom: '24px' }}>
-          <StatCard label="Total Tasks" value={stats.total} icon="📋" accent="#6366f1" />
-          <StatCard label="Completed" value={stats.done} icon="✅" accent="#22c55e" sub={`${stats.completionRate}% rate`} />
-          <StatCard label="In Progress" value={stats.inProgress} icon="🔄" accent="#0ea5e9" />
-          <StatCard label="Pending" value={stats.pending} icon="⏳" accent="#f59e0b" />
-          <StatCard label="Overdue" value={stats.overdue} icon="🚨" accent="#ef4444" sub={stats.overdue > 0 ? 'Needs attention' : 'All on track'} />
-          <StatCard label="High Priority" value={stats.high} icon="🔴" accent="#f97316" />
-        </div>
-
-        {/* View Tabs */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          {tabBtn('tasks', 'Task List', '📝')}
-          {tabBtn('monitoring', 'Staff Monitor', '📊')}
-        </div>
-
-        {/* ─── TASK LIST VIEW ─── */}
-        {view === 'tasks' && (
-          <>
-            {/* Filters */}
-            <div style={{ background: '#fff', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '14px' }}>
-                <div>
-                  <label style={lbl}>🔍 Search</label>
-                  <input style={inp} value={search} onChange={e => setSearch(e.target.value)} placeholder="Title, staff, dept..." />
-                </div>
-                <div>
-                  <label style={lbl}>Status</label>
-                  <select style={inp} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-                    <option>All</option>
-                    {STATUSES.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Priority</label>
-                  <select style={inp} value={filterPriority} onChange={e => setFilterPriority(e.target.value)}>
-                    <option>All</option>
-                    {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Staff Member</label>
-                  <select style={inp} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
-                    <option>All</option>
-                    {activeStaff.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Department</label>
-                  <select style={inp} value={filterDept} onChange={e => setFilterDept(e.target.value)}>
-                    {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Table */}
-            <div style={{ background: '#fff', borderRadius: '14px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-              <div style={{ padding: '18px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>Task Assignments</h2>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
-              </div>
-              {loading ? (
-                <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
-                  <div style={{ fontSize: '28px', marginBottom: '8px' }}>⏳</div>
-                  Loading tasks...
-                  <div style={{ fontSize: '12px', marginTop: '8px', color: '#cbd5e1' }}>
-                    Make sure the <code>staff_tasks</code> table exists in Supabase
-                  </div>
-                </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc' }}>
-                        {['Task', 'Assigned To', 'Priority', 'Status', 'Due Date', 'Actions'].map(h => (
-                          <th key={h} style={{ ...th }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredTasks.map(task => (
-                        <TaskRow key={task.id} task={task}
-                          onStatusChange={handleStatusChange}
-                          onDelete={handleDelete}
-                          onViewDetail={setDetailTask}
-                        />
-                      ))}
-                      {filteredTasks.length === 0 && (
-                        <tr><td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
-                          <div style={{ fontSize: '32px', marginBottom: '8px' }}>📭</div>
-                          No tasks found. Assign a new task to get started.
-                        </td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ─── MONITORING VIEW ─── */}
-        {view === 'monitoring' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            {/* Staff Performance */}
-            <div style={{ background: '#fff', borderRadius: '14px', padding: '22px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', gridColumn: '1 / -1' }}>
-              <h2 style={{ margin: '0 0 20px', fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>👥 Staff Performance Overview</h2>
-              {staffMonitor.length === 0
-                ? <div style={{ color: '#94a3b8', textAlign: 'center', padding: '24px' }}>No data yet. Assign tasks to staff members.</div>
-                : staffMonitor.map(s => <StaffBar key={s.name} name={s.name} tasks={s.total} done={s.done} overdue={s.overdue} />)
-              }
-            </div>
-
-            {/* Staff Cards */}
-            {staffMonitor.map(s => {
-              const rate = s.total > 0 ? Math.round((s.done / s.total) * 100) : 0
-              const color = rate >= 80 ? '#22c55e' : rate >= 50 ? '#f59e0b' : '#ef4444'
-              return (
-                <div key={s.name} style={{ background: '#fff', borderRadius: '14px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', borderTop: `4px solid ${color}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                    <div>
-                      <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '15px' }}>{s.name}</div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>{s.total} tasks assigned</div>
-                    </div>
-                    <div style={{ fontSize: '24px', fontWeight: '800', color }}>
-                      {rate}%
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px' }}>
-                    {[
-                      { label: 'Done', value: s.done, color: '#22c55e' },
-                      { label: 'In Prog', value: s.inProgress, color: '#0ea5e9' },
-                      { label: 'Pending', value: s.pending, color: '#f59e0b' },
-                      { label: 'Overdue', value: s.overdue, color: '#ef4444' },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 8px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '20px', fontWeight: '800', color }}>{value}</div>
-                        <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600' }}>{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {s.overdue > 0 && (
-                    <div style={{ marginTop: '10px', padding: '8px 12px', background: '#fef2f2', borderRadius: '8px', fontSize: '12px', color: '#dc2626', fontWeight: '600' }}>
-                      🚨 {s.overdue} overdue task{s.overdue > 1 ? 's' : ''} — immediate attention required
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-
-            {/* Department Summary */}
-            <div style={{ background: '#fff', borderRadius: '14px', padding: '22px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', gridColumn: '1 / -1' }}>
-              <h2 style={{ margin: '0 0 18px', fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>🏢 Department-wise Summary</h2>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc' }}>
-                      {['Department', 'Total', 'Done', 'In Progress', 'Pending', 'Overdue', 'Completion %'].map(h => (
-                        <th key={h} style={{ ...th, fontSize: '12px' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const deptMap = {}
-                      tasksWithOverdue.forEach(t => {
-                        const d = t.department || 'General'
-                        if (!deptMap[d]) deptMap[d] = { total: 0, done: 0, inProgress: 0, pending: 0, overdue: 0 }
-                        deptMap[d].total++
-                        if (t.status === 'Done') deptMap[d].done++
-                        else if (t.status === 'In Progress') deptMap[d].inProgress++
-                        else deptMap[d].pending++
-                        if (t._overdue) deptMap[d].overdue++
-                      })
-                      return Object.entries(deptMap).map(([dept, d]) => {
-                        const rate = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0
-                        return (
-                          <tr key={dept} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={td}><strong>{dept}</strong></td>
-                            <td style={{ ...td, textAlign: 'center' }}>{d.total}</td>
-                            <td style={{ ...td, textAlign: 'center', color: '#22c55e', fontWeight: '700' }}>{d.done}</td>
-                            <td style={{ ...td, textAlign: 'center', color: '#0ea5e9', fontWeight: '700' }}>{d.inProgress}</td>
-                            <td style={{ ...td, textAlign: 'center', color: '#f59e0b', fontWeight: '700' }}>{d.pending}</td>
-                            <td style={{ ...td, textAlign: 'center', color: d.overdue > 0 ? '#ef4444' : '#94a3b8', fontWeight: d.overdue > 0 ? '700' : '400' }}>{d.overdue}</td>
-                            <td style={td}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div style={{ flex: 1, height: '6px', borderRadius: '99px', background: '#e2e8f0' }}>
-                                  <div style={{ height: '100%', width: `${rate}%`, borderRadius: '99px', background: rate >= 80 ? '#22c55e' : rate >= 50 ? '#f59e0b' : '#ef4444' }} />
-                                </div>
-                                <span style={{ fontWeight: '700', color: '#334155', minWidth: '32px' }}>{rate}%</span>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    })()}
-                    {tasksWithOverdue.length === 0 && (
-                      <tr><td colSpan={7} style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>No data available</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Monitoring View */}
+      {activeView === 'monitoring' && (
+        <MonitoringView
+          staff={staff}
+          tasks={tasks}
+          onAssign={sm => { setAssignTarget(sm); setShowAssignModal(true) }}
+          onWarn={handleWarn}
+        />
+      )}
 
       {/* Modals */}
-      {showAssignModal && <AssignModal onClose={() => setShowAssignModal(false)} onSave={handleNewTask} />}
-      {detailTask && <TaskDetailModal task={detailTask} onClose={() => setDetailTask(null)} onStatusChange={handleStatusChange} />}
-
-      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:translateY(0) } }`}</style>
+      {showAssignModal && (
+        <AssignModal
+          staffList={staff}
+          preselected={assignTarget}
+          onClose={() => { setShowAssignModal(false); setAssignTarget(null) }}
+          onSave={handleNewTask}
+        />
+      )}
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          onClose={() => setDetailTask(null)}
+          onStatusChange={handleStatusChange}
+        />
+      )}
     </div>
   )
 }
-
-// ─── Shared styles ────────────────────────────────────────────────────────────
-const inp = { width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', background: '#fff', boxSizing: 'border-box', color: '#1e293b', fontFamily: 'inherit' }
-const lbl = { display: 'block', fontSize: '11px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }
-const th  = { textAlign: 'left', padding: '12px 16px', fontSize: '12px', color: '#64748b', fontWeight: '700', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }
-const td  = { padding: '14px 16px', verticalAlign: 'middle', color: '#334155' }
-const badge = { display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap' }
-const actionBtn = { color: '#fff', border: 'none', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap' }
