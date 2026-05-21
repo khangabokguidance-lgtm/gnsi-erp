@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "./Supabase";
+import { supabase } from "./supabase";
 
 // ─── Shared useCourseData hook ────────────────────────────────
 // Same hook used in Teaching.jsx and Staff.jsx
