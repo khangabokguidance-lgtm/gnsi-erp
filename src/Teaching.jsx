@@ -2004,8 +2004,8 @@ function Teaching({ currentUser }) {
         <p style={{ color:'#64748b', fontSize:'14px', margin:'4px 0 0' }}>Daily logs · Syllabus · Timetable · Reports · Student Scores · HM Dashboard · Admin Monitor · Remediation</p>
       </div>
 
-      {/* Pill Tab Bar */}
-      <div style={{ display:'flex', gap:'4px', padding:'6px', background:'#f1f5f9', borderRadius:'16px', marginBottom:'24px', overflowX:'auto', scrollbarWidth:'none', msOverflowStyle:'none', WebkitOverflowScrolling:'touch' }}>
+      {/* Grid Tab Bar */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:'6px', marginBottom:'24px' }}>
         {TABS.map(t => {
           const active = activeTab===t.key
           const badge  = badges[t.key]
@@ -2013,12 +2013,25 @@ function Teaching({ currentUser }) {
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
-              style={{ display:'flex', alignItems:'center', gap:'6px', padding:'9px 16px', fontWeight:'600', fontSize:'13px', cursor:'pointer', background: active?'#1e3a5f':'transparent', color: active?'white':'#64748b', border:'none', borderRadius:'12px', whiteSpace:'nowrap', transition:'all 0.18s ease', boxShadow: active?'0 2px 10px rgba(30,58,95,0.28)':'none', flexShrink:0 }}
+              style={{
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                gap:'4px', padding:'10px 6px', fontWeight:'600', fontSize:'11px', cursor:'pointer',
+                background: active?'#1e3a5f':'white',
+                color: active?'white':'#64748b',
+                border: active?'2px solid #1e3a5f':'2px solid #e2e8f0',
+                borderRadius:'10px', transition:'all 0.15s ease',
+                boxShadow: active?'0 2px 10px rgba(30,58,95,0.25)':'none',
+                position:'relative', minHeight:'58px',
+              }}
             >
-              <span style={{ fontSize:'15px', lineHeight:1 }}>{t.icon}</span>
-              <span>{t.label}</span>
+              <span style={{ fontSize:'18px', lineHeight:1 }}>{t.icon}</span>
+              <span style={{ textAlign:'center', lineHeight:1.2 }}>{t.label}</span>
               {badge && (
-                <span style={{ display:'inline-flex', alignItems:'center', padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', lineHeight:1.4, background: active?'rgba(255,255,255,0.22)':'#1e3a5f', color:'white', marginLeft:'2px' }}>
+                <span style={{
+                  position:'absolute', top:'4px', right:'4px',
+                  padding:'1px 5px', borderRadius:'999px', fontSize:'9px', fontWeight:'700',
+                  background: active?'rgba(255,255,255,0.3)':'#1e3a5f', color:'white',
+                }}>
                   {badge}
                 </span>
               )}
