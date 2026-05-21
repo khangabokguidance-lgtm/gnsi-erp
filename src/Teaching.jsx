@@ -493,109 +493,300 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
   )
 }
 
-// ─── Tab: Calendar ────────────────────────────────────────────────────────────
+// ─── Tab: Calendar (Advanced) ─────────────────────────────────────────────────
 
 function TabCalendar({ logs, missed }) {
   const [month, setMonth]             = useState(currentYearMonth())
   const [selectedDay, setSelectedDay] = useState(null)
+  const [viewMode, setViewMode]       = useState('month') // 'month' | 'week'
+  const [subjectFilter, setSubjectFilter] = useState('All')
+  const [teacherFilter, setTeacherFilter] = useState('All')
+
   const [year, mon] = month.split('-').map(Number)
   const firstDay    = new Date(year, mon-1, 1).getDay()
   const daysInMonth = new Date(year, mon, 0).getDate()
   const blanks      = firstDay===0 ? 6 : firstDay-1
 
+  const allSubjects = [...new Set(logs.map(l => l.subject_name).filter(Boolean))]
+  const allTeachers = [...new Set(logs.map(l => l.teacher_name).filter(Boolean))]
+
+  const filteredLogs = useMemo(() => logs.filter(l =>
+    (subjectFilter==='All' || l.subject_name===subjectFilter) &&
+    (teacherFilter==='All' || l.teacher_name===teacherFilter)
+  ), [logs, subjectFilter, teacherFilter])
+
   const logsByDate = useMemo(() => {
     const map = {}
-    logs.forEach(l => { if (l.teaching_date?.startsWith(month)) { const d=parseInt(l.teaching_date.split('-')[2]); if(!map[d])map[d]=[]; map[d].push(l) } })
+    filteredLogs.forEach(l => {
+      if (l.teaching_date?.startsWith(month)) {
+        const d=parseInt(l.teaching_date.split('-')[2])
+        if(!map[d]) map[d]=[]
+        map[d].push(l)
+      }
+    })
     return map
-  }, [logs, month])
+  }, [filteredLogs, month])
 
   const missedByDate = useMemo(() => {
     const map = {}
-    missed.forEach(m => { if (m.missed_date?.startsWith(month)) { const d=parseInt(m.missed_date.split('-')[2]); if(!map[d])map[d]=[]; map[d].push(m) } })
+    missed.forEach(m => {
+      if (m.missed_date?.startsWith(month)) {
+        const d=parseInt(m.missed_date.split('-')[2])
+        if(!map[d]) map[d]=[]
+        map[d].push(m)
+      }
+    })
     return map
   }, [missed, month])
 
-  const selectedLogs   = selectedDay ? (logsByDate[selectedDay]   || []) : []
-  const selectedMissed = selectedDay ? (missedByDate[selectedDay] || []) : []
+  // Week view: current week days
+  const todayDate = new Date()
+  const weekDays  = useMemo(() => {
+    const start = new Date(todayDate)
+    start.setDate(start.getDate() - (start.getDay()===0?6:start.getDay()-1))
+    return Array.from({length:6}, (_,i) => {
+      const d = new Date(start); d.setDate(start.getDate()+i)
+      return d.toISOString().split('T')[0]
+    })
+  }, []) // eslint-disable-line
+
+  const selectedDateStr = selectedDay ? `${year}-${String(mon).padStart(2,'0')}-${String(selectedDay).padStart(2,'0')}` : null
+  const selectedLogs    = selectedDay ? (logsByDate[selectedDay] || []) : []
+  const selectedMissed  = selectedDay ? (missedByDate[selectedDay] || []) : []
+
+  // Month stats
+  const monthTotal   = Object.values(logsByDate).flat().length
+  const monthMissed  = Object.values(missedByDate).flat().length
+  const activeDays   = Object.keys(logsByDate).length
+  const subjectCount = new Set(Object.values(logsByDate).flat().map(l=>l.subject_name)).size
+
+  const prevMonth = () => {
+    const d = new Date(year, mon-2, 1)
+    setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)
+    setSelectedDay(null)
+  }
+  const nextMonth = () => {
+    const d = new Date(year, mon, 1)
+    setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)
+    setSelectedDay(null)
+  }
+
+  const SUBJECT_COLORS = ['#1e3a5f','#7c3aed','#0891b2','#16a34a','#ca8a04','#dc2626','#c026d3','#0d9488']
+  const subjectColorMap = useMemo(() => {
+    const map = {}; allSubjects.forEach((s,i) => { map[s]=SUBJECT_COLORS[i%SUBJECT_COLORS.length] })
+    return map
+  }, [allSubjects]) // eslint-disable-line
 
   return (
-    <div style={S.card}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
-        <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📅 Calendar View</h2>
-        <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelectedDay(null) }} style={{ padding:'8px 12px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px' }} />
-      </div>
-      <div style={{ display:'flex', gap:'16px', marginBottom:'16px', fontSize:'12px' }}>
-        {[['#dcfce7','#16a34a','Has logs'],['#fee2e2','#dc2626','Missed'],['#f1f5f9','#94a3b8','No activity']].map(([bg,cl,lb]) => (
-          <span key={lb} style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-            <span style={{ width:'14px', height:'14px', borderRadius:'4px', background:bg, border:`1px solid ${cl}`, display:'inline-block' }} />
-            <span style={{ color:'#64748b' }}>{lb}</span>
-          </span>
+    <>
+      {/* Stats row */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'14px', marginBottom:'20px' }}>
+        {[
+          { label:'Logs this month', value:monthTotal,  color:'#1e3a5f', bg:'#eff6ff', icon:'📋' },
+          { label:'Active days',     value:activeDays,  color:'#16a34a', bg:'#dcfce7', icon:'📅' },
+          { label:'Subjects taught', value:subjectCount,color:'#7c3aed', bg:'#f3e8ff', icon:'📚' },
+          { label:'Missed classes',  value:monthMissed, color:'#dc2626', bg:'#fee2e2', icon:'❌' },
+        ].map(c => (
+          <div key={c.label} style={S.statCard(c.color, c.bg)}>
+            <div style={{ fontSize:'18px', marginBottom:'4px' }}>{c.icon}</div>
+            <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:'24px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.value}</h2>
+          </div>
         ))}
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'4px', marginBottom:'4px' }}>
-        {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => <div key={d} style={{ textAlign:'center', fontSize:'12px', fontWeight:'700', color:'#64748b', padding:'4px' }}>{d}</div>)}
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'4px' }}>
-        {Array.from({ length: blanks }).map((_,i) => <div key={`b${i}`} />)}
-        {Array.from({ length: daysInMonth }).map((_,i) => {
-          const day=i+1, hasLogs=!!logsByDate[day]?.length, hasMissed=!!missedByDate[day]?.length, isSelected=selectedDay===day
-          const bg    = isSelected?'#1e3a5f':hasLogs?'#dcfce7':hasMissed?'#fee2e2':'#f8fafc'
-          const color = isSelected?'white':hasLogs?'#16a34a':hasMissed?'#dc2626':'#94a3b8'
-          return (
-            <div key={day} onClick={() => setSelectedDay(day===selectedDay?null:day)} style={{ background:bg, border:`1px solid ${isSelected?'#1e3a5f':hasLogs?'#bbf7d0':hasMissed?'#fecaca':'#e2e8f0'}`, borderRadius:'8px', padding:'10px 4px', textAlign:'center', cursor:'pointer' }}>
-              <div style={{ fontSize:'14px', fontWeight:'700', color }}>{day}</div>
-              {hasLogs   && <div style={{ fontSize:'10px', color: isSelected?'#bbf7d0':'#16a34a' }}>{logsByDate[day].length} log{logsByDate[day].length>1?'s':''}</div>}
-              {hasMissed && <div style={{ fontSize:'10px', color: isSelected?'#fecaca':'#dc2626' }}>missed</div>}
-            </div>
-          )
-        })}
-      </div>
-      {selectedDay && (
-        <div style={{ marginTop:'20px', borderTop:'1px solid #e2e8f0', paddingTop:'20px' }}>
-          <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>{selectedDay} {new Date(year,mon-1).toLocaleString('default',{month:'long'})} {year}</h3>
-          {selectedLogs.length===0 && selectedMissed.length===0 && <p style={{ color:'#94a3b8', fontSize:'14px' }}>No activity recorded.</p>}
-          {selectedLogs.map(l => (
-            <div key={l.id} style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', padding:'12px 16px', marginBottom:'10px' }}>
-              <div style={{ fontWeight:'700', color:'#15803d', fontSize:'14px' }}>{l.subject_name} — {l.course}/{l.subtype}/{l.class_name}</div>
-              <div style={{ fontSize:'13px', color:'#64748b', marginTop:'4px' }}>👨‍🏫 {l.teacher_name||'-'} | 📖 {l.topic_taught}</div>
-              {l.homework && <div style={{ fontSize:'13px', color:'#64748b', marginTop:'2px' }}>📝 HW: {l.homework}</div>}
-            </div>
-          ))}
-          {selectedMissed.map(m => (
-            <div key={m.id} style={{ background:'#fff1f2', border:'1px solid #fecaca', borderRadius:'8px', padding:'12px 16px', marginBottom:'10px' }}>
-              <div style={{ fontWeight:'700', color:'#dc2626', fontSize:'14px' }}>❌ Missed — {m.subject_name} ({m.course}/{m.subtype})</div>
-              <div style={{ fontSize:'13px', color:'#64748b', marginTop:'4px' }}>Reason: {m.reason} {m.remarks?`| ${m.remarks}`:''}</div>
-            </div>
+
+      <div style={S.card}>
+        {/* Header controls */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+            <button onClick={prevMonth} style={S.btnSm('#64748b')}>◀</button>
+            <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0, minWidth:'160px', textAlign:'center' }}>
+              {new Date(year,mon-1).toLocaleString('default',{month:'long'})} {year}
+            </h2>
+            <button onClick={nextMonth} style={S.btnSm('#64748b')}>▶</button>
+            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelectedDay(null) }} style={{ padding:'6px 10px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'13px' }} />
+          </div>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:'12px', padding:'6px 10px' }}>
+              <option value="All">All Subjects</option>
+              {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={teacherFilter} onChange={e => setTeacherFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:'12px', padding:'6px 10px' }}>
+              <option value="All">All Teachers</option>
+              {allTeachers.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <button onClick={() => setViewMode('month')} style={{ ...S.btnSm(viewMode==='month'?'#1e3a5f':'#e2e8f0'), color:viewMode==='month'?'white':'#374151' }}>Month</button>
+            <button onClick={() => setViewMode('week')}  style={{ ...S.btnSm(viewMode==='week'?'#1e3a5f':'#e2e8f0'),  color:viewMode==='week'?'white':'#374151' }}>This Week</button>
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div style={{ display:'flex', gap:'12px', marginBottom:'14px', flexWrap:'wrap', fontSize:'11px' }}>
+          {[['#dcfce7','#16a34a','Has logs'],['#fee2e2','#dc2626','Missed'],['#f0f9ff','#0891b2','Today'],['#f8fafc','#94a3b8','No activity']].map(([bg,cl,lb]) => (
+            <span key={lb} style={{ display:'flex', alignItems:'center', gap:'4px' }}>
+              <span style={{ width:'12px', height:'12px', borderRadius:'3px', background:bg, border:`1px solid ${cl}`, display:'inline-block' }} />
+              <span style={{ color:'#64748b' }}>{lb}</span>
+            </span>
           ))}
         </div>
-      )}
-    </div>
+
+        {/* Month View */}
+        {viewMode==='month' && (
+          <>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'3px', marginBottom:'3px' }}>
+              {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                <div key={d} style={{ textAlign:'center', fontSize:'11px', fontWeight:'700', color:'#94a3b8', padding:'4px' }}>{d}</div>
+              ))}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'3px' }}>
+              {Array.from({ length: blanks }).map((_,i) => <div key={`b${i}`} />)}
+              {Array.from({ length: daysInMonth }).map((_,i) => {
+                const day       = i+1
+                const dateStr   = `${year}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+                const isToday   = dateStr===today()
+                const hasLogs   = !!logsByDate[day]?.length
+                const hasMissed = !!missedByDate[day]?.length
+                const isSelected= selectedDay===day
+                const bg    = isSelected?'#1e3a5f':isToday?'#e0f2fe':hasLogs?'#dcfce7':hasMissed?'#fee2e2':'#f8fafc'
+                const color = isSelected?'white':isToday?'#0891b2':hasLogs?'#16a34a':hasMissed?'#dc2626':'#94a3b8'
+                const dayLogs = logsByDate[day]||[]
+                return (
+                  <div key={day} onClick={() => setSelectedDay(day===selectedDay?null:day)}
+                    style={{ background:bg, border:`1px solid ${isSelected?'#1e3a5f':isToday?'#7dd3fc':hasLogs?'#bbf7d0':hasMissed?'#fecaca':'#e2e8f0'}`, borderRadius:'8px', padding:'6px 4px', textAlign:'center', cursor:'pointer', minHeight:'64px' }}>
+                    <div style={{ fontSize:'13px', fontWeight:'700', color }}>{day}</div>
+                    {/* Subject color dots */}
+                    {hasLogs && (
+                      <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', gap:'2px', marginTop:'4px' }}>
+                        {dayLogs.slice(0,4).map((l,j) => (
+                          <span key={j} title={l.subject_name} style={{ width:'7px', height:'7px', borderRadius:'50%', background: isSelected?'rgba(255,255,255,0.7)':subjectColorMap[l.subject_name]||'#94a3b8', display:'inline-block' }} />
+                        ))}
+                        {dayLogs.length>4 && <span style={{ fontSize:'9px', color: isSelected?'#cbd5e1':color }}>+{dayLogs.length-4}</span>}
+                      </div>
+                    )}
+                    {hasMissed && !hasLogs && <div style={{ fontSize:'9px', color: isSelected?'#fecaca':'#dc2626', marginTop:'2px' }}>missed</div>}
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Week View */}
+        {viewMode==='week' && (
+          <div style={{ overflowX:'auto' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:'8px', minWidth:'600px' }}>
+              {weekDays.map(dateStr => {
+                const dayNum = parseInt(dateStr.split('-')[2])
+                const isThisMonth = dateStr.startsWith(month)
+                const dayLogs = isThisMonth ? (logsByDate[dayNum]||[]) : filteredLogs.filter(l => l.teaching_date===dateStr)
+                const isToday = dateStr===today()
+                return (
+                  <div key={dateStr} style={{ border:`2px solid ${isToday?'#1e3a5f':'#e2e8f0'}`, borderRadius:'10px', overflow:'hidden' }}>
+                    <div style={{ padding:'8px 10px', background: isToday?'#1e3a5f':'#f8fafc', textAlign:'center' }}>
+                      <div style={{ fontSize:'11px', fontWeight:'600', color: isToday?'#93c5fd':'#94a3b8' }}>{new Date(dateStr).toLocaleString('default',{weekday:'short'})}</div>
+                      <div style={{ fontSize:'16px', fontWeight:'800', color: isToday?'white':'#1e293b' }}>{dayNum}</div>
+                    </div>
+                    <div style={{ padding:'6px', minHeight:'80px' }}>
+                      {dayLogs.length===0 && <div style={{ textAlign:'center', color:'#e2e8f0', fontSize:'11px', paddingTop:'8px' }}>—</div>}
+                      {dayLogs.map((l,j) => (
+                        <div key={j} style={{ marginBottom:'4px', padding:'4px 6px', borderRadius:'5px', background: (subjectColorMap[l.subject_name]||'#1e3a5f')+'18', borderLeft:`3px solid ${subjectColorMap[l.subject_name]||'#1e3a5f'}` }}>
+                          <div style={{ fontSize:'10px', fontWeight:'700', color: subjectColorMap[l.subject_name]||'#1e3a5f' }}>{l.subject_name}</div>
+                          <div style={{ fontSize:'9px', color:'#64748b' }}>{l.teacher_name||'-'}</div>
+                          <div style={{ fontSize:'9px', color:'#94a3b8', fontStyle:'italic' }}>{l.topic_taught?.slice(0,20)}{l.topic_taught?.length>20?'…':''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Selected day detail */}
+        {selectedDay && viewMode==='month' && (
+          <div style={{ marginTop:'20px', borderTop:'1px solid #e2e8f0', paddingTop:'20px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
+              <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>
+                {selectedDay} {new Date(year,mon-1).toLocaleString('default',{month:'long'})} {year}
+              </h3>
+              <span style={{ fontSize:'13px', color:'#64748b' }}>{selectedLogs.length} log{selectedLogs.length!==1?'s':''}</span>
+            </div>
+            {selectedLogs.length===0 && selectedMissed.length===0 && <p style={{ color:'#94a3b8', fontSize:'14px' }}>No activity recorded.</p>}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+              {selectedLogs.map(l => (
+                <div key={l.id} style={{ background:'#f0fdf4', border:`1px solid ${subjectColorMap[l.subject_name]||'#bbf7d0'}40`, borderLeft:`4px solid ${subjectColorMap[l.subject_name]||'#16a34a'}`, borderRadius:'8px', padding:'12px 14px' }}>
+                  <div style={{ fontWeight:'700', color:'#15803d', fontSize:'13px' }}>{l.subject_name}</div>
+                  <div style={{ fontSize:'12px', color:'#374151', marginTop:'3px', fontStyle:'italic' }}>{l.topic_taught}</div>
+                  <div style={{ fontSize:'11px', color:'#64748b', marginTop:'4px' }}>👨‍🏫 {l.teacher_name||'-'} · {l.subtype||l.course} {l.period_number?`· P${l.period_number}`:''}</div>
+                  {l.classwork && <div style={{ fontSize:'11px', color:'#64748b', marginTop:'3px' }}>📝 {l.classwork?.slice(0,60)}{l.classwork?.length>60?'…':''}</div>}
+                  {l.homework  && <div style={{ fontSize:'11px', color:'#7c3aed', marginTop:'2px' }}>📚 HW: {l.homework?.slice(0,50)}{l.homework?.length>50?'…':''}</div>}
+                  {l.needs_doubt_session && <div style={{ fontSize:'11px', color:'#b45309', marginTop:'4px', fontWeight:'700' }}>🔁 Doubt session needed</div>}
+                </div>
+              ))}
+            </div>
+            {selectedMissed.map(m => (
+              <div key={m.id} style={{ background:'#fff1f2', border:'1px solid #fecaca', borderLeft:'4px solid #dc2626', borderRadius:'8px', padding:'12px 14px', marginTop:'8px' }}>
+                <div style={{ fontWeight:'700', color:'#dc2626', fontSize:'13px' }}>❌ Missed — {m.subject_name}</div>
+                <div style={{ fontSize:'12px', color:'#64748b', marginTop:'3px' }}>{m.course}/{m.subtype} · Reason: {m.reason}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
-// ─── Tab: Syllabus ────────────────────────────────────────────────────────────
+// ─── Tab: Syllabus (Advanced) ─────────────────────────────────────────────────
 
-function TabSyllabus({ logs, courseData }) {
-  const [syllabus, setSyllabus] = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [form, setForm]         = useState({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'' })
-  const [saving, setSaving]     = useState(false)
-  const [showForm, setShowForm] = useState(false)
-  const { subtypesFor, classesFor } = courseData
+/*
+ * Uses: teaching_syllabus (existing) + syllabus_topics (new optional table)
+ * syllabus_topics: id, syllabus_id, topic_name, expected_date, order_num, created_at
+ * Falls back gracefully if syllabus_topics doesn't exist.
+ */
+
+function TabSyllabus({ logs, courseData, monthlySyllabus=[] }) {
+  const [syllabus, setSyllabus]       = useState([])
+  const [topics, setTopics]           = useState({})       // { syllabus_id: [topics] }
+  const [loading, setLoading]         = useState(true)
+  const [form, setForm]               = useState({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'', expected_end_date:'' })
+  const [saving, setSaving]           = useState(false)
+  const [showForm, setShowForm]       = useState(false)
+  const [expandedId, setExpandedId]   = useState(null)
+  const [topicForm, setTopicForm]     = useState({ name:'', expected_date:'' })
+  const [addingTopicTo, setAddingTopicTo] = useState(null)
+  const [filterBatch, setFilterBatch] = useState('All')
+  const [filterSubject, setFilterSubject] = useState('All')
+  const [viewMode, setViewMode]       = useState('cards') // 'cards' | 'pace'
+  const { subtypesFor, classesFor }   = courseData
 
   const fetchSyllabus = async () => {
     setLoading(true)
     const { data } = await supabase.from('teaching_syllabus').select('*').order('course')
     if (data) setSyllabus(data)
+    // Try to fetch topic breakdown (graceful fail)
+    try {
+      const { data: td } = await supabase.from('syllabus_topics').select('*').order('order_num')
+      if (td) {
+        const map = {}
+        td.forEach(t => { if(!map[t.syllabus_id]) map[t.syllabus_id]=[]; map[t.syllabus_id].push(t) })
+        setTopics(map)
+      }
+    } catch (_) {}
     setLoading(false)
   }
   useEffect(() => { fetchSyllabus() }, [])
 
   const handleSave = async (e) => {
     e.preventDefault(); setSaving(true)
-    const { error } = await supabase.from('teaching_syllabus').upsert([{ course:form.course, subtype:form.subtype||null, class_name:form.class_name||null, subject_name:form.subject_name, total_topics:parseInt(form.total_topics) }], { onConflict:'course,subtype,class_name,subject_name' })
+    const { error } = await supabase.from('teaching_syllabus').upsert([{
+      course: form.course, subtype: form.subtype||null, class_name: form.class_name||null,
+      subject_name: form.subject_name, total_topics: parseInt(form.total_topics),
+      expected_end_date: form.expected_end_date||null,
+    }], { onConflict:'course,subtype,class_name,subject_name' })
     if (error) alert('Error: ' + error.message)
-    else { setForm({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'' }); setShowForm(false); fetchSyllabus() }
+    else { setForm({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'', expected_end_date:'' }); setShowForm(false); fetchSyllabus() }
     setSaving(false)
   }
 
@@ -604,78 +795,336 @@ function TabSyllabus({ logs, courseData }) {
     await supabase.from('teaching_syllabus').delete().eq('id', id); fetchSyllabus()
   }
 
-  const getCompleted = (row) => logs.filter(l => l.course===row.course && l.subtype===row.subtype && (!row.class_name||l.class_name===row.class_name) && l.subject_name===row.subject_name).length
+  const handleAddTopic = async (syllabusId) => {
+    if (!topicForm.name.trim()) return
+    const existing = topics[syllabusId]||[]
+    const { error } = await supabase.from('syllabus_topics').insert([{
+      syllabus_id: syllabusId, topic_name: topicForm.name, expected_date: topicForm.expected_date||null, order_num: existing.length+1
+    }])
+    if (error) alert('Error: ' + error.message)
+    else { setTopicForm({ name:'', expected_date:'' }); setAddingTopicTo(null); fetchSyllabus() }
+  }
+
+  const handleMarkTopic = async (topic, done) => {
+    try {
+      await supabase.from('syllabus_topics').update({ completed: done, completed_at: done?new Date().toISOString():null }).eq('id', topic.id)
+      fetchSyllabus()
+    } catch(_) {}
+  }
+
+  const getLogsFor = (row) => logs.filter(l => l.course===row.course && l.subtype===row.subtype && (!row.class_name||l.class_name===row.class_name) && l.subject_name===row.subject_name)
+  const getCompleted = (row) => getLogsFor(row).length
+
+  // Pace calculation
+  const getPace = (row) => {
+    const batchLogs = getLogsFor(row).sort((a,b) => a.teaching_date?.localeCompare(b.teaching_date))
+    if (batchLogs.length < 2) return null
+    const first  = new Date(batchLogs[0].teaching_date)
+    const last   = new Date(batchLogs[batchLogs.length-1].teaching_date)
+    const days   = Math.max(1, (last-first)/(1000*60*60*24))
+    const rate   = batchLogs.length / days // topics per day
+    const remaining = row.total_topics - batchLogs.length
+    if (remaining<=0) return { daysLeft:0, onTrack:true, projectedEnd: last.toISOString().split('T')[0] }
+    const projDays = Math.ceil(remaining / rate)
+    const projDate = new Date(); projDate.setDate(projDate.getDate()+projDays)
+    const projEnd  = projDate.toISOString().split('T')[0]
+    const onTrack  = !row.expected_end_date || projEnd<=row.expected_end_date
+    return { daysLeft: projDays, onTrack, projectedEnd: projEnd, rate: rate.toFixed(2) }
+  }
+
+  // Monthly syllabus match for each row
+  const getMonthlySyllabusMatch = (row) => monthlySyllabus.filter(ms =>
+    ms.admit_type===row.subtype && ms.subject_name===row.subject_name
+  )
+
+  const allBatches  = [...new Set(syllabus.map(s => s.subtype).filter(Boolean))]
+  const allSubjects = [...new Set(syllabus.map(s => s.subject_name).filter(Boolean))]
+
+  const filtered = syllabus.filter(row =>
+    (filterBatch==='All'   || row.subtype===filterBatch) &&
+    (filterSubject==='All' || row.subject_name===filterSubject)
+  )
+
   const subtypes = form.course ? subtypesFor(form.course) : []
   const classes  = (form.course && form.subtype) ? classesFor(form.course, form.subtype) : []
 
+  // Overall stats
+  const totalDefined   = syllabus.length
+  const completed100   = syllabus.filter(r => { const d=getCompleted(r); return r.total_topics>0&&d>=r.total_topics }).length
+  const avgPct         = syllabus.length>0 ? Math.round(syllabus.reduce((a,r) => a+Math.min(100,Math.round((getCompleted(r)/Math.max(r.total_topics,1))*100)),0)/syllabus.length) : 0
+  const offTrack       = syllabus.filter(r => { const p=getPace(r); return p&&!p.onTrack }).length
+
   return (
-    <div style={S.card}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
-        <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📊 Syllabus Tracker</h2>
-        <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Syllabus'}</button>
+    <>
+      {/* Stats */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'14px', marginBottom:'20px' }}>
+        {[
+          { label:'Subjects defined', value:totalDefined,  color:'#1e3a5f', bg:'#eff6ff', icon:'📚' },
+          { label:'Completed',        value:completed100,  color:'#16a34a', bg:'#dcfce7', icon:'✅' },
+          { label:'Avg coverage',     value:`${avgPct}%`,  color:scoreColor(avgPct), bg:scoreBg(avgPct), icon:'📊' },
+          { label:'Off track',        value:offTrack,      color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
+        ].map(c => (
+          <div key={c.label} style={S.statCard(c.color, c.bg)}>
+            <div style={{ fontSize:'20px', marginBottom:'4px' }}>{c.icon}</div>
+            <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:'24px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.value}</h2>
+          </div>
+        ))}
       </div>
-      {showForm && (
-        <form onSubmit={handleSave} style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr auto', gap:'12px', alignItems:'flex-end', marginBottom:'24px', padding:'16px', background:'#f8fafc', borderRadius:'8px' }}>
-          <div><label style={S.label}>Course</label><select value={form.course} onChange={e => setForm(f => ({ ...f, course:e.target.value, subtype:'', class_name:'' }))} required style={S.select}><option value="">Select</option>{courseData.courses.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label style={S.label}>Subtype</label><select value={form.subtype} onChange={e => setForm(f => ({ ...f, subtype:e.target.value, class_name:'' }))} style={S.select}><option value="">All</option>{subtypes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div><label style={S.label}>Class</label>{classes.length>0?<select value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name:e.target.value }))} style={S.select}><option value="">All Classes</option>{classes.map(c => <option key={c} value={c}>{c}</option>)}</select>:<input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name:e.target.value }))} placeholder="Optional" style={S.input} />}</div>
-          <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name:e.target.value }))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div><label style={S.label}>Total Topics</label><input type="number" min="1" value={form.total_topics} onChange={e => setForm(f => ({ ...f, total_topics:e.target.value }))} required style={S.input} placeholder="e.g. 40" /></div>
-          <button type="submit" disabled={saving} style={{ ...S.btn('#16a34a', saving), whiteSpace:'nowrap' }}>{saving?'⏳':'✅ Save'}</button>
-        </form>
-      )}
-      {loading ? <div style={{ textAlign:'center', padding:'32px', color:'#64748b' }}>⏳ Loading...</div> : (
+
+      {/* Controls */}
+      <div style={S.card}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?'16px':0, flexWrap:'wrap', gap:'10px' }}>
+          <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📊 Syllabus Tracker</h2>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            <select value={filterBatch}   onChange={e => setFilterBatch(e.target.value)}   style={{ ...S.select, width:'auto', fontSize:'12px' }}>
+              <option value="All">All Batches</option>
+              {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', fontSize:'12px' }}>
+              <option value="All">All Subjects</option>
+              {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button onClick={() => setViewMode('cards')} style={{ ...S.btnSm(viewMode==='cards'?'#1e3a5f':'#e2e8f0'), color:viewMode==='cards'?'white':'#374151' }}>📋 Cards</button>
+            <button onClick={() => setViewMode('pace')}  style={{ ...S.btnSm(viewMode==='pace'?'#7c3aed':'#e2e8f0'), color:viewMode==='pace'?'white':'#374151' }}>📈 Pace</button>
+            <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Syllabus'}</button>
+          </div>
+        </div>
+
+        {showForm && (
+          <form onSubmit={handleSave} style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'12px', padding:'16px', background:'#f8fafc', borderRadius:'8px', marginTop:'16px' }}>
+            <div><label style={S.label}>Course</label><select value={form.course} onChange={e => setForm(f=>({...f,course:e.target.value,subtype:'',class_name:''}))} required style={S.select}><option value="">Select</option>{courseData.courses.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+            <div><label style={S.label}>Batch/Subtype</label><select value={form.subtype} onChange={e => setForm(f=>({...f,subtype:e.target.value,class_name:''}))} style={S.select}><option value="">All</option>{subtypes.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label style={S.label}>Class</label>{classes.length>0?<select value={form.class_name} onChange={e=>setForm(f=>({...f,class_name:e.target.value}))} style={S.select}><option value="">All</option>{classes.map(c=><option key={c} value={c}>{c}</option>)}</select>:<input value={form.class_name} onChange={e=>setForm(f=>({...f,class_name:e.target.value}))} placeholder="Optional" style={S.input}/>}</div>
+            <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e=>setForm(f=>({...f,subject_name:e.target.value}))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label style={S.label}>Total Topics</label><input type="number" min="1" value={form.total_topics} onChange={e=>setForm(f=>({...f,total_topics:e.target.value}))} required style={S.input} placeholder="e.g. 40"/></div>
+            <div><label style={S.label}>Expected End Date</label><input type="date" value={form.expected_end_date} onChange={e=>setForm(f=>({...f,expected_end_date:e.target.value}))} style={S.input}/></div>
+            <div style={{ gridColumn:'1/-1' }}><button type="submit" disabled={saving} style={S.btn('#16a34a',saving)}>{saving?'⏳ Saving...':'✅ Save Syllabus'}</button></div>
+          </form>
+        )}
+      </div>
+
+      {loading && <div style={{ textAlign:'center', padding:'32px', color:'#64748b' }}>⏳ Loading...</div>}
+
+      {/* Cards View */}
+      {!loading && viewMode==='cards' && (
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          {syllabus.length===0 && <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>No syllabus defined yet.</div>}
-          {syllabus.map(row => {
-            const done=getCompleted(row), p=row.total_topics>0?Math.min(100,Math.round((done/row.total_topics)*100)):0, color=scoreColor(p)
+          {filtered.length===0 && <div style={{ ...S.card, textAlign:'center', padding:'32px', color:'#94a3b8' }}>No syllabus defined. Add one above.</div>}
+          {filtered.map(row => {
+            const done      = getCompleted(row)
+            const p         = row.total_topics>0 ? Math.min(100,Math.round((done/row.total_topics)*100)) : 0
+            const color     = scoreColor(p)
+            const pace      = getPace(row)
+            const rowTopics = topics[row.id]||[]
+            const msMatches = getMonthlySyllabusMatch(row)
+            const isExpanded= expandedId===row.id
+
             return (
-              <div key={row.id} style={{ border:'1px solid #e2e8f0', borderRadius:'10px', padding:'16px' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
-                  <div>
-                    <span style={{ fontWeight:'700', color:'#1e293b', fontSize:'15px' }}>{row.subject_name}</span>
-                    <span style={{ marginLeft:'10px', fontSize:'12px', color:'#64748b' }}>{row.course}/{row.subtype||'All'}/{row.class_name||'All Classes'}</span>
+              <div key={row.id} style={{ ...S.card, marginBottom:0, border: p>=100?'1px solid #bbf7d0':pace&&!pace.onTrack?'1px solid #fecaca':'1px solid #e2e8f0' }}>
+                {/* Header */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', flexWrap:'wrap', gap:'8px' }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+                      <span style={{ fontWeight:'700', color:'#1e293b', fontSize:'15px' }}>{row.subject_name}</span>
+                      <span style={S.badge('#1e3a5f','#eff6ff')}>{row.subtype||'All'}</span>
+                      {row.class_name && <span style={S.badge('#64748b','#f1f5f9')}>{row.class_name}</span>}
+                      {p>=100 && <span style={S.badge('#16a34a','#dcfce7')}>✅ Complete</span>}
+                      {pace&&!pace.onTrack && <span style={S.badge('#dc2626','#fee2e2')}>⚠️ Off Track</span>}
+                    </div>
+                    <div style={{ fontSize:'12px', color:'#64748b', marginTop:'4px' }}>{row.course} {row.expected_end_date?`· Target: ${fmtDate(row.expected_end_date)}`:''}</div>
                   </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-                    <span style={{ fontSize:'13px', fontWeight:'700', color }}>{done}/{row.total_topics} topics</span>
-                    <span style={{ fontSize:'18px', fontWeight:'800', color }}>{p}%</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                    <div style={{ textAlign:'right' }}>
+                      <span style={{ fontSize:'22px', fontWeight:'800', color }}>{p}%</span>
+                      <div style={{ fontSize:'11px', color:'#94a3b8' }}>{done}/{row.total_topics} topics</div>
+                    </div>
+                    <button onClick={() => setExpandedId(isExpanded?null:row.id)} style={S.btnSm('#64748b')}>{isExpanded?'▲':'▼'}</button>
                     <button onClick={() => handleDelete(row.id)} style={S.btnSm('#dc2626')}>🗑</button>
                   </div>
                 </div>
-                <div style={{ height:'10px', background:'#e2e8f0', borderRadius:'5px', overflow:'hidden' }}>
-                  <div style={{ width:`${p}%`, height:'100%', background:color, borderRadius:'5px', transition:'width 0.4s' }} />
+
+                {/* Progress bar */}
+                <div style={{ height:'10px', background:'#e2e8f0', borderRadius:'5px', overflow:'hidden', marginBottom:'8px' }}>
+                  <div style={{ width:`${p}%`, height:'100%', background:color, borderRadius:'5px', transition:'width 0.5s' }} />
                 </div>
-                {p>=100 && <div style={{ fontSize:'12px', color:'#16a34a', marginTop:'6px', fontWeight:'600' }}>✅ Syllabus complete!</div>}
-                {p>0&&p<100 && <div style={{ fontSize:'12px', color:'#64748b', marginTop:'6px' }}>{row.total_topics-done} topics remaining</div>}
+
+                {/* Pace info */}
+                {pace && (
+                  <div style={{ display:'flex', gap:'16px', fontSize:'12px', color:'#64748b', marginBottom:'8px', flexWrap:'wrap' }}>
+                    <span>📈 {pace.rate} topics/day</span>
+                    {pace.daysLeft>0 && <span>⏱ ~{pace.daysLeft} days to complete</span>}
+                    <span style={{ color: pace.onTrack?'#16a34a':'#dc2626', fontWeight:'600' }}>
+                      {pace.onTrack?'✅ On track':'⚠️ Behind schedule'} · Projected end: {fmtDate(pace.projectedEnd)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Monthly syllabus matches */}
+                {msMatches.length>0 && (
+                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'8px' }}>
+                    {msMatches.map(ms => (
+                      <span key={ms.id} style={S.badge(ms.completed?'#16a34a':'#b45309', ms.completed?'#dcfce7':'#fef9c3')}>
+                        📆 {ms.topic?.slice(0,20)} {ms.completed?'✅':'⏳'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Expanded: topic list */}
+                {isExpanded && (
+                  <div style={{ marginTop:'12px', borderTop:'1px solid #f1f5f9', paddingTop:'12px' }}>
+                    <div style={{ fontWeight:'600', color:'#374151', fontSize:'13px', marginBottom:'8px' }}>📋 Topic Breakdown</div>
+
+                    {/* Recent logs as auto-topics */}
+                    {rowTopics.length===0 && (
+                      <div style={{ marginBottom:'10px' }}>
+                        <div style={{ fontSize:'12px', color:'#94a3b8', marginBottom:'6px' }}>Topics from teaching logs:</div>
+                        {getLogsFor(row).slice(0,8).map(l => (
+                          <div key={l.id} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'4px 8px', background:'#f0fdf4', borderRadius:'5px', marginBottom:'3px', fontSize:'12px' }}>
+                            <span style={{ color:'#16a34a' }}>✓</span>
+                            <span style={{ flex:1, color:'#374151' }}>{l.topic_taught}</span>
+                            <span style={{ color:'#94a3b8' }}>{fmtDate(l.teaching_date)}</span>
+                          </div>
+                        ))}
+                        {getLogsFor(row).length>8 && <div style={{ fontSize:'11px', color:'#94a3b8', padding:'4px 8px' }}>+{getLogsFor(row).length-8} more topics logged</div>}
+                      </div>
+                    )}
+
+                    {/* Manual topics */}
+                    {rowTopics.length>0 && rowTopics.map(t => (
+                      <div key={t.id} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'5px 8px', border:'1px solid #e2e8f0', borderRadius:'6px', marginBottom:'4px', background: t.completed?'#f0fdf4':'white' }}>
+                        <input type="checkbox" checked={!!t.completed} onChange={e => handleMarkTopic(t, e.target.checked)} style={{ width:'14px', height:'14px', cursor:'pointer' }} />
+                        <span style={{ flex:1, fontSize:'13px', color: t.completed?'#16a34a':'#374151', textDecoration: t.completed?'line-through':'none' }}>{t.topic_name}</span>
+                        {t.expected_date && <span style={{ fontSize:'11px', color:'#94a3b8' }}>{fmtDate(t.expected_date)}</span>}
+                        {t.completed && t.completed_at && <span style={{ fontSize:'10px', color:'#16a34a' }}>✓ {fmtDate(t.completed_at?.split('T')[0])}</span>}
+                      </div>
+                    ))}
+
+                    {/* Add topic form */}
+                    {addingTopicTo===row.id
+                      ? (
+                        <div style={{ display:'flex', gap:'8px', alignItems:'center', marginTop:'8px' }}>
+                          <input value={topicForm.name} onChange={e=>setTopicForm(f=>({...f,name:e.target.value}))} placeholder="Topic name" style={{ ...S.input, flex:2 }} />
+                          <input type="date" value={topicForm.expected_date} onChange={e=>setTopicForm(f=>({...f,expected_date:e.target.value}))} style={{ ...S.input, flex:1 }} />
+                          <button onClick={() => handleAddTopic(row.id)} style={S.btnSm('#16a34a')}>✓ Add</button>
+                          <button onClick={() => setAddingTopicTo(null)} style={S.btnSm('#94a3b8')}>✖</button>
+                        </div>
+                      )
+                      : <button onClick={() => setAddingTopicTo(row.id)} style={{ ...S.btnSm('#7c3aed'), marginTop:'8px' }}>➕ Add Topic</button>
+                    }
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       )}
-    </div>
+
+      {/* Pace View — table comparing expected vs actual */}
+      {!loading && viewMode==='pace' && (
+        <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+            <thead>
+              <tr style={{ background:'#1e3a5f', color:'white' }}>
+                {['Batch','Subject','Done','Total','Progress','Pace','Projected End','Target','Status'].map(h => (
+                  <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:'600', fontSize:'12px' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(row => {
+                const done  = getCompleted(row)
+                const p     = row.total_topics>0 ? Math.min(100,Math.round((done/row.total_topics)*100)) : 0
+                const pace  = getPace(row)
+                const color = scoreColor(p)
+                return (
+                  <tr key={row.id} style={{ borderBottom:'1px solid #f1f5f9', background: pace&&!pace.onTrack?'#fff1f2':'white' }}>
+                    <td style={{ padding:'10px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{row.subtype||'All'}</span></td>
+                    <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>{row.subject_name}</td>
+                    <td style={{ padding:'10px 12px', fontWeight:'700', color }}>{done}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{row.total_topics}</td>
+                    <td style={{ padding:'10px 12px', minWidth:'120px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                        <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
+                          <div style={{ width:`${p}%`, height:'100%', background:color, borderRadius:'3px' }}/>
+                        </div>
+                        <span style={{ fontWeight:'700', color, fontSize:'11px' }}>{p}%</span>
+                      </div>
+                    </td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{pace ? `${pace.rate}/day` : '—'}</td>
+                    <td style={{ padding:'10px 12px', color:'#374151' }}>{pace ? fmtDate(pace.projectedEnd) : '—'}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{row.expected_end_date ? fmtDate(row.expected_end_date) : '—'}</td>
+                    <td style={{ padding:'10px 12px' }}>
+                      {p>=100 ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Done</span>
+                        : pace ? <span style={S.badge(pace.onTrack?'#16a34a':'#dc2626', pace.onTrack?'#dcfce7':'#fee2e2')}>{pace.onTrack?'On track':'Off track'}</span>
+                        : <span style={S.badge('#94a3b8','#f1f5f9')}>No data</span>
+                      }
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length===0 && <tr><td colSpan={9} style={{ padding:'32px', textAlign:'center', color:'#94a3b8' }}>No syllabus data.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   )
 }
 
-// ─── Tab: Timetable ───────────────────────────────────────────────────────────
+// ─── Tab: Timetable (Advanced) ────────────────────────────────────────────────
 
 function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
-  const [form, setForm]         = useState({ course:'', subtype:'', class_name:'', batch_id:'', subject_name:'', teacher_name:'', day_of_week:'Monday', period_number:1, start_time:'', end_time:'' })
-  const [saving, setSaving]     = useState(false)
-  const [showForm, setShowForm] = useState(false)
+  const [form, setForm]           = useState({ course:'', subtype:'', class_name:'', batch_id:'', subject_name:'', teacher_name:'', day_of_week:'Monday', period_number:1, start_time:'', end_time:'' })
+  const [saving, setSaving]       = useState(false)
+  const [showForm, setShowForm]   = useState(false)
   const [viewCourse, setViewCourse]   = useState('')
   const [viewSubtype, setViewSubtype] = useState('')
-  const [viewClass, setViewClass]     = useState('')
+  const [conflicts, setConflicts] = useState([])
+  const [editingSlot, setEditingSlot] = useState(null) // { id, field, value }
+  const [subMode, setSubMode]     = useState(null)     // { slotId, day, period, subtype }
+  const [subTeacher, setSubTeacher] = useState('')
+  const [subDate, setSubDate]     = useState(today())
+  const [substitutes, setSubstitutes] = useState([])   // saved substitute records
   const { courses, subtypesFor, classesFor } = courseData
 
   useEffect(() => {
     if (courses.length && !viewCourse) {
-      const c=courses[0], s=subtypesFor(c)[0]||'', cl=s?classesFor(c,s)[0]||'':''
-      setViewCourse(c); setViewSubtype(s); setViewClass(cl)
+      const c=courses[0], s=subtypesFor(c)[0]||''
+      setViewCourse(c); setViewSubtype(s)
     }
-  }, [courses])  // eslint-disable-line
+  }, [courses]) // eslint-disable-line
+
+  // Load substitutes
+  useEffect(() => {
+    supabase.from('timetable_substitutes').select('*').order('sub_date', { ascending:false }).then(({ data }) => { if (data) setSubstitutes(data) }).catch(()=>{})
+  }, [])
+
+  // Conflict detection: same teacher, same day, same period across batches
+  const conflictMap = useMemo(() => {
+    const map = {}
+    timetable.forEach(t => {
+      if (!t.teacher_name) return
+      const key = `${t.teacher_name}||${t.day_name}||${t.period_name}`
+      if (!map[key]) map[key] = []
+      map[key].push(t)
+    })
+    const found = []
+    Object.entries(map).forEach(([key, slots]) => {
+      if (slots.length > 1) {
+        found.push({ key, slots, teacher: slots[0].teacher_name, day: slots[0].day_name, period: slots[0].period_name })
+      }
+    })
+    return found
+  }, [timetable])
 
   const handleSave = async (e) => {
     e.preventDefault(); setSaving(true)
+    // Check conflict before saving
+    if (form.teacher_name) {
+      const conflict = timetable.find(t => t.teacher_name===form.teacher_name && t.day_name===form.day_of_week && t.period_name===String(form.period_number) && t.class_name!==form.subtype)
+      if (conflict && !window.confirm(`⚠️ ${form.teacher_name} already has a class on ${form.day_of_week} P${form.period_number} (${conflict.class_name}). Save anyway?`)) { setSaving(false); return }
+    }
     await supabase.from('timetable_entries').insert([{ class_name:form.subtype||form.class_name, subject_name:form.subject_name, teacher_name:form.teacher_name||null, day_name:form.day_of_week, period_name:String(form.period_number) }])
     await supabase.from('teaching_timetable').insert([{ course:form.course, subtype:form.subtype||null, class_name:form.class_name||null, batch_id:form.batch_id||null, subject_name:form.subject_name, teacher_name:form.teacher_name||null, day_of_week:form.day_of_week, period_number:parseInt(form.period_number), start_time:form.start_time||null, end_time:form.end_time||null }])
     setShowForm(false); fetchTimetable(); setSaving(false)
@@ -686,67 +1135,186 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
     await supabase.from('teaching_timetable').delete().eq('id', id); fetchTimetable()
   }
 
-  const getSlot = (day, period) => timetable.find(t => t.class_name===viewSubtype && t.day_name===day && t.period_name===String(period))
+  const handleSaveSubstitute = async () => {
+    if (!subTeacher || !subMode) return
+    const slot = timetable.find(t => t.id===subMode.slotId)
+    const { error } = await supabase.from('timetable_substitutes').insert([{
+      original_slot_id:  subMode.slotId,
+      original_teacher:  slot?.teacher_name||'',
+      substitute_teacher: subTeacher,
+      sub_date:          subDate,
+      day_name:          subMode.day,
+      period_name:       String(subMode.period),
+      class_name:        subMode.subtype,
+      subject_name:      slot?.subject_name||'',
+    }])
+    if (error) alert('Error: ' + error.message)
+    else {
+      const { data } = await supabase.from('timetable_substitutes').select('*').order('sub_date', { ascending:false })
+      if (data) setSubstitutes(data)
+      setSubMode(null); setSubTeacher('')
+    }
+  }
+
+  const getSlot    = (day, period) => timetable.find(t => t.class_name===viewSubtype && t.day_name===day && t.period_name===String(period))
+  const getSub     = (day, period) => substitutes.find(s => s.class_name===viewSubtype && s.day_name===day && s.period_name===String(period) && s.sub_date===subDate)
   const viewSubtypes = viewCourse ? subtypesFor(viewCourse) : []
-  const viewClasses  = (viewCourse && viewSubtype) ? classesFor(viewCourse, viewSubtype) : []
+
+  // Teacher workload summary
+  const teacherWorkload = useMemo(() => {
+    const map = {}
+    timetable.forEach(t => {
+      if (!t.teacher_name) return
+      if (!map[t.teacher_name]) map[t.teacher_name] = { periods:0, batches:new Set(), days:new Set() }
+      map[t.teacher_name].periods++
+      map[t.teacher_name].batches.add(t.class_name)
+      map[t.teacher_name].days.add(t.day_name)
+    })
+    return Object.entries(map).map(([name,d]) => ({ name, periods:d.periods, batches:d.batches.size, days:d.days.size })).sort((a,b)=>b.periods-a.periods)
+  }, [timetable])
 
   return (
-    <div style={S.card}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
-        <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>🕐 Timetable</h2>
-        <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Period'}</button>
-      </div>
-      {showForm && (
-        <form onSubmit={handleSave} style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'12px', marginBottom:'24px', padding:'16px', background:'#f8fafc', borderRadius:'8px' }}>
-          <CoursePicker form={form} setForm={setForm} courseData={courseData} />
-          <div><label style={S.label}>Day</label><select value={form.day_of_week} onChange={e => setForm(f=>({...f,day_of_week:e.target.value}))} required style={S.select}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
-          <div><label style={S.label}>Period</label><select value={form.period_number} onChange={e => setForm(f=>({...f,period_number:e.target.value}))} required style={S.select}>{PERIODS.map(p=><option key={p} value={p}>Period {p}</option>)}</select></div>
-          <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e => setForm(f=>({...f,subject_name:e.target.value}))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-          <div><label style={S.label}>Teacher</label><select value={form.teacher_name} onChange={e => setForm(f=>({...f,teacher_name:e.target.value}))} style={S.select}><option value="">Select</option>{staff.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
-          <div><label style={S.label}>Start Time</label><input type="time" value={form.start_time} onChange={e => setForm(f=>({...f,start_time:e.target.value}))} style={S.input} /></div>
-          <div><label style={S.label}>End Time</label><input type="time" value={form.end_time} onChange={e => setForm(f=>({...f,end_time:e.target.value}))} style={S.input} /></div>
-          <div style={{ gridColumn:'1/-1' }}><button type="submit" disabled={saving} style={S.btn('#16a34a',saving)}>{saving?'⏳ Saving...':'✅ Save Period'}</button></div>
-        </form>
+    <>
+      {/* Conflict alerts */}
+      {conflictMap.length > 0 && (
+        <div style={{ padding:'12px 16px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:'10px', marginBottom:'16px' }}>
+          <div style={{ fontWeight:'700', color:'#dc2626', fontSize:'14px', marginBottom:'8px' }}>⚠️ {conflictMap.length} Teacher Conflict{conflictMap.length>1?'s':''} Detected</div>
+          {conflictMap.map((c,i) => (
+            <div key={i} style={{ fontSize:'12px', color:'#b91c1c', marginBottom:'3px' }}>
+              👨‍🏫 {c.teacher} · {c.day} · P{c.period} → {c.slots.map(s=>s.class_name).join(' & ')}
+            </div>
+          ))}
+        </div>
       )}
-      <div style={{ display:'flex', gap:'12px', marginBottom:'16px', alignItems:'center', flexWrap:'wrap' }}>
-        <span style={{ fontSize:'13px', fontWeight:'600', color:'#374151' }}>View:</span>
-        <select value={viewCourse} onChange={e => { setViewCourse(e.target.value); setViewSubtype(''); setViewClass('') }} style={{ ...S.select, width:'auto' }}>{courses.map(c=><option key={c} value={c}>{c}</option>)}</select>
-        <select value={viewSubtype} onChange={e => { setViewSubtype(e.target.value); setViewClass('') }} style={{ ...S.select, width:'auto' }}><option value="">All Subtypes</option>{viewSubtypes.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        {viewClasses.length>0 && <select value={viewClass} onChange={e => setViewClass(e.target.value)} style={{ ...S.select, width:'auto' }}><option value="">All Classes</option>{viewClasses.map(c=><option key={c} value={c}>{c}</option>)}</select>}
-      </div>
-      <div style={{ overflowX:'auto' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
-          <thead>
-            <tr style={{ background:'#1e3a5f', color:'white' }}>
-              <th style={{ padding:'10px 12px', textAlign:'center', fontWeight:'600' }}>Period</th>
-              {DAYS.map(d => <th key={d} style={{ padding:'10px 12px', textAlign:'center', fontWeight:'600' }}>{d}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {PERIODS.map(p => (
-              <tr key={p} style={{ borderBottom:'1px solid #e2e8f0' }}>
-                <td style={{ padding:'10px 12px', textAlign:'center', fontWeight:'700', color:'#1e3a5f', background:'#f8fafc' }}>P{p}</td>
-                {DAYS.map(day => {
-                  const slot = getSlot(day, p)
-                  return (
-                    <td key={day} style={{ padding:'8px', textAlign:'center', background: slot?'#f0fdf4':'white' }}>
-                      {slot ? (
-                        <div>
-                          <div style={{ fontWeight:'700', color:'#15803d', fontSize:'12px' }}>{slot.subject_name}</div>
-                          <div style={{ fontSize:'11px', color:'#64748b' }}>{slot.teacher_name||'-'}</div>
-                          {slot.start_time && <div style={{ fontSize:'10px', color:'#94a3b8' }}>{slot.start_time}–{slot.end_time}</div>}
-                          <button onClick={() => handleDelete(slot.id)} style={{ ...S.btnSm('#dc2626'), padding:'2px 6px', fontSize:'10px', marginTop:'4px' }}>🗑</button>
-                        </div>
-                      ) : <span style={{ color:'#e2e8f0', fontSize:'18px' }}>—</span>}
-                    </td>
-                  )
-                })}
+
+      <div style={S.card}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
+          <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>🕐 Timetable</h2>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+            <select value={viewCourse} onChange={e => { setViewCourse(e.target.value); setViewSubtype('') }} style={{ ...S.select, width:'auto' }}>{courses.map(c=><option key={c} value={c}>{c}</option>)}</select>
+            <select value={viewSubtype} onChange={e => setViewSubtype(e.target.value)} style={{ ...S.select, width:'auto' }}>
+              <option value="">Select Batch</option>
+              {viewSubtypes.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+            <span style={{ fontSize:'12px', color:'#64748b' }}>Sub date:</span>
+            <input type="date" value={subDate} onChange={e=>setSubDate(e.target.value)} style={{ ...S.input, width:'140px', fontSize:'12px', padding:'6px 10px' }} />
+            <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Period'}</button>
+          </div>
+        </div>
+
+        {showForm && (
+          <form onSubmit={handleSave} style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'12px', marginBottom:'24px', padding:'16px', background:'#f8fafc', borderRadius:'8px' }}>
+            <CoursePicker form={form} setForm={setForm} courseData={courseData} />
+            <div><label style={S.label}>Day</label><select value={form.day_of_week} onChange={e=>setForm(f=>({...f,day_of_week:e.target.value}))} required style={S.select}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
+            <div><label style={S.label}>Period</label><select value={form.period_number} onChange={e=>setForm(f=>({...f,period_number:e.target.value}))} required style={S.select}>{PERIODS.map(p=><option key={p} value={p}>Period {p}</option>)}</select></div>
+            <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e=>setForm(f=>({...f,subject_name:e.target.value}))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label style={S.label}>Teacher</label><select value={form.teacher_name} onChange={e=>setForm(f=>({...f,teacher_name:e.target.value}))} style={S.select}><option value="">Select</option>{staff.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
+            <div><label style={S.label}>Start Time</label><input type="time" value={form.start_time} onChange={e=>setForm(f=>({...f,start_time:e.target.value}))} style={S.input}/></div>
+            <div><label style={S.label}>End Time</label><input type="time" value={form.end_time} onChange={e=>setForm(f=>({...f,end_time:e.target.value}))} style={S.input}/></div>
+            <div style={{ gridColumn:'1/-1' }}><button type="submit" disabled={saving} style={S.btn('#16a34a',saving)}>{saving?'⏳ Saving...':'✅ Save Period'}</button></div>
+          </form>
+        )}
+
+        {/* Timetable grid */}
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+            <thead>
+              <tr style={{ background:'#1e3a5f', color:'white' }}>
+                <th style={{ padding:'10px 12px', textAlign:'center', fontWeight:'600', minWidth:'50px' }}>P</th>
+                {DAYS.map(d => <th key={d} style={{ padding:'10px 12px', textAlign:'center', fontWeight:'600', minWidth:'110px' }}>{d}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {PERIODS.map(p => (
+                <tr key={p} style={{ borderBottom:'1px solid #e2e8f0' }}>
+                  <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:'700', color:'#1e3a5f', background:'#f8fafc', fontSize:'13px' }}>P{p}</td>
+                  {DAYS.map(day => {
+                    const slot = getSlot(day, p)
+                    const sub  = getSub(day, p)
+                    const isConflict = conflictMap.some(c => c.teacher===slot?.teacher_name && c.day===day && c.period===String(p))
+                    return (
+                      <td key={day} style={{ padding:'6px', textAlign:'center', background: sub?'#fef9c3':slot?'#f0fdf4':isConflict?'#fff1f2':'white', border: isConflict?'1px solid #fecaca':'none' }}>
+                        {slot ? (
+                          <div>
+                            <div style={{ fontWeight:'700', color:'#15803d', fontSize:'11px' }}>{slot.subject_name}</div>
+                            {sub
+                              ? <div style={{ fontSize:'10px', color:'#b45309', fontWeight:'600' }}>🔄 {sub.substitute_teacher}</div>
+                              : <div style={{ fontSize:'10px', color:'#64748b' }}>{slot.teacher_name||'-'}</div>
+                            }
+                            {slot.start_time && <div style={{ fontSize:'9px', color:'#94a3b8' }}>{slot.start_time}–{slot.end_time}</div>}
+                            {isConflict && <div style={{ fontSize:'9px', color:'#dc2626', fontWeight:'700' }}>⚠️ conflict</div>}
+                            <div style={{ display:'flex', gap:'3px', justifyContent:'center', marginTop:'4px' }}>
+                              <button onClick={() => setSubMode({ slotId:slot.id, day, period:p, subtype:viewSubtype })} style={{ ...S.btnSm('#f59e0b'), padding:'2px 5px', fontSize:'9px' }}>🔄</button>
+                              <button onClick={() => handleDelete(slot.id)} style={{ ...S.btnSm('#dc2626'), padding:'2px 5px', fontSize:'9px' }}>🗑</button>
+                            </div>
+                          </div>
+                        ) : <span style={{ color:'#e2e8f0', fontSize:'16px' }}>—</span>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Substitute assignment panel */}
+        {subMode && (
+          <div style={{ marginTop:'16px', padding:'14px 16px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:'10px' }}>
+            <div style={{ fontWeight:'700', color:'#b45309', marginBottom:'10px', fontSize:'14px' }}>🔄 Assign Substitute — {subMode.day} P{subMode.period} · {subMode.subtype}</div>
+            <div style={{ display:'flex', gap:'10px', alignItems:'center', flexWrap:'wrap' }}>
+              <select value={subTeacher} onChange={e=>setSubTeacher(e.target.value)} style={{ ...S.select, width:'200px' }}>
+                <option value="">Select substitute teacher</option>
+                {staff.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+              <input type="date" value={subDate} onChange={e=>setSubDate(e.target.value)} style={{ ...S.input, width:'150px' }}/>
+              <button onClick={handleSaveSubstitute} style={S.btn('#f59e0b')}>✅ Assign</button>
+              <button onClick={()=>{setSubMode(null);setSubTeacher('')}} style={S.btn('#64748b')}>✖ Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Teacher workload */}
+      <div style={S.card}>
+        <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>👨‍🏫 Teacher Workload Summary</h3>
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+            <thead>
+              <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                {['Teacher','Total Periods/Week','Batches','Active Days','Load'].map(h=>(
+                  <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {teacherWorkload.map((t,i) => {
+                const loadPct = Math.round((t.periods/(DAYS.length*PERIODS.length))*100)
+                return (
+                  <tr key={t.name} style={{ borderBottom:'1px solid #f1f5f9', background: i<3?'#fafffe':'white' }}>
+                    <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>
+                      {i===0?'🥇':i===1?'🥈':i===2?'🥉':'👨‍🏫'} {t.name}
+                    </td>
+                    <td style={{ padding:'10px 12px', fontWeight:'700', color:'#1e3a5f' }}>{t.periods}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{t.batches}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{t.days}</td>
+                    <td style={{ padding:'10px 12px', minWidth:'120px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                        <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
+                          <div style={{ width:`${Math.min(loadPct,100)}%`, height:'100%', background: loadPct>70?'#dc2626':loadPct>40?'#f59e0b':'#16a34a', borderRadius:'3px' }}/>
+                        </div>
+                        <span style={{ fontSize:'11px', color:'#64748b', minWidth:'30px' }}>{loadPct}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {teacherWorkload.length===0 && <tr><td colSpan={5} style={{ padding:'24px', textAlign:'center', color:'#94a3b8' }}>No timetable data.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -2043,7 +2611,7 @@ function Teaching({ currentUser }) {
       {/* Tab Content */}
       {activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser} />}
       {activeTab==='calendar'    && <TabCalendar logs={logs} missed={missed} />}
-      {activeTab==='syllabus'    && <TabSyllabus logs={logs} courseData={courseData} />}
+      {activeTab==='syllabus'    && <TabSyllabus logs={logs} courseData={courseData} monthlySyllabus={monthlySyllabus} />}
       {activeTab==='timetable'   && <TabTimetable timetable={timetable} fetchTimetable={fetchTimetable} staff={staff} courseData={courseData} />}
       {activeTab==='reports'     && <TabReports logs={logs} missed={missed} staff={staff} courseData={courseData} />}
       {activeTab==='search'      && <TabSearch logs={logs} monthlySyllabus={monthlySyllabus} onNavigateTab={handleTabChange} />}
