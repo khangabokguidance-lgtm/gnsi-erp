@@ -504,21 +504,12 @@ export default function Timetable() {
     setLoading(false)
   }
 
-  useEffect(()=>{
-  loadData()
-
-  supabase
-    .from('staff_profiles')
-    .select('id,name,designation,department,status')
-    .eq('status', 'active')          // ← was .ilike('status','active')
+  useEffect(() => { loadData()
+  supabase.from('staff')
+    .select('name')
+    .eq('status', 'Active')
     .order('name')
-    .then(({ data, error }) => {
-      if (error) {
-        console.error('Staff load error:', error.message)
-        return
-      }
-      setStaffList(data || [])
-    })
+    .then(({ data }) => setTeachers(data || []))
 }, [])
 
   useEffect(()=>{
@@ -709,10 +700,12 @@ export default function Timetable() {
               <div><label style={S.lbl}>Day *</label><Sel value={form.day_name} onChange={e=>setForm({...form,day_name:e.target.value})}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</Sel></div>
               <div>
                 <label style={S.lbl}>Teacher <span style={{ fontWeight:400, color:T.cyan }}>({staffList.length} staff)</span></label>
-                <select value={form.teacher_name} onChange={e=>setForm({...form,teacher_name:e.target.value})} style={S.inp}>
-                  <option value="">— Select Teacher —</option>
-                  {staffList.map(s=><option key={s.id} value={s.name}>{s.name}{s.designation?` — ${s.designation}`:''}</option>)}
-                </select>
+                <select value={form.teacher_name} onChange={e => setForm(f => ({...f, teacher_name: e.target.value}))}>
+  <option value="">— Select Teacher —</option>
+  {teachers.map(t => (
+    <option key={t.name} value={t.name}>{t.name}</option>
+  ))}
+</select>
               </div>
             </div>
             <div style={{ marginTop:16, display:'flex', gap:10 }}>

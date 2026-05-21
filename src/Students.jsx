@@ -2021,37 +2021,7 @@ export default function Students() {
             </div>
           </div>
           <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
-            {/* Export */}
-            <div style={{position:'relative'}}>
-              <button onClick={()=>setShowExportMenu(v=>!v)} style={{...BTN.secondary}}>Export ▾</button>
-              {showExportMenu&&(
-                <div style={{position:'absolute',right:0,top:'110%',background:D.surface2,border:`1px solid ${D.border2}`,borderRadius:D.r10,boxShadow:'0 16px 48px rgba(0,0,0,.5)',zIndex:999,minWidth:240,overflow:'hidden'}}>
-                  {[
-                    {label:'Student List (CSV)', fn:()=>downloadCSV(filtered.map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Batch:s.batch||'',Course:s.course||'',House:s.house||'',Hostel:s.hostel_type||'',Status:s.status||'',Phone:s.phone||'',Father:s.father_name||'',Admission:s.admission_date||''})),`students_${new Date().toISOString().slice(0,10)}.csv`)},
-                    {label:'Student List (PDF)', fn:()=>exportToPDF('Student List',[{key:'gcc_no',label:'GCC'},{key:'name',label:'Name'},{key:'batch',label:'Batch'},{key:'course',label:'Course'},{key:'house',label:'House'},{key:'hostel_type',label:'Hostel'},{key:'status',label:'Status'},{key:'phone',label:'Phone'}],filtered.map(s=>({...s,gcc_no:'GCC-'+s.gcc_no})),`students_${new Date().toISOString().slice(0,10)}.pdf`)},
-                    {label:'Print List',         fn:()=>printBatchList(filtered,filterBatch!=='All'?filterBatch:filterCourse!=='All'?filterCourse:'')},
-                    {label:'Fee Dues (CSV)',      fn:()=>downloadCSV(filtered.filter(s=>feeData[s.id]?.dues>0).map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Dues:feeData[s.id]?.dues||0,Phone:s.phone||''})),`fee_dues_${new Date().toISOString().slice(0,10)}.csv`)},
-                    {label:'Attendance (CSV)',    fn:()=>exportAttendanceSheet(filtered,attData)},
-                    {label:'New Admissions (CSV)',fn:()=>exportNewAdmissions(students)},
-                    {label:'WhatsApp List (CSV)', fn:()=>downloadCSV(filtered.filter(s=>s.phone).map(s=>({Name:s.name||'',GCC:s.gcc_no||'',Phone:s.phone||'',WA:`https://wa.me/91${s.phone?.replace(/\D/g,'')}`})),`whatsapp_${new Date().toISOString().slice(0,10)}.csv`)},
-                    {label:'Parent Contacts (CSV)',fn:()=>downloadCSV(filtered.map(s=>({Name:s.name||'',Father:s.father_name||'',Mother:s.mother_name||'',Phone:s.phone||'',Address:s.address||''})),`parents_${new Date().toISOString().slice(0,10)}.csv`)},
-                    {label:'Birthday List (CSV)', fn:()=>{const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];downloadCSV(students.filter(s=>s.dob).map(s=>{const d=new Date(s.dob);return{Month:MO[d.getMonth()],Day:d.getDate(),Name:s.name,DOB:s.dob,Batch:s.batch||'',Phone:s.phone||''}}).sort((a,b)=>MO.indexOf(a.Month)-MO.indexOf(b.Month)||a.Day-b.Day),`birthdays_${new Date().toISOString().slice(0,10)}.csv`)}},
-                  ].map(item=>(
-                    <button key={item.label} onClick={()=>{item.fn();setShowExportMenu(false)}} style={{width:'100%',padding:'10px 16px',border:'none',background:'none',textAlign:'left',fontSize:12,fontWeight:600,cursor:'pointer',color:D.textSecondary,borderBottom:`1px solid ${D.border}`}}
-                      onMouseEnter={e=>e.currentTarget.style.background=D.surface}
-                      onMouseLeave={e=>e.currentTarget.style.background='none'}
-                    >{item.label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button onClick={()=>setShowAnalytics(v=>!v)} style={{...BTN.secondary,borderColor:showAnalytics?D.violet+'60':D.border2,color:showAnalytics?D.violet:D.textSecondary,background:showAnalytics?D.violetDim:D.surface2}}>Analytics</button>
-            <button onClick={()=>setShowDeleted(v=>!v)} style={{...BTN.secondary,borderColor:showDeleted?D.rose+'60':D.border2,color:showDeleted?D.rose:D.textSecondary,background:showDeleted?D.roseDim:D.surface2}}>Archive{deleted.length>0?` (${deleted.length})`:''}</button>
-            <button onClick={()=>setShowMergeDups(true)} style={{...BTN.secondary,color:D.rose,borderColor:D.rose+'30',background:D.roseDim}}>Merge Dups</button>
-            <button onClick={()=>setShowSessionComp(v=>!v)} style={{...BTN.secondary,borderColor:showSessionComp?D.violet+'60':D.border2,color:showSessionComp?D.violet:D.textSecondary}}>Compare</button>
-            <button onClick={()=>setShowRollover(true)} style={{...BTN.secondary,color:D.brand,borderColor:D.brand+'30',background:D.brandDim}}>🔄 Rollover</button>
-
+            
             {/* Density */}
             <div style={{display:'flex',border:`1px solid ${D.border}`,borderRadius:D.r8,overflow:'hidden'}}>
               {[['compact','▪'],['comfortable','▬'],['spacious','▩']].map(([d,icon])=>(
@@ -2109,6 +2079,37 @@ export default function Students() {
             ))}
           </div>
         )}
+        
+        {/* Export */}
+            <div style={{position:'relative'}}>
+              <button onClick={()=>setShowExportMenu(v=>!v)} style={{...BTN.secondary}}>Export ▾</button>
+              {showExportMenu&&(
+                <div style={{position:'absolute',right:0,top:'110%',background:D.surface2,border:`1px solid ${D.border2}`,borderRadius:D.r10,boxShadow:'0 16px 48px rgba(0,0,0,.5)',zIndex:999999,minWidth:240,overflow:'hidden'}}>
+                  {[
+                    {label:'Student List (CSV)', fn:()=>downloadCSV(filtered.map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Batch:s.batch||'',Course:s.course||'',House:s.house||'',Hostel:s.hostel_type||'',Status:s.status||'',Phone:s.phone||'',Father:s.father_name||'',Admission:s.admission_date||''})),`students_${new Date().toISOString().slice(0,10)}.csv`)},
+                    {label:'Student List (PDF)', fn:()=>exportToPDF('Student List',[{key:'gcc_no',label:'GCC'},{key:'name',label:'Name'},{key:'batch',label:'Batch'},{key:'course',label:'Course'},{key:'house',label:'House'},{key:'hostel_type',label:'Hostel'},{key:'status',label:'Status'},{key:'phone',label:'Phone'}],filtered.map(s=>({...s,gcc_no:'GCC-'+s.gcc_no})),`students_${new Date().toISOString().slice(0,10)}.pdf`)},
+                    {label:'Print List',         fn:()=>printBatchList(filtered,filterBatch!=='All'?filterBatch:filterCourse!=='All'?filterCourse:'')},
+                    {label:'Fee Dues (CSV)',      fn:()=>downloadCSV(filtered.filter(s=>feeData[s.id]?.dues>0).map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Dues:feeData[s.id]?.dues||0,Phone:s.phone||''})),`fee_dues_${new Date().toISOString().slice(0,10)}.csv`)},
+                    {label:'Attendance (CSV)',    fn:()=>exportAttendanceSheet(filtered,attData)},
+                    {label:'New Admissions (CSV)',fn:()=>exportNewAdmissions(students)},
+                    {label:'WhatsApp List (CSV)', fn:()=>downloadCSV(filtered.filter(s=>s.phone).map(s=>({Name:s.name||'',GCC:s.gcc_no||'',Phone:s.phone||'',WA:`https://wa.me/91${s.phone?.replace(/\D/g,'')}`})),`whatsapp_${new Date().toISOString().slice(0,10)}.csv`)},
+                    {label:'Parent Contacts (CSV)',fn:()=>downloadCSV(filtered.map(s=>({Name:s.name||'',Father:s.father_name||'',Mother:s.mother_name||'',Phone:s.phone||'',Address:s.address||''})),`parents_${new Date().toISOString().slice(0,10)}.csv`)},
+                    {label:'Birthday List (CSV)', fn:()=>{const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];downloadCSV(students.filter(s=>s.dob).map(s=>{const d=new Date(s.dob);return{Month:MO[d.getMonth()],Day:d.getDate(),Name:s.name,DOB:s.dob,Batch:s.batch||'',Phone:s.phone||''}}).sort((a,b)=>MO.indexOf(a.Month)-MO.indexOf(b.Month)||a.Day-b.Day),`birthdays_${new Date().toISOString().slice(0,10)}.csv`)}},
+                  ].map(item=>(
+                    <button key={item.label} onClick={()=>{item.fn();setShowExportMenu(false)}} style={{width:'100%',padding:'10px 16px',border:'none',background:'none',textAlign:'left',fontSize:12,fontWeight:600,cursor:'pointer',color:D.textSecondary,borderBottom:`1px solid ${D.border}`}}
+                      onMouseEnter={e=>e.currentTarget.style.background=D.surface}
+                      onMouseLeave={e=>e.currentTarget.style.background='none'}
+                    >{item.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button onClick={()=>setShowAnalytics(v=>!v)} style={{...BTN.secondary,borderColor:showAnalytics?D.violet+'60':D.border2,color:showAnalytics?D.violet:D.textSecondary,background:showAnalytics?D.violetDim:D.surface2}}>Analytics</button>
+            <button onClick={()=>setShowDeleted(v=>!v)} style={{...BTN.secondary,borderColor:showDeleted?D.rose+'60':D.border2,color:showDeleted?D.rose:D.textSecondary,background:showDeleted?D.roseDim:D.surface2}}>Archive{deleted.length>0?` (${deleted.length})`:''}</button>
+            <button onClick={()=>setShowMergeDups(true)} style={{...BTN.secondary,color:D.rose,borderColor:D.rose+'30',background:D.roseDim}}>Merge Dups</button>
+            <button onClick={()=>setShowSessionComp(v=>!v)} style={{...BTN.secondary,borderColor:showSessionComp?D.violet+'60':D.border2,color:showSessionComp?D.violet:D.textSecondary}}>Compare</button>
+            <button onClick={()=>setShowRollover(true)} style={{...BTN.secondary,color:D.brand,borderColor:D.brand+'30',background:D.brandDim}}>🔄 Rollover</button>
 
         {/* ── KPI Strip ── */}
         <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:20}}>
