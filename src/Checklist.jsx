@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { staffDB } from './staffDB'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRIORITIES  = ['High', 'Medium', 'Low']
@@ -19,7 +20,6 @@ const STATUS_META = {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const today     = () => new Date().toISOString().split('T')[0]
 const fmtDate   = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const daysDiff  = d => { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000) }
 const initials  = name => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?'
@@ -77,11 +77,11 @@ function Toast({ msg }) {
 }
 
 // ─── Admin Alert Banner ───────────────────────────────────────────────────────
-function AlertBanner({ staff, tasks, onDismiss }) {
+function AlertBanner({ staff, tasks }) {
   const warnings = useMemo(() => {
     const out = []
     staff.forEach(s => {
-      const st = tasks.filter(t => t.assigned_to === s.name)
+      const st      = tasks.filter(t => t.assigned_to === s.name)
       const overdue = st.filter(t => isOverdue(t))
       const dueSoon = st.filter(t => !isOverdue(t) && t.status !== 'Done' && daysDiff(t.due_date) !== null && daysDiff(t.due_date) <= 1)
       const pending = st.filter(t => t.status === 'Pending' && !isOverdue(t))
@@ -146,14 +146,12 @@ function AssignModal({ staffList, preselected, onClose, onSave }) {
   const handleSave = async () => {
     if (!form.title.trim() || !form.assigned_to) { alert('Title and Assigned To are required'); return }
     setSaving(true)
-    const { data, error } = await supabase.from('staff_tasks').insert([{
-      ...form, due_date: form.due_date || null,
-      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }]).select()
-    setSaving(false)
-    if (error) { alert('Error: ' + error.message); return }
-    onSave(data?.[0])
-    onClose()
+    try {
+      const task = await staffDB.assignTask({ ...form, due_date: form.due_date || null })
+      onSave(task)
+      onClose()
+    } catch (err) { alert('Error: ' + err.message) }
+    finally { setSaving(false) }
   }
 
   const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.6)', backdropFilter: 'blur(4px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
@@ -223,24 +221,25 @@ function AssignModal({ staffList, preselected, onClose, onSave }) {
 
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
 function TaskDetailModal({ task, onClose, onStatusChange }) {
-  const [note, setNote] = useState(task.completion_note || '')
+  const [note, setNote]     = useState(task.completion_note || '')
   const [saving, setSaving] = useState(false)
   const overdue = isOverdue(task)
-  const sm = STATUS_META[overdue ? 'Overdue' : task.status] || STATUS_META.Pending
-  const pm = PRIORITY_META[task.priority] || PRIORITY_META.Medium
-  const diff = daysDiff(task.due_date)
+  const sm      = STATUS_META[overdue ? 'Overdue' : task.status] || STATUS_META.Pending
+  const pm      = PRIORITY_META[task.priority] || PRIORITY_META.Medium
+  const diff    = daysDiff(task.due_date)
 
   const saveNote = async () => {
     setSaving(true)
-    await supabase.from('staff_tasks').update({ completion_note: note, updated_at: new Date().toISOString() }).eq('id', task.id)
-    setSaving(false)
-    alert('Note saved!')
+    try {
+      await supabase.from('staff_tasks').update({ completion_note: note, updated_at: new Date().toISOString() }).eq('id', task.id)
+      alert('Note saved!')
+    } catch (err) { alert('Error: ' + err.message) }
+    finally { setSaving(false) }
   }
 
-  const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)', zIndex: 2001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
-
   return (
-    <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)', zIndex: 2001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,.2)', overflow: 'hidden' }}>
         <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#0ea5e9)', padding: '20px 22px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
@@ -304,7 +303,6 @@ function StaffChecklistRow({ staffMember, tasks, onAssign, onStatusChange, onDel
 
   return (
     <div style={{ borderBottom: '1px solid #f1f5f9' }}>
-      {/* Main row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: expanded ? '#fafbff' : 'white', transition: 'background .1s' }}
         onClick={() => setExpanded(v => !v)}>
         <div style={{ width: 36, height: 36, borderRadius: '50%', background: hasWarning ? '#fee2e2' : 'linear-gradient(135deg,#1e3a5f,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: hasWarning ? '#dc2626' : '#c9a84c', flexShrink: 0 }}>
@@ -321,18 +319,17 @@ function StaffChecklistRow({ staffMember, tasks, onAssign, onStatusChange, onDel
           <MiniBar done={done} total={total} overdue={overdueTasks.length} />
         </div>
         <div style={{ display: 'flex', gap: 6, fontSize: 11, color: '#64748b', minWidth: 110, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          {done > 0     && <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>✅ {done}</span>}
-          {inprog > 0   && <span style={{ background: '#f0f9ff', color: '#0369a1', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>🔄 {inprog}</span>}
-          {pending > 0  && <span style={{ background: '#eef2ff', color: '#4338ca', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>⏳ {pending}</span>}
+          {done > 0    && <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>✅ {done}</span>}
+          {inprog > 0  && <span style={{ background: '#f0f9ff', color: '#0369a1', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>🔄 {inprog}</span>}
+          {pending > 0 && <span style={{ background: '#eef2ff', color: '#4338ca', padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>⏳ {pending}</span>}
         </div>
         <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => onAssign(staffMember)} style={S.btnSm('#6366f1')} title="Assign task">+ Task</button>
-          <button onClick={() => onWarn(staffMember)} style={S.btnSm(hasWarning ? '#dc2626' : '#64748b')} title="Send warning">🔔</button>
+          <button onClick={() => onAssign(staffMember)} style={S.btnSm('#6366f1')}>+ Task</button>
+          <button onClick={() => onWarn(staffMember)} style={S.btnSm(hasWarning ? '#dc2626' : '#64748b')}>🔔</button>
         </div>
         <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
       </div>
 
-      {/* Expanded task list */}
       {expanded && (
         <div style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
           {tasks.length === 0
@@ -340,17 +337,17 @@ function StaffChecklistRow({ staffMember, tasks, onAssign, onStatusChange, onDel
             : tasks.map(t => {
               const ov   = isOverdue(t)
               const diff = daysDiff(t.due_date)
-              const sm   = STATUS_META[ov ? 'Overdue' : t.status] || STATUS_META.Pending
-              const pm   = PRIORITY_META[t.priority] || PRIORITY_META.Medium
               return (
                 <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 20px', borderBottom: '1px solid #f1f5f9', background: ov ? '#fff8f8' : 'white' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 13, color: ov ? '#dc2626' : '#1e293b' }}>{t.title}</div>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {t.department && <span>{t.department}</span>}
-                      {t.due_date   && <span style={{ color: ov ? '#dc2626' : diff !== null && diff <= 2 ? '#f59e0b' : '#94a3b8', fontWeight: ov ? 700 : 400 }}>
-                        {ov ? `${Math.abs(diff)}d overdue` : diff === 0 ? '⚠ Due today' : diff !== null && diff <= 2 ? `${diff}d left` : fmtDate(t.due_date)}
-                      </span>}
+                      {t.due_date && (
+                        <span style={{ color: ov ? '#dc2626' : diff !== null && diff <= 2 ? '#f59e0b' : '#94a3b8', fontWeight: ov ? 700 : 400 }}>
+                          {ov ? `${Math.abs(diff)}d overdue` : diff === 0 ? '⚠ Due today' : diff !== null && diff <= 2 ? `${diff}d left` : fmtDate(t.due_date)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <Badge label={t.priority} type="priority" />
@@ -358,7 +355,7 @@ function StaffChecklistRow({ staffMember, tasks, onAssign, onStatusChange, onDel
                   <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
                     <button onClick={() => onDetail(t)} style={S.btnSm('#6366f1')}>View</button>
                     {t.status !== 'Done' && <button onClick={() => onStatusChange(t, t.status === 'Pending' ? 'In Progress' : 'Done')} style={S.btnSm(t.status === 'Pending' ? '#0ea5e9' : '#16a34a')}>{t.status === 'Pending' ? 'Start' : '✅'}</button>}
-                    {t.status === 'Done'  && <button onClick={() => onStatusChange(t, 'Pending')} style={S.btnSm('#64748b')}>↩</button>}
+                    {t.status === 'Done' && <button onClick={() => onStatusChange(t, 'Pending')} style={S.btnSm('#64748b')}>↩</button>}
                     <button onClick={() => onDelete(t.id)} style={S.btnSm('#ef4444')}>✕</button>
                   </div>
                 </div>
@@ -377,7 +374,14 @@ function MonitoringView({ staff, tasks, onAssign, onWarn }) {
 
   const staffMonitor = staff.map(s => {
     const st = tasksWithOverdue.filter(t => t.assigned_to === s.name)
-    return { ...s, total: st.length, done: st.filter(t => t.status === 'Done').length, inprog: st.filter(t => t.status === 'In Progress' && !t._overdue).length, pending: st.filter(t => t.status === 'Pending' && !t._overdue).length, overdue: st.filter(t => t._overdue).length }
+    return {
+      ...s,
+      total:   st.length,
+      done:    st.filter(t => t.status === 'Done').length,
+      inprog:  st.filter(t => t.status === 'In Progress' && !t._overdue).length,
+      pending: st.filter(t => t.status === 'Pending' && !t._overdue).length,
+      overdue: st.filter(t => t._overdue).length,
+    }
   }).sort((a, b) => b.overdue - a.overdue || b.total - a.total)
 
   const deptMap = {}
@@ -385,17 +389,16 @@ function MonitoringView({ staff, tasks, onAssign, onWarn }) {
     const d = t.department || 'General'
     if (!deptMap[d]) deptMap[d] = { total: 0, done: 0, inprog: 0, pending: 0, overdue: 0 }
     deptMap[d].total++
-    if (t.status === 'Done') deptMap[d].done++
-    else if (t._overdue) deptMap[d].overdue++
+    if (t.status === 'Done')          deptMap[d].done++
+    else if (t._overdue)              deptMap[d].overdue++
     else if (t.status === 'In Progress') deptMap[d].inprog++
-    else deptMap[d].pending++
+    else                              deptMap[d].pending++
   })
 
   const highRisk = staffMonitor.filter(s => s.overdue >= 1)
 
   return (
     <div>
-      {/* High risk panel */}
       {highRisk.length > 0 && (
         <div style={S.card}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, fontSize: 14, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -418,13 +421,12 @@ function MonitoringView({ staff, tasks, onAssign, onWarn }) {
         </div>
       )}
 
-      {/* Staff cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 14, marginBottom: 16 }}>
         {staffMonitor.map(s => {
           const pct   = s.total > 0 ? Math.round((s.done / s.total) * 100) : 0
           const color = s.overdue > 0 ? '#ef4444' : pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#6366f1'
           return (
-            <div key={s.id} style={{ background: 'white', borderRadius: 12, padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderTop: `4px solid ${color}` }}>
+            <div key={s.id} style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderTop: `4px solid ${color}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: s.overdue > 0 ? '#fee2e2' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color, flexShrink: 0 }}>{initials(s.name)}</div>
@@ -450,13 +452,12 @@ function MonitoringView({ staff, tasks, onAssign, onWarn }) {
         })}
       </div>
 
-      {/* Department table */}
       <div style={S.card}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, fontSize: 14, color: '#1e3a5f' }}>🏢 Department Summary</div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr>{['Department', 'Total', 'Done', 'In Progress', 'Pending', 'Overdue', 'Rate'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+              <tr>{['Department','Total','Done','In Progress','Pending','Overdue','Rate'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {Object.entries(deptMap).map(([dept, d]) => {
@@ -480,7 +481,9 @@ function MonitoringView({ staff, tasks, onAssign, onWarn }) {
                   </tr>
                 )
               })}
-              {Object.keys(deptMap).length === 0 && <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#94a3b8', padding: 28 }}>No task data available</td></tr>}
+              {Object.keys(deptMap).length === 0 && (
+                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#94a3b8', padding: 28 }}>No task data available</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -507,36 +510,41 @@ export default function StaffTaskMonitor() {
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
+  // ── staffDB-wired fetch ──────────────────────────────────────────────────────
   const fetchStaff = useCallback(async () => {
-    const { data } = await supabase.from('staff_profiles').select('id,name,designation,department,status').eq('status', 'Active').order('name')
-    setStaff(data || [])
+    try {
+      const data = await staffDB.forChecklist()
+      setStaff(data)
+    } catch (err) { showToast('⚠️ Could not load staff.') }
   }, [])
 
   const fetchTasks = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('staff_tasks').select('*').order('created_at', { ascending: false })
-    if (!error) setTasks(data || [])
-    else showToast('⚠️ Could not load tasks. Check staff_tasks table.')
-    setLoading(false)
+    try {
+      const data = await staffDB.getTasks()
+      setTasks(data)
+    } catch { showToast('⚠️ Could not load tasks. Check staff_tasks table.') }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchStaff(); fetchTasks() }, [fetchStaff, fetchTasks])
 
+  // ── Task handlers — staffDB-wired ────────────────────────────────────────────
   const handleStatusChange = useCallback(async (task, newStatus) => {
-    const update = { status: newStatus, updated_at: new Date().toISOString() }
-    if (newStatus === 'Done') update.completed_at = new Date().toISOString()
-    const { data, error } = await supabase.from('staff_tasks').update(update).eq('id', task.id).select()
-    if (error) { showToast('❌ Update failed'); return }
-    setTasks(prev => prev.map(t => t.id === task.id ? (data?.[0] || t) : t))
-    showToast(`✅ Marked as ${newStatus}`)
+    try {
+      const updated = await staffDB.updateTaskStatus(task.id, newStatus)
+      setTasks(prev => prev.map(t => t.id === task.id ? (updated || t) : t))
+      showToast(`✅ Marked as ${newStatus}`)
+    } catch { showToast('❌ Update failed') }
   }, [])
 
   const handleDelete = useCallback(async id => {
     if (!window.confirm('Delete this task?')) return
-    const { error } = await supabase.from('staff_tasks').delete().eq('id', id)
-    if (error) { showToast('❌ Delete failed'); return }
-    setTasks(prev => prev.filter(t => t.id !== id))
-    showToast('🗑️ Task deleted')
+    try {
+      await supabase.from('staff_tasks').delete().eq('id', id)
+      setTasks(prev => prev.filter(t => t.id !== id))
+      showToast('🗑️ Task deleted')
+    } catch { showToast('❌ Delete failed') }
   }, [])
 
   const handleNewTask = useCallback(task => {
@@ -546,10 +554,13 @@ export default function StaffTaskMonitor() {
 
   const handleWarn = useCallback(s => {
     const overdueTasks = tasks.filter(t => t.assigned_to === s.name && isOverdue(t))
-    if (overdueTasks.length > 0) alert(`⚠️ Warning sent to ${s.name}\n\nOverdue tasks:\n${overdueTasks.map(t => `• ${t.title}`).join('\n')}\n\n(In production, connect to your notification system)`)
-    else alert(`🔔 Reminder sent to ${s.name} about pending tasks.\n\n(In production, connect to your notification system)`)
+    if (overdueTasks.length > 0)
+      alert(`⚠️ Warning sent to ${s.name}\n\nOverdue tasks:\n${overdueTasks.map(t => `• ${t.title}`).join('\n')}\n\n(Connect to your notification system in production)`)
+    else
+      alert(`🔔 Reminder sent to ${s.name} about pending tasks.\n\n(Connect to your notification system in production)`)
   }, [tasks])
 
+  // ── Derived state ────────────────────────────────────────────────────────────
   const tasksWithOverdue = useMemo(() => tasks.map(t => ({ ...t, _overdue: isOverdue(t) })), [tasks])
 
   const stats = useMemo(() => ({
@@ -566,7 +577,10 @@ export default function StaffTaskMonitor() {
   const filteredStaff = useMemo(() => {
     let list = staff
     if (filterDept !== 'All') list = list.filter(s => s.department === filterDept)
-    if (search) list = list.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || (s.designation || '').toLowerCase().includes(search.toLowerCase()))
+    if (search) list = list.filter(s =>
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      (s.designation || '').toLowerCase().includes(search.toLowerCase())
+    )
     return list
   }, [staff, filterDept, search])
 
