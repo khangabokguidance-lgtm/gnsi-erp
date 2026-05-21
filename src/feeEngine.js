@@ -254,9 +254,9 @@ export const checkCourseFeeExists = async (gcc, forMonth, year) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 // 7. ACCOUNTS UPSERT
 // ═══════════════════════════════════════════════════════════════════════════
-
 export const upsertAccount = async ({
   entry_date, type, category, amount,
   payment_mode, note, source_ref: sRef, source_type,
@@ -264,10 +264,17 @@ export const upsertAccount = async ({
   const { error } = await supabase
     .from(TABLES.accounts)
     .upsert(
-      { entry_date, type, category, amount, payment_mode, note, source_ref: sRef, source_type },
-      { onConflict: 'source_ref', ignoreDuplicates: false }
+      {
+        entry_date: new Date().toISOString().slice(0, 10), // ← always today, ignore passed entry_date
+        type, category, amount, payment_mode, note,
+        source_ref: sRef, source_type,
+      },
+      { onConflict: 'source_ref,source_type', ignoreDuplicates: false }
     )
-  if (error) console.error('upsertAccount error:', error.message)
+  if (error) {
+    console.error('upsertAccount error:', error.message)
+    throw new Error('Account update failed: ' + error.message)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
