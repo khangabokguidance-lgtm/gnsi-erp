@@ -47,13 +47,29 @@ async function callGemini(prompt) {
 }
 
 async function callGeminiJSON(prompt) {
-  const fullPrompt = prompt + '\n\nIMPORTANT: Return ONLY valid JSON, no markdown, no backticks, no explanation.'
+  const fullPrompt = `You must respond with ONLY a valid JSON array. No markdown, no backticks, no explanation, no text before or after. Start your response with [ and end with ].
+
+${prompt}`
+  
   const text = await callGemini(fullPrompt)
-  const clean = text.replace(/```json|```/g, '').trim()
+  
+  // Try multiple ways to extract JSON
+  let clean = text.replace(/```json/g, '').replace(/```/g, '').trim()
+  
+  // Find the array bounds
   const start = clean.indexOf('[')
   const end   = clean.lastIndexOf(']')
-  if (start === -1 || end === -1) throw new Error('No JSON array found in response')
-  return JSON.parse(clean.slice(start, end + 1))
+  
+  if (start === -1 || end === -1) {
+    console.error('Raw response:', text) // helps debug
+    throw new Error('No JSON array found in response')
+  }
+  
+  try {
+    return JSON.parse(clean.slice(start, end + 1))
+  } catch (e) {
+    throw new Error('Invalid JSON: ' + e.message)
+  }
 }
 
 // ─── Search using Gemini (since we can't do real web search, Gemini generates realistic sources) ──
