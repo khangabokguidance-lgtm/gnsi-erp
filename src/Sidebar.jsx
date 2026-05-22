@@ -28,11 +28,11 @@ const ALL_GROUPS = [
     group: 'ACADEMIC',
     icon: '◈',
     items: [
-      { id: 'attendance', label: 'Attendance', icon: '📅' },
-      { id: 'exams',      label: 'Exams',      icon: '📝' },
-      { id: 'timetable',  label: 'Timetable',  icon: '🕐' },
-      { id: 'teaching',   label: 'Teaching',   icon: '📚' },
-      { id: 'courses',    label: 'Courses',    icon: '🎓' },
+      { id: 'attendance',   label: 'Attendance',    icon: '📅' },
+      { id: 'exams',        label: 'Exams',         icon: '📝' },
+      { id: 'timetable',    label: 'Timetable',     icon: '🕐' },
+      { id: 'teaching',     label: 'Teaching',      icon: '📚' },
+      { id: 'courses',      label: 'Courses',       icon: '🎓' },
       { id: 'questionbank', label: 'Question Bank', icon: '❓' },
     ],
   },
@@ -159,7 +159,6 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
           letterSpacing: isActive ? '0.01em' : 0,
         }}
       >
-        {/* Active left bar */}
         {isActive && (
           <span style={{
             position: 'absolute', left: 0, top: '50%',
@@ -192,7 +191,6 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
         )}
       </button>
 
-      {/* Pin button — appears on hover */}
       {hov && onPin && (
         <button
           onClick={e => { e.stopPropagation(); onPin(item.id) }}
@@ -349,6 +347,10 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   // Permissions
   useEffect(() => {
     async function fetchPermissions() {
+      if (role === 'Admin') {
+        setAllowedModules(new Set(ALL_ITEMS.map(i => i.id)))
+        return
+      }
       const { data, error } = await supabase
         .from('role_permissions')
         .select('module_key')
@@ -437,7 +439,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* Subtle glow behind avatar */}
         <div style={{
           position: 'absolute', left: 0, top: 0, bottom: 0, width: 60,
           background: `radial-gradient(ellipse at left center, ${D.accentGlow} 0%, transparent 70%)`,
@@ -543,8 +544,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         scrollbarWidth: 'thin',
         scrollbarColor: `${D.border} transparent`,
       }}>
-
-        {/* Pinned */}
         {!search && (
           <PinnedItems
             pins={pins}
@@ -554,7 +553,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
           />
         )}
 
-        {/* Recents */}
         {!search && visibleRecents.length > 0 && (
           <>
             <RecentItems recents={visibleRecents} activePage={activePage} onNavigate={handleNavigate} />
@@ -562,7 +560,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
           </>
         )}
 
-        {/* Groups */}
         {filteredGroups.length === 0 && (
           <div style={{ padding: '24px 12px', textAlign: 'center', color: D.textFaint, fontSize: 12 }}>
             No modules found
@@ -604,7 +601,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         flexShrink: 0,
         background: `linear-gradient(0deg, ${D.bgDeep} 0%, transparent 100%)`,
       }}>
-        {/* Help row */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           padding: '0 10px 7px',
@@ -615,8 +611,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
           </span>
           <span style={{ fontSize: 10, color: D.textFaint }}>v2.1 · © {new Date().getFullYear()} GNSI</span>
         </div>
-
-        {/* Sign out */}
         <LogoutButton onLogout={onLogout} />
       </div>
     </>
@@ -667,7 +661,6 @@ function LogoHeader({ isMobile, onClose }) {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Decorative line */}
       <div style={{
         position: 'absolute', bottom: 0, left: 14, right: 14,
         height: 1,
@@ -762,7 +755,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
   /* ── MOBILE ── */
   return (
     <>
-      {/* Top bar */}
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0,
         height: 56,
@@ -773,7 +765,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         zIndex: 200,
         fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
       }}>
-        {/* Hamburger with badge dot */}
         <button
           onClick={() => setDrawerOpen(true)}
           aria-label="Open menu"
@@ -799,7 +790,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
           )}
         </button>
 
-        {/* Logo */}
         <div style={{
           width: 30, height: 30, borderRadius: 7,
           background: D.logoBg,
@@ -815,7 +805,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
           </div>
         </div>
 
-        {/* Active label */}
         <div style={{
           fontSize: 12, color: D.accentLight, fontWeight: 600,
           background: D.accentGlow, border: `1px solid ${D.accentBorder}`,
@@ -827,7 +816,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         </div>
       </div>
 
-      {/* Backdrop */}
       {drawerOpen && (
         <div
           onClick={() => setDrawerOpen(false)}
@@ -840,7 +828,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
         />
       )}
 
-      {/* Drawer */}
       <div style={{
         ...sidebarStyles,
         position: 'fixed', top: 0, left: 0,
