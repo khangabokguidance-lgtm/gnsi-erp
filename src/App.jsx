@@ -30,52 +30,15 @@ import Teaching           from './Teaching'
 import Attendance         from './Attendance'
 import Exams              from './Exams'
 import Timetable          from './Timetable'
-import FeeSetup from './FeeSetup'
+import FeeSetup           from './FeeSetup'
+import QuestionBank       from './QuestionBank'
 
-const ALL_MODULES = [
-  { key: 'dashboard',        icon: '⊞',   label: 'Dashboard'          },
-  { key: 'students',         icon: '🎓',  label: 'Students'           },
-  { key: 'admissions',       icon: '📋',  label: 'Admissions'         },
-  { key: 'sessions',         icon: '📅',  label: 'Sessions'           },
-  { key: 'bulkadmission',    icon: '📥',  label: 'Bulk Admission'     },
-  { key: 'fees',             icon: '💰',  label: 'Fees'               },
-  { key: 'accounts',         icon: '🧾',  label: 'Accounts'           },
-  { key: 'salary',           icon: '💵',  label: 'Salary'             },
-  { key: 'courses',          icon: '📊',  label: 'Courses'            },
-  { key: 'teaching',         icon: '📚',  label: 'Teaching'           },
-  { key: 'attendance',       icon: '📅',  label: 'Attendance'         },
-  { key: 'exams',            icon: '📝',  label: 'Exams'              },
-  { key: 'timetable',        icon: '🕐',  label: 'Timetable'          },
-  { key: 'staff',            icon: '👨‍🏫', label: 'Staff'              },
-  { key: 'hr',               icon: '🗂️', label: 'HR'                 },
-  { key: 'leave',            icon: '🏖️', label: 'Leave'              },
-  { key: 'hostel',           icon: '🏨',  label: 'Hostel'             },
-  { key: 'reception',        icon: '🛎️', label: 'Reception'          },
-  { key: 'notice',           icon: '🔔',  label: 'Notice'             },
-  { key: 'social',           icon: '📣',  label: 'Social'             },
-  { key: 'connect',          icon: '🔗',  label: 'Connect'            },
-  { key: 'reports',          icon: '📈',  label: 'Reports'            },
-  { key: 'checklist',        icon: '✅',  label: 'Checklist'          },
-  { key: 'system',           icon: '⚙️', label: 'System'             },
-  { key: 'studentfeeledger', icon: '🧾',  label: 'Student Fee Ledger' },
-  { key: 'feesetup', icon: '⚙️', label: 'Fee Setup' },
-]
+// ─── NEW Sidebar (replaces the old inline one) ─────────────────
+import Sidebar from './TabSourceCollector'   // rename file to Sidebar.jsx when ready
 
 // ─── Helpers ───────────────────────────────────────────────────
 const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN')
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0)
-
-// ─── Mobile hook ───────────────────────────────────────────────
-function useIsMobile() {
-  const [mobile, setMobile] = useState(() => window.innerWidth <= 768)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)')
-    const handler = e => setMobile(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
-  return mobile
-}
 
 // ─── Shared UI ─────────────────────────────────────────────────
 function StatCard({ icon, label, value, sub, trend, accent }) {
@@ -318,17 +281,18 @@ function AdminDashboard({ onNavigate }) {
         <SectionHeader title="⚡ Quick Actions" sub="One-click shortcuts" />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           {[
-            { label: '➕ Add Student',    color: '#1e3a5f', module: 'students'    },
-            { label: '📋 New Admission',  color: '#7c3aed', module: 'admissions'  },
-            { label: '💵 Record Fee',     color: '#16a34a', module: 'fees'        },
-            { label: '📊 Courses',        color: '#0d9488', module: 'courses'     },
-            { label: '📚 Teaching Log',   color: '#0891b2', module: 'teaching'    },
-            { label: '📅 Attendance',     color: '#db2777', module: 'attendance'  },
-            { label: '📝 Exams',          color: '#16a34a', module: 'exams'       },
-            { label: '🕐 Timetable',      color: '#b45309', module: 'timetable'   },
-            { label: '🏖️ Approve Leave', color: '#b45309', module: 'leave'       },
-            { label: '🔔 Send Notice',    color: '#ea580c', module: 'notice'      },
-            { label: '📈 Reports',        color: '#4f46e5', module: 'reports'     },
+            { label: '➕ Add Student',    color: '#1e3a5f', module: 'students'      },
+            { label: '📋 New Admission',  color: '#7c3aed', module: 'admissions'    },
+            { label: '💵 Record Fee',     color: '#16a34a', module: 'fees'          },
+            { label: '📊 Courses',        color: '#0d9488', module: 'courses'       },
+            { label: '📚 Teaching Log',   color: '#0891b2', module: 'teaching'      },
+            { label: '📅 Attendance',     color: '#db2777', module: 'attendance'    },
+            { label: '📝 Exams',          color: '#16a34a', module: 'exams'         },
+            { label: '🕐 Timetable',      color: '#b45309', module: 'timetable'     },
+            { label: '❓ Question Bank',  color: '#7c3aed', module: 'questionbank'  },
+            { label: '🏖️ Approve Leave', color: '#b45309', module: 'leave'         },
+            { label: '🔔 Send Notice',    color: '#ea580c', module: 'notice'        },
+            { label: '📈 Reports',        color: '#4f46e5', module: 'reports'       },
           ].map(a => (
             <button
               key={a.label}
@@ -448,180 +412,12 @@ function AccessDenied() {
   )
 }
 
-// ─── Sidebar ───────────────────────────────────────────────────
-function Sidebar({ modules, active, onSelect, currentUser, onLogout, isMobile }) {
-  const [drawerOpen, setDrawerOpen] = useState(false)
-
-  useEffect(() => { setDrawerOpen(false) }, [active])
-  useEffect(() => {
-    document.body.style.overflow = drawerOpen ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [drawerOpen])
-
-  const activeLabel = modules.find(m => m.key === active)?.label || active
-  const activeIcon  = modules.find(m => m.key === active)?.icon  || ''
-
-  const NavList = ({ onItemClick }) => (
-    <>
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid #1e293b' }}>
-        <div style={{
-          background: currentUser.role === 'Admin' ? '#1e3a5f' : '#4c1d95',
-          borderRadius: 8, padding: '7px 12px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#fff' }}>{currentUser.name}</p>
-            <p style={{ margin: 0, fontSize: 10, color: '#94a3b8' }}>{currentUser.role}</p>
-          </div>
-          {isMobile && (
-            <button onClick={() => setDrawerOpen(false)} style={{
-              background: 'none', border: 'none', color: '#94a3b8',
-              fontSize: 18, cursor: 'pointer', padding: 4, lineHeight: 1,
-            }}>✕</button>
-          )}
-        </div>
-      </div>
-
-      <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
-        {modules.map(m => (
-          <button
-            key={m.key}
-            onClick={() => { onSelect(m.key); onItemClick?.() }}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 16px', border: 'none', cursor: 'pointer', textAlign: 'left',
-              background:  active === m.key ? '#1e3a5f' : 'transparent',
-              color:       active === m.key ? '#fff'    : '#94a3b8',
-              fontSize: 13, fontWeight: active === m.key ? 700 : 400,
-              borderLeft:  active === m.key ? '3px solid #3b82f6' : '3px solid transparent',
-              transition: 'all .12s',
-            }}
-            onMouseEnter={e => {
-              if (active !== m.key) {
-                e.currentTarget.style.background = '#1e293b'
-                e.currentTarget.style.color = '#e2e8f0'
-              }
-            }}
-            onMouseLeave={e => {
-              if (active !== m.key) {
-                e.currentTarget.style.background = 'transparent'
-                e.currentTarget.style.color = '#94a3b8'
-              }
-            }}
-          >
-            <span style={{ fontSize: 15 }}>{m.icon}</span>
-            <span>{m.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      <div style={{ padding: '12px 16px', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#475569' }}>© {new Date().getFullYear()} GNSI</span>
-        <button
-          onClick={onLogout}
-          style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-        >
-          Logout
-        </button>
-      </div>
-    </>
-  )
-
-  /* ── DESKTOP ── */
-  if (!isMobile) {
-    return (
-      <div style={{
-        width: 220, flexShrink: 0, background: '#0f172a',
-        display: 'flex', flexDirection: 'column',
-        height: '100vh', position: 'sticky', top: 0, overflowY: 'auto',
-      }}>
-        <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>🏫 GNSI ERP</div>
-          <div style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>School Management System</div>
-        </div>
-        <NavList />
-      </div>
-    )
-  }
-
-  /* ── MOBILE ── */
-  return (
-    <>
-      {/* Top header */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, height: 54,
-        background: '#0f172a', borderBottom: '1px solid #1e293b',
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '0 14px', zIndex: 200,
-        fontFamily: "'Segoe UI', system-ui, sans-serif",
-      }}>
-        {/* Hamburger */}
-        <button
-          onClick={() => setDrawerOpen(true)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 5 }}
-          aria-label="Open menu"
-        >
-          {[0,1,2].map(i => (
-            <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: '#94a3b8' }} />
-          ))}
-        </button>
-
-        <span style={{ fontSize: 18, fontWeight: 800, color: '#fff', flex: 1 }}>🏫 GNSI</span>
-
-        {/* Active module pill */}
-        <span style={{
-          fontSize: 11, fontWeight: 600, color: '#3b82f6',
-          background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)',
-          borderRadius: 5, padding: '3px 9px',
-          maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {activeIcon} {activeLabel}
-        </span>
-      </div>
-
-      {/* Backdrop */}
-      {drawerOpen && (
-        <div
-          onClick={() => setDrawerOpen(false)}
-          style={{
-            position: 'fixed', inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            zIndex: 298,
-            backdropFilter: 'blur(2px)',
-          }}
-        />
-      )}
-
-      {/* Drawer */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0,
-        width: 260, height: '100vh',
-        background: '#0f172a',
-        display: 'flex', flexDirection: 'column',
-        fontFamily: "'Segoe UI', system-ui, sans-serif",
-        borderRight: '1px solid #1e293b',
-        zIndex: 299,
-        transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-        willChange: 'transform',
-      }}>
-        <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>🏫 GNSI ERP</div>
-          <div style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>School Management System</div>
-        </div>
-        <NavList onItemClick={() => setDrawerOpen(false)} />
-      </div>
-    </>
-  )
-}
-
 // ─── App Root ──────────────────────────────────────────────────
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [active,      setActive]      = useState('dashboard')
   const [permissions, setPermissions] = useState({})
   const [permLoading, setPermLoading] = useState(false)
-  const isMobile = useIsMobile()
 
   const loadPermissions = async (role) => {
     if (role === 'Admin') return
@@ -644,10 +440,6 @@ export default function App() {
 
   const isAdmin = currentUser.role === 'Admin'
 
-  const sidebarModules = isAdmin
-    ? [...ALL_MODULES, { key: 'admin', icon: '🔐', label: 'Admin Panel' }]
-    : ALL_MODULES.filter(m => m.key === 'dashboard' || permissions[m.key] === true)
-
   const canAccess = (key) => {
     if (key === 'dashboard') return true
     if (isAdmin) return true
@@ -668,32 +460,35 @@ export default function App() {
     if (!canAccess(active)) return <AccessDenied />
 
     const moduleMap = {
-      students:          <Students          currentUser={currentUser} />,
-      admissions:        <Admissions        currentUser={currentUser} />,
-      sessions:          <Sessions          currentUser={currentUser} />,
-      admissionsessions: <AdmissionSessions currentUser={currentUser} />,
-      bulkadmission:     <BulkAdmission     currentUser={currentUser} />,
-      fees:              <Fees              currentUser={currentUser} />,
-      accounts:           <Accounts         role={currentUser.role?.toLowerCase()} />,
-      salary:            <Salary            currentUser={currentUser} />,
-      staff:             <Staff             currentUser={currentUser} />,
-      hr:                <HR                currentUser={currentUser} />,
-      leave:             <Leave             currentUser={currentUser} />,
-      hostel:            <Hostel            currentUser={currentUser} />,
-      reception:         <Reception         currentUser={currentUser} />,
-      notice:            <Notice            currentUser={currentUser} />,
-      social:            <Social            currentUser={currentUser} />,
-      connect:           <Connect           currentUser={currentUser} />,
-      reports:           <Reports           currentUser={currentUser} />,
-      checklist:         <Checklist         currentUser={currentUser} />,
-      system:            <SystemSettings    currentUser={currentUser} />,
-      studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} />,
-      courses:           <Courses           currentUser={currentUser} />,
-      teaching:          <Teaching          currentUser={currentUser} />,
-      attendance:        <Attendance        currentUser={currentUser} />,
-      exams:             <Exams             currentUser={currentUser} />,
-      timetable:         <Timetable         currentUser={currentUser} />,
-      feesetup: <FeeSetup userRole={currentUser.role} />,
+      students:             <Students          currentUser={currentUser} />,
+      admissions:           <Admissions        currentUser={currentUser} />,
+      sessions:             <Sessions          currentUser={currentUser} />,
+      admissionsessions:    <AdmissionSessions currentUser={currentUser} />,
+      'bulk-admission-fee': <BulkAdmission     currentUser={currentUser} />,
+      bulkadmission:        <BulkAdmission     currentUser={currentUser} />,
+      fees:                 <Fees              currentUser={currentUser} />,
+      accounts:             <Accounts          role={currentUser.role?.toLowerCase()} />,
+      salary:               <Salary            currentUser={currentUser} />,
+      staff:                <Staff             currentUser={currentUser} />,
+      hr:                   <HR                currentUser={currentUser} />,
+      leave:                <Leave             currentUser={currentUser} />,
+      hostel:               <Hostel            currentUser={currentUser} />,
+      reception:            <Reception         currentUser={currentUser} />,
+      notice:               <Notice            currentUser={currentUser} />,
+      social:               <Social            currentUser={currentUser} />,
+      connect:              <Connect           currentUser={currentUser} />,
+      reports:              <Reports           currentUser={currentUser} />,
+      checklist:            <Checklist         currentUser={currentUser} />,
+      'management-checklist': <Checklist       currentUser={currentUser} />,
+      system:               <SystemSettings    currentUser={currentUser} />,
+      studentfeeledger:     <StudentFeeLedger  currentUser={currentUser} />,
+      courses:              <Courses           currentUser={currentUser} />,
+      teaching:             <Teaching          currentUser={currentUser} />,
+      attendance:           <Attendance        currentUser={currentUser} />,
+      exams:                <Exams             currentUser={currentUser} />,
+      timetable:            <Timetable         currentUser={currentUser} />,
+      feesetup:             <FeeSetup          userRole={currentUser.role} />,
+      questionbank:         <QuestionBank      currentUser={currentUser} />,
     }
 
     return moduleMap[active] || (
@@ -711,21 +506,21 @@ export default function App() {
       minHeight: '100vh',
       background: '#f8fafc',
     }}>
+      {/* ── New grouped Sidebar ── */}
       <Sidebar
-        modules={sidebarModules}
-        active={active}
-        onSelect={setActive}
+        activePage={active}
+        setActivePage={setActive}
         currentUser={currentUser}
         onLogout={handleLogout}
-        isMobile={isMobile}
       />
+
+      {/* ── Main content ── */}
       <main style={{
         flex: 1,
         overflowY: 'auto',
         minHeight: '100vh',
-        // On mobile: no left margin (sidebar is a drawer), add top padding for header bar
-        marginLeft: isMobile ? 0 : 0,
-        paddingTop: isMobile ? 54 : 0,
+        marginLeft: 262,       // matches new sidebar width (262px fixed)
+        paddingTop: 0,
       }}>
         {renderContent()}
       </main>
