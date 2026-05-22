@@ -922,8 +922,8 @@ export default function App() {
 
   const renderContent = () => {
     if (active === 'dashboard') return isAdmin
-      ? <AdminDashboard onNavigate={setActive} />
-      : <UserDashboard  onNavigate={setActive} currentUser={currentUser} />
+  ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
+  : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
     if (!canAccess(active)) return <AccessDenied />
     return moduleMap[active] || (
       <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
