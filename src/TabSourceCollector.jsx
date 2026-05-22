@@ -33,7 +33,7 @@ const S = {
   statCard: (color, bg) => ({ background: bg, borderRadius: '12px', padding: '16px', borderLeft: `4px solid ${color}` }),
 }
 
-// ─── Gemini API call ──────────────────────────────────────────────────────────
+// ─── Gemini API calls ─────────────────────────────────────────────────────────
 
 async function callGemini(prompt) {
   const res = await fetch('/api/gemini', {
@@ -47,32 +47,22 @@ async function callGemini(prompt) {
 }
 
 async function callGeminiJSON(prompt) {
-  const fullPrompt = `You must respond with ONLY a valid JSON array. No markdown, no backticks, no explanation, no text before or after. Start your response with [ and end with ].
-
-${prompt}`
-  
-  const text = await callGemini(fullPrompt)
-  
-  // Try multiple ways to extract JSON
-  let clean = text.replace(/```json/g, '').replace(/```/g, '').trim()
-  
-  // Find the array bounds
+  const res = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, jsonMode: true }),
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(data.error)
+  const text = data.text || ''
+  const clean = text.replace(/```json/g, '').replace(/```/g, '').trim()
   const start = clean.indexOf('[')
   const end   = clean.lastIndexOf(']')
-  
-  if (start === -1 || end === -1) {
-    console.error('Raw response:', text) // helps debug
-    throw new Error('No JSON array found in response')
-  }
-  
-  try {
-    return JSON.parse(clean.slice(start, end + 1))
-  } catch (e) {
-    throw new Error('Invalid JSON: ' + e.message)
-  }
+  if (start === -1 || end === -1) throw new Error('No JSON array found in response')
+  return JSON.parse(clean.slice(start, end + 1))
 }
 
-// ─── Search using Gemini (since we can't do real web search, Gemini generates realistic sources) ──
+// ─── Search using Gemini ──────────────────────────────────────────────────────
 
 async function searchMCQSources(subject, chapter, searchMode, selectedSites) {
   const siteList = [...selectedSites].join(', ')
@@ -84,7 +74,7 @@ Chapter: ${chapter}
 Search Mode: ${searchMode}
 ${searchMode !== 'general' ? `Preferred Sites: ${siteList}` : ''}
 
-Return ONLY a JSON array with 6-8 sources:
+Return a JSON array with 6-8 sources:
 [
   {
     "url": "https://actual-website.com/page",
@@ -97,8 +87,7 @@ Return ONLY a JSON array with 6-8 sources:
 
 Make URLs realistic and specific to the topic. Focus on AISSEE, Sainik School, or general Class 6 MCQs.`
 
-  const results = await callGeminiJSON(prompt)
-  return results
+  return await callGeminiJSON(prompt)
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -182,11 +171,13 @@ function ExtractedMCQPanel({ mcqs, sourceInfo, onSaveToBank, onClose }) {
       explanation:    q.explanation || '',
       difficulty:     q.difficulty || 'Medium',
       marks:          sourceInfo.subject === 'Mathematics' ? 3 : 2,
-      source:         `Web Source: ${sourceInfo.title || sourceInfo.url}`,
+      source:         `AI Generated: ${sourceInfo.title || sourceInfo.chapter}`,
     }))
     const { error } = await supabase.from('qbank_questions').insert(payload)
     if (error) { alert('Error: ' + error.message); setSaving(false); return }
-    await supabase.from('qbank_sources').update({ mcq_count: toSave.length, status: 'extracted' }).eq('id', sourceInfo.id)
+    if (sourceInfo.id !== 'generated') {
+      await supabase.from('qbank_sources').update({ mcq_count: toSave.length, status: 'extracted' }).eq('id', sourceInfo.id)
+    }
     setSaved(true); setSaving(false)
     onSaveToBank(toSave.length)
   }
@@ -318,21 +309,21 @@ export default function TabSourceCollector({ refetchQuestions }) {
 Subject: ${subject}
 Chapter: ${chapter}
 
-Return ONLY a JSON array:
+Return a JSON array (15 items):
 [
   {
     "question": "Question text here?",
-    "option_a": "Option A",
-    "option_b": "Option B",
-    "option_c": "Option C",
-    "option_d": "Option D",
+    "option_a": "First option",
+    "option_b": "Second option",
+    "option_c": "Third option",
+    "option_d": "Fourth option",
     "correct_option": "A",
     "explanation": "Brief explanation of the correct answer",
     "difficulty": "Easy"
   }
 ]
 
-Make questions appropriate for Class 6 students. Vary difficulty (5 Easy, 7 Medium, 3 Hard).`
+Make questions appropriate for Class 6 students. Include 5 Easy, 7 Medium, 3 Hard questions.`
 
       const mcqs = await callGeminiJSON(prompt)
       const fakeSource = { id: 'generated', subject, chapter, title: `AI Generated: ${chapter}`, url: '', status: 'extracted' }
@@ -408,7 +399,7 @@ Generate 15-20 MCQs as plain text with Q1, Q2... format, options A) B) C) D) and
 Subject: ${source.subject}
 Chapter: ${source.chapter}
 
-Return ONLY valid JSON array:
+Return a JSON array:
 [{"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","explanation":"...","difficulty":"Medium"}]
 
 TEXT:
@@ -435,10 +426,10 @@ ${source.content?.slice(0, 12000)}`
     return site ? site.label : 'General Web'
   }
 
-  const totalSources   = sources.length
-  const totalExtracted = sources.filter(s => s.status === 'extracted').length
-  const totalMCQs      = sources.reduce((a, s) => a + (s.mcq_count || 0), 0)
-  const subjectsCovered= [...new Set(sources.map(s => s.subject))].length
+  const totalSources    = sources.length
+  const totalExtracted  = sources.filter(s => s.status === 'extracted').length
+  const totalMCQs       = sources.reduce((a, s) => a + (s.mcq_count || 0), 0)
+  const subjectsCovered = [...new Set(sources.map(s => s.subject))].length
 
   return (
     <div>
@@ -473,7 +464,7 @@ ${source.content?.slice(0, 12000)}`
         ))}
       </div>
 
-      {/* AI Generate MCQs directly */}
+      {/* AI Generate MCQs */}
       <div style={{ ...S.card, borderLeft: '4px solid #7c3aed', background: '#faf5ff' }}>
         <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#7c3aed', marginTop: 0, marginBottom: '12px' }}>🤖 AI Generate MCQs (Powered by Gemini)</h2>
         <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>Select a subject and chapter, then let Gemini AI generate 15 MCQs instantly — no web search needed!</p>
@@ -498,7 +489,7 @@ ${source.content?.slice(0, 12000)}`
         </button>
       </div>
 
-      {/* Search Internet Sources */}
+      {/* Search Sources */}
       <div style={S.card}>
         <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginTop: 0, marginBottom: '8px' }}>🌐 Search for MCQ Sources</h2>
         <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>Gemini will suggest relevant MCQ sources for your topic.</p>
@@ -517,7 +508,8 @@ ${source.content?.slice(0, 12000)}`
               {EXAM_SITES.map(site => {
                 const active = selectedSites.has(site.domain)
                 return (
-                  <button key={site.domain} onClick={() => setSelectedSites(s => { const n = new Set(s); n.has(site.domain) ? n.delete(site.domain) : n.add(site.domain); return n })}
+                  <button key={site.domain}
+                    onClick={() => setSelectedSites(s => { const n = new Set(s); n.has(site.domain) ? n.delete(site.domain) : n.add(site.domain); return n })}
                     style={{ padding: '5px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', background: active ? '#1e3a5f' : 'white', color: active ? 'white' : '#1e3a5f', border: `1.5px solid ${active ? '#1e3a5f' : '#d1d5db'}` }}>
                     {active ? '✓ ' : ''}{site.label}
                   </button>
@@ -531,7 +523,7 @@ ${source.content?.slice(0, 12000)}`
         </button>
       </div>
 
-      {/* Manual URL entry */}
+      {/* Manual URL */}
       <div style={S.card}>
         <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginTop: 0, marginBottom: '8px' }}>➕ Add Source Manually</h2>
         <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>Know a good MCQ source? Add it directly and Gemini will generate content for it.</p>
@@ -586,7 +578,7 @@ ${source.content?.slice(0, 12000)}`
         </div>
       )}
 
-      {/* Saved Source Library */}
+      {/* Saved Library */}
       <div style={S.card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
           <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', margin: 0 }}>📚 Saved Source Library ({sources.length})</h2>
@@ -621,10 +613,10 @@ ${source.content?.slice(0, 12000)}`
         <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#1e3a5f', marginTop: 0, marginBottom: '12px' }}>💡 How Source Collection Works</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
           {[
-            { step: '1', icon: '✨', title: 'Generate',  desc: 'Use AI Generate to instantly create 15 MCQs for any topic' },
-            { step: '2', icon: '🔍', title: 'Search',    desc: 'Search for MCQ sources — Gemini suggests relevant pages' },
-            { step: '3', icon: '🤖', title: 'Extract',   desc: 'Click Extract MCQs — AI parses all questions from content' },
-            { step: '4', icon: '✅', title: 'Save',      desc: 'Review extracted MCQs and save selected ones to Question Bank' },
+            { step: '1', icon: '✨', title: 'Generate', desc: 'Use AI Generate to instantly create 15 MCQs for any topic' },
+            { step: '2', icon: '🔍', title: 'Search',   desc: 'Search for MCQ sources — Gemini suggests relevant pages' },
+            { step: '3', icon: '🤖', title: 'Extract',  desc: 'Click Extract MCQs — AI parses all questions from content' },
+            { step: '4', icon: '✅', title: 'Save',     desc: 'Review extracted MCQs and save selected ones to Question Bank' },
           ].map(s => (
             <div key={s.step} style={{ textAlign: 'center', padding: '12px' }}>
               <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1e3a5f', color: 'white', fontWeight: '700', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px' }}>{s.step}</div>
