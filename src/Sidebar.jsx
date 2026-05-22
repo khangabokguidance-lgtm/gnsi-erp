@@ -33,6 +33,7 @@ const ALL_GROUPS = [
       { id: 'timetable',  label: 'Timetable',  icon: '🕐' },
       { id: 'teaching',   label: 'Teaching',   icon: '📚' },
       { id: 'courses',    label: 'Courses',    icon: '🎓' },
+      { id: 'questionbank', label: 'Question Bank', icon: '❓' },
     ],
   },
   {
