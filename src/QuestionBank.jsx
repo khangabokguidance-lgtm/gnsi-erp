@@ -1,9 +1,13 @@
-// QuestionBank.jsx — GNSI Portal v2.0
-// Examin8-style Question Bank for AISSEE / Sainik School preparation
+// QuestionBank.jsx — GNSI Portal
+// Built per full discussion:
+// Structure: Subject → Chapter → Subsection → Questions
+// 6 Tabs: Bank, Manual Add, Bulk Paste, Create Paper, Online Test, Stats
+// No AI — fully free, zero API cost
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 
+// ── SUBJECTS & CHAPTERS ──────────────────────────────────────────────────────
 const SUBJECTS = {
   Mathematics: [
     'Natural Numbers','LCM and HCF','Fractions','Decimal Numbers',
@@ -42,75 +46,369 @@ const SUBJECTS = {
     'Evaporation and Water Cycle','Life of Farmers','Tribal Communities',
   ],
 }
-
 const SUBJECT_LIST  = Object.keys(SUBJECTS)
 const DIFFICULTIES  = ['Easy', 'Medium', 'Hard']
-const MARKS_OPTIONS = [1, 2, 3]
+const MARKS_OPTIONS = [1, 2, 3, 4, 5]
+const DIAGRAM_BUCKET = 'question-diagrams'
 
-const C = {
-  navy:   '#1e3a5f',
-  indigo: '#4f46e5',
-  green:  '#16a34a',
-  amber:  '#d97706',
-  rose:   '#dc2626',
-  violet: '#7c3aed',
-  slate:  '#64748b',
-  bg:     '#f8fafc',
-  white:  '#ffffff',
-  border: '#e2e8f0',
+// ── AUTO SUBSECTION KEYWORD MAP ───────────────────────────────────────────────
+const SUBSECTION_KEYWORDS = {
+  Mathematics: {
+    'Roman Numerals':         ['roman numeral','roman number','arabic numeral','xcix','xliv','cdxlix'],
+    'Place Value & Face Value':['place value','face value','ten thousand','hundred place','thousand place'],
+    'Types of Numbers':       ['prime','composite','twin prime','co-prime','coprime','even number','odd number','natural number','whole number','integer'],
+    'Digits of Numbers':      ['largest number','smallest number','greatest number','digit','formed by','rearrang','descending order','ascending order'],
+    'Comparison of Numbers':  ['compare','ascending','descending','arrange','largest','smallest','greater than','less than'],
+    'Approximate Value':      ['round','nearest hundred','nearest thousand','nearest ten','estimate','approximate'],
+    'Predecessor & Successor':['predecessor','successor','before','after','million'],
+    'Divisibility':           ['divisib','divisible by','multiple of','factor','remainder'],
+    'LCM & HCF':              ['lcm','hcf','least common','highest common','common factor','common multiple'],
+    'Fractions':              ['fraction','numerator','denominator','proper fraction','improper fraction','mixed','equivalent fraction','like fraction','unlike fraction','simplest form','vulgar'],
+    'Decimals':               ['decimal','0.','tenth','hundredth','thousandth'],
+    'Percentage':             ['percent','%','per cent'],
+    'Profit & Loss':          ['profit','loss','cost price','selling price','cp','sp'],
+    'Simple Interest':        ['interest','principal','rate','time','si'],
+    'Average':                ['average','mean','sum of'],
+    'Ratio & Proportion':     ['ratio','proportion','direct','inverse'],
+    'Speed & Distance':       ['speed','distance','time','km/h','m/s'],
+    'Area & Perimeter':       ['area','perimeter','length','breadth','rectangle','square','triangle'],
+    'Volume':                 ['volume','cube','cuboid','capacity'],
+    'Lines & Angles':         ['angle','line','parallel','perpendicular','transversal'],
+    'Circle':                 ['circle','radius','diameter','circumference','chord'],
+    'Simplification':         ['simplif','bodmas','bracket','order of operation'],
+    'Word Problems':          ['bought','sold','total','remaining','left','how many','how much','find the'],
+    'Shaded Portion':         ['shaded','shading','portion','figure','diagram','represent'],
+  },
+  Intelligence: {
+    'Analogies':              ['analogy','analogies','is to','relates'],
+    'Venn Diagram':           ['venn','diagram','circle','overlapping'],
+    'Mirror Image':           ['mirror','reflection','image'],
+    'Series Completion':      ['series','next term','missing','sequence','pattern'],
+    'Coding Decoding':        ['code','coding','decoding','cipher','encoded'],
+    'Direction Test':         ['direction','north','south','east','west','km away','turn'],
+    'Blood Relations':        ['blood','relation','father','mother','son','daughter','brother','sister','uncle','aunt'],
+    'Order & Ranking':        ['rank','ranking','position','tallest','shortest','heavier'],
+    'Clock & Calendar':       ['clock','time','calendar','day','month','year','date'],
+    'Paper Folding':          ['fold','paper','punch','hole'],
+    'Odd Man Out':            ['odd','different','does not belong','not related'],
+    'Classification':         ['classify','group','category','belong'],
+    'Figure Completion':      ['complete','missing part','figure','shape'],
+    'Mathematical Operations':['operation','replace','symbol','+','-','×','÷'],
+    'Sitting Arrangement':    ['sitting','arrangement','row','circle','facing'],
+    'Word Formation':         ['word','letter','form','arrange','meaningful'],
+  },
+  Language: {
+    'Comprehension':          ['passage','comprehension','read','author','paragraph'],
+    'Preposition':            ['preposition','in','on','at','by','with','from','to','into'],
+    'Articles':               ['article','a ','an ','the '],
+    'Tense Forms':            ['tense','past','present','future','has','have','had','was','were'],
+    'Kinds of Nouns':         ['noun','proper','common','collective','abstract','material'],
+    'Kinds of Pronouns':      ['pronoun','he','she','they','it','who','which'],
+    'Verbs':                  ['verb','action','transitive','intransitive','auxiliary'],
+    'Adjectives':             ['adjective','describe','quality','comparative','superlative'],
+    'Adverbs':                ['adverb','manner','time','place','frequency'],
+    'Synonyms':               ['synonym','similar meaning','same meaning'],
+    'Antonyms':               ['antonym','opposite','contrary'],
+    'Correct Spelling':       ['spelling','spell','correct form','incorrect'],
+    'Idioms & Phrases':       ['idiom','phrase','expression','meaning of'],
+    'Types of Sentence':      ['sentence','declarative','interrogative','exclamatory','imperative'],
+    'Singular & Plural':      ['singular','plural','one','many'],
+    'Number & Gender':        ['gender','masculine','feminine','neuter','common'],
+  },
+  'General Knowledge': {
+    'Defence Awareness':      ['defence','army','navy','air force','military','sainik','soldier','weapon','rank'],
+    'Sports & Games':         ['sport','game','cricket','football','hockey','olympics','trophy','tournament','player'],
+    'Historical Monuments':   ['monument','fort','temple','heritage','ancient','built','architecture'],
+    'International Organizations':['united nations','un ','who','unesco','unicef','nato','organization'],
+    'Natural Calamities':     ['earthquake','flood','cyclone','tsunami','drought','disaster','calamity'],
+    'Art & Culture':          ['culture','dance','music','festival','tradition','classical','folk'],
+    'Science & Devices':      ['device','instrument','science','technology','invention','discovered'],
+    'Indian Symbols':         ['symbol','emblem','flag','national','official','logo'],
+    'Religions':              ['religion','hindu','muslim','christian','sikh','buddhist','jain'],
+    'Awards & Honours':       ['award','prize','honour','medal','trophy','winner','recipient'],
+    'Environment':            ['pollution','environment','eco','water','air','soil','conservation'],
+    'Energy':                 ['energy','renewable','solar','wind','nuclear','fossil','fuel'],
+    'Animals':                ['animal','young one','offspring','mammal','bird','reptile'],
+    'Human Body':             ['body','organ','function','blood','heart','brain','lung','digestion'],
+    'Geography':              ['mountain','river','state','capital','country','continent','ocean'],
+  },
 }
 
-const SUBJECT_COLORS = {
+// ── DIAGRAM DETECTION KEYWORDS ────────────────────────────────────────────────
+const DIAGRAM_KEYWORDS = [
+  'shaded portion','shaded part','shading','figure shows','figure below',
+  'diagram','following figure','from the figure','look at the figure',
+  'shape shown','represented in','given figure','observe the figure',
+]
+
+// ── COLORS ───────────────────────────────────────────────────────────────────
+const C = {
+  navy: '#1e3a5f', green: '#16a34a', rose: '#dc2626',
+  amber: '#d97706', violet: '#7c3aed', slate: '#64748b',
+  indigo: '#4f46e5', teal: '#0891b2', bg: '#f8fafc',
+  border: '#e2e8f0', white: '#ffffff',
+}
+const SC = {
   Mathematics:         { color: '#1e3a5f', bg: '#eff6ff', border: '#bfdbfe' },
   Intelligence:        { color: '#7c3aed', bg: '#f3e8ff', border: '#ddd6fe' },
   Language:            { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
   'General Knowledge': { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
 }
+const CHART_COLORS = ['#1e3a5f','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2']
 
-const inp  = { width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, boxSizing: 'border-box', background: C.white, fontFamily: 'system-ui,sans-serif', outline: 'none' }
-const sel  = { ...inp }
-const card = { background: C.white, borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.07)', padding: '20px 24px', marginBottom: 16 }
-const btn  = (bg, disabled = false) => ({ padding: '9px 20px', borderRadius: 8, background: disabled ? C.slate : bg, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .6 : 1 })
-const btnSm= (bg) => ({ padding: '5px 12px', borderRadius: 6, background: bg, color: '#fff', border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer' })
-const lbl  = { display: 'block', fontSize: 11, fontWeight: 700, color: C.slate, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.06em' }
+// ── SHARED STYLES ─────────────────────────────────────────────────────────────
+const iS = {
+  width:'100%', padding:'8px 11px', borderRadius:7,
+  border:`1px solid ${C.border}`, fontSize:13,
+  background:C.white, boxSizing:'border-box', fontFamily:'inherit', outline:'none',
+}
+const lS = { display:'block', fontSize:11, fontWeight:700, color:C.slate, marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }
+const cardS = { background:C.white, borderRadius:12, boxShadow:'0 1px 6px rgba(0,0,0,.07)', padding:'20px 22px', marginBottom:16 }
+const btn = (bg, dis=false) => ({
+  padding:'8px 18px', borderRadius:8, background: dis ? '#94a3b8' : bg,
+  color:'#fff', border:'none', fontSize:13, fontWeight:700,
+  cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .7 : 1,
+})
+const btnSm = (bg, color='#fff') => ({
+  padding:'4px 10px', borderRadius:6, background:bg,
+  color, border:'none', fontSize:11, fontWeight:700, cursor:'pointer',
+})
+const tdS = { padding:'10px 12px', color:C.slate, fontSize:13 }
 
-const today = () => new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const today = () => new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })
 
 function Badge({ text, color, bg, border }) {
-  return <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700, color, background: bg, border: `1px solid ${border || bg}` }}>{text}</span>
+  return (
+    <span style={{ padding:'2px 9px', borderRadius:99, fontSize:10, fontWeight:700,
+      color, background:bg, border:`1px solid ${border||bg}`, whiteSpace:'nowrap' }}>
+      {text}
+    </span>
+  )
 }
 
 function Toast({ msg, color }) {
-  return <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff', border: `1px solid ${C.border}`, borderLeft: `3px solid ${color}`, borderRadius: 10, padding: '11px 18px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 360 }}>{msg}</div>
+  return (
+    <div style={{ position:'fixed', top:20, right:20, zIndex:99999,
+      background:'#fff', border:`1px solid ${C.border}`,
+      borderLeft:`3px solid ${color}`, borderRadius:10,
+      padding:'11px 18px', fontSize:13, fontWeight:600,
+      boxShadow:'0 8px 32px rgba(0,0,0,.12)', maxWidth:360 }}>
+      {msg}
+    </div>
+  )
 }
 
-function QCard({ q, index, showAnswer = false, selectable, selected, onToggle, onDelete }) {
+// ── AUTO DETECT SUBSECTION ────────────────────────────────────────────────────
+function detectSubsection(questionText, subject) {
+  const q = questionText.toLowerCase()
+  const map = SUBSECTION_KEYWORDS[subject] || {}
+  for (const [subsection, keywords] of Object.entries(map)) {
+    if (keywords.some(kw => q.includes(kw.toLowerCase()))) return subsection
+  }
+  return 'General'
+}
+
+function needsDiagram(questionText) {
+  const q = questionText.toLowerCase()
+  return DIAGRAM_KEYWORDS.some(kw => q.includes(kw))
+}
+
+// ── SMART BULK PASTE PARSER ───────────────────────────────────────────────────
+function parseQuestions(rawText) {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean)
+  const questions = []
+  let currentSubsectionHeading = ''
+  let i = 0
+
+  // Detect answer line patterns
+  const isAnswerLine = (line) => {
+    return /^ans(wer)?\s*[:.-]?\s*[a-d]/i.test(line) ||
+           /^\([a-d]\)\s*$/.test(line.trim()) ||
+           /^[a-d]\s*$/.test(line.trim())
+  }
+
+  // Detect subsection heading: e.g. "1. Mathematical Terminology" or "Section A"
+  const isHeading = (line) => {
+    return /^\d+\.\s+[A-Z][a-z]/.test(line) && line.length < 60 &&
+           !line.match(/^\d+\.\s+(which|what|find|how|if|the|a |an |select|choose)/i)
+  }
+
+  // Detect question start
+  const isQuestionStart = (line) => {
+    return /^(Q?\d+[\.\)]\s+|Q\d+\s+)/i.test(line)
+  }
+
+  // Detect option line
+  const isOptionLine = (line) => {
+    return /^\(?[a-dA-D][\.\)]\s*.+/i.test(line) ||
+           /^\([a-dA-D]\)\s*.+/i.test(line)
+  }
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    // Check for subsection heading
+    if (isHeading(line) && !isQuestionStart(line)) {
+      // Extract heading text (remove leading number)
+      currentSubsectionHeading = line.replace(/^\d+\.\s*/, '').trim()
+      i++; continue
+    }
+
+    // Check for question start
+    if (isQuestionStart(line)) {
+      const qNum = line.match(/^Q?(\d+)/i)?.[1]
+      let questionText = line.replace(/^Q?\d+[\.\)]\s*/i, '').trim()
+
+      // Collect continuation lines (not options, not next question)
+      let j = i + 1
+      while (j < lines.length && !isOptionLine(lines[j]) && !isQuestionStart(lines[j]) && !isHeading(lines[j])) {
+        if (lines[j] && !isAnswerLine(lines[j])) {
+          questionText += ' ' + lines[j]
+        }
+        j++
+      }
+      i = j
+
+      // Collect options
+      const options = { A:'', B:'', C:'', D:'' }
+      let correctOption = ''
+      let optionsOnOneLine = false
+
+      // Check if all options on one line: "(A) opt (B) opt (C) opt (D) opt"
+      if (i < lines.length) {
+        const combinedCheck = lines[i] + (lines[i+1] || '') + (lines[i+2] || '') + (lines[i+3] || '')
+        const allOptsMatch = combinedCheck.match(/\(?[aA][\.\)]\s*(.+?)\s*\(?[bB][\.\)]\s*(.+?)\s*\(?[cC][\.\)]\s*(.+?)\s*\(?[dD][\.\)]\s*(.+?)(?:\s*$|\n)/s)
+        if (allOptsMatch && lines[i].match(/\(?[aA][\.\)]/i) && lines[i].match(/\(?[bB][\.\)]/i)) {
+          // All on one line
+          const fullLine = lines[i]
+          const mA = fullLine.match(/\(?[aA][\.\)]\s*(.*?)(?=\s*\(?[bB][\.\)]|$)/)
+          const mB = fullLine.match(/\(?[bB][\.\)]\s*(.*?)(?=\s*\(?[cC][\.\)]|$)/)
+          const mC = fullLine.match(/\(?[cC][\.\)]\s*(.*?)(?=\s*\(?[dD][\.\)]|$)/)
+          const mD = fullLine.match(/\(?[dD][\.\)]\s*(.*)/)
+          if (mA) options.A = mA[1].trim()
+          if (mB) options.B = mB[1].trim()
+          if (mC) options.C = mC[1].trim()
+          if (mD) options.D = mD[1].trim()
+          i++; optionsOnOneLine = true
+        }
+      }
+
+      if (!optionsOnOneLine) {
+        // Options on separate lines — collect up to 4
+        let optCount = 0
+        while (i < lines.length && optCount < 4) {
+          const optLine = lines[i]
+          // Also handle two options on one line: "(A) opt  (B) opt"
+          const twoOpts = optLine.match(/\(?([aAbBcCdD])[\.\)]\s*(.*?)\s+\(?([aAbBcCdD])[\.\)]\s*(.*)/i)
+          if (twoOpts) {
+            options[twoOpts[1].toUpperCase()] = twoOpts[2].trim()
+            options[twoOpts[3].toUpperCase()] = twoOpts[4].trim()
+            optCount += 2; i++; continue
+          }
+          const singleOpt = optLine.match(/^\(?([a-dA-D])[\.\)]\s*(.+)/)
+          if (singleOpt) {
+            options[singleOpt[1].toUpperCase()] = singleOpt[2].trim()
+            optCount++; i++; continue
+          }
+          break
+        }
+      }
+
+      // Check for answer line immediately after options
+      if (i < lines.length && isAnswerLine(lines[i])) {
+        const ansMatch = lines[i].match(/[a-dA-D]/)
+        if (ansMatch) correctOption = ansMatch[0].toUpperCase()
+        i++
+      }
+
+      if (questionText && (options.A || options.B)) {
+        questions.push({
+          _id: questions.length,
+          _qNum: parseInt(qNum) || questions.length + 1,
+          question: questionText.trim(),
+          option_a: options.A,
+          option_b: options.B,
+          option_c: options.C,
+          option_d: options.D,
+          correct_option: correctOption,
+          _subsectionHint: currentSubsectionHeading,
+          _needsDiagram: needsDiagram(questionText),
+          subject: '', chapter: '', subsection: '',
+          difficulty: 'Medium', marks: 1,
+          diagram_url: '',
+        })
+      }
+      continue
+    }
+    i++
+  }
+  return questions
+}
+
+// ── PARSE ANSWER KEY ──────────────────────────────────────────────────────────
+function parseAnswerKey(keyText) {
+  const map = {}
+  // Formats: "1-b", "1. b", "1) b", "1:b", "Q1. B", "1.b", "1 b"
+  const matches = keyText.matchAll(/Q?(\d+)[.\-\)\s:]+([a-dA-D])/gi)
+  for (const m of matches) {
+    map[parseInt(m[1])] = m[2].toUpperCase()
+  }
+  return map
+}
+
+// ── QUESTION CARD ─────────────────────────────────────────────────────────────
+function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onDelete, onEdit }) {
   const [reveal, setReveal] = useState(showAnswer)
-  const sc = SUBJECT_COLORS[q.subject] || SUBJECT_COLORS.Mathematics
+  const sc = SC[q.subject] || SC.Mathematics
   return (
-    <div style={{ ...card, marginBottom: 10, padding: '14px 18px', border: selected ? `2px solid ${C.navy}` : `1px solid ${C.border}`, background: selected ? '#f0f6ff' : '#fff' }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        {selectable && <input type="checkbox" checked={!!selected} onChange={() => onToggle?.(q.id || q._id)} style={{ width: 16, height: 16, marginTop: 3, cursor: 'pointer', flexShrink: 0 }} />}
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: C.slate, fontWeight: 700 }}>Q{index + 1}</span>
-            <Badge text={q.subject} color={sc.color} bg={sc.bg} border={sc.border} />
-            <Badge text={q.chapter} color={C.slate} bg="#f1f5f9" />
-            <Badge text={q.difficulty || 'Medium'} color={q.difficulty==='Easy'?C.green:q.difficulty==='Hard'?C.rose:C.amber} bg={q.difficulty==='Easy'?'#dcfce7':q.difficulty==='Hard'?'#fee2e2':'#fef9c3'} />
+    <div style={{ ...cardS, marginBottom:8, padding:'12px 16px',
+      border: selected ? `2px solid ${C.navy}` : `1px solid ${C.border}`,
+      background: selected ? '#f0f6ff' : q._needsDiagram ? '#fffbeb' : '#fff' }}>
+      <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+        {selectable && (
+          <input type="checkbox" checked={!!selected}
+            onChange={() => onToggle?.(q.id || q._id)}
+            style={{ width:16, height:16, marginTop:3, cursor:'pointer', flexShrink:0 }} />
+        )}
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:7, alignItems:'center' }}>
+            <span style={{ fontSize:11, color:C.slate, fontWeight:700 }}>Q{index+1}</span>
+            {q.subject && <Badge text={q.subject} color={sc.color} bg={sc.bg} border={sc.border} />}
+            {q.chapter && <Badge text={q.chapter} color={C.slate} bg="#f1f5f9" />}
+            {q.subsection && <Badge text={q.subsection} color="#0369a1" bg="#e0f2fe" />}
+            <Badge text={q.difficulty||'Medium'}
+              color={q.difficulty==='Easy'?C.green:q.difficulty==='Hard'?C.rose:C.amber}
+              bg={q.difficulty==='Easy'?'#dcfce7':q.difficulty==='Hard'?'#fee2e2':'#fef9c3'} />
             <Badge text={`${q.marks||1}M`} color={C.indigo} bg="#eff6ff" />
+            {q._needsDiagram && <Badge text="⚠️ Needs Diagram" color="#92400e" bg="#fef3c7" />}
+            {q.diagram_url && <Badge text="🖼 Has Diagram" color="#065f46" bg="#d1fae5" />}
           </div>
-          <div style={{ fontSize: 14, color: '#1e293b', fontWeight: 500, lineHeight: 1.6, marginBottom: 10 }}>{q.question}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+          <div style={{ fontSize:14, color:'#1e293b', fontWeight:500, lineHeight:1.6, marginBottom:8 }}>
+            {q.question}
+          </div>
+          {q.diagram_url && (
+            <img src={q.diagram_url} alt="Question diagram"
+              style={{ maxWidth:280, maxHeight:180, borderRadius:8, border:`1px solid ${C.border}`, marginBottom:8, display:'block' }} />
+          )}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:8 }}>
             {['A','B','C','D'].map(l => (
-              <div key={l} style={{ padding: '6px 12px', borderRadius: 7, fontSize: 12, background: reveal && q.correct_option === l ? '#dcfce7' : '#f8fafc', border: `1px solid ${reveal && q.correct_option === l ? '#86efac' : C.border}`, color: reveal && q.correct_option === l ? '#15803d' : '#374151', fontWeight: reveal && q.correct_option === l ? 700 : 400 }}>
-                <span style={{ fontWeight: 700, marginRight: 6, color: C.slate }}>{l}.</span>
+              <div key={l} style={{ padding:'5px 10px', borderRadius:6, fontSize:12,
+                background: reveal && q.correct_option===l ? '#dcfce7' : '#f8fafc',
+                border:`1px solid ${reveal && q.correct_option===l ? '#86efac' : C.border}`,
+                color: reveal && q.correct_option===l ? '#15803d' : '#374151',
+                fontWeight: reveal && q.correct_option===l ? 700 : 400 }}>
+                <span style={{ fontWeight:700, marginRight:5, color:C.slate }}>{l}.</span>
                 {q[`option_${l.toLowerCase()}`] || '—'}
-                {reveal && q.correct_option === l && ' ✓'}
+                {reveal && q.correct_option===l && ' ✓'}
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setReveal(r => !r)} style={btnSm(reveal ? C.slate : C.green)}>{reveal ? '🙈 Hide' : '👁 Answer'}</button>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            <button onClick={() => setReveal(r=>!r)} style={btnSm(reveal?C.slate:C.green)}>
+              {reveal ? '🙈 Hide' : '👁 Answer'}
+            </button>
+            {onEdit && <button onClick={() => onEdit(q)} style={btnSm(C.indigo)}>✏️ Edit</button>}
             {onDelete && <button onClick={() => onDelete(q.id)} style={btnSm(C.rose)}>🗑 Delete</button>}
           </div>
         </div>
@@ -119,372 +417,640 @@ function QCard({ q, index, showAnswer = false, selectable, selected, onToggle, o
   )
 }
 
-function AddForm({ onSave, onCancel, saving }) {
-  const [form, setForm] = useState({ subject: '', chapter: '', question: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_option: 'A', difficulty: 'Medium', marks: 1 })
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const chapters = SUBJECTS[form.subject] || []
-  const valid = form.subject && form.chapter && form.question && form.option_a && form.option_b && form.option_c && form.option_d
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 1: QUESTION BANK
+// ══════════════════════════════════════════════════════════════════════════════
+function TabBank({ questions, loading, refetch, showToast }) {
+  const [filterSubject,    setFilterSubject]    = useState('All')
+  const [filterChapter,    setFilterChapter]    = useState('All')
+  const [filterSubsection, setFilterSubsection] = useState('All')
+  const [filterDiff,       setFilterDiff]       = useState('All')
+  const [search,           setSearch]           = useState('')
+  const [page,             setPage]             = useState(1)
+  const [selected,         setSelected]         = useState(new Set())
+  const [editQ,            setEditQ]            = useState(null)
+  const PAGE = 20
+
+  const chapters    = filterSubject !== 'All' ? (SUBJECTS[filterSubject] || []) : []
+  const subsections = useMemo(() => {
+    if (filterSubject === 'All' || filterChapter === 'All') return []
+    const ss = new Set(questions
+      .filter(q => q.subject === filterSubject && q.chapter === filterChapter)
+      .map(q => q.subsection).filter(Boolean))
+    return [...ss].sort()
+  }, [questions, filterSubject, filterChapter])
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return questions.filter(item => {
+      if (filterSubject    !== 'All' && item.subject    !== filterSubject)    return false
+      if (filterChapter    !== 'All' && item.chapter    !== filterChapter)    return false
+      if (filterSubsection !== 'All' && item.subsection !== filterSubsection) return false
+      if (filterDiff       !== 'All' && item.difficulty !== filterDiff)       return false
+      if (q && !item.question?.toLowerCase().includes(q))                    return false
+      return true
+    })
+  }, [questions, filterSubject, filterChapter, filterSubsection, filterDiff, search])
+
+  const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE))
+  const paginated    = filtered.slice((page-1)*PAGE, page*PAGE)
+
+  const toggleSelect = (id) => setSelected(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+  const toggleAll = () => {
+    if (selected.size === paginated.length) setSelected(new Set())
+    else setSelected(new Set(paginated.map(q => q.id)))
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this question?')) return
+    const { error } = await supabase.from('qbank_questions').delete().eq('id', id)
+    if (error) showToast('Delete failed: ' + error.message, C.rose)
+    else { showToast('Deleted ✓', C.rose); refetch() }
+  }
+
+  const handleBulkDelete = async () => {
+    if (!selected.size || !confirm(`Delete ${selected.size} questions?`)) return
+    const { error } = await supabase.from('qbank_questions').delete().in('id', [...selected])
+    if (error) showToast('Bulk delete failed', C.rose)
+    else { showToast(`${selected.size} questions deleted`, C.rose); setSelected(new Set()); refetch() }
+  }
+
+  const handleEditSave = async (updatedQ) => {
+    const { id, _id, _qNum, _subsectionHint, _needsDiagram, ...payload } = updatedQ
+    const { error } = await supabase.from('qbank_questions').update(payload).eq('id', id)
+    if (error) showToast('Update failed: ' + error.message, C.rose)
+    else { showToast('Updated ✓', C.green); setEditQ(null); refetch() }
+  }
+
+  // Stats by subject
+  const stats = useMemo(() => {
+    const map = {}
+    SUBJECT_LIST.forEach(s => { map[s] = 0 })
+    questions.forEach(q => { map[q.subject] = (map[q.subject]||0)+1 })
+    return map
+  }, [questions])
+
   return (
-    <div style={{ ...card, border: `1.5px solid ${C.indigo}44` }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: C.navy, marginBottom: 16 }}>➕ Add Question Manually</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <div><label style={lbl}>Subject *</label><select style={sel} value={form.subject} onChange={e => set('subject', e.target.value)}><option value="">Select</option>{SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-        <div><label style={lbl}>Chapter *</label><select style={{ ...sel, opacity: form.subject ? 1 : .5 }} value={form.chapter} onChange={e => set('chapter', e.target.value)} disabled={!form.subject}><option value="">Select</option>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-        <div><label style={lbl}>Difficulty</label><select style={sel} value={form.difficulty} onChange={e => set('difficulty', e.target.value)}>{DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-        <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Question *</label><textarea style={{ ...inp, resize: 'vertical' }} rows={3} value={form.question} onChange={e => set('question', e.target.value)} placeholder="Type the question here…" /></div>
-        {['A','B','C','D'].map(l => (
-          <div key={l}><label style={{ ...lbl, color: form.correct_option === l ? C.green : C.slate }}>Option {l} {form.correct_option === l ? '✓' : ''}</label><input style={{ ...inp, borderColor: form.correct_option === l ? '#86efac' : C.border }} value={form[`option_${l.toLowerCase()}`]} onChange={e => set(`option_${l.toLowerCase()}`, e.target.value)} placeholder={`Option ${l}`} /></div>
-        ))}
-        <div><label style={lbl}>Correct Answer *</label><select style={sel} value={form.correct_option} onChange={e => set('correct_option', e.target.value)}>{['A','B','C','D'].map(l => <option key={l} value={l}>{l}</option>)}</select></div>
-        <div><label style={lbl}>Marks</label><select style={sel} value={form.marks} onChange={e => set('marks', parseInt(e.target.value))}>{MARKS_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+    <>
+      {/* Subject stat cards */}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:20 }}>
+        {SUBJECT_LIST.map(s => {
+          const sc = SC[s]
+          return (
+            <div key={s} onClick={() => { setFilterSubject(s); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}
+              style={{ flex:1, minWidth:130, padding:'13px 15px', borderRadius:10,
+                background:sc.bg, border:`1.5px solid ${filterSubject===s?sc.color:sc.border}`,
+                cursor:'pointer', transition:'all .12s' }}>
+              <div style={{ fontSize:24, fontWeight:800, color:sc.color }}>{stats[s]||0}</div>
+              <div style={{ fontSize:10, fontWeight:700, color:sc.color, textTransform:'uppercase', letterSpacing:'.05em', marginTop:2 }}>{s}</div>
+            </div>
+          )
+        })}
+        <div onClick={() => { setFilterSubject('All'); setFilterChapter('All'); setPage(1) }}
+          style={{ flex:1, minWidth:100, padding:'13px 15px', borderRadius:10,
+            background:'#f1f5f9', border:`1.5px solid ${filterSubject==='All'?C.navy:C.border}`, cursor:'pointer' }}>
+          <div style={{ fontSize:24, fontWeight:800, color:C.navy }}>{questions.length}</div>
+          <div style={{ fontSize:10, fontWeight:700, color:C.slate, textTransform:'uppercase', letterSpacing:'.05em', marginTop:2 }}>All</div>
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-        <button onClick={() => valid && onSave(form)} disabled={!valid || saving} style={btn(C.navy, !valid || saving)}>{saving ? '⏳ Saving…' : '✅ Save Question'}</button>
-        <button onClick={onCancel} style={btn(C.slate)}>Cancel</button>
+
+      {/* Filters */}
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr', gap:8, marginBottom:10 }}>
+        <input style={iS} placeholder="🔍 Search questions…" value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }} />
+        <select style={iS} value={filterSubject}
+          onChange={e => { setFilterSubject(e.target.value); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}>
+          <option value="All">All Subjects</option>
+          {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select style={{ ...iS, opacity: filterSubject!=='All'?1:.5 }} value={filterChapter}
+          onChange={e => { setFilterChapter(e.target.value); setFilterSubsection('All'); setPage(1) }}
+          disabled={filterSubject==='All'}>
+          <option value="All">All Chapters</option>
+          {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select style={{ ...iS, opacity: subsections.length?1:.5 }} value={filterSubsection}
+          onChange={e => { setFilterSubsection(e.target.value); setPage(1) }}
+          disabled={!subsections.length}>
+          <option value="All">All Subsections</option>
+          {subsections.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select style={iS} value={filterDiff}
+          onChange={e => { setFilterDiff(e.target.value); setPage(1) }}>
+          <option value="All">All Difficulties</option>
+          {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+
+      {/* Bulk action bar */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <span style={{ fontSize:12, color:C.slate }}>{filtered.length} questions found</span>
+        <div style={{ display:'flex', gap:8 }}>
+          {selected.size > 0 && (
+            <button onClick={handleBulkDelete} style={btn(C.rose)}>🗑 Delete {selected.size} selected</button>
+          )}
+        </div>
+      </div>
+
+      {/* Edit inline modal */}
+      {editQ && (
+        <div style={{ ...cardS, border:`2px solid ${C.indigo}`, marginBottom:16 }}>
+          <div style={{ fontWeight:700, color:C.navy, marginBottom:12 }}>✏️ Edit Question</div>
+          <QuestionRowForm row={editQ} index={0} onChange={(i,k,v) => setEditQ(q=>({...q,[k]:v}))}
+            onRemove={null} showImageUpload showToast={showToast} />
+          <div style={{ display:'flex', gap:8, marginTop:12 }}>
+            <button onClick={() => handleEditSave(editQ)} style={btn(C.green)}>✅ Save Changes</button>
+            <button onClick={() => setEditQ(null)} style={btn(C.slate)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading
+        ? <div style={{ textAlign:'center', padding:48, color:C.slate }}>⏳ Loading questions…</div>
+        : paginated.length === 0
+          ? <div style={{ ...cardS, textAlign:'center', padding:48, color:'#94a3b8' }}>
+              No questions found. Add questions using Manual Add or Bulk Paste tab.
+            </div>
+          : (
+            <>
+              <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                <input type="checkbox" checked={selected.size===paginated.length && paginated.length>0}
+                  onChange={toggleAll} />
+                <span style={{ fontSize:12, color:C.slate }}>Select all on page</span>
+              </div>
+              {paginated.map((q, i) => (
+                <QCard key={q.id} q={q} index={(page-1)*PAGE+i}
+                  selectable selected={selected.has(q.id)}
+                  onToggle={toggleSelect}
+                  onEdit={setEditQ}
+                  onDelete={handleDelete} />
+              ))}
+            </>
+          )
+      }
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display:'flex', gap:8, justifyContent:'center', marginTop:16, alignItems:'center' }}>
+          <button onClick={() => setPage(1)} disabled={page===1} style={btn(C.slate, page===1)}>«</button>
+          <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} style={btn(C.slate, page===1)}>‹</button>
+          <span style={{ padding:'8px 14px', fontWeight:600, color:C.navy, fontSize:13 }}>
+            Page {page} / {totalPages}
+          </span>
+          <button onClick={() => setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={btn(C.slate, page===totalPages)}>›</button>
+          <button onClick={() => setPage(totalPages)} disabled={page===totalPages} style={btn(C.slate, page===totalPages)}>»</button>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── SINGLE QUESTION ROW FORM (used in Manual Add + Edit) ─────────────────────
+function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, showToast }) {
+  const chapters    = SUBJECTS[row.subject] || []
+  const subSecMap   = SUBSECTION_KEYWORDS[row.subject] || {}
+  const subsections = Object.keys(subSecMap)
+  const fileRef     = useRef()
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const ext  = file.name.split('.').pop()
+    const path = `q_${Date.now()}_${index}.${ext}`
+    const { error } = await supabase.storage.from(DIAGRAM_BUCKET).upload(path, file, { upsert:true })
+    if (error) { showToast('Image upload failed: ' + error.message, C.rose); return }
+    const { data } = supabase.storage.from(DIAGRAM_BUCKET).getPublicUrl(path)
+    onChange(index, 'diagram_url', data.publicUrl)
+    showToast('Diagram uploaded ✓', C.green)
+  }
+
+  // Auto-detect subsection when question changes
+  const handleQuestionChange = (val) => {
+    onChange(index, 'question', val)
+    if (row.subject && val.length > 20) {
+      const detected = detectSubsection(val, row.subject)
+      if (detected !== 'General' && !row.subsection) onChange(index, 'subsection', detected)
+    }
+  }
+
+  return (
+    <div style={{ border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginBottom:10, background:'#fafafa' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+        <span style={{ fontSize:12, fontWeight:700, color:C.navy }}>Question {index+1}</span>
+        {onRemove && (
+          <button onClick={() => onRemove(index)}
+            style={btnSm('#fee2e2', C.rose)}>✖ Remove</button>
+        )}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10 }}>
+        <div>
+          <label style={lS}>Subject *</label>
+          <select style={iS} value={row.subject}
+            onChange={e => { onChange(index,'subject',e.target.value); onChange(index,'chapter',''); onChange(index,'subsection','') }}>
+            <option value="">Select</option>
+            {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lS}>Chapter *</label>
+          <select style={{ ...iS, opacity: row.subject?1:.5 }} value={row.chapter}
+            onChange={e => { onChange(index,'chapter',e.target.value); onChange(index,'subsection','') }}
+            disabled={!row.subject}>
+            <option value="">Select</option>
+            {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lS}>Subsection <span style={{ fontWeight:400, textTransform:'none' }}>(auto-detected)</span></label>
+          <select style={{ ...iS, opacity: row.subject?1:.5 }} value={row.subsection}
+            onChange={e => onChange(index,'subsection',e.target.value)}
+            disabled={!row.subject}>
+            <option value="">Auto / General</option>
+            {subsections.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value="General">General</option>
+          </select>
+        </div>
+      </div>
+      <div style={{ marginBottom:10 }}>
+        <label style={lS}>Question *</label>
+        <textarea style={{ ...iS, resize:'vertical' }} rows={3}
+          value={row.question} placeholder="Type question here… (fractions: use 5/4, 2 1/3 format)"
+          onChange={e => handleQuestionChange(e.target.value)} />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+        {['A','B','C','D'].map(l => (
+          <div key={l}>
+            <label style={{ ...lS, color: row.correct_option===l ? C.green : C.slate }}>
+              Option {l} {row.correct_option===l ? '✓ Correct' : ''}
+            </label>
+            <input style={{ ...iS, borderColor: row.correct_option===l ? '#86efac' : C.border }}
+              value={row[`option_${l.toLowerCase()}`] || ''}
+              onChange={e => onChange(index, `option_${l.toLowerCase()}`, e.target.value)}
+              placeholder={`Option ${l}`} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8 }}>
+        <div>
+          <label style={lS}>Correct Answer *</label>
+          <select style={iS} value={row.correct_option}
+            onChange={e => onChange(index,'correct_option',e.target.value)}>
+            <option value="">Select</option>
+            {['A','B','C','D'].map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lS}>Difficulty</label>
+          <select style={iS} value={row.difficulty}
+            onChange={e => onChange(index,'difficulty',e.target.value)}>
+            {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lS}>Marks</label>
+          <select style={iS} value={row.marks}
+            onChange={e => onChange(index,'marks',parseInt(e.target.value))}>
+            {MARKS_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+        {showImageUpload && (
+          <div>
+            <label style={lS}>Diagram (optional)</label>
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <button type="button" onClick={() => fileRef.current?.click()}
+                style={btnSm('#eff6ff', C.navy)}>
+                {row.diagram_url ? '🔄 Change' : '📎 Upload'}
+              </button>
+              {row.diagram_url && (
+                <a href={row.diagram_url} target="_blank" rel="noreferrer"
+                  style={{ fontSize:11, color:C.green }}>✅ View</a>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*"
+              style={{ display:'none' }} onChange={handleImageUpload} />
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function TabBank({ questions, loading, refetch, showToast }) {
-  const [filterSubject, setFilterSubject] = useState('All')
-  const [filterChapter, setFilterChapter] = useState('All')
-  const [filterDiff,    setFilterDiff]    = useState('All')
-  const [search,        setSearch]        = useState('')
-  const [showAdd,       setShowAdd]       = useState(false)
-  const [saving,        setSaving]        = useState(false)
-  const [page,          setPage]          = useState(1)
-  const PAGE = 20
-  const chapters = filterSubject !== 'All' ? (SUBJECTS[filterSubject] || []) : []
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return questions.filter(item => {
-      if (filterSubject !== 'All' && item.subject !== filterSubject) return false
-      if (filterChapter !== 'All' && item.chapter !== filterChapter) return false
-      if (filterDiff    !== 'All' && item.difficulty !== filterDiff)  return false
-      if (q && !item.question?.toLowerCase().includes(q))             return false
-      return true
-    })
-  }, [questions, filterSubject, filterChapter, filterDiff, search])
-  const totalPages = Math.ceil(filtered.length / PAGE)
-  const paginated  = filtered.slice((page-1)*PAGE, page*PAGE)
-  const handleSave = async (form) => {
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 2: MANUAL ADD (multiple rows)
+// ══════════════════════════════════════════════════════════════════════════════
+const emptyRow = () => ({
+  subject:'', chapter:'', subsection:'', question:'',
+  option_a:'', option_b:'', option_c:'', option_d:'',
+  correct_option:'', difficulty:'Medium', marks:1, diagram_url:'',
+})
+
+function TabManualAdd({ refetch, showToast }) {
+  const [rows,   setRows]   = useState([emptyRow()])
+  const [saving, setSaving] = useState(false)
+
+  const updateRow = (i, key, val) =>
+    setRows(prev => prev.map((r, idx) => idx===i ? {...r,[key]:val} : r))
+  const addRow    = () => setRows(prev => [...prev, emptyRow()])
+  const removeRow = (i) => setRows(prev => prev.filter((_,idx) => idx!==i))
+
+  const handleSave = async () => {
+    const invalid = rows.filter(r => !r.subject || !r.chapter || !r.question || !r.option_a || !r.option_b || !r.correct_option)
+    if (invalid.length) { showToast(`${invalid.length} row(s) incomplete — fill all required fields`, C.amber); return }
     setSaving(true)
-    const { error } = await supabase.from('qbank_questions').insert({ ...form })
-    if (error) showToast('Save failed: ' + error.message, C.rose)
-    else { showToast('Question saved ✓', C.green); setShowAdd(false); refetch() }
+    // Auto-detect subsection for rows without one
+    const payload = rows.map(r => ({
+      ...r,
+      subsection: r.subsection || detectSubsection(r.question, r.subject),
+    }))
+    const { error } = await supabase.from('qbank_questions').insert(payload)
+    if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
+    showToast(`✅ ${rows.length} question(s) saved!`, C.green)
+    setRows([emptyRow()]); refetch()
     setSaving(false)
   }
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this question?')) return
-    await supabase.from('qbank_questions').delete().eq('id', id)
-    showToast('Deleted', C.rose); refetch()
-  }
-  const stats = useMemo(() => {
-    const map = {}; SUBJECT_LIST.forEach(s => { map[s] = 0 })
-    questions.forEach(q => { map[q.subject] = (map[q.subject] || 0) + 1 })
-    return map
-  }, [questions])
+
   return (
-    <>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
-        {SUBJECT_LIST.map(s => {
-          const sc = SUBJECT_COLORS[s]
-          return (
-            <div key={s} onClick={() => { setFilterSubject(s); setFilterChapter('All'); setPage(1) }}
-              style={{ flex: 1, minWidth: 130, padding: '14px 16px', borderRadius: 10, background: sc.bg, border: `1.5px solid ${sc.border}`, cursor: 'pointer' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: sc.color }}>{stats[s] || 0}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: sc.color, textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 3 }}>{s}</div>
-            </div>
-          )
-        })}
-        <div style={{ flex: 1, minWidth: 130, padding: '14px 16px', borderRadius: 10, background: '#f1f5f9', border: `1.5px solid ${C.border}` }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: C.navy }}>{questions.length}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 3 }}>Total</div>
+    <div style={cardS}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:800, color:C.navy }}>✏️ Manual Add</div>
+          <div style={{ fontSize:12, color:C.slate, marginTop:2 }}>
+            Add {rows.length} question{rows.length>1?'s':''} — fractions: write as 5/4 or 2 1/3
+          </div>
         </div>
+        <button onClick={addRow} style={btn(C.teal)}>+ Add Another Row</button>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button onClick={() => setShowAdd(v => !v)} style={btn(showAdd ? C.slate : C.navy)}>{showAdd ? '✕ Cancel' : '➕ Add Question'}</button>
+
+      {rows.map((row, i) => (
+        <QuestionRowForm key={i} row={row} index={i}
+          onChange={updateRow} onRemove={rows.length>1?removeRow:null}
+          showImageUpload showToast={showToast} />
+      ))}
+
+      <div style={{ display:'flex', gap:10, marginTop:16 }}>
+        <button onClick={handleSave} disabled={saving} style={btn(C.navy, saving)}>
+          {saving ? '⏳ Saving…' : `✅ Save ${rows.length} Question${rows.length>1?'s':''}`}
+        </button>
+        <button onClick={() => setRows([emptyRow()])} style={btn(C.slate)}>🔄 Clear All</button>
       </div>
-      {showAdd && <AddForm onSave={handleSave} onCancel={() => setShowAdd(false)} saving={saving} />}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
-        <input style={inp} placeholder="🔍 Search questions…" value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
-        <select style={sel} value={filterSubject} onChange={e => { setFilterSubject(e.target.value); setFilterChapter('All'); setPage(1) }}><option value="All">All Subjects</option>{SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select>
-        <select style={{ ...sel, opacity: filterSubject !== 'All' ? 1 : .5 }} value={filterChapter} onChange={e => { setFilterChapter(e.target.value); setPage(1) }} disabled={filterSubject === 'All'}><option value="All">All Chapters</option>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select>
-        <select style={sel} value={filterDiff} onChange={e => { setFilterDiff(e.target.value); setPage(1) }}><option value="All">All Difficulties</option>{DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}</select>
-      </div>
-      <div style={{ fontSize: 12, color: C.slate, marginBottom: 10 }}>Showing {filtered.length} questions</div>
-      {loading ? <div style={{ textAlign: 'center', padding: 48, color: C.slate }}>⏳ Loading…</div>
-        : paginated.length === 0 ? <div style={{ ...card, textAlign: 'center', padding: 48, color: '#94a3b8' }}>No questions found. Add some or use AI Generator.</div>
-        : paginated.map((q, i) => <QCard key={q.id} q={q} index={(page-1)*PAGE+i} onDelete={handleDelete} />)}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16 }}>
-          <button onClick={() => setPage(p => Math.max(1, p-1))}          disabled={page===1}          style={btn(C.slate, page===1)}>◀ Prev</button>
-          <span style={{ padding: '9px 16px', fontWeight: 600, color: C.navy }}>Page {page} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page===totalPages} style={btn(C.slate, page===totalPages)}>Next ▶</button>
-        </div>
-      )}
-    </>
+    </div>
   )
 }
 
-
-// ─── TAB: Upload & Auto-Extract ───────────────────────────────────────────────
-function TabUpload({ refetch, showToast }) {
-  const [mode,        setMode]        = useState('paste')  // paste | image
-  const [rawText,     setRawText]     = useState('')
-  const [imageData,   setImageData]   = useState(null)
-  const [imageName,   setImageName]   = useState('')
-  const [bulkSubject, setBulkSubject] = useState('')
-  const [bulkChapter, setBulkChapter] = useState('')
-  const [bulkDiff,    setBulkDiff]    = useState('Medium')
-  const [detecting,   setDetecting]   = useState(false)
-  const [detected,    setDetected]    = useState([])
-  const [selected,    setSelected]    = useState(new Set())
-  const [saving,      setSaving]      = useState(false)
-  const fileRef = React.useRef()
-
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 3: BULK PASTE
+// ══════════════════════════════════════════════════════════════════════════════
+function TabBulkPaste({ refetch, showToast }) {
+  const [rawText,       setRawText]       = useState('')
+  const [answerKeyText, setAnswerKeyText] = useState('')
+  const [bulkSubject,   setBulkSubject]   = useState('')
+  const [bulkChapter,   setBulkChapter]   = useState('')
+  const [extracted,     setExtracted]     = useState([])
+  const [showAnswerKey, setShowAnswerKey] = useState(false)
+  const [saving,        setSaving]        = useState(false)
+  const [step,          setStep]          = useState(1) // 1=paste, 2=review+answer
   const chapters = SUBJECTS[bulkSubject] || []
 
-  const handleFile = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    setImageName(file.name)
-    const reader = new FileReader()
-    reader.onload = ev => setImageData(ev.target.result.split(',')[1])
-    reader.readAsDataURL(file)
-  }
-
-  const handleExtract = async () => {
-    const hasInput = mode === 'paste' ? rawText.trim() : imageData
-    if (!hasInput) { alert('Please provide input first.'); return }
-
-    setDetecting(true); setDetected([]); setSelected(new Set())
-
-    const prompt = mode === 'paste'
-      ? `Extract ALL MCQ questions from this text. Return ONLY a valid JSON array, no markdown, no explanation.
-Each item must have: {"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","difficulty":"Medium"}
-If correct answer is not clear, use "A" as default.
-
-TEXT:
-${rawText.substring(0, 8000)}`
-      : `This is an image of a question paper. Extract ALL MCQ questions visible.
-Return ONLY a valid JSON array, no markdown:
-[{"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","difficulty":"Medium"}]`
-
-    try {
-      const OR_KEY = import.meta.env.VITE_OPENROUTER_KEY
-      if (!OR_KEY) throw new Error('VITE_OPENROUTER_KEY not set')
-
-      const messages = mode === 'image' ? [
-        { role: 'user', content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageData}` } }
-        ]}
-      ] : [
-        { role: 'user', content: prompt }
-      ]
-
-      const model = mode === 'image'
-        ? 'qwen/qwen2.5-vl-72b-instruct:free'
-        : 'qwen/qwen3-235b-a22b:free'
-
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OR_KEY}`,
-          'HTTP-Referer': 'https://gnsi-erp.vercel.app',
-          'X-Title': 'GNSI Question Bank',
-        },
-        body: JSON.stringify({ model, messages, max_tokens: 4096 }),
-      })
-
-      const data = await res.json()
-      if (data.error) throw new Error(data.error.message)
-
-      const text  = data.choices?.[0]?.message?.content || ''
-      const clean = text.replace(/```json|```/g, '').trim()
-      const match = clean.match(/\[\s\S]*\]/)
-      if (!match) throw new Error('Could not extract questions — try again')
-
-      const arr  = JSON.parse(match[0])
-      const tagged = arr.map((q, i) => ({
-        ...q, _id: i,
-        subject:    bulkSubject || '',
-        chapter:    bulkChapter || '',
-        difficulty: q.difficulty || bulkDiff,
-        marks:      bulkSubject === 'Mathematics' ? 3 : 2,
-      }))
-      setDetected(tagged)
-      setSelected(new Set(tagged.map((_, i) => i)))
-      showToast(`✨ ${tagged.length} questions extracted!`, C.green)
-    } catch (e) {
-      showToast('Extraction failed: ' + e.message, C.rose)
-    }
-    setDetecting(false)
-  }
-
-  const applyBulk = () => {
-    setDetected(prev => prev.map(q => ({
+  const handleExtract = () => {
+    if (!rawText.trim()) { showToast('Paste some text first', C.amber); return }
+    const parsed = parseQuestions(rawText)
+    if (!parsed.length) { showToast('No questions detected — check the format', C.rose); return }
+    // Auto-assign subsections
+    const tagged = parsed.map(q => ({
       ...q,
-      subject:    bulkSubject || q.subject,
-      chapter:    bulkChapter || q.chapter,
-      difficulty: bulkDiff    || q.difficulty,
-      marks:      bulkSubject === 'Mathematics' ? 3 : 2,
-    })))
-    showToast('Bulk settings applied ✓', C.green)
+      subject: bulkSubject || '',
+      chapter: bulkChapter || '',
+      subsection: q._subsectionHint
+        ? q._subsectionHint
+        : (bulkSubject ? detectSubsection(q.question, bulkSubject) : ''),
+    }))
+    setExtracted(tagged)
+    setStep(2)
+    showToast(`✨ ${tagged.length} questions extracted!`, C.green)
   }
 
-  const updateQ = (idx, field, val) => {
-    setDetected(prev => prev.map((q, i) => i === idx ? { ...q, [field]: val } : q))
+  const applyAnswerKey = () => {
+    if (!answerKeyText.trim()) return
+    const keyMap = parseAnswerKey(answerKeyText)
+    setExtracted(prev => prev.map(q => ({
+      ...q,
+      correct_option: keyMap[q._qNum] || q.correct_option || '',
+    })))
+    showToast(`Answer key applied to ${Object.keys(keyMap).length} questions`, C.green)
+    setShowAnswerKey(false)
   }
+
+  const updateQ = (idx, field, val) =>
+    setExtracted(prev => prev.map((q,i) => i===idx ? {...q,[field]:val} : q))
+
+  const setAnswer = (idx, ans) => updateQ(idx, 'correct_option', ans)
 
   const handleSave = async () => {
-    const toSave = detected.filter((_, i) => selected.has(i))
-    if (!toSave.length) return
-    const invalid = toSave.filter(q => !q.subject || !q.chapter)
-    if (invalid.length) { showToast(`${invalid.length} questions missing subject/chapter — assign them first`, C.amber); return }
+    const invalid = extracted.filter(q => !q.subject || !q.chapter)
+    if (invalid.length) { showToast(`${invalid.length} questions missing subject/chapter`, C.amber); return }
+    const noAnswer = extracted.filter(q => !q.correct_option)
+    if (noAnswer.length > 0) {
+      const go = confirm(`${noAnswer.length} questions have no answer marked. Save anyway?`)
+      if (!go) return
+    }
     setSaving(true)
-    const rows = toSave.map(({ _id, ...rest }) => rest)
-    const { error } = await supabase.from('qbank_questions').insert(rows)
+    const payload = extracted.map(({ _id, _qNum, _subsectionHint, _needsDiagram, ...rest }) => ({
+      ...rest,
+      subsection: rest.subsection || detectSubsection(rest.question, rest.subject) || 'General',
+    }))
+    const { error } = await supabase.from('qbank_questions').insert(payload)
     if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
-    showToast(`✅ ${toSave.length} questions saved to bank!`, C.green)
-    setDetected([]); setSelected(new Set()); setRawText(''); setImageData(null); refetch()
+    showToast(`✅ ${payload.length} questions saved to bank!`, C.green)
+    setExtracted([]); setRawText(''); setAnswerKeyText(''); setStep(1); refetch()
     setSaving(false)
   }
 
   return (
     <>
-      <div style={card}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 6 }}>📤 Upload & Auto-Extract Questions</div>
-        <div style={{ fontSize: 12, color: C.slate, marginBottom: 20 }}>Paste question paper text or upload an image — AI extracts all MCQs automatically</div>
-
-        {/* Mode selector */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {[['paste','📋 Paste Text'],['image','🖼 Upload Image']].map(([key, label]) => (
-            <button key={key} onClick={() => setMode(key)}
-              style={{ padding: '8px 18px', borderRadius: 8, border: `2px solid ${mode===key ? C.navy : C.border}`, background: mode===key ? C.navy : '#fff', color: mode===key ? '#fff' : C.slate, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Input area */}
-        {mode === 'paste' && (
-          <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={10}
-            style={{ ...inp, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, marginBottom: 14 }}
-            placeholder="Paste your question paper text here...
-
-Example:
-1. What is the sum of first 10 natural numbers?
-(A) 45  (B) 55  (C) 65  (D) 75
-Answer: B
-
-2. Which of the following is a prime number?
-(A) 1  (B) 4  (C) 7  (D) 9" />
-        )}
-
-        {mode === 'image' && (
-          <div onClick={() => fileRef.current?.click()}
-            style={{ border: `2px dashed ${C.border}`, borderRadius: 10, padding: '32px 20px', textAlign: 'center', cursor: 'pointer', marginBottom: 14, background: imageData ? '#f0fdf4' : '#f8fafc' }}>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
-            <div style={{ fontSize: 32, marginBottom: 8 }}>{imageData ? '✅' : '📸'}</div>
-            <div style={{ fontWeight: 700, color: C.navy, fontSize: 13 }}>
-              {imageName || 'Click to upload question paper image'}
-            </div>
-            <div style={{ fontSize: 11, color: C.slate, marginTop: 4 }}>JPG, PNG supported · AI will extract all MCQs</div>
+      {/* Step 1 — Paste */}
+      {step === 1 && (
+        <div style={cardS}>
+          <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:4 }}>📤 Bulk Paste</div>
+          <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
+            Paste any question paper format — app detects questions, options and subsections automatically
           </div>
-        )}
 
-        {/* Bulk assign */}
-        <div style={{ padding: '12px 14px', borderRadius: 9, background: '#f8fafc', border: `1px solid ${C.border}`, marginBottom: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Bulk Assign to All Extracted Questions</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={lbl}>Subject</label>
-              <select style={sel} value={bulkSubject} onChange={e => { setBulkSubject(e.target.value); setBulkChapter('') }}>
-                <option value="">— Select —</option>
+          {/* Bulk assign */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14,
+            padding:'12px 14px', borderRadius:9, background:'#f8fafc', border:`1px solid ${C.border}` }}>
+            <div>
+              <label style={lS}>Assign Subject to all</label>
+              <select style={iS} value={bulkSubject}
+                onChange={e => { setBulkSubject(e.target.value); setBulkChapter('') }}>
+                <option value="">— Select Subject —</option>
                 {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div style={{ flex: 1, minWidth: 140 }}>
-              <label style={lbl}>Chapter</label>
-              <select style={{ ...sel, opacity: bulkSubject ? 1 : .5 }} value={bulkChapter} onChange={e => setBulkChapter(e.target.value)} disabled={!bulkSubject}>
-                <option value="">— Select —</option>
+            <div>
+              <label style={lS}>Assign Chapter to all</label>
+              <select style={{ ...iS, opacity: bulkSubject?1:.5 }} value={bulkChapter}
+                onChange={e => setBulkChapter(e.target.value)} disabled={!bulkSubject}>
+                <option value="">— Select Chapter —</option>
                 {chapters.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <div style={{ flex: 1, minWidth: 120 }}>
-              <label style={lbl}>Difficulty</label>
-              <select style={sel} value={bulkDiff} onChange={e => setBulkDiff(e.target.value)}>
-                {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-            <button onClick={applyBulk} style={{ ...btn(C.green), padding: '9px 16px', whiteSpace: 'nowrap' }}>✓ Apply</button>
+          </div>
+
+          <label style={lS}>Paste Question Paper Text *</label>
+          <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={14}
+            style={{ ...iS, resize:'vertical', fontFamily:'monospace', fontSize:12, marginBottom:14 }}
+            placeholder={`Supported formats — any of these work:
+
+1. Which of the following is an improper fraction?
+(a) 2/3  (b) 16/17  (c) 5/4  (d) 19/50
+
+Q2. What is 1/2 + 1/3?
+A) 2/5   B) 5/6   C) 1/6   D) 3/5
+Answer: B
+
+3. Section headings like "1. Mathematical Terminology" are auto-detected as subsections`} />
+
+          <div style={{ display:'flex', gap:10 }}>
+            <button onClick={handleExtract} disabled={!rawText.trim()} style={btn(C.navy, !rawText.trim())}>
+              🔍 Extract Questions
+            </button>
+            <button onClick={() => setRawText('')} style={btn(C.slate)}>Clear</button>
           </div>
         </div>
+      )}
 
-        <button onClick={handleExtract} disabled={detecting} style={btn(C.violet, detecting)}>
-          {detecting ? '⏳ Extracting with AI…' : '🤖 Extract Questions with AI'}
-        </button>
-      </div>
-
-      {detected.length > 0 && (
-        <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>✅ {detected.length} questions extracted</div>
-              <div style={{ fontSize: 11, color: C.slate }}>Review and assign subject/chapter before saving</div>
+      {/* Step 2 — Review + Mark Answers */}
+      {step === 2 && extracted.length > 0 && (
+        <div>
+          <div style={{ ...cardS, borderLeft:`4px solid ${C.green}` }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:800, color:C.navy }}>
+                  ✅ {extracted.length} questions extracted
+                </div>
+                <div style={{ fontSize:12, color:C.slate, marginTop:2 }}>
+                  Review each question, mark correct answer, then save
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                <button onClick={() => setShowAnswerKey(v=>!v)} style={btn(C.indigo)}>
+                  📋 {showAnswerKey ? 'Hide' : 'Upload'} Answer Key
+                </button>
+                <button onClick={() => setStep(1)} style={btn(C.slate)}>← Back</button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setSelected(new Set(detected.map((_, i) => i)))} style={btnSm(C.navy)}>Select All</button>
-              <button onClick={() => setSelected(new Set())} style={btnSm(C.slate)}>None</button>
+
+            {/* Answer key upload */}
+            {showAnswerKey && (
+              <div style={{ marginTop:14, padding:'12px 14px', borderRadius:8, background:'#f0f9ff', border:'1px solid #bae6fd' }}>
+                <label style={{ ...lS, color:'#0369a1' }}>
+                  Paste Answer Key — any format works:
+                  <span style={{ fontWeight:400, marginLeft:6 }}>
+                    "1-b, 2-c, 3-a" or "1. B  2. C  3. A" or "Q1:B Q2:C"
+                  </span>
+                </label>
+                <textarea value={answerKeyText} onChange={e => setAnswerKeyText(e.target.value)} rows={4}
+                  style={{ ...iS, fontFamily:'monospace', fontSize:12, marginBottom:8 }}
+                  placeholder="1-b, 2-c, 3-d, 4-a, 5-b..." />
+                <button onClick={applyAnswerKey} style={btn(C.green)}>✓ Apply Answer Key</button>
+              </div>
+            )}
+
+            {/* Progress: answered / total */}
+            <div style={{ marginTop:12, display:'flex', gap:16, fontSize:12 }}>
+              <span style={{ color:C.green }}>✅ {extracted.filter(q=>q.correct_option).length} answered</span>
+              <span style={{ color:C.rose }}>❌ {extracted.filter(q=>!q.correct_option).length} unanswered</span>
+              <span style={{ color:C.amber }}>⚠️ {extracted.filter(q=>q._needsDiagram).length} need diagram</span>
             </div>
           </div>
 
-          {detected.map((q, i) => (
-            <div key={i} style={{ ...card, marginBottom: 10, padding: '14px 16px', border: selected.has(i) ? `2px solid ${C.navy}` : `1px solid ${C.border}`, background: selected.has(i) ? '#f0f6ff' : '#fff' }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <input type="checkbox" checked={selected.has(i)} onChange={() => setSelected(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n })}
-                  style={{ width: 16, height: 16, marginTop: 3, cursor: 'pointer', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 10 }}>
-                    <span style={{ color: C.slate, marginRight: 6 }}>Q{i+1}.</span>{q.question}
+          {/* Questions for review */}
+          {extracted.map((q, i) => (
+            <div key={i} style={{ ...cardS, marginBottom:10, padding:'14px 16px',
+              border: q.correct_option ? `1px solid #86efac` : `1px solid ${C.rose}44`,
+              background: q._needsDiagram ? '#fffbeb' : '#fff' }}>
+              <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
+                <span style={{ fontSize:12, fontWeight:700, color:C.slate }}>Q{q._qNum || i+1}</span>
+                {q._needsDiagram && (
+                  <Badge text="⚠️ Needs Diagram — add image later via Bank tab" color="#92400e" bg="#fef3c7" />
+                )}
+                {q._subsectionHint && (
+                  <Badge text={`Section: ${q._subsectionHint}`} color="#0369a1" bg="#e0f2fe" />
+                )}
+              </div>
+
+              <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:10, lineHeight:1.6 }}>
+                {q.question}
+              </div>
+
+              {/* Options display */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:10 }}>
+                {['A','B','C','D'].map(l => (
+                  <div key={l} style={{ padding:'5px 10px', borderRadius:6, fontSize:12,
+                    background: q.correct_option===l ? '#dcfce7' : '#f8fafc',
+                    border:`1px solid ${q.correct_option===l ? '#86efac' : C.border}` }}>
+                    <span style={{ fontWeight:700, marginRight:5 }}>{l}.</span>
+                    {q[`option_${l.toLowerCase()}`] || '—'}
+                    {q.correct_option===l && ' ✓'}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 10 }}>
-                    {['A','B','C','D'].map(l => (
-                      <div key={l} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: q.correct_option===l ? '#dcfce7' : '#f8fafc', border: `1px solid ${q.correct_option===l ? '#86efac' : C.border}`, color: q.correct_option===l ? '#15803d' : '#374151' }}>
-                        <span style={{ fontWeight: 700, marginRight: 4 }}>{l}.</span>{q[`option_${l.toLowerCase()}`] || '—'}
-                        {q.correct_option===l && ' ✓'}
-                      </div>
-                    ))}
-                  </div>
-                  {/* Per-question assign */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <select style={{ ...sel, width: 'auto', fontSize: 11, padding: '4px 8px' }} value={q.subject} onChange={e => updateQ(i, 'subject', e.target.value)}>
-                      <option value="">Subject?</option>
-                      {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <select style={{ ...sel, width: 'auto', fontSize: 11, padding: '4px 8px', opacity: q.subject?1:.5 }} value={q.chapter} onChange={e => updateQ(i, 'chapter', e.target.value)} disabled={!q.subject}>
-                      <option value="">Chapter?</option>
-                      {(SUBJECTS[q.subject]||[]).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <select style={{ ...sel, width: 'auto', fontSize: 11, padding: '4px 8px' }} value={q.correct_option} onChange={e => updateQ(i, 'correct_option', e.target.value)}>
-                      {['A','B','C','D'].map(l => <option key={l} value={l}>Ans: {l}</option>)}
-                    </select>
-                    {(!q.subject || !q.chapter) && <span style={{ fontSize: 10, color: C.rose, fontWeight: 700, padding: '5px 0' }}>⚠ Assign subject & chapter</span>}
-                  </div>
-                </div>
+                ))}
+              </div>
+
+              {/* Mark answer buttons */}
+              <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', marginBottom:10 }}>
+                <span style={{ fontSize:11, fontWeight:700, color:C.slate }}>Mark Answer:</span>
+                {['A','B','C','D'].map(l => (
+                  <button key={l} onClick={() => setAnswer(i, l)}
+                    style={{ padding:'4px 14px', borderRadius:6, border:`2px solid ${q.correct_option===l?C.green:C.border}`,
+                      background: q.correct_option===l ? '#dcfce7' : '#fff',
+                      color: q.correct_option===l ? C.green : C.slate,
+                      fontWeight:700, cursor:'pointer', fontSize:13 }}>
+                    {l}
+                  </button>
+                ))}
+                {q.correct_option && (
+                  <button onClick={() => setAnswer(i,'')}
+                    style={btnSm('#f1f5f9', C.slate)}>✖ Clear</button>
+                )}
+              </div>
+
+              {/* Per-question subject/chapter/subsection assign */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:6 }}>
+                <select style={{ ...iS, fontSize:11, padding:'4px 8px' }} value={q.subject}
+                  onChange={e => updateQ(i,'subject',e.target.value)}>
+                  <option value="">Subject?</option>
+                  {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select style={{ ...iS, fontSize:11, padding:'4px 8px', opacity:q.subject?1:.5 }}
+                  value={q.chapter} onChange={e => updateQ(i,'chapter',e.target.value)} disabled={!q.subject}>
+                  <option value="">Chapter?</option>
+                  {(SUBJECTS[q.subject]||[]).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select style={{ ...iS, fontSize:11, padding:'4px 8px', opacity:q.subject?1:.5 }}
+                  value={q.subsection} onChange={e => updateQ(i,'subsection',e.target.value)} disabled={!q.subject}>
+                  <option value="">Subsection (auto)</option>
+                  {Object.keys(SUBSECTION_KEYWORDS[q.subject]||{}).map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="General">General</option>
+                </select>
+                <select style={{ ...iS, fontSize:11, padding:'4px 8px' }} value={q.difficulty}
+                  onChange={e => updateQ(i,'difficulty',e.target.value)}>
+                  {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
             </div>
           ))}
 
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={handleSave} disabled={saving || !selected.size} style={btn(C.green, saving || !selected.size)}>
-              {saving ? '⏳ Saving…' : `✅ Save ${selected.size} Questions to Bank`}
+          <div style={{ display:'flex', gap:10, marginTop:8, alignItems:'center' }}>
+            <button onClick={handleSave} disabled={saving} style={btn(C.green, saving)}>
+              {saving ? '⏳ Saving…' : `✅ Save All ${extracted.length} Questions to Bank`}
             </button>
-            <span style={{ fontSize: 12, color: C.slate }}>{selected.size} of {detected.length} selected</span>
+            <span style={{ fontSize:12, color:C.slate }}>
+              {extracted.filter(q=>!q.correct_option).length > 0
+                ? `⚠️ ${extracted.filter(q=>!q.correct_option).length} without answer`
+                : '✅ All answered'}
+            </span>
           </div>
         </div>
       )}
@@ -492,299 +1058,285 @@ Answer: B
   )
 }
 
-// ─── TAB 2: AI Generator — calls Gemini directly from browser ─────────────────
-function TabGenerate({ refetch, showToast, questions }) {
-  const [subject,    setSubject]    = useState('')
-  const [chapter,    setChapter]    = useState('')
-  const [count,      setCount]      = useState(10)
-  const [difficulty, setDifficulty] = useState('Mixed')
-  const [generating, setGenerating] = useState(false)
-  const [generated,  setGenerated]  = useState([])
-  const [selected,   setSelected]   = useState(new Set())
-  const [saving,     setSaving]     = useState(false)
-  const chapters      = SUBJECTS[subject] || []
-  const existingCount = questions.filter(q => q.subject === subject && q.chapter === chapter).length
-
-  const handleGenerate = async () => {
-    if (!subject || !chapter) { alert('Select subject and chapter.'); return }
-    setGenerating(true); setGenerated([]); setSelected(new Set())
-
-    const existing = questions
-      .filter(q => q.subject === subject && q.chapter === chapter)
-      .map(q => q.question).slice(0, 10).join('\n')
-
-    const prompt = `You are an expert question setter for AISSEE Class VI Sainik School entrance exam.
-Generate exactly ${count} MCQ questions for:
-Subject: ${subject}
-Chapter: ${chapter}
-Difficulty: ${difficulty === 'Mixed' ? 'mix of Easy, Medium and Hard' : difficulty}
-
-Rules:
-- Questions must be appropriate for Class VI students (age 10-12)
-- Wrong options must be plausible common mistakes
-- One wrong option should be a near-correct trap
-- Questions must be unique
-${existing ? `- Do NOT repeat these:\n${existing}` : ''}
-
-Return ONLY a valid JSON array, no markdown, no explanation:
-[{"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","difficulty":"Medium"}]`
-
-    try {
-      const OR_KEY = import.meta.env.VITE_OPENROUTER_KEY
-      if (!OR_KEY) throw new Error('VITE_OPENROUTER_KEY not set in Vercel environment variables')
-
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OR_KEY}`,
-          'HTTP-Referer': 'https://gnsi-erp.vercel.app',
-          'X-Title': 'GNSI Question Bank',
-        },
-        body: JSON.stringify({
-          model: 'google/gemma-3-27b-it:free',
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 4096,
-        }),
-      })
-
-      const data = await res.json()
-      if (data.error) throw new Error(data.error.message)
-
-      const text = data.choices?.[0]?.message?.content || ''
-      const clean = text.replace(/```json|```/g, '').trim()
-      const match = clean.match(/\[[\s\S]*\]/)
-      if (!match) throw new Error('No questions returned — try again')
-
-      const arr    = JSON.parse(match[0])
-      const tagged = arr.map((q, i) => ({
-        ...q, _id: i, subject, chapter,
-        marks: subject === 'Mathematics' ? 3 : 2,
-      }))
-      setGenerated(tagged)
-      setSelected(new Set(tagged.map((_, i) => i)))
-      showToast(`✨ ${tagged.length} questions generated`, C.green)
-    } catch (e) {
-      showToast('Generation failed: ' + e.message, C.rose)
-    }
-    setGenerating(false)
-  }
-
-  const handleSave = async () => {
-    const toSave = generated.filter((_, i) => selected.has(i))
-    if (!toSave.length) return
-    setSaving(true)
-    const rows = toSave.map(({ _id, ...rest }) => rest)
-    const { error } = await supabase.from('qbank_questions').insert(rows)
-    if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
-    showToast(`✅ ${toSave.length} questions saved to bank`, C.green)
-    setGenerated([]); setSelected(new Set()); refetch()
-    setSaving(false)
-  }
-
-  return (
-    <>
-      <div style={card}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 20 }}>🤖 AI Question Generator</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
-          <div><label style={lbl}>Subject *</label><select style={sel} value={subject} onChange={e => { setSubject(e.target.value); setChapter('') }}><option value="">Select</option>{SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div><label style={lbl}>Chapter *</label><select style={{ ...sel, opacity: subject ? 1 : .5 }} value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject}><option value="">Select</option>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label style={lbl}>How Many</label><select style={sel} value={count} onChange={e => setCount(parseInt(e.target.value))}>{[5,10,15,20,25].map(n => <option key={n} value={n}>{n} questions</option>)}</select></div>
-          <div><label style={lbl}>Difficulty</label><select style={sel} value={difficulty} onChange={e => setDifficulty(e.target.value)}><option value="Mixed">Mixed</option>{DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-        </div>
-        {subject && chapter && (
-          <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', marginBottom: 14 }}>
-            📊 Bank has <strong>{existingCount}</strong> questions for {subject} → {chapter}
-            {existingCount < 20 && <span style={{ color: C.rose, marginLeft: 8 }}>⚠ Low — generate more</span>}
-          </div>
-        )}
-        <button onClick={handleGenerate} disabled={generating || !subject || !chapter} style={btn(C.violet, generating || !subject || !chapter)}>
-          {generating ? '⏳ Generating…' : '🤖 Generate Questions'}
-        </button>
-      </div>
-
-      {generated.length > 0 && (
-        <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>✨ {generated.length} questions ready — review before saving</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setSelected(new Set(generated.map((_, i) => i)))} style={btnSm(C.navy)}>All</button>
-              <button onClick={() => setSelected(new Set())} style={btnSm(C.slate)}>None</button>
-            </div>
-          </div>
-          {generated.map((q, i) => (
-            <QCard key={i} q={q} index={i} showAnswer selectable selected={selected.has(i)}
-              onToggle={() => setSelected(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n })} />
-          ))}
-          <button onClick={handleSave} disabled={saving || !selected.size} style={btn(C.green, saving || !selected.size)}>
-            {saving ? '⏳ Saving…' : `✅ Save ${selected.size} to Bank`}
-          </button>
-        </div>
-      )}
-    </>
-  )
-}
-
-async function generatePDF({ title, subject, chapter, questions, withAnswers, instituteName }) {
+// ── PDF GENERATOR ─────────────────────────────────────────────────────────────
+async function generatePDF({ title, subject, chapter, questions, withAnswers }) {
   if (!window.jspdf) {
     await new Promise((res, rej) => {
       const s = document.createElement('script')
       s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
-      s.onload = res; s.onerror = rej
-      document.head.appendChild(s)
+      s.onload = res; s.onerror = rej; document.head.appendChild(s)
     })
   }
   const { jsPDF } = window.jspdf
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
   const W = 210, margin = 15
   let y = margin
-  const checkPage = (need = 10) => { if (y + need > 285) { doc.addPage(); y = margin } }
 
-  doc.setFillColor(30, 58, 95); doc.rect(0, 0, W, 28, 'F')
-  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255)
-  doc.text(instituteName || 'Guidance Navodaya & Sainik Institute', margin, 12)
-  doc.setFontSize(10); doc.setFont('helvetica', 'normal')
+  const checkPage = (need=10) => { if (y+need>285) { doc.addPage(); y=margin } }
+
+  // Header
+  doc.setFillColor(30,58,95); doc.rect(0,0,W,30,'F')
+  doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255)
+  doc.text('Guidance Navodaya & Sainik Institute', margin, 12)
+  doc.setFontSize(9); doc.setFont('helvetica','normal')
   doc.text('Khangabok, Thoubal, Manipur', margin, 19)
-  doc.text(`Date: ${today()}`, W - margin - 40, 19)
-  y = 34
+  doc.text(`Date: ${today()}`, W-margin-40, 19)
+  y = 36
 
-  doc.setDrawColor(30, 58, 95); doc.setLineWidth(.5)
-  doc.line(margin, y, W - margin, y); y += 6
-  doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 58, 95)
-  doc.text(title, margin, y); y += 6
-  doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139)
+  // Title
+  doc.setDrawColor(30,58,95); doc.setLineWidth(.5)
+  doc.line(margin, y, W-margin, y); y+=6
+  doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+  doc.text(title, margin, y); y+=6
+  doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
   doc.text(`Subject: ${subject}  |  Chapter: ${chapter}  |  Questions: ${questions.length}  |  Total Marks: ${questions.reduce((s,q)=>s+(q.marks||1),0)}`, margin, y)
-  y += 6; doc.line(margin, y, W - margin, y); y += 8
+  y+=5; doc.line(margin,y,W-margin,y); y+=8
 
-  questions.forEach((q, i) => {
-    checkPage(20)
+  // Questions
+  questions.forEach((q,i) => {
+    checkPage(24)
     const qText = `Q${i+1}. ${q.question}`
-    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 58, 95)
-    const lines = doc.splitTextToSize(qText, W - margin * 2 - 6)
-    checkPage(lines.length * 5 + 20)
-    doc.text(lines, margin, y); y += lines.length * 5.5 + 2
+    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+    const lines = doc.splitTextToSize(qText, W-margin*2-6)
+    checkPage(lines.length*5+22)
+    doc.text(lines, margin, y); y+=lines.length*5.5+2
     ;['A','B','C','D'].forEach(l => {
       checkPage(7)
-      const isCorrect = withAnswers && q.correct_option === l
-      if (isCorrect) { doc.setFillColor(220, 252, 231); doc.roundedRect(margin+4, y-4, W-margin*2-8, 6.5, 1, 1, 'F') }
-      doc.setFontSize(10); doc.setFont('helvetica', isCorrect ? 'bold' : 'normal')
-      doc.setTextColor(isCorrect ? 21 : 55, isCorrect ? 128 : 65, isCorrect ? 61 : 81)
-      const optLines = doc.splitTextToSize(`  ${l}. ${q[`option_${l.toLowerCase()}`] || '—'}${isCorrect ? '  ✓' : ''}`, W-margin*2-12)
-      doc.text(optLines, margin+6, y); y += optLines.length * 5 + 1
+      const isCorrect = withAnswers && q.correct_option===l
+      if (isCorrect) { doc.setFillColor(220,252,231); doc.roundedRect(margin+3,y-4,W-margin*2-6,6.5,1,1,'F') }
+      doc.setFontSize(10); doc.setFont('helvetica', isCorrect?'bold':'normal')
+      doc.setTextColor(isCorrect?21:55, isCorrect?128:65, isCorrect?61:81)
+      const optText = `  ${l}. ${q[`option_${l.toLowerCase()}`]||'—'}${isCorrect?' ✓':''}`
+      const optLines = doc.splitTextToSize(optText, W-margin*2-12)
+      doc.text(optLines, margin+5, y); y+=optLines.length*5+1
     })
-    y += 5; doc.setDrawColor(226, 232, 240); doc.setLineWidth(.2); doc.line(margin, y, W-margin, y); y += 5
+    y+=5; doc.setDrawColor(226,232,240); doc.setLineWidth(.2)
+    doc.line(margin,y,W-margin,y); y+=5
   })
 
+  // Answer key page
   if (!withAnswers) {
-    doc.addPage(); y = margin
-    doc.setFillColor(30, 58, 95); doc.rect(0, 0, W, 20, 'F')
-    doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(255,255,255)
-    doc.text('ANSWER KEY', margin, 13); y = 26
-    const colW = (W - margin * 2) / 5
-    questions.forEach((q, i) => {
-      const col = i % 5; if (col === 0 && i > 0) y += 8
+    doc.addPage(); y=margin
+    doc.setFillColor(30,58,95); doc.rect(0,0,W,20,'F')
+    doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255)
+    doc.text('ANSWER KEY', margin, 13); y=28
+    const colW = (W-margin*2)/5
+    questions.forEach((q,i) => {
+      const col=i%5; if(col===0&&i>0) y+=9
       checkPage(10)
-      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 58, 95)
-      doc.text(`Q${i+1}: ${q.correct_option}`, margin + col * colW, y)
-      if (i === questions.length - 1) y += 8
+      doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(30,58,95)
+      doc.text(`Q${i+1}: ${q.correct_option||'?'}`, margin+col*colW, y)
     })
   }
 
+  // Page numbers
   const pages = doc.getNumberOfPages()
-  for (let p = 1; p <= pages; p++) {
-    doc.setPage(p); doc.setFontSize(8); doc.setTextColor(148, 163, 184); doc.setFont('helvetica', 'normal')
+  for (let p=1;p<=pages;p++) {
+    doc.setPage(p); doc.setFontSize(8); doc.setTextColor(148,163,184); doc.setFont('helvetica','normal')
     doc.text(`Page ${p} of ${pages}  |  GNSI Question Paper  |  Confidential`, margin, 292)
   }
-  doc.save(`${title.replace(/\s+/g, '_')}.pdf`)
+  doc.save(`${title.replace(/\s+/g,'_')}.pdf`)
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 4: CREATE PAPER
+// ══════════════════════════════════════════════════════════════════════════════
 function TabPaper({ questions, showToast }) {
-  const [subject,     setSubject]     = useState('')
-  const [chapter,     setChapter]     = useState('All Chapters')
-  const [count,       setCount]       = useState(25)
-  const [difficulty,  setDifficulty]  = useState('All')
-  const [title,       setTitle]       = useState('')
-  const [withAnswers, setWithAnswers] = useState(false)
-  const [preview,     setPreview]     = useState(null)
-  const [downloading, setDownloading] = useState(false)
-  const chapters = subject ? ['All Chapters', ...SUBJECTS[subject]] : []
+  const [subject,      setSubject]      = useState('')
+  const [chapter,      setChapter]      = useState('')
+  const [selSubs,      setSelSubs]      = useState({}) // subsection → count
+  const [difficulty,   setDifficulty]   = useState('All')
+  const [title,        setTitle]        = useState('')
+  const [withAnswers,  setWithAnswers]  = useState(false)
+  const [preview,      setPreview]      = useState(null)
+  const [downloading,  setDownloading]  = useState(false)
+  const chapters = subject ? SUBJECTS[subject] : []
+
+  // Available subsections for selected subject+chapter
+  const availableSubs = useMemo(() => {
+    if (!subject || !chapter) return {}
+    const map = {}
+    questions.filter(q => q.subject===subject && q.chapter===chapter &&
+      (difficulty==='All' || q.difficulty===difficulty))
+      .forEach(q => { const s=q.subsection||'General'; map[s]=(map[s]||0)+1 })
+    return map
+  }, [questions, subject, chapter, difficulty])
+
+  const toggleSub = (sub) => {
+    setSelSubs(prev => {
+      const n = {...prev}
+      if (n[sub] !== undefined) delete n[sub]
+      else n[sub] = Math.min(10, availableSubs[sub]||5)
+      return n
+    })
+  }
+  const updateCount = (sub, val) => setSelSubs(prev => ({...prev, [sub]: parseInt(val)||1}))
+
+  const totalSelected = Object.values(selSubs).reduce((a,b)=>a+b,0)
 
   const handlePreview = () => {
-    if (!subject) { alert('Select a subject.'); return }
-    let pool = questions.filter(q => {
-      if (q.subject !== subject) return false
-      if (chapter !== 'All Chapters' && q.chapter !== chapter) return false
-      if (difficulty !== 'All' && q.difficulty !== difficulty) return false
-      return true
-    }).sort(() => Math.random() - .5).slice(0, count)
-    if (pool.length === 0) { showToast('No questions in bank. Generate some first.', C.amber); return }
+    if (!subject || !chapter) { showToast('Select subject and chapter', C.amber); return }
+    const selected = Object.keys(selSubs)
+    if (!selected.length) { showToast('Select at least one subsection', C.amber); return }
+
+    let pool = []
+    selected.forEach(sub => {
+      const subQs = questions.filter(q =>
+        q.subject===subject && q.chapter===chapter &&
+        (q.subsection||'General')===sub &&
+        (difficulty==='All' || q.difficulty===difficulty)
+      ).sort(() => Math.random()-.5)
+      pool = pool.concat(subQs.slice(0, selSubs[sub]||5))
+    })
+    if (!pool.length) { showToast('No questions available for selected subsections', C.amber); return }
     setPreview(pool)
-    if (!title) setTitle(`${subject}${chapter !== 'All Chapters' ? ' — ' + chapter : ''} Question Paper`)
+    if (!title) setTitle(`${subject} — ${chapter}`)
   }
 
   const handleDownload = async () => {
     if (!preview?.length) return
     setDownloading(true)
     try {
-      await generatePDF({ title: title || 'Question Paper', subject, chapter, questions: preview, withAnswers, instituteName: 'Guidance Navodaya & Sainik Institute' })
+      await generatePDF({ title: title||'Question Paper', subject, chapter, questions:preview, withAnswers })
       showToast('📄 PDF downloaded!', C.green)
-    } catch (e) { showToast('PDF failed: ' + e.message, C.rose) }
+    } catch(e) { showToast('PDF failed: '+e.message, C.rose) }
     setDownloading(false)
   }
 
   return (
     <>
-      <div style={card}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 20 }}>📄 Create Question Paper</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <div><label style={lbl}>Subject *</label><select style={sel} value={subject} onChange={e => { setSubject(e.target.value); setChapter('All Chapters') }}><option value="">Select</option>{SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div><label style={lbl}>Chapter</label><select style={{ ...sel, opacity: subject ? 1 : .5 }} value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject}>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label style={lbl}>No. of Questions</label><select style={sel} value={count} onChange={e => setCount(parseInt(e.target.value))}>{[10,15,20,25,30,40,50].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
-          <div><label style={lbl}>Difficulty</label><select style={sel} value={difficulty} onChange={e => setDifficulty(e.target.value)}><option value="All">All</option>{DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-          <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Paper Title</label><input style={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Mathematics — Fractions Test" /></div>
+      <div style={cardS}>
+        <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:16 }}>📄 Create Question Paper</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+          <div>
+            <label style={lS}>Subject *</label>
+            <select style={iS} value={subject}
+              onChange={e => { setSubject(e.target.value); setChapter(''); setSelSubs({}) }}>
+              <option value="">Select</option>
+              {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lS}>Chapter *</label>
+            <select style={{ ...iS, opacity:subject?1:.5 }} value={chapter}
+              onChange={e => { setChapter(e.target.value); setSelSubs({}) }} disabled={!subject}>
+              <option value="">Select</option>
+              {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lS}>Difficulty Filter</label>
+            <select style={iS} value={difficulty} onChange={e => setDifficulty(e.target.value)}>
+              <option value="All">All Difficulties</option>
+              {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label style={lS}>Paper Title</label>
+            <input style={iS} value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Fractions — Unit Test" />
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: C.navy }}>
-            <input type="checkbox" checked={withAnswers} onChange={e => setWithAnswers(e.target.checked)} />
+
+        {/* Subsection selector */}
+        {Object.keys(availableSubs).length > 0 && (
+          <div style={{ marginBottom:16 }}>
+            <label style={{ ...lS, marginBottom:8 }}>
+              Select Subsections & Question Count
+              <span style={{ fontWeight:400, marginLeft:6, textTransform:'none' }}>
+                (Total: {totalSelected} questions)
+              </span>
+            </label>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+              {Object.entries(availableSubs).map(([sub, count]) => (
+                <div key={sub} onClick={() => toggleSub(sub)}
+                  style={{ padding:'10px 14px', borderRadius:9, cursor:'pointer',
+                    border:`2px solid ${selSubs[sub]!==undefined?C.navy:C.border}`,
+                    background: selSubs[sub]!==undefined ? '#eff6ff' : '#f8fafc',
+                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600, color:selSubs[sub]!==undefined?C.navy:C.slate }}>
+                      {selSubs[sub]!==undefined ? '☑' : '☐'} {sub}
+                    </div>
+                    <div style={{ fontSize:11, color:C.slate }}>{count} questions available</div>
+                  </div>
+                  {selSubs[sub]!==undefined && (
+                    <div onClick={e=>e.stopPropagation()} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      <span style={{ fontSize:11, color:C.slate }}>Pick:</span>
+                      <input type="number" min={1} max={count} value={selSubs[sub]}
+                        onChange={e => updateCount(sub, e.target.value)}
+                        style={{ width:50, padding:'3px 6px', borderRadius:5,
+                          border:`1px solid ${C.border}`, fontSize:12, textAlign:'center' }} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {chapter && Object.keys(availableSubs).length === 0 && (
+          <div style={{ padding:'12px 16px', borderRadius:8, background:'#fef9c3', border:'1px solid #fde68a',
+            fontSize:13, color:'#92400e', marginBottom:14 }}>
+            ⚠️ No questions found for this chapter. Add questions using Manual Add or Bulk Paste.
+          </div>
+        )}
+
+        <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', marginBottom:14 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:C.navy, fontWeight:600 }}>
+            <input type="checkbox" checked={withAnswers} onChange={e=>setWithAnswers(e.target.checked)} />
             Include answers in PDF
           </label>
         </div>
-        {subject && (
-          <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', marginBottom: 14 }}>
-            📊 Available: <strong>{questions.filter(q => q.subject===subject && (chapter==='All Chapters'||q.chapter===chapter)).length}</strong> questions
-          </div>
-        )}
-        <button onClick={handlePreview} disabled={!subject} style={btn(C.navy, !subject)}>👁 Preview Paper</button>
+
+        <button onClick={handlePreview} disabled={!subject||!chapter||!totalSelected}
+          style={btn(C.navy, !subject||!chapter||!totalSelected)}>
+          👁 Preview Paper ({totalSelected} questions)
+        </button>
       </div>
+
+      {/* Preview */}
       {preview && (
-        <div style={card}>
-          <div style={{ border: `2px solid ${C.navy}`, borderRadius: 10, padding: '20px 24px', marginBottom: 20 }}>
-            <div style={{ textAlign: 'center', borderBottom: `1px solid ${C.border}`, paddingBottom: 14, marginBottom: 14 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.navy }}>Guidance Navodaya & Sainik Institute</div>
-              <div style={{ fontSize: 12, color: C.slate }}>Khangabok, Thoubal, Manipur</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginTop: 8 }}>{title}</div>
-              <div style={{ fontSize: 12, color: C.slate, marginTop: 4 }}>Subject: {subject} | Questions: {preview.length} | Total Marks: {preview.reduce((s,q)=>s+(q.marks||1),0)} | Date: {today()}</div>
+        <div style={cardS}>
+          <div style={{ border:`2px solid ${C.navy}`, borderRadius:10, padding:'20px 24px', marginBottom:16 }}>
+            <div style={{ textAlign:'center', borderBottom:`1px solid ${C.border}`, paddingBottom:12, marginBottom:14 }}>
+              <div style={{ fontSize:18, fontWeight:800, color:C.navy }}>Guidance Navodaya & Sainik Institute</div>
+              <div style={{ fontSize:11, color:C.slate }}>Khangabok, Thoubal, Manipur</div>
+              <div style={{ fontSize:14, fontWeight:700, color:C.navy, marginTop:8 }}>{title}</div>
+              <div style={{ fontSize:12, color:C.slate, marginTop:4 }}>
+                Subject: {subject} | Questions: {preview.length} |
+                Total Marks: {preview.reduce((s,q)=>s+(q.marks||1),0)} | Date: {today()}
+              </div>
             </div>
-            {preview.map((q, i) => (
-              <div key={q.id} style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 6 }}><span style={{ color: C.slate, marginRight: 6 }}>Q{i+1}.</span>{q.question}<span style={{ float: 'right', fontSize: 11, color: C.slate }}>[{q.marks||1}M]</span></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            {preview.map((q,i) => (
+              <div key={q.id||i} style={{ marginBottom:14 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b', marginBottom:6 }}>
+                  <span style={{ color:C.slate, marginRight:6 }}>Q{i+1}.</span>{q.question}
+                  <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
+                </div>
+                {q.diagram_url && (
+                  <img src={q.diagram_url} alt="diagram"
+                    style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />
+                )}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
                   {['A','B','C','D'].map(l => (
-                    <div key={l} style={{ fontSize: 12, padding: '4px 8px', color: '#374151' }}>
-                      <span style={{ fontWeight: 700, color: C.slate, marginRight: 4 }}>{l}.</span>
-                      {q[`option_${l.toLowerCase()}`] || '—'}
-                      {withAnswers && q.correct_option === l && <span style={{ color: C.green, marginLeft: 6, fontWeight: 700 }}>✓</span>}
+                    <div key={l} style={{ fontSize:12, padding:'3px 8px', color:'#374151' }}>
+                      <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
+                      {q[`option_${l.toLowerCase()}`]||'—'}
+                      {withAnswers && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
                     </div>
                   ))}
                 </div>
-                {i < preview.length - 1 && <div style={{ height: 1, background: C.border, marginTop: 10 }} />}
+                {i<preview.length-1 && <div style={{ height:1, background:C.border, marginTop:10 }} />}
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={handleDownload} disabled={downloading} style={btn(C.green, downloading)}>{downloading ? '⏳ Generating PDF…' : '⬇ Download PDF'}</button>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            <button onClick={handleDownload} disabled={downloading} style={btn(C.green, downloading)}>
+              {downloading ? '⏳ Generating PDF…' : '⬇ Download PDF'}
+            </button>
+            <button onClick={handlePreview} style={btn(C.navy)}>🔀 Reshuffle</button>
             <button onClick={() => setPreview(null)} style={btn(C.slate)}>✕ Close</button>
-            <button onClick={handlePreview} style={btn(C.navy)}>🔀 Shuffle</button>
           </div>
         </div>
       )}
@@ -792,179 +1344,425 @@ function TabPaper({ questions, showToast }) {
   )
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 5: ONLINE TEST
+// ══════════════════════════════════════════════════════════════════════════════
 function TabTest({ questions, showToast }) {
-  const [subject,     setSubject]     = useState('')
-  const [chapter,     setChapter]     = useState('All Chapters')
-  const [count,       setCount]       = useState(20)
   const [studentName, setStudentName] = useState('')
+  const [subject,     setSubject]     = useState('')
+  const [chapter,     setChapter]     = useState('')
+  const [selSubs,     setSelSubs]     = useState(new Set())
+  const [count,       setCount]       = useState(20)
   const [testQs,      setTestQs]      = useState(null)
   const [answers,     setAnswers]     = useState({})
   const [submitted,   setSubmitted]   = useState(false)
   const [result,      setResult]      = useState(null)
   const [timeLeft,    setTimeLeft]    = useState(0)
   const [timerActive, setTimerActive] = useState(false)
-  const chapters = subject ? ['All Chapters', ...SUBJECTS[subject]] : []
+  const chapters = subject ? SUBJECTS[subject] : []
+
+  const availableSubs = useMemo(() => {
+    if (!subject || !chapter) return []
+    const ss = new Set(questions.filter(q=>q.subject===subject&&q.chapter===chapter).map(q=>q.subsection||'General'))
+    return [...ss].sort()
+  }, [questions, subject, chapter])
 
   useEffect(() => {
-    if (!timerActive || timeLeft <= 0) return
-    const t = setTimeout(() => setTimeLeft(v => v - 1), 1000)
+    if (!timerActive || timeLeft<=0) return
+    if (timeLeft===0) { handleSubmit(); return }
+    const t = setTimeout(() => setTimeLeft(v=>v-1), 1000)
     return () => clearTimeout(t)
   }, [timerActive, timeLeft])
 
   const formatTime = s => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
 
   const handleStart = () => {
-    if (!studentName.trim()) { alert('Enter student name.'); return }
-    if (!subject) { alert('Select subject.'); return }
-    let pool = questions.filter(q => {
-      if (q.subject !== subject) return false
-      if (chapter !== 'All Chapters' && q.chapter !== chapter) return false
-      return true
-    }).sort(() => Math.random() - .5).slice(0, count)
-    if (pool.length === 0) { showToast('No questions available. Generate questions first.', C.amber); return }
-    setTestQs(pool); setAnswers({}); setSubmitted(false); setResult(null)
+    if (!studentName.trim()) { showToast('Enter student name', C.amber); return }
+    if (!subject || !chapter) { showToast('Select subject and chapter', C.amber); return }
+    const subFilter = selSubs.size > 0 ? [...selSubs] : availableSubs
+    let pool = questions.filter(q =>
+      q.subject===subject && q.chapter===chapter &&
+      subFilter.includes(q.subsection||'General')
+    ).sort(() => Math.random()-.5).slice(0, count)
+    if (!pool.length) { showToast('No questions available — add questions first', C.amber); return }
+    // Use index as answer key since questions may not have unique ids across sessions
+    const indexedPool = pool.map((q,i) => ({...q, _testIdx: i}))
+    setTestQs(indexedPool); setAnswers({}); setSubmitted(false); setResult(null)
     setTimeLeft(pool.length * 90); setTimerActive(true)
   }
 
   const handleSubmit = () => {
-    if (!confirm('Submit the test?')) return
+    if (!testQs) return
     setTimerActive(false)
-    const qs = testQs
-    const correct = qs.filter(q => answers[q.id] === q.correct_option).length
-    const wrong   = qs.filter(q => answers[q.id] && answers[q.id] !== q.correct_option).length
-    const skipped = qs.filter(q => !answers[q.id]).length
-    const score   = qs.reduce((a,q) => answers[q.id]===q.correct_option ? a+(q.marks||1) : a, 0)
-    const maxScore= qs.reduce((a,q) => a+(q.marks||1), 0)
+    const correct = testQs.filter(q=>answers[q._testIdx]===q.correct_option).length
+    const wrong   = testQs.filter(q=>answers[q._testIdx]&&answers[q._testIdx]!==q.correct_option).length
+    const skipped = testQs.filter(q=>!answers[q._testIdx]).length
+    const score   = testQs.reduce((a,q)=>answers[q._testIdx]===q.correct_option?a+(q.marks||1):a, 0)
+    const maxScore= testQs.reduce((a,q)=>a+(q.marks||1), 0)
     const pct     = maxScore ? Math.round((score/maxScore)*100) : 0
     setResult({ correct, wrong, skipped, score, maxScore, pct }); setSubmitted(true)
   }
 
+  // Result screen
   if (submitted && result) {
     const { correct, wrong, skipped, score, maxScore, pct } = result
-    const color = pct >= 75 ? C.green : pct >= 50 ? C.amber : C.rose
+    const resultColor = pct>=75 ? C.green : pct>=50 ? C.amber : C.rose
     return (
-      <div style={card}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 52, fontWeight: 800, color }}>{pct}%</div>
-          <div style={{ fontSize: 20, color: C.navy, fontWeight: 700 }}>{score} / {maxScore}</div>
-          <div style={{ fontSize: 13, color: C.slate, marginTop: 4 }}>{studentName} · {subject} · {testQs?.length} questions</div>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 14, flexWrap: 'wrap' }}>
-            <span style={{ padding: '6px 16px', borderRadius: 99, background: '#dcfce7', color: C.green, fontWeight: 700, fontSize: 13 }}>✅ {correct} correct</span>
-            <span style={{ padding: '6px 16px', borderRadius: 99, background: '#fee2e2', color: C.rose, fontWeight: 700, fontSize: 13 }}>✗ {wrong} wrong</span>
-            <span style={{ padding: '6px 16px', borderRadius: 99, background: '#f1f5f9', color: C.slate, fontWeight: 700, fontSize: 13 }}>— {skipped} skipped</span>
+      <div>
+        <div style={{ ...cardS, textAlign:'center' }}>
+          <div style={{ fontSize:56, fontWeight:900, color:resultColor }}>{pct}%</div>
+          <div style={{ fontSize:22, color:C.navy, fontWeight:700, marginTop:4 }}>{score} / {maxScore}</div>
+          <div style={{ fontSize:13, color:C.slate, marginTop:4 }}>
+            {studentName} · {subject} · {chapter} · {testQs?.length} questions
+          </div>
+          <div style={{ display:'flex', gap:12, justifyContent:'center', marginTop:14, flexWrap:'wrap' }}>
+            <span style={{ padding:'6px 16px', borderRadius:99, background:'#dcfce7', color:C.green, fontWeight:700, fontSize:13 }}>✅ {correct} correct</span>
+            <span style={{ padding:'6px 16px', borderRadius:99, background:'#fee2e2', color:C.rose, fontWeight:700, fontSize:13 }}>✗ {wrong} wrong</span>
+            <span style={{ padding:'6px 16px', borderRadius:99, background:'#f1f5f9', color:C.slate, fontWeight:700, fontSize:13 }}>— {skipped} skipped</span>
+          </div>
+          <div style={{ marginTop:14, padding:'8px 16px', borderRadius:8, display:'inline-block',
+            background: pct>=75?'#dcfce7':pct>=50?'#fef9c3':'#fee2e2',
+            color: resultColor, fontWeight:700, fontSize:14 }}>
+            {pct>=75 ? '🏆 Excellent!' : pct>=50 ? '👍 Good — keep practicing!' : '📚 Needs more practice'}
           </div>
         </div>
-        {testQs?.map((q, i) => {
-          const ua = answers[q.id]; const ok = ua === q.correct_option; const wr = ua && !ok
+
+        {/* Question-by-question review */}
+        <div style={{ fontWeight:700, color:C.navy, marginBottom:10, fontSize:14 }}>📋 Question Review</div>
+        {testQs?.map((q,i) => {
+          const ua=answers[q._testIdx]; const ok=ua===q.correct_option; const wr=ua&&!ok
           return (
-            <div key={q.id} style={{ marginBottom: 10, padding: '12px 16px', borderRadius: 9, border: `1px solid ${ok?'#86efac':wr?'#fca5a5':C.border}`, borderLeft: `4px solid ${ok?C.green:wr?C.rose:C.slate}`, background: ok?'#f0fdf4':wr?'#fff1f2':'#f8fafc' }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#1e293b', marginBottom: 6 }}><span style={{ color: C.slate, marginRight: 6 }}>Q{i+1}.</span>{q.question}</div>
-              <div style={{ fontSize: 12 }}>Your answer: <strong style={{ color: ok?C.green:wr?C.rose:C.slate }}>{ua || '—'}</strong>{ok && ' ✅'}{wr && <span style={{ marginLeft: 12, color: C.green }}>Correct: <strong>{q.correct_option}. {q[`option_${q.correct_option?.toLowerCase()}`]}</strong></span>}</div>
+            <div key={i} style={{ marginBottom:8, padding:'12px 16px', borderRadius:9,
+              border:`1px solid ${ok?'#86efac':wr?'#fca5a5':C.border}`,
+              borderLeft:`4px solid ${ok?C.green:wr?C.rose:C.slate}`,
+              background:ok?'#f0fdf4':wr?'#fff1f2':'#f8fafc' }}>
+              <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:5 }}>
+                <span style={{ color:C.slate, marginRight:6 }}>Q{i+1}.</span>{q.question}
+              </div>
+              <div style={{ fontSize:12 }}>
+                Your answer: <strong style={{ color:ok?C.green:wr?C.rose:C.slate }}>{ua||'—'}</strong>
+                {ok && ' ✅'}
+                {wr && (
+                  <span style={{ marginLeft:12, color:C.green }}>
+                    Correct: <strong>{q.correct_option}. {q[`option_${q.correct_option?.toLowerCase()}`]}</strong>
+                  </span>
+                )}
+                {!ua && <span style={{ marginLeft:8, color:C.slate }}>— Not attempted</span>}
+              </div>
             </div>
           )
         })}
-        <button onClick={() => { setTestQs(null); setSubmitted(false); setResult(null) }} style={{ ...btn(C.navy), marginTop: 16 }}>← Back</button>
+        <button onClick={() => { setTestQs(null); setSubmitted(false); setResult(null) }}
+          style={{ ...btn(C.navy), marginTop:16 }}>← New Test</button>
       </div>
     )
   }
 
+  // Test in progress
   if (testQs) {
     return (
       <div>
-        <div style={{ position: 'sticky', top: 0, zIndex: 99, background: C.navy, borderRadius: 10, padding: '12px 20px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff' }}>
-          <div><div style={{ fontWeight: 700, fontSize: 14 }}>{studentName} · {subject}</div><div style={{ fontSize: 11, opacity: .7 }}>{Object.keys(answers).length}/{testQs.length} answered</div></div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: timeLeft < 60 ? '#fca5a5' : '#fff' }}>⏱ {formatTime(timeLeft)}</div>
-          <button onClick={handleSubmit} style={btn(C.green)}>✅ Submit</button>
+        <div style={{ position:'sticky', top:0, zIndex:99, background:C.navy, borderRadius:10,
+          padding:'11px 18px', marginBottom:14,
+          display:'flex', justifyContent:'space-between', alignItems:'center', color:'#fff' }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:14 }}>{studentName} · {subject} — {chapter}</div>
+            <div style={{ fontSize:11, opacity:.7 }}>{Object.keys(answers).length}/{testQs.length} answered</div>
+          </div>
+          <div style={{ fontSize:22, fontWeight:800, color: timeLeft<60?'#fca5a5':'#fff' }}>
+            ⏱ {formatTime(timeLeft)}
+          </div>
+          <button onClick={() => confirm('Submit test?') && handleSubmit()} style={btn(C.green)}>✅ Submit</button>
         </div>
-        {testQs.map((q, i) => (
-          <div key={q.id} style={{ ...card, marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 12, lineHeight: 1.6 }}><span style={{ color: C.slate, marginRight: 8 }}>Q{i+1}.</span>{q.question}<span style={{ float: 'right', fontSize: 11, color: C.slate }}>[{q.marks||1}M]</span></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {testQs.map((q,i) => (
+          <div key={i} style={{ ...cardS, marginBottom:12 }}>
+            <div style={{ fontSize:14, fontWeight:600, color:'#1e293b', marginBottom:10, lineHeight:1.6 }}>
+              <span style={{ color:C.slate, marginRight:8 }}>Q{i+1}.</span>{q.question}
+              <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
+            </div>
+            {q.diagram_url && (
+              <img src={q.diagram_url} alt="diagram"
+                style={{ maxWidth:240, maxHeight:160, borderRadius:8, marginBottom:8, display:'block' }} />
+            )}
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
               {['A','B','C','D'].map(l => (
-                <button key={l} onClick={() => setAnswers(a => ({ ...a, [q.id]: l }))}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', border: `2px solid ${answers[q.id]===l ? C.navy : C.border}`, borderRadius: 8, background: answers[q.id]===l ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', fontSize: 13 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', border: `2px solid ${answers[q.id]===l ? C.navy : C.border}`, background: answers[q.id]===l ? C.navy : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: answers[q.id]===l ? '#fff' : C.slate }}>{l}</span>
+                <button key={l} onClick={() => setAnswers(a=>({...a,[q._testIdx]:l}))}
+                  style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px',
+                    border:`2px solid ${answers[q._testIdx]===l?C.navy:C.border}`,
+                    borderRadius:8, background: answers[q._testIdx]===l?'#eff6ff':'#fff',
+                    cursor:'pointer', textAlign:'left', fontSize:13, fontFamily:'inherit' }}>
+                  <div style={{ width:24, height:24, borderRadius:'50%', flexShrink:0,
+                    border:`2px solid ${answers[q._testIdx]===l?C.navy:C.border}`,
+                    background: answers[q._testIdx]===l?C.navy:'#fff',
+                    display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <span style={{ fontSize:11, fontWeight:700, color: answers[q._testIdx]===l?'#fff':C.slate }}>{l}</span>
                   </div>
-                  {q[`option_${l.toLowerCase()}`] || '—'}
+                  {q[`option_${l.toLowerCase()}`]||'—'}
                 </button>
               ))}
             </div>
           </div>
         ))}
-        <div style={{ textAlign: 'center', padding: 24 }}><button onClick={handleSubmit} style={btn(C.green)}>✅ Submit Test</button></div>
+        <div style={{ textAlign:'center', padding:24 }}>
+          <button onClick={() => confirm('Submit test?') && handleSubmit()} style={btn(C.green)}>
+            ✅ Submit Test
+          </button>
+        </div>
       </div>
     )
   }
 
+  // Test setup
   return (
-    <div style={card}>
-      <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 20 }}>📝 Online Test</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-        <div><label style={lbl}>Student Name *</label><input style={inp} value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="Enter name" /></div>
-        <div><label style={lbl}>Subject *</label><select style={sel} value={subject} onChange={e => { setSubject(e.target.value); setChapter('All Chapters') }}><option value="">Select</option>{SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-        <div><label style={lbl}>Chapter</label><select style={{ ...sel, opacity: subject ? 1 : .5 }} value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject}>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-        <div><label style={lbl}>No. of Questions</label><select style={sel} value={count} onChange={e => setCount(parseInt(e.target.value))}>{[10,15,20,25,50].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+    <div style={cardS}>
+      <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:18 }}>📝 Online Test</div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+        <div>
+          <label style={lS}>Student Name *</label>
+          <input style={iS} value={studentName} onChange={e=>setStudentName(e.target.value)}
+            placeholder="Enter student name" />
+        </div>
+        <div>
+          <label style={lS}>Subject *</label>
+          <select style={iS} value={subject}
+            onChange={e=>{setSubject(e.target.value);setChapter('');setSelSubs(new Set())}}>
+            <option value="">Select</option>
+            {SUBJECT_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lS}>Chapter *</label>
+          <select style={{...iS, opacity:subject?1:.5}} value={chapter}
+            onChange={e=>{setChapter(e.target.value);setSelSubs(new Set())}} disabled={!subject}>
+            <option value="">Select</option>
+            {chapters.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lS}>No. of Questions</label>
+          <select style={iS} value={count} onChange={e=>setCount(parseInt(e.target.value))}>
+            {[10,15,20,25,30,40,50].map(n=><option key={n} value={n}>{n} questions</option>)}
+          </select>
+        </div>
       </div>
-      {subject && (
-        <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', marginBottom: 14 }}>
-          📊 <strong>{questions.filter(q => q.subject===subject && (chapter==='All Chapters'||q.chapter===chapter)).length}</strong> questions available · Timer: ~{Math.round(count*1.5)} minutes
+
+      {/* Subsection filter for test */}
+      {availableSubs.length > 0 && (
+        <div style={{ marginBottom:14 }}>
+          <label style={{ ...lS, marginBottom:6 }}>
+            Filter by Subsection <span style={{ fontWeight:400, textTransform:'none' }}>(leave all unchecked = all subsections)</span>
+          </label>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {availableSubs.map(sub => (
+              <button key={sub} onClick={() => setSelSubs(prev=>{const n=new Set(prev);n.has(sub)?n.delete(sub):n.add(sub);return n})}
+                style={{ padding:'5px 12px', borderRadius:6,
+                  border:`2px solid ${selSubs.has(sub)?C.navy:C.border}`,
+                  background: selSubs.has(sub)?'#eff6ff':'#f8fafc',
+                  color: selSubs.has(sub)?C.navy:C.slate,
+                  fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                {selSubs.has(sub)?'☑':'☐'} {sub}
+              </button>
+            ))}
+          </div>
         </div>
       )}
-      <button onClick={handleStart} disabled={!subject || !studentName.trim()} style={btn(C.navy, !subject || !studentName.trim())}>▶ Start Test</button>
+
+      {subject && chapter && (
+        <div style={{ padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
+          border:'1px solid #bae6fd', fontSize:12, color:'#0369a1', marginBottom:14 }}>
+          📊 <strong>
+            {questions.filter(q=>q.subject===subject&&q.chapter===chapter).length}
+          </strong> questions available · Timer: ~{Math.round(count*1.5)} minutes
+        </div>
+      )}
+
+      <button onClick={handleStart} disabled={!subject||!chapter||!studentName.trim()}
+        style={btn(C.navy, !subject||!chapter||!studentName.trim())}>
+        ▶ Start Test
+      </button>
     </div>
   )
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 6: STATS
+// ══════════════════════════════════════════════════════════════════════════════
+function TabStats({ questions }) {
+  const [filterSubject, setFilterSubject] = useState('All')
+
+  const stats = useMemo(() => {
+    const result = {}
+    SUBJECT_LIST.forEach(subj => {
+      result[subj] = {}
+      SUBJECTS[subj].forEach(ch => {
+        result[subj][ch] = { total:0, subsections:{} }
+      })
+    })
+    questions.forEach(q => {
+      if (!result[q.subject]) return
+      if (!result[q.subject][q.chapter]) result[q.subject][q.chapter] = { total:0, subsections:{} }
+      result[q.subject][q.chapter].total++
+      const ss = q.subsection || 'General'
+      result[q.subject][q.chapter].subsections[ss] = (result[q.subject][q.chapter].subsections[ss]||0) + 1
+    })
+    return result
+  }, [questions])
+
+  const subjects = filterSubject==='All' ? SUBJECT_LIST : [filterSubject]
+
+  const countColor = (n) => n >= 20 ? C.green : n >= 10 ? C.amber : C.rose
+  const countBg    = (n) => n >= 20 ? '#dcfce7' : n >= 10 ? '#fef9c3' : '#fee2e2'
+  const countLabel = (n) => n >= 20 ? '✅' : n >= 10 ? '⚠️' : '❌'
+
+  return (
+    <>
+      <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center' }}>
+        <select style={{ ...iS, width:'auto' }} value={filterSubject}
+          onChange={e=>setFilterSubject(e.target.value)}>
+          <option value="All">All Subjects</option>
+          {SUBJECT_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <span style={{ fontSize:12, color:C.slate }}>
+          Total: <strong>{questions.length}</strong> questions in bank
+        </span>
+        <div style={{ display:'flex', gap:12, marginLeft:'auto', fontSize:12 }}>
+          <span>✅ 20+ Good</span>
+          <span>⚠️ 10–19 Low</span>
+          <span>❌ 0–9 Empty</span>
+        </div>
+      </div>
+
+      {subjects.map(subj => {
+        const sc = SC[subj]
+        const chapData = stats[subj] || {}
+        const totalSubj = Object.values(chapData).reduce((a,b)=>a+b.total,0)
+        return (
+          <div key={subj} style={{ ...cardS, borderTop:`3px solid ${sc.color}` }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:800, color:sc.color }}>{subj}</div>
+                <div style={{ fontSize:12, color:C.slate }}>{totalSubj} total questions</div>
+              </div>
+              <Badge text={`${totalSubj} Q`} color={sc.color} bg={sc.bg} border={sc.border} />
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+              {SUBJECTS[subj].map(ch => {
+                const chData = chapData[ch] || { total:0, subsections:{} }
+                return (
+                  <div key={ch} style={{ padding:'10px 14px', borderRadius:8,
+                    border:`1px solid ${C.border}`, background:'#fafafa' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                      <span style={{ fontSize:12, fontWeight:600, color:'#1e293b' }}>{ch}</span>
+                      <span style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700,
+                        color: countColor(chData.total), background: countBg(chData.total) }}>
+                        {countLabel(chData.total)} {chData.total}
+                      </span>
+                    </div>
+                    {/* Subsection breakdown */}
+                    {Object.keys(chData.subsections).length > 0 && (
+                      <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
+                        {Object.entries(chData.subsections).map(([ss,cnt]) => (
+                          <span key={ss} style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
+                            background:'#f1f5f9', color:C.slate, border:`1px solid ${C.border}` }}>
+                            {ss}: {cnt}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {chData.total === 0 && (
+                      <div style={{ fontSize:11, color:C.rose, marginTop:2 }}>
+                        Add questions via Manual Add or Bulk Paste
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser }) {
   const [tab,       setTab]       = useState('bank')
   const [questions, setQuestions] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [toast,     setToast]     = useState(null)
 
-  const showToast = (msg, color = C.navy) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
+  const showToast = (msg, color=C.navy) => {
+    setToast({ msg, color })
+    setTimeout(() => setToast(null), 3500)
+  }
 
   const refetch = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('qbank_questions').select('*').order('created_at', { ascending: false })
-    setQuestions(data || []); setLoading(false)
+    const { data, error } = await supabase.from('qbank_questions').select('*').order('created_at', { ascending:false })
+    if (error) showToast('Failed to load questions', C.rose)
+    else setQuestions(data || [])
+    setLoading(false)
   }, [])
 
   useEffect(() => { refetch() }, [refetch])
 
   const TABS = [
-    { key: 'bank',     icon: '📚', label: 'Question Bank' },
-    { key: 'upload',   icon: '📤', label: 'Upload & Extract' },
-    { key: 'generate', icon: '🤖', label: 'AI Generator'  },
-    { key: 'paper',    icon: '📄', label: 'Create Paper'  },
-    { key: 'test',     icon: '📝', label: 'Online Test'   },
+    { key:'bank',    icon:'📚', label:'Question Bank',  count: questions.length },
+    { key:'manual',  icon:'✏️', label:'Manual Add',     count: null },
+    { key:'bulk',    icon:'📤', label:'Bulk Paste',     count: null },
+    { key:'paper',   icon:'📄', label:'Create Paper',   count: null },
+    { key:'test',    icon:'📝', label:'Online Test',    count: null },
+    { key:'stats',   icon:'📊', label:'Stats',          count: null },
   ]
 
   return (
-    <div style={{ padding: '24px', fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+    <div style={{ padding:24, fontFamily:'system-ui,sans-serif', background:C.bg, minHeight:'100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal</div>
-        <div style={{ fontSize: 26, fontWeight: 800, color: C.navy, letterSpacing: '-.02em' }}>Question Bank</div>
-        <div style={{ fontSize: 13, color: C.slate, marginTop: 4 }}>AISSEE · Sainik School · Navodaya — generate, store, test, and print</div>
+
+      {/* Header */}
+      <div style={{ marginBottom:22 }}>
+        <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:C.slate, marginBottom:4 }}>
+          GNSI Portal
+        </div>
+        <div style={{ fontSize:26, fontWeight:900, color:C.navy, letterSpacing:'-.02em' }}>
+          Question Bank
+        </div>
+        <div style={{ fontSize:13, color:C.slate, marginTop:3 }}>
+          AISSEE · Sainik School · Navodaya — store, organise, test and print · No AI needed
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', gap:6, marginBottom:22, flexWrap:'wrap' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10, border: tab===t.key ? `2px solid ${C.navy}` : `2px solid ${C.border}`, background: tab===t.key ? C.navy : '#fff', color: tab===t.key ? '#fff' : C.slate, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all .12s' }}>
-            <span style={{ fontSize: 16 }}>{t.icon}</span>
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 18px', borderRadius:9,
+              border: tab===t.key ? `2px solid ${C.navy}` : `2px solid ${C.border}`,
+              background: tab===t.key ? C.navy : '#fff',
+              color: tab===t.key ? '#fff' : C.slate,
+              fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .12s' }}>
+            <span style={{ fontSize:15 }}>{t.icon}</span>
             {t.label}
-            {t.key === 'bank' && questions.length > 0 && (
-              <span style={{ padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: tab==='bank'?'rgba(255,255,255,.2)':C.navy, color: '#fff' }}>{questions.length}</span>
+            {t.count !== null && t.count > 0 && (
+              <span style={{ padding:'1px 7px', borderRadius:99, fontSize:10, fontWeight:700,
+                background: tab===t.key?'rgba(255,255,255,.2)':C.navy, color:'#fff' }}>
+                {t.count}
+              </span>
             )}
           </button>
         ))}
       </div>
-      {tab === 'bank'     && <TabBank     questions={questions} loading={loading} refetch={refetch} showToast={showToast} />}
-      {tab === 'upload'   && <TabUpload   refetch={refetch} showToast={showToast} />}
-      {tab === 'generate' && <TabGenerate questions={questions} refetch={refetch} showToast={showToast} />}
-      {tab === 'paper'    && <TabPaper    questions={questions} showToast={showToast} />}
-      {tab === 'test'     && <TabTest     questions={questions} showToast={showToast} />}
+
+      {/* Tab content */}
+      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} />}
+      {tab === 'manual' && <TabManualAdd refetch={refetch} showToast={showToast} />}
+      {tab === 'bulk'   && <TabBulkPaste refetch={refetch} showToast={showToast} />}
+      {tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
+      {tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
+      {tab === 'stats'  && <TabStats  questions={questions} />}
     </div>
   )
 }
