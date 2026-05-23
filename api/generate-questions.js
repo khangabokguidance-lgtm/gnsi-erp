@@ -1,8 +1,3 @@
-// /api/generate-questions.js
-// Google Gemini 2.0 Flash — FREE
-// Get key: https://aistudio.google.com/apikey
-// Add to Vercel: Settings → Environment Variables → GEMINI_API_KEY
-
 export const config = { runtime: 'edge' }
 
 export default async function handler(req) {
@@ -25,90 +20,49 @@ export default async function handler(req) {
 
   try {
     const { prompt } = await req.json()
-    if (!prompt) {
-      return new Response(JSON.stringify({ error: 'No prompt' }), { status: 400 })
-    }
 
     const KEY = process.env.GEMINI_API_KEY
     if (!KEY) {
       return new Response(
-        JSON.stringify({ error: 'GEMINI_API_KEY not set in Vercel environment variables' }),
+        JSON.stringify({ error: 'GEMINI_API_KEY not set' }),
         { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
       )
     }
 
-    // Try gemini-2.0-flash first, fallback model list
-    const models = [
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-latest',
-    ]
-
-    let lastError = null
-
-    for (const model of models) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 4096,
-              },
-            }),
-          }
-        )
-
-        const data = await res.json()
-
-        // Log error from Gemini for debugging
-        if (data.error) {
-          lastError = `${model}: ${data.error.message}`
-          continue
-        }
-
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-        const clean = text.replace(/```json|```/g, '').trim()
-        const match = clean.match(/\[[\s\S]*\]/)
-        if (!match) {
-          lastError = `${model}: No JSON array in response`
-          continue
-        }
-
-        const questions = JSON.parse(match[0])
-
-        return new Response(JSON.stringify({ questions, model }), {
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
-        })
-      } catch (e) {
-        lastError = `${model}: ${e.message}`
-        continue
-      }
-    }
-
-    // All models failed
-    return new Response(
-      JSON.stringify({ questions: [], error: 'All models failed. Last error: ' + lastError }),
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${KEY}`,
       {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt || 'test' }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+        }),
       }
     )
+
+    const data = await res.json()
+
+    if (data.error) {
+      return new Response(
+        JSON.stringify({ questions: [], error: data.error.message, code: data.error.code }),
+        { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      )
+    }
+
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const clean = text.replace(/```json|```/g, '').trim()
+    const match = clean.match(/\[[\s\S]*\]/)
+    const questions = match ? JSON.parse(match[0]) : []
+
+    return new Response(JSON.stringify({ questions }), {
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    })
 
   } catch (err) {
     return new Response(
       JSON.stringify({ questions: [], error: err.message }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      }
+      { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
     )
   }
 }
