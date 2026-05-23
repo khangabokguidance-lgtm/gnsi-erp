@@ -992,34 +992,29 @@ export default async function handler(req) {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
   const { prompt } = await req.json()
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+const res = await fetch(
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
+  {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
     }),
-  })
-
-  const data = await res.json()
-  const text = data.content?.map(b => b.type === 'text' ? b.text : '').join('').replace(/```json|```/g, '').trim()
-
-  try {
-    const questions = JSON.parse(text)
-    return new Response(JSON.stringify({ questions }), {
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    })
-  } catch {
-    return new Response(JSON.stringify({ questions: [], error: 'Parse failed' }), {
-      headers: { 'Content-Type': 'application/json' },
-    })
   }
-}
+)
+const data = await res.json()
+if (data.error) throw new Error(data.error.message)
+const text  = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+const clean = text.replace(/```json|```/g, '').trim()
+const match = clean.match(/\[[\s\S]*\]/)
+const arr   = match ? JSON.parse(match[0]) : []
+const tagged = arr.map((q, i) => ({
+  ...q, _id: i, subject, chapter,
+  marks: subject === 'Mathematics' ? 3 : 2,
+}))
+setGenerated(tagged)
+setSelected(new Set(tagged.map(q => q._id)))
+showToast(`✨ ${tagged.length} questions generated`, C.green)
 ─────────────────────────────────────────────────────────────────────────────
 */
