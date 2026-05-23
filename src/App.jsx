@@ -31,6 +31,7 @@ import Attendance         from './Attendance'
 import Exams              from './Exams'
 import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
+import Kitchen            from './Kitchen.jsx'
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -918,6 +919,7 @@ export default function App() {
     timetable:         <Timetable         currentUser={currentUser} />,
     feesetup:          <FeeSetup          userRole={currentUser.role} />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} /> : <AccessDenied />,
+    kitchen:           <Kitchen           currentUser={currentUser} />,
   }
 
   const renderContent = () => {
