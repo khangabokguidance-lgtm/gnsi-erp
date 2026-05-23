@@ -278,7 +278,7 @@ Return ONLY a valid JSON array, no markdown, no explanation:
           'X-Title': 'GNSI Question Bank',
         },
         body: JSON.stringify({
-          model: 'meta-llama/llama-3.3-70b-instruct:free',
+          model: 'deepseek/deepseek-chat:free',
           messages: [{ role: 'user', content: prompt }],
           max_tokens: 4096,
         }),
