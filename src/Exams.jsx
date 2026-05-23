@@ -71,6 +71,17 @@ const GRADE_PRESETS = [
   { min: 0,  label: "F",  color: "#A32D2D", bg: "#FCEBEB", gpa: 0.0 },
 ];
 
+// ─── Role permissions ────────────────────────────────────────────────────────
+const ROLE_PERMS = {
+  Admin:    { canEdit: true,  canDelete: true,  canImport: true,  canPrint: true  },
+  Manager:  { canEdit: true,  canDelete: false, canImport: true,  canPrint: true  },
+  Teacher:  { canEdit: true,  canDelete: false, canImport: false, canPrint: true  },
+  Accounts: { canEdit: false, canDelete: false, canImport: false, canPrint: false },
+}
+function usePerm(currentUser) {
+  return ROLE_PERMS[currentUser?.role] || ROLE_PERMS.Teacher
+}
+
 const TAB_GROUPS = [
   {
     groupLabel: "Entry", color: "#1433a8",
@@ -313,7 +324,8 @@ function useRemarks(studentId, examTypeId, examDate) {
 }
 
 // ─── STUDENTS TAB ─────────────────────────────────────────────────────────────
-function StudentsTab({ courseSubjects, students, onStudentsChange }) {
+function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser }) {
+  const perm = usePerm(currentUser)
   const courses = Object.keys(courseSubjects);
 
   const EMPTY_FORM = { name: "", gcc_no: "", admission_no: "", course: courses[0] || "", class_name: "" };
@@ -558,7 +570,7 @@ function StudentsTab({ courseSubjects, students, onStudentsChange }) {
                         <td style={{ padding: "9px 14px", textAlign: "center" }}>
                           <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
                             <button onClick={() => startEdit(st)} style={{ ...css.btn, padding: "4px 12px", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", fontSize: 12 }}>✏️ Edit</button>
-                            <button onClick={() => setDeleteId(st.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>🗑️</button>
+                            {perm.canDelete && <button onClick={() => setDeleteId(st.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>🗑️</button>}
                           </div>
                         </td>
                       </>
@@ -865,7 +877,7 @@ function MarkEntry({ courseSubjects, examTypes, students }) {
         <button onClick={handleExport} style={{ ...css.btn, background: "#E1F5EE", color: "#0F6E56", border: "1px solid #BBF7D0" }}>📥 Excel</button>
         <div style={{ width: 1, background: "#E5E7EB", alignSelf: "stretch" }} />
         <button onClick={downloadTemplate} style={{ ...css.btn, background: "#FAFAF9", color: "#6B7280", border: "1px solid #E5E7EB" }}>📋 Template</button>
-        <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#7c3aed", color: "white" }}>📂 Import Excel / CSV</button>
+        {perm?.canImport !== false && <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#7c3aed", color: "white" }}>📂 Import Excel / CSV</button>}
       </div>
       {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved!</div>}
       {importMode && <ImportPreview />}
@@ -1063,7 +1075,9 @@ function Analytics({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
-      chartsRef.current.forEach(c => { try { c.destroy(); } catch (_) {} }); chartsRef.current = [];
+      chartsRef.current = (chartsRef.current || []).filter(Boolean)
+      chartsRef.current.forEach(c => { try { if (c && typeof c.destroy === 'function') c.destroy() } catch(_){} })
+      chartsRef.current = [];
       if (gradeRef.current) {
         const labels = GRADE_PRESETS.map(g => g.label);
         chartsRef.current.push(new Chart(gradeRef.current, { type: "doughnut", data: { labels, datasets: [{ data: labels.map(l => gradeCounts[l] || 0), backgroundColor: GRADE_PRESETS.map(g => g.color), borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } } }));
@@ -1097,7 +1111,14 @@ function Analytics({ courseSubjects, examTypes, students }) {
         <DashStatCard label="Lowest Total" value={`${lowest}/${courseMax}`} strip="red" color="#A32D2D" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
-        <div style={css.card}><div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b", marginBottom: 14, fontFamily: "'Playfair Display',serif" }}>Grade Distribution</div><div style={{ height: 260 }}><canvas ref={gradeRef} /></div></div>
+        <div style={css.card}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+              <div style={{ fontWeight:700, fontSize:14, color:'#1e293b', fontFamily:"'Playfair Display',serif" }}>Grade Distribution</div>
+              <button onClick={() => { if (!gradeRef.current) return; const a = document.createElement('a'); a.download=`grade-${course}.png`; a.href=gradeRef.current.toDataURL('image/png'); a.click() }}
+                style={{ ...css.btn, padding:'4px 10px', background:'#F3F4F6', color:'#374151', border:'1px solid #E5E7EB', fontSize:11 }}>⬇ PNG</button>
+            </div>
+            <div style={{ height: 260 }}><canvas ref={gradeRef} /></div>
+          </div>
         <div style={css.card}><div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b", marginBottom: 14, fontFamily: "'Playfair Display',serif" }}>Subject-wise Average %</div><div style={{ height: 260 }}><canvas ref={subjectRef} /></div></div>
       </div>
       <div style={css.card}>
@@ -1908,8 +1929,12 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
 }
 
   // ─── SCHEDULE ─────────────────────────────────────────────────────────────────
-function Schedule({ courseSubjects, examTypes }) {
+function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
   const [schedule, setSchedule] = useState([]);
+  const refetchSchedule = useCallback(async () => {
+    const { data } = await supabase.from('exam_schedule').select('*').order('exam_date')
+    setSchedule(data || [])
+  }, [])
   const [loading, setLoading] = useState(true);
   const allSubjects = [...new Set(Object.values(courseSubjects).flat())];
   const [form, setForm] = useState({
@@ -1936,7 +1961,7 @@ function Schedule({ courseSubjects, examTypes }) {
   };
   const handleDelete = async id => {
     if (!confirm("Delete this entry?")) return;
-    await supabase.from("exam_schedule").delete().eq("id", id); fetchSchedule();
+    await supabase.from("exam_schedule").delete().eq("id", id); fetchSchedule(); onScheduleChange?.();
   };
 
   return (
@@ -2559,7 +2584,14 @@ function ReportCardItem({ st, subjects, marks, examType, examDate, examName, ins
           {savingRemark ? "Saving…" : savedRemark ? "✓ Saved" : "💾 Save Remark"}
         </button>
       </div>
-      <button onClick={printReport} style={{ ...css.btn, background: "#1a3c2e", color: "white", width: "100%" }}>🖨️ Print Report Card</button>
+      {(() => {
+        const [printing, setPrinting] = React.useState(false)
+        return <button onClick={() => { setPrinting(true); printReport(); setTimeout(() => setPrinting(false), 3000) }}
+          disabled={printing}
+          style={{ ...css.btn, background: printing ? '#6B7280' : '#1a3c2e', color:'white', width:'100%', opacity: printing ? 0.8 : 1 }}>
+          {printing ? '⏳ Opening print window...' : '🖨️ Print Report Card'}
+        </button>
+      })()}
     </div>
   );
 }
@@ -3997,9 +4029,9 @@ export default function Exams({ currentUser }) {
     rankings:       <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     merit:          <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     reportcard:     <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
-    schedule:       <Schedule courseSubjects={courseSubjects} examTypes={examTypes} />,
+    schedule:       <Schedule courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
     seatplan:       <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    studentsmgr:    <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} />,
+    studentsmgr:    <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} />,
     coursesubjects: <CourseSubjectsManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} />,
     examtypes:      <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
     settings:       <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
