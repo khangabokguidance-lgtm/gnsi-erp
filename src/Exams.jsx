@@ -590,7 +590,8 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser }
 }
 
 // ─── MARK ENTRY ───────────────────────────────────────────────────────────────
-function MarkEntry({ courseSubjects, examTypes, students }) {
+function MarkEntry({ courseSubjects, examTypes, students, currentUser }) {
+  const perm = usePerm(currentUser)
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
@@ -4028,7 +4029,7 @@ export default function Exams({ currentUser }) {
   const courses = Object.keys(courseSubjects);
 
   const sectionMap = {
-    entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
+    entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} />,
     marks:          <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     analytics:      <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     rankings:       <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
