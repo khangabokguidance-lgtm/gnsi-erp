@@ -49,6 +49,7 @@ const D = {
 // ─── SEC-1: Role from app_metadata (server-only), not user_metadata ───────────
 // app_metadata can only be set by service-role key / server, never by the client.
 // Fallback chain: app_metadata.role → staff_profiles table → 'viewer'
+// ─── SEC-1: Role from app_metadata → user_metadata → staff_profiles → 'viewer'
 function usePermissions() {
   const [role, setRole] = useState('viewer')
 
@@ -59,17 +60,38 @@ function usePermissions() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
-        // Primary: app_metadata (set server-side only, not writable by client)
+        // 1. app_metadata (server-only, most secure)
         const appRole = session.user?.app_metadata?.role
         if (appRole) { if (!cancelled) setRole(appRole); return }
 
-        // Fallback: staff_profiles table (also server-controlled)
+        // 2. user_metadata (your app likely stores role here)
+        const userRole = session.user?.user_metadata?.role
+        if (userRole) { if (!cancelled) setRole(userRole); return }
+
+        // 3. staff_profiles table
         const { data: profile } = await supabase
           .from('staff_profiles')
           .select('role')
           .eq('user_id', session.user.id)
           .single()
-        if (!cancelled && profile?.role) setRole(profile.role)
+        if (!cancelled && profile?.role) { setRole(profile.role); return }
+
+        // 4. staff table (common alternative table name)
+        const { data: staffRow } = await supabase
+          .from('staff')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single()
+        if (!cancelled && staffRow?.role) { setRole(staffRow.role); return }
+
+        // 5. profiles table (another common name)
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+        if (!cancelled && profileRow?.role) setRole(profileRow.role)
+
       } catch { /* stay as viewer */ }
     })()
     return () => { cancelled = true }
