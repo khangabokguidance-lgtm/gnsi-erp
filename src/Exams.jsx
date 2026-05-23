@@ -3998,6 +3998,11 @@ export default function Exams({ currentUser }) {
   const [loading, setLoading] = useState(true);
   const [institute, setInstitute] = useState(INSTITUTE_DEFAULT);
 
+  const refetchSchedule = useCallback(async () => {
+    const { data } = await supabase.from('exam_schedule').select('*').order('exam_date')
+    setSchedule(data || [])
+  }, [])
+
   useEffect(() => {
     ensureLibs();
     Promise.all([
