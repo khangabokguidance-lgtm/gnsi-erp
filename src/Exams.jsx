@@ -614,6 +614,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser }) {
   const [importInfo, setImportInfo] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importDone, setImportDone] = useState(false);
+  const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
 
   const fetchMarks = useCallback(async (typeId, date, crs) => {
@@ -634,6 +635,10 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser }) {
   useEffect(() => { fetchMarks(examType, examDate, course); }, [examType, examDate, course]);
 
   const handleMark = (sid, sub, val) => { setMarks(p => ({ ...p, [`${sid}-${sub}`]: val })); setSaved(false); };
+  const toggleAbsent = (sid, sub) => {
+    const key = `${sid}-${sub}`
+    setAbsentSet(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else { next.add(key); setMarks(p => ({ ...p, [key]: 0 })); setSaved(false) } return next })
+  }
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
 
   const handleSave = async () => {
@@ -915,6 +920,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser }) {
                           value={marks[`${st.id}-${sub}`] ?? ""}
                           onChange={e => handleMark(st.id, sub, e.target.value)}
                           style={{ width: 56, padding: "5px 4px", borderRadius: 6, border: "1px solid #D1D5DB", textAlign: "center", fontSize: 13, outline: "none" }} />
+                        <button onClick={() => toggleAbsent(st.id, sub)} style={{ fontSize:9, padding:'1px 5px', borderRadius:3, border:'1px solid #FECACA', background: absentSet.has(`${st.id}-${sub}`) ? '#FCA5A5' : '#F9FAFB', color: absentSet.has(`${st.id}-${sub}`) ? '#DC2626' : '#9CA3AF', cursor:'pointer', fontWeight:700 }}>{absentSet.has(`${st.id}-${sub}`) ? 'ABS' : 'A'}</button>
                       </td>
                     ))}
                     <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800 }}>{total}</td>
@@ -1514,6 +1520,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
   const [filterCourse, setFilterCourse] = useState("ALL");
   const [search, setSearch]         = useState("");
   const [dragStudent, setDragStudent] = useState(null);
+  const [touchDragStudent, setTouchDragStudent] = useState(null);
 
   // ── Rooms from schedule ────────────────────────────────────────────────────
   const scheduleRooms = [...new Set(
@@ -1827,6 +1834,8 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
                     draggable={!inRoom}
                     onDragStart={()=>setDragStudent(st)}
                     onDragEnd={()=>setDragStudent(null)}
+                    onTouchStart={()=>{ if(!inRoom) setTouchDragStudent(st) }}
+                    onTouchEnd={()=>setTouchDragStudent(null)}
                     style={{ padding:"8px 14px", borderBottom:"1px solid #F1F5F9", cursor:inRoom?"default":"grab", background:inRoom?"#F0FDF4":inOther?"#FFFBEB":"white", opacity:inRoom?0.6:1 }}>
                     <div style={{ fontWeight:600, fontSize:12, color:inRoom?"#0F6E56":inOther?"#92400E":"#1e293b" }}>{st.name}</div>
                     <div style={{ fontSize:10, color:"#9CA3AF" }}>
@@ -1895,6 +1904,8 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
                         <div key={seatNum}
                           onDragOver={e=>{e.preventDefault();}}
                           onDrop={e=>{ e.preventDefault(); if(dragStudent && !assignedInRoom.has(dragStudent.id)){ setSeats(p=>({...p,[seatNum]:dragStudent.id})); setSaved(false); setDragStudent(null); }}}
+                          onTouchStart={()=>{ if(!inRoom) setTouchDragStudent(st) }}
+                    onTouchEnd={()=>setTouchDragStudent(null)}
                           onClick={()=>{ if(st){ setSeats(p=>{ const n={...p}; delete n[seatNum]; return n; }); setSaved(false); } }}
                           style={{ width:110, minHeight:72, borderRadius:8, border:st?"1.5px solid #86EFAC":"1.5px dashed #D1D5DB", background:st?"#F0FDF4":"#F9FAFB", padding:"6px 8px", cursor:st?"pointer":"default", position:"relative", transition:"all .15s" }}>
                           <div style={{ position:"absolute", top:4, right:6, fontSize:10, fontWeight:800, color:st?"#0F6E56":"#CBD5E1" }}>{seatNum}</div>
@@ -2950,6 +2961,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const printAllReportCards = async () => {
     setRcProgress({ current: 0, total: filteredRcStudents.length });
     const cards = [];
+    try { await supabase.from('exam_print_log').insert({ doc_type:'report_card', course:rcCourse, exam_type:examTypes.find(e=>e.id===rcExamType)?.name||'', student_count:filteredRcStudents.length }) } catch(_){}
     for (let i = 0; i < filteredRcStudents.length; i++) {
       const st = filteredRcStudents[i];
       const remark = rcIncludeRemarks ? (rcRemarks[st.id] || "") : "";
@@ -3115,6 +3127,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
 
   const printAllAdmitCards = async () => {
     setAcProgress({ current: 0, total: filteredAcStudents.length });
+    try { await supabase.from('exam_print_log').insert({ doc_type:'admit_card', course:acCourse, exam_type:acExamName, student_count:filteredAcStudents.length }) } catch(_){}
     const cards = [];
     for (let i = 0; i < filteredAcStudents.length; i++) {
       cards.push(buildAdmitCardHTML(filteredAcStudents[i]));
@@ -3802,7 +3815,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
           </div>
         </div>
         <div class="photo-box">
-          <div class="photo-inner"><div class="photo-text">Affix<br/>Passport<br/>Photo</div></div>
+          <div class="photo-inner">${st.photo_url ? `<img src="${st.photo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:4px"/>` : `<div class="photo-text">Affix<br/>Passport<br/>Photo</div>`}</div>
           <div class="photo-label">Photograph</div>
         </div>
       </div>
