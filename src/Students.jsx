@@ -1912,6 +1912,15 @@ function StudentRow({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuick
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Students() {
   const { role, can } = usePermissions()
+  useEffect(() => {
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    alert(JSON.stringify({
+      app: session?.user?.app_metadata,
+      user: session?.user?.user_metadata,
+      id: session?.user?.id
+    }, null, 2))
+  })
+}, [])
 
   const [students,     setStudents]     = useState([])
   const [houseOptions, setHouseOptions] = useState(HOUSES_LIST)
