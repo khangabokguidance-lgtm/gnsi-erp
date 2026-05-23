@@ -1942,17 +1942,17 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
 
   // ─── SCHEDULE ─────────────────────────────────────────────────────────────────
 function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
+  const courses = Object.keys(courseSubjects);
   const [schedule, setSchedule] = useState([]);
-  const refetchSchedule = useCallback(async () => {
-    const { data } = await supabase.from('exam_schedule').select('*').order('exam_date')
-    setSchedule(data || [])
-  }, [])
   const [loading, setLoading] = useState(true);
+  const [filterCourse, setFilterCourse] = useState("ALL");
+  const [filterExamType, setFilterExamType] = useState("ALL");
   const allSubjects = [...new Set(Object.values(courseSubjects).flat())];
   const [form, setForm] = useState({
     exam_type_id: examTypes[0]?.id || "",
-    subject: allSubjects[0] || "",
-    exam_date: "", time: "09:00", total_marks: 100, room: ""
+    course: courses[0] || "",
+    subject: "",
+    exam_date: "", time: "09:00", total_marks: 100, room: "", shift: "Morning"
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1964,57 +1964,129 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
   };
   useEffect(() => { fetchSchedule(); }, []);
 
+  // subjects for selected course in form
+  const formSubjects = courseSubjects[form.course] || [];
+
   const handleSave = async () => {
     if (!form.exam_date || !form.subject) return;
     setSaving(true);
     await supabase.from("exam_schedule").insert([{ ...form, total_marks: Number(form.total_marks) }]);
-    setSaving(false); setSaved(true); fetchSchedule();
+    setSaving(false); setSaved(true); fetchSchedule(); onScheduleChange?.();
     setTimeout(() => setSaved(false), 2000);
   };
+
   const handleDelete = async id => {
     if (!confirm("Delete this entry?")) return;
-    await supabase.from("exam_schedule").delete().eq("id", id); fetchSchedule(); onScheduleChange?.();
+    await supabase.from("exam_schedule").delete().eq("id", id);
+    fetchSchedule(); onScheduleChange?.();
   };
+
+  const filtered = schedule.filter(s => {
+    const matchCourse = filterCourse === "ALL" || s.course === filterCourse;
+    const matchType = filterExamType === "ALL" || s.exam_type_id === filterExamType;
+    return matchCourse && matchType;
+  });
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>➕ Add Entry</div>
-        {[
-          { label: "Exam Type", key: "exam_type_id", type: "select", opts: examTypes.map(e => ({ v: e.id, l: e.name })) },
-          { label: "Subject", key: "subject", type: "select", opts: allSubjects.map(s => ({ v: s, l: s })) },
-          { label: "Date", key: "exam_date", type: "date" },
-          { label: "Time", key: "time", type: "time" },
-          { label: "Total Marks", key: "total_marks", type: "number" },
-          { label: "Room / Hall", key: "room", type: "text" },
-        ].map(f => (
-          <div key={f.key} style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>{f.label}</label>
-            {f.type === "select"
-              ? <select value={form[f.key]} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} style={css.input}>
-                  {f.opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                </select>
-              : <input type={f.type} value={form[f.key]} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} style={css.input} />}
-          </div>
-        ))}
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <select value={form.exam_type_id} onChange={e => setForm(p => ({ ...p, exam_type_id: e.target.value }))} style={css.input}>
+            {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Course / Batch</label>
+          <select value={form.course} onChange={e => setForm(p => ({ ...p, course: e.target.value, subject: "" }))} style={css.input}>
+            {courses.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Subject</label>
+          <select value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} style={css.input}>
+            <option value="">— Select Subject —</option>
+            {formSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Shift</label>
+          <select value={form.shift} onChange={e => setForm(p => ({ ...p, shift: e.target.value }))} style={css.input}>
+            <option value="Morning">🌅 Morning</option>
+            <option value="Afternoon">🌤️ Afternoon</option>
+            <option value="Evening">🌆 Evening</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
+          <input type="date" value={form.exam_date} onChange={e => setForm(p => ({ ...p, exam_date: e.target.value }))} style={css.input} />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Time</label>
+          <input type="time" value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} style={css.input} />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Total Marks</label>
+          <input type="number" value={form.total_marks} onChange={e => setForm(p => ({ ...p, total_marks: e.target.value }))} style={css.input} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Room / Hall</label>
+          <input type="text" value={form.room} onChange={e => setForm(p => ({ ...p, room: e.target.value }))} style={css.input} />
+        </div>
+
         <SaveBtn onClick={handleSave} saving={saving} saved={saved} label="Add Entry" />
       </div>
+
       <div>
+        {/* Filters */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Filter Course</label>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {["ALL", ...courses].map(c => (
+                <button key={c} onClick={() => setFilterCourse(c)}
+                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === c ? "#1a3c2e" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Filter Exam Type</label>
+            <select value={filterExamType} onChange={e => setFilterExamType(e.target.value)} style={{ ...css.input, width: 180 }}>
+              <option value="ALL">All Types</option>
+              {examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}
+            </select>
+          </div>
+          <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{filtered.length} entries</div>
+        </div>
+
         {loading ? <Spinner /> : (
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
             <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                {["Date", "Exam Type", "Subject", "Time", "Marks", "Room", ""].map(h => (
-                  <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 12 }}>{h}</th>
+                {["Date", "Course", "Exam Type", "Subject", "Shift", "Time", "Marks", "Room", ""].map(h => (
+                  <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
-                {schedule.map((s, i) => (
+                {filtered.map((s, i) => (
                   <tr key={s.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
                     <td style={{ padding: "9px 12px", fontWeight: 600 }}>{s.exam_date}</td>
+                    <td style={{ padding: "9px 12px" }}>
+                      <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.course || "—"}</span>
+                    </td>
                     <td style={{ padding: "9px 12px" }}>{examTypes.find(e => e.id === s.exam_type_id)?.name || s.exam_type_id}</td>
                     <td style={{ padding: "9px 12px" }}>{s.subject}</td>
+                    <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.shift || "Morning"}</td>
                     <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.time || "--"}</td>
                     <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.total_marks}</td>
                     <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.room || "--"}</td>
@@ -2023,7 +2095,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
                     </td>
                   </tr>
                 ))}
-                {!schedule.length && <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No schedule entries yet.</td></tr>}
+                {!filtered.length && <tr><td colSpan={9} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No schedule entries yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -2897,7 +2969,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const acStudents = students.filter(s =>
     (s.class_name||"").toUpperCase()===acCourse||(s.course||"").toUpperCase()===acCourse
   );
-  const acSchedule = schedule.filter(s => s.exam_type_id === acExamType);
+  const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course === acCourse));
   const acExamName = examTypes.find(e=>e.id===acExamType)?.name||"Examination";
 
   // Load dates for report card
@@ -3774,7 +3846,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
     !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search)
   );
   const examTypeName = examTypes.find(e => e.id === examType)?.name || "Examination";
-  const examSchedule = schedule.filter(s => s.exam_type_id === examType);
+  const examSchedule = schedule.filter(s => s.exam_type_id === examType && (!s.course || s.course === course));
 
   const generateCardHTML = (st) => {
     const scheduleRows = examSchedule.length
