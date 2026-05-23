@@ -24,6 +24,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'r
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 import { getFlatFeeAmt } from './feeEngine'
+import { useAuth } from './AuthContext'
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const fmt  = n => Number(n||0).toLocaleString('en-IN')
@@ -51,51 +52,8 @@ const D = {
 // Fallback chain: app_metadata.role → staff_profiles table → 'viewer'
 // ─── SEC-1: Role from app_metadata → user_metadata → staff_profiles → 'viewer'
 function usePermissions() {
-  const [role, setRole] = useState('viewer')
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
-
-        // 1. app_metadata (server-only, most secure)
-        const appRole = session.user?.app_metadata?.role
-        if (appRole) { if (!cancelled) setRole(appRole); return }
-
-        // 2. user_metadata (your app likely stores role here)
-        const userRole = session.user?.user_metadata?.role
-        if (userRole) { if (!cancelled) setRole(userRole); return }
-
-        // 3. staff_profiles table
-        const { data: profile } = await supabase
-          .from('staff_profiles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .single()
-        if (!cancelled && profile?.role) { setRole(profile.role); return }
-
-        // 4. staff table (common alternative table name)
-        const { data: staffRow } = await supabase
-          .from('staff')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .single()
-        if (!cancelled && staffRow?.role) { setRole(staffRow.role); return }
-
-        // 5. profiles table (another common name)
-        const { data: profileRow } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single()
-        if (!cancelled && profileRow?.role) setRole(profileRow.role)
-
-      } catch { /* stay as viewer */ }
-    })()
-    return () => { cancelled = true }
-  }, [])
+  const { user } = useAuth()
+  const role = user?.role || 'viewer'
 
   return {
     role,
@@ -1912,15 +1870,6 @@ function StudentRow({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuick
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Students() {
   const { role, can } = usePermissions()
-  useEffect(() => {
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    alert(JSON.stringify({
-      app: session?.user?.app_metadata,
-      user: session?.user?.user_metadata,
-      id: session?.user?.id
-    }, null, 2))
-  })
-}, [])
 
   const [students,     setStudents]     = useState([])
   const [houseOptions, setHouseOptions] = useState(HOUSES_LIST)
