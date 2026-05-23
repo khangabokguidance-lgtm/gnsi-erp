@@ -1,7 +1,7 @@
 // QuestionBank.jsx — GNSI Portal v2.0
 // Examin8-style Question Bank for AISSEE / Sainik School preparation
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 
 const SUBJECTS = {
@@ -228,6 +228,270 @@ function TabBank({ questions, loading, refetch, showToast }) {
   )
 }
 
+
+// ─── TAB: Upload & Auto-Extract ───────────────────────────────────────────────
+function TabUpload({ refetch, showToast }) {
+  const [mode,        setMode]        = useState('paste')  // paste | image
+  const [rawText,     setRawText]     = useState('')
+  const [imageData,   setImageData]   = useState(null)
+  const [imageName,   setImageName]   = useState('')
+  const [bulkSubject, setBulkSubject] = useState('')
+  const [bulkChapter, setBulkChapter] = useState('')
+  const [bulkDiff,    setBulkDiff]    = useState('Medium')
+  const [detecting,   setDetecting]   = useState(false)
+  const [detected,    setDetected]    = useState([])
+  const [selected,    setSelected]    = useState(new Set())
+  const [saving,      setSaving]      = useState(false)
+  const fileRef = React.useRef()
+
+  const chapters = SUBJECTS[bulkSubject] || []
+
+  const handleFile = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setImageName(file.name)
+    const reader = new FileReader()
+    reader.onload = ev => setImageData(ev.target.result.split(',')[1])
+    reader.readAsDataURL(file)
+  }
+
+  const handleExtract = async () => {
+    const hasInput = mode === 'paste' ? rawText.trim() : imageData
+    if (!hasInput) { alert('Please provide input first.'); return }
+
+    setDetecting(true); setDetected([]); setSelected(new Set())
+
+    const prompt = mode === 'paste'
+      ? `Extract ALL MCQ questions from this text. Return ONLY a valid JSON array, no markdown, no explanation.
+Each item must have: {"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","difficulty":"Medium"}
+If correct answer is not clear, use "A" as default.
+
+TEXT:
+${rawText.substring(0, 8000)}`
+      : `This is an image of a question paper. Extract ALL MCQ questions visible.
+Return ONLY a valid JSON array, no markdown:
+[{"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","difficulty":"Medium"}]`
+
+    try {
+      const OR_KEY = import.meta.env.VITE_OPENROUTER_KEY
+      if (!OR_KEY) throw new Error('VITE_OPENROUTER_KEY not set')
+
+      const messages = mode === 'image' ? [
+        { role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageData}` } }
+        ]}
+      ] : [
+        { role: 'user', content: prompt }
+      ]
+
+      const model = mode === 'image'
+        ? 'qwen/qwen2.5-vl-72b-instruct:free'
+        : 'qwen/qwen3-235b-a22b:free'
+
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OR_KEY}`,
+          'HTTP-Referer': 'https://gnsi-erp.vercel.app',
+          'X-Title': 'GNSI Question Bank',
+        },
+        body: JSON.stringify({ model, messages, max_tokens: 4096 }),
+      })
+
+      const data = await res.json()
+      if (data.error) throw new Error(data.error.message)
+
+      const text  = data.choices?.[0]?.message?.content || ''
+      const clean = text.replace(/```json|```/g, '').trim()
+      const match = clean.match(/\[\s\S]*\]/)
+      if (!match) throw new Error('Could not extract questions — try again')
+
+      const arr  = JSON.parse(match[0])
+      const tagged = arr.map((q, i) => ({
+        ...q, _id: i,
+        subject:    bulkSubject || '',
+        chapter:    bulkChapter || '',
+        difficulty: q.difficulty || bulkDiff,
+        marks:      bulkSubject === 'Mathematics' ? 3 : 2,
+      }))
+      setDetected(tagged)
+      setSelected(new Set(tagged.map((_, i) => i)))
+      showToast(`✨ ${tagged.length} questions extracted!`, C.green)
+    } catch (e) {
+      showToast('Extraction failed: ' + e.message, C.rose)
+    }
+    setDetecting(false)
+  }
+
+  const applyBulk = () => {
+    setDetected(prev => prev.map(q => ({
+      ...q,
+      subject:    bulkSubject || q.subject,
+      chapter:    bulkChapter || q.chapter,
+      difficulty: bulkDiff    || q.difficulty,
+      marks:      bulkSubject === 'Mathematics' ? 3 : 2,
+    })))
+    showToast('Bulk settings applied ✓', C.green)
+  }
+
+  const updateQ = (idx, field, val) => {
+    setDetected(prev => prev.map((q, i) => i === idx ? { ...q, [field]: val } : q))
+  }
+
+  const handleSave = async () => {
+    const toSave = detected.filter((_, i) => selected.has(i))
+    if (!toSave.length) return
+    const invalid = toSave.filter(q => !q.subject || !q.chapter)
+    if (invalid.length) { showToast(`${invalid.length} questions missing subject/chapter — assign them first`, C.amber); return }
+    setSaving(true)
+    const rows = toSave.map(({ _id, ...rest }) => rest)
+    const { error } = await supabase.from('qbank_questions').insert(rows)
+    if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
+    showToast(`✅ ${toSave.length} questions saved to bank!`, C.green)
+    setDetected([]); setSelected(new Set()); setRawText(''); setImageData(null); refetch()
+    setSaving(false)
+  }
+
+  return (
+    <>
+      <div style={card}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 6 }}>📤 Upload & Auto-Extract Questions</div>
+        <div style={{ fontSize: 12, color: C.slate, marginBottom: 20 }}>Paste question paper text or upload an image — AI extracts all MCQs automatically</div>
+
+        {/* Mode selector */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          {[['paste','📋 Paste Text'],['image','🖼 Upload Image']].map(([key, label]) => (
+            <button key={key} onClick={() => setMode(key)}
+              style={{ padding: '8px 18px', borderRadius: 8, border: `2px solid ${mode===key ? C.navy : C.border}`, background: mode===key ? C.navy : '#fff', color: mode===key ? '#fff' : C.slate, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Input area */}
+        {mode === 'paste' && (
+          <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={10}
+            style={{ ...inp, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, marginBottom: 14 }}
+            placeholder="Paste your question paper text here...
+
+Example:
+1. What is the sum of first 10 natural numbers?
+(A) 45  (B) 55  (C) 65  (D) 75
+Answer: B
+
+2. Which of the following is a prime number?
+(A) 1  (B) 4  (C) 7  (D) 9" />
+        )}
+
+        {mode === 'image' && (
+          <div onClick={() => fileRef.current?.click()}
+            style={{ border: `2px dashed ${C.border}`, borderRadius: 10, padding: '32px 20px', textAlign: 'center', cursor: 'pointer', marginBottom: 14, background: imageData ? '#f0fdf4' : '#f8fafc' }}>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+            <div style={{ fontSize: 32, marginBottom: 8 }}>{imageData ? '✅' : '📸'}</div>
+            <div style={{ fontWeight: 700, color: C.navy, fontSize: 13 }}>
+              {imageName || 'Click to upload question paper image'}
+            </div>
+            <div style={{ fontSize: 11, color: C.slate, marginTop: 4 }}>JPG, PNG supported · AI will extract all MCQs</div>
+          </div>
+        )}
+
+        {/* Bulk assign */}
+        <div style={{ padding: '12px 14px', borderRadius: 9, background: '#f8fafc', border: `1px solid ${C.border}`, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Bulk Assign to All Extracted Questions</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={lbl}>Subject</label>
+              <select style={sel} value={bulkSubject} onChange={e => { setBulkSubject(e.target.value); setBulkChapter('') }}>
+                <option value="">— Select —</option>
+                {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={lbl}>Chapter</label>
+              <select style={{ ...sel, opacity: bulkSubject ? 1 : .5 }} value={bulkChapter} onChange={e => setBulkChapter(e.target.value)} disabled={!bulkSubject}>
+                <option value="">— Select —</option>
+                {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <label style={lbl}>Difficulty</label>
+              <select style={sel} value={bulkDiff} onChange={e => setBulkDiff(e.target.value)}>
+                {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <button onClick={applyBulk} style={{ ...btn(C.green), padding: '9px 16px', whiteSpace: 'nowrap' }}>✓ Apply</button>
+          </div>
+        </div>
+
+        <button onClick={handleExtract} disabled={detecting} style={btn(C.violet, detecting)}>
+          {detecting ? '⏳ Extracting with AI…' : '🤖 Extract Questions with AI'}
+        </button>
+      </div>
+
+      {detected.length > 0 && (
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>✅ {detected.length} questions extracted</div>
+              <div style={{ fontSize: 11, color: C.slate }}>Review and assign subject/chapter before saving</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setSelected(new Set(detected.map((_, i) => i)))} style={btnSm(C.navy)}>Select All</button>
+              <button onClick={() => setSelected(new Set())} style={btnSm(C.slate)}>None</button>
+            </div>
+          </div>
+
+          {detected.map((q, i) => (
+            <div key={i} style={{ ...card, marginBottom: 10, padding: '14px 16px', border: selected.has(i) ? `2px solid ${C.navy}` : `1px solid ${C.border}`, background: selected.has(i) ? '#f0f6ff' : '#fff' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <input type="checkbox" checked={selected.has(i)} onChange={() => setSelected(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n })}
+                  style={{ width: 16, height: 16, marginTop: 3, cursor: 'pointer', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 10 }}>
+                    <span style={{ color: C.slate, marginRight: 6 }}>Q{i+1}.</span>{q.question}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 10 }}>
+                    {['A','B','C','D'].map(l => (
+                      <div key={l} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, background: q.correct_option===l ? '#dcfce7' : '#f8fafc', border: `1px solid ${q.correct_option===l ? '#86efac' : C.border}`, color: q.correct_option===l ? '#15803d' : '#374151' }}>
+                        <span style={{ fontWeight: 700, marginRight: 4 }}>{l}.</span>{q[`option_${l.toLowerCase()}`] || '—'}
+                        {q.correct_option===l && ' ✓'}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Per-question assign */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <select style={{ ...sel, width: 'auto', fontSize: 11, padding: '4px 8px' }} value={q.subject} onChange={e => updateQ(i, 'subject', e.target.value)}>
+                      <option value="">Subject?</option>
+                      {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <select style={{ ...sel, width: 'auto', fontSize: 11, padding: '4px 8px', opacity: q.subject?1:.5 }} value={q.chapter} onChange={e => updateQ(i, 'chapter', e.target.value)} disabled={!q.subject}>
+                      <option value="">Chapter?</option>
+                      {(SUBJECTS[q.subject]||[]).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select style={{ ...sel, width: 'auto', fontSize: 11, padding: '4px 8px' }} value={q.correct_option} onChange={e => updateQ(i, 'correct_option', e.target.value)}>
+                      {['A','B','C','D'].map(l => <option key={l} value={l}>Ans: {l}</option>)}
+                    </select>
+                    {(!q.subject || !q.chapter) && <span style={{ fontSize: 10, color: C.rose, fontWeight: 700, padding: '5px 0' }}>⚠ Assign subject & chapter</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
+            <button onClick={handleSave} disabled={saving || !selected.size} style={btn(C.green, saving || !selected.size)}>
+              {saving ? '⏳ Saving…' : `✅ Save ${selected.size} Questions to Bank`}
+            </button>
+            <span style={{ fontSize: 12, color: C.slate }}>{selected.size} of {detected.length} selected</span>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ─── TAB 2: AI Generator — calls Gemini directly from browser ─────────────────
 function TabGenerate({ refetch, showToast, questions }) {
   const [subject,    setSubject]    = useState('')
@@ -278,7 +542,7 @@ Return ONLY a valid JSON array, no markdown, no explanation:
           'X-Title': 'GNSI Question Bank',
         },
         body: JSON.stringify({
-          model: 'deepseek/deepseek-chat:free',
+          model: 'google/gemma-3-27b-it:free',
           messages: [{ role: 'user', content: prompt }],
           max_tokens: 4096,
         }),
@@ -670,6 +934,7 @@ export default function QuestionBank({ currentUser }) {
 
   const TABS = [
     { key: 'bank',     icon: '📚', label: 'Question Bank' },
+    { key: 'upload',   icon: '📤', label: 'Upload & Extract' },
     { key: 'generate', icon: '🤖', label: 'AI Generator'  },
     { key: 'paper',    icon: '📄', label: 'Create Paper'  },
     { key: 'test',     icon: '📝', label: 'Online Test'   },
@@ -696,6 +961,7 @@ export default function QuestionBank({ currentUser }) {
         ))}
       </div>
       {tab === 'bank'     && <TabBank     questions={questions} loading={loading} refetch={refetch} showToast={showToast} />}
+      {tab === 'upload'   && <TabUpload   refetch={refetch} showToast={showToast} />}
       {tab === 'generate' && <TabGenerate questions={questions} refetch={refetch} showToast={showToast} />}
       {tab === 'paper'    && <TabPaper    questions={questions} showToast={showToast} />}
       {tab === 'test'     && <TabTest     questions={questions} showToast={showToast} />}
