@@ -68,10 +68,12 @@ const ALL_GROUPS = [
   {
     group: 'PEOPLE',
     items: [
+      { id: 'kitchen', label: 'Kitchen',icon: '🍽️' }, 
       { id: 'staff',  label: 'Staff',  icon: '👨‍🏫' },
       { id: 'hr',     label: 'HR',     icon: '🗂️' },
       { id: 'leave',  label: 'Leave',  icon: '🏖️' },
       { id: 'hostel', label: 'Hostel', icon: '🏨' },
+      
     ],
   },
   {
