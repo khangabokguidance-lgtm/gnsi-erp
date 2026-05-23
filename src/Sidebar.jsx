@@ -50,6 +50,7 @@ const ALL_GROUPS = [
     group: 'OPERATIONS',
     icon: '◈',
     items: [
+      { id: 'kitchen',   label: 'Kitchen',   icon: '🍽️' },
       { id: 'reception', label: 'Reception', icon: '🛎️' },
       { id: 'notice',    label: 'Notice',    icon: '🔔' },
       { id: 'social',    label: 'Social',    icon: '📣' },
@@ -332,7 +333,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
   const role = currentUser?.role || 'Teacher'
 
-  // Keyboard shortcut: / to focus search
   useEffect(() => {
     const handler = e => {
       if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
@@ -344,7 +344,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // Permissions
   useEffect(() => {
     async function fetchPermissions() {
       if (role === 'Admin') {
@@ -362,7 +361,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     fetchPermissions()
   }, [role])
 
-  // Navigate + track recents
   const handleNavigate = useCallback((id) => {
     setActivePage(id)
     onNavClick?.()
@@ -373,7 +371,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     })
   }, [setActivePage, onNavClick])
 
-  // Pin toggle
   const handlePin = useCallback((id) => {
     setPins(prev => {
       const next = prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
@@ -382,7 +379,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     })
   }, [])
 
-  // Group collapse toggle
   const toggleGroup = (group) => {
     setCollapsed(prev => {
       const next = { ...prev, [group]: !prev[group] }
@@ -486,9 +482,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
           </div>
         </div>
 
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, zIndex: 1,
-        }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, zIndex: 1 }}>
           <div style={{
             width: 7, height: 7, borderRadius: '50%',
             background: D.green, flexShrink: 0,
