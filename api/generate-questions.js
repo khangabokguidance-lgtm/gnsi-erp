@@ -1,19 +1,11 @@
 // /api/generate-questions.js
-// Place this file at the ROOT of your project under /api/
-// Uses Google Gemini 1.5 Flash — completely FREE
-//
-// Setup:
-//   1. Go to https://aistudio.google.com
-//   2. Click "Get API Key" → Create API Key → Copy
-//   3. Vercel Dashboard → Settings → Environment Variables
-//      Name:  GEMINI_API_KEY
-//      Value: AIza...your key here
-//   4. Redeploy
+// Google Gemini 2.0 Flash — FREE
+// Get key: https://aistudio.google.com/apikey
+// Add to Vercel: Settings → Environment Variables → GEMINI_API_KEY
 
 export const config = { runtime: 'edge' }
 
 export default async function handler(req) {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       headers: {
@@ -25,67 +17,90 @@ export default async function handler(req) {
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 })
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 
   try {
     const { prompt } = await req.json()
-
     if (!prompt) {
-      return new Response(JSON.stringify({ error: 'No prompt provided' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'No prompt' }), { status: 400 })
     }
 
-    const GEMINI_KEY = process.env.GEMINI_API_KEY
-    if (!GEMINI_KEY) {
+    const KEY = process.env.GEMINI_API_KEY
+    if (!KEY) {
       return new Response(
         JSON.stringify({ error: 'GEMINI_API_KEY not set in Vercel environment variables' }),
-        { status: 500 }
-      )
-    }
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature:     0.7,
-            maxOutputTokens: 4096,
-          },
-        }),
-      }
-    )
-
-    if (!res.ok) {
-      const err = await res.text()
-      return new Response(
-        JSON.stringify({ questions: [], error: 'Gemini API error: ' + err }),
         { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
       )
     }
 
-    const data = await res.json()
+    // Try gemini-2.0-flash first, fallback model list
+    const models = [
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-latest',
+    ]
 
-    // Extract text from Gemini response
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    let lastError = null
 
-    // Strip markdown fences if present
-    const clean = text.replace(/```json|```/g, '').trim()
+    for (const model of models) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 4096,
+              },
+            }),
+          }
+        )
 
-    // Find JSON array in response
-    const match = clean.match(/\[[\s\S]*\]/)
-    if (!match) throw new Error('No JSON array found in response')
+        const data = await res.json()
 
-    const questions = JSON.parse(match[0])
+        // Log error from Gemini for debugging
+        if (data.error) {
+          lastError = `${model}: ${data.error.message}`
+          continue
+        }
 
-    return new Response(JSON.stringify({ questions }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    })
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        const clean = text.replace(/```json|```/g, '').trim()
+        const match = clean.match(/\[[\s\S]*\]/)
+        if (!match) {
+          lastError = `${model}: No JSON array in response`
+          continue
+        }
+
+        const questions = JSON.parse(match[0])
+
+        return new Response(JSON.stringify({ questions, model }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+        })
+      } catch (e) {
+        lastError = `${model}: ${e.message}`
+        continue
+      }
+    }
+
+    // All models failed
+    return new Response(
+      JSON.stringify({ questions: [], error: 'All models failed. Last error: ' + lastError }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      }
+    )
 
   } catch (err) {
     return new Response(
