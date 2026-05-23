@@ -1,846 +1,1025 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+// QuestionBank.jsx — GNSI Portal v2.0
+// ─────────────────────────────────────────────────────────────────────────────
+//  Examin8-style Question Bank for AISSEE / Sainik School preparation
+//
+//  Flow:
+//    1. Bank     → View / Add / Delete questions by Subject → Chapter
+//    2. Generate → AI generates questions for a chapter → save to bank
+//    3. Paper    → Pick subject + chapter + count → Preview → PDF download
+//    4. Test     → Students attempt online → instant result
+//
+//  Supabase Table:
+//    qbank_questions (
+//      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+//      subject        text NOT NULL,
+//      chapter        text NOT NULL,
+//      question       text NOT NULL,
+//      option_a       text,
+//      option_b       text,
+//      option_c       text,
+//      option_d       text,
+//      correct_option text,
+//      difficulty     text DEFAULT 'Medium',
+//      marks          int  DEFAULT 1,
+//      created_at     timestamptz DEFAULT now()
+//    )
+//
+//  Vercel API Route needed:  /api/generate-questions
+//  (see bottom of file for the edge function code)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
-import TabSourceCollector from './TabSourceCollector'
 
-const QB_SUBJECTS = {
-  Mathematics: ['Natural Numbers','LCM and HCF','Unitary Method','Fractions','Ratio and Proportion','Profit and Loss','Simplification','Average','Percentage','Area and Perimeter','Simple Interest','Lines and Angles','Temperature','Conversion of Units','Roman Numerals','Types of Angles','Circle','Volume of Cube and Cuboids','Prime and Composite Numbers','Plane Figures','Decimal Numbers','Speed and Time','Operation on Numbers','Complementary and Supplementary Angles','Arranging of Fractions'],
-  Intelligence: ['Analogies (Mathematical & Verbal)','Venn Diagram','Paper Folding','Embedded/Hidden Figure','Geometrical Figure Completion','Space Visualisation','Order & Ranking','Coding Decoding','Mathematical Operations','Blood Relations','Sitting Arrangement','Mirror Image','Figure Matching','Figure Series Completion','Odd-Man Out','Pattern Completion','Classification','Word Formation','Dictionary - Word Order','Series','Direction Test','Clock And Calendar'],
-  Language: ['Comprehension Passage','Preposition','Article','Vocabulary','Verbs and Type','Confusing Words','Question Tags','Types of Sentence','Tense Forms','Kinds of Nouns','Kinds of Pronouns','Correct Spelling','Ordering of Words','Sentence Formation','Antonyms','Synonyms','Adjectives','Interjection','Idiom and Phrases','Collective Nouns','Number','Gender','Adverbs','Rhyming Words','Singular/Plural'],
-  'General Knowledge': ['Scientific Devices in Daily Life','Icons and Symbols of India','Major Religions of India','Art and Culture','Defence Awareness','Sports and Games','Super Senses','Relationship: Animals & Humans','Taste and Digestion','Cooking and Preserving Techniques','Germination and Seed Dispersal','Traditional Water Harvesting','Experiments with Water','Water Pollution and Microbial Diseases','Mountain Terrain and Lifestyle','Historical Monuments','Shape of Earth and Gravitation','Non-Renewable Energy Sources','Food, Culture and Habitat','Names of Young Ones of Animals','Functions of Body Parts','International Organizations','Indian Literary & Cultural Personalities','Indian Literary & Cultural Awards','Natural Calamities','Evaporation and Water Cycle','Life of Farmers','Tribal Communities and Forest Produce'],
+// ─── AISSEE Subject → Chapter Map ────────────────────────────────────────────
+const SUBJECTS = {
+  Mathematics: [
+    'Natural Numbers','LCM and HCF','Fractions','Decimal Numbers',
+    'Ratio and Proportion','Percentage','Profit and Loss','Simple Interest',
+    'Average','Unitary Method','Area and Perimeter','Volume of Cube and Cuboids',
+    'Speed and Time','Lines and Angles','Types of Angles','Circle',
+    'Prime and Composite Numbers','Roman Numerals','Simplification',
+    'Conversion of Units','Operation on Numbers','Temperature',
+    'Plane Figures','Arranging of Fractions','Complementary and Supplementary Angles',
+  ],
+  Intelligence: [
+    'Analogies','Venn Diagram','Paper Folding','Embedded Figure',
+    'Geometrical Figure Completion','Space Visualisation','Order and Ranking',
+    'Coding Decoding','Mathematical Operations','Blood Relations',
+    'Sitting Arrangement','Mirror Image','Figure Matching','Figure Series',
+    'Odd Man Out','Pattern Completion','Classification','Word Formation',
+    'Dictionary Word Order','Series Completion','Direction Test','Clock and Calendar',
+  ],
+  Language: [
+    'Comprehension Passage','Preposition','Article','Vocabulary',
+    'Verbs and Types','Confusing Words','Question Tags','Types of Sentence',
+    'Tense Forms','Kinds of Nouns','Kinds of Pronouns','Correct Spelling',
+    'Ordering of Words','Sentence Formation','Antonyms','Synonyms',
+    'Adjectives','Interjection','Idiom and Phrases','Collective Nouns',
+    'Number and Gender','Adverbs','Rhyming Words','Singular and Plural',
+  ],
+  'General Knowledge': [
+    'Scientific Devices','Icons and Symbols of India','Major Religions of India',
+    'Art and Culture','Defence Awareness','Sports and Games',
+    'Relationship Animals and Humans','Taste and Digestion',
+    'Cooking and Preserving','Germination and Seed Dispersal',
+    'Traditional Water Harvesting','Water Pollution','Mountain Terrain',
+    'Historical Monuments','Shape of Earth','Non-Renewable Energy',
+    'Food Culture and Habitat','Young Ones of Animals','Functions of Body Parts',
+    'International Organizations','Indian Literary Awards','Natural Calamities',
+    'Evaporation and Water Cycle','Life of Farmers','Tribal Communities',
+  ],
 }
 
-const ALL_SUBJECTS = Object.keys(QB_SUBJECTS)
-const DIFFICULTY   = ['Easy', 'Medium', 'Hard']
-const EXAM_TYPES   = ['AISSEE', 'JNVST', 'Weekly Test', 'Monthly Test', 'Unit Test', 'Mock Test', 'Custom']
-const AISSEE_PATTERN = { Mathematics: { count: 50, marks: 3 }, Intelligence: { count: 25, marks: 2 }, Language: { count: 25, marks: 2 }, 'General Knowledge': { count: 25, marks: 2 } }
+const SUBJECT_LIST  = Object.keys(SUBJECTS)
+const DIFFICULTIES  = ['Easy', 'Medium', 'Hard']
+const MARKS_OPTIONS = [1, 2, 3]
 
-const today   = () => new Date().toISOString().split('T')[0]
-const fmtDate = (d) => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
-const pct        = (s, m) => m > 0 ? Math.round((s / m) * 100) : 0
-const scoreColor = (p) => p >= 75 ? '#16a34a' : p >= 50 ? '#f59e0b' : '#dc2626'
-const scoreBg    = (p) => p >= 75 ? '#dcfce7' : p >= 50 ? '#fef9c3' : '#fee2e2'
-
-const S = {
-  page:   { padding: '24px', fontFamily: "'Segoe UI', sans-serif", background: '#f8fafc', minHeight: '100vh' },
-  card:   { background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', padding: '24px', marginBottom: '20px' },
-  btn:    (color = '#1e3a5f', disabled = false) => ({ backgroundColor: disabled ? '#94a3b8' : color, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontWeight: '600', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '14px' }),
-  btnSm:  (color = '#1e3a5f') => ({ backgroundColor: color, color: 'white', border: 'none', borderRadius: '6px', padding: '6px 12px', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }),
-  btnOut: (color = '#1e3a5f', active = false) => ({ backgroundColor: active ? color : 'white', color: active ? 'white' : color, border: `2px solid ${color}`, borderRadius: '8px', padding: '8px 16px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }),
-  input:  { width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box', background: 'white' },
-  label:  { display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' },
-  select: { width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box', background: 'white' },
-  statCard: (color, bg) => ({ background: bg, borderRadius: '12px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${color}` }),
-  badge:  (color, bg) => ({ padding: '3px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: '700', background: bg, color }),
-  pill:   (color, bg) => ({ padding: '4px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '600', background: bg, color, display: 'inline-block' }),
-  optBtn: (selected) => ({ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', border: `2px solid ${selected ? '#1e3a5f' : '#e2e8f0'}`, borderRadius: '8px', background: selected ? '#eff6ff' : 'white', cursor: 'pointer', textAlign: 'left', width: '100%' }),
+// AISSEE official pattern
+const AISSEE_PATTERN = {
+  Mathematics:        { count: 50, marks: 3 },
+  Intelligence:       { count: 25, marks: 2 },
+  Language:           { count: 25, marks: 2 },
+  'General Knowledge':{ count: 25, marks: 2 },
 }
 
-const TABS = [
-  { key: 'bank',    label: 'Question Bank',    icon: '🗂️' },
-  { key: 'upload',  label: 'Upload / Add',     icon: '📤' },
-  { key: 'ai',      label: 'AI Generator',     icon: '🤖' },
-  { key: 'sources', label: 'Source Collector', icon: '🌐' },
-  { key: 'builder', label: 'Test Builder',     icon: '📝' },
-  { key: 'tests',   label: 'Saved Tests',      icon: '📋' },
-  { key: 'results', label: 'Results',          icon: '📊' },
-]
-
-async function fetchQuestions(filters = {}) {
-  let q = supabase.from('qbank_questions').select('*').order('created_at', { ascending: false })
-  if (filters.subject)    q = q.eq('subject',    filters.subject)
-  if (filters.chapter)    q = q.eq('chapter',    filters.chapter)
-  if (filters.difficulty) q = q.eq('difficulty', filters.difficulty)
-  const { data, error } = await q
-  return { data: data || [], error }
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const C = {
+  navy:   '#1e3a5f',
+  indigo: '#4f46e5',
+  green:  '#16a34a',
+  amber:  '#d97706',
+  rose:   '#dc2626',
+  violet: '#7c3aed',
+  slate:  '#64748b',
+  bg:     '#f8fafc',
+  white:  '#ffffff',
+  border: '#e2e8f0',
 }
 
-async function upsertQuestion(payload) {
-  if (payload.id) {
-    const { id, created_at, ...rest } = payload
-    return supabase.from('qbank_questions').update(rest).eq('id', id)
-  }
-  const { id, ...rest } = payload
-  return supabase.from('qbank_questions').insert([rest])
+const SUBJECT_COLORS = {
+  Mathematics:         { color: '#1e3a5f', bg: '#eff6ff', border: '#bfdbfe' },
+  Intelligence:        { color: '#7c3aed', bg: '#f3e8ff', border: '#ddd6fe' },
+  Language:            { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+  'General Knowledge': { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
 }
 
-async function saveTest(testPayload) {
-  return supabase.from('qbank_tests').insert([testPayload]).select().single()
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const inp  = { width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, boxSizing: 'border-box', background: C.white, fontFamily: 'system-ui,sans-serif', outline: 'none' }
+const sel  = { ...inp }
+const card = { background: C.white, borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.07)', padding: '20px 24px', marginBottom: 16 }
+const btn  = (bg, disabled = false) => ({ padding: '9px 20px', borderRadius: 8, background: disabled ? C.slate : bg, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .6 : 1 })
+const btnSm= (bg) => ({ padding: '5px 12px', borderRadius: 6, background: bg, color: '#fff', border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer' })
+const lbl  = { display: 'block', fontSize: 11, fontWeight: 700, color: C.slate, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.06em' }
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+const moneyFmt = n => `₹${Number(n||0).toLocaleString('en-IN')}`
+const today    = () => new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+
+function Badge({ text, color, bg, border }) {
+  return <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700, color, background: bg, border: `1px solid ${border || bg}` }}>{text}</span>
 }
 
-async function saveTestResult(resultPayload) {
-  return supabase.from('qbank_test_results').insert([resultPayload]).select().single()
+function Toast({ msg, color }) {
+  return <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff', border: `1px solid ${C.border}`, borderLeft: `3px solid ${color}`, borderRadius: 10, padding: '11px 18px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 360 }}>{msg}</div>
 }
 
-// ─── QuestionCard ─────────────────────────────────────────────────────────────
+// ─── Question Card (display) ──────────────────────────────────────────────────
+function QCard({ q, index, showAnswer = false, selectable, selected, onToggle, onDelete }) {
+  const [reveal, setReveal] = useState(showAnswer)
+  const sc = SUBJECT_COLORS[q.subject] || SUBJECT_COLORS.Mathematics
 
-function QuestionCard({ q, index, selectable, selected, onToggle, onEdit, onDelete, showAnswer = false }) {
-  const [revealed, setRevealed] = useState(showAnswer)
   return (
-    <div style={{ ...S.card, marginBottom: '12px', padding: '16px 20px', border: selected ? '2px solid #1e3a5f' : '1px solid #e2e8f0', background: selected ? '#f0f6ff' : 'white' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-        {selectable && <input type="checkbox" checked={!!selected} onChange={() => onToggle?.(q.id)} style={{ width: '16px', height: '16px', marginTop: '3px', cursor: 'pointer', flexShrink: 0 }} />}
+    <div style={{ ...card, marginBottom: 10, padding: '14px 18px', border: selected ? `2px solid ${C.navy}` : `1px solid ${C.border}`, background: selected ? '#f0f6ff' : '#fff' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        {selectable && <input type="checkbox" checked={!!selected} onChange={() => onToggle?.(q.id)} style={{ width: 16, height: 16, marginTop: 3, cursor: 'pointer', flexShrink: 0 }} />}
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8' }}>Q{index + 1}</span>
-            <span style={S.badge('#1e3a5f', '#eff6ff')}>{q.subject}</span>
-            <span style={S.badge('#7c3aed', '#f3e8ff')}>{q.chapter}</span>
-            <span style={S.badge(q.difficulty === 'Easy' ? '#16a34a' : q.difficulty === 'Hard' ? '#dc2626' : '#f59e0b', q.difficulty === 'Easy' ? '#dcfce7' : q.difficulty === 'Hard' ? '#fee2e2' : '#fef9c3')}>{q.difficulty || 'Medium'}</span>
-            {q.marks && <span style={S.badge('#0891b2', '#e0f2fe')}>{q.marks} mark{q.marks > 1 ? 's' : ''}</span>}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: C.slate, fontWeight: 700 }}>Q{index + 1}</span>
+            <Badge text={q.subject}    color={sc.color} bg={sc.bg} border={sc.border} />
+            <Badge text={q.chapter}    color={C.slate}  bg="#f1f5f9" />
+            <Badge text={q.difficulty || 'Medium'} color={q.difficulty==='Easy'?C.green:q.difficulty==='Hard'?C.rose:C.amber} bg={q.difficulty==='Easy'?'#dcfce7':q.difficulty==='Hard'?'#fee2e2':'#fef9c3'} />
+            <Badge text={`${q.marks||1}M`} color={C.indigo} bg="#eff6ff" />
           </div>
-          <div style={{ fontSize: '15px', color: '#1e293b', fontWeight: '500', lineHeight: '1.6', marginBottom: '12px' }}>{q.question}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '10px' }}>
+
+          <div style={{ fontSize: 14, color: '#1e293b', fontWeight: 500, lineHeight: 1.6, marginBottom: 10 }}>{q.question}</div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
             {['A','B','C','D'].map(l => (
-              <div key={l} style={{ padding: '7px 12px', borderRadius: '7px', fontSize: '13px', background: revealed && q.correct_option === l ? '#dcfce7' : '#f8fafc', border: `1px solid ${revealed && q.correct_option === l ? '#86efac' : '#e2e8f0'}`, color: revealed && q.correct_option === l ? '#15803d' : '#374151', fontWeight: revealed && q.correct_option === l ? '700' : '400' }}>
-                <span style={{ fontWeight: '700', marginRight: '6px', color: '#94a3b8' }}>{l}.</span>{q[`option_${l.toLowerCase()}`] || '—'}{revealed && q.correct_option === l && <span style={{ marginLeft: '6px' }}>✓</span>}
+              <div key={l} style={{ padding: '6px 12px', borderRadius: 7, fontSize: 12, background: reveal && q.correct_option === l ? '#dcfce7' : '#f8fafc', border: `1px solid ${reveal && q.correct_option === l ? '#86efac' : C.border}`, color: reveal && q.correct_option === l ? '#15803d' : '#374151', fontWeight: reveal && q.correct_option === l ? 700 : 400 }}>
+                <span style={{ fontWeight: 700, marginRight: 6, color: C.slate }}>{l}.</span>
+                {q[`option_${l.toLowerCase()}`] || '—'}
+                {reveal && q.correct_option === l && ' ✓'}
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRevealed(r => !r)} style={S.btnSm(revealed ? '#64748b' : '#16a34a')}>{revealed ? '🙈 Hide Answer' : '👁 Show Answer'}</button>
-            {onEdit   && <button onClick={() => onEdit(q)}      style={S.btnSm('#7c3aed')}>✏️ Edit</button>}
-            {onDelete && <button onClick={() => onDelete(q.id)} style={S.btnSm('#dc2626')}>🗑 Delete</button>}
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => setReveal(r => !r)} style={btnSm(reveal ? C.slate : C.green)}>{reveal ? '🙈 Hide' : '👁 Answer'}</button>
+            {onDelete && <button onClick={() => onDelete(q.id)} style={btnSm(C.rose)}>🗑 Delete</button>}
           </div>
-          {revealed && q.explanation && (
-            <div style={{ marginTop: '10px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '13px', color: '#92400e' }}>
-              💡 <strong>Explanation:</strong> {q.explanation}
-            </div>
-          )}
         </div>
       </div>
     </div>
   )
 }
 
-// ─── QuestionForm ─────────────────────────────────────────────────────────────
+// ─── Add Question Form ────────────────────────────────────────────────────────
+function AddForm({ onSave, onCancel, saving }) {
+  const [form, setForm] = useState({ subject: '', chapter: '', question: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_option: 'A', difficulty: 'Medium', marks: 1 })
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const chapters = SUBJECTS[form.subject] || []
+  const valid = form.subject && form.chapter && form.question && form.option_a && form.option_b && form.option_c && form.option_d
 
-function QuestionForm({ initial, onSave, onCancel, saving }) {
-  const blank = { subject: '', chapter: '', question: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_option: 'A', difficulty: 'Medium', marks: 3, explanation: '', source: 'Manual' }
-  const [form, setForm] = useState(initial || blank)
-  const chapters = QB_SUBJECTS[form.subject] || []
-  const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (!form.subject || !form.chapter || !form.question || !form.option_a || !form.option_b || !form.option_c || !form.option_d) { alert('Please fill in all required fields.'); return }
-    onSave(form)
-  }
   return (
-    <form onSubmit={handleSubmit}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
-        <div><label style={S.label}>Subject *</label><select value={form.subject} onChange={e => set('subject', e.target.value)} required style={S.select}><option value="">Select</option>{ALL_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-        <div><label style={S.label}>Chapter *</label><select value={form.chapter} onChange={e => set('chapter', e.target.value)} required style={{ ...S.select, opacity: form.subject ? 1 : 0.5 }} disabled={!form.subject}><option value="">Select</option>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-        <div><label style={S.label}>Difficulty</label><select value={form.difficulty} onChange={e => set('difficulty', e.target.value)} style={S.select}>{DIFFICULTY.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-        <div style={{ gridColumn: '1/-1' }}><label style={S.label}>Question *</label><textarea value={form.question} onChange={e => set('question', e.target.value)} required rows={3} style={{ ...S.input, resize: 'vertical' }} /></div>
+    <div style={{ ...card, border: `1.5px solid ${C.indigo}44` }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: C.navy, marginBottom: 16 }}>➕ Add Question Manually</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div>
+          <label style={lbl}>Subject *</label>
+          <select style={sel} value={form.subject} onChange={e => set('subject', e.target.value)}>
+            <option value="">Select</option>
+            {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>Chapter *</label>
+          <select style={{ ...sel, opacity: form.subject ? 1 : .5 }} value={form.chapter} onChange={e => set('chapter', e.target.value)} disabled={!form.subject}>
+            <option value="">Select</option>
+            {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>Difficulty</label>
+          <select style={sel} value={form.difficulty} onChange={e => set('difficulty', e.target.value)}>
+            {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div style={{ gridColumn: '1/-1' }}>
+          <label style={lbl}>Question *</label>
+          <textarea style={{ ...inp, resize: 'vertical' }} rows={3} value={form.question} onChange={e => set('question', e.target.value)} placeholder="Type the question here…" />
+        </div>
         {['A','B','C','D'].map(l => (
-          <div key={l}><label style={{ ...S.label, color: form.correct_option === l ? '#16a34a' : '#374151' }}>Option {l} {form.correct_option === l ? '✓' : ''}</label><input value={form[`option_${l.toLowerCase()}`]} onChange={e => set(`option_${l.toLowerCase()}`, e.target.value)} required style={{ ...S.input, borderColor: form.correct_option === l ? '#86efac' : '#d1d5db' }} /></div>
+          <div key={l}>
+            <label style={{ ...lbl, color: form.correct_option === l ? C.green : C.slate }}>Option {l} {form.correct_option === l ? '✓' : ''}</label>
+            <input style={{ ...inp, borderColor: form.correct_option === l ? '#86efac' : C.border }} value={form[`option_${l.toLowerCase()}`]} onChange={e => set(`option_${l.toLowerCase()}`, e.target.value)} placeholder={`Option ${l}`} />
+          </div>
         ))}
-        <div><label style={S.label}>Correct Answer *</label><select value={form.correct_option} onChange={e => set('correct_option', e.target.value)} required style={S.select}>{['A','B','C','D'].map(l => <option key={l} value={l}>{l}</option>)}</select></div>
-        <div><label style={S.label}>Marks</label><select value={form.marks} onChange={e => set('marks', parseInt(e.target.value))} style={S.select}>{[1,2,3,4,5].map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-        <div style={{ gridColumn: '1/-1' }}><label style={S.label}>Explanation</label><textarea value={form.explanation} onChange={e => set('explanation', e.target.value)} rows={2} style={{ ...S.input, resize: 'vertical' }} /></div>
+        <div>
+          <label style={lbl}>Correct Answer *</label>
+          <select style={sel} value={form.correct_option} onChange={e => set('correct_option', e.target.value)}>
+            {['A','B','C','D'].map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>Marks</label>
+          <select style={sel} value={form.marks} onChange={e => set('marks', parseInt(e.target.value))}>
+            {MARKS_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-        <button type="submit" disabled={saving} style={S.btn(initial?.id ? '#7c3aed' : '#1e3a5f', saving)}>{saving ? '⏳ Saving...' : initial?.id ? '✏️ Update' : '✅ Save Question'}</button>
-        {onCancel && <button type="button" onClick={onCancel} style={S.btn('#64748b')}>✖ Cancel</button>}
+      <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <button onClick={() => valid && onSave(form)} disabled={!valid || saving} style={btn(C.navy, !valid || saving)}>{saving ? '⏳ Saving…' : '✅ Save Question'}</button>
+        <button onClick={onCancel} style={btn(C.slate)}>Cancel</button>
       </div>
-    </form>
+    </div>
   )
 }
 
-// ─── TabBank ──────────────────────────────────────────────────────────────────
+// ─── TAB 1: Bank ──────────────────────────────────────────────────────────────
+function TabBank({ questions, loading, refetch, showToast }) {
+  const [filterSubject,  setFilterSubject]  = useState('All')
+  const [filterChapter,  setFilterChapter]  = useState('All')
+  const [filterDiff,     setFilterDiff]     = useState('All')
+  const [search,         setSearch]         = useState('')
+  const [showAdd,        setShowAdd]        = useState(false)
+  const [saving,         setSaving]         = useState(false)
+  const [page,           setPage]           = useState(1)
+  const PAGE = 20
 
-function TabBank({ questions, loading, refetch, selectable, selectedIds, onToggle }) {
-  const [filterSubject,    setFilterSubject]    = useState('All')
-  const [filterChapter,    setFilterChapter]    = useState('All')
-  const [filterDifficulty, setFilterDifficulty] = useState('All')
-  const [search,           setSearch]           = useState('')
-  const [editQ,            setEditQ]            = useState(null)
-  const [saving,           setSaving]           = useState(false)
-  const [showAddForm,      setShowAddForm]      = useState(false)
-  const [addSaving,        setAddSaving]        = useState(false)
-  const [page,             setPage]             = useState(1)
-  const PAGE_SIZE = 20
-  const chapters  = filterSubject !== 'All' ? (QB_SUBJECTS[filterSubject] || []) : []
+  const chapters = filterSubject !== 'All' ? (SUBJECTS[filterSubject] || []) : []
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return questions.filter(item => {
-      if (filterSubject    !== 'All' && item.subject    !== filterSubject)    return false
-      if (filterChapter    !== 'All' && item.chapter    !== filterChapter)    return false
-      if (filterDifficulty !== 'All' && item.difficulty !== filterDifficulty) return false
-      if (q && !item.question?.toLowerCase().includes(q) && !item.chapter?.toLowerCase().includes(q)) return false
+      if (filterSubject !== 'All' && item.subject !== filterSubject) return false
+      if (filterChapter !== 'All' && item.chapter !== filterChapter) return false
+      if (filterDiff    !== 'All' && item.difficulty !== filterDiff)  return false
+      if (q && !item.question?.toLowerCase().includes(q))             return false
       return true
     })
-  }, [questions, filterSubject, filterChapter, filterDifficulty, search])
+  }, [questions, filterSubject, filterChapter, filterDiff, search])
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages = Math.ceil(filtered.length / PAGE)
+  const paginated  = filtered.slice((page - 1) * PAGE, page * PAGE)
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this question?')) return
-    await supabase.from('qbank_questions').delete().eq('id', id)
-    refetch()
-  }
-
-  const handleSaveEdit = async (form) => {
+  const handleSave = async (form) => {
     setSaving(true)
-    const { error } = await upsertQuestion({ ...form, id: editQ.id })
-    if (error) alert('Error: ' + error.message)
-    else { setEditQ(null); refetch() }
+    const { error } = await supabase.from('qbank_questions').insert({ ...form })
+    if (error) showToast('Save failed: ' + error.message, C.rose)
+    else { showToast('Question saved ✓', C.green); setShowAdd(false); refetch() }
     setSaving(false)
   }
 
-  const handleAdd = async (form) => {
-    setAddSaving(true)
-    const { error } = await upsertQuestion({ ...form, source: 'Manual' })
-    if (error) alert('Error: ' + error.message)
-    else { setShowAddForm(false); refetch() }
-    setAddSaving(false)
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this question?')) return
+    await supabase.from('qbank_questions').delete().eq('id', id)
+    showToast('Deleted', C.rose); refetch()
   }
 
-  const subjectCounts = useMemo(() => {
+  // Stats per subject
+  const stats = useMemo(() => {
     const map = {}
+    SUBJECT_LIST.forEach(s => { map[s] = 0 })
     questions.forEach(q => { map[q.subject] = (map[q.subject] || 0) + 1 })
     return map
   }, [questions])
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '14px', marginBottom: '24px' }}>
-        {[
-          { label: 'Total Questions', value: questions.length,                                                                              color: '#1e3a5f', bg: '#eff6ff', icon: '🗂️' },
-          { label: 'Mathematics',     value: subjectCounts['Mathematics'] || 0,                                                             color: '#16a34a', bg: '#dcfce7', icon: '📐' },
-          { label: 'Intelligence',    value: subjectCounts['Intelligence'] || 0,                                                            color: '#7c3aed', bg: '#f3e8ff', icon: '🧠' },
-          { label: 'GK + Language',   value: (subjectCounts['General Knowledge'] || 0) + (subjectCounts['Language'] || 0),                  color: '#ca8a04', bg: '#fef9c3', icon: '📚' },
-        ].map(c => (
-          <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize: '20px', marginBottom: '4px' }}>{c.icon}</div>
-            <p style={{ fontSize: '12px', color: c.color, fontWeight: '600', margin: 0 }}>{c.label}</p>
-            <h2 style={{ fontSize: '26px', fontWeight: 'bold', color: c.color, margin: '2px 0 0' }}>{c.value}</h2>
-          </div>
-        ))}
-      </div>
-
-      <div style={S.card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showAddForm ? '20px' : 0 }}>
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', margin: 0 }}>➕ Add Question Manually</h2>
-          <button onClick={() => setShowAddForm(f => !f)} style={S.btn(showAddForm ? '#64748b' : '#1e3a5f')}>{showAddForm ? '✖ Cancel' : '➕ Add Question'}</button>
+      {/* Subject stats */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+        {SUBJECT_LIST.map(s => {
+          const sc = SUBJECT_COLORS[s]
+          return (
+            <div key={s} onClick={() => { setFilterSubject(s); setFilterChapter('All'); setPage(1) }}
+              style={{ flex: 1, minWidth: 130, padding: '14px 16px', borderRadius: 10, background: sc.bg, border: `1.5px solid ${sc.border}`, cursor: 'pointer' }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: sc.color }}>{stats[s] || 0}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: sc.color, textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 3 }}>{s}</div>
+            </div>
+          )
+        })}
+        <div style={{ flex: 1, minWidth: 130, padding: '14px 16px', borderRadius: 10, background: '#f1f5f9', border: `1.5px solid ${C.border}` }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: C.navy }}>{questions.length}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 3 }}>Total Questions</div>
         </div>
-        {showAddForm && <QuestionForm onSave={handleAdd} onCancel={() => setShowAddForm(false)} saving={addSaving} />}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
-        <input placeholder="🔍 Search..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={S.input} />
-        <select value={filterSubject} onChange={e => { setFilterSubject(e.target.value); setFilterChapter('All'); setPage(1) }} style={S.select}><option value="All">All Subjects</option>{ALL_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select>
-        <select value={filterChapter} onChange={e => { setFilterChapter(e.target.value); setPage(1) }} style={{ ...S.select, opacity: filterSubject !== 'All' ? 1 : 0.5 }} disabled={filterSubject === 'All'}><option value="All">All Chapters</option>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select>
-        <select value={filterDifficulty} onChange={e => { setFilterDifficulty(e.target.value); setPage(1) }} style={S.select}><option value="All">All Difficulties</option>{DIFFICULTY.map(d => <option key={d} value={d}>{d}</option>)}</select>
+      {/* Add button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button onClick={() => setShowAdd(v => !v)} style={btn(showAdd ? C.slate : C.navy)}>{showAdd ? '✕ Cancel' : '➕ Add Question'}</button>
       </div>
 
-      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '12px' }}>
-        Showing {filtered.length} questions
-        {selectable && selectedIds?.size > 0 && <span style={{ marginLeft: '12px', color: '#1e3a5f', fontWeight: '700' }}>· {selectedIds.size} selected</span>}
+      {showAdd && <AddForm onSave={handleSave} onCancel={() => setShowAdd(false)} saving={saving} />}
+
+      {/* Filters */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
+        <input style={inp} placeholder="🔍 Search questions…" value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+        <select style={sel} value={filterSubject} onChange={e => { setFilterSubject(e.target.value); setFilterChapter('All'); setPage(1) }}>
+          <option value="All">All Subjects</option>
+          {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select style={{ ...sel, opacity: filterSubject !== 'All' ? 1 : .5 }} value={filterChapter} onChange={e => { setFilterChapter(e.target.value); setPage(1) }} disabled={filterSubject === 'All'}>
+          <option value="All">All Chapters</option>
+          {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select style={sel} value={filterDiff} onChange={e => { setFilterDiff(e.target.value); setPage(1) }}>
+          <option value="All">All Difficulties</option>
+          {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
       </div>
+
+      <div style={{ fontSize: 12, color: C.slate, marginBottom: 10 }}>Showing {filtered.length} questions</div>
 
       {loading
-        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+        ? <div style={{ textAlign: 'center', padding: 48, color: C.slate }}>⏳ Loading…</div>
         : paginated.length === 0
-          ? <div style={{ ...S.card, textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No questions found.</div>
-          : paginated.map((q, i) => (
-            editQ?.id === q.id
-              ? <div key={q.id} style={{ ...S.card, border: '2px solid #7c3aed' }}><div style={{ fontWeight: '700', color: '#7c3aed', marginBottom: '16px' }}>✏️ Edit Question</div><QuestionForm initial={editQ} onSave={handleSaveEdit} onCancel={() => setEditQ(null)} saving={saving} /></div>
-              : <QuestionCard key={q.id} q={q} index={(page - 1) * PAGE_SIZE + i} selectable={selectable} selected={selectable && selectedIds?.has(q.id)} onToggle={onToggle} onEdit={q => setEditQ(q)} onDelete={handleDelete} />
-          ))
+          ? <div style={{ ...card, textAlign: 'center', padding: 48, color: '#94a3b8' }}>No questions found. Add some or use AI Generator.</div>
+          : paginated.map((q, i) => <QCard key={q.id} q={q} index={(page-1)*PAGE+i} onDelete={handleDelete} />)
       }
 
       {totalPages > 1 && (
-        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: '16px' }}>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))}            disabled={page === 1}          style={S.btn('#64748b', page === 1)}>◀ Prev</button>
-          <span style={{ padding: '10px 16px', fontWeight: '600', color: '#374151' }}>Page {page} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))}   disabled={page === totalPages} style={S.btn('#64748b', page === totalPages)}>Next ▶</button>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16 }}>
+          <button onClick={() => setPage(p => Math.max(1, p-1))}          disabled={page===1}          style={btn(C.slate, page===1)}>◀ Prev</button>
+          <span style={{ padding: '9px 16px', fontWeight: 600, color: C.navy }}>Page {page} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page===totalPages} style={btn(C.slate, page===totalPages)}>Next ▶</button>
         </div>
       )}
     </>
   )
 }
 
-// ─── TabUpload ────────────────────────────────────────────────────────────────
-
-function TabUpload({ refetch }) {
-  const [mode,        setMode]        = useState('paste')
-  const [rawText,     setRawText]     = useState('')
-  const [detected,    setDetected]    = useState([])
-  const [selectedSet, setSelectedSet] = useState(new Set())
-  const [bulkSubject,    setBulkSubject]    = useState('')
-  const [bulkChapter,    setBulkChapter]    = useState('')
-  const [bulkDifficulty, setBulkDifficulty] = useState('Medium')
-  const [detecting, setDetecting] = useState(false)
-  const [saving,    setSaving]    = useState(false)
-  const [saveResult,setSaveResult]= useState(null)
-  const fileRef = useRef()
-
-  const handleDetect = async () => {
-    if (!rawText.trim()) { alert('Please paste text first.'); return }
-    setDetecting(true); setDetected([]); setSelectedSet(new Set())
-    const prompt = `Extract ALL MCQs from this text. Return ONLY a valid JSON array, no markdown.\nEach item: {"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","explanation":""}\nTEXT:\n${rawText.substring(0, 9000)}`
-    try {
-      const res  = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] }) })
-      const data = await res.json()
-      const text = data.content?.map(b => b.type === 'text' ? b.text : '').join('').replace(/```json|```/g, '').trim()
-      const arr  = JSON.parse(text)
-      const tagged = arr.map((q, i) => ({ ...q, _id: i, subject: '', chapter: '', difficulty: 'Medium', marks: 3, source: 'Upload' }))
-      setDetected(tagged); setSelectedSet(new Set(tagged.map(q => q._id)))
-    } catch (e) { alert('Detection failed: ' + e.message) }
-    setDetecting(false)
-  }
-
-  const applyBulk = () => setDetected(prev => prev.map(q => selectedSet.has(q._id) ? { ...q, subject: bulkSubject || q.subject, chapter: bulkChapter || q.chapter, difficulty: bulkDifficulty || q.difficulty } : q))
-
-  const handleSaveAll = async () => {
-    const toSave = detected.filter(q => selectedSet.has(q._id))
-    if (!toSave.length) { alert('Select at least one question.'); return }
-    setSaving(true); setSaveResult(null)
-    const { error } = await supabase.from('qbank_questions').insert(toSave.map(({ _id, ...rest }) => rest))
-    if (error) { alert('Error: ' + error.message); setSaving(false); return }
-    setSaveResult({ count: toSave.length }); setDetected([]); setSelectedSet(new Set()); setRawText(''); refetch()
-    setSaving(false)
-  }
-
-  return (
-    <>
-      <div style={S.card}>
-        <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginTop: 0, marginBottom: '16px' }}>📤 Upload Questions to Bank</h2>
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          {[['paste','📋 Paste Text'],['csv','📊 CSV File'],['json','{ } JSON File']].map(([key, label]) => (
-            <button key={key} onClick={() => setMode(key)} style={S.btnOut('#1e3a5f', mode === key)}>{label}</button>
-          ))}
-        </div>
-        {mode === 'paste' && (
-          <>
-            <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={10} style={{ ...S.input, fontFamily: 'monospace', fontSize: '13px', resize: 'vertical' }} placeholder="Paste MCQ text here..." />
-            <button onClick={handleDetect} disabled={detecting} style={{ ...S.btn('#7c3aed', detecting), marginTop: '12px' }}>{detecting ? '⏳ Detecting...' : '🤖 Detect MCQs with AI'}</button>
-          </>
-        )}
-        {(mode === 'csv' || mode === 'json') && (
-          <div onClick={() => fileRef.current?.click()} style={{ border: '2px dashed #d1d5db', borderRadius: '10px', padding: '2rem', textAlign: 'center', cursor: 'pointer' }}>
-            <input type="file" accept={mode === 'csv' ? '.csv' : '.json'} ref={fileRef} style={{ display: 'none' }} onChange={() => {}} />
-            <div style={{ fontSize: '28px', marginBottom: '8px' }}>{mode === 'csv' ? '📊' : '{ }'}</div>
-            <div style={{ fontWeight: '600', color: '#374151' }}>Click to browse {mode.toUpperCase()} file</div>
-          </div>
-        )}
-      </div>
-
-      {detected.length > 0 && (
-        <div style={S.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', margin: 0 }}>✅ {detected.length} questions detected</h3>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button onClick={() => setSelectedSet(new Set(detected.map(q => q._id)))} style={S.btnSm('#1e3a5f')}>Select All</button>
-              <button onClick={() => setSelectedSet(new Set())} style={S.btnSm('#64748b')}>Deselect All</button>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', padding: '12px 14px', background: '#f8fafc', borderRadius: '8px', marginBottom: '16px' }}>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>Bulk assign:</span>
-            <select value={bulkSubject} onChange={e => { setBulkSubject(e.target.value); setBulkChapter('') }} style={{ ...S.select, width: 'auto', fontSize: '12px', padding: '6px 10px' }}><option value="">— subject —</option>{ALL_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select>
-            <select value={bulkChapter} onChange={e => setBulkChapter(e.target.value)} style={{ ...S.select, width: 'auto', fontSize: '12px', padding: '6px 10px' }} disabled={!bulkSubject}><option value="">— chapter —</option>{(QB_SUBJECTS[bulkSubject] || []).map(c => <option key={c} value={c}>{c}</option>)}</select>
-            <select value={bulkDifficulty} onChange={e => setBulkDifficulty(e.target.value)} style={{ ...S.select, width: 'auto', fontSize: '12px', padding: '6px 10px' }}>{DIFFICULTY.map(d => <option key={d} value={d}>{d}</option>)}</select>
-            <button onClick={applyBulk} style={S.btnSm('#16a34a')}>✓ Apply</button>
-          </div>
-          {detected.map((q, i) => (
-            <div key={q._id} style={{ ...S.card, marginBottom: '10px', padding: '14px 16px', border: selectedSet.has(q._id) ? '2px solid #1e3a5f' : '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                <input type="checkbox" checked={selectedSet.has(q._id)} onChange={() => setSelectedSet(s => { const n = new Set(s); n.has(q._id) ? n.delete(q._id) : n.add(q._id); return n })} style={{ width: '16px', height: '16px', marginTop: '3px', cursor: 'pointer', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: '500', color: '#1e293b', fontSize: '14px', marginBottom: '8px' }}><span style={{ color: '#94a3b8', marginRight: '6px', fontSize: '12px' }}>Q{i + 1}</span>{q.question}</div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <select value={q.subject} onChange={e => setDetected(prev => prev.map(x => x._id === q._id ? { ...x, subject: e.target.value, chapter: '' } : x))} style={{ ...S.select, width: 'auto', fontSize: '12px', padding: '4px 8px', margin: 0 }}><option value="">— subject —</option>{ALL_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select>
-                    <select value={q.chapter} onChange={e => setDetected(prev => prev.map(x => x._id === q._id ? { ...x, chapter: e.target.value } : x))} style={{ ...S.select, width: 'auto', fontSize: '12px', padding: '4px 8px', margin: 0 }} disabled={!q.subject}><option value="">— chapter —</option>{(QB_SUBJECTS[q.subject] || []).map(c => <option key={c} value={c}>{c}</option>)}</select>
-                    <select value={q.correct_option || ''} onChange={e => setDetected(prev => prev.map(x => x._id === q._id ? { ...x, correct_option: e.target.value } : x))} style={{ ...S.select, width: 'auto', fontSize: '12px', padding: '4px 8px', margin: 0 }}><option value="">Ans?</option>{['A','B','C','D'].map(l => <option key={l} value={l}>{l}</option>)}</select>
-                    {!q.correct_option && <span style={S.badge('#dc2626', '#fee2e2')}>⚠ no answer</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-          <button onClick={handleSaveAll} disabled={saving} style={S.btn('#16a34a', saving)}>{saving ? '⏳ Saving...' : `✅ Save ${selectedSet.size} to Bank`}</button>
-        </div>
-      )}
-      {saveResult && <div style={{ padding: '14px 18px', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '10px', color: '#15803d', fontWeight: '700', fontSize: '14px' }}>✅ {saveResult.count} questions saved!</div>}
-    </>
-  )
-}
-
-// ─── TabAI ────────────────────────────────────────────────────────────────────
-
-function TabAI({ refetch }) {
+// ─── TAB 2: AI Generator ──────────────────────────────────────────────────────
+function TabGenerate({ refetch, showToast, questions }) {
   const [subject,    setSubject]    = useState('')
   const [chapter,    setChapter]    = useState('')
-  const [count,      setCount]      = useState(5)
-  const [difficulty, setDifficulty] = useState('Medium')
+  const [count,      setCount]      = useState(10)
+  const [difficulty, setDifficulty] = useState('Mixed')
   const [generating, setGenerating] = useState(false)
   const [generated,  setGenerated]  = useState([])
-  const [selectedSet,setSelectedSet]= useState(new Set())
+  const [selected,   setSelected]   = useState(new Set())
   const [saving,     setSaving]     = useState(false)
-  const [saveResult, setSaveResult] = useState(null)
-  const chapters = QB_SUBJECTS[subject] || []
+
+  const chapters      = SUBJECTS[subject] || []
+  const existingCount = questions.filter(q => q.subject === subject && q.chapter === chapter).length
 
   const handleGenerate = async () => {
     if (!subject || !chapter) { alert('Select subject and chapter.'); return }
-    setGenerating(true); setGenerated([]); setSelectedSet(new Set()); setSaveResult(null)
-    const prompt = `Generate exactly ${count} MCQs for AISSEE Class VI.\nSubject: ${subject}\nChapter: ${chapter}\nDifficulty: ${difficulty}\nReturn ONLY valid JSON array, no markdown:\n[{"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","explanation":"..."}]`
+    setGenerating(true); setGenerated([]); setSelected(new Set())
+
+    // Get existing questions to avoid duplicates
+    const existing = questions
+      .filter(q => q.subject === subject && q.chapter === chapter)
+      .map(q => q.question)
+      .slice(0, 10)
+      .join('\n')
+
+    const prompt = `You are an expert question setter for AISSEE Class VI Sainik School entrance exam.
+Generate exactly ${count} MCQ questions for:
+Subject: ${subject}
+Chapter: ${chapter}
+Difficulty: ${difficulty === 'Mixed' ? 'mix of Easy, Medium and Hard' : difficulty}
+
+Rules:
+- Questions must be appropriate for Class VI students (age 10-12)
+- Wrong options (distractors) must be plausible common mistakes
+- One wrong option should be a near-correct trap
+- Questions must be unique, not repetitive
+${existing ? `- Do NOT repeat these existing questions:\n${existing}` : ''}
+
+Return ONLY a valid JSON array, no markdown, no explanation:
+[{"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","difficulty":"Medium"}]`
+
     try {
-      const res  = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] }) })
+      // Call via Vercel edge function (keeps API key server-side)
+      const res  = await fetch('/api/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      })
+      if (!res.ok) throw new Error('Server error: ' + res.status)
       const data = await res.json()
-      const text = data.content?.map(b => b.type === 'text' ? b.text : '').join('').replace(/```json|```/g, '').trim()
-      const arr  = JSON.parse(text)
-      const tagged = arr.map((q, i) => ({ ...q, _id: i, subject, chapter, difficulty, marks: subject === 'Mathematics' ? 3 : 2, source: 'AI Generated' }))
-      setGenerated(tagged); setSelectedSet(new Set(tagged.map(q => q._id)))
-    } catch (e) { alert('Generation failed: ' + e.message) }
+      const arr  = data.questions || []
+      const tagged = arr.map((q, i) => ({
+        ...q,
+        _id:     i,
+        subject,
+        chapter,
+        marks:   subject === 'Mathematics' ? 3 : 2,
+        source:  'AI Generated',
+      }))
+      setGenerated(tagged)
+      setSelected(new Set(tagged.map(q => q._id)))
+      showToast(`✨ ${tagged.length} questions generated`, C.green)
+    } catch (e) {
+      showToast('Generation failed: ' + e.message, C.rose)
+    }
     setGenerating(false)
   }
 
   const handleSave = async () => {
-    const toSave = generated.filter(q => selectedSet.has(q._id))
+    const toSave = generated.filter(q => selected.has(q._id))
     if (!toSave.length) return
     setSaving(true)
-    const { error } = await supabase.from('qbank_questions').insert(toSave.map(({ _id, ...rest }) => rest))
-    if (error) { alert('Error: ' + error.message); setSaving(false); return }
-    setSaveResult({ count: toSave.length }); setGenerated([]); setSelectedSet(new Set()); refetch()
+    const rows = toSave.map(({ _id, source, ...rest }) => rest)
+    const { error } = await supabase.from('qbank_questions').insert(rows)
+    if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
+    showToast(`✅ ${toSave.length} questions saved to bank`, C.green)
+    setGenerated([]); setSelected(new Set()); refetch()
     setSaving(false)
   }
 
   return (
     <>
-      <div style={S.card}>
-        <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginTop: 0, marginBottom: '20px' }}>🤖 AI Question Generator</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px' }}>
-          <div><label style={S.label}>Subject</label><select value={subject} onChange={e => { setSubject(e.target.value); setChapter('') }} style={S.select}><option value="">Select</option>{ALL_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-          <div><label style={S.label}>Chapter</label><select value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject} style={{ ...S.select, opacity: subject ? 1 : 0.5 }}><option value="">Select</option>{chapters.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label style={S.label}>Count</label><select value={count} onChange={e => setCount(parseInt(e.target.value))} style={S.select}>{[3,5,10,15,20,25].map(n => <option key={n} value={n}>{n} questions</option>)}</select></div>
-          <div><label style={S.label}>Difficulty</label><select value={difficulty} onChange={e => setDifficulty(e.target.value)} style={S.select}>{[...DIFFICULTY,'Mixed'].map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-          <div style={{ gridColumn: '1/-1' }}><button onClick={handleGenerate} disabled={generating || !subject || !chapter} style={S.btn('#7c3aed', generating || !subject || !chapter)}>{generating ? '⏳ Generating...' : '🤖 Generate Questions'}</button></div>
+      <div style={card}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 20 }}>🤖 AI Question Generator</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
+          <div>
+            <label style={lbl}>Subject *</label>
+            <select style={sel} value={subject} onChange={e => { setSubject(e.target.value); setChapter('') }}>
+              <option value="">Select</option>
+              {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Chapter *</label>
+            <select style={{ ...sel, opacity: subject ? 1 : .5 }} value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject}>
+              <option value="">Select</option>
+              {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>How Many</label>
+            <select style={sel} value={count} onChange={e => setCount(parseInt(e.target.value))}>
+              {[5,10,15,20,25].map(n => <option key={n} value={n}>{n} questions</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Difficulty</label>
+            <select style={sel} value={difficulty} onChange={e => setDifficulty(e.target.value)}>
+              <option value="Mixed">Mixed</option>
+              {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
         </div>
+
+        {subject && chapter && (
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', marginBottom: 14 }}>
+            📊 Bank has <strong>{existingCount}</strong> questions for {subject} → {chapter}
+            {existingCount < 20 && <span style={{ color: C.rose, marginLeft: 8 }}>⚠ Low — generate more</span>}
+          </div>
+        )}
+
+        <button onClick={handleGenerate} disabled={generating || !subject || !chapter} style={btn(C.violet, generating || !subject || !chapter)}>
+          {generating ? '⏳ Generating…' : '🤖 Generate Questions'}
+        </button>
       </div>
+
       {generated.length > 0 && (
-        <div style={S.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', margin: 0 }}>✨ {generated.length} generated — review before saving</h3>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button onClick={() => setSelectedSet(new Set(generated.map(q => q._id)))} style={S.btnSm('#1e3a5f')}>Select All</button>
-              <button onClick={() => setSelectedSet(new Set())} style={S.btnSm('#64748b')}>Deselect All</button>
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>✨ {generated.length} questions ready — review before saving</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setSelected(new Set(generated.map(q => q._id)))} style={btnSm(C.navy)}>All</button>
+              <button onClick={() => setSelected(new Set())}                           style={btnSm(C.slate)}>None</button>
             </div>
           </div>
-          {generated.map((q, i) => <QuestionCard key={q._id} q={q} index={i} selectable selected={selectedSet.has(q._id)} onToggle={id => setSelectedSet(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })} showAnswer />)}
-          <button onClick={handleSave} disabled={saving} style={S.btn('#16a34a', saving)}>{saving ? '⏳ Saving...' : `✅ Save ${selectedSet.size} to Bank`}</button>
+
+          {generated.map((q, i) => (
+            <QCard key={q._id} q={q} index={i} showAnswer selectable selected={selected.has(q._id)}
+              onToggle={id => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })} />
+          ))}
+
+          <button onClick={handleSave} disabled={saving || !selected.size} style={btn(C.green, saving || !selected.size)}>
+            {saving ? '⏳ Saving…' : `✅ Save ${selected.size} to Bank`}
+          </button>
         </div>
       )}
-      {saveResult && <div style={{ padding: '14px 18px', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '10px', color: '#15803d', fontWeight: '700', fontSize: '14px' }}>✅ {saveResult.count} questions saved!</div>}
     </>
   )
 }
 
-// ─── TabBuilder ───────────────────────────────────────────────────────────────
+// ─── PDF Generator (client-side via jsPDF) ────────────────────────────────────
+async function generatePDF({ title, subject, chapter, questions, withAnswers, instituteName }) {
+  // Dynamically load jsPDF
+  if (!window.jspdf) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script')
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+      s.onload = res; s.onerror = rej
+      document.head.appendChild(s)
+    })
+  }
+  const { jsPDF } = window.jspdf
+  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const W     = 210
+  const margin= 15
+  let   y     = margin
 
-function TabBuilder({ questions, refetch: refetchTests }) {
-  const [step,      setStep]      = useState(1)
-  const [testMeta,  setTestMeta]  = useState({ title: '', exam_type: 'AISSEE', date: today(), duration_minutes: 150, total_marks: 0, instructions: '', batch_name: '' })
-  const [selectedIds,    setSelectedIds]    = useState(new Set())
-  const [filterSubject,  setFilterSubject]  = useState('All')
-  const [qSearch,        setQSearch]        = useState('')
-  const [saving,         setSaving]         = useState(false)
+  const addText = (text, x, fontSize, bold = false, color = [30, 58, 95]) => {
+    doc.setFontSize(fontSize)
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setTextColor(...color)
+    doc.text(text, x, y)
+  }
 
-  const toggleQ = (id) => setSelectedIds(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const checkPage = (need = 10) => {
+    if (y + need > 285) { doc.addPage(); y = margin }
+  }
 
-  const filteredQ = useMemo(() => {
-    const q = qSearch.toLowerCase()
-    return questions.filter(item => {
-      if (filterSubject !== 'All' && item.subject !== filterSubject) return false
-      if (q && !item.question?.toLowerCase().includes(q)) return false
+  // ── Header ──
+  doc.setFillColor(30, 58, 95)
+  doc.rect(0, 0, W, 28, 'F')
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255)
+  doc.text(instituteName || 'Guidance Navodaya & Sainik Institute', margin, 12)
+  doc.setFontSize(10); doc.setFont('helvetica', 'normal')
+  doc.text('Khangabok, Thoubal, Manipur', margin, 19)
+  doc.setFontSize(9)
+  doc.text(`Date: ${today()}`, W - margin - 40, 19)
+  y = 34
+
+  // ── Title ──
+  doc.setDrawColor(30, 58, 95); doc.setLineWidth(.5)
+  doc.line(margin, y, W - margin, y); y += 6
+  addText(title, margin, 14, true)
+  y += 6
+  addText(`Subject: ${subject}  |  Chapter: ${chapter}  |  Questions: ${questions.length}  |  Total Marks: ${questions.reduce((s,q)=>s+(q.marks||1),0)}`, margin, 9, false, [100,116,139])
+  y += 6
+  doc.line(margin, y, W - margin, y); y += 8
+
+  // ── Questions ──
+  questions.forEach((q, i) => {
+    checkPage(20)
+    const qText = `Q${i+1}. ${q.question}`
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 58, 95)
+    const lines = doc.splitTextToSize(qText, W - margin * 2 - 6)
+    checkPage(lines.length * 5 + 20)
+    doc.text(lines, margin, y); y += lines.length * 5.5 + 2
+
+    const opts = [
+      { l: 'A', v: q.option_a },
+      { l: 'B', v: q.option_b },
+      { l: 'C', v: q.option_c },
+      { l: 'D', v: q.option_d },
+    ]
+    opts.forEach(({ l, v }) => {
+      checkPage(7)
+      const isCorrect = withAnswers && q.correct_option === l
+      if (isCorrect) { doc.setFillColor(220, 252, 231); doc.roundedRect(margin + 4, y - 4, W - margin * 2 - 8, 6.5, 1, 1, 'F') }
+      doc.setFontSize(10)
+      doc.setFont('helvetica', isCorrect ? 'bold' : 'normal')
+      doc.setTextColor(isCorrect ? 21 : 55, isCorrect ? 128 : 65, isCorrect ? 61 : 81)
+      const optLines = doc.splitTextToSize(`  ${l}. ${v || '—'}${isCorrect ? '  ✓' : ''}`, W - margin * 2 - 12)
+      doc.text(optLines, margin + 6, y); y += optLines.length * 5 + 1
+    })
+    y += 5
+    doc.setDrawColor(226, 232, 240); doc.setLineWidth(.2)
+    doc.line(margin, y, W - margin, y); y += 5
+  })
+
+  // ── Answer Key (if not withAnswers) ──
+  if (!withAnswers) {
+    doc.addPage(); y = margin
+    doc.setFillColor(30, 58, 95); doc.rect(0, 0, W, 20, 'F')
+    doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(255,255,255)
+    doc.text('ANSWER KEY', margin, 13); y = 26
+
+    const cols = 5
+    const colW = (W - margin * 2) / cols
+    questions.forEach((q, i) => {
+      const col = i % cols
+      const row = Math.floor(i / cols)
+      if (col === 0 && i > 0) y += 8
+      checkPage(10)
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 58, 95)
+      doc.text(`Q${i+1}: ${q.correct_option}`, margin + col * colW, y)
+      if (i === questions.length - 1) y += 8
+    })
+  }
+
+  // ── Footer on all pages ──
+  const pages = doc.getNumberOfPages()
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p)
+    doc.setFontSize(8); doc.setTextColor(148, 163, 184); doc.setFont('helvetica', 'normal')
+    doc.text(`Page ${p} of ${pages}  |  GNSI Question Paper  |  Confidential`, margin, 292)
+  }
+
+  doc.save(`${title.replace(/\s+/g, '_')}.pdf`)
+}
+
+// ─── TAB 3: Paper / PDF ───────────────────────────────────────────────────────
+function TabPaper({ questions, showToast }) {
+  const [subject,      setSubject]      = useState('')
+  const [chapter,      setChapter]      = useState('All Chapters')
+  const [count,        setCount]        = useState(25)
+  const [difficulty,   setDifficulty]   = useState('All')
+  const [title,        setTitle]        = useState('')
+  const [withAnswers,  setWithAnswers]  = useState(false)
+  const [preview,      setPreview]      = useState(null)
+  const [downloading,  setDownloading]  = useState(false)
+
+  const chapters  = subject ? ['All Chapters', ...SUBJECTS[subject]] : []
+
+  const handlePreview = () => {
+    if (!subject) { alert('Select a subject.'); return }
+    let pool = questions.filter(q => {
+      if (q.subject !== subject) return false
+      if (chapter !== 'All Chapters' && q.chapter !== chapter) return false
+      if (difficulty !== 'All' && q.difficulty !== difficulty) return false
       return true
     })
-  }, [questions, filterSubject, qSearch])
-
-  const selectedQs  = useMemo(() => questions.filter(q => selectedIds.has(q.id)), [questions, selectedIds])
-  const totalMarks  = useMemo(() => selectedQs.reduce((a, q) => a + (q.marks || 1), 0), [selectedQs])
-
-  const autoPickAISSEE = () => {
-    const newIds = new Set()
-    Object.entries(AISSEE_PATTERN).forEach(([subj, { count }]) => {
-      questions.filter(q => q.subject === subj).sort(() => Math.random() - 0.5).slice(0, count).forEach(q => newIds.add(q.id))
-    })
-    setSelectedIds(newIds)
+    // Shuffle
+    pool = pool.sort(() => Math.random() - .5).slice(0, count)
+    if (pool.length === 0) { showToast('No questions in bank for this selection. Generate some first.', C.amber); return }
+    setPreview(pool)
+    if (!title) setTitle(`${subject}${chapter !== 'All Chapters' ? ' — ' + chapter : ''} Question Paper`)
   }
 
-  const handleSaveTest = async () => {
-    if (!testMeta.title.trim()) { alert('Enter a test title.'); return }
-    if (!selectedIds.size)      { alert('Select at least one question.'); return }
-    setSaving(true)
-    const payload = { title: testMeta.title, exam_type: testMeta.exam_type, test_date: testMeta.date, duration_minutes: parseInt(testMeta.duration_minutes), total_marks: totalMarks, total_questions: selectedIds.size, instructions: testMeta.instructions || null, batch_name: testMeta.batch_name || null, questions: selectedQs.map((q, i) => ({ question_id: q.id, order_num: i + 1, marks: q.marks || 1 })) }
-    const { error } = await saveTest(payload)
-    if (error) { alert('Error: ' + error.message); setSaving(false); return }
-    setSaving(false); setStep(4); refetchTests()
+  const handleDownload = async () => {
+    if (!preview?.length) return
+    setDownloading(true)
+    try {
+      await generatePDF({ title: title || 'Question Paper', subject, chapter, questions: preview, withAnswers, instituteName: 'Guidance Navodaya & Sainik Institute' })
+      showToast('📄 PDF downloaded!', C.green)
+    } catch (e) {
+      showToast('PDF failed: ' + e.message, C.rose)
+    }
+    setDownloading(false)
   }
-
-  const distrib = useMemo(() => { const map = {}; selectedQs.forEach(q => { map[q.subject] = (map[q.subject] || 0) + 1 }); return map }, [selectedQs])
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '24px' }}>
-        {['Test Setup','Pick Questions','Preview','Done'].map((label, i) => {
-          const s = i + 1; const done = step > s; const active = step === s
-          return (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: s < 4 ? 1 : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: s < step ? 'pointer' : 'default' }} onClick={() => s < step && setStep(s)}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', background: done ? '#16a34a' : active ? '#1e3a5f' : '#e2e8f0', color: done || active ? 'white' : '#94a3b8', flexShrink: 0 }}>{done ? '✓' : s}</div>
-                <span style={{ fontSize: '13px', fontWeight: active ? '700' : '400', color: active ? '#1e3a5f' : done ? '#16a34a' : '#94a3b8', whiteSpace: 'nowrap' }}>{label}</span>
-              </div>
-              {s < 4 && <div style={{ flex: 1, height: '2px', background: done ? '#16a34a' : '#e2e8f0', borderRadius: '1px', margin: '0 6px' }} />}
-            </div>
-          )
-        })}
+    <>
+      <div style={card}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 20 }}>📄 Create Question Paper</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Subject *</label>
+            <select style={sel} value={subject} onChange={e => { setSubject(e.target.value); setChapter('All Chapters') }}>
+              <option value="">Select</option>
+              {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Chapter</label>
+            <select style={{ ...sel, opacity: subject ? 1 : .5 }} value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject}>
+              {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>No. of Questions</label>
+            <select style={sel} value={count} onChange={e => setCount(parseInt(e.target.value))}>
+              {[10,15,20,25,30,40,50].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Difficulty</label>
+            <select style={sel} value={difficulty} onChange={e => setDifficulty(e.target.value)}>
+              <option value="All">All</option>
+              {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div style={{ gridColumn: '1/-1' }}>
+            <label style={lbl}>Paper Title</label>
+            <input style={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Mathematics — Fractions Test" />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: C.navy }}>
+            <input type="checkbox" checked={withAnswers} onChange={e => setWithAnswers(e.target.checked)} />
+            Include answers in PDF
+          </label>
+        </div>
+
+        {subject && (
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', marginBottom: 14 }}>
+            📊 Available: <strong>{questions.filter(q => q.subject === subject && (chapter === 'All Chapters' || q.chapter === chapter)).length}</strong> questions in bank for this selection
+          </div>
+        )}
+
+        <button onClick={handlePreview} disabled={!subject} style={btn(C.navy, !subject)}>👁 Preview Paper</button>
       </div>
 
-      {step === 1 && (
-        <div style={S.card}>
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginTop: 0, marginBottom: '20px' }}>📝 Test Setup</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div style={{ gridColumn: '1/-1' }}><label style={S.label}>Test Title *</label><input value={testMeta.title} onChange={e => setTestMeta(m => ({ ...m, title: e.target.value }))} required placeholder="e.g. AISSEE Full Mock Test — June 2025" style={S.input} /></div>
-            <div><label style={S.label}>Exam Type</label><select value={testMeta.exam_type} onChange={e => setTestMeta(m => ({ ...m, exam_type: e.target.value }))} style={S.select}>{EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-            <div><label style={S.label}>Test Date</label><input type="date" value={testMeta.date} onChange={e => setTestMeta(m => ({ ...m, date: e.target.value }))} style={S.input} /></div>
-            <div><label style={S.label}>Duration (min)</label><input type="number" min="15" value={testMeta.duration_minutes} onChange={e => setTestMeta(m => ({ ...m, duration_minutes: e.target.value }))} style={S.input} /></div>
-            <div><label style={S.label}>Batch / Class</label><input value={testMeta.batch_name} onChange={e => setTestMeta(m => ({ ...m, batch_name: e.target.value }))} placeholder="e.g. Achiever" style={S.input} /></div>
-            <div style={{ gridColumn: '1/-1' }}><label style={S.label}>Instructions</label><textarea value={testMeta.instructions} onChange={e => setTestMeta(m => ({ ...m, instructions: e.target.value }))} rows={3} style={{ ...S.input, resize: 'vertical' }} /></div>
-          </div>
-          <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
-            <button onClick={() => { autoPickAISSEE(); setStep(2) }} style={S.btn('#1e3a5f')}>⚡ Auto AISSEE Pattern →</button>
-            <button onClick={() => setStep(2)} style={S.btnOut('#1e3a5f', false)}>Manual Selection →</button>
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontWeight: '700', color: '#1e3a5f', fontSize: '16px' }}>🗂️ {selectedIds.size} selected · {totalMarks} marks</span>
-            <button onClick={() => setStep(3)} style={S.btn('#1e3a5f')}>Preview Test →</button>
-          </div>
-          {Object.keys(distrib).length > 0 && <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>{Object.entries(distrib).map(([subj, cnt]) => <span key={subj} style={S.pill('#1e3a5f', '#eff6ff')}>{subj}: {cnt}</span>)}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '14px' }}>
-            <input placeholder="🔍 Search..." value={qSearch} onChange={e => setQSearch(e.target.value)} style={S.input} />
-            <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={S.select}><option value="All">All Subjects</option>{ALL_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select>
-          </div>
-          {filteredQ.map((q, i) => <QuestionCard key={q.id} q={q} index={i} selectable selected={selectedIds.has(q.id)} onToggle={toggleQ} />)}
-          <button onClick={() => setStep(3)} style={{ ...S.btn('#1e3a5f'), marginTop: '16px' }}>Preview Test →</button>
-        </>
-      )}
-
-      {step === 3 && (
-        <div style={S.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', margin: 0 }}>📋 Preview</h2>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setStep(2)} style={S.btn('#64748b')}>◀ Edit</button>
-              <button onClick={handleSaveTest} disabled={saving} style={S.btn('#16a34a', saving)}>{saving ? '⏳ Saving...' : '✅ Save Test'}</button>
+      {preview && (
+        <div style={card}>
+          {/* Paper header preview */}
+          <div style={{ border: `2px solid ${C.navy}`, borderRadius: 10, padding: '20px 24px', marginBottom: 20 }}>
+            <div style={{ textAlign: 'center', borderBottom: `1px solid ${C.border}`, paddingBottom: 14, marginBottom: 14 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.navy }}>Guidance Navodaya & Sainik Institute</div>
+              <div style={{ fontSize: 12, color: C.slate }}>Khangabok, Thoubal, Manipur</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginTop: 8 }}>{title}</div>
+              <div style={{ fontSize: 12, color: C.slate, marginTop: 4 }}>
+                Subject: {subject} &nbsp;|&nbsp; Questions: {preview.length} &nbsp;|&nbsp;
+                Total Marks: {preview.reduce((s,q)=>s+(q.marks||1),0)} &nbsp;|&nbsp; Date: {today()}
+              </div>
             </div>
-          </div>
-          <div style={{ border: '2px solid #1e3a5f', borderRadius: '10px', padding: '20px 24px', marginBottom: '24px', textAlign: 'center' }}>
-            <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: '0 0 4px' }}>{testMeta.title}</h1>
-            <div style={{ fontSize: '13px', color: '#64748b' }}>{testMeta.exam_type} · {fmtDate(testMeta.date)} · {testMeta.duration_minutes} min · {totalMarks} marks · {selectedIds.size} questions</div>
-          </div>
-          {selectedQs.map((q, i) => (
-            <div key={q.id} style={{ marginBottom: '16px', padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-              <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px', marginBottom: '10px' }}><span style={{ color: '#94a3b8', marginRight: '6px' }}>Q{i + 1}.</span>{q.question}<span style={{ float: 'right', fontSize: '12px', color: '#64748b' }}>[{q.marks || 1}M]</span></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>{['A','B','C','D'].map(l => <div key={l} style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '13px', border: '1px solid #e2e8f0' }}><span style={{ fontWeight: '700', marginRight: '6px', color: '#94a3b8' }}>{l}.</span>{q[`option_${l.toLowerCase()}`] || '—'}</div>)}</div>
-            </div>
-          ))}
-        </div>
-      )}
 
-      {step === 4 && (
-        <div style={{ ...S.card, textAlign: 'center', padding: '48px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
-          <h2 style={{ fontWeight: '700', color: '#16a34a', fontSize: '20px' }}>Test saved successfully!</h2>
-          <p style={{ color: '#64748b', marginBottom: '24px' }}>{testMeta.title} · {selectedIds.size} questions · {totalMarks} marks</p>
-          <button onClick={() => { setStep(1); setSelectedIds(new Set()); setTestMeta({ title: '', exam_type: 'AISSEE', date: today(), duration_minutes: 150, total_marks: 0, instructions: '', batch_name: '' }) }} style={S.btn('#1e3a5f')}>➕ Create Another Test</button>
+            {preview.map((q, i) => (
+              <div key={q.id} style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 6 }}>
+                  <span style={{ color: C.slate, marginRight: 6 }}>Q{i+1}.</span>{q.question}
+                  <span style={{ float: 'right', fontSize: 11, color: C.slate }}>[{q.marks||1}M]</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  {['A','B','C','D'].map(l => (
+                    <div key={l} style={{ fontSize: 12, padding: '4px 8px', color: '#374151' }}>
+                      <span style={{ fontWeight: 700, color: C.slate, marginRight: 4 }}>{l}.</span>
+                      {q[`option_${l.toLowerCase()}`] || '—'}
+                      {withAnswers && q.correct_option === l && <span style={{ color: C.green, marginLeft: 6, fontWeight: 700 }}>✓</span>}
+                    </div>
+                  ))}
+                </div>
+                {i < preview.length - 1 && <div style={{ height: 1, background: C.border, marginTop: 10 }} />}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button onClick={handleDownload} disabled={downloading} style={btn(C.green, downloading)}>
+              {downloading ? '⏳ Generating PDF…' : '⬇ Download PDF'}
+            </button>
+            <button onClick={() => setPreview(null)} style={btn(C.slate)}>✕ Close Preview</button>
+            <button onClick={handlePreview} style={btn(C.navy)}>🔀 Shuffle Questions</button>
+          </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
-// ─── TabTests ─────────────────────────────────────────────────────────────────
-
-function TabTests({ currentUser }) {
-  const [tests,       setTests]       = useState([])
-  const [loading,     setLoading]     = useState(true)
+// ─── TAB 4: Online Test ───────────────────────────────────────────────────────
+function TabTest({ questions, showToast }) {
+  const [subject,     setSubject]     = useState('')
+  const [chapter,     setChapter]     = useState('All Chapters')
+  const [count,       setCount]       = useState(20)
   const [studentName, setStudentName] = useState('')
-  const [rollNo,      setRollNo]      = useState('')
-  const [activeTest,  setActiveTest]  = useState(null)
+  const [testQs,      setTestQs]      = useState(null)
   const [answers,     setAnswers]     = useState({})
   const [submitted,   setSubmitted]   = useState(false)
-  const [submitting,  setSubmitting]  = useState(false)
-  const [resultData,  setResultData]  = useState(null)
+  const [result,      setResult]      = useState(null)
+  const [timeLeft,    setTimeLeft]    = useState(0)
+  const [timerActive, setTimerActive] = useState(false)
 
-  const fetchTests = useCallback(async () => {
-    setLoading(true)
-    const { data } = await supabase.from('qbank_tests').select('*').order('created_at', { ascending: false })
-    if (data) setTests(data)
-    setLoading(false)
-  }, [])
+  const chapters = subject ? ['All Chapters', ...SUBJECTS[subject]] : []
 
-  useEffect(() => { fetchTests() }, [fetchTests])
+  // Timer
+  useEffect(() => {
+    if (!timerActive || timeLeft <= 0) return
+    if (timeLeft === 0) { handleSubmit(); return }
+    const t = setTimeout(() => setTimeLeft(v => v - 1), 1000)
+    return () => clearTimeout(t)
+  }, [timerActive, timeLeft])
 
-  const startTest = async (test) => {
+  const formatTime = s => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
+
+  const handleStart = () => {
     if (!studentName.trim()) { alert('Enter student name.'); return }
-    const ids = (test.questions || []).map(q => q.question_id)
-    if (!ids.length) { alert('No questions in this test.'); return }
-    const { data: qs } = await supabase.from('qbank_questions').select('*').in('id', ids)
-    const ordered = (test.questions || []).map(tq => ({ ...qs.find(q => q.id === tq.question_id), order_num: tq.order_num, marks: tq.marks })).filter(Boolean)
-    setActiveTest({ ...test, loadedQuestions: ordered }); setAnswers({}); setSubmitted(false); setResultData(null)
+    if (!subject) { alert('Select subject.'); return }
+    let pool = questions.filter(q => {
+      if (q.subject !== subject) return false
+      if (chapter !== 'All Chapters' && q.chapter !== chapter) return false
+      return true
+    }).sort(() => Math.random() - .5).slice(0, count)
+    if (pool.length === 0) { showToast('No questions available. Generate questions first.', C.amber); return }
+    setTestQs(pool); setAnswers({}); setSubmitted(false); setResult(null)
+    setTimeLeft(pool.length * 90) // 1.5 min per question
+    setTimerActive(true)
   }
 
-  const handleSubmit = async () => {
-    if (!window.confirm('Submit the test?')) return
-    setSubmitting(true)
-    const qs      = activeTest.loadedQuestions
+  const handleSubmit = () => {
+    if (!confirm('Submit the test?')) return
+    setTimerActive(false)
+    const qs      = testQs
     const correct = qs.filter(q => answers[q.id] === q.correct_option).length
     const wrong   = qs.filter(q => answers[q.id] && answers[q.id] !== q.correct_option).length
     const skipped = qs.filter(q => !answers[q.id]).length
-    const score   = qs.reduce((a, q) => answers[q.id] === q.correct_option ? a + (q.marks || 1) : a, 0)
-    const maxScore= qs.reduce((a, q) => a + (q.marks || 1), 0)
-    const pcnt    = pct(score, maxScore)
-    const payload = { test_id: activeTest.id, test_title: activeTest.title, student_name: studentName, roll_number: rollNo || null, score, max_score: maxScore, percentage: pcnt, correct_count: correct, wrong_count: wrong, skipped_count: skipped, answers: Object.entries(answers).map(([qid, ans]) => ({ question_id: qid, answer: ans })), submitted_at: new Date().toISOString() }
-    const { error } = await saveTestResult(payload)
-    if (error) alert('Error: ' + error.message)
-    setResultData({ correct, wrong, skipped, score, maxScore, pcnt, qs }); setSubmitted(true); setSubmitting(false)
+    const score   = qs.reduce((a,q) => answers[q.id]===q.correct_option ? a+(q.marks||1) : a, 0)
+    const maxScore= qs.reduce((a,q) => a+(q.marks||1), 0)
+    const pct     = maxScore ? Math.round((score/maxScore)*100) : 0
+    setResult({ correct, wrong, skipped, score, maxScore, pct })
+    setSubmitted(true)
   }
 
-  if (activeTest && !submitted) {
-    const qs = activeTest.loadedQuestions || []
+  // Result screen
+  if (submitted && result) {
+    const { correct, wrong, skipped, score, maxScore, pct } = result
+    const color = pct >= 75 ? C.green : pct >= 50 ? C.amber : C.rose
+
     return (
-      <div>
-        <div style={{ ...S.card, padding: '16px 20px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <div><div style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f' }}>{activeTest.title}</div><div style={{ fontSize: '13px', color: '#64748b' }}>{studentName} · {qs.length} questions</div></div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={S.badge('#1e3a5f', '#eff6ff')}>{Object.keys(answers).length}/{qs.length} answered</span>
-            <button onClick={() => setActiveTest(null)} style={S.btn('#64748b')}>✖ Exit</button>
-            <button onClick={handleSubmit} disabled={submitting} style={S.btn('#16a34a', submitting)}>{submitting ? '⏳...' : '✅ Submit'}</button>
+      <div style={card}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ fontSize: 52, fontWeight: 800, color }}>{pct}%</div>
+          <div style={{ fontSize: 20, color: C.navy, fontWeight: 700 }}>{score} / {maxScore}</div>
+          <div style={{ fontSize: 13, color: C.slate, marginTop: 4 }}>{studentName} · {subject} · {testQs?.length} questions</div>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+            <span style={{ padding: '6px 16px', borderRadius: 99, background: '#dcfce7', color: C.green, fontWeight: 700, fontSize: 13 }}>✅ {correct} correct</span>
+            <span style={{ padding: '6px 16px', borderRadius: 99, background: '#fee2e2', color: C.rose, fontWeight: 700, fontSize: 13 }}>✗ {wrong} wrong</span>
+            <span style={{ padding: '6px 16px', borderRadius: 99, background: '#f1f5f9', color: C.slate, fontWeight: 700, fontSize: 13 }}>— {skipped} skipped</span>
           </div>
         </div>
-        {qs.map((q, i) => (
-          <div key={q.id} style={{ ...S.card, marginBottom: '12px', padding: '16px 20px' }}>
-            <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '15px', marginBottom: '12px', lineHeight: '1.6' }}><span style={{ color: '#94a3b8', marginRight: '8px' }}>Q{i + 1}.</span>{q.question}<span style={{ float: 'right', fontSize: '12px', color: '#64748b' }}>[{q.marks || 1}M]</span></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+
+        {/* Answer review */}
+        {testQs?.map((q, i) => {
+          const ua = answers[q.id]
+          const ok = ua === q.correct_option
+          const wr = ua && !ok
+          return (
+            <div key={q.id} style={{ marginBottom: 10, padding: '12px 16px', borderRadius: 9, border: `1px solid ${ok?'#86efac':wr?'#fca5a5':C.border}`, borderLeft: `4px solid ${ok?C.green:wr?C.rose:C.slate}`, background: ok?'#f0fdf4':wr?'#fff1f2':'#f8fafc' }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#1e293b', marginBottom: 6 }}><span style={{ color: C.slate, marginRight: 6 }}>Q{i+1}.</span>{q.question}</div>
+              <div style={{ fontSize: 12 }}>
+                Your answer: <strong style={{ color: ok?C.green:wr?C.rose:C.slate }}>{ua || '—'}</strong>
+                {ok && ' ✅'} {wr && ' ✗'}
+                {wr && <span style={{ marginLeft: 12, color: C.green }}>Correct: <strong>{q.correct_option}. {q[`option_${q.correct_option?.toLowerCase()}`]}</strong></span>}
+              </div>
+            </div>
+          )
+        })}
+
+        <button onClick={() => { setTestQs(null); setSubmitted(false); setResult(null) }} style={{ ...btn(C.navy), marginTop: 16 }}>← Back</button>
+      </div>
+    )
+  }
+
+  // Test in progress
+  if (testQs) {
+    return (
+      <div>
+        {/* Sticky header */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 99, background: C.navy, borderRadius: 10, padding: '12px 20px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{studentName} · {subject}</div>
+            <div style={{ fontSize: 11, opacity: .7 }}>{Object.keys(answers).length}/{testQs.length} answered</div>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: timeLeft < 60 ? '#fca5a5' : '#fff' }}>⏱ {formatTime(timeLeft)}</div>
+          <button onClick={handleSubmit} style={btn(C.green)}>✅ Submit</button>
+        </div>
+
+        {testQs.map((q, i) => (
+          <div key={q.id} style={{ ...card, marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 12, lineHeight: 1.6 }}>
+              <span style={{ color: C.slate, marginRight: 8 }}>Q{i+1}.</span>{q.question}
+              <span style={{ float: 'right', fontSize: 11, color: C.slate }}>[{q.marks||1}M]</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {['A','B','C','D'].map(l => (
-                <button key={l} onClick={() => setAnswers(a => ({ ...a, [q.id]: l }))} style={S.optBtn(answers[q.id] === l)}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: `2px solid ${answers[q.id] === l ? '#1e3a5f' : '#e2e8f0'}`, background: answers[q.id] === l ? '#1e3a5f' : 'white', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontSize: '11px', fontWeight: '700', color: answers[q.id] === l ? 'white' : '#94a3b8' }}>{l}</span></div>
-                  <span style={{ fontSize: '14px', color: '#374151' }}>{q[`option_${l.toLowerCase()}`] || '—'}</span>
+                <button key={l} onClick={() => setAnswers(a => ({ ...a, [q.id]: l }))}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', border: `2px solid ${answers[q.id]===l ? C.navy : C.border}`, borderRadius: 8, background: answers[q.id]===l ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', fontSize: 13 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', border: `2px solid ${answers[q.id]===l ? C.navy : C.border}`, background: answers[q.id]===l ? C.navy : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: answers[q.id]===l ? '#fff' : C.slate }}>{l}</span>
+                  </div>
+                  {q[`option_${l.toLowerCase()}`] || '—'}
                 </button>
               ))}
             </div>
           </div>
         ))}
-        <div style={{ textAlign: 'center', padding: '24px' }}><button onClick={handleSubmit} disabled={submitting} style={S.btn('#16a34a', submitting)}>{submitting ? '⏳ Submitting...' : '✅ Submit Test'}</button></div>
+
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <button onClick={handleSubmit} style={btn(C.green)}>✅ Submit Test</button>
+        </div>
       </div>
     )
   }
 
-  if (activeTest && submitted && resultData) {
-    const { correct, wrong, skipped, score, maxScore, pcnt, qs } = resultData
-    return (
-      <div>
-        <div style={{ ...S.card, textAlign: 'center', padding: '32px', marginBottom: '20px' }}>
-          <div style={{ fontSize: '48px', fontWeight: '800', color: scoreColor(pcnt) }}>{pcnt}%</div>
-          <div style={{ fontSize: '18px', color: '#374151', marginTop: '4px' }}>{score} / {maxScore}</div>
-          <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '16px' }}>
-            <span style={S.pill('#16a34a', '#dcfce7')}>✅ {correct} correct</span>
-            <span style={S.pill('#dc2626', '#fee2e2')}>✗ {wrong} wrong</span>
-            <span style={S.pill('#94a3b8', '#f1f5f9')}>— {skipped} skipped</span>
-          </div>
-        </div>
-        {qs.map((q, i) => {
-          const userAns  = answers[q.id]
-          const isCorrect = userAns === q.correct_option
-          const isWrong   = userAns && !isCorrect
-          return (
-            <div key={q.id} style={{ ...S.card, marginBottom: '10px', padding: '14px 16px', borderLeft: `4px solid ${isCorrect ? '#16a34a' : isWrong ? '#dc2626' : '#94a3b8'}` }}>
-              <div style={{ fontWeight: '500', color: '#1e293b', fontSize: '14px', marginBottom: '8px' }}><span style={{ color: '#94a3b8', marginRight: '6px' }}>Q{i + 1}.</span>{q.question}</div>
-              <div style={{ fontSize: '13px', marginBottom: '4px' }}>Your answer: <strong style={{ color: isCorrect ? '#16a34a' : isWrong ? '#dc2626' : '#94a3b8' }}>{userAns || '—'}</strong>{isCorrect && ' ✅'}{isWrong && ' ✗'}</div>
-              <div style={{ fontSize: '13px', color: '#16a34a' }}>Correct: <strong>{q.correct_option}. {q[`option_${q.correct_option?.toLowerCase()}`]}</strong></div>
-              {q.explanation && <div style={{ marginTop: '6px', fontSize: '12px', color: '#92400e', background: '#fffbeb', padding: '6px 10px', borderRadius: '6px' }}>💡 {q.explanation}</div>}
-            </div>
-          )
-        })}
-        <button onClick={() => { setActiveTest(null); setSubmitted(false); setResultData(null) }} style={S.btn('#1e3a5f')}>← Back to Tests</button>
-      </div>
-    )
-  }
-
+  // Setup screen
   return (
-    <>
-      <div style={{ ...S.card, padding: '16px 20px', marginBottom: '20px' }}>
-        <div style={{ fontWeight: '700', color: '#374151', marginBottom: '12px', fontSize: '14px' }}>Student details</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          <div><label style={S.label}>Student Name *</label><input value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="Enter student name" style={S.input} /></div>
-          <div><label style={S.label}>Roll No (optional)</label><input value={rollNo} onChange={e => setRollNo(e.target.value)} placeholder="e.g. 2025-001" style={S.input} /></div>
+    <div style={card}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 20 }}>📝 Online Test</div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div>
+          <label style={lbl}>Student Name *</label>
+          <input style={inp} value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="Enter name" />
+        </div>
+        <div>
+          <label style={lbl}>Subject *</label>
+          <select style={sel} value={subject} onChange={e => { setSubject(e.target.value); setChapter('All Chapters') }}>
+            <option value="">Select</option>
+            {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>Chapter</label>
+          <select style={{ ...sel, opacity: subject ? 1 : .5 }} value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject}>
+            {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>No. of Questions</label>
+          <select style={sel} value={count} onChange={e => setCount(parseInt(e.target.value))}>
+            {[10,15,20,25,50].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
       </div>
-      {loading
-        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading tests...</div>
-        : tests.length === 0
-          ? <div style={{ ...S.card, textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No tests yet. Create one in Test Builder.</div>
-          : tests.map(test => (
-            <div key={test.id} style={{ ...S.card, padding: '16px 20px', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>{test.title}</div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <span style={S.badge('#1e3a5f', '#eff6ff')}>{test.exam_type}</span>
-                    <span style={S.badge('#7c3aed', '#f3e8ff')}>{test.total_questions} questions</span>
-                    <span style={S.badge('#16a34a', '#dcfce7')}>{test.total_marks} marks</span>
-                    <span style={S.badge('#64748b', '#f1f5f9')}>{test.duration_minutes} min</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                  <button onClick={() => startTest(test)} style={S.btnSm('#16a34a')}>▶ Start</button>
-                  <button onClick={async () => { if (!window.confirm('Delete?')) return; await supabase.from('qbank_tests').delete().eq('id', test.id); fetchTests() }} style={S.btnSm('#dc2626')}>🗑</button>
-                </div>
-              </div>
-            </div>
-          ))
-      }
-    </>
-  )
-}
 
-// ─── TabResults ───────────────────────────────────────────────────────────────
-
-function TabResults() {
-  const [results,       setResults]       = useState([])
-  const [loading,       setLoading]       = useState(true)
-  const [filterTest,    setFilterTest]    = useState('All')
-  const [filterStudent, setFilterStudent] = useState('All')
-
-  useEffect(() => {
-    supabase.from('qbank_test_results').select('*').order('submitted_at', { ascending: false }).then(({ data }) => { if (data) setResults(data); setLoading(false) })
-  }, [])
-
-  const allTests    = [...new Set(results.map(r => r.test_title).filter(Boolean))]
-  const allStudents = [...new Set(results.map(r => r.student_name).filter(Boolean))]
-  const filtered    = results.filter(r => (filterTest === 'All' || r.test_title === filterTest) && (filterStudent === 'All' || r.student_name === filterStudent))
-  const avgPcnt     = filtered.length > 0 ? Math.round(filtered.reduce((a, r) => a + (r.percentage || 0), 0) / filtered.length) : 0
-
-  return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '14px', marginBottom: '24px' }}>
-        {[
-          { label: 'Total Attempts', value: filtered.length,                                                             color: '#1e3a5f', bg: '#eff6ff', icon: '📝' },
-          { label: 'Avg Score',      value: `${avgPcnt}%`,                                                               color: scoreColor(avgPcnt), bg: scoreBg(avgPcnt), icon: '📊' },
-          { label: 'Top Score',      value: filtered.length > 0 ? `${Math.max(...filtered.map(r => r.percentage || 0))}%` : '—', color: '#16a34a', bg: '#dcfce7', icon: '🏆' },
-          { label: 'Below 50%',      value: filtered.filter(r => r.percentage < 50).length,                              color: '#dc2626', bg: '#fee2e2', icon: '⚠️' },
-        ].map(c => (
-          <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize: '20px', marginBottom: '4px' }}>{c.icon}</div>
-            <p style={{ fontSize: '12px', color: c.color, fontWeight: '600', margin: 0 }}>{c.label}</p>
-            <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: c.color, margin: '2px 0 0' }}>{c.value}</h2>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-        <select value={filterTest}    onChange={e => setFilterTest(e.target.value)}    style={{ ...S.select, width: 'auto' }}><option value="All">All Tests</option>{allTests.map(t => <option key={t} value={t}>{t}</option>)}</select>
-        <select value={filterStudent} onChange={e => setFilterStudent(e.target.value)} style={{ ...S.select, width: 'auto' }}><option value="All">All Students</option>{allStudents.map(s => <option key={s} value={s}>{s}</option>)}</select>
-      </div>
-      {loading ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div> : (
-        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <thead><tr style={{ background: '#1e3a5f', color: 'white' }}>{['#','Student','Test','Score','%','Correct','Wrong','Skipped','Date'].map(h => <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: '600', fontSize: '12px' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {filtered.map((r, i) => (
-                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                  <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{i + 1}</td>
-                  <td style={{ padding: '10px 12px', fontWeight: '600', color: '#1e293b' }}>{r.student_name}</td>
-                  <td style={{ padding: '10px 12px', color: '#374151', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.test_title}</td>
-                  <td style={{ padding: '10px 12px', fontWeight: '700', color: '#1e293b' }}>{r.score}/{r.max_score}</td>
-                  <td style={{ padding: '10px 12px', fontWeight: '700', color: scoreColor(r.percentage) }}>{r.percentage}%</td>
-                  <td style={{ padding: '10px 12px', color: '#16a34a', fontWeight: '600' }}>{r.correct_count}</td>
-                  <td style={{ padding: '10px 12px', color: '#dc2626', fontWeight: '600' }}>{r.wrong_count}</td>
-                  <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.skipped_count}</td>
-                  <td style={{ padding: '10px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(r.submitted_at?.split('T')[0])}</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>No results yet.</td></tr>}
-            </tbody>
-          </table>
+      {subject && (
+        <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', marginBottom: 14 }}>
+          📊 <strong>{questions.filter(q => q.subject===subject && (chapter==='All Chapters'||q.chapter===chapter)).length}</strong> questions available · Timer: ~{Math.round(count*1.5)} minutes
         </div>
       )}
-    </>
-  )
-}
 
-// ─── QuestionBank (root) ──────────────────────────────────────────────────────
-
-function QuestionBank({ currentUser }) {
-  const [activeTab,   setActiveTab]   = useState(() => { try { return localStorage.getItem('gnsi_qbank_tab') || 'bank' } catch { return 'bank' } })
-  const [questions,   setQuestions]   = useState([])
-  const [loadingQ,    setLoadingQ]    = useState(true)
-  const [testCount,   setTestCount]   = useState(0)
-  const [resultCount, setResultCount] = useState(0)
-
-  const refetchQuestions = useCallback(async () => {
-    setLoadingQ(true)
-    const { data } = await fetchQuestions()
-    if (data) setQuestions(data)
-    setLoadingQ(false)
-  }, [])
-
-  const refetchCounts = useCallback(async () => {
-    const [t, r] = await Promise.all([
-      supabase.from('qbank_tests').select('id', { count: 'exact', head: true }),
-      supabase.from('qbank_test_results').select('id', { count: 'exact', head: true }),
-    ])
-    setTestCount(t.count || 0); setResultCount(r.count || 0)
-  }, [])
-
-  useEffect(() => { refetchQuestions(); refetchCounts() }, [])
-
-  const handleTabChange = (key) => {
-    setActiveTab(key)
-    try { localStorage.setItem('gnsi_qbank_tab', key) } catch {}
-  }
-
-  const badges = {
-    bank:    questions.length > 0 ? `${questions.length}` : null,
-    tests:   testCount   > 0 ? `${testCount}`   : null,
-    results: resultCount > 0 ? `${resultCount}` : null,
-  }
-
-  return (
-    <div style={S.page}>
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '26px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>📚 Question Bank & Test Generator</h1>
-        <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>AISSEE Class VI · Manage questions · AI generation · Test builder · Results tracker</p>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: '6px', marginBottom: '24px' }}>
-        {TABS.map(t => {
-          const active = activeTab === t.key
-          const badge  = badges[t.key]
-          return (
-            <button key={t.key} onClick={() => handleTabChange(t.key)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '10px 6px', fontWeight: '600', fontSize: '11px', cursor: 'pointer', background: active ? '#1e3a5f' : 'white', color: active ? 'white' : '#64748b', border: active ? '2px solid #1e3a5f' : '2px solid #e2e8f0', borderRadius: '10px', transition: 'all 0.15s ease', boxShadow: active ? '0 2px 10px rgba(30,58,95,0.25)' : 'none', position: 'relative', minHeight: '58px' }}>
-              <span style={{ fontSize: '18px', lineHeight: 1 }}>{t.icon}</span>
-              <span style={{ textAlign: 'center', lineHeight: 1.2 }}>{t.label}</span>
-              {badge && <span style={{ position: 'absolute', top: '4px', right: '4px', padding: '1px 5px', borderRadius: '999px', fontSize: '9px', fontWeight: '700', background: active ? 'rgba(255,255,255,0.3)' : '#1e3a5f', color: 'white' }}>{badge}</span>}
-            </button>
-          )
-        })}
-      </div>
-
-      {activeTab === 'bank'    && <TabBank questions={questions} loading={loadingQ} refetch={refetchQuestions} />}
-      {activeTab === 'upload'  && <TabUpload refetch={refetchQuestions} />}
-      {activeTab === 'ai'      && <TabAI refetch={refetchQuestions} />}
-      {activeTab === 'sources' && <TabSourceCollector refetchQuestions={refetchQuestions} />}
-      {activeTab === 'builder' && <TabBuilder questions={questions} refetch={refetchCounts} />}
-      {activeTab === 'tests'   && <TabTests currentUser={currentUser} />}
-      {activeTab === 'results' && <TabResults />}
+      <button onClick={handleStart} disabled={!subject || !studentName.trim()} style={btn(C.navy, !subject || !studentName.trim())}>
+        ▶ Start Test
+      </button>
     </div>
   )
 }
 
-export default QuestionBank
+// ─── Main QuestionBank Component ──────────────────────────────────────────────
+export default function QuestionBank({ currentUser }) {
+  const [tab,       setTab]       = useState('bank')
+  const [questions, setQuestions] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [toast,     setToast]     = useState(null)
+
+  const showToast = (msg, color = C.navy) => {
+    setToast({ msg, color })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  const refetch = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('qbank_questions').select('*').order('created_at', { ascending: false })
+    setQuestions(data || [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { refetch() }, [refetch])
+
+  const TABS = [
+    { key: 'bank',     icon: '📚', label: 'Question Bank'  },
+    { key: 'generate', icon: '🤖', label: 'AI Generator'   },
+    { key: 'paper',    icon: '📄', label: 'Create Paper'   },
+    { key: 'test',     icon: '📝', label: 'Online Test'    },
+  ]
+
+  return (
+    <div style={{ padding: '24px', fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+      {toast && <Toast msg={toast.msg} color={toast.color} />}
+
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: C.navy, letterSpacing: '-.02em' }}>Question Bank</div>
+        <div style={{ fontSize: 13, color: C.slate, marginTop: 4 }}>AISSEE · Sainik School · Navodaya — generate, store, test, and print</div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10, border: tab===t.key ? `2px solid ${C.navy}` : `2px solid ${C.border}`, background: tab===t.key ? C.navy : '#fff', color: tab===t.key ? '#fff' : C.slate, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all .12s' }}>
+            <span style={{ fontSize: 16 }}>{t.icon}</span>
+            {t.label}
+            {t.key === 'bank' && questions.length > 0 && (
+              <span style={{ padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: tab==='bank'?'rgba(255,255,255,.2)':C.navy, color: '#fff' }}>{questions.length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {tab === 'bank'     && <TabBank     questions={questions} loading={loading} refetch={refetch} showToast={showToast} />}
+      {tab === 'generate' && <TabGenerate questions={questions} refetch={refetch} showToast={showToast} />}
+      {tab === 'paper'    && <TabPaper    questions={questions} showToast={showToast} />}
+      {tab === 'test'     && <TabTest     questions={questions} showToast={showToast} />}
+    </div>
+  )
+}
+
+/*
+─────────────────────────────────────────────────────────────────────────────
+  VERCEL EDGE FUNCTION  →  /api/generate-questions.js
+  (create this file in your project root under /api/)
+─────────────────────────────────────────────────────────────────────────────
+
+export const config = { runtime: 'edge' }
+
+export default async function handler(req) {
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
+
+  const { prompt } = await req.json()
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  })
+
+  const data = await res.json()
+  const text = data.content?.map(b => b.type === 'text' ? b.text : '').join('').replace(/```json|```/g, '').trim()
+
+  try {
+    const questions = JSON.parse(text)
+    return new Response(JSON.stringify({ questions }), {
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    })
+  } catch {
+    return new Response(JSON.stringify({ questions: [], error: 'Parse failed' }), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+}
+─────────────────────────────────────────────────────────────────────────────
+*/
