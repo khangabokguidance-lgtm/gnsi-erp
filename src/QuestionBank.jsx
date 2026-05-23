@@ -215,151 +215,126 @@ function needsDiagram(questionText) {
 }
 
 // ── SMART BULK PASTE PARSER ───────────────────────────────────────────────────
+// Extracts options from a single line that may contain 1, 2, 3 or 4 options
+// Handles tabs, multiple spaces, and any combo of (A), A), A. formats
+function extractOptionsFromLine(line) {
+  // Normalise: replace tabs and multiple spaces with single space
+  const norm = line.replace(/\t+/g, ' ').replace(/  +/g, ' ').trim()
+  const result = {}
+  // Split on option markers — look for (A) or A) or A. at word boundary
+  // We find all positions of option markers first
+  const markerRe = /\(([a-dA-D])\)[ ]|([a-dA-D])[.)]\s/g
+  const positions = []
+  let mm
+  while ((mm = markerRe.exec(norm)) !== null) {
+    positions.push({ letter: (mm[1] || mm[2]).toUpperCase(), start: mm.index, end: mm.index + mm[0].length })
+  }
+  positions.forEach((pos, idx) => {
+    const valueStart = pos.end
+    const valueEnd   = idx + 1 < positions.length ? positions[idx + 1].start : norm.length
+    const value      = norm.slice(valueStart, valueEnd).trim()
+    if (value) result[pos.letter] = value
+  })
+  return result
+}
+
 function parseQuestions(rawText) {
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean)
+  // Keep original line breaks but normalise tabs within each line
+  const lines = rawText.split('\n').map(l => l.replace(/\r/g, '').trimEnd()).filter(l => l.trim())
   const questions = []
   let currentSubsectionHeading = ''
   let i = 0
 
-  // Detect answer line patterns
   const isAnswerLine = (line) => {
-    return /^ans(wer)?\s*[:.-]?\s*[a-d]/i.test(line) ||
-           /^\([a-d]\)\s*$/.test(line.trim()) ||
-           /^[a-d]\s*$/.test(line.trim())
+    const t = line.trim()
+    return /^ans(wer)?\s*[:.\-]?\s*[a-d]/i.test(t) ||
+           /^\([a-d]\)\s*$/i.test(t) ||
+           /^[a-d]\s*$/i.test(t)
   }
 
-  // Detect subsection heading: e.g. "1. Mathematical Terminology" or "Section A"
   const isHeading = (line) => {
-    return /^\d+\.\s+[A-Z][a-z]/.test(line) && line.length < 60 &&
-           !line.match(/^\d+\.\s+(which|what|find|how|if|the|a |an |select|choose)/i)
+    const t = line.trim()
+    return /^\d+\.\s+[A-Z]/.test(t) &&
+           t.length < 70 &&
+           !t.match(/^\d+\.\s+(which|what|find|how|if |the |a |an |select|choose|write|fill|solve|express|by |in |from |simplif)/i)
   }
 
-  // Detect question start
-  const isQuestionStart = (line) => {
-    return /^(Q?\d+[\.\)]\s+|Q\d+\s+)/i.test(line)
-  }
+  const isQuestionStart = (line) => /^(Q?\s*\d+[\.\)]\s+|Q\s*\d+\s+)/i.test(line.trim())
 
-  // Detect option line
-  const isOptionLine = (line) => {
-    return /^\(?[a-dA-D][\.\)]\s*.+/i.test(line) ||
-           /^\([a-dA-D]\)\s*.+/i.test(line)
-  }
+  const hasOptionMarker = (line) => /\(?\s*[a-dA-D]\s*[.)]\s*.{1,}/i.test(line.trim())
 
   while (i < lines.length) {
-    const line = lines[i]
+    const line = lines[i].trim()
 
-    // Check for subsection heading
+    // Subsection heading
     if (isHeading(line) && !isQuestionStart(line)) {
-      // Extract heading text (remove leading number)
       currentSubsectionHeading = line.replace(/^\d+\.\s*/, '').trim()
       i++; continue
     }
 
-    // Check for question start
+    // Question start
     if (isQuestionStart(line)) {
-      const qNum = line.match(/^Q?(\d+)/i)?.[1]
-      let questionText = line.replace(/^Q?\d+[\.\)]\s*/i, '').trim()
+      const qNum   = line.match(/^Q?\s*(\d+)/i)?.[1]
+      let qText    = line.replace(/^Q?\s*\d+[\.\)]\s*/i, '').trim()
 
-      // Collect continuation lines (not options, not next question)
+      // Collect multi-line question text (until we hit an option or next question)
       let j = i + 1
-      while (j < lines.length && !isOptionLine(lines[j]) && !isQuestionStart(lines[j]) && !isHeading(lines[j])) {
-        if (lines[j] && !isAnswerLine(lines[j])) {
-          questionText += ' ' + lines[j]
-        }
+      while (j < lines.length) {
+        const next = lines[j].trim()
+        if (hasOptionMarker(next) || isQuestionStart(next) || isHeading(next) || isAnswerLine(next)) break
+        if (next) qText += ' ' + next
         j++
       }
       i = j
 
-      // Collect options
+      // ── COLLECT OPTIONS ──────────────────────────────────────────────────────
       const options = { A:'', B:'', C:'', D:'' }
       let correctOption = ''
-      let optionsOnOneLine = false
+      let linesConsumed = 0
 
-      // Check if all options on one line: "(A) opt (B) opt (C) opt (D) opt"
-      if (i < lines.length) {
-        const combinedCheck = lines[i] + (lines[i+1] || '') + (lines[i+2] || '') + (lines[i+3] || '')
-        const allOptsMatch = combinedCheck.match(/\(?[aA][\.\)]\s*(.+?)\s*\(?[bB][\.\)]\s*(.+?)\s*\(?[cC][\.\)]\s*(.+?)\s*\(?[dD][\.\)]\s*(.+?)(?:\s*$|\n)/s)
-        if (allOptsMatch && lines[i].match(/\(?[aA][\.\)]/i) && lines[i].match(/\(?[bB][\.\)]/i)) {
-          // All on one line
-          const fullLine = lines[i]
-          const mA = fullLine.match(/\(?[aA][\.\)]\s*(.*?)(?=\s*\(?[bB][\.\)]|$)/)
-          const mB = fullLine.match(/\(?[bB][\.\)]\s*(.*?)(?=\s*\(?[cC][\.\)]|$)/)
-          const mC = fullLine.match(/\(?[cC][\.\)]\s*(.*?)(?=\s*\(?[dD][\.\)]|$)/)
-          const mD = fullLine.match(/\(?[dD][\.\)]\s*(.*)/)
-          if (mA) options.A = mA[1].trim()
-          if (mB) options.B = mB[1].trim()
-          if (mC) options.C = mC[1].trim()
-          if (mD) options.D = mD[1].trim()
-          i++; optionsOnOneLine = true
-        }
-      }
-
-      if (!optionsOnOneLine) {
-        // Options on separate lines — collect up to 4
-        // Handles: one per line, two per line (A+B or C+D), tabs between options
-        let optCount = 0
-        while (i < lines.length && optCount < 4) {
-          const optLine = lines[i]
-
-          // Skip answer lines
-          if (isAnswerLine(optLine)) break
-
-          // Stop if next question starts
-          if (isQuestionStart(optLine) && optCount > 0) break
-
-          // Try to extract ALL option letters present on this line
-          // Pattern: (A) text   (B) text   or   A) text   B) text   etc.
-          // We split on option markers and extract each
-          const allOnLine = {}
-          const optPattern = /\(?([a-dA-D])[\.\)]\s*(.*?)(?=\s*\(?[a-dA-D][\.\)]|$)/gi
-          let m
-          let foundAny = false
-          // Reset lastIndex
-          optPattern.lastIndex = 0
-          const testLine = optLine
-          while ((m = optPattern.exec(testLine)) !== null) {
-            const letter = m[1].toUpperCase()
-            let val = m[2].trim()
-            // Remove trailing tab/spaces
-            val = val.replace(/\s+$/, '').replace(/\t+$/, '')
-            if (val) {
-              allOnLine[letter] = val
-              foundAny = true
-            }
-          }
-
-          if (foundAny) {
-            Object.entries(allOnLine).forEach(([l, v]) => {
-              options[l] = v
-              optCount++
-            })
-            i++; continue
-          }
-
-          // No option found on this line — stop collecting
+      // Gather up to 4 lines that look like option lines
+      const optionLines = []
+      let k = i
+      while (k < lines.length && optionLines.length < 4) {
+        const ol = lines[k].trim()
+        if (!ol) { k++; continue }
+        if (isAnswerLine(ol))   break
+        if (isQuestionStart(ol) && linesConsumed > 0) break
+        if (isHeading(ol))      break
+        if (hasOptionMarker(ol)) {
+          optionLines.push(ol)
+          k++
+        } else {
           break
         }
       }
 
-      // Check for answer line immediately after options
-      if (i < lines.length && isAnswerLine(lines[i])) {
-        const ansMatch = lines[i].match(/[a-dA-D]/)
-        if (ansMatch) correctOption = ansMatch[0].toUpperCase()
+      // Parse each option line — may contain 1, 2, 3 or 4 options
+      optionLines.forEach(ol => {
+        const extracted = extractOptionsFromLine(ol)
+        Object.assign(options, extracted)
+      })
+      i = k
+
+      // Answer line immediately after options
+      if (i < lines.length && isAnswerLine(lines[i].trim())) {
+        const ans = lines[i].match(/[a-dA-D]/i)
+        if (ans) correctOption = ans[0].toUpperCase()
         i++
       }
 
-      if (questionText && (options.A || options.B)) {
+      if (qText && (options.A || options.B || options.C || options.D)) {
         questions.push({
           _id: questions.length,
           _qNum: parseInt(qNum) || questions.length + 1,
-          question: questionText.trim(),
+          question: qText.trim(),
           option_a: options.A,
           option_b: options.B,
           option_c: options.C,
           option_d: options.D,
           correct_option: correctOption,
           _subsectionHint: currentSubsectionHeading,
-          _needsDiagram: needsDiagram(questionText),
+          _needsDiagram: needsDiagram(qText),
           subject: '', chapter: '', subsection: '',
           difficulty: 'Medium', marks: 1,
           diagram_url: '',
