@@ -266,25 +266,28 @@ Return ONLY a valid JSON array, no markdown, no explanation:
 [{"question":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","difficulty":"Medium"}]`
 
     try {
-      const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY
-      if (!GEMINI_KEY) throw new Error('VITE_GEMINI_API_KEY not set in Vercel environment variables')
+      const OR_KEY = import.meta.env.VITE_OPENROUTER_KEY
+      if (!OR_KEY) throw new Error('VITE_OPENROUTER_KEY not set in Vercel environment variables')
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-          }),
-        }
-      )
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OR_KEY}`,
+          'HTTP-Referer': 'https://gnsi-erp.vercel.app',
+          'X-Title': 'GNSI Question Bank',
+        },
+        body: JSON.stringify({
+          model: 'google/gemma-3-27b-it:free',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 4096,
+        }),
+      })
 
       const data = await res.json()
       if (data.error) throw new Error(data.error.message)
 
-      const text  = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      const text = data.choices?.[0]?.message?.content || ''
       const clean = text.replace(/```json|```/g, '').trim()
       const match = clean.match(/\[[\s\S]*\]/)
       if (!match) throw new Error('No questions returned — try again')
