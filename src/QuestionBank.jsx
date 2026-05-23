@@ -270,7 +270,7 @@ Return ONLY a valid JSON array, no markdown, no explanation:
       if (!GEMINI_KEY) throw new Error('VITE_GEMINI_API_KEY not set in Vercel environment variables')
 
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
