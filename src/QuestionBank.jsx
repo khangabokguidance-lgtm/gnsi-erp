@@ -296,21 +296,47 @@ function parseQuestions(rawText) {
 
       if (!optionsOnOneLine) {
         // Options on separate lines — collect up to 4
+        // Handles: one per line, two per line (A+B or C+D), tabs between options
         let optCount = 0
         while (i < lines.length && optCount < 4) {
           const optLine = lines[i]
-          // Also handle two options on one line: "(A) opt  (B) opt"
-          const twoOpts = optLine.match(/\(?([aAbBcCdD])[\.\)]\s*(.*?)\s+\(?([aAbBcCdD])[\.\)]\s*(.*)/i)
-          if (twoOpts) {
-            options[twoOpts[1].toUpperCase()] = twoOpts[2].trim()
-            options[twoOpts[3].toUpperCase()] = twoOpts[4].trim()
-            optCount += 2; i++; continue
+
+          // Skip answer lines
+          if (isAnswerLine(optLine)) break
+
+          // Stop if next question starts
+          if (isQuestionStart(optLine) && optCount > 0) break
+
+          // Try to extract ALL option letters present on this line
+          // Pattern: (A) text   (B) text   or   A) text   B) text   etc.
+          // We split on option markers and extract each
+          const allOnLine = {}
+          const optPattern = /\(?([a-dA-D])[\.\)]\s*(.*?)(?=\s*\(?[a-dA-D][\.\)]|$)/gi
+          let m
+          let foundAny = false
+          // Reset lastIndex
+          optPattern.lastIndex = 0
+          const testLine = optLine
+          while ((m = optPattern.exec(testLine)) !== null) {
+            const letter = m[1].toUpperCase()
+            let val = m[2].trim()
+            // Remove trailing tab/spaces
+            val = val.replace(/\s+$/, '').replace(/\t+$/, '')
+            if (val) {
+              allOnLine[letter] = val
+              foundAny = true
+            }
           }
-          const singleOpt = optLine.match(/^\(?([a-dA-D])[\.\)]\s*(.+)/)
-          if (singleOpt) {
-            options[singleOpt[1].toUpperCase()] = singleOpt[2].trim()
-            optCount++; i++; continue
+
+          if (foundAny) {
+            Object.entries(allOnLine).forEach(([l, v]) => {
+              options[l] = v
+              optCount++
+            })
+            i++; continue
           }
+
+          // No option found on this line — stop collecting
           break
         }
       }
