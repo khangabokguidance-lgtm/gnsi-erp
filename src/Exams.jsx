@@ -2743,204 +2743,203 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
 // ─── SHARED: Report Card HTML Generator ──────────────────────────────────────
 function buildReportCardHTML(st, subjects, marksMap, course, allStudents, examName, examDate, institute, remarkText) {
   const courseMax = getCourseMax(course);
-  const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marksMap[`${sid}-${sub}`]) || 0), 0);
+  const getTotal = sid => subjects.reduce((s,sub)=>s+(Number(marksMap[`${sid}-${sub}`])||0),0);
   const total = getTotal(st.id);
   const pct = calcPct(total, course);
   const grade = getGrade(pct);
   const passed = pct >= 40;
-  const gradeColors = { "A+":"#0F6E56","A":"#185FA5","B+":"#534AB7","B":"#2563eb","C":"#BA7517","D":"#ea580c","F":"#A32D2D" };
-  const gradeColor = gradeColors[grade.label] || "#1a3c2e";
+  const gradeColors = {"A+":"#0F6E56","A":"#1B4F8A","B+":"#534AB7","B":"#2563eb","C":"#BA7517","D":"#ea580c","F":"#C0392B"};
+  const gradeColor = gradeColors[grade.label]||"#0A1628";
 
-  const sortedStudents = [...allStudents].map(s => ({ ...s, total: getTotal(s.id) })).sort((a,b) => b.total - a.total);
-  let rank = 1, prev = null;
-  for (let i = 0; i < sortedStudents.length; i++) {
-    if (i === 0) { rank = 1; prev = sortedStudents[i].total; } else if (sortedStudents[i].total !== prev) { rank++; prev = sortedStudents[i].total; }
-    if (sortedStudents[i].id === st.id) break;
+  const sortedStudents = [...allStudents].map(s=>({...s,total:getTotal(s.id)})).sort((a,b)=>b.total-a.total);
+  let rank=1,prev=null;
+  for(let i=0;i<sortedStudents.length;i++){
+    if(i===0){rank=1;prev=sortedStudents[i].total;}else if(sortedStudents[i].total!==prev){rank++;prev=sortedStudents[i].total;}
+    if(sortedStudents[i].id===st.id)break;
   }
-  const rankSuffix = rank===1?"st":rank===2?"nd":rank===3?"rd":"th";
-  const totalStudents = allStudents.length;
+  const rankSuffix=rank===1?"st":rank===2?"nd":rank===3?"rd":"th";
 
-  const subjectRows = subjects.map((s, idx) => {
-    const m = Number(marksMap[`${st.id}-${s}`]) || 0;
-    const subMax = getSubjectMax(course, s);
-    const subPct = Math.round((m / subMax) * 100);
-    const subPassed = subPct >= 40;
-    const barColor = subPct>=80?"#0F6E56":subPct>=60?"#185FA5":subPct>=40?"#BA7517":"#A32D2D";
-    const rowBg = idx%2===0?"#FDFAF3":"#FFFFFF";
-    return `<tr style="background:${rowBg}">
-      <td class="sub-name">${s}</td>
-      <td class="marks-cell">${m}<span class="marks-max">/${subMax}</span></td>
-      <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${subPct}%;background:${barColor}"></div></div></td>
-      <td class="pct-cell" style="color:${barColor}">${subPct}%</td>
-      <td class="result-cell"><span class="result-pill" style="background:${subPassed?"#E1F5EE":"#FCEBEB"};color:${subPassed?"#0F6E56":"#A32D2D"}">${subPassed?"✓ PASS":"✗ FAIL"}</span></td>
+  const subjectRows = subjects.map((s,idx)=>{
+    const m=Number(marksMap[`${st.id}-${s}`])||0;
+    const subMax=getSubjectMax(course,s);
+    const subPct=Math.round((m/subMax)*100);
+    const subPassed=subPct>=40;
+    const barColor=subPct>=80?"#0F6E56":subPct>=60?"#1B4F8A":subPct>=40?"#BA7517":"#C0392B";
+    const gradeLbl=subPct>=90?"A+":subPct>=80?"A":subPct>=70?"B+":subPct>=60?"B":subPct>=50?"C":subPct>=40?"D":"F";
+    return `<tr>
+      <td style="text-align:left;font-weight:600;color:#2D3748">${idx+1}. ${s}</td>
+      <td>${subMax}</td>
+      <td style="font-family:'EB Garamond',serif;font-size:14px;font-weight:700;color:#0A1628">${m}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <div style="flex:1;height:6px;background:#E2E8F0;border-radius:3px;overflow:hidden;">
+            <div style="width:${subPct}%;height:100%;background:${barColor};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:10px;font-weight:700;color:${barColor};min-width:32px">${subPct}%</span>
+        </div>
+      </td>
+      <td><span style="display:inline-block;padding:1px 8px;border-radius:2px;font-family:'Libre Baskerville',serif;font-size:11px;font-weight:700;color:${barColor};border:1px solid ${barColor};background:${barColor}18">${gradeLbl}</span></td>
+      <td><span style="font-size:10px;font-weight:700;color:${subPassed?"#0F6E56":"#C0392B"}">${subPassed?"✓ PASS":"✗ FAIL"}</span></td>
     </tr>`;
   }).join("");
 
-  const remarkBlock = remarkText ? `<div class="remark-box"><div class="remark-label">✦ Teacher's Remarks</div><div class="remark-text">"${remarkText}"</div></div>` : "";
+  const remarkBlock = remarkText
+    ? `<div class="remark-box"><div class="remark-label">✦ Teacher's Remarks</div><div class="remark-text">"${remarkText}"</div></div>`
+    : "";
 
   return `<div class="card">
     <div class="top-strip"></div>
     <div class="header">
-      <div class="header-pattern"></div>
-      <div class="header-inner">
-        <div class="logo-ring">${institute.logoUrl?`<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%"/>`:`<div class="logo-text">GNSI</div>`}</div>
-        <div class="header-text">
-          <div class="eyebrow">Official Academic Record · ${institute.academicYear||"2025-2026"}</div>
-          <div class="inst-name">${institute.name||"Guidance Navodaya & Sainik Institute"}</div>
-          <div class="inst-addr">${institute.address||"Khangabok, Manipur"}</div>
-          <div class="doc-title">Report Card</div>
+      <div class="logo-ring">
+        ${institute.logoUrl?`<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%"/>`:`<div class="logo-text">GNSI</div>`}
+      </div>
+      <div class="header-center">
+        <div class="eyebrow">Official Academic Record · ${institute.academicYear||"2025-2026"}</div>
+        <div class="inst-name">${institute.name||"Guidance Navodaya & Sainik Institute"}</div>
+        <div class="inst-addr">${institute.address||"Khangabok, Thoubal, Manipur − 795131"}</div>
+      </div>
+      <div class="doc-badge">
+        <div class="doc-badge-title">REPORT<br/>CARD</div>
+        <div class="doc-badge-sub">${examName}</div>
+      </div>
+    </div>
+
+    <div class="exam-result-bar">
+      <div class="exam-info">
+        <div class="exam-info-item">
+          <span class="exam-info-label">Examination</span>
+          <span class="exam-info-value">${examName}</span>
         </div>
-        <div class="exam-tag"><div class="exam-tag-inner">
-          <div class="exam-tag-name">${examName}</div>
-          <div class="exam-tag-date">${examDate||""}</div>
-        </div></div>
-      </div>
-    </div>
-    <div class="gold-rule"><div class="gold-rule-line"></div><div class="gold-rule-ornament">◆ &nbsp; ◆ &nbsp; ◆</div><div class="gold-rule-line"></div></div>
-    <div class="student-strip">
-      <div class="student-strip-left">
-        <div class="info-block"><div class="info-label">Student Name</div><div class="info-value big">${st.name}</div></div>
-        <div class="info-block"><div class="info-label">GCC Number</div><div class="info-value big">${st.gcc_no||"—"}</div></div>
-        <div class="info-block"><div class="info-label">Course / Batch</div><div class="info-value">${st.course||course} · ${st.class_name||"—"}</div></div>
-        <div class="info-block"><div class="info-label">Class Rank</div><div class="info-value rank-val" style="color:${rank<=3?"#B8860B":"#1a3c2e"}">${rank}<sup style="font-size:12px">${rankSuffix}</sup> <span style="font-size:12px;color:#9CA3AF;font-family:'DM Sans',sans-serif">/ ${totalStudents}</span></div></div>
-      </div>
-      <div class="student-strip-right">
-        <div class="grade-circle" style="border-color:${gradeColor};box-shadow:0 0 0 6px ${gradeColor}18;background:${grade.bg}">
-          <div class="grade-letter" style="color:${gradeColor}">${grade.label}</div>
-          <div class="grade-sub" style="color:${gradeColor}">GRADE</div>
+        <div class="exam-info-item">
+          <span class="exam-info-label">Date</span>
+          <span class="exam-info-value">${examDate||"—"}</span>
         </div>
-        <div class="status-pill" style="background:${passed?"#E1F5EE":"#FCEBEB"};color:${passed?"#0F6E56":"#A32D2D"};border:1px solid ${passed?"#BBF7D0":"#FECACA"}">${passed?"✓ PASS":"✗ FAIL"}</div>
+        <div class="exam-info-item">
+          <span class="exam-info-label">Academic Year</span>
+          <span class="exam-info-value">${institute.academicYear||"2025-2026"}</span>
+        </div>
+        <div class="exam-info-item">
+          <span class="exam-info-label">Class Rank</span>
+          <span class="exam-info-value" style="color:${rank<=3?"#f0c040":"white"}">${rank}<sup style="font-size:10px">${rankSuffix}</sup> / ${allStudents.length}</span>
+        </div>
+      </div>
+      <div class="result-pill-bar">
+        <span style="font-family:'Libre Baskerville',serif;font-size:20px;font-weight:700;color:${gradeColor}">${grade.label}</span>
+        <span style="font-size:9px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:2px;background:${passed?"#E1F5EE":"#FCEBEB"};color:${passed?"#0F6E56":"#C0392B"};border:1px solid ${passed?"#BBF7D0":"#FECACA"}">${passed?"PASS":"FAIL"}</span>
       </div>
     </div>
-    <div class="score-bar-row">
-      <div class="score-stat"><div class="score-stat-label">Marks Obtained</div><div class="score-stat-value">${total}<span style="font-size:13px;opacity:0.5">/${courseMax}</span></div></div>
-      <div class="score-stat"><div class="score-stat-label">Percentage</div><div class="score-stat-value pct-highlight">${pct.toFixed(1)}%</div></div>
-      <div class="score-stat"><div class="score-stat-label">Grade Points</div><div class="score-stat-value">${grade.gpa.toFixed(1)}</div><div class="score-stat-sub">GPA / 4.0</div></div>
-      <div class="score-stat"><div class="score-stat-label">Subjects</div><div class="score-stat-value">${subjects.length}</div><div class="score-stat-sub">attempted</div></div>
-      <div class="score-stat"><div class="score-stat-label">Class Rank</div><div class="score-stat-value">${rank}<span style="font-size:13px;opacity:0.5">/${totalStudents}</span></div></div>
-    </div>
-    <div class="subjects-section">
-      <div class="section-heading">Subject-wise Performance</div>
-      <table class="sub-table">
-        <thead><tr><th>Subject</th><th class="center">Score</th><th>Performance Bar</th><th class="center">%</th><th class="center">Result</th></tr></thead>
-        <tbody>
-          ${subjectRows}
-          <tr class="total-row">
-            <td class="total-label">Grand Total</td>
-            <td class="total-marks" style="text-align:center">${total}<span style="font-size:12px;color:#9CA3AF;font-weight:400">/${courseMax}</span></td>
-            <td><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${gradeColor}"></div></div></td>
-            <td style="text-align:center;font-size:16px;font-weight:800;color:${gradeColor}">${pct.toFixed(1)}%</td>
-            <td style="text-align:center"><span class="result-pill" style="background:${grade.bg};color:${gradeColor};font-size:11px">${grade.label} · ${grade.gpa.toFixed(1)} GPA</span></td>
-          </tr>
-        </tbody>
+
+    <div class="student-section">
+      <div class="section-title">Candidate Details</div>
+      <table class="student-table">
+        <tr>
+          <td class="lbl">Student Name</td>
+          <td class="val big" colspan="3">${st.name}</td>
+        </tr>
+        <tr>
+          <td class="lbl">GCC / Roll No.</td>
+          <td class="val big" style="letter-spacing:3px">${String(st.gcc_no||"").padStart(6,"0")}</td>
+          <td class="lbl">Admission No.</td>
+          <td class="val">${st.admission_no||"—"}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Course</td>
+          <td class="val">${st.course||course}</td>
+          <td class="lbl">Batch</td>
+          <td class="val">${st.class_name||"—"}</td>
+        </tr>
       </table>
     </div>
-    ${remarkBlock}
-    <div class="sig-section">
-      <div class="sig-block">
-        <div class="sig-svg" style="height:44px"></div>
-        <div class="sig-line"></div>
-        <div class="sig-title">Student's Signature</div>
+
+    <div class="score-grid" style="margin:0 16px;">
+      <div class="score-cell">
+        <div class="score-lbl">Marks Obtained</div>
+        <div class="score-val">${total}<span style="font-size:11px;opacity:.5">/${courseMax}</span></div>
       </div>
-      <div class="seal-block"><div class="seal"><div class="seal-word">Official</div><div class="seal-star">★</div><div class="seal-word">Seal</div></div></div>
-      <div class="sig-block">
-        <div class="sig-svg" style="height:44px"></div>
-        <div class="sig-line"></div>
-        <div class="sig-title">Class Teacher</div>
+      <div class="score-cell">
+        <div class="score-lbl">Percentage</div>
+        <div class="score-val gold">${pct.toFixed(1)}%</div>
       </div>
-      <div class="sig-block">
-        <div class="sig-svg" style="height:44px"></div>
-        <div class="sig-line"></div>
-        <div class="sig-title">Head of Institute</div>
+      <div class="score-cell">
+        <div class="score-lbl">Grade</div>
+        <div class="score-val" style="color:${gradeColor}">${grade.label}</div>
+        <div class="score-sub">${grade.gpa.toFixed(1)} GPA</div>
+      </div>
+      <div class="score-cell">
+        <div class="score-lbl">Subjects</div>
+        <div class="score-val">${subjects.length}</div>
+      </div>
+      <div class="score-cell">
+        <div class="score-lbl">Class Rank</div>
+        <div class="score-val" style="color:${rank<=3?"#f0c040":"white"}">${rank}<sup style="font-size:11px">${rankSuffix}</sup></div>
+        <div class="score-sub">of ${allStudents.length}</div>
       </div>
     </div>
-    <div class="footer-strip"><div class="footer-text">${institute.name||"GNSI"} &nbsp;·&nbsp; ${institute.address||"Khangabok, Manipur"} &nbsp;·&nbsp; ${examName} &nbsp;·&nbsp; Academic Year ${institute.academicYear||"2025-2026"}</div></div>
+
+    <div class="marks-section">
+      <div class="section-title" style="margin-top:8px">Subject-wise Performance</div>
+      <table class="marks-table">
+        <thead>
+          <tr>
+            <th style="text-align:left;width:32%">Subject</th>
+            <th>Max Marks</th>
+            <th>Marks Obtained</th>
+            <th style="width:25%">Performance</th>
+            <th>Grade</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>${subjectRows}</tbody>
+        <tfoot>
+          <tr>
+            <td style="text-align:left;font-family:'Libre Baskerville',serif;color:#0A1628;font-size:12px">Grand Total</td>
+            <td>${courseMax}</td>
+            <td style="font-family:'EB Garamond',serif;font-size:16px;font-weight:700;color:#0A1628">${total}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <div style="flex:1;height:7px;background:#E2E8F0;border-radius:3px;overflow:hidden;">
+                  <div style="width:${pct}%;height:100%;background:${gradeColor};border-radius:3px;"></div>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:${gradeColor}">${pct.toFixed(1)}%</span>
+              </div>
+            </td>
+            <td><span style="display:inline-block;padding:2px 9px;border-radius:2px;font-family:'Libre Baskerville',serif;font-size:12px;font-weight:700;color:${gradeColor};border:1px solid ${gradeColor};background:${gradeColor}18">${grade.label}</span></td>
+            <td><span style="font-size:11px;font-weight:700;color:${passed?"#0F6E56":"#C0392B"}">${passed?"✓ PASS":"✗ FAIL"}</span></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    ${remarkBlock}
+
+    <div class="sig-section">
+      <div class="sig-block">
+        <div class="sig-space"></div>
+        <div class="sig-label">Student's Signature</div>
+      </div>
+      <div class="seal-block">
+        <div class="seal">
+          <div class="seal-word">Official</div>
+          <div class="seal-star">★</div>
+          <div class="seal-word">Seal</div>
+        </div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-space"></div>
+        <div class="sig-label">Class Teacher</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-space"></div>
+        <div class="sig-label">Head of Institute</div>
+      </div>
+    </div>
+
+    <div class="footer-strip">
+      <div class="footer-text">${institute.name||"GNSI"} · ${institute.address||"Khangabok, Manipur"} · ${examName} · Academic Year ${institute.academicYear||"2025-2026"}</div>
+    </div>
+    <div class="bottom-strip"></div>
   </div>`;
 }
-
-const REPORT_CARD_CSS = `
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  :root{--green:#1a3c2e;--green2:#2A5C45;--green3:#3a7a5c;--gold:#B8860B;--gold2:#D4A017;--gold3:#f0c040;--cream:#FDFAF3;--cream2:#F5EFE0;--border:#D5C89A;--text:#1C1A16;--text2:#5C5440;}
-  @page{margin:0.7cm;size:A4;}
-  body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;color:var(--text);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  .no-print{text-align:center;margin-bottom:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-  .no-print button{padding:9px 24px;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;}
-  .btn-print{background:#1a3c2e;color:white;} .btn-close{background:#e5e7eb;color:#374151;}
-  .card{width:740px;margin:0 auto 32px;background:var(--cream);border-radius:3px;box-shadow:0 8px 40px rgba(0,0,0,0.18),0 0 0 1px var(--border);position:relative;overflow:hidden;}
-  .top-strip{height:6px;background:linear-gradient(90deg,#0d2818 0%,var(--green) 30%,var(--gold) 60%,var(--gold3) 80%,var(--green3) 100%);}
-  .header{background:linear-gradient(150deg,#0d2818 0%,var(--green) 45%,#1e4d36 100%);padding:22px 32px 18px;position:relative;z-index:1;overflow:hidden;}
-  .header-pattern{position:absolute;inset:0;opacity:0.04;background-image:repeating-linear-gradient(45deg,var(--gold3) 0px,var(--gold3) 1px,transparent 1px,transparent 12px);}
-  .header-inner{display:flex;align-items:center;gap:18px;position:relative;z-index:1;}
-  .logo-ring{width:68px;height:68px;border-radius:50%;border:2.5px solid var(--gold2);box-shadow:0 0 0 4px rgba(184,134,11,0.2);background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .logo-text{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--gold3);letter-spacing:1px;}
-  .header-text{flex:1;text-align:center;}
-  .eyebrow{font-size:9px;letter-spacing:5px;text-transform:uppercase;color:rgba(240,192,64,0.75);margin-bottom:4px;}
-  .inst-name{font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#fff;letter-spacing:.3px;line-height:1.2;margin-bottom:3px;}
-  .inst-addr{font-size:11px;color:rgba(255,255,255,0.65);margin-bottom:3px;}
-  .doc-title{display:inline-block;font-family:'Cormorant Garamond',serif;font-size:12px;font-style:italic;color:var(--gold3);letter-spacing:2px;border-top:1px solid rgba(240,192,64,0.4);border-bottom:1px solid rgba(240,192,64,0.4);padding:2px 16px;margin-top:5px;}
-  .exam-tag-inner{background:rgba(184,134,11,0.18);border:1px solid rgba(240,192,64,0.4);border-radius:6px;padding:7px 12px;}
-  .exam-tag-name{font-family:'Playfair Display',serif;font-size:12px;font-weight:600;color:var(--gold3);letter-spacing:.5px;line-height:1.3;}
-  .exam-tag-date{font-size:11px;color:rgba(255,255,255,0.55);margin-top:2px;}
-  .gold-rule{display:flex;align-items:center;padding:0 32px;background:var(--cream2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);height:22px;}
-  .gold-rule-line{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--gold2),transparent);}
-  .gold-rule-ornament{color:var(--gold2);font-size:11px;margin:0 12px;}
-  .student-strip{display:flex;align-items:stretch;background:white;border-bottom:1px solid #EDE8D8;}
-  .student-strip-left{flex:1;padding:16px 32px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;border-right:1px solid #EDE8D8;}
-  .info-block{padding:0 14px;border-right:1px solid #EDE8D8;}
-  .info-block:first-child{padding-left:0;} .info-block:last-child{border-right:none;}
-  .info-label{font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:4px;}
-  .info-value{font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:600;color:var(--text);}
-  .info-value.big{font-family:'Playfair Display',serif;font-size:16px;color:var(--green);}
-  .info-value.rank-val{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;}
-  .student-strip-right{width:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;gap:6px;}
-  .grade-circle{width:68px;height:68px;border-radius:50%;border:3px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;}
-  .grade-letter{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;line-height:1;}
-  .grade-sub{font-size:8px;font-weight:600;letter-spacing:1px;margin-top:1px;}
-  .status-pill{font-size:10px;font-weight:700;letter-spacing:1.5px;padding:3px 10px;border-radius:999px;}
-  .score-bar-row{display:flex;background:var(--green);}
-  .score-stat{flex:1;text-align:center;padding:10px 6px;border-right:1px solid rgba(255,255,255,0.1);}
-  .score-stat:last-child{border-right:none;}
-  .score-stat-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(240,192,64,0.7);margin-bottom:3px;}
-  .score-stat-value{font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:white;line-height:1;}
-  .score-stat-sub{font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px;}
-  .pct-highlight{color:var(--gold3)!important;}
-  .subjects-section{padding:16px 32px;}
-  .section-heading{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:var(--green);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:10px;}
-  .section-heading::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);}
-  .sub-table{width:100%;border-collapse:collapse;font-size:13px;}
-  .sub-table thead th{padding:5px 8px;text-align:left;font-size:8.5px;letter-spacing:2px;text-transform:uppercase;color:var(--text2);font-weight:600;border-bottom:2px solid var(--border);}
-  .sub-table thead th.center{text-align:center;}
-  .sub-name{padding:9px 8px;font-weight:500;color:var(--text);width:36%;}
-  .marks-cell{padding:9px 8px;text-align:center;font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--green);width:10%;}
-  .marks-max{font-size:10px;color:#9CA3AF;font-weight:400;}
-  .bar-cell{padding:9px 8px;width:28%;}
-  .bar-track{height:7px;background:#E5E7EB;border-radius:999px;overflow:hidden;}
-  .bar-fill{height:100%;border-radius:999px;}
-  .pct-cell{padding:9px 6px;text-align:center;font-weight:700;font-size:12px;width:10%;}
-  .result-cell{padding:9px 8px;text-align:center;width:14%;}
-  .result-pill{font-size:10px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;}
-  .total-row td{padding:10px 8px;border-top:2px solid var(--border);background:var(--cream2);font-weight:700;}
-  .total-label{font-family:'Playfair Display',serif;font-size:13px;color:var(--green);}
-  .total-marks{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--green);}
-  .remark-box{margin:0 32px 14px;padding:12px 16px;background:white;border:1px solid var(--border);border-left:4px solid var(--gold);border-radius:4px;}
-  .remark-label{font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:5px;}
-  .remark-text{font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;color:var(--text2);line-height:1.6;}
-  .sig-section{display:flex;align-items:flex-end;justify-content:space-between;padding:14px 32px 16px;background:white;border-top:1px solid #EDE8D8;gap:16px;}
-  .sig-block{text-align:center;flex:1;}
-  .sig-svg{margin-bottom:2px;display:flex;justify-content:center;}
-  .sig-line{height:1.5px;background:linear-gradient(90deg,transparent,var(--border),var(--text),var(--border),transparent);margin:4px 10px;}
-  .sig-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-top:3px;}
-  .sig-name-sub{font-size:10.5px;color:var(--green);font-weight:600;margin-top:2px;}
-  .seal-block{flex:0 0 76px;display:flex;flex-direction:column;align-items:center;}
-  .seal{width:68px;height:68px;border-radius:50%;border:2px dashed var(--gold);background:var(--cream2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
-  .seal-word{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-weight:700;}
-  .seal-star{font-size:15px;color:var(--gold);line-height:1;}
-  .footer-strip{background:linear-gradient(90deg,#0d2818,var(--green),#0d2818);padding:7px 32px;position:relative;}
-  .footer-strip::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--gold),var(--gold3),var(--gold));}
-  .footer-text{font-size:9.5px;color:rgba(255,255,255,0.55);text-align:center;letter-spacing:.5px;}
-  .page-break{page-break-after:always;height:0;}
-  @media print{body{background:white;padding:0;}.no-print{display:none!important;}.card{box-shadow:none;border-radius:0;width:100%;margin:0 auto 0;}}
-`;
 
 // ─── BULK REPORTS TAB ─────────────────────────────────────────────────────────
 function BulkReports({ courseSubjects, examTypes, students, institute, schedule }) {
@@ -3102,7 +3101,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
       <style>${REPORT_CARD_CSS}</style>
     </head><body>
       <div class="no-print">
-        <button class="btn-print" onclick="window.print()">🖨️ Print All (${cards.length}) Report Cards</button>
+        <button class="btn-print" onclick="this.textContent='⏳ Loading...';this.disabled=true;document.fonts.ready.then(()=>{setTimeout(()=>{window.print();this.disabled=false;this.textContent='🖨️ Print All (${cards.length}) Report Cards';},400);});">🖨️ Print All (${cards.length}) Report Cards</button>
         <button class="btn-close" onclick="window.close()">✕ Close</button>
       </div>
       ${cards.join(sep)}
@@ -3113,143 +3112,326 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
 
   // ── Admit card builder (reuse from AdmitCardsTab) ──
   const buildAdmitCardHTML = (st) => {
-    const scheduleRows = acSchedule.length
-      ? acSchedule.sort((a,b)=>a.exam_date.localeCompare(b.exam_date)).map(s=>`<tr><td>${s.exam_date}</td><td>${s.time||"—"}</td><td>${s.subject}</td><td style="text-align:center">${s.total_marks}</td><td style="text-align:center">${s.room||"—"}</td></tr>`).join("")
-      : `<tr><td colspan="5" style="text-align:center;color:#999;padding:14px">No schedule entries.</td></tr>`;
-    return `<div class="admit-card">
-      <div class="watermark">ADMIT CARD</div>
-      <div class="top-strip"></div>
-      <div class="card-header">
-        <div class="logo-circle">${institute.logoUrl?`<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%"/>`:`<div class="logo-initials">GNSI</div>`}</div>
-        <div class="header-center">
-          <div class="inst-eyebrow">GOVERNMENT AFFILIATED · EST. 2015</div>
-          <div class="inst-name">${institute.name||"Guidance Navodaya & Sainik Institute"}</div>
-          <div class="inst-addr">${institute.address||"Khangabok, Manipur"}</div>
-          <div class="inst-tagline">${institute.tagline||"Excellence in Education"}</div>
+  const scheduleRows = acSchedule.length
+    ? acSchedule.sort((a,b)=>a.exam_date.localeCompare(b.exam_date)).map(s=>
+        `<tr>
+          <td>${s.exam_date}</td>
+          <td>${s.time||"—"}</td>
+          <td style="font-weight:600">${s.subject}</td>
+          <td style="text-align:center">${s.total_marks}</td>
+          <td style="text-align:center">${s.room||"—"}</td>
+        </tr>`
+      ).join("")
+    : `<tr><td colspan="5" style="text-align:center;color:#999;padding:10px;font-style:italic">No schedule entries added yet.</td></tr>`;
+
+  const gcc = String(st.gcc_no||"").padStart(6,"0");
+
+  return `<div class="admit-card">
+    <div class="top-tricolor"></div>
+    <div class="card-header">
+      <div class="logo-circle">
+        ${institute.logoUrl
+          ? `<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%"/>`
+          : `<div class="logo-initials">GNSI</div>`}
+      </div>
+      <div class="header-center">
+        <div class="inst-line1">Ministry of Education · Affiliated Coaching Institute</div>
+        <div class="inst-name">${institute.name||"Guidance Navodaya & Sainik Institute"}</div>
+        <div class="inst-addr">${institute.address||"Khangabok, Thoubal, Manipur − 795131"}</div>
+        <div class="inst-tagline">${institute.tagline||"Excellence in Competitive Education"}</div>
+      </div>
+      <div class="admit-badge">
+        <div class="admit-badge-line">ADMIT</div>
+        <div class="admit-badge-line">CARD</div>
+      </div>
+    </div>
+
+    <div class="exam-banner">
+      <div class="exam-title">✦ ${acExamName}</div>
+      <div class="exam-year">Academic Year ${institute.academicYear||"2025-2026"}</div>
+    </div>
+
+    <div class="notice-bar">
+      ⚠ This Admit Card must be produced at the Examination Hall. Without this card, entry will not be permitted.
+    </div>
+
+    <div class="info-section">
+      <div class="section-head">Candidate Information</div>
+      <div class="candidate-row">
+        <div class="candidate-details">
+          <table class="info-table">
+            <tr>
+              <td class="lbl">Candidate Name</td>
+              <td class="val name" colspan="3">${st.name}</td>
+            </tr>
+            <tr>
+              <td class="lbl">Roll / GCC Number</td>
+              <td class="val big">${gcc}</td>
+              <td class="lbl">Admission No.</td>
+              <td class="val">${st.admission_no||"—"}</td>
+            </tr>
+            <tr>
+              <td class="lbl">Course</td>
+              <td class="val">${st.course||acCourse}</td>
+              <td class="lbl">Batch</td>
+              <td class="val">${st.class_name||acCourse}</td>
+            </tr>
+            <tr>
+              <td class="lbl">Institute</td>
+              <td class="val" colspan="3">${institute.name||"GNSI"}, ${institute.address||"Khangabok, Manipur"}</td>
+            </tr>
+            <tr>
+              <td class="lbl">Academic Year</td>
+              <td class="val">${institute.academicYear||"2025-2026"}</td>
+              <td class="lbl">Examination</td>
+              <td class="val" style="font-weight:700;color:#1B4F8A">${acExamName}</td>
+            </tr>
+          </table>
         </div>
-        <div class="header-right"><div class="admit-badge"><div class="admit-badge-text">ADMIT</div><div class="admit-badge-text">CARD</div></div></div>
-      </div>
-      <div class="gold-divider"><div class="gold-line"></div><div class="gold-diamond">◆</div><div class="gold-line"></div></div>
-      <div class="exam-banner"><div class="exam-banner-title">${acExamName}</div><div class="exam-banner-year">${institute.academicYear||"2025-2026"}</div></div>
-      <div class="student-section">
-        <div class="student-info-grid">
-          <div class="info-row">
-            <div class="info-field"><div class="field-label">Student Name</div><div class="field-value name-value">${st.name}</div></div>
-            <div class="info-field"><div class="field-label">GCC Number</div><div class="field-value gcc-value">${st.gcc_no||"—"}</div></div>
+        <div class="photo-col">
+          <div class="photo-box">
+            ${st.photo_url
+              ? `<img src="${st.photo_url}" style="width:100%;height:100%;object-fit:cover"/>`
+              : `Affix<br/>Passport<br/>Size<br/>Photo`}
           </div>
-          <div class="info-row">
-            <div class="info-field"><div class="field-label">Course / Batch</div><div class="field-value">${st.course||acCourse} — ${st.class_name||acCourse}</div></div>
-            <div class="info-field"><div class="field-label">Admission No.</div><div class="field-value">${st.admission_no||"—"}</div></div>
-            <div class="info-field"><div class="field-label">Academic Year</div><div class="field-value">${institute.academicYear||"2025-2026"}</div></div>
-          </div>
+          <div class="photo-label">Photograph</div>
         </div>
-        <div class="photo-box"><div class="photo-inner"><div class="photo-text">Affix<br/>Passport<br/>Photo</div></div><div class="photo-label">Photograph</div></div>
       </div>
-      <div class="gold-divider mini"><div class="gold-line"></div><div class="gold-diamond">◆</div><div class="gold-line"></div></div>
-      <div class="schedule-section">
-        <div class="section-title">📅 Examination Schedule</div>
-        <table class="sched-table"><thead><tr><th>Date</th><th>Time</th><th>Subject</th><th>Max Marks</th><th>Hall / Room</th></tr></thead><tbody>${scheduleRows}</tbody></table>
-      </div>
-      <div class="instructions">
-        <div class="instr-title">📋 Important Instructions</div>
+    </div>
+
+    <div class="sched-section">
+      <div class="section-head" style="margin-top:8px">Examination Schedule</div>
+      <table class="sched-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Subject / Paper</th>
+            <th>Max Marks</th>
+            <th>Examination Hall</th>
+          </tr>
+        </thead>
+        <tbody>${scheduleRows}</tbody>
+      </table>
+    </div>
+
+    <div class="instr-section">
+      <div class="section-head" style="margin-top:8px">Important Instructions to Candidates</div>
+      <div class="instr-box">
+        <div class="instr-head">⚠ Read carefully before appearing for examination</div>
         <div class="instr-grid">
-          <div class="instr-item">① Carry this admit card to the examination hall.</div>
-          <div class="instr-item">② Arrive at least 15 minutes before the exam.</div>
-          <div class="instr-item">③ Electronic devices are strictly prohibited.</div>
-          <div class="instr-item">④ This card must be presented on demand.</div>
-          <div class="instr-item">⑤ Students without this card will not be permitted.</div>
-          <div class="instr-item">⑥ Any malpractice will lead to disqualification.</div>
+          <div class="instr-item">① This Admit Card must be carried to the examination hall.</div>
+          <div class="instr-item">② Report at the hall at least 15 minutes before start time.</div>
+          <div class="instr-item">③ Mobile phones and electronic devices are strictly banned.</div>
+          <div class="instr-item">④ This card must be surrendered on demand by the invigilator.</div>
+          <div class="instr-item">⑤ Candidates without this card will not be permitted entry.</div>
+          <div class="instr-item">⑥ Any malpractice will result in immediate disqualification.</div>
         </div>
       </div>
-      <div class="signatures">
-        <div class="sig-block"><div class="sig-digital" style="height:38px"></div><div class="sig-line-draw"></div><div class="sig-label">Student's Signature</div></div>
-        <div class="sig-center"><div class="official-seal"><div class="seal-inner"><div class="seal-word">OFFICIAL</div><div class="seal-star">★</div><div class="seal-word">SEAL</div></div></div></div>
-        <div class="sig-block sig-right">
-          <div class="sig-digital" style="height:38px"></div>
-          <div class="sig-line-draw"></div>
-          <div class="sig-label">Exam Coordinator</div>
-        </div>
-        <div class="sig-block sig-right">
-          <div class="sig-digital" style="height:38px"></div>
-          <div class="sig-line-draw"></div>
-          <div class="sig-label">Head of Institute</div>
+    </div>
+
+    <div class="sig-section">
+      <div class="sig-block">
+        <div class="sig-space"></div>
+        <div class="sig-label">Candidate's Signature</div>
+      </div>
+      <div class="seal-block">
+        <div class="seal">
+          <div class="seal-word">Official</div>
+          <div class="seal-star">★</div>
+          <div class="seal-word">Seal</div>
         </div>
       </div>
-      <div class="bottom-bar"><div class="bottom-bar-text">Issued by ${institute.name||"GNSI"} · ${institute.address||""} · ${acExamName} · ${institute.academicYear||"2025-2026"}</div></div>
-    </div>`;
-  };
+      <div class="sig-block">
+        <div class="sig-space"></div>
+        <div class="sig-label">Exam Coordinator</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-space"></div>
+        <div class="sig-label">Head of Institute</div>
+      </div>
+    </div>
+
+    <div class="barcode-row">
+      <div class="barcode-text">Hall Ticket No.</div>
+      <div class="barcode-num">GNSI-${gcc}-${acExamName.replace(/\s+/g,'').toUpperCase().slice(0,6)}</div>
+      <div class="barcode-text">Issued: ${new Date().toLocaleDateString('en-IN')}</div>
+    </div>
+    <div class="bottom-bar">
+      <div class="bottom-bar-text">${institute.name||"GNSI"} · ${institute.address||"Khangabok, Manipur"} · ${acExamName} · ${institute.academicYear||"2025-2026"} · For queries contact the Institute Office</div>
+    </div>
+    <div class="bottom-tricolor"></div>
+  </div>`;
+};
 
   const ADMIT_CSS = `
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-    :root{--green-dark:#0d2818;--green:#1a3c2e;--green-mid:#2A5C45;--gold:#B8860B;--gold-light:#f0c040;--gold-pale:#FDF8E8;--border:#D5C89A;--text:#1C1A16;--text2:#5C5440;}
-    @page{margin:1cm;size:A4;}
-    body{font-family:'EB Garamond',Georgia,serif;background:white;padding:20px;color:var(--text);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .no-print{text-align:center;margin-bottom:16px;display:flex;gap:10px;justify-content:center;}
-    .no-print button{padding:9px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;}
-    .btn-print{background:var(--green);color:white;} .btn-close{background:#e5e7eb;color:#374151;}
-    .admit-card{width:720px;margin:0 auto 32px;background:var(--gold-pale);border-radius:4px;box-shadow:0 8px 40px rgba(0,0,0,0.18),0 0 0 1px var(--border);position:relative;overflow:hidden;}
-    .watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-family:'Playfair Display',serif;font-size:76px;font-weight:700;color:rgba(184,134,11,0.055);white-space:nowrap;pointer-events:none;z-index:0;letter-spacing:12px;}
-    .top-strip{height:7px;background:linear-gradient(90deg,var(--green-dark) 0%,var(--green) 40%,var(--green-mid) 70%,var(--gold) 100%);}
-    .card-header{display:flex;align-items:center;gap:16px;padding:18px 26px 14px;background:linear-gradient(135deg,var(--green-dark) 0%,var(--green) 55%,#1e4d36 100%);position:relative;z-index:1;}
-    .logo-circle{width:64px;height:64px;border-radius:50%;border:3px solid var(--gold);background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-    .logo-initials{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--gold-light);letter-spacing:1px;}
-    .header-center{flex:1;text-align:center;}
-    .inst-eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:var(--gold-light);opacity:0.8;margin-bottom:3px;}
-    .inst-name{font-family:'Playfair Display',serif;font-size:19px;font-weight:600;color:#fff;margin-bottom:2px;}
-    .inst-addr{font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:2px;}
-    .inst-tagline{font-family:'Playfair Display',serif;font-style:italic;font-size:10px;color:var(--gold-light);opacity:0.85;}
-    .admit-badge{background:var(--gold);border-radius:4px;padding:7px 12px;text-align:center;}
-    .admit-badge-text{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--green-dark);letter-spacing:3px;line-height:1.3;}
-    .gold-divider{display:flex;align-items:center;padding:8px 26px;background:var(--gold-pale);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
-    .gold-divider.mini{padding:5px 26px;}
-    .gold-line{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
-    .gold-diamond{color:var(--gold);font-size:10px;margin:0 10px;}
-    .exam-banner{display:flex;justify-content:space-between;align-items:center;padding:9px 26px;background:#E1F5EE;border-bottom:1px solid #BBF7D0;}
-    .exam-banner-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:600;color:var(--green);}
-    .exam-banner-year{font-size:11px;color:var(--green-mid);font-weight:600;background:white;padding:3px 12px;border-radius:999px;border:1px solid #BBF7D0;}
-    .student-section{display:flex;gap:18px;padding:16px 26px;background:white;border-bottom:1px solid #F0ECD8;position:relative;z-index:1;}
-    .student-info-grid{flex:1;}
-    .info-row{display:flex;gap:14px;margin-bottom:10px;}
-    .info-row:last-child{margin-bottom:0;}
-    .info-field{flex:1;}
-    .field-label{font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:3px;}
-    .field-value{font-size:13px;font-weight:500;color:var(--text);border-bottom:1.5px solid var(--border);padding-bottom:3px;}
-    .name-value{font-family:'Playfair Display',serif;font-size:16px;font-weight:600;color:var(--green);}
-    .gcc-value{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--green-dark);letter-spacing:2px;}
-    .photo-box{flex-shrink:0;text-align:center;}
-    .photo-inner{width:86px;height:104px;border:2px dashed var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;background:var(--gold-pale);margin-bottom:3px;}
-    .photo-text{font-size:10px;color:var(--text2);text-align:center;line-height:1.6;}
-    .photo-label{font-size:9px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;}
-    .schedule-section{padding:14px 26px;position:relative;z-index:1;}
-    .section-title{font-family:'Playfair Display',serif;font-size:13px;font-weight:600;color:var(--green);margin-bottom:8px;}
-    .sched-table{width:100%;border-collapse:collapse;border:1px solid var(--border);font-size:11.5px;}
-    .sched-table thead tr{background:var(--green);color:white;}
-    .sched-table thead th{padding:7px 10px;text-align:left;font-weight:600;font-size:9.5px;letter-spacing:1.5px;text-transform:uppercase;}
-    .sched-table tbody tr:nth-child(odd){background:var(--gold-pale);}
-    .sched-table tbody tr:nth-child(even){background:white;}
-    .sched-table tbody td{padding:7px 10px;border-bottom:1px solid var(--border);}
-    .instructions{padding:10px 26px 12px;background:#F8F6F0;border-top:1px solid #EDE8D8;border-bottom:1px solid #EDE8D8;position:relative;z-index:1;}
-    .instr-title{font-family:'Playfair Display',serif;font-size:11.5px;font-weight:600;color:var(--green);margin-bottom:6px;}
-    .instr-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 20px;}
-    .instr-item{font-size:10.5px;color:var(--text2);line-height:1.5;}
-    .signatures{display:flex;justify-content:space-between;align-items:flex-end;padding:14px 26px 14px;gap:14px;background:white;position:relative;z-index:1;}
-    .sig-block{text-align:center;flex:1;}
-    .sig-center{flex:0.6;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;}
-    .sig-name{font-size:9.5px;color:var(--text2);margin-bottom:2px;font-style:italic;height:18px;}
-    .sig-digital{height:40px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:2px;}
-    .sig-line-draw{height:1.5px;background:linear-gradient(90deg,transparent 0%,var(--border) 15%,var(--text) 50%,var(--border) 85%,transparent 100%);margin:3px 6px 3px;}
-    .sig-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-top:2px;}
-    .sig-subname{font-size:10px;color:var(--green);font-weight:600;margin-top:2px;}
-    .official-seal{width:66px;height:66px;border-radius:50%;border:2px dashed var(--gold);display:flex;align-items:center;justify-content:center;background:var(--gold-pale);margin-bottom:3px;}
-    .seal-inner{text-align:center;}
-    .seal-word{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-weight:700;}
-    .seal-star{color:var(--gold);font-size:13px;line-height:1;}
-    .bottom-bar{background:linear-gradient(90deg,var(--green-dark),var(--green),var(--green-dark));padding:7px 26px;position:relative;z-index:1;}
-    .bottom-bar::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--gold),var(--gold-light),var(--gold));}
-    .bottom-bar-text{font-size:9.5px;color:rgba(255,255,255,0.6);text-align:center;letter-spacing:.5px;}
-    .page-break{page-break-after:always;height:0;}
-    @media print{body{background:white;padding:0;}.no-print{display:none!important;}.admit-card{box-shadow:none;margin:0 auto;border-radius:0;} @page{margin:1cm;size:A4;}}
-  `;
+  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;600;700&display=swap');
+  html,*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --navy:#0A1628;--navy2:#1a2d4a;--blue:#1B4F8A;--blue2:#2563A8;
+    --red:#C0392B;--gold:#B8860B;--gold2:#D4A017;
+    --cream:#FEFCF8;--cream2:#F5F0E8;--border:#CBD5E0;--border2:#9AA8B8;
+    --text:#0D1117;--text2:#2D3748;--text3:#4A5568;
+  }
+  @page{margin:0;size:210mm 297mm;}
+  body{
+    font-family:'Source Sans 3',sans-serif;
+    background:white;color:var(--text);
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    margin:0;padding:0;
+  }
+  .no-print{text-align:center;padding:12px;display:flex;gap:10px;justify-content:center;background:#f8f9fa;border-bottom:1px solid #dee2e6;}
+  .no-print button{padding:8px 20px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;}
+  .btn-print{background:#1B4F8A;color:white;} .btn-close{background:#6c757d;color:white;}
+
+  /* ── Page wrapper - true A4 ── */
+  .admit-card{
+    width:210mm;min-height:297mm;
+    margin:0 auto 20px;
+    background:white;
+    position:relative;
+    border:1px solid #ccc;
+    display:flex;flex-direction:column;
+  }
+
+  /* ── Top bar: tricolor stripe ── */
+  .top-tricolor{height:8px;background:linear-gradient(90deg,#FF9933 0%,#FF9933 33%,white 33%,white 66%,#138808 66%,#138808 100%);}
+
+  /* ── Header ── */
+  .card-header{
+    background:var(--navy);
+    padding:10px 20px 8px;
+    display:flex;align-items:center;gap:16px;
+    border-bottom:3px solid var(--gold);
+  }
+  .logo-circle{
+    width:60px;height:60px;border-radius:50%;
+    border:2px solid var(--gold);
+    background:rgba(255,255,255,0.12);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .logo-initials{font-family:'EB Garamond',serif;font-size:16px;font-weight:700;color:var(--gold2);letter-spacing:1px;}
+  .header-center{flex:1;text-align:center;}
+  .inst-line1{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.6);margin-bottom:2px;}
+  .inst-name{font-family:'EB Garamond',serif;font-size:22px;font-weight:700;color:white;line-height:1.1;margin-bottom:1px;}
+  .inst-addr{font-size:10px;color:rgba(255,255,255,0.65);}
+  .inst-tagline{font-family:'EB Garamond',serif;font-style:italic;font-size:11px;color:var(--gold2);margin-top:2px;}
+  .admit-badge{
+    background:var(--red);
+    border:2px solid rgba(255,255,255,0.3);
+    border-radius:3px;padding:8px 14px;text-align:center;flex-shrink:0;
+  }
+  .admit-badge-line{font-family:'EB Garamond',serif;font-size:16px;font-weight:700;color:white;letter-spacing:3px;line-height:1.2;}
+
+  /* ── Exam title banner ── */
+  .exam-banner{
+    background:var(--blue);
+    padding:6px 20px;
+    display:flex;justify-content:space-between;align-items:center;
+    border-bottom:1px solid var(--border);
+  }
+  .exam-title{font-family:'EB Garamond',serif;font-size:15px;font-weight:600;color:white;letter-spacing:1px;}
+  .exam-year{font-size:11px;color:rgba(255,255,255,0.8);background:rgba(255,255,255,0.15);padding:2px 10px;border-radius:2px;}
+
+  /* ── Important notice bar ── */
+  .notice-bar{
+    background:#FEF3CD;border-top:1px solid #F6C23E;border-bottom:1px solid #F6C23E;
+    padding:4px 20px;font-size:10px;color:#7D5A00;font-weight:600;text-align:center;
+    letter-spacing:.3px;
+  }
+
+  /* ── Candidate info table ── */
+  .info-section{padding:10px 20px 0;}
+  .section-head{
+    font-family:'Libre Baskerville',serif;font-size:10px;font-weight:700;
+    color:var(--blue);text-transform:uppercase;letter-spacing:2px;
+    border-bottom:2px solid var(--blue);padding-bottom:3px;margin-bottom:6px;
+  }
+  .info-table{width:100%;border-collapse:collapse;border:1px solid var(--border2);font-size:11px;}
+  .info-table td{padding:5px 10px;border:1px solid var(--border);}
+  .info-table .lbl{font-weight:700;color:var(--text2);background:#F7FAFC;width:30%;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
+  .info-table .val{color:var(--text);font-family:'EB Garamond',serif;font-size:13px;font-weight:600;}
+  .info-table .val.big{font-size:17px;font-weight:700;color:var(--navy);letter-spacing:2px;}
+  .info-table .val.name{font-size:15px;font-weight:700;color:var(--navy);text-transform:uppercase;}
+
+  /* ── Photo box ── */
+  .candidate-row{display:flex;gap:0;align-items:stretch;}
+  .candidate-details{flex:1;}
+  .photo-col{
+    width:90px;border:1px solid var(--border2);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:#F7FAFC;flex-shrink:0;padding:8px 6px;
+    border-left:none;
+  }
+  .photo-box{
+    width:72px;height:86px;border:1.5px dashed var(--border2);
+    display:flex;align-items:center;justify-content:center;
+    background:white;font-size:9px;color:var(--text3);text-align:center;line-height:1.5;
+  }
+  .photo-label{font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:4px;}
+
+  /* ── Schedule table ── */
+  .sched-section{padding:8px 20px 0;}
+  .sched-table{width:100%;border-collapse:collapse;font-size:10.5px;border:1px solid var(--border2);}
+  .sched-table thead tr{background:var(--navy);}
+  .sched-table thead th{
+    padding:6px 10px;color:white;font-weight:700;
+    font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
+    border-right:1px solid rgba(255,255,255,0.2);text-align:left;
+  }
+  .sched-table tbody tr:nth-child(odd){background:#F7FAFC;}
+  .sched-table tbody tr:nth-child(even){background:white;}
+  .sched-table tbody td{padding:5px 10px;border:1px solid var(--border);font-size:11px;}
+  .sched-table tbody td:first-child{font-weight:600;color:var(--navy);}
+
+  /* ── Instructions ── */
+  .instr-section{padding:8px 20px 0;}
+  .instr-box{border:1px solid var(--border2);border-left:4px solid var(--red);}
+  .instr-head{background:#FEF2F2;padding:5px 12px;font-size:10px;font-weight:700;color:var(--red);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #FCA5A5;}
+  .instr-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;}
+  .instr-item{font-size:10px;color:var(--text2);padding:4px 12px;border-bottom:1px solid var(--border);line-height:1.4;}
+  .instr-item:nth-child(odd){border-right:1px solid var(--border);}
+  .instr-item:last-child,.instr-item:nth-last-child(2){border-bottom:none;}
+
+  /* ── Signatures ── */
+  .sig-section{
+    padding:10px 20px;
+    display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
+    border-top:2px solid var(--border2);margin-top:auto;
+  }
+  .sig-block{flex:1;text-align:center;}
+  .sig-space{height:36px;border-bottom:1px solid var(--text);margin:0 10px 4px;}
+  .sig-label{font-size:8.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);font-weight:700;}
+  .seal-block{flex:0 0 80px;display:flex;flex-direction:column;align-items:center;}
+  .seal{
+    width:70px;height:70px;border-radius:50%;
+    border:2px dashed var(--gold);background:var(--cream2);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+  }
+  .seal-word{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-weight:700;}
+  .seal-star{font-size:14px;color:var(--gold);line-height:1.2;}
+
+  /* ── Barcode area ── */
+  .barcode-row{
+    background:var(--cream2);border-top:1px solid var(--border);
+    padding:5px 20px;display:flex;justify-content:space-between;align-items:center;
+  }
+  .barcode-text{font-family:'EB Garamond',serif;font-size:10px;color:var(--text3);}
+  .barcode-num{font-family:'Libre Baskerville',serif;font-size:11px;font-weight:700;color:var(--navy);letter-spacing:3px;}
+
+  /* ── Bottom bar ── */
+  .bottom-bar{background:var(--navy);padding:5px 20px;}
+  .bottom-bar-text{font-size:9px;color:rgba(255,255,255,0.6);text-align:center;letter-spacing:.5px;}
+  .bottom-tricolor{height:5px;background:linear-gradient(90deg,#FF9933 0%,#FF9933 33%,white 33%,white 66%,#138808 66%,#138808 100%);}
+
+  .page-break{page-break-after:always;height:0;}
+  @media print{
+    body{background:white;padding:0;}
+    .no-print{display:none!important;}
+    .admit-card{border:none;margin:0;width:100%;min-height:100vh;}
+    @page{margin:0;size:A4;}
+  }
+`;
 
   const printAllAdmitCards = async () => {
     if (!filteredAcStudents.length) return;
