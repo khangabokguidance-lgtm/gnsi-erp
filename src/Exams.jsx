@@ -3183,6 +3183,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
       )}
     </div>
   );
+}
 
 // ─── REPORT CARDS ─────────────────────────────────────────────────────────────
 function ReportCardItem({ st, subjects, marks, examType, examDate, examName, institute, allStudents, course }) {
