@@ -581,10 +581,10 @@ export function generateAdmitCardHTML(st, {
       }
     </div>
     <div class="header-center">
-      <div class="header-eyebrow">Ministry of Education · Affiliated Coaching Institute</div>
+      <div class="header-eyebrow">Completing 10 Years of Journey · Established in 2016</div>
       <div class="header-inst-name">${institute.name || "Guidance Navodaya &amp; Sainik Institute"}</div>
-      <div class="header-inst-addr">${institute.address || "Khangabok, Manipur"}</div>
-      <div class="header-tagline">${institute.tagline || "Excellence in Education"}</div>
+      <div class="header-inst-addr">${institute.address || "Khangabok Sorok Wangma,Thoubal, Manipur -795138"}</div>
+      <div class="header-tagline">${institute.tagline || "A Premier Institute for Navodaya,Sainik & RMS Preparation since 2016"}</div>
     </div>
     <div class="admit-badge">
       <span class="admit-badge-word">ADMIT</span>
@@ -600,7 +600,7 @@ export function generateAdmitCardHTML(st, {
 
   <div class="exam-banner">
     <div class="exam-banner-name">✦ &nbsp;${examTypeName}</div>
-    <div class="exam-banner-year">Academic Year ${institute.academicYear || "2025-2026"}</div>
+    <div class="exam-banner-year">Academic Year ${institute.academicYear || "2026-2027"}</div>
   </div>
 
   <div class="notice-bar">
@@ -633,7 +633,7 @@ export function generateAdmitCardHTML(st, {
         </tr>
         <tr>
           <td class="lbl">Academic Year</td>
-          <td class="val">${institute.academicYear || "2025-2026"}</td>
+          <td class="val">${institute.academicYear || "2026-2027"}</td>
           <td class="lbl">Examination</td>
           <td class="val highlight">${examTypeName}</td>
         </tr>
