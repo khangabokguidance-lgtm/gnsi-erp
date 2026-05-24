@@ -1769,11 +1769,22 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
             {examTypes.map(et=><option key={et.id} value={et.id}>{et.name}</option>)}
           </select>
         </div>
-        <div>
+       <div>
           <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Date</label>
-          <select value={examDate} onChange={e=>setExamDate(e.target.value)} style={{ ...css.input, width:160 }}>
-            {dates.map(d=><option key={d} value={d}>{d}</option>)}
-          </select>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            <select value={examDate} onChange={e=>setExamDate(e.target.value)} style={{ ...css.input, width:160 }}>
+              <option value="">— Pick from list —</option>
+              {dates.map(d=><option key={d} value={d}>{d}</option>)}
+            </select>
+            <input type="date" value={examDate} onChange={e=>setExamDate(e.target.value)}
+              style={{ ...css.input, width:160 }}
+              title="Or type/pick a date manually" />
+          </div>
+          {!examDate && (
+            <div style={{ fontSize:11, color:"#EF4444", marginTop:4 }}>
+              ⚠️ No dates found in exam marks yet — use the date picker on the right to set a date manually.
+            </div>
+          )}
         </div>
         <div>
           <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Capacity</label>
@@ -2969,7 +2980,10 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const acStudents = students.filter(s =>
     (s.class_name||"").toUpperCase()===acCourse||(s.course||"").toUpperCase()===acCourse
   );
-  const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course === acCourse));
+  const acSchedule = schedule.filter(s =>
+    s.exam_type_id === acExamType &&
+    (!s.course || s.course.toUpperCase() === acCourse.toUpperCase())
+  );
   const acExamName = examTypes.find(e=>e.id===acExamType)?.name||"Examination";
 
   // Load dates for report card
@@ -3031,22 +3045,62 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
 
   // ── Print all report cards ──
   const printAllReportCards = async () => {
+    if (!filteredRcStudents.length) return;
+
+    // ✅ Open window FIRST — must be synchronous at point of user click
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("⚠️ Popup blocked!\n\nPlease allow popups for this site:\n• Chrome: click the blocked popup icon in the address bar\n• Safari: go to Settings → Websites → Popup Windows → Allow\n• Edge: click the popup blocked notification");
+      return;
+    }
+
+    // Write a loading screen immediately so the window isn't blank
+    w.document.write(`<!DOCTYPE html><html><head>
+      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet"/>
+      <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'DM Sans',sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;}</style>
+    </head><body>
+      <div style="text-align:center;color:white;padding:40px;">
+        <div style="font-family:'Playfair Display',serif;font-size:28px;margin-bottom:16px;">⏳ Preparing Report Cards</div>
+        <div style="font-size:14px;opacity:0.7;">Please wait while cards are generated…</div>
+      </div>
+    </body></html>`);
+
     setRcProgress({ current: 0, total: filteredRcStudents.length });
+
+    // Log print (non-blocking)
+    try {
+      await supabase.from('exam_print_log').insert({
+        doc_type: 'report_card',
+        course: rcCourse,
+        exam_type: examTypes.find(e => e.id === rcExamType)?.name || '',
+        student_count: filteredRcStudents.length
+      });
+    } catch(_) {}
+
     const cards = [];
-    try { await supabase.from('exam_print_log').insert({ doc_type:'report_card', course:rcCourse, exam_type:examTypes.find(e=>e.id===rcExamType)?.name||'', student_count:filteredRcStudents.length }) } catch(_){}
     for (let i = 0; i < filteredRcStudents.length; i++) {
       const st = filteredRcStudents[i];
       const remark = rcIncludeRemarks ? (rcRemarks[st.id] || "") : "";
-      cards.push(buildReportCardHTML(st, rcSubjects, rcMarks, rcCourse, rcStudents, examTypes.find(e=>e.id===rcExamType)?.name||"Examination", rcExamDate, institute, remark));
-      setRcProgress({ current: i+1, total: filteredRcStudents.length });
-      await new Promise(r=>setTimeout(r,0)); // allow UI update
+      cards.push(buildReportCardHTML(
+        st, rcSubjects, rcMarks, rcCourse, rcStudents,
+        examTypes.find(e => e.id === rcExamType)?.name || "Examination",
+        rcExamDate, institute, remark
+      ));
+      setRcProgress({ current: i + 1, total: filteredRcStudents.length });
+      await new Promise(r => setTimeout(r, 0));
     }
-    const sep = rcPageBreak ? '<div class="page-break"></div>' : '<div style="margin-bottom:24px"></div>';
-    const w = window.open("","_blank");
+
+    const sep = rcPageBreak
+      ? '<div class="page-break"></div>'
+      : '<div style="margin-bottom:24px"></div>';
+
+    // Now write final content into the already-open window
+    w.document.open();
     w.document.write(`<!DOCTYPE html><html><head>
-      <title>Bulk Report Cards — ${rcCourse} — ${examTypes.find(e=>e.id===rcExamType)?.name||""}</title>
+      <title>Bulk Report Cards — ${rcCourse} — ${examTypes.find(e => e.id === rcExamType)?.name || ""}</title>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-      <style>${REPORT_CARD_CSS}</style></head><body>
+      <style>${REPORT_CARD_CSS}</style>
+    </head><body>
       <div class="no-print">
         <button class="btn-print" onclick="window.print()">🖨️ Print All (${cards.length}) Report Cards</button>
         <button class="btn-close" onclick="window.close()">✕ Close</button>
@@ -3198,19 +3252,52 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   `;
 
   const printAllAdmitCards = async () => {
+    if (!filteredAcStudents.length) return;
+
+    // ✅ Open window FIRST — must be synchronous at point of user click
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("⚠️ Popup blocked!\n\nPlease allow popups for this site:\n• Chrome: click the blocked popup icon in the address bar\n• Safari: go to Settings → Websites → Popup Windows → Allow\n• Edge: click the popup blocked notification");
+      return;
+    }
+
+    // Write a loading screen immediately
+    w.document.write(`<!DOCTYPE html><html><head>
+      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet"/>
+      <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'DM Sans',sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;}</style>
+    </head><body>
+      <div style="text-align:center;color:white;padding:40px;">
+        <div style="font-family:'Playfair Display',serif;font-size:28px;margin-bottom:16px;">⏳ Preparing Admit Cards</div>
+        <div style="font-size:14px;opacity:0.7;">Please wait while cards are generated…</div>
+      </div>
+    </body></html>`);
+
     setAcProgress({ current: 0, total: filteredAcStudents.length });
-    try { await supabase.from('exam_print_log').insert({ doc_type:'admit_card', course:acCourse, exam_type:acExamName, student_count:filteredAcStudents.length }) } catch(_){}
+
+    // Log print (non-blocking)
+    try {
+      await supabase.from('exam_print_log').insert({
+        doc_type: 'admit_card',
+        course: acCourse,
+        exam_type: acExamName,
+        student_count: filteredAcStudents.length
+      });
+    } catch(_) {}
+
     const cards = [];
     for (let i = 0; i < filteredAcStudents.length; i++) {
       cards.push(buildAdmitCardHTML(filteredAcStudents[i]));
-      setAcProgress({ current: i+1, total: filteredAcStudents.length });
-      await new Promise(r=>setTimeout(r,0));
+      setAcProgress({ current: i + 1, total: filteredAcStudents.length });
+      await new Promise(r => setTimeout(r, 0));
     }
-    const w = window.open("","_blank");
+
+    // Write final content into the already-open window
+    w.document.open();
     w.document.write(`<!DOCTYPE html><html><head>
       <title>Bulk Admit Cards — ${acCourse} — ${acExamName}</title>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet"/>
-      <style>${ADMIT_CSS}</style></head><body>
+      <style>${ADMIT_CSS}</style>
+    </head><body>
       <div class="no-print">
         <button class="btn-print" onclick="window.print()">🖨️ Print All (${cards.length}) Admit Cards</button>
         <button class="btn-close" onclick="window.close()">✕ Close</button>
@@ -3846,7 +3933,10 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
     !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search)
   );
   const examTypeName = examTypes.find(e => e.id === examType)?.name || "Examination";
-  const examSchedule = schedule.filter(s => s.exam_type_id === examType && (!s.course || s.course === course));
+  const examSchedule = schedule.filter(s =>
+    s.exam_type_id === examType &&
+    (!s.course || s.course.toUpperCase() === course.toUpperCase())
+  );
 
   const generateCardHTML = (st) => {
     const scheduleRows = examSchedule.length
