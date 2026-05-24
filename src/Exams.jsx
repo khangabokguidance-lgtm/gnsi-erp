@@ -3179,7 +3179,6 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
       )}
     </div>
   );
-}
 
 // ─── Shared Schedule Table ────────────────────────────────────────────────────
 function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCourse, filterExamType, setFilterExamType, onDelete, selectable, selected, onToggle, onSelectAll, onDeselectAll }) {
