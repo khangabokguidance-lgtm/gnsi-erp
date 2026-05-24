@@ -12,6 +12,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
 import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
+import ToppersCertificate from './ToppersCertificate'
+import ExamDashboard from './ExamDashboard'
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
@@ -97,6 +99,7 @@ const TAB_GROUPS = [
       { id: "progress",  icon: "🎓", label: "Progress",    tip: "Per-student progress" },
       { id: "compare",   icon: "⚖️",  label: "Compare",    tip: "Side-by-side comparison" },
       { id: "merit",     icon: "📜", label: "Merit List",  tip: "Generate merit lists" },
+      { id: "dashboard", icon: "🏠", label: "Dashboard", tip: "Exam HUB overview" }
     ]
   },
   {
@@ -105,6 +108,7 @@ const TAB_GROUPS = [
       { id: "admitcard",  icon: "🪪",  label: "Admit Cards",  tip: "Generate admit cards" },
       { id: "reportcard", icon: "📋", label: "Report Cards", tip: "Print report cards" },
       { id: "bulkreport", icon: "📦", label: "Bulk Reports", tip: "Batch report generation" },
+      { id: "toppers", icon: "🏅", label: "Certificates", tip: "Print topper certificates" }
     ]
   },
   {
@@ -5055,7 +5059,8 @@ export default function Exams({ currentUser }) {
   const courses = Object.keys(courseSubjects);
 
   const sectionMap = {
-    entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} />,
+    dashboard:      <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
+    toppers:        <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} />,
     marks:          <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     analytics:      <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     rankings:       <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
