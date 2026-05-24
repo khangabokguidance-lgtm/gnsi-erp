@@ -2650,541 +2650,73 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
 }
 
 // ─── Shared Schedule Table ────────────────────────────────────────────────────
-// ─── SCHEDULE (v2 — Full Bulk Assign) ────────────────────────────────────────
-// Drop-in replacement for the Schedule function in Exams.jsx
-// Features added:
-//  ① Bulk assign: one subject → multiple courses at once
-//  ② Multi-subject entry: add all subjects for a course in one submit
-//  ③ Duplicate/copy entries across dates
-//  ④ Batch generate: full timetable over a date range (one subject/day)
-//  ⑤ Import from CSV/Excel
-//  ⑥ Original single-entry form preserved as "Single" tab
-
-  // ─── Generate save ────────────────────────────────────────────────────────
-  const handleSaveGenerate = async () => {
-    if (!genPreview.length) return;
-    setGenSaving(true);
-    const rows = genPreview.map(r => ({
-      exam_type_id: genExamType, course: genCourse,
-      subject: r.subject, exam_date: r.exam_date,
-      time: genTime, shift: genShift, room: genRoom,
-      total_marks: Number(r.total_marks) || 100,
-    }));
-    await supabase.from("exam_schedule").insert(rows);
-    setGenSaving(false); setGenSaved(true); fetchSchedule(); onScheduleChange?.();
-    setTimeout(() => setGenSaved(false), 2500);
-  };
-
-  // ─── Duplicate selected entries to new date ───────────────────────────────
-  const handleDuplicate = async () => {
-    if (!dupDate || !dupIds.size) return;
-    setDupSaving(true);
-    const toDup = schedule.filter(s => dupIds.has(s.id));
-    const rows = toDup.map(({ id, created_at, ...rest }) => ({ ...rest, exam_date: dupDate }));
-    await supabase.from("exam_schedule").insert(rows);
-    setDupSaving(false); setDupSaved(true); setDupIds(new Set()); fetchSchedule(); onScheduleChange?.();
-    setTimeout(() => setDupSaved(false), 2500);
-  };
-
-  // ─── Import from CSV/Excel ────────────────────────────────────────────────
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0]; if (!file) return; e.target.value = "";
-    await ensureLibs(); const XLSX = window.XLSX;
-    let rows = [];
-    const ext = file.name.split(".").pop().toLowerCase();
-    if (ext === "csv") {
-      const text = await file.text();
-      const lines = text.trim().split("\n").map(l => l.split(",").map(c => c.replace(/^"|"$/g, "").trim()));
-      rows = lines;
-    } else {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-    }
-    if (!rows.length) return;
-    const headers = rows[0].map(h => String(h).trim().toLowerCase());
-    const col = (name) => headers.findIndex(h => h.includes(name));
-    const parsed = []; const errors = [];
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      const course    = r[col("course")]?.toString().trim().toUpperCase();
-      const subject   = r[col("subject")]?.toString().trim();
-      const exam_date = r[col("date")]?.toString().trim();
-      const exam_type_id = examTypes.find(et => et.name.toLowerCase().includes(r[col("type")]?.toString().toLowerCase()))?.id || examTypes[0]?.id;
-      if (!course || !subject || !exam_date) { errors.push(`Row ${i+1}: missing course/subject/date`); continue; }
-      parsed.push({
-        exam_type_id, course, subject, exam_date,
-        time: r[col("time")]?.toString().trim() || "09:00",
-        shift: r[col("shift")]?.toString().trim() || "Morning",
-        room: r[col("room")]?.toString().trim() || "",
-        total_marks: Number(r[col("marks")]) || 100,
-      });
-    }
-    setImportRows(parsed); setImportErrors(errors); setImportDone(false);
-  };
-
-  const handleImportSave = async () => {
-    if (!importRows.length) return;
-    setImportSaving(true);
-    await supabase.from("exam_schedule").insert(importRows);
-    setImportSaving(false); setImportDone(true); fetchSchedule(); onScheduleChange?.();
-  };
-
-  const downloadImportTemplate = () => {
-    const headers = ["course","subject","date","type","time","shift","room","marks"];
-    const example = [courses[0]||"ACHIEVER", courseSubjects[courses[0]]?.[0]||"Mathematics", "2025-06-01", examTypes[0]?.name||"1st Monthly Test", "09:00", "Morning", "Hall A", "100"];
-    const csv = [headers, example].map(r => r.join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = "GNSI_Schedule_Import_Template.csv";
-    a.click();
-  };
-
-  // ─── Delete single ────────────────────────────────────────────────────────
-  const handleDelete = async id => {
-    if (!confirm("Delete this entry?")) return;
-    await supabase.from("exam_schedule").delete().eq("id", id);
-    fetchSchedule(); onScheduleChange?.();
-  };
-
-  // ─── Filtered view ────────────────────────────────────────────────────────
-  const filtered = schedule.filter(s => {
-    const matchCourse = filterCourse === "ALL" || s.course === filterCourse;
-    const matchType = filterExamType === "ALL" || s.exam_type_id === filterExamType;
-    return matchCourse && matchType;
-  });
-
-  // ─── UI helpers ───────────────────────────────────────────────────────────
-  const ModeBtn = ({ id, icon, label }) => (
-    <button onClick={() => setMode(id)}
-      style={{ ...css.btn, padding: "8px 16px", background: mode === id ? "#1a3c2e" : "#F3F4F6",
-        color: mode === id ? "white" : "#374151", border: mode === id ? "none" : "1px solid #E5E7EB", fontSize: 12 }}>
-      {icon} {label}
-    </button>
-  );
-
-  const FieldLabel = ({ children }) => (
-    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>{children}</label>
-  );
-
-  const commonFields = (state, setState) => (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-      <div>
-        <FieldLabel>Shift</FieldLabel>
-        <select value={state.shift} onChange={e => setState(p => ({ ...p, shift: e.target.value }))} style={css.input}>
-          <option value="Morning">🌅 Morning</option>
-          <option value="Afternoon">🌤️ Afternoon</option>
-          <option value="Evening">🌆 Evening</option>
-        </select>
-      </div>
-      <div>
-        <FieldLabel>Time</FieldLabel>
-        <input type="time" value={state.time} onChange={e => setState(p => ({ ...p, time: e.target.value }))} style={css.input} />
-      </div>
-      <div>
-        <FieldLabel>Room / Hall</FieldLabel>
-        <input value={state.room} onChange={e => setState(p => ({ ...p, room: e.target.value }))} placeholder="e.g. Hall A" style={css.input} />
-      </div>
-    </div>
-  );
-
+function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCourse, filterExamType, setFilterExamType, onDelete, selectable, selected, onToggle, onSelectAll, onDeselectAll }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-      {/* Mode switcher */}
-      <div style={{ background: "white", borderRadius: 12, padding: "14px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", marginRight: 4 }}>Mode:</span>
-        <ModeBtn id="single"    icon="✏️"  label="Single Entry" />
-        <ModeBtn id="multi"     icon="📋" label="Multi-Subject" />
-        <ModeBtn id="bulk"      icon="🔀" label="One Subject → Many Courses" />
-        <ModeBtn id="generate"  icon="⚡" label="Auto-Generate Timetable" />
-        <ModeBtn id="duplicate" icon="📄" label="Duplicate Entries" />
-        <ModeBtn id="import"    icon="📂" label="Import CSV/Excel" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Filter Course</label>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            {["ALL", ...courses].map(c => (
+              <button key={c} onClick={() => setFilterCourse(c)}
+                style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === c ? "#1a3c2e" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Filter Exam Type</label>
+          <select value={filterExamType} onChange={e => setFilterExamType(e.target.value)} style={{ ...css.input, width: 180 }}>
+            <option value="ALL">All Types</option>
+            {examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}
+          </select>
+        </div>
+        {selectable && (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={onSelectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#E0F2FE", color: "#0369A1" }}>Select All</button>
+            <button onClick={onDeselectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>Deselect All</button>
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{schedule.length} entries</div>
       </div>
-
-      {/* ── SINGLE ENTRY ── */}
-      {mode === "single" && (
-        <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
-          <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>➕ Add Single Entry</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div><FieldLabel>Exam Type</FieldLabel>
-                <select value={form.exam_type_id} onChange={e => setForm(p => ({ ...p, exam_type_id: e.target.value }))} style={css.input}>
-                  {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select></div>
-              <div><FieldLabel>Course / Batch</FieldLabel>
-                <select value={form.course} onChange={e => setForm(p => ({ ...p, course: e.target.value, subject: "" }))} style={css.input}>
-                  {courses.map(c => <option key={c} value={c}>{c}</option>)}
-                </select></div>
-              <div><FieldLabel>Subject</FieldLabel>
-                <select value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} style={css.input}>
-                  <option value="">— Select Subject —</option>
-                  {(courseSubjects[form.course] || []).map(s => <option key={s} value={s}>{s}</option>)}
-                </select></div>
-              <div><FieldLabel>Date</FieldLabel>
-                <input type="date" value={form.exam_date} onChange={e => setForm(p => ({ ...p, exam_date: e.target.value }))} style={css.input} /></div>
-              <div><FieldLabel>Shift</FieldLabel>
-                <select value={form.shift} onChange={e => setForm(p => ({ ...p, shift: e.target.value }))} style={css.input}>
-                  <option value="Morning">🌅 Morning</option>
-                  <option value="Afternoon">🌤️ Afternoon</option>
-                  <option value="Evening">🌆 Evening</option>
-                </select></div>
-              <div><FieldLabel>Time</FieldLabel>
-                <input type="time" value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} style={css.input} /></div>
-              <div><FieldLabel>Total Marks</FieldLabel>
-                <input type="number" value={form.total_marks} onChange={e => setForm(p => ({ ...p, total_marks: e.target.value }))} style={css.input} /></div>
-              <div><FieldLabel>Room / Hall</FieldLabel>
-                <input value={form.room} onChange={e => setForm(p => ({ ...p, room: e.target.value }))} style={css.input} /></div>
-              <SaveBtn onClick={handleSaveSingle} saving={saving} saved={saved} label="Add Entry" />
-            </div>
-          </div>
-          <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
-            filterCourse={filterCourse} setFilterCourse={setFilterCourse}
-            filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-            onDelete={handleDelete} selectable={false} />
-        </div>
-      )}
-
-      {/* ── MULTI-SUBJECT ── */}
-      {mode === "multi" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>📋 Multi-Subject Entry</div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 14 }}>Add all subjects for a course at once. Set a start date to auto-fill dates (one per day).</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
-              <div><FieldLabel>Exam Type</FieldLabel>
-                <select value={msExamType} onChange={e => setMsExamType(e.target.value)} style={css.input}>
-                  {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select></div>
-              <div><FieldLabel>Course / Batch</FieldLabel>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {courses.map(c => (
-                    <button key={c} onClick={() => setMsCourse(c)}
-                      style={{ ...css.btn, padding: "5px 14px", fontSize: 11, background: msCourse === c ? "#1a3c2e" : "#F3F4F6", color: msCourse === c ? "white" : "#374151", border: msCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
-                  ))}
-                </div></div>
-              <div><FieldLabel>Auto-fill Start Date (optional)</FieldLabel>
-                <input type="date" value={msStartDate} onChange={e => setMsStartDate(e.target.value)} style={{ ...css.input, width: 180 }} /></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div><FieldLabel>Shift</FieldLabel>
-                  <select value={msShift} onChange={e => setMsShift(e.target.value)} style={css.input}>
-                    <option>Morning</option><option>Afternoon</option><option>Evening</option>
-                  </select></div>
-                <div><FieldLabel>Time</FieldLabel>
-                  <input type="time" value={msTime} onChange={e => setMsTime(e.target.value)} style={css.input} /></div>
-              </div>
-              <div><FieldLabel>Room</FieldLabel>
-                <input value={msRoom} onChange={e => setMsRoom(e.target.value)} style={css.input} /></div>
-            </div>
-            <button onClick={handleSaveMulti} disabled={msSaving}
-              style={{ ...css.btn, background: msSaved ? "#16A34A" : msSaving ? "#93C5FD" : "#1a3c2e", color: "white", width: "100%", fontSize: 13 }}>
-              {msSaved ? `✓ Saved ${msRows.filter(r=>r.date).length} entries!` : msSaving ? "Saving…" : `💾 Save ${msRows.filter(r=>r.date).length} Entries`}
-            </button>
-          </div>
-          {/* Per-subject rows */}
-          <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Subject List for <span style={{ color: "#1a3c2e" }}>{msCourse}</span></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 480, overflowY: "auto" }}>
-              {msRows.map((r, i) => (
-                <div key={r.subject} style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px", gap: 8, alignItems: "center", padding: "8px 12px", background: i % 2 ? "#F9FAFB" : "white", borderRadius: 8, border: "1px solid #F1F5F9" }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1e293b" }}>
-                    <span style={{ fontSize: 10, color: "#94A3B8", marginRight: 6 }}>{i + 1}.</span>{r.subject}
-                  </div>
-                  <input type="date" value={r.date}
-                    onChange={e => setMsRows(p => p.map((x, j) => j === i ? { ...x, date: e.target.value } : x))}
-                    style={{ ...css.input, fontSize: 12, padding: "5px 8px" }} />
-                  <input type="number" value={r.marks}
-                    onChange={e => setMsRows(p => p.map((x, j) => j === i ? { ...x, marks: e.target.value } : x))}
-                    style={{ ...css.input, fontSize: 12, padding: "5px 8px" }} placeholder="Max" />
-                </div>
+      <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+        <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
+              {selectable && <th style={{ padding: "10px 12px", width: 36 }}></th>}
+              {["Date","Course","Exam Type","Subject","Shift","Time","Marks","Room",""].map(h => (
+                <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>
               ))}
-              {!msRows.length && <div style={{ color: "#94A3B8", textAlign: "center", padding: 20 }}>No subjects for this course.</div>}
-            </div>
-          </div>
+            </tr></thead>
+            <tbody>
+              {schedule.map((s, i) => (
+                <tr key={s.id} style={{ background: selectable && selected && selected.has(s.id) ? "#EFF6FF" : i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                  {selectable && (
+                    <td style={{ padding: "9px 12px", textAlign: "center" }}>
+                      <input type="checkbox" checked={selected && selected.has(s.id) || false} onChange={() => onToggle(s.id)} />
+                    </td>
+                  )}
+                  <td style={{ padding: "9px 12px", fontWeight: 600 }}>{s.exam_date}</td>
+                  <td style={{ padding: "9px 12px" }}><span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.course || "—"}</span></td>
+                  <td style={{ padding: "9px 12px" }}>{examTypes.find(e => e.id === s.exam_type_id)?.name || s.exam_type_id}</td>
+                  <td style={{ padding: "9px 12px" }}>{s.subject}</td>
+                  <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.shift || "Morning"}</td>
+                  <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.time || "--"}</td>
+                  <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.total_marks}</td>
+                  <td style={{ padding: "9px 12px", color: "#64748b" }}>{s.room || "--"}</td>
+                  <td style={{ padding: "9px 12px" }}>
+                    <button onClick={() => onDelete(s.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕</button>
+                  </td>
+                </tr>
+              ))}
+              {!schedule.length && <tr><td colSpan={selectable ? 10 : 9} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No schedule entries yet.</td></tr>}
+            </tbody>
+          </table>
         </div>
-      )}
-
-      {/* ── BULK: ONE SUBJECT → MANY COURSES ── */}
-      {mode === "bulk" && (
-        <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 20 }}>
-          <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>🔀 One Subject → Many Courses</div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 14 }}>Assign the same subject/date to multiple courses at once.</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div><FieldLabel>Exam Type</FieldLabel>
-                <select value={bkExamType} onChange={e => setBkExamType(e.target.value)} style={css.input}>
-                  {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select></div>
-              <div><FieldLabel>Subject Name</FieldLabel>
-                <input value={bkSubject} onChange={e => setBkSubject(e.target.value)} placeholder="e.g. Mathematics" style={css.input} /></div>
-              <div><FieldLabel>Date</FieldLabel>
-                <input type="date" value={bkDate} onChange={e => setBkDate(e.target.value)} style={css.input} /></div>
-              <div><FieldLabel>Total Marks</FieldLabel>
-                <input type="number" value={bkMarks} onChange={e => setBkMarks(e.target.value)} style={css.input} /></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div><FieldLabel>Shift</FieldLabel>
-                  <select value={bkShift} onChange={e => setBkShift(e.target.value)} style={css.input}>
-                    <option>Morning</option><option>Afternoon</option><option>Evening</option>
-                  </select></div>
-                <div><FieldLabel>Time</FieldLabel>
-                  <input type="time" value={bkTime} onChange={e => setBkTime(e.target.value)} style={css.input} /></div>
-              </div>
-              <div><FieldLabel>Room</FieldLabel>
-                <input value={bkRoom} onChange={e => setBkRoom(e.target.value)} style={css.input} /></div>
-              <div>
-                <FieldLabel>Target Courses ({bkCourses.size} selected)</FieldLabel>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  <button onClick={() => setBkCourses(new Set(courses))}
-                    style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#E0F2FE", color: "#0369A1" }}>All</button>
-                  <button onClick={() => setBkCourses(new Set())}
-                    style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>None</button>
-                  {courses.map(c => {
-                    const sel = bkCourses.has(c);
-                    return (
-                      <button key={c} onClick={() => setBkCourses(p => { const n = new Set(p); sel ? n.delete(c) : n.add(c); return n; })}
-                        style={{ ...css.btn, padding: "5px 14px", fontSize: 11, background: sel ? "#1a3c2e" : "#F3F4F6", color: sel ? "white" : "#374151", border: sel ? "none" : "1px solid #E5E7EB" }}>
-                        {sel ? "✓ " : ""}{c}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <button onClick={handleSaveBulk} disabled={bkSaving || !bkCourses.size || !bkDate || !bkSubject}
-                style={{ ...css.btn, background: bkSaved ? "#16A34A" : bkSaving ? "#93C5FD" : "#1a3c2e", color: "white", fontSize: 13, marginTop: 4 }}>
-                {bkSaved ? `✓ Saved to ${bkCourses.size} courses!` : bkSaving ? "Saving…" : `💾 Assign to ${bkCourses.size} Courses`}
-              </button>
-            </div>
-          </div>
-          <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
-            filterCourse={filterCourse} setFilterCourse={setFilterCourse}
-            filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-            onDelete={handleDelete} selectable={false} />
-        </div>
-      )}
-
-      {/* ── AUTO-GENERATE TIMETABLE ── */}
-      {mode === "generate" && (
-        <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
-          <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>⚡ Auto-Generate Timetable</div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 14 }}>One subject per day, starting from a date. Drag rows to reorder subjects.</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div><FieldLabel>Exam Type</FieldLabel>
-                <select value={genExamType} onChange={e => setGenExamType(e.target.value)} style={css.input}>
-                  {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select></div>
-              <div><FieldLabel>Course</FieldLabel>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {courses.map(c => (
-                    <button key={c} onClick={() => setGenCourse(c)}
-                      style={{ ...css.btn, padding: "5px 14px", fontSize: 11, background: genCourse === c ? "#1a3c2e" : "#F3F4F6", color: genCourse === c ? "white" : "#374151", border: genCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
-                  ))}
-                </div></div>
-              <div><FieldLabel>Start Date</FieldLabel>
-                <input type="date" value={genStartDate} onChange={e => setGenStartDate(e.target.value)} style={css.input} /></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div><FieldLabel>Shift</FieldLabel>
-                  <select value={genShift} onChange={e => setGenShift(e.target.value)} style={css.input}>
-                    <option>Morning</option><option>Afternoon</option><option>Evening</option>
-                  </select></div>
-                <div><FieldLabel>Time</FieldLabel>
-                  <input type="time" value={genTime} onChange={e => setGenTime(e.target.value)} style={css.input} /></div>
-              </div>
-              <div><FieldLabel>Room</FieldLabel>
-                <input value={genRoom} onChange={e => setGenRoom(e.target.value)} style={css.input} /></div>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                <input type="checkbox" checked={genSkipWeekends} onChange={e => setGenSkipWeekends(e.target.checked)} />
-                Skip weekends (Sat & Sun)
-              </label>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <FieldLabel>Subject Order (drag to reorder)</FieldLabel>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                {genSubjectOrder.map((s, i) => (
-                  <div key={s.subject} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "#F8FAFC", borderRadius: 8, border: "1px solid #E5E7EB" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <button onClick={() => { if (i === 0) return; const n = [...genSubjectOrder]; [n[i-1], n[i]] = [n[i], n[i-1]]; setGenSubjectOrder(n); }}
-                        style={{ ...css.btn, padding: "1px 6px", fontSize: 10, background: "#E5E7EB", color: "#374151" }}>▲</button>
-                      <button onClick={() => { if (i === genSubjectOrder.length - 1) return; const n = [...genSubjectOrder]; [n[i], n[i+1]] = [n[i+1], n[i]]; setGenSubjectOrder(n); }}
-                        style={{ ...css.btn, padding: "1px 6px", fontSize: 10, background: "#E5E7EB", color: "#374151" }}>▼</button>
-                    </div>
-                    <span style={{ fontSize: 10, color: "#94A3B8", fontWeight: 700, minWidth: 16 }}>{i+1}</span>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{s.subject}</span>
-                    <input type="number" value={s.marks}
-                      onChange={e => setGenSubjectOrder(p => p.map((x, j) => j === i ? { ...x, marks: Number(e.target.value) } : x))}
-                      style={{ width: 60, padding: "4px 6px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12 }} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Preview + save */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ ...css.card, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#1e293b" }}>
-                  {genPreview.length} exam days generated
-                </div>
-                <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
-                  {genCourse} · {examTypes.find(e=>e.id===genExamType)?.name} · starts {genStartDate || "—"}
-                </div>
-              </div>
-              <button onClick={handleSaveGenerate} disabled={!genPreview.length || genSaving}
-                style={{ ...css.btn, background: genSaved ? "#16A34A" : genSaving ? "#93C5FD" : "#1a3c2e", color: "white", padding: "10px 22px", fontSize: 13 }}>
-                {genSaved ? `✓ Saved ${genPreview.length} entries!` : genSaving ? "Saving…" : `💾 Save ${genPreview.length} Entries`}
-              </button>
-            </div>
-            <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-              <div style={{ padding: "11px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                  {["#","Date","Day","Subject","Marks"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
-                </tr></thead>
-                <tbody>
-                  {genPreview.map((r, i) => {
-                    const day = new Date(r.exam_date).toLocaleDateString("en-IN", { weekday: "short" });
-                    return (
-                      <tr key={i} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                        <td style={{ padding: "8px 14px", color: "#94A3B8", fontSize: 12 }}>{i + 1}</td>
-                        <td style={{ padding: "8px 14px", fontWeight: 600 }}>{r.exam_date}</td>
-                        <td style={{ padding: "8px 14px", color: "#64748b" }}>{day}</td>
-                        <td style={{ padding: "8px 14px", fontWeight: 600, color: "#1a3c2e" }}>{r.subject}</td>
-                        <td style={{ padding: "8px 14px", color: "#64748b" }}>{r.total_marks}</td>
-                      </tr>
-                    );
-                  })}
-                  {!genPreview.length && <tr><td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>Set a start date to preview.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── DUPLICATE ENTRIES ── */}
-      {mode === "duplicate" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ ...css.card, display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#1e293b", flex: "0 0 100%", marginBottom: 4 }}>
-              📄 Duplicate Schedule Entries to a New Date
-            </div>
-            <div>
-              <FieldLabel>Copy to Date</FieldLabel>
-              <input type="date" value={dupDate} onChange={e => setDupDate(e.target.value)} style={{ ...css.input, width: 180 }} />
-            </div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>
-              {dupIds.size} entries selected
-            </div>
-            <button onClick={handleDuplicate} disabled={!dupIds.size || !dupDate || dupSaving}
-              style={{ ...css.btn, background: dupSaved ? "#16A34A" : dupSaving ? "#93C5FD" : "#7c3aed", color: "white", fontSize: 13 }}>
-              {dupSaved ? `✓ Duplicated ${dupIds.size} entries!` : dupSaving ? "Saving…" : `📄 Duplicate ${dupIds.size} Selected`}
-            </button>
-          </div>
-          <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
-            filterCourse={filterCourse} setFilterCourse={setFilterCourse}
-            filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-            onDelete={handleDelete} selectable={true} selected={dupIds} onToggle={id => setDupIds(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; })}
-            onSelectAll={() => setDupIds(new Set(filtered.map(s => s.id)))}
-            onDeselectAll={() => setDupIds(new Set())} />
-        </div>
-      )}
-
-      {/* ── IMPORT CSV/EXCEL ── */}
-      {mode === "import" && (
-        <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
-          <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>📂 Import from CSV / Excel</div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 16 }}>
-              Upload a file with columns: <b>course, subject, date, type, time, shift, room, marks</b>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button onClick={downloadImportTemplate}
-                style={{ ...css.btn, background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD", fontSize: 12 }}>
-                📋 Download Template
-              </button>
-              <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={handleFileUpload} />
-              <button onClick={() => fileInputRef.current?.click()}
-                style={{ ...css.btn, background: "#7c3aed", color: "white", fontSize: 13 }}>
-                📂 Upload File
-              </button>
-              {importRows.length > 0 && (
-                <div style={{ background: "#E1F5EE", border: "1px solid #BBF7D0", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#0F6E56" }}>
-                  ✅ {importRows.length} rows ready to import
-                </div>
-              )}
-              {importErrors.length > 0 && (
-                <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#92400E" }}>
-                  ⚠️ {importErrors.length} rows skipped:<br />
-                  {importErrors.map((e, i) => <div key={i} style={{ marginTop: 2 }}>• {e}</div>)}
-                </div>
-              )}
-              {importRows.length > 0 && !importDone && (
-                <button onClick={handleImportSave} disabled={importSaving}
-                  style={{ ...css.btn, background: importSaving ? "#93C5FD" : "#1a3c2e", color: "white", fontSize: 13 }}>
-                  {importSaving ? "Saving…" : `💾 Confirm Import (${importRows.length} entries)`}
-                </button>
-              )}
-              {importDone && (
-                <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
-                  ✅ Import complete!
-                </div>
-              )}
-            </div>
-          </div>
-          {/* Import preview */}
-          <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-            <div style={{ padding: "11px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>
-              {importRows.length ? `📋 Import Preview (${importRows.length} rows)` : "📋 Awaiting file upload…"}
-            </div>
-            {importRows.length > 0 ? (
-              <div style={{ overflowX: "auto", maxHeight: 460, overflowY: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead style={{ position: "sticky", top: 0 }}>
-                    <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                      {["Course","Subject","Date","Exam Type","Shift","Time","Room","Marks"].map(h => (
-                        <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importRows.map((r, i) => (
-                      <tr key={i} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                        <td style={{ padding: "8px 12px" }}><span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{r.course}</span></td>
-                        <td style={{ padding: "8px 12px", fontWeight: 600 }}>{r.subject}</td>
-                        <td style={{ padding: "8px 12px" }}>{r.exam_date}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{examTypes.find(e => e.id === r.exam_type_id)?.name || r.exam_type_id}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.shift}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.time}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.room || "—"}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.total_marks}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div style={{ padding: 60, textAlign: "center", color: "#94A3B8" }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>
-                <div style={{ fontSize: 13 }}>Upload a CSV or Excel file to preview before importing.</div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Always show table below in non-duplicate modes except when table is already shown inline */}
-      {(mode === "multi" || mode === "generate") && (
-        <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
-          filterCourse={filterCourse} setFilterCourse={setFilterCourse}
-          filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-          onDelete={handleDelete} selectable={false} />
-      )}
+      </div>
     </div>
   );
 }
-
 // ─── REPORT CARDS ─────────────────────────────────────────────────────────────
 function ReportCardItem({ st, subjects, marks, examType, examDate, examName, institute, allStudents, course }) {
   const { remark, setRemark, save: saveRemark, saving: savingRemark, saved: savedRemark } = useRemarks(st.id, examType, examDate);
