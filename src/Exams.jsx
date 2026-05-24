@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
 import { staffDB, useStaffDB } from './staffDB'
+import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
@@ -3110,19 +3111,9 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     setRcProgress(null);
   };
 
-  // ── Admit card builder (reuse from AdmitCardsTab) ──
-  const buildAdmitCardHTML = (st) => {
-  const scheduleRows = acSchedule.length
-    ? acSchedule.sort((a,b)=>a.exam_date.localeCompare(b.exam_date)).map(s=>
-        `<tr>
-          <td>${s.exam_date}</td>
-          <td>${s.time||"—"}</td>
-          <td style="font-weight:600">${s.subject}</td>
-          <td style="text-align:center">${s.total_marks}</td>
-          <td style="text-align:center">${s.room||"—"}</td>
-        </tr>`
-      ).join("")
-    : `<tr><td colspan="5" style="text-align:center;color:#999;padding:10px;font-style:italic">No schedule entries added yet.</td></tr>`;
+  // ── Admit card builder (shared NTA template) ──
+const buildAdmitCardHTML = (st) =>
+  generateAdmitCardHTML(st, { examTypeName: acExamName, examSchedule: acSchedule, institute, course: acCourse });
 
   const gcc = String(st.gcc_no||"").padStart(6,"0");
 
@@ -3135,10 +3126,10 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
           : `<div class="logo-initials">GNSI</div>`}
       </div>
       <div class="header-center">
-        <div class="inst-line1">Ministry of Education · Affiliated Coaching Institute</div>
+        <div class="inst-line1">Recognized by Government of Manipur · ESTD 2016</div>
         <div class="inst-name">${institute.name||"Guidance Navodaya & Sainik Institute"}</div>
-        <div class="inst-addr">${institute.address||"Khangabok, Thoubal, Manipur − 795131"}</div>
-        <div class="inst-tagline">${institute.tagline||"Excellence in Competitive Education"}</div>
+        <div class="inst-addr">${institute.address||"Khangabok Sorok Wangma, Thoubal, Manipur − 795131"}</div>
+        <div class="inst-tagline">${institute.tagline||"A Premier Institute for Navodaya,Sainik,RMS Preparation since 2016"}</div>
       </div>
       <div class="admit-badge">
         <div class="admit-badge-line">ADMIT</div>
@@ -3148,7 +3139,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
 
     <div class="exam-banner">
       <div class="exam-title">✦ ${acExamName}</div>
-      <div class="exam-year">Academic Year ${institute.academicYear||"2025-2026"}</div>
+      <div class="exam-year">Academic Year ${institute.academicYear||"2026-2027"}</div>
     </div>
 
     <div class="notice-bar">
@@ -3264,175 +3255,6 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   </div>`;
 };
 
-  const ADMIT_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;600;700&display=swap');
-  html,*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  :root{
-    --navy:#0A1628;--navy2:#1a2d4a;--blue:#1B4F8A;--blue2:#2563A8;
-    --red:#C0392B;--gold:#B8860B;--gold2:#D4A017;
-    --cream:#FEFCF8;--cream2:#F5F0E8;--border:#CBD5E0;--border2:#9AA8B8;
-    --text:#0D1117;--text2:#2D3748;--text3:#4A5568;
-  }
-  @page{margin:0;size:210mm 297mm;}
-  body{
-    font-family:'Source Sans 3',sans-serif;
-    background:white;color:var(--text);
-    -webkit-print-color-adjust:exact;print-color-adjust:exact;
-    margin:0;padding:0;
-  }
-  .no-print{text-align:center;padding:12px;display:flex;gap:10px;justify-content:center;background:#f8f9fa;border-bottom:1px solid #dee2e6;}
-  .no-print button{padding:8px 20px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;}
-  .btn-print{background:#1B4F8A;color:white;} .btn-close{background:#6c757d;color:white;}
-
-  /* ── Page wrapper - true A4 ── */
-  .admit-card{
-    width:210mm;min-height:297mm;
-    margin:0 auto 20px;
-    background:white;
-    position:relative;
-    border:1px solid #ccc;
-    display:flex;flex-direction:column;
-  }
-
-  /* ── Top bar: tricolor stripe ── */
-  .top-tricolor{height:8px;background:linear-gradient(90deg,#FF9933 0%,#FF9933 33%,white 33%,white 66%,#138808 66%,#138808 100%);}
-
-  /* ── Header ── */
-  .card-header{
-    background:var(--navy);
-    padding:10px 20px 8px;
-    display:flex;align-items:center;gap:16px;
-    border-bottom:3px solid var(--gold);
-  }
-  .logo-circle{
-    width:60px;height:60px;border-radius:50%;
-    border:2px solid var(--gold);
-    background:rgba(255,255,255,0.12);
-    display:flex;align-items:center;justify-content:center;flex-shrink:0;
-  }
-  .logo-initials{font-family:'EB Garamond',serif;font-size:16px;font-weight:700;color:var(--gold2);letter-spacing:1px;}
-  .header-center{flex:1;text-align:center;}
-  .inst-line1{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.6);margin-bottom:2px;}
-  .inst-name{font-family:'EB Garamond',serif;font-size:22px;font-weight:700;color:white;line-height:1.1;margin-bottom:1px;}
-  .inst-addr{font-size:10px;color:rgba(255,255,255,0.65);}
-  .inst-tagline{font-family:'EB Garamond',serif;font-style:italic;font-size:11px;color:var(--gold2);margin-top:2px;}
-  .admit-badge{
-    background:var(--red);
-    border:2px solid rgba(255,255,255,0.3);
-    border-radius:3px;padding:8px 14px;text-align:center;flex-shrink:0;
-  }
-  .admit-badge-line{font-family:'EB Garamond',serif;font-size:16px;font-weight:700;color:white;letter-spacing:3px;line-height:1.2;}
-
-  /* ── Exam title banner ── */
-  .exam-banner{
-    background:var(--blue);
-    padding:6px 20px;
-    display:flex;justify-content:space-between;align-items:center;
-    border-bottom:1px solid var(--border);
-  }
-  .exam-title{font-family:'EB Garamond',serif;font-size:15px;font-weight:600;color:white;letter-spacing:1px;}
-  .exam-year{font-size:11px;color:rgba(255,255,255,0.8);background:rgba(255,255,255,0.15);padding:2px 10px;border-radius:2px;}
-
-  /* ── Important notice bar ── */
-  .notice-bar{
-    background:#FEF3CD;border-top:1px solid #F6C23E;border-bottom:1px solid #F6C23E;
-    padding:4px 20px;font-size:10px;color:#7D5A00;font-weight:600;text-align:center;
-    letter-spacing:.3px;
-  }
-
-  /* ── Candidate info table ── */
-  .info-section{padding:10px 20px 0;}
-  .section-head{
-    font-family:'Libre Baskerville',serif;font-size:10px;font-weight:700;
-    color:var(--blue);text-transform:uppercase;letter-spacing:2px;
-    border-bottom:2px solid var(--blue);padding-bottom:3px;margin-bottom:6px;
-  }
-  .info-table{width:100%;border-collapse:collapse;border:1px solid var(--border2);font-size:11px;}
-  .info-table td{padding:5px 10px;border:1px solid var(--border);}
-  .info-table .lbl{font-weight:700;color:var(--text2);background:#F7FAFC;width:30%;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
-  .info-table .val{color:var(--text);font-family:'EB Garamond',serif;font-size:13px;font-weight:600;}
-  .info-table .val.big{font-size:17px;font-weight:700;color:var(--navy);letter-spacing:2px;}
-  .info-table .val.name{font-size:15px;font-weight:700;color:var(--navy);text-transform:uppercase;}
-
-  /* ── Photo box ── */
-  .candidate-row{display:flex;gap:0;align-items:stretch;}
-  .candidate-details{flex:1;}
-  .photo-col{
-    width:90px;border:1px solid var(--border2);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    background:#F7FAFC;flex-shrink:0;padding:8px 6px;
-    border-left:none;
-  }
-  .photo-box{
-    width:72px;height:86px;border:1.5px dashed var(--border2);
-    display:flex;align-items:center;justify-content:center;
-    background:white;font-size:9px;color:var(--text3);text-align:center;line-height:1.5;
-  }
-  .photo-label{font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:4px;}
-
-  /* ── Schedule table ── */
-  .sched-section{padding:8px 20px 0;}
-  .sched-table{width:100%;border-collapse:collapse;font-size:10.5px;border:1px solid var(--border2);}
-  .sched-table thead tr{background:var(--navy);}
-  .sched-table thead th{
-    padding:6px 10px;color:white;font-weight:700;
-    font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
-    border-right:1px solid rgba(255,255,255,0.2);text-align:left;
-  }
-  .sched-table tbody tr:nth-child(odd){background:#F7FAFC;}
-  .sched-table tbody tr:nth-child(even){background:white;}
-  .sched-table tbody td{padding:5px 10px;border:1px solid var(--border);font-size:11px;}
-  .sched-table tbody td:first-child{font-weight:600;color:var(--navy);}
-
-  /* ── Instructions ── */
-  .instr-section{padding:8px 20px 0;}
-  .instr-box{border:1px solid var(--border2);border-left:4px solid var(--red);}
-  .instr-head{background:#FEF2F2;padding:5px 12px;font-size:10px;font-weight:700;color:var(--red);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #FCA5A5;}
-  .instr-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;}
-  .instr-item{font-size:10px;color:var(--text2);padding:4px 12px;border-bottom:1px solid var(--border);line-height:1.4;}
-  .instr-item:nth-child(odd){border-right:1px solid var(--border);}
-  .instr-item:last-child,.instr-item:nth-last-child(2){border-bottom:none;}
-
-  /* ── Signatures ── */
-  .sig-section{
-    padding:10px 20px;
-    display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
-    border-top:2px solid var(--border2);margin-top:auto;
-  }
-  .sig-block{flex:1;text-align:center;}
-  .sig-space{height:36px;border-bottom:1px solid var(--text);margin:0 10px 4px;}
-  .sig-label{font-size:8.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);font-weight:700;}
-  .seal-block{flex:0 0 80px;display:flex;flex-direction:column;align-items:center;}
-  .seal{
-    width:70px;height:70px;border-radius:50%;
-    border:2px dashed var(--gold);background:var(--cream2);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-  }
-  .seal-word{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-weight:700;}
-  .seal-star{font-size:14px;color:var(--gold);line-height:1.2;}
-
-  /* ── Barcode area ── */
-  .barcode-row{
-    background:var(--cream2);border-top:1px solid var(--border);
-    padding:5px 20px;display:flex;justify-content:space-between;align-items:center;
-  }
-  .barcode-text{font-family:'EB Garamond',serif;font-size:10px;color:var(--text3);}
-  .barcode-num{font-family:'Libre Baskerville',serif;font-size:11px;font-weight:700;color:var(--navy);letter-spacing:3px;}
-
-  /* ── Bottom bar ── */
-  .bottom-bar{background:var(--navy);padding:5px 20px;}
-  .bottom-bar-text{font-size:9px;color:rgba(255,255,255,0.6);text-align:center;letter-spacing:.5px;}
-  .bottom-tricolor{height:5px;background:linear-gradient(90deg,#FF9933 0%,#FF9933 33%,white 33%,white 66%,#138808 66%,#138808 100%);}
-
-  .page-break{page-break-after:always;height:0;}
-  @media print{
-    body{background:white;padding:0;}
-    .no-print{display:none!important;}
-    .admit-card{border:none;margin:0;width:100%;min-height:100vh;}
-    @page{margin:0;size:A4;}
-  }
-`;
-
   const printAllAdmitCards = async () => {
     if (!filteredAcStudents.length) return;
 
@@ -3478,7 +3300,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     w.document.write(`<!DOCTYPE html><html><head>
       <title>Bulk Admit Cards — ${acCourse} — ${acExamName}</title>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet"/>
-      <style>${ADMIT_CSS}</style>
+      <style>${ADMIT_CARD_CSS}</style>
     </head><body>
       <div class="no-print">
         <button class="btn-print" onclick="
@@ -3803,7 +3625,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
       )}
     </div>
   );
-}
+
 
 // ─── PROGRESS TAB ─────────────────────────────────────────────────────────────
 function ProgressTab({ courseSubjects, examTypes, students }) {
@@ -4126,12 +3948,8 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
     (!s.course || s.course.toUpperCase() === course.toUpperCase())
   );
 
-  const generateCardHTML = (st) => {
-    const scheduleRows = examSchedule.length
-      ? examSchedule.sort((a, b) => a.exam_date.localeCompare(b.exam_date)).map(s =>
-          `<tr><td>${s.exam_date}</td><td>${s.time || "—"}</td><td>${s.subject}</td><td style="text-align:center">${s.total_marks}</td><td style="text-align:center">${s.room || "—"}</td></tr>`
-        ).join("")
-      : `<tr><td colspan="5" style="text-align:center;color:#999;padding:14px">No schedule entries. Add them in the Schedule tab.</td></tr>`;
+  const generateCardHTML = (st) =>
+  generateAdmitCardHTML(st, { examTypeName, examSchedule, institute, course });
 
     return `
     <div class="admit-card">
@@ -4212,88 +4030,16 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
     </div>`;
   };
 
-  const PRINT_CSS = `
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root { --green-dark:#0d2818; --green:#1a3c2e; --green-mid:#2A5C45; --gold:#B8860B; --gold-light:#f0c040; --gold-pale:#FDF8E8; --border:#D5C89A; --text:#1C1A16; --text2:#5C5440; --bg:#FDFAF3; }
-    body { font-family:'EB Garamond',Georgia,serif; background:#e8e0d0; padding:24px; color:var(--text); -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .no-print { text-align:center; margin-bottom:20px; display:flex; gap:12px; justify-content:center; }
-    .no-print button { padding:10px 28px; background:var(--green); color:white; border:none; border-radius:8px; cursor:pointer; font-size:15px; }
-    .admit-card { width:720px; margin:0 auto 40px; background:var(--bg); border-radius:4px; box-shadow:0 8px 40px rgba(0,0,0,0.18),0 0 0 1px var(--border); position:relative; overflow:hidden; }
-    .watermark { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-35deg); font-family:'Playfair Display',serif; font-size:80px; font-weight:700; color:rgba(184,134,11,0.055); white-space:nowrap; pointer-events:none; z-index:0; letter-spacing:12px; }
-    .top-strip { height:7px; background:linear-gradient(90deg,var(--green-dark) 0%,var(--green) 40%,var(--green-mid) 70%,var(--gold) 100%); }
-    .card-header { display:flex; align-items:center; gap:18px; padding:20px 28px 16px; background:linear-gradient(135deg,var(--green-dark) 0%,var(--green) 55%,#1e4d36 100%); position:relative; z-index:1; }
-    .logo-circle { width:68px; height:68px; border-radius:50%; border:3px solid var(--gold); background:rgba(255,255,255,0.12); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .logo-initials { font-family:'Playfair Display',serif; font-size:17px; font-weight:700; color:var(--gold-light); letter-spacing:1px; }
-    .header-center { flex:1; text-align:center; }
-    .inst-eyebrow { font-size:9px; letter-spacing:4px; text-transform:uppercase; color:var(--gold-light); opacity:0.8; margin-bottom:4px; }
-    .inst-name { font-family:'Playfair Display',serif; font-size:21px; font-weight:600; color:#fff; letter-spacing:.5px; line-height:1.2; margin-bottom:3px; }
-    .inst-addr { font-size:12px; color:rgba(255,255,255,0.72); margin-bottom:2px; }
-    .inst-tagline { font-family:'Playfair Display',serif; font-style:italic; font-size:11px; color:var(--gold-light); opacity:0.85; }
-    .admit-badge { background:var(--gold); border-radius:4px; padding:8px 14px; text-align:center; }
-    .admit-badge-text { font-family:'Playfair Display',serif; font-size:15px; font-weight:700; color:var(--green-dark); letter-spacing:3px; line-height:1.3; }
-    .gold-divider { display:flex; align-items:center; padding:10px 28px; background:var(--gold-pale); border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
-    .gold-divider.mini { padding:6px 28px; }
-    .gold-line { flex:1; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); }
-    .gold-diamond { color:var(--gold); font-size:10px; margin:0 12px; }
-    .exam-banner { display:flex; justify-content:space-between; align-items:center; padding:10px 28px; background:#E1F5EE; border-bottom:1px solid #BBF7D0; }
-    .exam-banner-title { font-family:'Playfair Display',serif; font-size:17px; font-weight:600; color:var(--green); }
-    .exam-banner-year { font-size:12px; color:var(--green-mid); font-weight:600; letter-spacing:1px; background:white; padding:3px 12px; border-radius:999px; border:1px solid #BBF7D0; }
-    .student-section { display:flex; gap:20px; padding:18px 28px; background:white; border-bottom:1px solid #F0ECD8; position:relative; z-index:1; }
-    .student-info-grid { flex:1; }
-    .info-row { display:flex; gap:16px; margin-bottom:12px; }
-    .info-row:last-child { margin-bottom:0; }
-    .info-field { flex:1; }
-    .field-label { font-size:9px; letter-spacing:2.5px; text-transform:uppercase; color:var(--gold); font-weight:600; margin-bottom:4px; }
-    .field-value { font-size:14px; font-weight:500; color:var(--text); border-bottom:1.5px solid var(--border); padding-bottom:4px; }
-    .name-value { font-family:'Playfair Display',serif; font-size:17px; font-weight:600; color:var(--green); }
-    .gcc-value { font-family:'Playfair Display',serif; font-size:22px; font-weight:700; color:var(--green-dark); letter-spacing:2px; }
-    .photo-box { flex-shrink:0; text-align:center; }
-    .photo-inner { width:90px; height:108px; border:2px dashed var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; background:var(--gold-pale); margin-bottom:4px; }
-    .photo-text { font-size:10px; color:var(--text2); text-align:center; line-height:1.6; }
-    .photo-label { font-size:9px; color:var(--text2); letter-spacing:1px; text-transform:uppercase; }
-    .schedule-section { padding:16px 28px; position:relative; z-index:1; }
-    .section-title { font-family:'Playfair Display',serif; font-size:13px; font-weight:600; color:var(--green); margin-bottom:10px; }
-    .sched-table { width:100%; border-collapse:collapse; border:1px solid var(--border); font-size:12px; }
-    .sched-table thead tr { background:var(--green); color:white; }
-    .sched-table thead th { padding:8px 12px; text-align:left; font-weight:600; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; }
-    .sched-table tbody tr:nth-child(odd) { background:var(--gold-pale); }
-    .sched-table tbody tr:nth-child(even) { background:white; }
-    .sched-table tbody td { padding:8px 12px; border-bottom:1px solid var(--border); }
-    .instructions { padding:12px 28px 14px; background:#F8F6F0; border-top:1px solid #EDE8D8; border-bottom:1px solid #EDE8D8; position:relative; z-index:1; }
-    .instr-title { font-family:'Playfair Display',serif; font-size:12px; font-weight:600; color:var(--green); margin-bottom:8px; }
-    .instr-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px 24px; }
-    .instr-item { font-size:11px; color:var(--text2); line-height:1.5; }
-    .signatures { display:flex; justify-content:space-between; align-items:flex-end; padding:18px 28px 16px; gap:16px; background:white; position:relative; z-index:1; }
-    .sig-block { text-align:center; flex:1; }
-    .sig-center { flex:0.6; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; }
-    .sig-name { font-size:10px; color:var(--text2); margin-bottom:2px; font-style:italic; height:20px; }
-    .sig-digital { height:42px; display:flex; align-items:flex-end; justify-content:center; margin-bottom:2px; }
-    .sig-line-draw { height:1.5px; background:linear-gradient(90deg,transparent 0%,var(--border) 15%,var(--text) 50%,var(--border) 85%,transparent 100%); margin:4px 8px 4px; }
-    .sig-label { font-size:9.5px; letter-spacing:2px; text-transform:uppercase; color:var(--text2); font-weight:600; margin-top:3px; }
-    .sig-subname { font-size:10.5px; color:var(--green); font-weight:600; margin-top:2px; }
-    .official-seal { width:70px; height:70px; border-radius:50%; border:2px dashed var(--gold); display:flex; align-items:center; justify-content:center; background:var(--gold-pale); margin-bottom:4px; }
-    .seal-inner { text-align:center; }
-    .seal-text { font-size:7px; letter-spacing:2px; text-transform:uppercase; color:var(--gold); font-weight:700; }
-    .seal-star { color:var(--gold); font-size:14px; line-height:1; }
-    .bottom-bar { background:linear-gradient(90deg,var(--green-dark),var(--green),var(--green-dark)); padding:8px 28px; position:relative; z-index:1; }
-    .bottom-bar::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--gold),var(--gold-light),var(--gold)); }
-    .bottom-bar-text { font-size:10px; color:rgba(255,255,255,0.65); text-align:center; letter-spacing:.5px; }
-    .page-break { page-break-after:always; height:0; }
-    @media print { body { background:white; padding:0; } .no-print { display:none !important; } .admit-card { box-shadow:none; margin:0 auto; border-radius:0; } @page { margin:1cm; size:A4; } }
-  `;
-
-  const openPrintWindow = (body, title) => {
-    const w = window.open("", "_blank");
-    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet"/>
-    <style>${PRINT_CSS}</style></head><body>
-    <div class="no-print"><button onclick="window.print()">🖨️ Print All Cards</button><button onclick="window.close()">✕ Close</button></div>
-    ${body}</body></html>`);
-    w.document.close();
-  };
-
-  const printAll = () => openPrintWindow(filtered.map(st => generateCardHTML(st)).join('<div class="page-break"></div>'), `Admit Cards — ${course} — ${examTypeName}`);
-  const printOne = st => openPrintWindow(generateCardHTML(st), `Admit Card — ${st.name}`);
+  const printAll = () =>
+  openAdmitCardPrintWindow(
+    filtered.map(st => generateCardHTML(st)),
+    `Admit Cards — ${course} — ${examTypeName}`
+  );
+const printOne = (st) =>
+  openAdmitCardPrintWindow(
+    [generateCardHTML(st)],
+    `Admit Card — ${st.name}`
+  );
 
   return (
     <div>
@@ -4350,7 +4096,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
       </div>
     </div>
   );
-}
+
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function Exams({ currentUser }) {
