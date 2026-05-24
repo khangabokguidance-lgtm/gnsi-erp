@@ -712,7 +712,7 @@ export function generateAdmitCardHTML(st, {
 
   <div class="bottom-bar">
     <div class="bottom-bar-text">
-      ${institute.name || "GNSI"} &nbsp;·&nbsp; ${institute.address || "Khangabok, Manipur"} &nbsp;·&nbsp; ${examTypeName} &nbsp;·&nbsp; ${institute.academicYear || "2025-2026"} &nbsp;·&nbsp; For queries contact the Institute Office
+      ${institute.name || "GNSI"} &nbsp;·&nbsp; ${institute.address || "Khangabok Sorok Wangma Thoubal, Manipur -795138"} &nbsp;·&nbsp; ${examTypeName} &nbsp;·&nbsp; ${institute.academicYear || "2026-2027"} &nbsp;·&nbsp; For queries contact the Institute Office
     </div>
   </div>
   <div class="tricolor-bottom"></div>
