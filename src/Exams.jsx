@@ -127,12 +127,12 @@ const TAB_GROUPS = [
 
 const INSTITUTE_DEFAULT = {
   name: "Guidance Navodaya & Sainik Institute",
-  address: "Khangabok, Manipur",
-  tagline: "Excellence in Education",
+  address: "Khangabok Sorok Wangma Thoubal, Manipur -795138",
+  tagline: "A Premier Institute for Navodaya, Sainik & RMS Preparation since 2016",
   principal: "Principal",
   teacher: "Class Teacher",
-  logoUrl: "",
-  academicYear: "2025-2026",
+  logoUrl: "https://postimg.cc/HrDFYwKn",
+  academicYear: "2026-2027",
   examDate: "",
 };
 
