@@ -3115,146 +3115,6 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
 const buildAdmitCardHTML = (st) =>
   generateAdmitCardHTML(st, { examTypeName: acExamName, examSchedule: acSchedule, institute, course: acCourse });
 
-  const gcc = String(st.gcc_no||"").padStart(6,"0");
-
-  return `<div class="admit-card">
-    <div class="top-tricolor"></div>
-    <div class="card-header">
-      <div class="logo-circle">
-        ${institute.logoUrl
-          ? `<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%"/>`
-          : `<div class="logo-initials">GNSI</div>`}
-      </div>
-      <div class="header-center">
-        <div class="inst-line1">Recognized by Government of Manipur · ESTD 2016</div>
-        <div class="inst-name">${institute.name||"Guidance Navodaya & Sainik Institute"}</div>
-        <div class="inst-addr">${institute.address||"Khangabok Sorok Wangma, Thoubal, Manipur − 795131"}</div>
-        <div class="inst-tagline">${institute.tagline||"A Premier Institute for Navodaya,Sainik,RMS Preparation since 2016"}</div>
-      </div>
-      <div class="admit-badge">
-        <div class="admit-badge-line">ADMIT</div>
-        <div class="admit-badge-line">CARD</div>
-      </div>
-    </div>
-
-    <div class="exam-banner">
-      <div class="exam-title">✦ ${acExamName}</div>
-      <div class="exam-year">Academic Year ${institute.academicYear||"2026-2027"}</div>
-    </div>
-
-    <div class="notice-bar">
-      ⚠ This Admit Card must be produced at the Examination Hall. Without this card, entry will not be permitted.
-    </div>
-
-    <div class="info-section">
-      <div class="section-head">Candidate Information</div>
-      <div class="candidate-row">
-        <div class="candidate-details">
-          <table class="info-table">
-            <tr>
-              <td class="lbl">Candidate Name</td>
-              <td class="val name" colspan="3">${st.name}</td>
-            </tr>
-            <tr>
-              <td class="lbl">Roll / GCC Number</td>
-              <td class="val big">${gcc}</td>
-              <td class="lbl">Admission No.</td>
-              <td class="val">${st.admission_no||"—"}</td>
-            </tr>
-            <tr>
-              <td class="lbl">Course</td>
-              <td class="val">${st.course||acCourse}</td>
-              <td class="lbl">Batch</td>
-              <td class="val">${st.class_name||acCourse}</td>
-            </tr>
-            <tr>
-              <td class="lbl">Institute</td>
-              <td class="val" colspan="3">${institute.name||"GNSI"}, ${institute.address||"Khangabok, Manipur"}</td>
-            </tr>
-            <tr>
-              <td class="lbl">Academic Year</td>
-              <td class="val">${institute.academicYear||"2025-2026"}</td>
-              <td class="lbl">Examination</td>
-              <td class="val" style="font-weight:700;color:#1B4F8A">${acExamName}</td>
-            </tr>
-          </table>
-        </div>
-        <div class="photo-col">
-          <div class="photo-box">
-            ${st.photo_url
-              ? `<img src="${st.photo_url}" style="width:100%;height:100%;object-fit:cover"/>`
-              : `Affix<br/>Passport<br/>Size<br/>Photo`}
-          </div>
-          <div class="photo-label">Photograph</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="sched-section">
-      <div class="section-head" style="margin-top:8px">Examination Schedule</div>
-      <table class="sched-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Time</th>
-            <th>Subject / Paper</th>
-            <th>Max Marks</th>
-            <th>Examination Hall</th>
-          </tr>
-        </thead>
-        <tbody>${scheduleRows}</tbody>
-      </table>
-    </div>
-
-    <div class="instr-section">
-      <div class="section-head" style="margin-top:8px">Important Instructions to Candidates</div>
-      <div class="instr-box">
-        <div class="instr-head">⚠ Read carefully before appearing for examination</div>
-        <div class="instr-grid">
-          <div class="instr-item">① This Admit Card must be carried to the examination hall.</div>
-          <div class="instr-item">② Report at the hall at least 15 minutes before start time.</div>
-          <div class="instr-item">③ Mobile phones and electronic devices are strictly banned.</div>
-          <div class="instr-item">④ This card must be surrendered on demand by the invigilator.</div>
-          <div class="instr-item">⑤ Candidates without this card will not be permitted entry.</div>
-          <div class="instr-item">⑥ Any malpractice will result in immediate disqualification.</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="sig-section">
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-label">Candidate's Signature</div>
-      </div>
-      <div class="seal-block">
-        <div class="seal">
-          <div class="seal-word">Official</div>
-          <div class="seal-star">★</div>
-          <div class="seal-word">Seal</div>
-        </div>
-      </div>
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-label">Exam Coordinator</div>
-      </div>
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-label">Head of Institute</div>
-      </div>
-    </div>
-
-    <div class="barcode-row">
-      <div class="barcode-text">Hall Ticket No.</div>
-      <div class="barcode-num">GNSI-${gcc}-${acExamName.replace(/\s+/g,'').toUpperCase().slice(0,6)}</div>
-      <div class="barcode-text">Issued: ${new Date().toLocaleDateString('en-IN')}</div>
-    </div>
-    <div class="bottom-bar">
-      <div class="bottom-bar-text">${institute.name||"GNSI"} · ${institute.address||"Khangabok, Manipur"} · ${acExamName} · ${institute.academicYear||"2025-2026"} · For queries contact the Institute Office</div>
-    </div>
-    <div class="bottom-tricolor"></div>
-  </div>`;
-};
-
   const printAllAdmitCards = async () => {
     if (!filteredAcStudents.length) return;
 
@@ -3625,7 +3485,7 @@ const buildAdmitCardHTML = (st) =>
       )}
     </div>
   );
-
+}
 
 // ─── PROGRESS TAB ─────────────────────────────────────────────────────────────
 function ProgressTab({ courseSubjects, examTypes, students }) {
@@ -3951,85 +3811,6 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   const generateCardHTML = (st) =>
   generateAdmitCardHTML(st, { examTypeName, examSchedule, institute, course });
 
-    return `
-    <div class="admit-card">
-      <div class="watermark">ADMIT CARD</div>
-      <div class="top-strip"></div>
-      <div class="card-header">
-        <div class="logo-circle">${institute.logoUrl ? `<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%;" />` : `<div class="logo-initials">GNSI</div>`}</div>
-        <div class="header-center">
-          <div class="inst-eyebrow">GOVERNMENT AFFILIATED · EST. 2015</div>
-          <div class="inst-name">${institute.name || "Guidance Navodaya & Sainik Institute"}</div>
-          <div class="inst-addr">${institute.address || "Khangabok, Manipur"}</div>
-          <div class="inst-tagline">${institute.tagline || "Excellence in Education"}</div>
-        </div>
-        <div class="header-right"><div class="admit-badge"><div class="admit-badge-text">ADMIT</div><div class="admit-badge-text">CARD</div></div></div>
-      </div>
-      <div class="gold-divider"><div class="gold-line"></div><div class="gold-diamond">◆</div><div class="gold-line"></div></div>
-      <div class="exam-banner">
-        <div class="exam-banner-title">${examTypeName}</div>
-        <div class="exam-banner-year">${institute.academicYear || "2025-2026"}</div>
-      </div>
-      <div class="student-section">
-        <div class="student-info-grid">
-          <div class="info-row">
-            <div class="info-field"><div class="field-label">Student Name</div><div class="field-value name-value">${st.name}</div></div>
-            <div class="info-field"><div class="field-label">GCC Number</div><div class="field-value gcc-value">${st.gcc_no || "—"}</div></div>
-          </div>
-          <div class="info-row">
-            <div class="info-field"><div class="field-label">Course / Batch</div><div class="field-value">${st.course || course} — ${st.class_name || course}</div></div>
-            <div class="info-field"><div class="field-label">Admission No.</div><div class="field-value">${st.admission_no || "—"}</div></div>
-            <div class="info-field"><div class="field-label">Academic Year</div><div class="field-value">${institute.academicYear || "2025-2026"}</div></div>
-          </div>
-        </div>
-        <div class="photo-box">
-          <div class="photo-inner">${st.photo_url ? `<img src="${st.photo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:4px"/>` : `<div class="photo-text">Affix<br/>Passport<br/>Photo</div>`}</div>
-          <div class="photo-label">Photograph</div>
-        </div>
-      </div>
-      <div class="gold-divider mini"><div class="gold-line"></div><div class="gold-diamond">◆</div><div class="gold-line"></div></div>
-      <div class="schedule-section">
-        <div class="section-title">📅 Examination Schedule</div>
-        <table class="sched-table">
-          <thead><tr><th>Date</th><th>Time</th><th>Subject</th><th>Max Marks</th><th>Hall / Room</th></tr></thead>
-          <tbody>${scheduleRows}</tbody>
-        </table>
-      </div>
-      <div class="instructions">
-        <div class="instr-title">📋 Important Instructions</div>
-        <div class="instr-grid">
-          <div class="instr-item">① Carry this admit card to the examination hall.</div>
-          <div class="instr-item">② Arrive at least 15 minutes before the exam.</div>
-          <div class="instr-item">③ Electronic devices are strictly prohibited.</div>
-          <div class="instr-item">④ This card must be presented on demand.</div>
-          <div class="instr-item">⑤ Students without this card will not be permitted.</div>
-          <div class="instr-item">⑥ Any malpractice will lead to disqualification.</div>
-        </div>
-      </div>
-      <div class="signatures">
-        <div class="sig-block">
-          <div class="sig-digital" style="height:42px"></div>
-          <div class="sig-line-draw"></div>
-          <div class="sig-label">Student's Signature</div>
-        </div>
-        <div class="sig-center">
-          <div class="official-seal"><div class="seal-inner"><div class="seal-text">OFFICIAL</div><div class="seal-star">★</div><div class="seal-text">SEAL</div></div></div>
-        </div>
-        <div class="sig-block sig-right">
-          <div class="sig-digital" style="height:42px"></div>
-          <div class="sig-line-draw"></div>
-          <div class="sig-label">Exam Coordinator</div>
-        </div>
-        <div class="sig-block sig-right">
-          <div class="sig-digital" style="height:42px"></div>
-          <div class="sig-line-draw"></div>
-          <div class="sig-label">Head of Institute</div>
-        </div>
-      </div>
-      <div class="bottom-bar"><div class="bottom-bar-text">Issued by ${institute.name || "GNSI"} · ${institute.address || "Khangabok, Manipur"} · ${examTypeName} · ${institute.academicYear || "2025-2026"}</div></div>
-    </div>`;
-  };
-
   const printAll = () =>
   openAdmitCardPrintWindow(
     filtered.map(st => generateCardHTML(st)),
@@ -4096,7 +3877,7 @@ const printOne = (st) =>
       </div>
     </div>
   );
-
+}
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function Exams({ currentUser }) {
