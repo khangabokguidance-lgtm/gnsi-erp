@@ -3183,7 +3183,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
     :root{--green-dark:#0d2818;--green:#1a3c2e;--green-mid:#2A5C45;--gold:#B8860B;--gold-light:#f0c040;--gold-pale:#FDF8E8;--border:#D5C89A;--text:#1C1A16;--text2:#5C5440;}
     @page{margin:1cm;size:A4;}
-    body{font-family:'EB Garamond',Georgia,serif;background:#e8e0d0;padding:20px;color:var(--text);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    body{font-family:'EB Garamond',Georgia,serif;background:white;padding:20px;color:var(--text);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .no-print{text-align:center;margin-bottom:16px;display:flex;gap:10px;justify-content:center;}
     .no-print button{padding:9px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;}
     .btn-print{background:var(--green);color:white;} .btn-close{background:#e5e7eb;color:#374151;}
@@ -3299,7 +3299,13 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
       <style>${ADMIT_CSS}</style>
     </head><body>
       <div class="no-print">
-        <button class="btn-print" onclick="window.print()">🖨️ Print All (${cards.length}) Admit Cards</button>
+        <button class="btn-print" onclick="
+  this.textContent='⏳ Loading fonts...';
+  this.disabled=true;
+  document.fonts.ready.then(()=>{
+    setTimeout(()=>{ window.print(); this.disabled=false; this.textContent='🖨️ Print All (${cards.length}) Admit Cards'; }, 400);
+  });
+">🖨️ Print All (${cards.length}) Admit Cards</button>
         <button class="btn-close" onclick="window.close()">✕ Close</button>
       </div>
       ${cards.join('<div class="page-break"></div>')}
