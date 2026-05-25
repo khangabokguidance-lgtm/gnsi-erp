@@ -3760,3 +3760,4 @@ function Hostel() {
 }
 
 export default Hostel;
+
