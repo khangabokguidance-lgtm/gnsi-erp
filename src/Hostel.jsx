@@ -1,46 +1,101 @@
-
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
+
+// ══════════════════════════════════════════════════════════════
+//  MOBILE-FIRST RESPONSIVE STYLES
+// ══════════════════════════════════════════════════════════════
+const isMobile = () => window.innerWidth < 768
+const isTablet = () => window.innerWidth >= 768 && window.innerWidth < 1024
+
 // ─── Shared styles ─────────────────────────────────────────────
 const inp = {
-  width: '100%', padding: '10px 14px', borderRadius: '8px',
-  border: '1px solid #d1d5db', fontSize: '14px',
+  width: '100%', padding: '12px 14px', borderRadius: '10px',
+  border: '1px solid #d1d5db', fontSize: '16px', // 16px prevents iOS zoom
   boxSizing: 'border-box', backgroundColor: 'white',
+  minHeight: '44px', // Touch-friendly
 }
 const lbl = {
   display: 'block', fontSize: '13px', fontWeight: '600',
   color: '#374151', marginBottom: '6px',
 }
 const btn = (bg = '#1e3a5f', c = 'white') => ({
-  backgroundColor: bg, color: c, border: 'none', borderRadius: '8px',
-  padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px',
+  backgroundColor: bg, color: c, border: 'none', borderRadius: '10px',
+  padding: '12px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px',
+  minHeight: '44px', minWidth: '44px', // Touch targets
 })
+const card = {
+  background: 'white', borderRadius: '14px', padding: '16px',
+  boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0',
+}
+const mobileCard = {
+  ...card,
+  padding: '12px',
+  borderRadius: '12px',
+}
 
 // ─── Responsive grid helpers ──────────────────────────────────
 const grid2 = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-  gap: '16px',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+  gap: '14px',
+}
+const mobileGrid = {
+  display: 'grid',
+  gridTemplateColumns: '1fr',
+  gap: '10px',
 }
 const statGrid = (min = 140) => ({
   display: 'grid',
   gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))`,
-  gap: '16px',
-  marginBottom: '24px',
+  gap: '12px',
+  marginBottom: '20px',
 })
+const mobileStatGrid = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '8px',
+  marginBottom: '16px',
+}
+
+// ─── Mobile table replacement ─────────────────────────────────
+const MobileCardList = ({ children, style = {} }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', ...style }}>
+    {children}
+  </div>
+)
+
+const MobileRecordCard = ({ children, accentColor = '#1e3a5f', onClick }) => (
+  <div 
+    onClick={onClick}
+    style={{
+      background: 'white', borderRadius: '12px', padding: '14px',
+      borderLeft: `4px solid ${accentColor}`,
+      boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+      cursor: onClick ? 'pointer' : 'default',
+    }}
+  >
+    {children}
+  </div>
+)
 
 const TABS = [
-  { id: 'schedule',    label: '📅 Daily Schedule' },
+  { id: 'schedule',    label: '📅 Schedule' },
   { id: 'house',       label: '🏠 Houses' },
-  { id: 'housemaster', label: '👨‍🏫 Housemasters' },
-  { id: 'hmactivities', label: '📌 HM Activities' },
-  { id: 'adminmonitor', label: '🖥 Admin Monitor' },
+  { id: 'housemaster', label: '👨‍🏫 HM' },
+  { id: 'hmactivities', label: '📌 Activities' },
+  { id: 'adminmonitor', label: '🖥 Monitor' },
   { id: 'discipline',  label: '⚠️ Discipline' },
   { id: 'sickbay',     label: '🏥 Sickbay' },
   { id: 'kitchen',     label: '🍽️ Kitchen' },
-  { id: 'nightduty',   label: '🌙 Night Duty' },
-  { id: 'allotments',  label: '🛏️ Allotments' },
+  { id: 'nightduty',   label: '🌙 Night' },
+  { id: 'allotments',  label: '🛏️ Rooms' },
+  // ─── NEW: House Master Daily Features ──────────────────
+  { id: 'attendance',  label: '✓ Roll Call' },
+  { id: 'leave',       label: '🚪 Leave' },
+  { id: 'hmdashboard', label: '📊 HM Dash' },
+  { id: 'maintenance',  label: '🔧 Repairs' },
+  { id: 'journal',     label: '📝 Journal' },
 ]
 
 const MONTHS = [
@@ -49,6 +104,10 @@ const MONTHS = [
 ]
 
 const today = () => new Date().toISOString().split('T')[0]
+const nowTime = () => {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
 
 function getStudentClass(s) {
   if (!s) return ''
@@ -59,7 +118,33 @@ function getStudentClass(s) {
   return ''
 }
 
-function StatCard({ icon, label, value, color, bg }) {
+// ══════════════════════════════════════════════════════════════
+//  MOBILE-OPTIMIZED STAT CARD
+// ══════════════════════════════════════════════════════════════
+function StatCard({ icon, label, value, color, bg, compact = false }) {
+  const [mobile, setMobile] = useState(isMobile())
+  useEffect(() => {
+    const handleResize = () => setMobile(isMobile())
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  if (mobile || compact) {
+    return (
+      <div style={{
+        backgroundColor: bg, borderRadius: '10px', padding: '10px 12px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)', borderLeft: `3px solid ${color}`,
+        display: 'flex', alignItems: 'center', gap: '8px',
+      }}>
+        <div style={{ fontSize: '18px' }}>{icon}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: '11px', color, fontWeight: '600', margin: 0, lineHeight: 1.2 }}>{label}</p>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold', color, margin: '2px 0 0', lineHeight: 1.2 }}>{value}</h2>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{
       backgroundColor: bg, borderRadius: '12px', padding: '18px',
@@ -84,16 +169,37 @@ function statusStyle(status) {
     Closed:        { bg: '#e5e7eb', color: '#374151' },
     Discharged:    { bg: '#dcfce7', color: '#16a34a' },
     Admitted:      { bg: '#dbeafe', color: '#1d4ed8' },
+    Present:       { bg: '#dcfce7', color: '#16a34a' },
+    Absent:        { bg: '#fee2e2', color: '#dc2626' },
+    Late:          { bg: '#fef9c3', color: '#ca8a04' },
+    'On Leave':    { bg: '#dbeafe', color: '#1d4ed8' },
+    Sick:          { bg: '#f5f3ff', color: '#7c3aed' },
+    Pending:       { bg: '#fef9c3', color: '#ca8a04' },
+    Approved:      { bg: '#dcfce7', color: '#16a34a' },
+    Rejected:      { bg: '#fee2e2', color: '#dc2626' },
+    Overdue:       { bg: '#fee2e2', color: '#dc2626' },
   }
   const s = map[status] || { bg: '#e0f2fe', color: '#0891b2' }
   return {
     padding: '4px 10px', borderRadius: '999px', fontSize: '12px',
     fontWeight: '600', backgroundColor: s.bg, color: s.color,
+    whiteSpace: 'nowrap', display: 'inline-block',
   }
 }
 
-function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GCC No to search student...' }) {
+// ══════════════════════════════════════════════════════════════
+//  MOBILE-OPTIMIZED SEARCH INPUTS
+// ══════════════════════════════════════════════════════════════
+function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GCC No...' }) {
   const [query, setQuery] = useState('')
+  const [mobile, setMobile] = useState(isMobile())
+
+  useEffect(() => {
+    const handleResize = () => setMobile(isMobile())
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const matches = useMemo(() => {
     if (!query.trim()) return []
     const q = query.toLowerCase()
@@ -105,30 +211,48 @@ function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GC
         (s.course || '').toLowerCase().includes(q) ||
         String(s.admission_no || '').toLowerCase().includes(q)
       )
-      .slice(0, 8)
-  }, [query, students])
+      .slice(0, mobile ? 5 : 8)
+  }, [query, students, mobile])
+
   const select = s => { onSelect(s); setQuery('') }
+
   return (
     <div style={{ position: 'relative' }}>
-      <input value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder} style={inp} />
+      <input 
+        value={query} 
+        onChange={e => setQuery(e.target.value)} 
+        placeholder={placeholder} 
+        style={inp} 
+        type="search"
+        autoComplete="off"
+      />
       {matches.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0,
-          background: 'white', border: '1px solid #d1d5db', borderRadius: '8px',
-          zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          maxHeight: 220, overflowY: 'auto',
+          background: 'white', border: '1px solid #d1d5db', borderRadius: '10px',
+          zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          maxHeight: mobile ? 180 : 220, overflowY: 'auto',
+          marginTop: '4px',
         }}>
           {matches.map(s => (
             <div key={s.id} onClick={() => select(s)}
-              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}
+              style={{ 
+                padding: mobile ? '12px 14px' : '10px 14px', 
+                cursor: 'pointer', borderBottom: '1px solid #f1f5f9', 
+                fontSize: '14px',
+                minHeight: '44px',
+                display: 'flex', alignItems: 'center',
+              }}
               onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
               onMouseLeave={e => e.currentTarget.style.background = 'white'}
             >
-              <strong style={{ color: '#1e293b' }}>{s.name}</strong>
-              <span style={{ color: '#64748b', marginLeft: 8 }}>
-                {s.gcc_no ? `GCC-${s.gcc_no}` : '—'}{' · '}{getStudentClass(s) || '—'}
-                {s.house ? ` · 🏠 ${s.house}` : ''}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
-              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ color: '#1e293b', fontSize: '14px' }}>{s.name}</strong>
+                <div style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>
+                  {s.gcc_no ? `GCC-${s.gcc_no}` : '—'}{' · '}{getStudentClass(s) || '—'}
+                  {s.house ? ` · 🏠 ${s.house}` : ''}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -139,6 +263,14 @@ function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GC
 
 function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name...' }) {
   const [query, setQuery] = useState('')
+  const [mobile, setMobile] = useState(isMobile())
+
+  useEffect(() => {
+    const handleResize = () => setMobile(isMobile())
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const matches = useMemo(() => {
     if (!query.trim()) return []
     const q = query.toLowerCase()
@@ -148,30 +280,48 @@ function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name
         (s.designation || '').toLowerCase().includes(q) ||
         (s.department || '').toLowerCase().includes(q)
       )
-      .slice(0, 8)
-  }, [query, staff])
+      .slice(0, mobile ? 5 : 8)
+  }, [query, staff, mobile])
+
   const select = s => { onSelect(s); setQuery('') }
+
   return (
     <div style={{ position: 'relative' }}>
-      <input value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder} style={inp} />
+      <input 
+        value={query} 
+        onChange={e => setQuery(e.target.value)} 
+        placeholder={placeholder} 
+        style={inp} 
+        type="search"
+        autoComplete="off"
+      />
       {matches.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0,
-          background: 'white', border: '1px solid #d1d5db', borderRadius: '8px',
-          zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          maxHeight: 200, overflowY: 'auto',
+          background: 'white', border: '1px solid #d1d5db', borderRadius: '10px',
+          zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          maxHeight: mobile ? 180 : 200, overflowY: 'auto',
+          marginTop: '4px',
         }}>
           {matches.map(s => (
             <div key={s.id} onClick={() => select(s)}
-              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}
+              style={{ 
+                padding: mobile ? '12px 14px' : '10px 14px', 
+                cursor: 'pointer', borderBottom: '1px solid #f1f5f9', 
+                fontSize: '14px',
+                minHeight: '44px',
+                display: 'flex', alignItems: 'center',
+              }}
               onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
               onMouseLeave={e => e.currentTarget.style.background = 'white'}
             >
-              <strong style={{ color: '#1e293b' }}>{s.name}</strong>
-              <span style={{ color: '#64748b', marginLeft: 8 }}>
-                {s.designation || s.department || '—'}
-                {s.status === 'Active' ? ' · ✅ Active' : ' · ⏸ Inactive'}
-              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ color: '#1e293b' }}>{s.name}</strong>
+                <div style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>
+                  {s.designation || s.department || '—'}
+                  {s.status === 'Active' ? ' · ✅ Active' : ' · ⏸ Inactive'}
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -180,6 +330,1461 @@ function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name
   )
 }
 
+// ══════════════════════════════════════════════════════════════
+//  MOBILE TABLE / CARD SWITCHER
+// ══════════════════════════════════════════════════════════════
+function useMobileView() {
+  const [mobile, setMobile] = useState(isMobile())
+  useEffect(() => {
+    const handleResize = () => setMobile(isMobile())
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+  return mobile
+}
+
+function MobileActionButtons({ actions }) {
+  return (
+    <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+      {actions.map((action, i) => (
+        <button 
+          key={i}
+          onClick={action.onClick}
+          style={{
+            flex: action.fullWidth ? '1 1 100%' : '1 1 auto',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            border: 'none',
+            background: action.bg || '#eff6ff',
+            color: action.color || '#1e3a5f',
+            fontSize: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            minHeight: '36px',
+          }}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: ATTENDANCE / ROLL CALL (Feature #1 - NEW)
+// ══════════════════════════════════════════════════════════════
+const ATTENDANCE_TYPES = ['Present', 'Absent', 'Late', 'On Leave', 'Sick']
+
+function AttendanceTab({ students, currentHousemaster }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [date, setDate] = useState(today())
+  const [session, setSession] = useState('morning') // morning, night
+  const [filterHouse, setFilterHouse] = useState('All')
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [search, setSearch] = useState('')
+  const [bulkStatus, setBulkStatus] = useState('Present')
+  const [showBulk, setShowBulk] = useState(false)
+  const mobile = useMobileView()
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('attendance_records')
+      .select('*')
+      .eq('date', date)
+      .eq('session', session)
+      .order('created_at', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [date, session])
+
+  const handleMark = async (studentId, status, remarks = '') => {
+    setSaving(true)
+    const existing = records.find(r => r.student_id === studentId)
+    const student = students.find(s => s.id === studentId)
+
+    const payload = {
+      date,
+      session,
+      student_id: studentId,
+      student_name: student?.name || '',
+      gcc_no: student?.gcc_no || null,
+      class_name: getStudentClass(student),
+      house: student?.house || '',
+      status,
+      remarks,
+      marked_by: currentHousemaster?.name || 'System',
+      marked_at: new Date().toISOString(),
+    }
+
+    const { error } = existing
+      ? await supabase.from('attendance_records').update({ status, remarks, marked_by: payload.marked_by, marked_at: payload.marked_at }).eq('id', existing.id)
+      : await supabase.from('attendance_records').insert([payload])
+
+    if (error) alert('Error: ' + error.message)
+    else load()
+    setSaving(false)
+  }
+
+  const handleBulkMark = async (studentIds) => {
+    if (!window.confirm(`Mark ${studentIds.length} students as ${bulkStatus}?`)) return
+    setSaving(true)
+    const payloads = studentIds.map(id => {
+      const student = students.find(s => s.id === id)
+      return {
+        date, session,
+        student_id: id,
+        student_name: student?.name || '',
+        gcc_no: student?.gcc_no || null,
+        class_name: getStudentClass(student),
+        house: student?.house || '',
+        status: bulkStatus,
+        marked_by: currentHousemaster?.name || 'System',
+        marked_at: new Date().toISOString(),
+      }
+    })
+
+    // Delete existing for these students first
+    await supabase.from('attendance_records').delete().eq('date', date).eq('session', session).in('student_id', studentIds)
+    const { error } = await supabase.from('attendance_records').insert(payloads)
+
+    if (error) alert('Error: ' + error.message)
+    else { setShowBulk(false); load() }
+    setSaving(false)
+  }
+
+  const houses = [...new Set(students.map(s => s.house).filter(Boolean))]
+
+  const filteredStudents = useMemo(() => {
+    let filtered = students.filter(s => s.status !== 'Inactive')
+    if (filterHouse !== 'All') filtered = filtered.filter(s => s.house === filterHouse)
+    if (search) {
+      const q = search.toLowerCase()
+      filtered = filtered.filter(s => 
+        (s.name || '').toLowerCase().includes(q) ||
+        String(s.gcc_no || '').includes(q)
+      )
+    }
+    return filtered.sort((a, b) => (a.house || '').localeCompare(b.house || '') || (a.name || '').localeCompare(b.name || ''))
+  }, [students, filterHouse, search])
+
+  const stats = useMemo(() => {
+    const byStatus = {}
+    ATTENDANCE_TYPES.forEach(t => byStatus[t] = records.filter(r => r.status === t).length)
+    const unmarked = filteredStudents.length - records.length
+    return { ...byStatus, Unmarked: Math.max(0, unmarked), Total: filteredStudents.length }
+  }, [records, filteredStudents])
+
+  const getStudentStatus = (studentId) => {
+    const rec = records.find(r => r.student_id === studentId)
+    return rec?.status || 'Unmarked'
+  }
+
+  // Mobile card view
+  if (mobile) {
+    return (
+      <div>
+        {/* Mobile Stats */}
+        <div style={mobileStatGrid}>
+          <StatCard icon="👥" label="Total" value={stats.Total} color="#1e3a5f" bg="#eff6ff" compact />
+          <StatCard icon="✅" label="Present" value={stats.Present} color="#16a34a" bg="#dcfce7" compact />
+          <StatCard icon="❌" label="Absent" value={stats.Absent} color="#dc2626" bg="#fee2e2" compact />
+          <StatCard icon="⏰" label="Late" value={stats.Late} color="#ca8a04" bg="#fef9c3" compact />
+        </div>
+
+        {/* Mobile Controls */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, flex: 1 }} />
+            <select value={session} onChange={e => setSession(e.target.value)} style={{ ...inp, width: 'auto', flex: 1 }}>
+              <option value="morning">🌅 Morning</option>
+              <option value="night">🌙 Night</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <select value={filterHouse} onChange={e => setFilterHouse(e.target.value)} style={{ ...inp, flex: 1 }}>
+              <option value="All">All Houses</option>
+              {houses.map(h => <option key={h}>{h}</option>)}
+            </select>
+            <input 
+              placeholder="🔍 Search..." 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+              style={{ ...inp, flex: 1 }} 
+              type="search"
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ ...inp, flex: 1 }}>
+              {ATTENDANCE_TYPES.map(s => <option key={s}>{s}</option>)}
+            </select>
+            <button 
+              onClick={() => setShowBulk(!showBulk)} 
+              style={{ ...btn(showBulk ? '#dc2626' : '#1e3a5f'), flex: 1, fontSize: '13px' }}
+            >
+              {showBulk ? '✕ Cancel' : '⚡ Bulk'}
+            </button>
+          </div>
+        </div>
+
+        {showBulk && (
+          <div style={{ ...mobileCard, marginBottom: '12px', background: '#eff6ff' }}>
+            <p style={{ fontSize: '13px', margin: '0 0 10px', color: '#1e3a5f', fontWeight: '600' }}>
+              Select students to mark as <span style={{ color: bulkStatus === 'Absent' ? '#dc2626' : '#16a34a' }}>{bulkStatus}</span>
+            </p>
+            <button 
+              onClick={() => handleBulkMark(filteredStudents.map(s => s.id))}
+              disabled={saving}
+              style={{ ...btn(saving ? '#94a3b8' : bulkStatus === 'Absent' ? '#dc2626' : '#16a34a'), width: '100%' }}
+            >
+              {saving ? '⏳ Saving...' : `✓ Mark All ${filteredStudents.length} as ${bulkStatus}`}
+            </button>
+          </div>
+        )}
+
+        {/* Mobile Student Cards */}
+        <MobileCardList>
+          {filteredStudents.map(student => {
+            const status = getStudentStatus(student.id)
+            const rec = records.find(r => r.student_id === student.id)
+            return (
+              <MobileRecordCard key={student.id} accentColor={status === 'Present' ? '#16a34a' : status === 'Absent' ? '#dc2626' : status === 'Late' ? '#ca8a04' : status === 'Sick' ? '#7c3aed' : '#94a3b8'}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b' }}>{student.name}</div>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                      GCC-{student.gcc_no || '--'} · {getStudentClass(student) || '--'}
+                      {student.house && <span> · 🏠 {student.house}</span>}
+                    </div>
+                  </div>
+                  <span style={statusStyle(status)}>{status}</span>
+                </div>
+                {rec?.remarks && (
+                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontStyle: 'italic' }}>
+                    "{rec.remarks}"
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+                  {ATTENDANCE_TYPES.map(s => (
+                    <button
+                      key={s}
+                      onClick={() => handleMark(student.id, s)}
+                      disabled={saving}
+                      style={{
+                        padding: '8px 4px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: status === s ? (s === 'Present' ? '#16a34a' : s === 'Absent' ? '#dc2626' : s === 'Late' ? '#ca8a04' : s === 'Sick' ? '#7c3aed' : '#1e3a5f') : '#f1f5f9',
+                        color: status === s ? 'white' : '#64748b',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        minHeight: '40px',
+                      }}
+                    >
+                      {s === 'Present' ? '✓' : s === 'Absent' ? '✕' : s === 'Late' ? '⏰' : s === 'Sick' ? '🏥' : '🚪'} {s}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  placeholder="Add remark..."
+                  defaultValue={rec?.remarks || ''}
+                  onBlur={e => { if (e.target.value && rec) handleMark(student.id, rec.status, e.target.value) }}
+                  style={{ ...inp, marginTop: '8px', fontSize: '13px', padding: '8px 10px' }}
+                />
+              </MobileRecordCard>
+            )
+          })}
+        </MobileCardList>
+
+        {filteredStudents.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No students found</div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop table view
+  return (
+    <div>
+      <div style={statGrid(120)}>
+        <StatCard icon="👥" label="Total" value={stats.Total} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="✅" label="Present" value={stats.Present} color="#16a34a" bg="#dcfce7" />
+        <StatCard icon="❌" label="Absent" value={stats.Absent} color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="⏰" label="Late" value={stats.Late} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="🏥" label="Sick" value={stats.Sick} color="#7c3aed" bg="#f5f3ff" />
+        <StatCard icon="🚪" label="On Leave" value={stats['On Leave']} color="#1d4ed8" bg="#dbeafe" />
+        <StatCard icon="⚪" label="Unmarked" value={stats.Unmarked} color="#94a3b8" bg="#f1f5f9" />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, width: 'auto' }} />
+          <select value={session} onChange={e => setSession(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="morning">🌅 Morning Roll Call</option>
+            <option value="night">🌙 Night Roll Call</option>
+          </select>
+          <select value={filterHouse} onChange={e => setFilterHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Houses</option>
+            {houses.map(h => <option key={h}>{h}</option>)}
+          </select>
+          <input placeholder="🔍 Search student..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            {ATTENDANCE_TYPES.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <button onClick={() => handleBulkMark(filteredStudents.map(s => s.id))} disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>
+            {saving ? '⏳...' : `⚡ All ${bulkStatus}`}
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+      ) : (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', minWidth: 900 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['#', 'GCC', 'Student', 'Batch', 'House', 'Status', 'Remark', 'Marked By', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredStudents.map((s, i) => {
+                const status = getStudentStatus(s.id)
+                const rec = records.find(r => r.student_id === s.id)
+                return (
+                  <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                  >
+                    <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
+                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: '12px', color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '11px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b' }}>{getStudentClass(s) || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#7c3aed', fontSize: '12px', fontWeight: 600 }}>{s.house || '—'}</td>
+                    <td style={{ padding: '11px 14px' }}><span style={statusStyle(status)}>{status}</span></td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <input 
+                        defaultValue={rec?.remarks || ''}
+                        placeholder="Remark..."
+                        onBlur={e => { if (rec && e.target.value !== rec.remarks) handleMark(s.id, rec.status, e.target.value) }}
+                        style={{ ...inp, padding: '5px 8px', fontSize: '12px', width: 140 }}
+                      />
+                    </td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{rec?.marked_by || '—'}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {ATTENDANCE_TYPES.map(st => (
+                          <button 
+                            key={st}
+                            onClick={() => handleMark(s.id, st, rec?.remarks || '')}
+                            disabled={saving}
+                            style={{
+                              padding: '4px 8px', borderRadius: '6px', border: 'none',
+                              background: status === st ? (st === 'Present' ? '#16a34a' : st === 'Absent' ? '#dc2626' : '#1e3a5f') : '#f1f5f9',
+                              color: status === st ? 'white' : '#64748b',
+                              fontSize: '11px', fontWeight: '700', cursor: 'pointer',
+                            }}
+                          >
+                            {st[0]}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: LEAVE / OUTING MANAGEMENT (Feature #2 - NEW)
+// ══════════════════════════════════════════════════════════════
+const LEAVE_TYPES = ['Home Leave', 'Day Outing', 'Night Out', 'Weekend Leave', 'Emergency']
+const LEAVE_STATUSES = ['Pending', 'Approved', 'Rejected', 'Overdue', 'Returned']
+
+function LeaveTab({ students, currentHousemaster }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec, setEditRec] = useState(null)
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState('requests') // requests, history
+  const mobile = useMobileView()
+
+  const [form, setForm] = useState({
+    student_id: null, student_name: '', gcc_no: '', class_name: '', house: '',
+    leave_type: 'Home Leave', from_date: today(), to_date: today(),
+    expected_return: '', actual_return: '', purpose: '',
+    parent_contact: '', parent_approved: false,
+    status: 'Pending', remarks: '',
+  })
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('leave_records').select('*').order('created_at', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  // Auto-flag overdue
+  useEffect(() => {
+    const now = new Date()
+    const overdueIds = records
+      .filter(r => r.status === 'Approved' && r.expected_return && new Date(r.expected_return) < now && !r.actual_return)
+      .map(r => r.id)
+    if (overdueIds.length > 0) {
+      overdueIds.forEach(async id => {
+        await supabase.from('leave_records').update({ status: 'Overdue' }).eq('id', id)
+      })
+      if (overdueIds.length > 0) load()
+    }
+  }, [records])
+
+  const handleStudentSelect = s => {
+    setForm(f => ({
+      ...f, student_id: s.id, student_name: s.name || '',
+      gcc_no: s.gcc_no || '', class_name: getStudentClass(s),
+      house: s.house || '',
+    }))
+  }
+
+  const handleSave = async e => {
+    e.preventDefault(); setSaving(true)
+    const payload = {
+      ...form,
+      requested_by: currentHousemaster?.name || 'Student',
+      requested_at: editRec ? form.requested_at : new Date().toISOString(),
+    }
+    const { error } = editRec
+      ? await supabase.from('leave_records').update(payload).eq('id', editRec.id)
+      : await supabase.from('leave_records').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm({ ...form, student_id: null, student_name: '', gcc_no: '', purpose: '', parent_contact: '', remarks: '' }); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleStatusChange = async (id, status) => {
+    const updates = { status, approved_by: currentHousemaster?.name || 'Admin', approved_at: new Date().toISOString() }
+    if (status === 'Returned') updates.actual_return = today()
+    await supabase.from('leave_records').update(updates).eq('id', id)
+    load()
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this leave record?')) return
+    await supabase.from('leave_records').delete().eq('id', id)
+    load()
+  }
+
+  const filtered = useMemo(() => {
+    let filtered = records
+    if (activeTab === 'requests') filtered = filtered.filter(r => ['Pending', 'Approved', 'Overdue'].includes(r.status))
+    if (filterStatus !== 'All') filtered = filtered.filter(r => r.status === filterStatus)
+    if (search) {
+      const q = search.toLowerCase()
+      filtered = filtered.filter(r =>
+        (r.student_name || '').toLowerCase().includes(q) ||
+        String(r.gcc_no || '').includes(q) ||
+        (r.house || '').toLowerCase().includes(q)
+      )
+    }
+    return filtered
+  }, [records, filterStatus, search, activeTab])
+
+  const stats = {
+    pending: records.filter(r => r.status === 'Pending').length,
+    approved: records.filter(r => r.status === 'Approved').length,
+    overdue: records.filter(r => r.status === 'Overdue').length,
+    returned: records.filter(r => r.status === 'Returned').length,
+  }
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={mobileStatGrid}>
+          <StatCard icon="⏳" label="Pending" value={stats.pending} color="#ca8a04" bg="#fef9c3" compact />
+          <StatCard icon="✅" label="Approved" value={stats.approved} color="#16a34a" bg="#dcfce7" compact />
+          <StatCard icon="⚠️" label="Overdue" value={stats.overdue} color="#dc2626" bg="#fee2e2" compact />
+          <StatCard icon="🏠" label="Returned" value={stats.returned} color="#1e3a5f" bg="#eff6ff" compact />
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          {['requests', 'history'].map(t => (
+            <button 
+              key={t}
+              onClick={() => setActiveTab(t)}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: '10px',
+                border: 'none',
+                background: activeTab === t ? '#1e3a5f' : '#f1f5f9',
+                color: activeTab === t ? 'white' : '#64748b',
+                fontWeight: '700',
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              {t === 'requests' ? '📋 Active' : '📜 History'}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input placeholder="🔍 Search..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1 }} type="search" />
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null) }} style={{ ...btn(), padding: '10px 14px' }}>
+            {showForm ? '✕' : '➕'}
+          </button>
+        </div>
+
+        {showForm && (
+          <div style={{ ...mobileCard, marginBottom: '12px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>
+              {editRec ? '✏️ Edit Leave' : '🚪 New Leave Request'}
+            </h3>
+            <form onSubmit={handleSave}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <label style={lbl}>Student</label>
+                  <StudentSearchInput students={students} onSelect={handleStudentSelect} placeholder="Search student..." />
+                  {form.student_name && (
+                    <div style={{ marginTop: '6px', padding: '6px 10px', background: '#dcfce7', borderRadius: '6px', fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>
+                      ✅ {form.student_name} {form.gcc_no ? `(GCC-${form.gcc_no})` : ''}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={lbl}>From *</label>
+                    <input type="date" value={form.from_date} onChange={e => setForm(f => ({ ...f, from_date: e.target.value }))} required style={inp} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={lbl}>To *</label>
+                    <input type="date" value={form.to_date} onChange={e => setForm(f => ({ ...f, to_date: e.target.value }))} required style={inp} />
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>Expected Return</label>
+                  <input type="datetime-local" value={form.expected_return} onChange={e => setForm(f => ({ ...f, expected_return: e.target.value }))} style={inp} />
+                </div>
+                <div>
+                  <label style={lbl}>Leave Type</label>
+                  <select value={form.leave_type} onChange={e => setForm(f => ({ ...f, leave_type: e.target.value }))} style={inp}>
+                    {LEAVE_TYPES.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Purpose</label>
+                  <textarea value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} rows={2} placeholder="Reason for leave..." style={{ ...inp, resize: 'vertical' }} />
+                </div>
+                <div>
+                  <label style={lbl}>Parent Contact</label>
+                  <input value={form.parent_contact} onChange={e => setForm(f => ({ ...f, parent_contact: e.target.value }))} placeholder="Phone number" style={inp} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#16a34a'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <MobileCardList>
+          {filtered.map(r => (
+            <MobileRecordCard key={r.id} accentColor={
+              r.status === 'Pending' ? '#ca8a04' : 
+              r.status === 'Approved' ? '#16a34a' : 
+              r.status === 'Overdue' ? '#dc2626' : 
+              r.status === 'Rejected' ? '#dc2626' : '#1e3a5f'
+            }>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b' }}>{r.student_name}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    GCC-{r.gcc_no || '--'} · {r.house || '—'}
+                  </div>
+                </div>
+                <span style={statusStyle(r.status)}>{r.status}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+                <div>📅 {r.from_date} → {r.to_date}</div>
+                <div>🚪 {r.leave_type}</div>
+                {r.expected_return && <div>⏰ Return: {r.expected_return}</div>}
+                {r.actual_return && <div>🏠 Returned: {r.actual_return}</div>}
+                {r.parent_contact && <div>📞 {r.parent_contact}</div>}
+              </div>
+              {r.purpose && <div style={{ fontSize: '13px', color: '#374151', marginBottom: '8px' }}>{r.purpose}</div>}
+              {r.status === 'Pending' && (
+                <MobileActionButtons actions={[
+                  { label: '✓ Approve', onClick: () => handleStatusChange(r.id, 'Approved'), bg: '#dcfce7', color: '#16a34a' },
+                  { label: '✕ Reject', onClick: () => handleStatusChange(r.id, 'Rejected'), bg: '#fee2e2', color: '#dc2626' },
+                ]} />
+              )}
+              {r.status === 'Approved' && (
+                <MobileActionButtons actions={[
+                  { label: '🏠 Mark Returned', onClick: () => handleStatusChange(r.id, 'Returned'), bg: '#dbeafe', color: '#1d4ed8', fullWidth: true },
+                ]} />
+              )}
+              {r.status === 'Overdue' && (
+                <div style={{ background: '#fee2e2', padding: '8px', borderRadius: '8px', fontSize: '12px', color: '#dc2626', fontWeight: '600', marginTop: '8px' }}>
+                  ⚠️ Student is overdue! Contact parent: {r.parent_contact || 'N/A'}
+                </div>
+              )}
+            </MobileRecordCard>
+          ))}
+        </MobileCardList>
+
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No leave records found</div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop view
+  return (
+    <div>
+      <div style={statGrid(130)}>
+        <StatCard icon="⏳" label="Pending Approval" value={stats.pending} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="✅" label="Currently Out" value={stats.approved} color="#16a34a" bg="#dcfce7" />
+        <StatCard icon="⚠️" label="Overdue Returns" value={stats.overdue} color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="🏠" label="Returned" value={stats.returned} color="#1e3a5f" bg="#eff6ff" />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Search student..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Status</option>
+            {LEAVE_STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null) }} style={btn()}>
+          {showForm ? '✖ Cancel' : '➕ Request Leave'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ ...card, marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>
+            {editRec ? '✏️ Edit Leave' : '🚪 New Leave Request'}
+          </h3>
+          <form onSubmit={handleSave}>
+            <div style={grid2}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>Search Student</label>
+                <StudentSearchInput students={students} onSelect={handleStudentSelect} />
+                {form.student_name && (
+                  <div style={{ marginTop: '8px', padding: '8px 12px', background: '#dcfce7', borderRadius: '8px', fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>
+                    ✅ {form.student_name} {form.gcc_no ? `(GCC-${form.gcc_no})` : ''}
+                  </div>
+                )}
+              </div>
+              <div><label style={lbl}>From Date *</label><input type="date" value={form.from_date} onChange={e => setForm(f => ({ ...f, from_date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>To Date *</label><input type="date" value={form.to_date} onChange={e => setForm(f => ({ ...f, to_date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>Expected Return</label><input type="datetime-local" value={form.expected_return} onChange={e => setForm(f => ({ ...f, expected_return: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Leave Type</label><select value={form.leave_type} onChange={e => setForm(f => ({ ...f, leave_type: e.target.value }))} style={inp}>{LEAVE_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Purpose</label><textarea value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} rows={2} placeholder="Reason..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div><label style={lbl}>Parent Contact</label><input value={form.parent_contact} onChange={e => setForm(f => ({ ...f, parent_contact: e.target.value }))} placeholder="Phone" style={inp} /></div>
+              <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+      ) : (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 1000 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['#', 'Student', 'GCC', 'Type', 'From', 'To', 'Return By', 'Status', 'Parent', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                >
+                  <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
+                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e293b' }}>{r.student_name}</td>
+                  <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: '12px' }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.leave_type}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.from_date}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.to_date}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.expected_return ? new Date(r.expected_return).toLocaleString() : '—'}</td>
+                  <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.parent_contact || '—'}</td>
+                  <td style={{ padding: '11px 14px' }}>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {r.status === 'Pending' && (
+                        <>
+                          <button onClick={() => handleStatusChange(r.id, 'Approved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>✓</button>
+                          <button onClick={() => handleStatusChange(r.id, 'Rejected')} style={{ ...btn('#dc2626'), fontSize: '11px', padding: '4px 8px' }}>✕</button>
+                        </>
+                      )}
+                      {r.status === 'Approved' && (
+                        <button onClick={() => handleStatusChange(r.id, 'Returned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>🏠</button>
+                      )}
+                      <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: MAINTENANCE / REPAIRS (Feature #3 - NEW)
+// ══════════════════════════════════════════════════════════════
+const MAINTENANCE_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
+const MAINTENANCE_STATUSES = ['Raised', 'Assigned', 'In Progress', 'Resolved', 'Closed']
+const MAINTENANCE_CATEGORIES = ['Plumbing', 'Electrical', 'Furniture', 'Civil', 'Cleaning', 'IT', 'Other']
+
+function MaintenanceTab({ currentHousemaster }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec, setEditRec] = useState(null)
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [filterPriority, setFilterPriority] = useState('All')
+  const [search, setSearch] = useState('')
+  const mobile = useMobileView()
+
+  const [form, setForm] = useState({
+    category: 'Plumbing', location: '', room_number: '',
+    description: '', priority: 'Medium', status: 'Raised',
+    reported_by: '', assigned_to: '', resolved_at: '',
+    cost: '', remarks: '',
+  })
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('maintenance_records').select('*').order('created_at', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSave = async e => {
+    e.preventDefault(); setSaving(true)
+    const payload = {
+      ...form,
+      reported_by: currentHousemaster?.name || form.reported_by,
+      raised_at: editRec ? form.raised_at : new Date().toISOString(),
+    }
+    const { error } = editRec
+      ? await supabase.from('maintenance_records').update(payload).eq('id', editRec.id)
+      : await supabase.from('maintenance_records').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleStatusChange = async (id, status) => {
+    const updates = { status }
+    if (status === 'Resolved') updates.resolved_at = new Date().toISOString()
+    await supabase.from('maintenance_records').update(updates).eq('id', id)
+    load()
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this maintenance record?')) return
+    await supabase.from('maintenance_records').delete().eq('id', id)
+    load()
+  }
+
+  const filtered = useMemo(() => {
+    let filtered = records
+    if (filterStatus !== 'All') filtered = filtered.filter(r => r.status === filterStatus)
+    if (filterPriority !== 'All') filtered = filtered.filter(r => r.priority === filterPriority)
+    if (search) {
+      const q = search.toLowerCase()
+      filtered = filtered.filter(r =>
+        (r.description || '').toLowerCase().includes(q) ||
+        (r.location || '').toLowerCase().includes(q) ||
+        (r.room_number || '').toLowerCase().includes(q) ||
+        (r.category || '').toLowerCase().includes(q)
+      )
+    }
+    return filtered
+  }, [records, filterStatus, filterPriority, search])
+
+  const stats = {
+    raised: records.filter(r => r.status === 'Raised').length,
+    inProgress: records.filter(r => ['Assigned', 'In Progress'].includes(r.status)).length,
+    urgent: records.filter(r => r.priority === 'Urgent' && r.status !== 'Closed').length,
+    resolved: records.filter(r => r.status === 'Resolved').length,
+  }
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={mobileStatGrid}>
+          <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" compact />
+          <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" compact />
+          <StatCard icon="🚨" label="Urgent" value={stats.urgent} color="#dc2626" bg="#fee2e2" compact />
+          <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" compact />
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input placeholder="🔍 Search..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1 }} type="search" />
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null) }} style={{ ...btn(), padding: '10px 14px' }}>
+            {showForm ? '✕' : '➕'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, flex: 1 }}>
+            <option value="All">All Status</option>
+            {MAINTENANCE_STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ ...inp, flex: 1 }}>
+            <option value="All">All Priority</option>
+            {MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+
+        {showForm && (
+          <div style={{ ...mobileCard, marginBottom: '12px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>🔧 New Complaint</h3>
+            <form onSubmit={handleSave}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={{ ...inp, flex: 1 }}>
+                    {MAINTENANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={{ ...inp, flex: 1 }}>
+                    {MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Block/Area" style={{ ...inp, flex: 1 }} />
+                  <input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} placeholder="Room No" style={{ ...inp, flex: 1 }} />
+                </div>
+                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} placeholder="Describe the issue..." required style={{ ...inp, resize: 'vertical' }} />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#dc2626'), flex: 1 }}>{saving ? '⏳' : '✓ Raise'}</button>
+                  <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <MobileCardList>
+          {filtered.map(r => (
+            <MobileRecordCard key={r.id} accentColor={
+              r.priority === 'Urgent' ? '#dc2626' : r.priority === 'High' ? '#ca8a04' : '#1e3a5f'
+            }>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#1e3a5f', background: '#eff6ff', padding: '2px 8px', borderRadius: '99px' }}>{r.category}</span>
+                  <span style={{ marginLeft: '6px', ...statusStyle(r.priority) }}>{r.priority}</span>
+                </div>
+                <span style={statusStyle(r.status)}>{r.status}</span>
+              </div>
+              <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', marginBottom: '4px' }}>
+                📍 {r.location}{r.room_number ? ` · Room ${r.room_number}` : ''}
+              </div>
+              <div style={{ fontSize: '13px', color: '#374151', marginBottom: '8px' }}>{r.description}</div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+                Raised by {r.reported_by || '—'} · {new Date(r.raised_at).toLocaleDateString()}
+              </div>
+              {r.status !== 'Closed' && r.status !== 'Resolved' && (
+                <MobileActionButtons actions={[
+                  ...(r.status === 'Raised' ? [{ label: 'Assign', onClick: () => handleStatusChange(r.id, 'Assigned'), bg: '#dbeafe', color: '#1d4ed8' }] : []),
+                  ...(r.status === 'Assigned' ? [{ label: 'Start Work', onClick: () => handleStatusChange(r.id, 'In Progress'), bg: '#fef9c3', color: '#ca8a04' }] : []),
+                  ...(r.status === 'In Progress' ? [{ label: 'Resolve', onClick: () => handleStatusChange(r.id, 'Resolved'), bg: '#dcfce7', color: '#16a34a' }] : []),
+                  { label: 'Close', onClick: () => handleStatusChange(r.id, 'Closed'), bg: '#e5e7eb', color: '#374151' },
+                ]} />
+              )}
+            </MobileRecordCard>
+          ))}
+        </MobileCardList>
+
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No maintenance records</div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop
+  return (
+    <div>
+      <div style={statGrid(130)}>
+        <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="🚨" label="Urgent Open" value={stats.urgent} color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Search location, issue..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Status</option>
+            {MAINTENANCE_STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Priority</option>
+            {MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null) }} style={btn()}>
+          {showForm ? '✖ Cancel' : '➕ Raise Complaint'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ ...card, marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>🔧 New Maintenance Request</h3>
+          <form onSubmit={handleSave}>
+            <div style={grid2}>
+              <div>
+                <label style={lbl}>Category</label>
+                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{MAINTENANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+              </div>
+              <div>
+                <label style={lbl}>Priority</label>
+                <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={inp}>{MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}</select>
+              </div>
+              <div><label style={lbl}>Location/Block *</label><input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required placeholder="e.g. Block A" style={inp} /></div>
+              <div><label style={lbl}>Room Number</label><input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} placeholder="101" style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Description *</label><textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required rows={3} placeholder="Describe the issue in detail..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div><label style={lbl}>Assigned To</label><input value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))} placeholder="Staff name" style={inp} /></div>
+              <div><label style={lbl}>Estimated Cost</label><input type="number" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} placeholder="0.00" style={inp} /></div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#dc2626')}>{saving ? '⏳ Saving...' : '✅ Raise Ticket'}</button>
+              <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+      ) : (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 900 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['#', 'Category', 'Priority', 'Location', 'Room', 'Description', 'Status', 'Assigned', 'Raised', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                >
+                  <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
+                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e3a5f' }}>{r.category}</td>
+                  <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.priority)}>{r.priority}</span></td>
+                  <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.location}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: 'monospace' }}>{r.room_number || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#374151', maxWidth: 200 }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.description}>{r.description}</div>
+                  </td>
+                  <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
+                  <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.assigned_to || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{new Date(r.raised_at).toLocaleDateString()}</td>
+                  <td style={{ padding: '11px 14px' }}>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {r.status === 'Raised' && <button onClick={() => handleStatusChange(r.id, 'Assigned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>Assign</button>}
+                      {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#ca8a04'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
+                      {r.status === 'In Progress' && <button onClick={() => handleStatusChange(r.id, 'Resolved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>Resolve</button>}
+                      {r.status === 'Resolved' && <button onClick={() => handleStatusChange(r.id, 'Closed')} style={{ ...btn('#374151'), fontSize: '11px', padding: '4px 8px' }}>Close</button>}
+                      <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: HOUSEMASTER DASHBOARD (Feature #4 - NEW)
+// ══════════════════════════════════════════════════════════════
+function HMDashboard({ students, staffProfiles, currentHousemaster }) {
+  const [attendanceToday, setAttendanceToday] = useState([])
+  const [leaveToday, setLeaveToday] = useState([])
+  const [sickbayToday, setSickbayToday] = useState([])
+  const [maintenanceOpen, setMaintenanceOpen] = useState([])
+  const [disciplineOpen, setDisciplineOpen] = useState([])
+  const [nightDutyTonight, setNightDutyTonight] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const mobile = useMobileView()
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setLoading(true)
+      const todayStr = today()
+      const [a, l, s, m, d, n] = await Promise.all([
+        supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'morning'),
+        supabase.from('leave_records').select('*').eq('from_date', todayStr).in('status', ['Approved', 'Pending']),
+        supabase.from('sickbay_records').select('*').eq('status', 'Admitted'),
+        supabase.from('maintenance_records').select('*').in('status', ['Raised', 'Assigned', 'In Progress']).eq('priority', 'Urgent'),
+        supabase.from('discipline_records').select('*').in('status', ['Open', 'In Progress']),
+        supabase.from('night_duty').select('*').eq('date', todayStr).single(),
+      ])
+      setAttendanceToday(a.data || [])
+      setLeaveToday(l.data || [])
+      setSickbayToday(s.data || [])
+      setMaintenanceOpen(m.data || [])
+      setDisciplineOpen(d.data || [])
+      setNightDutyTonight(n.data)
+      setLoading(false)
+    }
+    loadDashboard()
+  }, [])
+
+  const presentCount = attendanceToday.filter(r => r.status === 'Present').length
+  const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
+  const unmarkedCount = students.filter(s => s.status !== 'Inactive').length - attendanceToday.length
+
+  const quickActions = [
+    { id: 'attendance', label: '✓ Roll Call', icon: '✓', color: '#16a34a', bg: '#dcfce7', desc: `${presentCount}/${students.length} marked` },
+    { id: 'leave', label: '🚪 Leave', icon: '🚪', color: '#1d4ed8', bg: '#dbeafe', desc: `${leaveToday.length} requests` },
+    { id: 'sickbay', label: '🏥 Sickbay', icon: '🏥', color: '#7c3aed', bg: '#f5f3ff', desc: `${sickbayToday.length} admitted` },
+    { id: 'discipline', label: '⚠️ Discipline', icon: '⚠️', color: '#dc2626', bg: '#fee2e2', desc: `${disciplineOpen.length} open` },
+    { id: 'maintenance', label: '🔧 Repairs', icon: '🔧', color: '#ca8a04', bg: '#fef9c3', desc: `${maintenanceOpen.length} urgent` },
+    { id: 'journal', label: '📝 Journal', icon: '📝', color: '#1e3a5f', bg: '#eff6ff', desc: 'Daily notes' },
+  ]
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading dashboard...</div>
+
+  if (mobile) {
+    return (
+      <div>
+        {/* Greeting */}
+        <div style={{ marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>
+            👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}
+          </h2>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>
+            {currentHousemaster?.name || 'House Master'} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+
+        {/* Night Duty Card */}
+        {nightDutyTonight && (
+          <div style={{ ...mobileCard, marginBottom: '16px', background: '#1e3a5f', color: 'white' }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '6px', opacity: 0.8 }}>🌙 TONIGHT'S DUTY</div>
+            <div style={{ fontSize: '16px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
+            <div style={{ fontSize: '13px', marginTop: '4px', opacity: 0.8 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
+          </div>
+        )}
+
+        {/* Quick Actions Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+          {quickActions.map(action => (
+            <button
+              key={action.id}
+              style={{
+                background: action.bg,
+                border: `1.5px solid ${action.color}20`,
+                borderRadius: '14px',
+                padding: '16px 12px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                minHeight: '90px',
+              }}
+            >
+              <span style={{ fontSize: '24px' }}>{action.icon}</span>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: action.color }}>{action.label}</span>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>{action.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Alerts Section */}
+        {(unmarkedCount > 0 || maintenanceOpen.length > 0 || sickbayToday.length > 0) && (
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 12px' }}>🚨 Requires Attention</h3>
+            <MobileCardList>
+              {unmarkedCount > 0 && (
+                <MobileRecordCard accentColor="#ca8a04">
+                  <div style={{ fontWeight: '700', color: '#ca8a04', fontSize: '14px' }}>⏳ {unmarkedCount} students unmarked for roll call</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Morning attendance pending</div>
+                </MobileRecordCard>
+              )}
+              {maintenanceOpen.map(m => (
+                <MobileRecordCard key={m.id} accentColor="#dc2626">
+                  <div style={{ fontWeight: '700', color: '#dc2626', fontSize: '14px' }}>🔧 Urgent: {m.category} · {m.location}</div>
+                  <div style={{ fontSize: '13px', color: '#374151', marginTop: '4px' }}>{m.description}</div>
+                </MobileRecordCard>
+              ))}
+              {sickbayToday.map(s => (
+                <MobileRecordCard key={s.id} accentColor="#7c3aed">
+                  <div style={{ fontWeight: '700', color: '#7c3aed', fontSize: '14px' }}>🏥 {s.student_name} admitted</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>{s.complaint}</div>
+                </MobileRecordCard>
+              ))}
+            </MobileCardList>
+          </div>
+        )}
+
+        {/* Today's Summary */}
+        <div style={{ ...mobileCard }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 12px' }}>📊 Today's Snapshot</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={{ textAlign: 'center', padding: '12px', background: '#dcfce7', borderRadius: '10px' }}>
+              <div style={{ fontSize: '24px', fontWeight: '800', color: '#16a34a' }}>{presentCount}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Present</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '12px', background: '#fee2e2', borderRadius: '10px' }}>
+              <div style={{ fontSize: '24px', fontWeight: '800', color: '#dc2626' }}>{absentCount}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Absent</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '12px', background: '#dbeafe', borderRadius: '10px' }}>
+              <div style={{ fontSize: '24px', fontWeight: '800', color: '#1d4ed8' }}>{leaveToday.length}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>On Leave</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '12px', background: '#f5f3ff', borderRadius: '10px' }}>
+              <div style={{ fontSize: '24px', fontWeight: '800', color: '#7c3aed' }}>{sickbayToday.length}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>In Sickbay</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Desktop Dashboard
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>
+            👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {currentHousemaster?.name || 'House Master'}
+          </h2>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+        {nightDutyTonight && (
+          <div style={{ background: '#1e3a5f', color: 'white', padding: '12px 20px', borderRadius: '12px' }}>
+            <div style={{ fontSize: '12px', opacity: 0.8 }}>🌙 TONIGHT'S DUTY</div>
+            <div style={{ fontSize: '16px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
+            <div style={{ fontSize: '12px', opacity: 0.8 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        {quickActions.map(action => (
+          <div key={action.id} style={{ background: action.bg, borderRadius: '14px', padding: '20px', border: `1.5px solid ${action.color}20`, cursor: 'pointer' }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>{action.icon}</div>
+            <div style={{ fontSize: '16px', fontWeight: '700', color: action.color, marginBottom: '4px' }}>{action.label}</div>
+            <div style={{ fontSize: '13px', color: '#64748b' }}>{action.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <div style={card}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>📊 Today's Snapshot</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#dcfce7', borderRadius: '10px' }}>
+              <div style={{ fontSize: '28px', fontWeight: '800', color: '#16a34a' }}>{presentCount}</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>Present</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#fee2e2', borderRadius: '10px' }}>
+              <div style={{ fontSize: '28px', fontWeight: '800', color: '#dc2626' }}>{absentCount}</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>Absent</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#dbeafe', borderRadius: '10px' }}>
+              <div style={{ fontSize: '28px', fontWeight: '800', color: '#1d4ed8' }}>{leaveToday.length}</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>On Leave</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#f5f3ff', borderRadius: '10px' }}>
+              <div style={{ fontSize: '28px', fontWeight: '800', color: '#7c3aed' }}>{sickbayToday.length}</div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>In Sickbay</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={card}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>🚨 Attention Required</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {unmarkedCount > 0 && (
+              <div style={{ padding: '12px', background: '#fef9c3', borderRadius: '10px', borderLeft: '3px solid #ca8a04' }}>
+                <div style={{ fontWeight: '700', color: '#ca8a04' }}>⏳ {unmarkedCount} students unmarked</div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>Morning roll call pending</div>
+              </div>
+            )}
+            {maintenanceOpen.map(m => (
+              <div key={m.id} style={{ padding: '12px', background: '#fee2e2', borderRadius: '10px', borderLeft: '3px solid #dc2626' }}>
+                <div style={{ fontWeight: '700', color: '#dc2626' }}>🔧 Urgent: {m.category}</div>
+                <div style={{ fontSize: '13px', color: '#374151' }}>{m.location} · {m.description}</div>
+              </div>
+            ))}
+            {disciplineOpen.slice(0, 3).map(d => (
+              <div key={d.id} style={{ padding: '12px', background: '#fee2e2', borderRadius: '10px', borderLeft: '3px solid #dc2626' }}>
+                <div style={{ fontWeight: '700', color: '#dc2626' }}>⚠️ {d.student_name}</div>
+                <div style={{ fontSize: '13px', color: '#374151' }}>{d.incident}</div>
+              </div>
+            ))}
+            {unmarkedCount === 0 && maintenanceOpen.length === 0 && disciplineOpen.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '20px', color: '#16a34a', fontWeight: '600' }}>✅ All clear! No urgent items.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: HOUSEMASTER JOURNAL (Feature #5 - NEW)
+// ══════════════════════════════════════════════════════════════
+function JournalTab({ currentHousemaster }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [date, setDate] = useState(today())
+  const [search, setSearch] = useState('')
+  const mobile = useMobileView()
+
+  const [form, setForm] = useState({
+    entry_date: today(), entry_time: nowTime(),
+    category: 'General', title: '', content: '',
+    house: '', flagged: false,
+  })
+
+  const JOURNAL_CATEGORIES = ['General', 'Assembly', 'Discipline', 'Medical', 'Maintenance', 'Parent Call', 'Staff Handover', 'Inspection', 'Event']
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('housemaster_journal').select('*').order('created_at', { ascending: false })
+    setEntries(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSave = async e => {
+    e.preventDefault(); setSaving(true)
+    const payload = {
+      ...form,
+      housemaster_name: currentHousemaster?.name || 'Unknown',
+    }
+    const { error } = await supabase.from('housemaster_journal').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm({ entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false }); setShowForm(false); load() }
+    setSaving(false)
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this journal entry?')) return
+    await supabase.from('housemaster_journal').delete().eq('id', id)
+    load()
+  }
+
+  const filtered = useMemo(() => {
+    let filtered = entries
+    if (date) filtered = filtered.filter(e => e.entry_date === date)
+    if (search) {
+      const q = search.toLowerCase()
+      filtered = filtered.filter(e =>
+        (e.title || '').toLowerCase().includes(q) ||
+        (e.content || '').toLowerCase().includes(q) ||
+        (e.category || '').toLowerCase().includes(q)
+      )
+    }
+    return filtered
+  }, [entries, date, search])
+
+  const categoryColors = {
+    General: '#1e3a5f', Assembly: '#16a34a', Discipline: '#dc2626', Medical: '#7c3aed',
+    Maintenance: '#ca8a04', 'Parent Call': '#1d4ed8', 'Staff Handover': '#0891b2',
+    Inspection: '#374151', Event: '#059669',
+  }
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, flex: 1 }} />
+          <button onClick={() => setShowForm(!showForm)} style={{ ...btn(), padding: '10px 14px' }}>
+            {showForm ? '✕' : '📝'}
+          </button>
+        </div>
+
+        {showForm && (
+          <div style={{ ...mobileCard, marginBottom: '12px' }}>
+            <form onSubmit={handleSave}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="date" value={form.entry_date} onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))} required style={{ ...inp, flex: 1 }} />
+                  <input type="time" value={form.entry_time} onChange={e => setForm(f => ({ ...f, entry_time: e.target.value }))} style={{ ...inp, flex: 1 }} />
+                </div>
+                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>
+                  {JOURNAL_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Entry title..." required style={inp} />
+                <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={4} placeholder="Write your notes here..." required style={{ ...inp, resize: 'vertical' }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151' }}>
+                  <input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} style={{ width: '20px', height: '20px' }} />
+                  🚩 Flag as important
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <MobileCardList>
+          {filtered.map(e => (
+            <MobileRecordCard key={e.id} accentColor={categoryColors[e.category] || '#1e3a5f'}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a5f') + '15', color: categoryColors[e.category] || '#1e3a5f' }}>
+                    {e.category}
+                  </span>
+                  {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
+                </div>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{e.entry_time}</span>
+              </div>
+              <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', marginBottom: '4px' }}>{e.title}</div>
+              <div style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{e.content}</div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>📝 {e.housemaster_name}</span>
+                <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}>🗑 Delete</button>
+              </div>
+            </MobileRecordCard>
+          ))}
+        </MobileCardList>
+
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📝</div>
+            No journal entries for {date}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, width: 'auto' }} />
+          <input placeholder="🔍 Search entries..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
+        </div>
+        <button onClick={() => setShowForm(!showForm)} style={btn()}>
+          {showForm ? '✖ Cancel' : '📝 New Entry'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ ...card, marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>📝 New Journal Entry</h3>
+          <form onSubmit={handleSave}>
+            <div style={grid2}>
+              <div><label style={lbl}>Date *</label><input type="date" value={form.entry_date} onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>Time</label><input type="time" value={form.entry_time} onChange={e => setForm(f => ({ ...f, entry_time: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Category</label><select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{JOURNAL_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
+              <div><label style={lbl}>House (if specific)</label><input value={form.house} onChange={e => setForm(f => ({ ...f, house: e.target.value }))} placeholder="Leave blank for general" style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Title *</label><input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="Short summary..." style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Content *</label><textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} required rows={5} placeholder="Detailed notes..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} />
+                  🚩 Flag as important (visible to all housemasters)
+                </label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Entry'}</button>
+              <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {filtered.map(e => (
+          <div key={e.id} style={{ background: 'white', borderRadius: '12px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${categoryColors[e.category] || '#1e3a5f'}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 10px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a5f') + '15', color: categoryColors[e.category] || '#1e3a5f' }}>
+                  {e.category}
+                </span>
+                {e.flagged && <span style={{ fontSize: '16px' }} title="Flagged">🚩</span>}
+                <span style={{ fontSize: '13px', color: '#64748b' }}>{e.entry_date} · {e.entry_time}</span>
+              </div>
+              <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑 Delete</button>
+            </div>
+            <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>{e.title}</h4>
+            <p style={{ fontSize: '14px', color: '#374151', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{e.content}</p>
+            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px' }}>📝 {e.housemaster_name} {e.house && `· 🏠 ${e.house}`}</div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
+            <div style={{ fontSize: '16px', fontWeight: '600' }}>No journal entries found</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 // ══════════════════════════════════════════════════════════════
 //  TAB 1 — Hostel Allotments
 // ══════════════════════════════════════════════════════════════
@@ -1973,27 +3578,40 @@ function KitchenTab() {
   )
 }
 
+
 // ══════════════════════════════════════════════════════════════
-//  ROOT — Hostel module
+//  ROOT — Hostel module (Updated with new House Master features)
 // ══════════════════════════════════════════════════════════════
 function Hostel() {
-  const [activeTab,     setActiveTab]     = useState('allotments')
+  const [activeTab,     setActiveTab]     = useState('hmdashboard')
   const [students,      setStudents]      = useState([])
   const [staffProfiles, setStaffProfiles] = useState([])
   const [dataLoading,   setDataLoading]   = useState(true)
+  const [mobile,        setMobile]        = useState(isMobile())
+  const [currentHousemaster, setCurrentHousemaster] = useState(null)
+
+  // Track mobile state
+  useEffect(() => {
+    const handleResize = () => setMobile(isMobile())
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     const fetchShared = async () => {
       setDataLoading(true)
-      const [{ data: s, error: e1 }, { data: st, error: e2 }] = await Promise.all([
+      const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }] = await Promise.all([
         supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no').order('name'),
         supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
+        supabase.from('housemasters').select('*').eq('status', 'Active').single(),
       ])
       if (e1) console.error('Students fetch error:', e1)
       if (e2) console.error('Staff fetch error:', e2)
+      if (e3) console.error('Housemaster fetch error:', e3)
       console.log('Loaded:', s?.length, 'students,', st?.length, 'staff | sample:', s?.[0])
       setStudents(s || [])
       setStaffProfiles(st || [])
+      setCurrentHousemaster(hm || null)
       setDataLoading(false)
     }
     fetchShared()
@@ -2012,40 +3630,127 @@ function Hostel() {
     kitchen:      <KitchenTab />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
+    // ─── NEW TABS ──────────────────────────────────────
+    attendance:   <AttendanceTab  students={students} currentHousemaster={currentHousemaster} />,
+    leave:        <LeaveTab       students={students} currentHousemaster={currentHousemaster} />,
+    hmdashboard:  <HMDashboard    students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} />,
+    maintenance:  <MaintenanceTab currentHousemaster={currentHousemaster} />,
+    journal:      <JournalTab     currentHousemaster={currentHousemaster} />,
   }
 
+  // Mobile bottom navigation
+  const primaryTabs = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'maintenance', 'journal']
+  const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'housemaster', 'kitchen', 'hmactivities', 'adminmonitor']
+
   return (
-    <div style={{ padding: '24px', fontFamily: 'system-ui,sans-serif' }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>🏠 Hostel Management</h1>
-        <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>
-          Allotments · Schedule · Night Duty · Discipline · Sickbay · House · Kitchen
+    <div style={{ padding: mobile ? '12px' : '24px', fontFamily: 'system-ui,sans-serif', paddingBottom: mobile ? '80px' : '24px' }}>
+      <div style={{ marginBottom: mobile ? '16px' : '24px' }}>
+        <h1 style={{ fontSize: mobile ? '20px' : '26px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>
+          🏠 Hostel Management
+        </h1>
+        <p style={{ color: '#64748b', fontSize: mobile ? '13px' : '14px', margin: '4px 0 0' }}>
+          {mobile ? 'Allotments · Schedule · Duty · Discipline · Sickbay · House · Kitchen · Roll Call · Leave · Dashboard · Repairs · Journal' : 'Allotments · Schedule · Night Duty · Discipline · Sickbay · House · Kitchen'}
           {dataLoading
-            ? <span style={{ marginLeft: 12, color: '#f59e0b', fontWeight: 600 }}>⏳ Loading shared data...</span>
-            : <span style={{ marginLeft: 12, color: '#16a34a', fontWeight: 600 }}>✅ {students.length} students · {staffProfiles.length} staff loaded</span>
+            ? <span style={{ marginLeft: 12, color: '#f59e0b', fontWeight: 600 }}>⏳ Loading...</span>
+            : <span style={{ marginLeft: 12, color: '#16a34a', fontWeight: 600 }}>✅ {students.length} students · {staffProfiles.length} staff</span>
           }
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', marginBottom: 24, overflowX: 'auto' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-            padding: '9px 16px', border: 'none',
-            borderBottom: activeTab === t.id ? '3px solid #1e3a5f' : '3px solid transparent',
-            background: 'none', cursor: 'pointer', fontSize: 13,
-            fontWeight: activeTab === t.id ? 700 : 500,
-            color: activeTab === t.id ? '#1e3a5f' : '#64748b',
-            marginBottom: -2, whiteSpace: 'nowrap', transition: 'color .15s',
-          }}>{t.label}</button>
-        ))}
-      </div>
+      {/* Desktop/Tablet Tab Bar */}
+      {!mobile && (
+        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', marginBottom: 24, overflowX: 'auto' }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              padding: '9px 16px', border: 'none',
+              borderBottom: activeTab === t.id ? '3px solid #1e3a5f' : '3px solid transparent',
+              background: 'none', cursor: 'pointer', fontSize: 13,
+              fontWeight: activeTab === t.id ? 700 : 500,
+              color: activeTab === t.id ? '#1e3a5f' : '#64748b',
+              marginBottom: -2, whiteSpace: 'nowrap', transition: 'color .15s',
+            }}>{t.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Mobile Top Tabs (scrollable) */}
+      {mobile && (
+        <div style={{ 
+          display: 'flex', 
+          gap: '6px', 
+          marginBottom: '16px', 
+          overflowX: 'auto',
+          paddingBottom: '4px',
+          WebkitOverflowScrolling: 'touch',
+        }}>
+          {primaryTabs.map(tid => {
+            const t = TABS.find(tab => tab.id === tid)
+            if (!t) return null
+            return (
+              <button 
+                key={t.id} 
+                onClick={() => setActiveTab(t.id)} 
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '99px',
+                  border: 'none',
+                  background: activeTab === t.id ? '#1e3a5f' : '#f1f5f9',
+                  color: activeTab === t.id ? 'white' : '#64748b',
+                  fontSize: '12px',
+                  fontWeight: activeTab === t.id ? 700 : 500,
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  minHeight: '36px',
+                }}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Mobile Secondary Tabs (smaller, collapsible) */}
+      {mobile && (
+        <div style={{ 
+          display: 'flex', 
+          gap: '4px', 
+          marginBottom: '12px', 
+          overflowX: 'auto',
+          paddingBottom: '4px',
+        }}>
+          {secondaryTabs.map(tid => {
+            const t = TABS.find(tab => tab.id === tid)
+            if (!t) return null
+            return (
+              <button 
+                key={t.id} 
+                onClick={() => setActiveTab(t.id)} 
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  background: activeTab === t.id ? '#eff6ff' : 'white',
+                  color: activeTab === t.id ? '#1e3a5f' : '#94a3b8',
+                  fontSize: '11px',
+                  fontWeight: activeTab === t.id ? 600 : 400,
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                }}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {dataLoading && !standaloneTab
         ? (
-          <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>Loading student & staff data...</div>
-            <div style={{ fontSize: 13, marginTop: 6, color: '#94a3b8' }}>This only happens once on first load</div>
+          <div style={{ textAlign: 'center', padding: mobile ? '40px' : '60px', color: '#64748b' }}>
+            <div style={{ fontSize: mobile ? '24px' : '32px', marginBottom: '12px' }}>⏳</div>
+            <div style={{ fontSize: mobile ? '14px' : '15px', fontWeight: 600 }}>Loading student & staff data...</div>
+            <div style={{ fontSize: '13px', marginTop: '6px', color: '#94a3b8' }}>This only happens once on first load</div>
           </div>
         )
         : tabContent[activeTab]
