@@ -18,15 +18,12 @@ const db = {
         : "staff",
   }));
 },
+  async getTasks() {
+    const { data, error } = await supabase.from("staff_tasks").select("*").order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
   async assignTask(form) {
-    const payload = {
-      title: form.title, description: form.description || "", priority: form.priority,
-      status: "Pending", due_date: form.due_date || null, department: form.department,
-      assigned_to: form.assigned_to, assigned_by: form.assigned_by,
-      submission_status: "Not Submitted", submission_note: "", submission_files: [],
-      submitted_at: null, review_feedback: "", reviewed_by: "", reviewed_at: null,
-      created_at: new Date().toISOString(),
-    };
     const { data, error } = await supabase.from("staff_tasks").insert([payload]).select().single();
     if (error) throw error;
     return data;
