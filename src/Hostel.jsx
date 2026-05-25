@@ -2053,3 +2053,5 @@ function Hostel() {
     </div>
   )
 }
+
+export default Hostel;
