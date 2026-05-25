@@ -1204,7 +1204,7 @@ export default function Checklist() {
     }
   };
 
-  if (loading && users.length === 0) {
+  if (loading && !currentUser) {
     return (
       <div style={{ ...G.page, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
         <Spinner />
