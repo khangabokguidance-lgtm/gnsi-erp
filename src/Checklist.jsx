@@ -3,15 +3,21 @@ import { supabase } from "./supabase";
 
 const db = {
   async getUsers() {
-    const { data, error } = await supabase.from("staff_users").select("*").order("name");
-    if (error) throw error;
-    return data || [];
-  },
-  async getTasks() {
-    const { data, error } = await supabase.from("staff_tasks").select("*").order("created_at", { ascending: false });
-    if (error) throw error;
-    return data || [];
-  },
+  const { data, error } = await supabase
+    .from("staff")
+    .select("id, name, role, dept, designation, phone, email, status")
+    .eq("status", "Active")
+    .order("name");
+  if (error) throw error;
+  // Map to expected shape
+  return (data || []).map(s => ({
+    ...s,
+    department: s.dept,
+    role: s.role === "admin" ? "admin"
+        : s.role === "incharge" ? "incharge"
+        : "staff",
+  }));
+},
   async assignTask(form) {
     const payload = {
       title: form.title, description: form.description || "", priority: form.priority,
@@ -250,7 +256,7 @@ function Sidebar({ currentUser, activeView, setActiveView, setCurrentUser, users
       </div>
       {users.length > 1 && (
         <div style={{ padding:"12px 12px 0" }}>
-          <select style={{ ...G.inp, fontSize:11, padding:"7px 10px" }} value={currentUser.id} onChange={e => setCurrentUser(users.find(u => u.id === +e.target.value) || users[0])}>
+          <select style={{ ...G.inp, fontSize:11, padding:"7px 10px" }} value={currentUser.id} onChange={e => setCurrentUser(users.find(u => u.id === e.target.value) || users[0])}>
             {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
           </select>
         </div>
@@ -308,7 +314,7 @@ function MobileHeader({ currentUser, activeView, tasks, onRefresh, users, setCur
       {showUserPicker && users.length > 1 && (
         <div style={{ padding:"8px 16px 12px", borderTop:`1px solid ${T.border}` }}>
           <label style={G.lbl}>Switch User</label>
-          <select style={{ ...G.inp }} value={currentUser.id} onChange={e => { setCurrentUser(users.find(u => u.id === +e.target.value) || users[0]); setShowUserPicker(false); }}>
+          <select style={{ ...G.inp }} value={currentUser.id} onChange={e => { setCurrentUser(users.find(u => u.id === e.target.value) || users[0]); setShowUserPicker(false); }}>
             {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
           </select>
         </div>
