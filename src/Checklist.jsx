@@ -1115,23 +1115,42 @@ function MonitoringView({ staff, tasks, isMobile }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function Checklist() {
+export default function Checklist({ currentUser: portalUser }) {
   const { isMobile } = useBreakpoint();
   const [users,       setUsers]       = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [tasks,       setTasks]       = useState([]);
-  const [duties,      setDuties]      = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [activeView,  setActiveView]  = useState("dashboard");
-  const [toast,       setToast]       = useState({ msg:"", type:"success" });
-  const [submitTask,  setSubmitTask]  = useState(null);
-  const [reviewTask,  setReviewTask]  = useState(null);
-  const [showMore,    setShowMore]    = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);  // ← internal state
+  // ...
 
-  const showToast = useCallback((msg, type = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast({ msg:"", type:"success" }), 3000);
-  }, []);
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [usersData, tasksData, dutiesData] = await Promise.all([
+        db.getUsers(), db.getTasks(), db.getDuties()
+      ]);
+      setUsers(usersData);
+      setTasks(tasksData);
+      setDuties(dutiesData);
+      // Use portal user if no staff_users exist
+      if (usersData.length > 0) {
+        setCurrentUser(usersData.find(u => u.role === "admin") || usersData[0]);
+      } else if (portalUser) {
+        setCurrentUser({ 
+          id: 1, name: portalUser.name, 
+          role: portalUser.role?.toLowerCase() === "admin" ? "admin" : "staff",
+          department: "Administration"
+        });
+      }
+    } catch (err) {
+      showToast("⚠️ " + err.message, "error");
+      if (portalUser) {
+        setCurrentUser({ 
+          id: 1, name: portalUser.name,
+          role: portalUser.role?.toLowerCase() === "admin" ? "admin" : "staff",
+          department: "Administration"
+        });
+      }
+    } finally { setLoading(false); }
+  }, [portalUser, showToast]);
 
  const fetchAll = useCallback(async () => {
   setLoading(true);
@@ -1204,7 +1223,7 @@ export default function Checklist() {
     }
   };
 
-  if (loading && !currentUser) {
+  if (loading && !currentUser && !portalUser) {
     return (
       <div style={{ ...G.page, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
         <Spinner />
