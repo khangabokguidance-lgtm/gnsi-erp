@@ -1609,4 +1609,4 @@ function Staff({ currentUser }) {
   )
 }
 
-export default Staff
+export default Staff;
