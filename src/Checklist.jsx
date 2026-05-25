@@ -1133,29 +1133,25 @@ export default function Checklist() {
     setTimeout(() => setToast({ msg:"", type:"success" }), 3000);
   }, []);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [usersData, tasksData, dutiesData] = await Promise.all([db.getUsers(), db.getTasks(), db.getDuties()]);
-      setUsers(usersData);
-      setTasks(tasksData);
-      setDuties(dutiesData);
-      if (!currentUser && usersData.length > 0) {
-        setCurrentUser(usersData.find(u => u.role === "admin") || usersData[0]);
-      }
-    } catch (err) {
-      showToast("⚠️ Failed to load: " + err.message, "error");
-    } finally { setLoading(false); }
-  }, [currentUser, showToast]);
-
-  useEffect(() => { fetchAll(); }, []);
-  useEffect(() => { if (currentUser) setActiveView("dashboard"); }, [currentUser?.id]);
-
-  // Handle "more" nav item on mobile
-  const handleSetView = (view) => {
-    if (view === "more") { setShowMore(true); return; }
-    setActiveView(view);
-  };
+ const fetchAll = useCallback(async () => {
+  setLoading(true);
+  try {
+    const [usersData, tasksData, dutiesData] = await Promise.all([
+      db.getUsers(), db.getTasks(), db.getDuties()
+    ]);
+    setUsers(usersData);
+    setTasks(tasksData);
+    setDuties(dutiesData);
+    if (!currentUser && usersData.length > 0) {
+      setCurrentUser(usersData.find(u => u.role === "admin") || usersData[0]);
+    }
+  } catch (err) {
+    showToast("⚠️ Failed to load: " + err.message, "error");
+    setLoading(false); // ← add this so spinner doesn't hang
+  } finally {
+    setLoading(false);
+  }
+}, [currentUser, showToast]);
 
   const handleSubmit = useCallback(async (taskId, note, files) => {
     const updated = await db.updateTask(taskId, { status:"Submitted", submission_status:"Under Review", submission_note:note, submission_files:files, submitted_at:new Date().toISOString() });
