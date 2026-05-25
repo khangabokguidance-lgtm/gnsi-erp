@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
@@ -14,6 +15,19 @@ const lbl = {
 const btn = (bg = '#1e3a5f', c = 'white') => ({
   backgroundColor: bg, color: c, border: 'none', borderRadius: '8px',
   padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px',
+})
+
+// ─── Responsive grid helpers ──────────────────────────────────
+const grid2 = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+  gap: '16px',
+}
+const statGrid = (min = 140) => ({
+  display: 'grid',
+  gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))`,
+  gap: '16px',
+  marginBottom: '24px',
 })
 
 const TABS = [
@@ -36,8 +50,6 @@ const MONTHS = [
 
 const today = () => new Date().toISOString().split('T')[0]
 
-// ─── Helper: get display class for a student ──────────────────
-// Prefers `batch` (real class) over `class_name` (has junk '???' data)
 function getStudentClass(s) {
   if (!s) return ''
   const batch = (s.batch || '').trim()
@@ -47,7 +59,6 @@ function getStudentClass(s) {
   return ''
 }
 
-// ─── Shared: StatCard ─────────────────────────────────────────
 function StatCard({ icon, label, value, color, bg }) {
   return (
     <div style={{
@@ -61,7 +72,6 @@ function StatCard({ icon, label, value, color, bg }) {
   )
 }
 
-// ─── Shared: Status badge style ───────────────────────────────
 function statusStyle(status) {
   const map = {
     Occupied:      { bg: '#dcfce7', color: '#16a34a' },
@@ -82,14 +92,8 @@ function statusStyle(status) {
   }
 }
 
-// ─── Shared: Student Search Dropdown ──────────────────────────
-function StudentSearchInput({
-  students,
-  onSelect,
-  placeholder = 'Type name or GCC No to search student...',
-}) {
+function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GCC No to search student...' }) {
   const [query, setQuery] = useState('')
-
   const matches = useMemo(() => {
     if (!query.trim()) return []
     const q = query.toLowerCase()
@@ -103,17 +107,10 @@ function StudentSearchInput({
       )
       .slice(0, 8)
   }, [query, students])
-
   const select = s => { onSelect(s); setQuery('') }
-
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        placeholder={placeholder}
-        style={inp}
-      />
+      <input value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder} style={inp} />
       {matches.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0,
@@ -122,23 +119,15 @@ function StudentSearchInput({
           maxHeight: 220, overflowY: 'auto',
         }}>
           {matches.map(s => (
-            <div
-              key={s.id}
-              onClick={() => select(s)}
-              style={{
-                padding: '10px 14px', cursor: 'pointer',
-                borderBottom: '1px solid #f1f5f9', fontSize: '13px',
-              }}
+            <div key={s.id} onClick={() => select(s)}
+              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}
               onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
               onMouseLeave={e => e.currentTarget.style.background = 'white'}
             >
               <strong style={{ color: '#1e293b' }}>{s.name}</strong>
               <span style={{ color: '#64748b', marginLeft: 8 }}>
-                {s.gcc_no ? `GCC-${s.gcc_no}` : '—'}
-                {' · '}
-                {getStudentClass(s) || '—'}
-                {s.house ? ` · 🏠 ${s.house}` : ''}
-                {s.hostel_type ? ` · ${s.hostel_type}` : ''}
+                {s.gcc_no ? `GCC-${s.gcc_no}` : '—'}{' · '}{getStudentClass(s) || '—'}
+                {s.house ? ` · 🏠 ${s.house}` : ''}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
               </span>
             </div>
           ))}
@@ -148,14 +137,8 @@ function StudentSearchInput({
   )
 }
 
-// ─── Shared: Staff Search Dropdown ────────────────────────────
-function StaffSearchInput({
-  staff,
-  onSelect,
-  placeholder = 'Search staff by name...',
-}) {
+function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name...' }) {
   const [query, setQuery] = useState('')
-
   const matches = useMemo(() => {
     if (!query.trim()) return []
     const q = query.toLowerCase()
@@ -167,17 +150,10 @@ function StaffSearchInput({
       )
       .slice(0, 8)
   }, [query, staff])
-
   const select = s => { onSelect(s); setQuery('') }
-
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        placeholder={placeholder}
-        style={inp}
-      />
+      <input value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder} style={inp} />
       {matches.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0,
@@ -186,13 +162,8 @@ function StaffSearchInput({
           maxHeight: 200, overflowY: 'auto',
         }}>
           {matches.map(s => (
-            <div
-              key={s.id}
-              onClick={() => select(s)}
-              style={{
-                padding: '10px 14px', cursor: 'pointer',
-                borderBottom: '1px solid #f1f5f9', fontSize: '13px',
-              }}
+            <div key={s.id} onClick={() => select(s)}
+              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}
               onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
               onMouseLeave={e => e.currentTarget.style.background = 'white'}
             >
@@ -231,41 +202,28 @@ function AllotmentsTab({ students }) {
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('hostel_allotments')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const { data } = await supabase.from('hostel_allotments').select('*').order('created_at', { ascending: false })
     setRecords(data || [])
     setLoading(false)
   }
-
   useEffect(() => { load() }, [])
 
   const handleStudentSelect = s => {
     setForm(f => ({
-      ...f,
-      student_id:   s.id,
-      gcc_no:       s.gcc_no || '',
-      student_name: s.name || '',
-      class_name:   getStudentClass(s),
-      hostel_name:  s.hostel_type || f.hostel_name,
+      ...f, student_id: s.id, gcc_no: s.gcc_no || '',
+      student_name: s.name || '', class_name: getStudentClass(s),
+      hostel_name: s.hostel_type || f.hostel_name,
     }))
   }
 
   const handleSave = async e => {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     const payload = {
-      student_id:     form.student_id || null,
-      gcc_no:         form.gcc_no || null,
-      student_name:   form.student_name,
-      class_name:     form.class_name,
-      hostel_name:    form.hostel_name,
-      room_number:    form.room_number,
-      bed_number:     form.bed_number,
-      allotment_date: form.allotment_date,
-      status:         form.status,
-      remarks:        form.remarks,
+      student_id: form.student_id || null, gcc_no: form.gcc_no || null,
+      student_name: form.student_name, class_name: form.class_name,
+      hostel_name: form.hostel_name, room_number: form.room_number,
+      bed_number: form.bed_number, allotment_date: form.allotment_date,
+      status: form.status, remarks: form.remarks,
     }
     const { error } = editRec
       ? await supabase.from('hostel_allotments').update(payload).eq('id', editRec.id)
@@ -287,29 +245,22 @@ function AllotmentsTab({ students }) {
   }
 
   const openEdit = rec => {
-  setEditRec(rec)
-  setForm({
-    ...rec,
-    housemaster_name: rec.housemaster_name || '',
-    house:            rec.house            || '',
-    description:      rec.description      || '',
-    outcome:          rec.outcome          || '',
-    status:           rec.status           || 'Completed',
-  })
-  setShowForm(true)
-}
+    setEditRec(rec)
+    setForm({
+      ...rec,
+      housemaster_name: rec.housemaster_name || '',
+      house: rec.house || '',
+      description: rec.description || '',
+      outcome: rec.outcome || '',
+      status: rec.status || 'Completed',
+    })
+    setShowForm(true)
+  }
 
   const enriched = useMemo(() => records.map(r => {
     if (r.student_id) {
       const s = students.find(s => s.id === r.student_id)
-      if (s) return {
-        ...r,
-        student_name: s.name,
-        gcc_no:       s.gcc_no,
-        class_name:   getStudentClass(s) || r.class_name,
-        _house:       s.house,
-        _course:      s.course,
-      }
+      if (s) return { ...r, student_name: s.name, gcc_no: s.gcc_no, class_name: getStudentClass(s) || r.class_name, _house: s.house, _course: s.course }
     }
     return r
   }), [records, students])
@@ -331,7 +282,8 @@ function AllotmentsTab({ students }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* FIXED: was repeat(4,1fr) */}
+      <div style={statGrid()}>
         <StatCard icon="📋" label="Total"    value={records.length} color="#1e3a5f" bg="#eff6ff" />
         <StatCard icon="🛏️" label="Occupied" value={occupied}       color="#16a34a" bg="#dcfce7" />
         <StatCard icon="🚪" label="Vacant"   value={vacant}         color="#dc2626" bg="#fee2e2" />
@@ -340,12 +292,7 @@ function AllotmentsTab({ students }) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
-          <input
-            placeholder="🔍 Search student, room, hostel..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ ...inp, flex: 2, minWidth: 200 }}
-          />
+          <input placeholder="🔍 Search student, room, hostel..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 200 }} />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
             <option value="All">All Status</option>
             {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
@@ -355,10 +302,7 @@ function AllotmentsTab({ students }) {
             {uniqueHostels.map(h => <option key={h}>{h}</option>)}
           </select>
         </div>
-        <button
-          onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyAllot) }}
-          style={btn()}
-        >
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyAllot) }} style={btn()}>
           {showForm ? '✖ Cancel' : '➕ Add Allotment'}
         </button>
       </div>
@@ -368,11 +312,10 @@ function AllotmentsTab({ students }) {
           <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '4px' }}>
             {editRec ? '✏️ Edit Allotment' : '➕ Add Hostel Allotment'}
           </h3>
-          <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>
-            🔗 Student data is pulled live from the Students module
-          </p>
+          <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>🔗 Student data is pulled live from the Students module</p>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            {/* FIXED: was 1fr 1fr */}
+            <div style={grid2}>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={lbl}>🔍 Search & Select Student (live from Students module)</label>
                 <StudentSearchInput students={students} onSelect={handleStudentSelect} />
@@ -384,70 +327,31 @@ function AllotmentsTab({ students }) {
               </div>
               <div>
                 <label style={lbl}>GCC No. <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label>
-                <input
-                  value={form.gcc_no || ''}
-                  onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))}
-                  placeholder="e.g. 729"
-                  style={inp}
-                />
+                <input value={form.gcc_no || ''} onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))} placeholder="e.g. 729" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Student Name *</label>
-                <input
-                  value={form.student_name}
-                  onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))}
-                  required
-                  placeholder="Auto-filled from search"
-                  style={inp}
-                />
+                <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} required placeholder="Auto-filled from search" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Batch / Class <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label>
-                <input
-                  value={form.class_name}
-                  onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))}
-                  placeholder="Auto-filled from student"
-                  style={inp}
-                />
+                <input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} placeholder="Auto-filled from student" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Hostel Name *</label>
-                <input
-                  value={form.hostel_name}
-                  onChange={e => setForm(f => ({ ...f, hostel_name: e.target.value }))}
-                  required
-                  placeholder="Boarder / Day Scholar"
-                  style={inp}
-                />
+                <input value={form.hostel_name} onChange={e => setForm(f => ({ ...f, hostel_name: e.target.value }))} required placeholder="Boarder / Day Scholar" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Room Number *</label>
-                <input
-                  value={form.room_number}
-                  onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))}
-                  required
-                  placeholder="101 / A-12"
-                  style={inp}
-                />
+                <input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} required placeholder="101 / A-12" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Bed Number</label>
-                <input
-                  value={form.bed_number}
-                  onChange={e => setForm(f => ({ ...f, bed_number: e.target.value }))}
-                  placeholder="Bed 1 / Bed A"
-                  style={inp}
-                />
+                <input value={form.bed_number} onChange={e => setForm(f => ({ ...f, bed_number: e.target.value }))} placeholder="Bed 1 / Bed A" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Allotment Date *</label>
-                <input
-                  type="date"
-                  value={form.allotment_date}
-                  onChange={e => setForm(f => ({ ...f, allotment_date: e.target.value }))}
-                  required
-                  style={inp}
-                />
+                <input type="date" value={form.allotment_date} onChange={e => setForm(f => ({ ...f, allotment_date: e.target.value }))} required style={inp} />
               </div>
               <div>
                 <label style={lbl}>Status</label>
@@ -457,22 +361,12 @@ function AllotmentsTab({ students }) {
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={lbl}>Remarks</label>
-                <textarea
-                  value={form.remarks}
-                  onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
-                  rows={2}
-                  placeholder="Any extra remarks"
-                  style={{ ...inp, resize: 'vertical' }}
-                />
+                <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} rows={2} placeholder="Any extra remarks" style={{ ...inp, resize: 'vertical' }} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>
-                {saving ? '⏳ Saving...' : '✅ Save Allotment'}
-              </button>
-              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>
-                Cancel
-              </button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Allotment'}</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
         </div>
@@ -492,16 +386,12 @@ function AllotmentsTab({ students }) {
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    style={{ borderBottom: '1px solid #f1f5f9' }}
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = 'white'}
                   >
                     <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 12 }}>{i + 1}</td>
-                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>
-                      {r.gcc_no ? `GCC-${r.gcc_no}` : '—'}
-                    </td>
+                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#94a3b8' }}>🔗 linked</div>}
@@ -514,11 +404,8 @@ function AllotmentsTab({ students }) {
                     <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.bed_number || '—'}</td>
                     <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r.allotment_date}</td>
                     <td style={{ padding: '11px 14px' }}>
-                      <select
-                        value={r.status}
-                        onChange={e => handleStatusChange(r.id, e.target.value)}
-                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}
-                      >
+                      <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)}
+                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}>
                         {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
                       </select>
                     </td>
@@ -531,9 +418,7 @@ function AllotmentsTab({ students }) {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No hostel allotments found</td>
-                  </tr>
+                  <tr><td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No hostel allotments found</td></tr>
                 )}
               </tbody>
             </table>
@@ -599,18 +484,14 @@ function ScheduleTab() {
   const toggle = no => {
     const k    = `${type}_${no}`
     const next = { ...checked, [k]: !checked[k] }
-    setChecked(next)
-    saveCheck(next)
+    setChecked(next); saveCheck(next)
   }
 
   const saveEdit = no => {
     const from = document.getElementById(`se-from-${no}`)?.value || ''
     const to   = document.getElementById(`se-to-${no}`)?.value || ''
     const act  = document.getElementById(`se-act-${no}`)?.value || ''
-    setSchedule(s => ({
-      ...s,
-      [type]: s[type].map(r => r.no === no ? { ...r, from, to, activity: act } : r),
-    }))
+    setSchedule(s => ({ ...s, [type]: s[type].map(r => r.no === no ? { ...r, from, to, activity: act } : r) }))
     setEditRow(null)
   }
 
@@ -623,8 +504,7 @@ function ScheduleTab() {
     if (!newRow.from || !newRow.activity) { alert('From time and activity are required'); return }
     const maxNo = rows.length ? Math.max(...rows.map(r => r.no)) : 0
     setSchedule(s => ({ ...s, [type]: [...s[type], { no: maxNo + 1, ...newRow }] }))
-    setNewRow({ from: '', to: '', activity: '' })
-    setAddForm(false)
+    setNewRow({ from: '', to: '', activity: '' }); setAddForm(false)
   }
 
   const highlight = a => ['Doubt', 'Academic', 'Lunch', 'Dinner', 'Tea', 'Recreation'].some(k => a.includes(k))
@@ -647,20 +527,14 @@ function ScheduleTab() {
     <div>
       <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
         {[['weekday', '📅 Mon–Sat Schedule'], ['sunday', '🌿 Sunday / Holiday']].map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setType(id)}
-            style={{
-              flex: 1, padding: '9px 18px', border: 'none',
-              borderBottom: type === id ? '3px solid #1e3a5f' : '3px solid transparent',
-              background: 'none', cursor: 'pointer', fontSize: 13,
-              fontWeight: type === id ? 700 : 500,
-              color: type === id ? '#1e3a5f' : '#64748b',
-              marginBottom: -2,
-            }}
-          >
-            {label}
-          </button>
+          <button key={id} onClick={() => setType(id)} style={{
+            flex: 1, padding: '9px 18px', border: 'none',
+            borderBottom: type === id ? '3px solid #1e3a5f' : '3px solid transparent',
+            background: 'none', cursor: 'pointer', fontSize: 13,
+            fontWeight: type === id ? 700 : 500,
+            color: type === id ? '#1e3a5f' : '#64748b',
+            marginBottom: -2,
+          }}>{label}</button>
         ))}
       </div>
 
@@ -672,21 +546,14 @@ function ScheduleTab() {
           </span>
         </div>
         <div style={{ height: 8, background: '#e2e8f0', borderRadius: 20, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%', width: `${pct}%`,
-            background: pct === 100 ? '#16a34a' : pct > 50 ? '#ca8a04' : '#1e3a5f',
-            borderRadius: 20, transition: 'width .4s',
-          }} />
+          <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#16a34a' : pct > 50 ? '#ca8a04' : '#1e3a5f', borderRadius: 20, transition: 'width .4s' }} />
         </div>
-        {pct === 100 && (
-          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, marginTop: 6 }}>
-            🎉 All activities completed for today!
-          </div>
-        )}
+        {pct === 100 && <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, marginTop: 6 }}>🎉 All activities completed for today!</div>}
       </div>
 
       {addForm && (
-        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 2fr auto', gap: 10, alignItems: 'end' }}>
+        /* FIXED: was '1fr 1fr 2fr auto' — breaks on mobile */
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, alignItems: 'end' }}>
           <div>
             <label style={lbl}>From *</label>
             <input value={newRow.from} onChange={e => setNewRow(n => ({ ...n, from: e.target.value }))} placeholder="6:00 AM" style={inp} />
@@ -695,11 +562,11 @@ function ScheduleTab() {
             <label style={lbl}>To</label>
             <input value={newRow.to} onChange={e => setNewRow(n => ({ ...n, to: e.target.value }))} placeholder="7:00 AM" style={inp} />
           </div>
-          <div>
+          <div style={{ gridColumn: 'span 2' }}>
             <label style={lbl}>Activity *</label>
             <input value={newRow.activity} onChange={e => setNewRow(n => ({ ...n, activity: e.target.value }))} placeholder="e.g. Morning PT" style={inp} />
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
             <button onClick={addRow} style={btn('#16a34a')}>✓ Add</button>
             <button onClick={() => setAddForm(false)} style={btn('#f1f5f9', '#374151')}>✕</button>
           </div>
@@ -710,8 +577,8 @@ function ScheduleTab() {
         <button onClick={() => setAddForm(true)} style={{ ...btn(), fontSize: 13, padding: '8px 16px' }}>➕ Add Row</button>
       </div>
 
-      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
           <thead>
             <tr style={{ background: '#1e3a5f' }}>
               {['#', 'From', 'To', 'Activity', '', '✓'].map(h => (
@@ -726,15 +593,9 @@ function ScheduleTab() {
               if (isEdit) return (
                 <tr key={r.no} style={{ background: '#eff6ff' }}>
                   <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                  <td style={{ padding: '8px 14px' }}>
-                    <input id={`se-from-${r.no}`} defaultValue={r.from} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} />
-                  </td>
-                  <td style={{ padding: '8px 14px' }}>
-                    <input id={`se-to-${r.no}`} defaultValue={r.to} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} />
-                  </td>
-                  <td style={{ padding: '8px 14px' }}>
-                    <input id={`se-act-${r.no}`} defaultValue={r.activity} style={{ ...inp, padding: '5px 8px', fontSize: 12 }} />
-                  </td>
+                  <td style={{ padding: '8px 14px' }}><input id={`se-from-${r.no}`} defaultValue={r.from} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
+                  <td style={{ padding: '8px 14px' }}><input id={`se-to-${r.no}`} defaultValue={r.to} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
+                  <td style={{ padding: '8px 14px' }}><input id={`se-act-${r.no}`} defaultValue={r.activity} style={{ ...inp, padding: '5px 8px', fontSize: 12 }} /></td>
                   <td style={{ padding: '8px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => saveEdit(r.no)} style={{ ...btn('#16a34a'), fontSize: 11, padding: '4px 10px' }}>✓ Save</button>
@@ -745,18 +606,13 @@ function ScheduleTab() {
                 </tr>
               )
               return (
-                <tr
-                  key={r.no}
-                  style={{ background: isDone ? '#f0fdf4' : highlight(r.activity) ? '#eff6ff' : 'white', borderBottom: '1px solid #f1f5f9' }}
-                >
+                <tr key={r.no} style={{ background: isDone ? '#f0fdf4' : highlight(r.activity) ? '#eff6ff' : 'white', borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
                   <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{r.from}</td>
                   <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to || '—'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
-                    <span style={{ fontWeight: highlight(r.activity) ? 700 : 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>
-                      {r.activity}
-                    </span>
+                    <span style={{ fontWeight: highlight(r.activity) ? 700 : 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>{r.activity}</span>
                   </td>
                   <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -765,21 +621,14 @@ function ScheduleTab() {
                     </div>
                   </td>
                   <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                    <button
-                      onClick={() => toggle(r.no)}
-                      title={isDone ? 'Mark pending' : 'Mark done'}
-                      style={{
-                        width: 32, height: 32, borderRadius: '50%',
-                        border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
-                        background: isDone ? '#16a34a' : 'transparent',
-                        color: isDone ? 'white' : '#94a3b8',
-                        cursor: 'pointer', fontSize: 15, fontWeight: 700,
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all .15s',
-                      }}
-                    >
-                      {isDone ? '✓' : ''}
-                    </button>
+                    <button onClick={() => toggle(r.no)} title={isDone ? 'Mark pending' : 'Mark done'} style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
+                      background: isDone ? '#16a34a' : 'transparent',
+                      color: isDone ? 'white' : '#94a3b8',
+                      cursor: 'pointer', fontSize: 15, fontWeight: 700,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
+                    }}>{isDone ? '✓' : ''}</button>
                   </td>
                 </tr>
               )
@@ -796,8 +645,7 @@ function ScheduleTab() {
 // ══════════════════════════════════════════════════════════════
 const emptyND = {
   date: '', shift: 'Full Night',
-  staff1_id: null, staff1: '',
-  staff2_id: null, staff2: '',
+  staff1_id: null, staff1: '', staff2_id: null, staff2: '',
   post: 'Main Gate', notes: '',
 }
 const SHIFTS = ['Full Night', 'First Half', 'Second Half']
@@ -816,23 +664,17 @@ function NightDutyTab({ staffProfiles }) {
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('night_duty').select('*').order('date')
-    setRecords(data || [])
-    setLoading(false)
+    setRecords(data || []); setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   const handleSave = async e => {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     const payload = {
-      date:      form.date,
-      shift:     form.shift,
-      staff1_id: form.staff1_id || null,
-      staff1:    form.staff1,
-      staff2_id: form.staff2_id || null,
-      staff2:    form.staff2,
-      post:      form.post,
-      notes:     form.notes,
+      date: form.date, shift: form.shift,
+      staff1_id: form.staff1_id || null, staff1: form.staff1,
+      staff2_id: form.staff2_id || null, staff2: form.staff2,
+      post: form.post, notes: form.notes,
     }
     const { error } = editRec
       ? await supabase.from('night_duty').update(payload).eq('id', editRec.id)
@@ -844,8 +686,7 @@ function NightDutyTab({ staffProfiles }) {
 
   const handleDelete = async id => {
     if (!window.confirm('Delete this duty assignment?')) return
-    await supabase.from('night_duty').delete().eq('id', id)
-    load()
+    await supabase.from('night_duty').delete().eq('id', id); load()
   }
 
   const enriched = useMemo(() => records.map(r => {
@@ -853,10 +694,9 @@ function NightDutyTab({ staffProfiles }) {
     const s2 = r.staff2_id ? staffProfiles.find(s => s.id === r.staff2_id) : null
     return {
       ...r,
-      staff1:              s1 ? s1.name : r.staff1,
-      staff2:              s2 ? s2.name : r.staff2,
-      staff1_designation:  s1?.designation || s1?.department || '',
-      staff2_designation:  s2?.designation || s2?.department || '',
+      staff1: s1 ? s1.name : r.staff1, staff2: s2 ? s2.name : r.staff2,
+      staff1_designation: s1?.designation || s1?.department || '',
+      staff2_designation: s2?.designation || s2?.department || '',
     }
   }), [records, staffProfiles])
 
@@ -877,10 +717,7 @@ function NightDutyTab({ staffProfiles }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, background: 'white', padding: '14px 20px', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-        <button
-          onClick={() => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }}
-          style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}
-        >‹</button>
+        <button onClick={() => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }} style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>‹</button>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f' }}>{MONTHS[month]} {year}</div>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
@@ -891,10 +728,7 @@ function NightDutyTab({ staffProfiles }) {
             }
           </div>
         </div>
-        <button
-          onClick={() => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }}
-          style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}
-        >›</button>
+        <button onClick={() => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }} style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>›</button>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
@@ -905,12 +739,11 @@ function NightDutyTab({ staffProfiles }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
-            {editRec ? '✏️ Edit Duty' : '➕ Assign Night Duty'}
-          </h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>{editRec ? '✏️ Edit Duty' : '➕ Assign Night Duty'}</h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Staff pulled live from Staff Profiles module</p>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* FIXED: was 1fr 1fr */}
+            <div style={grid2}>
               <div>
                 <label style={lbl}>Date *</label>
                 <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={inp} />
@@ -923,11 +756,7 @@ function NightDutyTab({ staffProfiles }) {
               </div>
               <div>
                 <label style={lbl}>Staff 1 * <span style={{ color: '#94a3b8', fontWeight: 400 }}>(search from staff profiles)</span></label>
-                <StaffSearchInput
-                  staff={staffProfiles}
-                  onSelect={s => setForm(f => ({ ...f, staff1_id: s.id, staff1: s.name }))}
-                  placeholder="Search staff 1..."
-                />
+                <StaffSearchInput staff={staffProfiles} onSelect={s => setForm(f => ({ ...f, staff1_id: s.id, staff1: s.name }))} placeholder="Search staff 1..." />
                 {form.staff1 && (
                   <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
                     ✅ {form.staff1}
@@ -937,11 +766,7 @@ function NightDutyTab({ staffProfiles }) {
               </div>
               <div>
                 <label style={lbl}>Staff 2 <span style={{ color: '#94a3b8', fontWeight: 400 }}>(optional)</span></label>
-                <StaffSearchInput
-                  staff={staffProfiles}
-                  onSelect={s => setForm(f => ({ ...f, staff2_id: s.id, staff2: s.name }))}
-                  placeholder="Search staff 2..."
-                />
+                <StaffSearchInput staff={staffProfiles} onSelect={s => setForm(f => ({ ...f, staff2_id: s.id, staff2: s.name }))} placeholder="Search staff 2..." />
                 {form.staff2 && (
                   <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
                     ✅ {form.staff2}
@@ -960,7 +785,7 @@ function NightDutyTab({ staffProfiles }) {
                 <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes" style={inp} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
@@ -968,8 +793,8 @@ function NightDutyTab({ staffProfiles }) {
         </div>
       )}
 
-      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 700 }}>
           <thead>
             <tr style={{ background: '#1e3a5f' }}>
               {['#', 'Date', 'Shift', 'Staff 1', 'Staff 2', 'Post', 'Notes', 'Actions'].map(h => (
@@ -982,9 +807,7 @@ function NightDutyTab({ staffProfiles }) {
               <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No duties assigned for {MONTHS[month]} {year}</td></tr>
             )}
             {monthRoster.map((r, i) => (
-              <tr
-                key={r.id}
-                style={{ borderBottom: '1px solid #f1f5f9' }}
+              <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                 onMouseLeave={e => e.currentTarget.style.background = 'white'}
               >
@@ -997,13 +820,10 @@ function NightDutyTab({ staffProfiles }) {
                   {r.staff1_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
                 </td>
                 <td style={{ padding: '11px 14px' }}>
-                  {r.staff2
-                    ? <>
-                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staff2}</div>
-                        {r.staff2_designation && <div style={{ fontSize: 10, color: '#94a3b8' }}>{r.staff2_designation}</div>}
-                      </>
-                    : '—'
-                  }
+                  {r.staff2 ? <>
+                    <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staff2}</div>
+                    {r.staff2_designation && <div style={{ fontSize: 10, color: '#94a3b8' }}>{r.staff2_designation}</div>}
+                  </> : '—'}
                 </td>
                 <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.post}</td>
                 <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.notes || '—'}</td>
@@ -1055,35 +875,21 @@ function DisciplineTab({ students }) {
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('discipline_records').select('*').order('date', { ascending: false })
-    setRecords(data || [])
-    setLoading(false)
+    setRecords(data || []); setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   const handleStudentSelect = s => {
-    setForm(f => ({
-      ...f,
-      student_id:   s.id,
-      gcc_no:       s.gcc_no || '',
-      student_name: s.name || '',
-      class_name:   getStudentClass(s),
-    }))
+    setForm(f => ({ ...f, student_id: s.id, gcc_no: s.gcc_no || '', student_name: s.name || '', class_name: getStudentClass(s) }))
   }
 
   const handleSave = async e => {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     const payload = {
-      date:         form.date,
-      student_id:   form.student_id || null,
-      gcc_no:       form.gcc_no || null,
-      student_name: form.student_name,
-      class_name:   form.class_name,
-      incident:     form.incident,
-      action_taken: form.action_taken,
-      reported_by:  form.reported_by,
-      status:       form.status,
-      remarks:      form.remarks,
+      date: form.date, student_id: form.student_id || null, gcc_no: form.gcc_no || null,
+      student_name: form.student_name, class_name: form.class_name,
+      incident: form.incident, action_taken: form.action_taken,
+      reported_by: form.reported_by, status: form.status, remarks: form.remarks,
     }
     const { error } = editRec
       ? await supabase.from('discipline_records').update(payload).eq('id', editRec.id)
@@ -1100,21 +906,13 @@ function DisciplineTab({ students }) {
 
   const handleDelete = async id => {
     if (!window.confirm('Delete this record?')) return
-    await supabase.from('discipline_records').delete().eq('id', id)
-    load()
+    await supabase.from('discipline_records').delete().eq('id', id); load()
   }
 
   const enriched = useMemo(() => records.map(r => {
     if (r.student_id) {
       const s = students.find(s => s.id === r.student_id)
-      if (s) return {
-        ...r,
-        student_name: s.name,
-        gcc_no:       s.gcc_no,
-        class_name:   getStudentClass(s) || r.class_name,
-        _house:       s.house,
-        _course:      s.course,
-      }
+      if (s) return { ...r, student_name: s.name, gcc_no: s.gcc_no, class_name: getStudentClass(s) || r.class_name, _house: s.house, _course: s.course }
     }
     return r
   }), [records, students])
@@ -1123,8 +921,7 @@ function DisciplineTab({ students }) {
     const q = search.toLowerCase()
     return enriched.filter(r =>
       (filter === 'All' || r.status === filter) &&
-      [r.student_name, r.class_name, r.incident, r.reported_by, r.gcc_no]
-        .some(v => (v || '').toLowerCase().includes(q))
+      [r.student_name, r.class_name, r.incident, r.reported_by, r.gcc_no].some(v => (v || '').toLowerCase().includes(q))
     )
   }, [enriched, search, filter])
 
@@ -1134,7 +931,8 @@ function DisciplineTab({ students }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+      {/* FIXED: was repeat(4,1fr) */}
+      <div style={statGrid()}>
         <StatCard icon="📋" label="Total"       value={records.length} color="#1e3a5f" bg="#eff6ff" />
         <StatCard icon="🔴" label="Open"        value={open}           color="#dc2626" bg="#fee2e2" />
         <StatCard icon="🟡" label="In Progress" value={inProgress}     color="#ca8a04" bg="#fef9c3" />
@@ -1142,8 +940,8 @@ function DisciplineTab({ students }) {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 10, flex: 1 }}>
-          <input placeholder="🔍 Search student, incident..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2 }} />
+        <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Search student, incident..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
           <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
             <option value="All">All Status</option>
             {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -1156,12 +954,11 @@ function DisciplineTab({ students }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
-            {editRec ? '✏️ Edit Record' : '➕ New Discipline Record'}
-          </h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>{editRec ? '✏️ Edit Record' : '➕ New Discipline Record'}</h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* FIXED: was 1fr 1fr */}
+            <div style={grid2}>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={lbl}>🔍 Search & Select Student</label>
                 <StudentSearchInput students={students} onSelect={handleStudentSelect} />
@@ -1178,15 +975,10 @@ function DisciplineTab({ students }) {
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Incident Description *</label><textarea value={form.incident} onChange={e => setForm(f => ({ ...f, incident: e.target.value }))} required rows={3} placeholder="Describe the incident..." style={{ ...inp, resize: 'vertical' }} /></div>
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Action Taken</label><textarea value={form.action_taken} onChange={e => setForm(f => ({ ...f, action_taken: e.target.value }))} rows={2} placeholder="Action taken..." style={{ ...inp, resize: 'vertical' }} /></div>
               <div><label style={lbl}>Reported By</label><input value={form.reported_by} onChange={e => setForm(f => ({ ...f, reported_by: e.target.value }))} placeholder="Staff name" style={inp} /></div>
-              <div>
-                <label style={lbl}>Status</label>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
-                  {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
+              <div><label style={lbl}>Status</label><select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>{DISC_STATUSES.map(s => <option key={s}>{s}</option>)}</select></div>
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
@@ -1208,9 +1000,7 @@ function DisciplineTab({ students }) {
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    style={{ borderBottom: '1px solid #f1f5f9' }}
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = 'white'}
                   >
@@ -1231,11 +1021,8 @@ function DisciplineTab({ students }) {
                     </td>
                     <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.reported_by || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
-                      <select
-                        value={r.status}
-                        onChange={e => handleStatusChange(r.id, e.target.value)}
-                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}
-                      >
+                      <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)}
+                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}>
                         {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </td>
@@ -1281,37 +1068,22 @@ function SickbayTab({ students }) {
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('sickbay_records').select('*').order('date', { ascending: false })
-    setRecords(data || [])
-    setLoading(false)
+    setRecords(data || []); setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   const handleStudentSelect = s => {
-    setForm(f => ({
-      ...f,
-      student_id:   s.id,
-      gcc_no:       s.gcc_no || '',
-      student_name: s.name || '',
-      class_name:   getStudentClass(s),
-    }))
+    setForm(f => ({ ...f, student_id: s.id, gcc_no: s.gcc_no || '', student_name: s.name || '', class_name: getStudentClass(s) }))
   }
 
   const handleSave = async e => {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     const payload = {
-      date:           form.date,
-      student_id:     form.student_id || null,
-      gcc_no:         form.gcc_no || null,
-      student_name:   form.student_name,
-      class_name:     form.class_name,
-      complaint:      form.complaint,
-      treatment:      form.treatment,
-      referred_to:    form.referred_to,
-      admitted_date:  form.admitted_date,
-      discharge_date: form.discharge_date || null,
-      status:         form.status,
-      attended_by:    form.attended_by,
+      date: form.date, student_id: form.student_id || null, gcc_no: form.gcc_no || null,
+      student_name: form.student_name, class_name: form.class_name,
+      complaint: form.complaint, treatment: form.treatment,
+      referred_to: form.referred_to, admitted_date: form.admitted_date,
+      discharge_date: form.discharge_date || null, status: form.status, attended_by: form.attended_by,
     }
     const { error } = editRec
       ? await supabase.from('sickbay_records').update(payload).eq('id', editRec.id)
@@ -1328,21 +1100,13 @@ function SickbayTab({ students }) {
 
   const handleDelete = async id => {
     if (!window.confirm('Delete this record?')) return
-    await supabase.from('sickbay_records').delete().eq('id', id)
-    load()
+    await supabase.from('sickbay_records').delete().eq('id', id); load()
   }
 
   const enriched = useMemo(() => records.map(r => {
     if (r.student_id) {
       const s = students.find(s => s.id === r.student_id)
-      if (s) return {
-        ...r,
-        student_name: s.name,
-        gcc_no:       s.gcc_no,
-        class_name:   getStudentClass(s) || r.class_name,
-        _house:       s.house,
-        _hostel_type: s.hostel_type,
-      }
+      if (s) return { ...r, student_name: s.name, gcc_no: s.gcc_no, class_name: getStudentClass(s) || r.class_name, _house: s.house, _hostel_type: s.hostel_type }
     }
     return r
   }), [records, students])
@@ -1360,15 +1124,16 @@ function SickbayTab({ students }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
+      {/* FIXED: was repeat(3,1fr) */}
+      <div style={statGrid(160)}>
         <StatCard icon="🏥" label="Total Records"      value={records.length} color="#1e3a5f" bg="#eff6ff" />
         <StatCard icon="🛏️" label="Currently Admitted" value={admitted}       color="#1d4ed8" bg="#dbeafe" />
         <StatCard icon="✅" label="Discharged"         value={discharged}     color="#16a34a" bg="#dcfce7" />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 10, flex: 1 }}>
-          <input placeholder="🔍 Search student, complaint..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2 }} />
+        <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Search student, complaint..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
           <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
             <option value="All">All Status</option>
             <option>Admitted</option>
@@ -1382,12 +1147,11 @@ function SickbayTab({ students }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
-            {editRec ? '✏️ Edit Record' : '➕ New Sickbay Record'}
-          </h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>{editRec ? '✏️ Edit Record' : '➕ New Sickbay Record'}</h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* FIXED: was 1fr 1fr */}
+            <div style={grid2}>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={lbl}>🔍 Search & Select Student</label>
                 <StudentSearchInput students={students} onSelect={handleStudentSelect} />
@@ -1407,15 +1171,9 @@ function SickbayTab({ students }) {
               <div><label style={lbl}>Attended By</label><input value={form.attended_by} onChange={e => setForm(f => ({ ...f, attended_by: e.target.value }))} placeholder="Staff / nurse name" style={inp} /></div>
               <div><label style={lbl}>Admitted Date</label><input type="date" value={form.admitted_date} onChange={e => setForm(f => ({ ...f, admitted_date: e.target.value }))} style={inp} /></div>
               <div><label style={lbl}>Discharge Date</label><input type="date" value={form.discharge_date} onChange={e => setForm(f => ({ ...f, discharge_date: e.target.value }))} style={inp} /></div>
-              <div>
-                <label style={lbl}>Status</label>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
-                  <option>Admitted</option>
-                  <option>Discharged</option>
-                </select>
-              </div>
+              <div><label style={lbl}>Status</label><select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}><option>Admitted</option><option>Discharged</option></select></div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
@@ -1437,9 +1195,7 @@ function SickbayTab({ students }) {
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    style={{ borderBottom: '1px solid #f1f5f9', background: r.status === 'Admitted' ? '#eff6ff' : 'white' }}
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9', background: r.status === 'Admitted' ? '#eff6ff' : 'white' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = r.status === 'Admitted' ? '#eff6ff' : 'white'}
                   >
@@ -1519,8 +1275,7 @@ function HouseTab({ students: propStudents }) {
   const [toast,        setToast]        = useState(null)
 
   const showToast = (msg, color = '#16a34a') => {
-    setToast({ msg, color })
-    setTimeout(() => setToast(null), 3000)
+    setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
   }
 
   const load = async () => {
@@ -1530,24 +1285,17 @@ function HouseTab({ students: propStudents }) {
       supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,admission_no').order('name'),
       supabase.from('housemasters').select('*').order('house'),
     ])
-    setHouses(h || [])
-    setStudents(s || [])
-    setMasters(m || [])
+    setHouses(h || []); setStudents(s || []); setMasters(m || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   const handleSaveHouse = async e => {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     const payload = {
-      name:             form.name.trim(),
-      motto:            form.motto,
-      color_index:      Number(form.color_index),
-      captain:          form.captain,
-      vice_captain:     form.vice_captain,
-      established_year: Number(form.established_year) || new Date().getFullYear(),
-      remarks:          form.remarks,
+      name: form.name.trim(), motto: form.motto, color_index: Number(form.color_index),
+      captain: form.captain, vice_captain: form.vice_captain,
+      established_year: Number(form.established_year) || new Date().getFullYear(), remarks: form.remarks,
     }
     const { error } = editRec
       ? await supabase.from('houses').update(payload).eq('id', editRec.id)
@@ -1580,7 +1328,6 @@ function HouseTab({ students: propStudents }) {
     showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
   }
 
-  // FIXED: correct operator precedence
   const getHouseStyle = h => HOUSE_COLORS[(Number(h.color_index) || 0) % HOUSE_COLORS.length]
 
   const activeHouseObj  = houses.find(h => h.id === activeHouse)
@@ -1601,12 +1348,8 @@ function HouseTab({ students: propStudents }) {
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase()
     return students.filter(s => {
-      const matchesSearch = [s.name, s.gcc_no, s.batch, s.course]
-        .some(v => (v || '').toString().toLowerCase().includes(q))
-      const matchesFilter =
-        assignFilter === 'All'        ? true :
-        assignFilter === 'Unassigned' ? !s.house :
-        (s.house || '').toLowerCase() === assignFilter.toLowerCase()
+      const matchesSearch = [s.name, s.gcc_no, s.batch, s.course].some(v => (v || '').toString().toLowerCase().includes(q))
+      const matchesFilter = assignFilter === 'All' ? true : assignFilter === 'Unassigned' ? !s.house : (s.house || '').toLowerCase() === assignFilter.toLowerCase()
       return matchesSearch && matchesFilter
     })
   }, [students, search, assignFilter])
@@ -1622,38 +1365,33 @@ function HouseTab({ students: propStudents }) {
           borderLeft: `3px solid ${toast.color}`, borderRadius: 10,
           padding: '11px 16px', fontSize: 13, fontWeight: 600,
           boxShadow: '0 8px 32px rgba(0,0,0,.12)', color: '#1e293b',
-        }}>
-          {toast.msg}
-        </div>
+        }}>{toast.msg}</div>
       )}
 
       {activeHouse && activeHouseObj && (() => {
         const hs = getHouseStyle(activeHouseObj)
         return (
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+            {/* FIXED: added flexWrap:'wrap' */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
               <button onClick={() => setActiveHouse(null)} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: 13 }}>← Back</button>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
                 <div style={{ fontSize: 20, fontWeight: 900, color: hs.color }}>🏠 {activeHouseObj.name} House</div>
                 {activeHouseObj.motto && <div style={{ fontSize: 13, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>"{activeHouseObj.motto}"</div>}
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }}
-                  style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px 14px' }}
-                >✏️ Edit House</button>
-                <button
-                  onClick={() => handleBulkAssign(activeHouseObj.name)}
-                  style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}
-                >+ Assign Unassigned ({unassignedCount})</button>
+              {/* FIXED: added flexWrap:'wrap' */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>
+                <button onClick={() => handleBulkAssign(activeHouseObj.name)} style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}>+ Assign Unassigned ({unassignedCount})</button>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-              <StatCard icon="👥"  label="Students"     value={houseStudents.length}            color={hs.color} bg={hs.bg} />
-              <StatCard icon="👨‍🏫" label="Housemasters" value={houseMasters.length}             color={hs.color} bg={hs.bg} />
-              <StatCard icon="🎖"  label="Captain"      value={activeHouseObj.captain || '—'}    color={hs.color} bg={hs.bg} />
-              <StatCard icon="🎗"  label="Vice Captain" value={activeHouseObj.vice_captain || '—'} color={hs.color} bg={hs.bg} />
+            {/* FIXED: was repeat(4,1fr) */}
+            <div style={statGrid(130)}>
+              <StatCard icon="👥"  label="Students"     value={houseStudents.length}               color={hs.color} bg={hs.bg} />
+              <StatCard icon="👨‍🏫" label="Housemasters" value={houseMasters.length}                color={hs.color} bg={hs.bg} />
+              <StatCard icon="🎖"  label="Captain"      value={activeHouseObj.captain || '—'}       color={hs.color} bg={hs.bg} />
+              <StatCard icon="🎗"  label="Vice Captain" value={activeHouseObj.vice_captain || '—'}  color={hs.color} bg={hs.bg} />
             </div>
 
             {houseMasters.length > 0 && (
@@ -1673,18 +1411,11 @@ function HouseTab({ students: propStudents }) {
             <div style={{ background: 'white', border: `1px solid ${hs.border}`, borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: hs.color, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>➕ Assign Student to {activeHouseObj.name}</div>
               <div style={{ position: 'relative' }}>
-                <input
-                  value={assignSearch}
-                  onChange={e => setAssignSearch(e.target.value)}
-                  placeholder="Search unassigned student by name, GCC No or batch..."
-                  style={inp}
-                />
+                <input value={assignSearch} onChange={e => setAssignSearch(e.target.value)} placeholder="Search unassigned student by name, GCC No or batch..." style={inp} />
                 {assignHits.length > 0 && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #d1d5db', borderRadius: 8, zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,.1)', maxHeight: 200, overflowY: 'auto' }}>
                     {assignHits.map(s => (
-                      <div
-                        key={s.id}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13, flexWrap: 'wrap', gap: 8 }}
                         onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
@@ -1692,10 +1423,7 @@ function HouseTab({ students: propStudents }) {
                           <strong>{s.name}</strong>
                           <span style={{ color: '#64748b', marginLeft: 8 }}>GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}</span>
                         </div>
-                        <button
-                          onClick={() => { handleAssign(s.id, activeHouseObj.name); setAssignSearch('') }}
-                          style={{ ...btn(hs.color), fontSize: 11, padding: '4px 12px' }}
-                        >Assign</button>
+                        <button onClick={() => { handleAssign(s.id, activeHouseObj.name); setAssignSearch('') }} style={{ ...btn(hs.color), fontSize: 11, padding: '4px 12px' }}>Assign</button>
                       </div>
                     ))}
                   </div>
@@ -1710,7 +1438,7 @@ function HouseTab({ students: propStudents }) {
               {houseStudents.length === 0
                 ? <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No students assigned to this house yet</div>
                 : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
                     <thead>
                       <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                         {['#', 'GCC', 'Student', 'Batch', 'Course', 'Hostel Type', 'Remove'].map(h => (
@@ -1720,9 +1448,7 @@ function HouseTab({ students: propStudents }) {
                     </thead>
                     <tbody>
                       {houseStudents.map((s, i) => (
-                        <tr
-                          key={s.id}
-                          style={{ borderBottom: '1px solid #f1f5f9' }}
+                        <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                           onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                           onMouseLeave={e => e.currentTarget.style.background = 'white'}
                         >
@@ -1733,10 +1459,7 @@ function HouseTab({ students: propStudents }) {
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.hostel_type || '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
-                            <button
-                              onClick={() => handleAssign(s.id, '')}
-                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}
-                            >✕ Remove</button>
+                            <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Remove</button>
                           </td>
                         </tr>
                       ))}
@@ -1751,11 +1474,10 @@ function HouseTab({ students: propStudents }) {
 
       {!activeHouse && showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>
-            {editRec ? '✏️ Edit House' : '🏠 Create New House'}
-          </h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>{editRec ? '✏️ Edit House' : '🏠 Create New House'}</h3>
           <form onSubmit={handleSaveHouse}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* FIXED: was 1fr 1fr */}
+            <div style={grid2}>
               <div>
                 <label style={lbl}>House Name *</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Kombirei" style={inp} />
@@ -1764,17 +1486,12 @@ function HouseTab({ students: propStudents }) {
                 <label style={lbl}>House Color</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {HOUSE_COLORS.map((c, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, color_index: i }))}
-                      style={{
-                        width: 32, height: 32, borderRadius: '50%', background: c.color,
-                        border: Number(form.color_index) === i ? `3px solid #0f172a` : `2px solid ${c.border}`,
-                        cursor: 'pointer', transition: 'transform .1s',
-                        transform: Number(form.color_index) === i ? 'scale(1.2)' : 'scale(1)',
-                      }}
-                    />
+                    <button key={i} type="button" onClick={() => setForm(f => ({ ...f, color_index: i }))} style={{
+                      width: 32, height: 32, borderRadius: '50%', background: c.color,
+                      border: Number(form.color_index) === i ? `3px solid #0f172a` : `2px solid ${c.border}`,
+                      cursor: 'pointer', transition: 'transform .1s',
+                      transform: Number(form.color_index) === i ? 'scale(1.2)' : 'scale(1)',
+                    }} />
                   ))}
                 </div>
               </div>
@@ -1787,7 +1504,7 @@ function HouseTab({ students: propStudents }) {
               <div><label style={lbl}>Established Year</label><input type="number" value={form.established_year} onChange={e => setForm(f => ({ ...f, established_year: e.target.value }))} style={inp} /></div>
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save House'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
@@ -1797,11 +1514,12 @@ function HouseTab({ students: propStudents }) {
 
       {!activeHouse && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-            <StatCard icon="🏠"  label="Total Houses"  value={houses.length}                       color="#1e3a5f" bg="#eff6ff" />
-            <StatCard icon="👥"  label="Assigned"      value={students.filter(s => s.house).length} color="#16a34a" bg="#dcfce7" />
-            <StatCard icon="⚠️"  label="Unassigned"    value={unassignedCount}                      color="#dc2626" bg="#fee2e2" />
-            <StatCard icon="👨‍🏫" label="Housemasters"  value={masters.length}                       color="#7c3aed" bg="#f5f3ff" />
+          {/* FIXED: was repeat(4,1fr) */}
+          <div style={statGrid(130)}>
+            <StatCard icon="🏠"  label="Total Houses"  value={houses.length}                        color="#1e3a5f" bg="#eff6ff" />
+            <StatCard icon="👥"  label="Assigned"      value={students.filter(s => s.house).length}  color="#16a34a" bg="#dcfce7" />
+            <StatCard icon="⚠️"  label="Unassigned"    value={unassignedCount}                       color="#dc2626" bg="#fee2e2" />
+            <StatCard icon="👨‍🏫" label="Housemasters"  value={masters.length}                        color="#7c3aed" bg="#f5f3ff" />
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -1833,8 +1551,7 @@ function HouseTab({ students: propStudents }) {
                   const cnt = students.filter(s => s.house === h.name).length
                   const hms = masters.filter(m => m.house === h.name)
                   return (
-                    <div
-                      key={h.id}
+                    <div key={h.id}
                       style={{ background: 'white', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,.08)', border: `1px solid ${hs.border}`, cursor: 'pointer', transition: 'transform .15s, box-shadow .15s' }}
                       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,.12)' }}
                       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,.08)' }}
@@ -1848,14 +1565,8 @@ function HouseTab({ students: propStudents }) {
                             {h.motto && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>"{h.motto}"</div>}
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }}
-                              style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}
-                            >✏️</button>
-                            <button
-                              onClick={e => { e.stopPropagation(); handleDeleteHouse(h.id) }}
-                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}
-                            >🗑</button>
+                            <button onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }} style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                            <button onClick={e => { e.stopPropagation(); handleDeleteHouse(h.id) }} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
                           </div>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
@@ -1893,7 +1604,7 @@ function HouseTab({ students: propStudents }) {
                 <span style={{ fontWeight: 700, color: 'white', fontSize: 13 }}>📋 All Students — House Assignment</span>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{unassignedCount} unassigned</span>
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                     {['#', 'GCC', 'Student', 'Batch', 'Course', 'Current House', 'Assign to House'].map(h => (
@@ -1906,9 +1617,7 @@ function HouseTab({ students: propStudents }) {
                     const h  = houses.find(h => h.name === s.house)
                     const hs = h ? getHouseStyle(h) : null
                     return (
-                      <tr
-                        key={s.id}
-                        style={{ borderBottom: '1px solid #f1f5f9' }}
+                      <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                         onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
@@ -1924,11 +1633,7 @@ function HouseTab({ students: propStudents }) {
                           }
                         </td>
                         <td style={{ padding: '9px 14px' }}>
-                          <select
-                            value={s.house || ''}
-                            onChange={e => handleAssign(s.id, e.target.value)}
-                            style={{ ...inp, width: 150, padding: '6px 10px', fontSize: 12 }}
-                          >
+                          <select value={s.house || ''} onChange={e => handleAssign(s.id, e.target.value)} style={{ ...inp, width: 150, padding: '6px 10px', fontSize: 12 }}>
                             <option value="">— Remove / None —</option>
                             {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
                           </select>
@@ -1973,15 +1678,12 @@ function HousemasterTab() {
       supabase.from('housemasters').select('*').order('house'),
       supabase.from('houses').select('*').order('name'),
     ])
-    setRecords(m || [])
-    setHouses(h || [])
-    setLoading(false)
+    setRecords(m || []); setHouses(h || []); setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   const handleSave = async e => {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     const { error } = editRec
       ? await supabase.from('housemasters').update(form).eq('id', editRec.id)
       : await supabase.from('housemasters').insert([form])
@@ -1992,11 +1694,9 @@ function HousemasterTab() {
 
   const handleDelete = async id => {
     if (!window.confirm('Remove this housemaster?')) return
-    await supabase.from('housemasters').delete().eq('id', id)
-    load()
+    await supabase.from('housemasters').delete().eq('id', id); load()
   }
 
-  // FIXED: correct operator precedence
   const getHouseStyle = houseName => {
     const h = houses.find(h => h.name === houseName)
     if (!h) return HOUSE_COLORS[0]
@@ -2009,7 +1709,7 @@ function HousemasterTab() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ fontSize: 14, color: '#64748b' }}>
             {records.length} housemasters across {[...new Set(records.map(r => r.house))].length} houses
           </div>
@@ -2031,11 +1731,10 @@ function HousemasterTab() {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>
-            {editRec ? '✏️ Edit Housemaster' : '➕ Add Housemaster'}
-          </h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>{editRec ? '✏️ Edit Housemaster' : '➕ Add Housemaster'}</h3>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* FIXED: was 1fr 1fr */}
+            <div style={grid2}>
               <div><label style={lbl}>Full Name *</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required style={inp} /></div>
               <div>
                 <label style={lbl}>Assigned House *</label>
@@ -2051,13 +1750,12 @@ function HousemasterTab() {
               <div>
                 <label style={lbl}>Status</label>
                 <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
-                  <option>Active</option>
-                  <option>Inactive</option>
+                  <option>Active</option><option>Inactive</option>
                 </select>
               </div>
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
@@ -2128,22 +1826,14 @@ function KitchenTab() {
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('kitchen_records')
-      .select('*')
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
-    setRecords(data || [])
-    setLoading(false)
+    const { data } = await supabase.from('kitchen_records').select('*').order('date', { ascending: false }).order('created_at', { ascending: false })
+    setRecords(data || []); setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   const handleSave = async e => {
-    e.preventDefault()
-    setSaving(true)
-    const { error } = await supabase
-      .from('kitchen_records')
-      .insert([{ ...form, served_count: Number(form.served_count) || 0 }])
+    e.preventDefault(); setSaving(true)
+    const { error } = await supabase.from('kitchen_records').insert([{ ...form, served_count: Number(form.served_count) || 0 }])
     if (error) alert('Error: ' + error.message)
     else { setForm(emptyMeal); setShowForm(false); load() }
     setSaving(false)
@@ -2151,8 +1841,7 @@ function KitchenTab() {
 
   const handleDelete = async id => {
     if (!window.confirm('Delete this kitchen record?')) return
-    await supabase.from('kitchen_records').delete().eq('id', id)
-    load()
+    await supabase.from('kitchen_records').delete().eq('id', id); load()
   }
 
   const filtered = useMemo(() => {
@@ -2165,22 +1854,21 @@ function KitchenTab() {
   }, [records, search, mealFilter, dateFilter])
 
   const todayRecords = records.filter(r => r.date === today())
-  // FIXED: 5 stat cards → use repeat(5,1fr)
+
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
+      {/* FIXED: was repeat(5,1fr) — worst mobile offender */}
+      <div style={statGrid(130)}>
         <StatCard icon="📋" label="Total Records" value={records.length} color="#1e3a5f" bg="#eff6ff" />
         {MEAL_TYPES.map((m, i) => {
           const colors = ['#ca8a04', '#16a34a', '#0891b2', '#7c3aed']
           const bgs    = ['#fef9c3', '#dcfce7', '#e0f2fe', '#f5f3ff']
           return (
-            <StatCard
-              key={m}
+            <StatCard key={m}
               icon={['🌅', '☀️', '☕', '🌙'][i]}
               label={`Today's ${m}`}
               value={todayRecords.filter(r => r.meal_type === m).length > 0 ? '✓' : '—'}
-              color={colors[i]}
-              bg={bgs[i]}
+              color={colors[i]} bg={bgs[i]}
             />
           )
         })}
@@ -2193,7 +1881,7 @@ function KitchenTab() {
             <option value="All">All Meals</option>
             {MEAL_TYPES.map(m => <option key={m}>{m}</option>)}
           </select>
-          <input placeholder="🔍 Search menu, staff..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2 }} />
+          <input placeholder="🔍 Search menu, staff..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 120 }} />
         </div>
         <button onClick={() => setShowForm(!showForm)} style={btn()}>{showForm ? '✖ Cancel' : '➕ Log Meal'}</button>
       </div>
@@ -2202,7 +1890,8 @@ function KitchenTab() {
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>➕ Log Kitchen Record</h3>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* FIXED: was 1fr 1fr */}
+            <div style={grid2}>
               <div>
                 <label style={lbl}>Date *</label>
                 <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={inp} />
@@ -2230,7 +1919,7 @@ function KitchenTab() {
                 <input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Any remarks..." style={inp} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Log Meal'}</button>
               <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
@@ -2242,7 +1931,7 @@ function KitchenTab() {
         ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
         : (
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
               <thead>
                 <tr style={{ background: '#1e3a5f' }}>
                   {['#', 'Date', 'Meal', 'Menu', 'Prepared By', 'Served', 'Remarks', 'Actions'].map(h => (
@@ -2252,9 +1941,7 @@ function KitchenTab() {
               </thead>
               <tbody>
                 {filtered.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    style={{ borderBottom: '1px solid #f1f5f9' }}
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = 'white'}
                   >
@@ -2285,6 +1972,7 @@ function KitchenTab() {
     </div>
   )
 }
+
 // ══════════════════════════════════════════════════════════════
 //  ROOT — Hostel module
 // ══════════════════════════════════════════════════════════════
@@ -2298,14 +1986,8 @@ function Hostel() {
     const fetchShared = async () => {
       setDataLoading(true)
       const [{ data: s, error: e1 }, { data: st, error: e2 }] = await Promise.all([
-        supabase
-          .from('students')
-          .select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no')
-          .order('name'),
-        supabase
-          .from('staff_profiles')
-          .select('id,name,designation,department,status')
-          .order('name'),
+        supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no').order('name'),
+        supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
       ])
       if (e1) console.error('Students fetch error:', e1)
       if (e2) console.error('Staff fetch error:', e2)
@@ -2317,18 +1999,17 @@ function Hostel() {
     fetchShared()
   }, [])
 
-  // Tabs that don't need shared student/staff data can render immediately
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor'
 
   const tabContent = {
-    allotments:  <AllotmentsTab  students={students} />,
-    schedule:    <ScheduleTab />,
-    nightduty:   <NightDutyTab   staffProfiles={staffProfiles} />,
-    discipline:  <DisciplineTab  students={students} />,
-    sickbay:     <SickbayTab     students={students} />,
-    house:       <HouseTab       students={students} />,
-    housemaster: <HousemasterTab />,
-    kitchen:     <KitchenTab />,
+    allotments:   <AllotmentsTab  students={students} />,
+    schedule:     <ScheduleTab />,
+    nightduty:    <NightDutyTab   staffProfiles={staffProfiles} />,
+    discipline:   <DisciplineTab  students={students} />,
+    sickbay:      <SickbayTab     students={students} />,
+    house:        <HouseTab       students={students} />,
+    housemaster:  <HousemasterTab />,
+    kitchen:      <KitchenTab />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
   }
@@ -2348,20 +2029,14 @@ function Hostel() {
 
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', marginBottom: 24, overflowX: 'auto' }}>
         {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            style={{
-              padding: '9px 16px', border: 'none',
-              borderBottom: activeTab === t.id ? '3px solid #1e3a5f' : '3px solid transparent',
-              background: 'none', cursor: 'pointer', fontSize: 13,
-              fontWeight: activeTab === t.id ? 700 : 500,
-              color: activeTab === t.id ? '#1e3a5f' : '#64748b',
-              marginBottom: -2, whiteSpace: 'nowrap', transition: 'color .15s',
-            }}
-          >
-            {t.label}
-          </button>
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+            padding: '9px 16px', border: 'none',
+            borderBottom: activeTab === t.id ? '3px solid #1e3a5f' : '3px solid transparent',
+            background: 'none', cursor: 'pointer', fontSize: 13,
+            fontWeight: activeTab === t.id ? 700 : 500,
+            color: activeTab === t.id ? '#1e3a5f' : '#64748b',
+            marginBottom: -2, whiteSpace: 'nowrap', transition: 'color .15s',
+          }}>{t.label}</button>
         ))}
       </div>
 
@@ -2378,5 +2053,3 @@ function Hostel() {
     </div>
   )
 }
-
-export default Hostel
