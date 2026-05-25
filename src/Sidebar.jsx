@@ -122,10 +122,18 @@ function useIsMobile() {
 
 // ─── NavItem ─────────────────────────────────────────────────────────────────
 
-function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) {
+function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false, isMobile = false }) {
   const badge   = BADGES[item.id]
   const [hov, setHov] = useState(false)
   const [pinHov, setPinHov] = useState(false)
+
+  // Mobile gets larger sizing throughout
+  const fontSize     = isMobile ? 15.5 : compact ? 12.5 : 13.5
+  const iconSize     = isMobile ? 18   : compact ? 13   : 15
+  const paddingV     = isMobile ? 11   : compact ? 5    : 7
+  const paddingH     = isMobile ? 14   : compact ? 10   : 10
+  const paddingLeft  = isMobile ? 16   : compact ? 12   : 14
+  const borderRadius = isMobile ? 10   : 8
 
   return (
     <div
@@ -139,16 +147,16 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
           width: '100%',
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px',
-          borderRadius: 8,
-          marginBottom: 1,
+          gap: isMobile ? 12 : 8,
+          padding: `${paddingV}px ${paddingH}px ${paddingV}px ${paddingLeft}px`,
+          borderRadius,
+          marginBottom: isMobile ? 2 : 1,
           border: isActive
             ? `1px solid ${D.accentBorder}`
             : `1px solid ${hov ? D.border : 'transparent'}`,
           cursor: 'pointer',
           textAlign: 'left',
-          fontSize: compact ? 12.5 : 13.5,
+          fontSize,
           fontWeight: isActive ? 600 : 400,
           background: isActive
             ? `linear-gradient(90deg, ${D.bgActive} 0%, rgba(15,30,16,0.6) 100%)`
@@ -158,41 +166,61 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
           transition: 'background .12s, border-color .12s, color .12s',
           fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
           letterSpacing: isActive ? '0.01em' : 0,
+          minHeight: isMobile ? 48 : 'auto',
+          WebkitTapHighlightColor: 'transparent',
         }}
       >
         {isActive && (
           <span style={{
             position: 'absolute', left: 0, top: '50%',
             transform: 'translateY(-50%)',
-            width: 3, height: 20,
+            width: isMobile ? 4 : 3,
+            height: isMobile ? 24 : 20,
             borderRadius: '0 3px 3px 0',
             background: D.pillActive,
             boxShadow: `0 0 8px ${D.accent}`,
           }} />
         )}
 
-        <span style={{ fontSize: compact ? 13 : 15, lineHeight: 1, flexShrink: 0, filter: isActive ? 'none' : hov ? 'none' : 'grayscale(0.3)' }}>
+        <span style={{
+          fontSize: iconSize,
+          lineHeight: 1,
+          flexShrink: 0,
+          filter: isActive ? 'none' : hov ? 'none' : 'grayscale(0.3)',
+          width: isMobile ? 22 : 'auto',
+          textAlign: 'center',
+        }}>
           {item.icon}
         </span>
-        <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={{
+          flex: 1,
+          lineHeight: 1.2,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
           {item.label}
         </span>
 
         {badge && (
           <span style={{
-            fontSize: 10, fontWeight: 700,
-            padding: '2px 6px', borderRadius: 99,
-            background: badge.bg, color: badge.color,
-            flexShrink: 0, letterSpacing: '0.02em',
+            fontSize: isMobile ? 11.5 : 10,
+            fontWeight: 700,
+            padding: isMobile ? '3px 8px' : '2px 6px',
+            borderRadius: 99,
+            background: badge.bg,
+            color: badge.color,
+            flexShrink: 0,
+            letterSpacing: '0.02em',
           }}>{badge.count}</span>
         )}
 
         {isPinned && !hov && (
-          <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>
+          <span style={{ fontSize: isMobile ? 11 : 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>
         )}
       </button>
 
-      {hov && onPin && (
+      {hov && onPin && !isMobile && (
         <button
           onClick={e => { e.stopPropagation(); onPin(item.id) }}
           onMouseEnter={() => setPinHov(true)}
@@ -218,7 +246,7 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
 
 // ─── GroupHeader ─────────────────────────────────────────────────────────────
 
-function GroupHeader({ label, collapsed, onToggle, count }) {
+function GroupHeader({ label, collapsed, onToggle, count, isMobile = false }) {
   const [hov, setHov] = useState(false)
   return (
     <button
@@ -228,16 +256,20 @@ function GroupHeader({ label, collapsed, onToggle, count }) {
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         width: '100%',
-        padding: '5px 10px 4px 12px',
+        padding: isMobile ? '8px 12px 7px 14px' : '5px 10px 4px 12px',
         background: hov ? 'rgba(255,255,255,0.03)' : 'transparent',
         border: 'none', cursor: 'pointer',
         borderRadius: 6,
         transition: 'background .1s',
-        marginBottom: 2,
+        marginBottom: isMobile ? 3 : 2,
+        minHeight: isMobile ? 36 : 'auto',
+        WebkitTapHighlightColor: 'transparent',
       }}
     >
       <span style={{
-        fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em',
+        fontSize: isMobile ? 11 : 9.5,
+        fontWeight: 700,
+        letterSpacing: '.11em',
         color: hov ? D.textMuted : D.textFaint,
         textTransform: 'uppercase',
         fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
@@ -246,13 +278,15 @@ function GroupHeader({ label, collapsed, onToggle, count }) {
       }}>{label}</span>
       {count > 0 && (
         <span style={{
-          fontSize: 9, color: D.textFaint,
+          fontSize: isMobile ? 10.5 : 9,
+          color: D.textFaint,
           background: 'rgba(255,255,255,0.06)',
-          padding: '1px 5px', borderRadius: 99,
+          padding: '1px 6px', borderRadius: 99,
         }}>{count}</span>
       )}
       <span style={{
-        fontSize: 9, color: D.textFaint,
+        fontSize: isMobile ? 11 : 9,
+        color: D.textFaint,
         transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
         transition: 'transform .2s',
         display: 'inline-block',
@@ -261,18 +295,29 @@ function GroupHeader({ label, collapsed, onToggle, count }) {
   )
 }
 
+// ─── SectionLabel ────────────────────────────────────────────────────────────
+
+function SectionLabel({ label, isMobile = false }) {
+  return (
+    <div style={{
+      fontSize: isMobile ? 11 : 9.5,
+      fontWeight: 700,
+      letterSpacing: '.11em',
+      color: D.textFaint,
+      padding: isMobile ? '6px 14px 6px' : '4px 12px 5px',
+      textTransform: 'uppercase',
+      fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
+    }}>{label}</div>
+  )
+}
+
 // ─── RecentItems ─────────────────────────────────────────────────────────────
 
-function RecentItems({ recents, activePage, onNavigate }) {
+function RecentItems({ recents, activePage, onNavigate, isMobile }) {
   if (!recents.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
-      <div style={{
-        fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em',
-        color: D.textFaint, padding: '4px 12px 5px',
-        textTransform: 'uppercase',
-        fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
-      }}>RECENT</div>
+      <SectionLabel label="RECENT" isMobile={isMobile} />
       {recents.map(id => {
         const item = ALL_ITEMS.find(i => i.id === id)
         if (!item) return null
@@ -282,7 +327,8 @@ function RecentItems({ recents, activePage, onNavigate }) {
             item={item}
             isActive={activePage === id}
             onClick={() => onNavigate(id)}
-            compact
+            compact={!isMobile}
+            isMobile={isMobile}
           />
         )
       })}
@@ -292,13 +338,16 @@ function RecentItems({ recents, activePage, onNavigate }) {
 
 // ─── PinnedItems ─────────────────────────────────────────────────────────────
 
-function PinnedItems({ pins, activePage, onNavigate, onPin }) {
+function PinnedItems({ pins, activePage, onNavigate, onPin, isMobile }) {
   if (!pins.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
       <div style={{
-        fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em',
-        color: D.accentBorder, padding: '4px 12px 5px',
+        fontSize: isMobile ? 11 : 9.5,
+        fontWeight: 700,
+        letterSpacing: '.11em',
+        color: D.accentBorder,
+        padding: isMobile ? '6px 14px 6px' : '4px 12px 5px',
         textTransform: 'uppercase',
         fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
       }}>📌 PINNED</div>
@@ -313,7 +362,8 @@ function PinnedItems({ pins, activePage, onNavigate, onPin }) {
             onClick={() => onNavigate(id)}
             onPin={onPin}
             isPinned
-            compact
+            compact={!isMobile}
+            isMobile={isMobile}
           />
         )
       })}
@@ -323,7 +373,7 @@ function PinnedItems({ pins, activePage, onNavigate, onPin }) {
 
 // ─── SidebarContent ──────────────────────────────────────────────────────────
 
-function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNavClick }) {
+function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNavClick, isMobile }) {
   const [search,         setSearch]         = useState('')
   const [allowedModules, setAllowedModules] = useState(null)
   const [collapsed,      setCollapsed]      = useState(() => LS.get('gnsi_nav_collapsed', {}))
@@ -362,6 +412,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   }, [role])
 
   const handleNavigate = useCallback((id) => {
+    if (!allowedModules?.has(id)) return
     setActivePage(id)
     onNavClick?.()
     setRecents(prev => {
@@ -369,7 +420,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
       LS.set('gnsi_nav_recents', next)
       return next
     })
-  }, [setActivePage, onNavClick])
+  }, [setActivePage, onNavClick, allowedModules])
 
   const handlePin = useCallback((id) => {
     setPins(prev => {
@@ -413,9 +464,9 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
   if (!allowedModules) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
-        <div style={{ width: 20, height: 20, border: `2px solid ${D.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-        <span style={{ fontSize: 12, color: D.textFaint }}>Loading modules…</span>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10 }}>
+        <div style={{ width: 22, height: 22, border: `2px solid ${D.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+        <span style={{ fontSize: isMobile ? 14 : 12, color: D.textFaint }}>Loading modules…</span>
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     )
@@ -425,12 +476,12 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     <>
       {/* User card */}
       <div style={{
-        margin: '10px 10px 0',
+        margin: isMobile ? '12px 12px 0' : '10px 10px 0',
         background: `linear-gradient(135deg, ${D.bgSurface} 0%, rgba(15,40,60,0.8) 100%)`,
         border: `1px solid ${D.border}`,
-        borderRadius: 10,
-        padding: '10px 12px',
-        display: 'flex', alignItems: 'center', gap: 10,
+        borderRadius: isMobile ? 12 : 10,
+        padding: isMobile ? '13px 14px' : '10px 12px',
+        display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 10,
         flexShrink: 0,
         position: 'relative',
         overflow: 'hidden',
@@ -442,39 +493,47 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         }} />
 
         <div style={{
-          width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+          width: isMobile ? 42 : 36,
+          height: isMobile ? 42 : 36,
+          borderRadius: isMobile ? 11 : 9,
+          flexShrink: 0,
           background: D.accentGlow,
           border: `1.5px solid ${D.accentBorder}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 13, fontWeight: 700, color: D.accentLight,
+          fontSize: isMobile ? 15 : 13,
+          fontWeight: 700,
+          color: D.accentLight,
           fontFamily: "'Trebuchet MS', monospace",
           zIndex: 1,
         }}>{initials}</div>
 
         <div style={{ minWidth: 0, flex: 1, zIndex: 1 }}>
           <div style={{
-            fontSize: 13.5, fontWeight: 600, color: D.textPrimary,
+            fontSize: isMobile ? 15.5 : 13.5,
+            fontWeight: 600,
+            color: D.textPrimary,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             lineHeight: 1.3,
             fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
           }}>
             {currentUser?.name || 'User'}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
               background: D.accentGlow, border: `1px solid ${D.accentBorder}`,
-              borderRadius: 4, padding: '2px 7px',
+              borderRadius: 4, padding: isMobile ? '3px 8px' : '2px 7px',
             }}>
-              <span style={{ width: 4, height: 4, borderRadius: '50%', background: D.accent, flexShrink: 0 }} />
-              <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: D.accent }}>
+              <span style={{ width: isMobile ? 5 : 4, height: isMobile ? 5 : 4, borderRadius: '50%', background: D.accent, flexShrink: 0 }} />
+              <span style={{ fontSize: isMobile ? 11 : 9.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: D.accent }}>
                 {role}
               </span>
             </span>
             {totalBadges > 0 && (
               <span style={{
-                fontSize: 9.5, fontWeight: 700, color: '#fcd34d',
-                background: '#78350f', padding: '2px 6px', borderRadius: 99,
+                fontSize: isMobile ? 11 : 9.5,
+                fontWeight: 700, color: '#fcd34d',
+                background: '#78350f', padding: isMobile ? '3px 7px' : '2px 6px', borderRadius: 99,
               }}>
                 {totalBadges} pending
               </span>
@@ -484,24 +543,25 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, zIndex: 1 }}>
           <div style={{
-            width: 7, height: 7, borderRadius: '50%',
+            width: isMobile ? 9 : 7, height: isMobile ? 9 : 7, borderRadius: '50%',
             background: D.green, flexShrink: 0,
             boxShadow: `0 0 6px ${D.green}`,
           }} />
-          <span style={{ fontSize: 8, color: D.textFaint }}>online</span>
+          <span style={{ fontSize: isMobile ? 9.5 : 8, color: D.textFaint }}>online</span>
         </div>
       </div>
 
       {/* Search */}
-      <div style={{ padding: '8px 10px 4px', flexShrink: 0 }}>
+      <div style={{ padding: isMobile ? '10px 12px 4px' : '8px 10px 4px', flexShrink: 0 }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 7,
+          display: 'flex', alignItems: 'center', gap: 8,
           background: D.bgDeep,
           border: `1px solid ${D.borderStrong}`,
-          borderRadius: 8, padding: '7px 11px',
+          borderRadius: isMobile ? 10 : 8,
+          padding: isMobile ? '10px 13px' : '7px 11px',
           transition: 'border-color .15s',
         }}>
-          <span style={{ fontSize: 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
+          <span style={{ fontSize: isMobile ? 14 : 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
           <input
             ref={searchRef}
             value={search}
@@ -509,24 +569,28 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
             placeholder="Search modules…"
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              fontSize: 13, color: D.textPrimary,
+              fontSize: isMobile ? 15 : 13,
+              color: D.textPrimary,
               fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
             }}
           />
           {search ? (
             <button onClick={() => setSearch('')} style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1,
+              color: D.textMuted, fontSize: isMobile ? 14 : 12, padding: 0, lineHeight: 1,
+              WebkitTapHighlightColor: 'transparent',
             }}>✕</button>
           ) : (
-            <span style={{
-              fontSize: 10, color: D.textFaint,
-              background: 'rgba(255,255,255,0.07)',
-              border: `1px solid ${D.border}`,
-              borderRadius: 4, padding: '2px 5px',
-              fontFamily: 'monospace', letterSpacing: '0.05em',
-              flexShrink: 0,
-            }}>/</span>
+            !isMobile && (
+              <span style={{
+                fontSize: 10, color: D.textFaint,
+                background: 'rgba(255,255,255,0.07)',
+                border: `1px solid ${D.border}`,
+                borderRadius: 4, padding: '2px 5px',
+                fontFamily: 'monospace', letterSpacing: '0.05em',
+                flexShrink: 0,
+              }}>/</span>
+            )
           )}
         </div>
       </div>
@@ -534,9 +598,10 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
       {/* Nav */}
       <nav style={{
         flex: 1, overflowY: 'auto', overflowX: 'hidden',
-        padding: '4px 8px 8px',
+        padding: isMobile ? '4px 10px 12px' : '4px 8px 8px',
         scrollbarWidth: 'thin',
         scrollbarColor: `${D.border} transparent`,
+        WebkitOverflowScrolling: 'touch',
       }}>
         {!search && (
           <PinnedItems
@@ -544,18 +609,24 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
             activePage={activePage}
             onNavigate={handleNavigate}
             onPin={handlePin}
+            isMobile={isMobile}
           />
         )}
 
         {!search && visibleRecents.length > 0 && (
           <>
-            <RecentItems recents={visibleRecents} activePage={activePage} onNavigate={handleNavigate} />
-            <div style={{ height: 1, background: D.border, margin: '6px 4px 10px' }} />
+            <RecentItems
+              recents={visibleRecents}
+              activePage={activePage}
+              onNavigate={handleNavigate}
+              isMobile={isMobile}
+            />
+            <div style={{ height: 1, background: D.border, margin: isMobile ? '8px 2px 12px' : '6px 4px 10px' }} />
           </>
         )}
 
         {filteredGroups.length === 0 && (
-          <div style={{ padding: '24px 12px', textAlign: 'center', color: D.textFaint, fontSize: 12 }}>
+          <div style={{ padding: '28px 12px', textAlign: 'center', color: D.textFaint, fontSize: isMobile ? 14 : 12 }}>
             No modules found
           </div>
         )}
@@ -564,13 +635,14 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
           const isCollapsed = !!collapsed[grp.group] && !search
           return (
             <div key={grp.group} style={{ marginBottom: 2 }}>
-              {gi > 0 && <div style={{ height: 1, background: D.border, margin: '4px 4px 8px' }} />}
+              {gi > 0 && <div style={{ height: 1, background: D.border, margin: isMobile ? '6px 2px 10px' : '4px 4px 8px' }} />}
 
               <GroupHeader
                 label={grp.group}
                 collapsed={isCollapsed}
                 count={grp.items.length}
                 onToggle={() => toggleGroup(grp.group)}
+                isMobile={isMobile}
               />
 
               {!isCollapsed && grp.items.map(item => (
@@ -581,6 +653,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
                   onClick={() => handleNavigate(item.id)}
                   onPin={handlePin}
                   isPinned={pins.includes(item.id)}
+                  isMobile={isMobile}
                 />
               ))}
             </div>
@@ -590,22 +663,29 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
       {/* Footer */}
       <div style={{
-        padding: '8px 8px 12px',
+        padding: isMobile ? '10px 12px 16px' : '8px 8px 12px',
         borderTop: `1px solid ${D.border}`,
         flexShrink: 0,
         background: `linear-gradient(0deg, ${D.bgDeep} 0%, transparent 100%)`,
       }}>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '0 10px 7px',
-        }}>
-          <span style={{ fontSize: 10, color: D.textFaint }}>
-            <span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>
-            {' '}to search
-          </span>
-          <span style={{ fontSize: 10, color: D.textFaint }}>v2.1 · © {new Date().getFullYear()} GNSI</span>
-        </div>
-        <LogoutButton onLogout={onLogout} />
+        {!isMobile && (
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '0 10px 7px',
+          }}>
+            <span style={{ fontSize: 10, color: D.textFaint }}>
+              <span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>
+              {' '}to search
+            </span>
+            <span style={{ fontSize: 10, color: D.textFaint }}>v2.1 · © {new Date().getFullYear()} GNSI</span>
+          </div>
+        )}
+        {isMobile && (
+          <div style={{ textAlign: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: D.textFaint }}>v2.1 · © {new Date().getFullYear()} GNSI</span>
+          </div>
+        )}
+        <LogoutButton onLogout={onLogout} isMobile={isMobile} />
       </div>
     </>
   )
@@ -613,7 +693,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
 // ─── LogoutButton ─────────────────────────────────────────────────────────────
 
-function LogoutButton({ onLogout }) {
+function LogoutButton({ onLogout, isMobile = false }) {
   const [hov, setHov] = useState(false)
   return (
     <button
@@ -622,20 +702,23 @@ function LogoutButton({ onLogout }) {
       onMouseLeave={() => setHov(false)}
       style={{
         width: '100%',
-        display: 'flex', alignItems: 'center', gap: 9,
-        padding: '8px 12px',
-        borderRadius: 8,
+        display: 'flex', alignItems: 'center', gap: isMobile ? 11 : 9,
+        padding: isMobile ? '11px 14px' : '8px 12px',
+        borderRadius: isMobile ? 10 : 8,
         border: `1px solid ${hov ? D.accentBorder : D.border}`,
         cursor: 'pointer',
         textAlign: 'left',
-        fontSize: 13, fontWeight: 500,
+        fontSize: isMobile ? 15 : 13,
+        fontWeight: 500,
         background: hov ? D.accentGlow : D.bgSurface,
         color: hov ? D.accentLight : D.textMuted,
         transition: 'all .15s',
         fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
+        minHeight: isMobile ? 48 : 'auto',
+        WebkitTapHighlightColor: 'transparent',
       }}
     >
-      <span style={{ fontSize: 14 }}>🚪</span>
+      <span style={{ fontSize: isMobile ? 17 : 14 }}>🚪</span>
       <span>Sign Out</span>
     </button>
   )
@@ -646,9 +729,9 @@ function LogoutButton({ onLogout }) {
 function LogoHeader({ isMobile, onClose }) {
   return (
     <div style={{
-      padding: '0 14px',
-      height: 60,
-      display: 'flex', alignItems: 'center', gap: 11,
+      padding: isMobile ? '0 16px' : '0 14px',
+      height: isMobile ? 64 : 60,
+      display: 'flex', alignItems: 'center', gap: isMobile ? 13 : 11,
       borderBottom: `1px solid ${D.border}`,
       flexShrink: 0,
       background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`,
@@ -662,23 +745,27 @@ function LogoHeader({ isMobile, onClose }) {
       }} />
 
       <div style={{
-        width: 36, height: 36, borderRadius: 9,
+        width: isMobile ? 40 : 36,
+        height: isMobile ? 40 : 36,
+        borderRadius: isMobile ? 10 : 9,
         background: D.logoBg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, flexShrink: 0,
+        fontSize: isMobile ? 20 : 18, flexShrink: 0,
         boxShadow: `0 2px 8px rgba(253,214,86,0.3)`,
       }}>🏫</div>
 
       <div style={{ flex: 1 }}>
         <div style={{
-          fontSize: 15.5, fontWeight: 700, color: D.textPrimary,
+          fontSize: isMobile ? 17.5 : 15.5,
+          fontWeight: 700, color: D.textPrimary,
           letterSpacing: '-.01em', lineHeight: 1.1,
           fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
         }}>
           GNSI <span style={{ color: D.accent }}>ERP</span>
         </div>
         <div style={{
-          fontSize: 9.5, color: D.textFaint,
+          fontSize: isMobile ? 10.5 : 9.5,
+          color: D.textFaint,
           letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2,
           fontFamily: "'Trebuchet MS', monospace",
         }}>
@@ -691,9 +778,10 @@ function LogoHeader({ isMobile, onClose }) {
           onClick={onClose}
           style={{
             background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`,
-            borderRadius: 6, cursor: 'pointer',
-            color: D.textMuted, fontSize: 14, lineHeight: 1,
-            padding: '5px 8px',
+            borderRadius: 8, cursor: 'pointer',
+            color: D.textMuted, fontSize: 16, lineHeight: 1,
+            padding: '8px 10px',
+            WebkitTapHighlightColor: 'transparent',
           }}
           aria-label="Close menu"
         >✕</button>
@@ -741,6 +829,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
           setActivePage={setActivePage}
           onLogout={onLogout}
           currentUser={currentUser}
+          isMobile={false}
         />
       </div>
     )
@@ -749,34 +838,45 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
   /* ── MOBILE ── */
   return (
     <>
+      {/* Mobile top bar */}
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0,
-        height: 56,
+        height: 60,
         background: D.bg,
         borderBottom: `1px solid ${D.border}`,
-        display: 'flex', alignItems: 'center', gap: 12,
+        display: 'flex', alignItems: 'center', gap: 14,
         padding: '0 16px',
         zIndex: 200,
         fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
       }}>
+        {/* Hamburger */}
         <button
           onClick={() => setDrawerOpen(true)}
           aria-label="Open menu"
           style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            display: 'flex', flexDirection: 'column', gap: 5,
-            padding: 4, position: 'relative',
+            background: 'rgba(255,255,255,0.06)',
+            border: `1px solid ${D.border}`,
+            borderRadius: 9,
+            cursor: 'pointer',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            gap: 5,
+            padding: '10px 11px',
+            position: 'relative',
+            flexShrink: 0,
+            WebkitTapHighlightColor: 'transparent',
+            minWidth: 44, minHeight: 44,
           }}
         >
           {[0, 1, 2].map(i => (
             <span key={i} style={{
-              display: 'block', width: 22, height: 2,
+              display: 'block', width: 20, height: 2,
               borderRadius: 2, background: D.textMuted,
             }} />
           ))}
           {totalBadges > 0 && (
             <span style={{
-              position: 'absolute', top: 0, right: 0,
+              position: 'absolute', top: 6, right: 6,
               width: 8, height: 8, borderRadius: '50%',
               background: D.accent,
               border: `1.5px solid ${D.bg}`,
@@ -784,48 +884,62 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
           )}
         </button>
 
+        {/* Logo */}
         <div style={{
-          width: 30, height: 30, borderRadius: 7,
+          width: 34, height: 34, borderRadius: 8,
           background: D.logoBg,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 15, flexShrink: 0,
+          fontSize: 17, flexShrink: 0,
         }}>🏫</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1 }}>
+
+        {/* Brand */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1 }}>
             GNSI <span style={{ color: D.accent }}>ERP</span>
           </div>
-          <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>
+          <div style={{ fontSize: 10, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em', marginTop: 1 }}>
             School Management
           </div>
         </div>
 
+        {/* Current page pill */}
         <div style={{
-          fontSize: 12, color: D.accentLight, fontWeight: 600,
-          background: D.accentGlow, border: `1px solid ${D.accentBorder}`,
-          borderRadius: 6, padding: '3px 9px',
-          maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontSize: 13,
+          color: D.accentLight,
+          fontWeight: 600,
+          background: D.accentGlow,
+          border: `1px solid ${D.accentBorder}`,
+          borderRadius: 8,
+          padding: '5px 11px',
+          maxWidth: 120,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}>
           {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}
           {ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
       </div>
 
+      {/* Backdrop */}
       {drawerOpen && (
         <div
           onClick={() => setDrawerOpen(false)}
           style={{
             position: 'fixed', inset: 0,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(0,0,0,0.65)',
             zIndex: 298,
             backdropFilter: 'blur(3px)',
           }}
         />
       )}
 
+      {/* Drawer */}
       <div style={{
         ...sidebarStyles,
         position: 'fixed', top: 0, left: 0,
-        width: 280, height: '100vh',
+        width: '82vw',
+        maxWidth: 320,
+        height: '100vh',
         zIndex: 299,
         transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
         transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -839,6 +953,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
           onLogout={onLogout}
           currentUser={currentUser}
           onNavClick={() => setDrawerOpen(false)}
+          isMobile={true}
         />
       </div>
     </>

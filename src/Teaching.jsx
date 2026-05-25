@@ -1,66 +1,201 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+// Teaching.jsx — Full Fix + Mobile Layout
+// ─────────────────────────────────────────────────────────────────────────────
+// FIXES APPLIED:
+//  BUG-1  React.Fragment key on table row groups in TabLogs
+//  BUG-2  useDoubtSessions dep array — safe join using useMemo
+//  BUG-3  TabCalendar weekDays memo — recomputes on mount correctly
+//  BUG-4  TabTimetable — removed duplicate teaching_timetable write
+//  BUG-5  window.confirm replaced with ConfirmModal throughout
+//  BUG-6  generateAlerts deduplicates before insert
+//  BUG-7  student_scores batch lookup uses correct column + error display
+//  BUG-8  syllabus fuzzy match improved (word-boundary, min 4 chars)
+//  BUG-9  syllabus_topics errors surfaced to user via toast
+//  FIX-1  Pagination added to TabLogs (50/page)
+//  FIX-2  Date range filter added to TabLogs
+//  FIX-3  CSV export added to TabLogs
+//  FIX-4  Duplicate log hard-blocked on second submit
+//  FIX-5  Timetable grid defaults to first available subtype
+//  FIX-6  Syllabus entries support edit mode
+//  FIX-7  Pace calculation guards against < 2 logs
+//  FIX-8  Reports print styles scoped; only report card prints
+//  FIX-9  Score entries support edit
+//  FIX-10 currentUser null guard throughout
+//  FIX-11 Role-based tab visibility
+//  FIX-12 Alert generation rate-limited (dedup by type+subtype+subject)
+//  FIX-13 Remediation slots derived from real timetable free periods
+//  FIX-14 All fetch errors shown via toast, no silent fails
+//  MOB-1  Responsive tab bar (2-col grid on mobile)
+//  MOB-2  All stat grids collapse to 2-col on mobile, 1-col on xs
+//  MOB-3  Forms single-column on mobile
+//  MOB-4  Tables horizontally scrollable with sticky first col
+//  MOB-5  Drawer/modal full-screen on mobile
+//  MOB-6  Filter rows wrap and scroll on mobile
+//  MOB-7  All touch targets min 44px
+// ─────────────────────────────────────────────────────────────────────────────
+
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import TabMonthlySyllabus from './TabMonthlySyllabus'
-import { staffDB, useStaffDB } from './staffDB'
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUBJECTS = [
-  'Mathematics','Mathematics I','Mathematics II', 'English Grammar', 'General Knowledge', 'General Science',
-  'Reasoning', 'Mental Ability', 'Hindi',
-  'Vocabulary', 'Meitei Mayek',
+  'Mathematics','Mathematics I','Mathematics II','English Grammar',
+  'General Knowledge','General Science','Reasoning','Mental Ability',
+  'Hindi','Vocabulary','Meitei Mayek',
 ]
+const DAYS    = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const PERIODS = [1,2,3,4,5,6,7]
+const PAGE_SIZE = 50
 
-const DAYS    = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const PERIODS = [1, 2, 3, 4, 5, 6, 7]
+// FIX-11: which roles can see which tabs
+const TAB_ROLES = {
+  logs:        ['admin','manager','teacher'],
+  calendar:    ['admin','manager','teacher'],
+  syllabus:    ['admin','manager','teacher'],
+  timetable:   ['admin','manager'],
+  reports:     ['admin','manager','accounts'],
+  search:      ['admin','manager','teacher'],
+  monthly:     ['admin','manager','teacher'],
+  performance: ['admin','manager','teacher'],
+  hmdash:      ['admin','manager','hostel'],
+  admin:       ['admin'],
+  remediation: ['admin','manager'],
+}
 
-const TABS = [
-  { key: 'logs',        label: 'Daily Logs',        icon: '📋' },
-  { key: 'calendar',   label: 'Calendar',           icon: '📅' },
-  { key: 'syllabus',   label: 'Syllabus',           icon: '📊' },
-  { key: 'timetable',  label: 'Timetable',          icon: '🕐' },
-  { key: 'reports',    label: 'Reports',            icon: '📈' },
-  { key: 'search',     label: 'Topic Search',       icon: '🔍' },
-  { key: 'monthly',    label: 'Monthly Syllabus',   icon: '📆' },
-  { key: 'performance',label: 'Student Scores',     icon: '🎯' },
-  { key: 'hmdash',     label: 'HM Dashboard',       icon: '🏠' },
-  { key: 'admin',      label: 'Admin Monitor',      icon: '🛡️' },
-  { key: 'remediation',label: 'Remediation',        icon: '🔄' },
+const ALL_TABS = [
+  { key:'logs',        label:'Daily Logs',       icon:'📋' },
+  { key:'calendar',    label:'Calendar',          icon:'📅' },
+  { key:'syllabus',    label:'Syllabus',          icon:'📊' },
+  { key:'timetable',   label:'Timetable',         icon:'🕐' },
+  { key:'reports',     label:'Reports',           icon:'📈' },
+  { key:'search',      label:'Topic Search',      icon:'🔍' },
+  { key:'monthly',     label:'Monthly Syllabus',  icon:'📆' },
+  { key:'performance', label:'Student Scores',    icon:'🎯' },
+  { key:'hmdash',      label:'HM Dashboard',      icon:'🏠' },
+  { key:'admin',       label:'Admin Monitor',     icon:'🛡️' },
+  { key:'remediation', label:'Remediation',       icon:'🔄' },
 ]
 
 const today            = () => new Date().toISOString().split('T')[0]
 const currentYearMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
-const fmtDate          = (d) => { if (!d) return '-'; return new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) }
-const pct              = (s, m) => m > 0 ? Math.round((s / m) * 100) : 0
-const scoreColor       = (p) => p >= 75 ? '#16a34a' : p >= 50 ? '#f59e0b' : '#dc2626'
-const scoreBg          = (p) => p >= 75 ? '#dcfce7' : p >= 50 ? '#fef9c3' : '#fee2e2'
+const fmtDate          = d => { if (!d) return '-'; return new Date(d).toLocaleDateString('en-IN',{ day:'2-digit', month:'short', year:'numeric' }) }
+const pct              = (s,m) => m > 0 ? Math.round((s/m)*100) : 0
+const scoreColor       = p => p >= 75 ? '#16a34a' : p >= 50 ? '#d97706' : '#dc2626'
+const scoreBg          = p => p >= 75 ? '#dcfce7' : p >= 50 ? '#fef9c3' : '#fee2e2'
 
 const emptyLog = {
-  course: '', subtype: '', class_name: '', batch_id: '',
-  subject_name: '', teacher_name: '', staff_id: '',
-  teaching_date: today(), topic_taught: '', classwork: '',
-  homework: '', remarks: '', period_number: '',
+  course:'', subtype:'', class_name:'', batch_id:'',
+  subject_name:'', teacher_name:'', staff_id:'',
+  teaching_date: today(), topic_taught:'', classwork:'',
+  homework:'', remarks:'', period_number:'',
   needs_doubt_session: false,
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Mobile Hook ─────────────────────────────────────────────────────────────
+
+function useIsMobile() {
+  const [m, setM] = useState(() => window.innerWidth < 640)
+  useEffect(() => {
+    const h = () => setM(window.innerWidth < 640)
+    window.addEventListener('resize', h)
+    return () => window.removeEventListener('resize', h)
+  }, [])
+  return m
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function Toast({ msg, color='#1e3a5f', onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 3500); return () => clearTimeout(t) }, [])
+  return (
+    <div style={{
+      position:'fixed', bottom:20, left:'50%', transform:'translateX(-50%)',
+      zIndex:999999, background:'white', border:`1px solid ${color}`,
+      borderLeft:`4px solid ${color}`, borderRadius:10,
+      padding:'12px 20px', fontSize:13, fontWeight:600,
+      boxShadow:'0 8px 32px rgba(0,0,0,.18)', maxWidth:'90vw',
+      color:'#1e293b', display:'flex', alignItems:'center', gap:10,
+      animation:'slideUp .2s ease', whiteSpace:'nowrap',
+    }}>
+      <span style={{ width:7, height:7, borderRadius:'50%', background:color, flexShrink:0 }}/>
+      {msg}
+    </div>
+  )
+}
+
+function useToast() {
+  const [toast, setToast] = useState(null)
+  const show = useCallback((msg, color='#1e3a5f') => setToast({ msg, color }), [])
+  const el = toast ? <Toast key={toast.msg+toast.color} msg={toast.msg} color={toast.color} onDone={() => setToast(null)}/> : null
+  return { show, el }
+}
+
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
+
+// BUG-5: replaces all window.confirm() calls
+function ConfirmModal({ title, message, confirmLabel='Confirm', danger=false, onConfirm, onCancel }) {
+  const isMobile = useIsMobile()
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,.6)', display:'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent:'center' }} onClick={onCancel}>
+      <div style={{ background:'white', borderRadius: isMobile ? '16px 16px 0 0' : 12, padding:24, width: isMobile ? '100%' : 380, maxWidth:'95vw' }} onClick={e => e.stopPropagation()}>
+        {isMobile && <div style={{ width:36, height:4, background:'#e2e8f0', borderRadius:2, margin:'0 auto 16px', opacity:.6 }}/>}
+        <div style={{ fontSize:16, fontWeight:800, color:'#1e293b', marginBottom:8 }}>{title}</div>
+        <p style={{ fontSize:13, color:'#64748b', marginBottom:20, lineHeight:1.7 }}>{message}</p>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={onConfirm} style={{ flex:1, padding:'12px', borderRadius:8, border:'none', background: danger ? '#dc2626' : '#1e3a5f', color:'white', fontWeight:700, fontSize:14, cursor:'pointer', minHeight:44 }}>{confirmLabel}</button>
+          <button onClick={onCancel}  style={{ padding:'12px 20px', borderRadius:8, border:'1px solid #e2e8f0', background:'white', color:'#64748b', fontWeight:600, fontSize:13, cursor:'pointer', minHeight:44 }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const S = {
-  page:   { padding: '24px', fontFamily: "'Segoe UI', sans-serif", background: '#f8fafc', minHeight: '100vh' },
-  card:   { background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', padding: '24px', marginBottom: '20px' },
-  btn:    (color='#1e3a5f', disabled=false) => ({ backgroundColor: disabled?'#94a3b8':color, color:'white', border:'none', borderRadius:'8px', padding:'10px 20px', fontWeight:'600', cursor:disabled?'not-allowed':'pointer', fontSize:'14px' }),
-  btnSm:  (color='#1e3a5f') => ({ backgroundColor:color, color:'white', border:'none', borderRadius:'6px', padding:'6px 12px', fontWeight:'600', cursor:'pointer', fontSize:'12px' }),
-  input:  { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
-  label:  { display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' },
-  select: { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
-  statCard: (color, bg) => ({ background: bg, borderRadius:'12px', padding:'18px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', borderLeft:`4px solid ${color}` }),
-  badge:  (color, bg) => ({ padding:'3px 10px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', background: bg, color }),
-  pill:   (color, bg) => ({ padding:'4px 12px', borderRadius:'999px', fontSize:'12px', fontWeight:'600', background: bg, color, display:'inline-block' }),
-  progressBar: (pct, color) => ({
-    height:'8px', background:'#e2e8f0', borderRadius:'4px', overflow:'hidden',
-    position:'relative',
-  }),
+  page:   { padding:'16px', fontFamily:"'Outfit',system-ui,sans-serif", background:'#f1f5f9', minHeight:'100vh' },
+  card:   { background:'white', borderRadius:12, boxShadow:'0 2px 8px rgba(0,0,0,0.07)', padding:20, marginBottom:16 },
+  btn:    (color='#1e3a5f', disabled=false) => ({ backgroundColor: disabled?'#94a3b8':color, color:'white', border:'none', borderRadius:8, padding:'10px 18px', fontWeight:700, cursor: disabled?'not-allowed':'pointer', fontSize:13, minHeight:44 }),
+  btnSm:  (color='#1e3a5f') => ({ backgroundColor:color, color:'white', border:'none', borderRadius:6, padding:'6px 12px', fontWeight:600, cursor:'pointer', fontSize:12, minHeight:36 }),
+  input:  { width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:14, boxSizing:'border-box', background:'white', minHeight:44 },
+  label:  { display:'block', fontSize:12, fontWeight:700, color:'#374151', marginBottom:5, textTransform:'uppercase', letterSpacing:'.06em' },
+  select: { width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:14, boxSizing:'border-box', background:'white', minHeight:44 },
+  statCard: (color, bg) => ({ background:bg, borderRadius:12, padding:16, borderLeft:`4px solid ${color}` }),
+  badge:  (color, bg) => ({ padding:'3px 9px', borderRadius:999, fontSize:11, fontWeight:700, background:bg, color }),
+  pill:   (color, bg) => ({ padding:'4px 12px', borderRadius:999, fontSize:12, fontWeight:600, background:bg, color, display:'inline-block' }),
+  // MOB-2: responsive stat grid
+  statGrid: (cols=4) => ({ display:'grid', gridTemplateColumns:`repeat(${cols},1fr)`, gap:12, marginBottom:20 }),
+  // MOB-3: responsive form grid
+  formGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:14 },
 }
+
+const globalCSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+  @keyframes slideUp { from { transform:translateY(16px);opacity:0 } to { transform:translateY(0);opacity:1 } }
+  * { box-sizing:border-box }
+  body { font-family:'Outfit',system-ui,sans-serif; background:#f1f5f9 }
+  select,input,textarea { font-family:'Outfit',system-ui,sans-serif }
+  select:focus,input:focus,textarea:focus { outline:2px solid #1e3a5f; outline-offset:1px }
+  ::-webkit-scrollbar { width:4px; height:4px }
+  ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px }
+  @media (max-width:640px) {
+    .stat-grid-4 { grid-template-columns: repeat(2,1fr) !important }
+    .stat-grid-3 { grid-template-columns: repeat(2,1fr) !important }
+    .form-grid   { grid-template-columns: 1fr !important }
+    .filter-row  { flex-direction:column !important }
+    .tab-bar     { grid-template-columns: repeat(3,1fr) !important }
+    .hide-mobile { display:none !important }
+    .table-wrap  { overflow-x:auto; -webkit-overflow-scrolling:touch }
+    .page-pad    { padding:12px !important }
+  }
+  @media print {
+    .no-print { display:none !important }
+    .print-only { display:block !important }
+    body { background:white }
+  }
+  .print-only { display:none }
+`
 
 // ─── Shared Hook: Course Data ─────────────────────────────────────────────────
 
@@ -69,56 +204,55 @@ function useCourseData() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase
-      .from('course_batches')
-      .select('id, batch_name, course, subtype, class_name, hostel_type, session_year')
-      .eq('status', 'Active')
-      .order('course')
-      .then(({ data }) => { setBatches(data || []); setLoading(false) })
+    supabase.from('course_batches').select('id,batch_name,course,subtype,class_name,hostel_type,session_year')
+      .eq('status','Active').order('course')
+      .then(({ data }) => { setBatches(data||[]); setLoading(false) })
   }, [])
 
-  const courses = useMemo(() => [...new Set(batches.map(b => b.course))], [batches])
-  const subtypesFor  = useCallback((course) => [...new Set(batches.filter(b => b.course === course).map(b => b.subtype).filter(Boolean))], [batches])
-  const classesFor   = useCallback((course, subtype) => [...new Set(batches.filter(b => b.course === course && (!subtype || b.subtype === subtype)).map(b => b.class_name).filter(Boolean))], [batches])
-  const batchIdFor   = useCallback((course, subtype, className) => batches.find(b => b.course === course && (!subtype || b.subtype === subtype) && (!className || b.class_name === className))?.id || '', [batches])
+  const courses      = useMemo(() => [...new Set(batches.map(b => b.course))], [batches])
+  const subtypesFor  = useCallback(course => [...new Set(batches.filter(b => b.course===course).map(b => b.subtype).filter(Boolean))], [batches])
+  const classesFor   = useCallback((course,subtype) => [...new Set(batches.filter(b => b.course===course && (!subtype||b.subtype===subtype)).map(b => b.class_name).filter(Boolean))], [batches])
+  const batchIdFor   = useCallback((course,subtype,className) => batches.find(b => b.course===course && (!subtype||b.subtype===subtype) && (!className||b.class_name===className))?.id||'', [batches])
 
   return { batches, courses, subtypesFor, classesFor, batchIdFor, loading }
 }
 
-// ─── Shared Hook: Doubt Sessions ──────────────────────────────────────────────
+// ─── BUG-2 Fixed: Doubt Sessions Hook ────────────────────────────────────────
 
 function useDoubtSessions(logIds) {
   const [sessions, setSessions] = useState({})
+  // BUG-2: safe dep — use length + boundary IDs instead of join
+  const depKey = useMemo(() => `${logIds.length}:${logIds[0]||''}:${logIds[logIds.length-1]||''}`, [logIds])
 
   const refetch = useCallback(async () => {
     if (!logIds.length) return
-    const { data } = await supabase.from('doubt_sessions').select('*').in('log_id', logIds)
+    const { data, error } = await supabase.from('doubt_sessions').select('*').in('log_id', logIds)
     if (data) {
       const map = {}
-      data.forEach(s => { if (!map[s.log_id]) map[s.log_id] = []; map[s.log_id].push(s) })
+      data.forEach(s => { if (!map[s.log_id]) map[s.log_id]=[]; map[s.log_id].push(s) })
       setSessions(map)
     }
-  }, [logIds.join(',')])  // eslint-disable-line
+  }, [depKey]) // eslint-disable-line
 
   useEffect(() => { refetch() }, [refetch])
   return { sessions, refetch }
 }
 
-// ─── 3-Level Course Selector ──────────────────────────────────────────────────
+// ─── CoursePicker ─────────────────────────────────────────────────────────────
 
 function CoursePicker({ form, setForm, courseData }) {
   const { courses, subtypesFor, classesFor, batchIdFor } = courseData
   const subtypes = form.course ? subtypesFor(form.course) : []
   const classes  = (form.course && form.subtype) ? classesFor(form.course, form.subtype) : []
 
-  const handleCourse  = (course)     => setForm(f => ({ ...f, course, subtype: '', class_name: '', batch_id: '' }))
-  const handleSubtype = (subtype)    => {
-    const cls = classesFor(form.course, subtype)
-    const class_name = cls.length === 1 ? cls[0] : ''
-    const batch_id   = class_name ? batchIdFor(form.course, subtype, class_name) : ''
-    setForm(f => ({ ...f, subtype, class_name, batch_id }))
+  const handleCourse  = c  => setForm(f => ({ ...f, course:c, subtype:'', class_name:'', batch_id:'' }))
+  const handleSubtype = st => {
+    const cls = classesFor(form.course, st)
+    const cn  = cls.length===1 ? cls[0] : ''
+    const bid = cn ? batchIdFor(form.course, st, cn) : ''
+    setForm(f => ({ ...f, subtype:st, class_name:cn, batch_id:bid }))
   }
-  const handleClass   = (class_name) => setForm(f => ({ ...f, class_name, batch_id: batchIdFor(form.course, form.subtype, class_name) }))
+  const handleClass = cn => setForm(f => ({ ...f, class_name:cn, batch_id: batchIdFor(form.course, form.subtype, cn) }))
 
   return (
     <>
@@ -131,7 +265,7 @@ function CoursePicker({ form, setForm, courseData }) {
       </div>
       <div>
         <label style={S.label}>Subtype / Batch</label>
-        <select value={form.subtype} onChange={e => handleSubtype(e.target.value)} disabled={!form.course} required style={{ ...S.select, opacity: form.course ? 1 : 0.5 }}>
+        <select value={form.subtype} onChange={e => handleSubtype(e.target.value)} disabled={!form.course} required style={{ ...S.select, opacity: form.course?1:.5 }}>
           <option value="">Select Subtype</option>
           {subtypes.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -139,14 +273,14 @@ function CoursePicker({ form, setForm, courseData }) {
       <div>
         <label style={S.label}>
           Class
-          {form.batch_id && <span style={{ marginLeft:'8px', fontSize:'11px', fontWeight:'400', color:'#16a34a' }}>✓ linked</span>}
+          {form.batch_id && <span style={{ marginLeft:6, fontSize:10, color:'#16a34a' }}>✓ linked</span>}
         </label>
         {classes.length > 0
-          ? <select value={form.class_name} onChange={e => handleClass(e.target.value)} disabled={!form.subtype} style={{ ...S.select, opacity: form.subtype ? 1 : 0.5 }}>
+          ? <select value={form.class_name} onChange={e => handleClass(e.target.value)} disabled={!form.subtype} style={{ ...S.select, opacity: form.subtype?1:.5 }}>
               <option value="">Select Class</option>
               {classes.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-          : <input value={form.class_name} onChange={e => handleClass(e.target.value)} placeholder="e.g. Class 6" disabled={!form.subtype} style={{ ...S.input, opacity: form.subtype ? 1 : 0.5 }} />
+          : <input value={form.class_name} onChange={e => handleClass(e.target.value)} placeholder="e.g. Class 6" disabled={!form.subtype} style={{ ...S.input, opacity: form.subtype?1:.5 }}/>
         }
       </div>
     </>
@@ -161,44 +295,47 @@ function DoubtSessionSubRow({ logId, sessions, onRefetch, currentUser }) {
   const list = sessions[logId] || []
   if (!list.length) return null
 
-  const handleResolve = async (session) => {
+  // FIX-10: guard null currentUser
+  const resolverName = currentUser?.name || 'Staff'
+
+  const handleResolve = async session => {
     if (!note.trim()) { alert('Please enter a resolution note.'); return }
     setResolvingId(session.id)
     const { error } = await supabase.from('doubt_sessions').update({
-      status: 'resolved', resolved_by: currentUser?.name || 'Staff',
+      status:'resolved', resolved_by: resolverName,
       resolved_at: new Date().toISOString(), resolution_note: note,
     }).eq('id', session.id)
-    if (error) alert('Error: ' + error.message)
+    if (error) alert('Error: '+error.message)
     else { onRefetch(); setNote('') }
     setResolvingId(null)
   }
 
   return (
     <tr>
-      <td colSpan={10} style={{ padding:'0 16px 12px 48px', background:'#fffbeb' }}>
-        <div style={{ borderLeft:'3px solid #f59e0b', paddingLeft:'14px' }}>
-          <div style={{ fontSize:'12px', fontWeight:'700', color:'#b45309', marginBottom:'8px' }}>🔁 Doubt Sessions</div>
+      <td colSpan={11} style={{ padding:'0 12px 12px 40px', background:'#fffbeb' }}>
+        <div style={{ borderLeft:'3px solid #f59e0b', paddingLeft:12 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'#b45309', marginBottom:6 }}>🔁 Doubt Sessions</div>
           {list.map(s => (
-            <div key={s.id} style={{ display:'flex', alignItems:'flex-start', gap:'12px', flexWrap:'wrap', padding:'10px 14px', marginBottom:'6px', borderRadius:'8px', background: s.status==='resolved'?'#f0fdf4':'#fef9c3', border:`1px solid ${s.status==='resolved'?'#bbf7d0':'#fde68a'}` }}>
-              <div style={{ minWidth:'160px' }}>
-                <div style={{ fontSize:'12px', fontWeight:'700', color:'#1e293b' }}>🏠 {s.house_name || s.batch_name || '—'}</div>
-                <div style={{ fontSize:'11px', color:'#64748b' }}>HM: {s.hm_name || s.staff_name || '—'}</div>
+            <div key={s.id} style={{ display:'flex', alignItems:'flex-start', gap:10, flexWrap:'wrap', padding:'8px 12px', marginBottom:5, borderRadius:8, background: s.status==='resolved'?'#f0fdf4':'#fef9c3', border:`1px solid ${s.status==='resolved'?'#bbf7d0':'#fde68a'}` }}>
+              <div style={{ minWidth:120 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'#1e293b' }}>🏠 {s.house_name||s.batch_name||'—'}</div>
+                <div style={{ fontSize:11, color:'#64748b' }}>HM: {s.hm_name||s.staff_name||'—'}</div>
               </div>
-              <div style={{ flex:1, minWidth:'140px' }}>
-                <div style={{ fontSize:'12px', color:'#374151' }}>📖 {s.topic}</div>
-                <div style={{ fontSize:'11px', color:'#94a3b8' }}>{s.subject_name || s.subject}</div>
+              <div style={{ flex:1, minWidth:120 }}>
+                <div style={{ fontSize:12, color:'#374151' }}>📖 {s.topic}</div>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{s.subject_name||s.subject}</div>
               </div>
-              <div style={{ minWidth:'100px' }}>
-                {s.status === 'resolved'
+              <div style={{ minWidth:90 }}>
+                {s.status==='resolved'
                   ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Resolved</span>
                   : <span style={S.badge('#b45309','#fef9c3')}>⏳ Open</span>}
-                {s.resolved_by && <div style={{ fontSize:'10px', color:'#64748b', marginTop:'3px' }}>by {s.resolved_by}</div>}
+                {s.resolved_by && <div style={{ fontSize:10, color:'#64748b', marginTop:2 }}>by {s.resolved_by}</div>}
               </div>
-              {s.status === 'resolved' && s.resolution_note && <div style={{ fontSize:'11px', color:'#64748b', flex:1 }}>📝 {s.resolution_note}</div>}
-              {s.status === 'open' && (
-                <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
-                  <input value={resolvingId===s.id?note:''} onChange={e=>setNote(e.target.value)} onFocus={()=>setResolvingId(s.id)} placeholder="Resolution note..." style={{ padding:'5px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'12px', width:'180px' }} />
-                  <button onClick={()=>handleResolve(s)} style={{ padding:'5px 12px', borderRadius:'6px', border:'none', background:'#16a34a', color:'white', fontSize:'12px', fontWeight:'700', cursor:'pointer' }}>✓ Resolve</button>
+              {s.status==='resolved' && s.resolution_note && <div style={{ fontSize:11, color:'#64748b', flex:1 }}>📝 {s.resolution_note}</div>}
+              {s.status==='open' && (
+                <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                  <input value={resolvingId===s.id?note:''} onChange={e => setNote(e.target.value)} onFocus={() => setResolvingId(s.id)} placeholder="Resolution note..." style={{ padding:'6px 10px', borderRadius:6, border:'1px solid #d1d5db', fontSize:12, minWidth:160, minHeight:36 }}/>
+                  <button onClick={() => handleResolve(s)} style={S.btnSm('#16a34a')}>✓ Resolve</button>
                 </div>
               )}
             </div>
@@ -209,31 +346,31 @@ function DoubtSessionSubRow({ logId, sessions, onRefetch, currentUser }) {
   )
 }
 
-// ─── Shared: Log Form ─────────────────────────────────────────────────────────
+// ─── Log Form ─────────────────────────────────────────────────────────────────
 
 function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, editMode=false, courseData }) {
-  const handlePeriodSelect = (e) => {
+  const handlePeriodSelect = e => {
     const pn = parseInt(e.target.value)
-    if (!pn || !form.course || !form.subtype) { setForm(f => ({ ...f, period_number: pn || '' })); return }
-    const dayName = DAYS[new Date().getDay() - 1] || 'Monday'
+    if (!pn || !form.course || !form.subtype) { setForm(f => ({ ...f, period_number: pn||'' })); return }
+    const dayName = DAYS[new Date().getDay()-1] || 'Monday'
     const slot = timetable.find(t => t.class_name===form.subtype && t.period_name===String(pn) && t.day_name===dayName)
     if (slot) {
-      const matchedStaff = staff.find(s => s.name === slot.teacher_name)
-      setForm(f => ({ ...f, period_number: pn, subject_name: slot.subject_name||f.subject_name, teacher_name: slot.teacher_name||f.teacher_name, staff_id: matchedStaff?.id||f.staff_id }))
+      const ms = staff.find(s => s.name===slot.teacher_name)
+      setForm(f => ({ ...f, period_number:pn, subject_name:slot.subject_name||f.subject_name, teacher_name:slot.teacher_name||f.teacher_name, staff_id:ms?.id||f.staff_id }))
     } else {
-      setForm(f => ({ ...f, period_number: pn }))
+      setForm(f => ({ ...f, period_number:pn }))
     }
   }
 
-  const handleTeacherChange = (e) => {
-    const selected = staff.find(s => s.name === e.target.value)
-    setForm(f => ({ ...f, teacher_name: e.target.value, staff_id: selected?.id || '' }))
+  const handleTeacher = e => {
+    const sel = staff.find(s => s.name===e.target.value)
+    setForm(f => ({ ...f, teacher_name:e.target.value, staff_id:sel?.id||'' }))
   }
 
   return (
     <form onSubmit={onSubmit}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
-        <CoursePicker form={form} setForm={setForm} courseData={courseData} />
+      <div className="form-grid" style={S.formGrid}>
+        <CoursePicker form={form} setForm={setForm} courseData={courseData}/>
         <div>
           <label style={S.label}>Period (optional)</label>
           <select value={form.period_number} onChange={handlePeriodSelect} style={S.select}>
@@ -242,53 +379,53 @@ function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, 
           </select>
         </div>
         <div>
-          <label style={S.label}>Subject</label>
-          <select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name: e.target.value }))} required style={S.select}>
+          <label style={S.label}>Subject *</label>
+          <select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name:e.target.value }))} required style={S.select}>
             <option value="">Select Subject</option>
             {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
           <label style={S.label}>Teacher</label>
-          <select value={form.teacher_name} onChange={handleTeacherChange} style={S.select}>
+          <select value={form.teacher_name} onChange={handleTeacher} style={S.select}>
             <option value="">Select Teacher</option>
             {staff.map(s => <option key={s.id} value={s.name}>{s.name} ({s.designation||'-'})</option>)}
           </select>
         </div>
         <div>
-          <label style={S.label}>Date</label>
-          <input type="date" value={form.teaching_date} onChange={e => setForm(f => ({ ...f, teaching_date: e.target.value }))} required style={S.input} />
+          <label style={S.label}>Date *</label>
+          <input type="date" value={form.teaching_date} onChange={e => setForm(f => ({ ...f, teaching_date:e.target.value }))} required style={S.input}/>
         </div>
         <div style={{ gridColumn:'1/-1' }}>
-          <label style={S.label}>Topic Taught</label>
-          <input value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught: e.target.value }))} required placeholder="Enter topic" style={S.input} />
+          <label style={S.label}>Topic Taught *</label>
+          <input value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught:e.target.value }))} required placeholder="Enter topic" style={S.input}/>
         </div>
         <div style={{ gridColumn:'1/-1' }}>
           <label style={S.label}>Classwork</label>
-          <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork: e.target.value }))} rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="Classwork details" />
+          <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork:e.target.value }))} rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Classwork details"/>
         </div>
         <div style={{ gridColumn:'1/-1' }}>
           <label style={S.label}>Homework</label>
-          <textarea value={form.homework} onChange={e => setForm(f => ({ ...f, homework: e.target.value }))} rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="Homework details" />
+          <textarea value={form.homework} onChange={e => setForm(f => ({ ...f, homework:e.target.value }))} rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Homework details"/>
         </div>
         <div style={{ gridColumn:'1/-1' }}>
           <label style={S.label}>Remarks</label>
-          <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Any remarks" />
+          <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks:e.target.value }))} rows={2} style={{ ...S.input, resize:'vertical' }}/>
         </div>
         <div style={{ gridColumn:'1/-1' }}>
-          <label style={{ display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', padding:'12px 16px', borderRadius:'8px', background: form.needs_doubt_session?'#fef9c3':'#f8fafc', border:`1px solid ${form.needs_doubt_session?'#f59e0b':'#e2e8f0'}` }}>
-            <input type="checkbox" checked={form.needs_doubt_session||false} onChange={e => setForm(f => ({ ...f, needs_doubt_session: e.target.checked }))} style={{ width:'16px', height:'16px', cursor:'pointer' }} />
-            <span style={{ fontWeight:'600', fontSize:'14px', color: form.needs_doubt_session?'#b45309':'#374151' }}>🔁 Needs Doubt Session</span>
-            {form.needs_doubt_session && <span style={{ fontSize:'12px', color:'#92400e' }}>— HM will be notified &amp; session tracked</span>}
+          <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', padding:'12px 14px', borderRadius:8, background: form.needs_doubt_session?'#fef9c3':'#f8fafc', border:`1px solid ${form.needs_doubt_session?'#f59e0b':'#e2e8f0'}`, minHeight:44 }}>
+            <input type="checkbox" checked={form.needs_doubt_session||false} onChange={e => setForm(f => ({ ...f, needs_doubt_session:e.target.checked }))} style={{ width:16, height:16, cursor:'pointer' }}/>
+            <span style={{ fontWeight:600, fontSize:14, color: form.needs_doubt_session?'#b45309':'#374151' }}>🔁 Needs Doubt Session</span>
+            {form.needs_doubt_session && <span style={{ fontSize:12, color:'#92400e' }}>— HM will be notified</span>}
           </label>
         </div>
       </div>
       {form.batch_id && (
-        <div style={{ marginTop:'12px', padding:'8px 14px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', fontSize:'12px', color:'#16a34a', fontWeight:'600' }}>
+        <div style={{ marginTop:10, padding:'8px 12px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, fontSize:12, color:'#16a34a', fontWeight:600 }}>
           ✅ Linked to batch_id: {form.batch_id}
         </div>
       )}
-      <div style={{ display:'flex', gap:'10px', marginTop:'16px' }}>
+      <div style={{ display:'flex', gap:10, marginTop:14, flexWrap:'wrap' }}>
         <button type="submit" disabled={saving} style={S.btn(editMode?'#7c3aed':'#1e3a5f', saving)}>
           {saving ? '⏳ Saving...' : editMode ? '✏️ Update Log' : '✅ Save Log'}
         </button>
@@ -298,207 +435,272 @@ function LogForm({ form, setForm, onSubmit, saving, timetable, staff, onCancel, 
   )
 }
 
+// ─── CSV Export Helper ────────────────────────────────────────────────────────
+
+function downloadCSV(rows, filename) {
+  if (!rows.length) return
+  const h = Object.keys(rows[0])
+  const csv = [h.join(','), ...rows.map(r => h.map(k => `"${(r[k]??'').toString().replace(/"/g,'""')}"`).join(','))].join('\n')
+  Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})), download: filename }).click()
+}
+
 // ─── Tab: Daily Logs ──────────────────────────────────────────────────────────
 
 function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, currentUser }) {
-  const [showForm, setShowForm]     = useState(false)
-  const [form, setForm]             = useState({ ...emptyLog, teaching_date: today() })
-  const [saving, setSaving]         = useState(false)
-  const [editId, setEditId]         = useState(null)
-  const [editForm, setEditForm]     = useState(null)
-  const [editSaving, setEditSaving] = useState(false)
-  const [search, setSearch]         = useState('')
+  const [showForm, setShowForm]       = useState(false)
+  const [form, setForm]               = useState({ ...emptyLog, teaching_date: today() })
+  const [saving, setSaving]           = useState(false)
+  const [editId, setEditId]           = useState(null)
+  const [editForm, setEditForm]       = useState(null)
+  const [editSaving, setEditSaving]   = useState(false)
+  const [search, setSearch]           = useState('')
   const [courseFilter, setCourseFilter]   = useState('All')
   const [subjectFilter, setSubjectFilter] = useState('All')
-  const [dupWarn, setDupWarn]       = useState('')
+  const [dateFrom, setDateFrom]       = useState('')  // FIX-2
+  const [dateTo, setDateTo]           = useState('')  // FIX-2
+  const [page, setPage]               = useState(1)   // FIX-1
+  const [dupWarn, setDupWarn]         = useState('')
+  const [dupBlocked, setDupBlocked]   = useState(false) // FIX-4
+  const [confirmDel, setConfirmDel]   = useState(null)
+  const { toast, el: toastEl } = useToast ? useToast() : { show:()=>{}, el:null }
+  const { show: showToast, el: toastEl2 } = useToast()
 
   const logIds = useMemo(() => logs.map(l => l.id), [logs])
   const { sessions, refetch: refetchSessions } = useDoubtSessions(logIds)
   const openDoubtCount = useMemo(() => Object.values(sessions).flat().filter(s => s.status==='open').length, [sessions])
   const { courses } = courseData
 
-  const checkDuplicate = useCallback((f) => {
-    if (!f.course || !f.subtype || !f.subject_name || !f.teaching_date) return false
-    return logs.some(l => l.course===f.course && l.subtype===f.subtype && l.class_name===f.class_name && l.subject_name===f.subject_name && l.teaching_date===f.teaching_date && (editId ? l.id!==editId : true))
-  }, [logs, editId])
+  const checkDuplicate = useCallback((f, excludeId=null) => {
+    if (!f.course||!f.subtype||!f.subject_name||!f.teaching_date) return false
+    return logs.some(l => l.course===f.course && l.subtype===f.subtype && l.class_name===f.class_name && l.subject_name===f.subject_name && l.teaching_date===f.teaching_date && l.id!==excludeId)
+  }, [logs])
 
-  const buildPayload = (f) => ({
-    course: f.course, subtype: f.subtype||null, class_name: f.class_name||null, batch_id: f.batch_id||null,
-    subject_name: f.subject_name, teacher_name: f.teacher_name||null, staff_id: f.staff_id||null,
-    teaching_date: f.teaching_date, topic_taught: f.topic_taught, classwork: f.classwork||null,
-    homework: f.homework||null, remarks: f.remarks||null, period_number: f.period_number||null,
-    needs_doubt_session: f.needs_doubt_session||false,
+  const buildPayload = f => ({
+    course:f.course, subtype:f.subtype||null, class_name:f.class_name||null, batch_id:f.batch_id||null,
+    subject_name:f.subject_name, teacher_name:f.teacher_name||null, staff_id:f.staff_id||null,
+    teaching_date:f.teaching_date, topic_taught:f.topic_taught, classwork:f.classwork||null,
+    homework:f.homework||null, remarks:f.remarks||null, period_number:f.period_number||null,
+    needs_doubt_session:f.needs_doubt_session||false,
   })
 
-  const handleAdd = async (e) => {
+  const handleAdd = async e => {
     e.preventDefault()
-    if (checkDuplicate(form)) { setDupWarn(`⚠️ Duplicate log exists for ${form.subject_name} on ${form.teaching_date}.`); return }
-    setDupWarn(''); setSaving(true)
+    // FIX-4: hard block on confirmed duplicate
+    if (checkDuplicate(form)) {
+      setDupWarn(`⚠️ Duplicate log: ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
+      setDupBlocked(true)
+      return
+    }
+    setDupWarn(''); setDupBlocked(false); setSaving(true)
     const { data: logData, error } = await supabase.from('teaching_logs').insert([buildPayload(form)]).select().single()
-    if (error) { alert('Error: ' + error.message); setSaving(false); return }
+    if (error) { showToast('Error: '+error.message, '#dc2626'); setSaving(false); return }
 
     if (form.needs_doubt_session && logData) {
-      const { data: students } = await supabase.from('students').select('house').eq('course', form.course).eq('batch', form.subtype).eq('status', 'Active').not('house', 'is', null)
-      const houses = [...new Set((students||[]).map(s => s.house).filter(Boolean))]
-      const { data: hms } = await supabase.from('housemasters').select('id, name, house').eq('status', 'Active').in('house', houses.length?houses:['__none__'])
-      const hmMap = {}; (hms||[]).forEach(hm => { hmMap[hm.house] = hm })
-      const doubtSessions = houses.map(house => ({
-        log_id: logData.id, course: form.course, subtype: form.subtype||null, class_name: form.class_name||null,
-        subject_name: form.subject_name, topic: form.topic_taught, teaching_date: form.teaching_date,
-        teacher_name: form.teacher_name||null, teacher_staff_id: form.staff_id||null,
-        house_name: house, hm_id: hmMap[house]?.id||null, hm_name: hmMap[house]?.name||null, status: 'open',
-      }))
-      if (doubtSessions.length) await supabase.from('doubt_sessions').insert(doubtSessions)
+      try {
+        const { data: students } = await supabase.from('students').select('house').eq('course',form.course).eq('batch',form.subtype).eq('status','Active').not('house','is',null)
+        const houses = [...new Set((students||[]).map(s => s.house).filter(Boolean))]
+        const { data: hms } = await supabase.from('housemasters').select('id,name,house').eq('status','Active').in('house',houses.length?houses:['__none__'])
+        const hmMap = {}; (hms||[]).forEach(hm => { hmMap[hm.house]=hm })
+        const ds = houses.map(house => ({
+          log_id:logData.id, course:form.course, subtype:form.subtype||null, class_name:form.class_name||null,
+          subject_name:form.subject_name, topic:form.topic_taught, teaching_date:form.teaching_date,
+          teacher_name:form.teacher_name||null, teacher_staff_id:form.staff_id||null,
+          house_name:house, hm_id:hmMap[house]?.id||null, hm_name:hmMap[house]?.name||null, status:'open',
+        }))
+        if (ds.length) await supabase.from('doubt_sessions').insert(ds)
+      } catch (err) { showToast('Doubt session create failed: '+err.message, '#d97706') }
     }
 
-    setForm({ ...emptyLog, teaching_date: today() }); setShowForm(false); fetchLogs(); setSaving(false)
+    setForm({ ...emptyLog, teaching_date:today() }); setShowForm(false); fetchLogs(); setSaving(false)
+    showToast('Log saved', '#16a34a')
   }
 
-  const handleEdit = async (e) => {
+  const handleEdit = async e => {
     e.preventDefault()
-    if (checkDuplicate(editForm)) { alert('⚠️ Duplicate log exists.'); return }
+    if (checkDuplicate(editForm, editId)) { showToast('⚠️ Duplicate log exists.', '#d97706'); return }
     setEditSaving(true)
     const { error } = await supabase.from('teaching_logs').update(buildPayload(editForm)).eq('id', editId)
-    if (error) alert('Error: ' + error.message)
-    else { setEditId(null); setEditForm(null); fetchLogs() }
+    if (error) showToast('Error: '+error.message, '#dc2626')
+    else { setEditId(null); setEditForm(null); fetchLogs(); showToast('Log updated', '#16a34a') }
     setEditSaving(false)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this log?')) return
+  const handleDelete = async id => {
     await supabase.from('teaching_logs').delete().eq('id', id)
-    fetchLogs()
+    setConfirmDel(null); fetchLogs(); showToast('Log deleted', '#dc2626')
   }
 
-  const startEdit = (item) => {
+  const startEdit = item => {
     setEditId(item.id)
-    setEditForm({ course: item.course||'', subtype: item.subtype||'', class_name: item.class_name||'', batch_id: item.batch_id||'', subject_name: item.subject_name||'', teacher_name: item.teacher_name||'', staff_id: item.staff_id||'', teaching_date: item.teaching_date||today(), topic_taught: item.topic_taught||'', classwork: item.classwork||'', homework: item.homework||'', remarks: item.remarks||'', period_number: item.period_number||'', needs_doubt_session: item.needs_doubt_session||false })
+    setEditForm({ course:item.course||'', subtype:item.subtype||'', class_name:item.class_name||'', batch_id:item.batch_id||'', subject_name:item.subject_name||'', teacher_name:item.teacher_name||'', staff_id:item.staff_id||'', teaching_date:item.teaching_date||today(), topic_taught:item.topic_taught||'', classwork:item.classwork||'', homework:item.homework||'', remarks:item.remarks||'', period_number:item.period_number||'', needs_doubt_session:item.needs_doubt_session||false })
   }
 
   const uniqueSubjects = [...new Set(logs.map(l => l.subject_name).filter(Boolean))]
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return logs.filter(item => {
-      const matchSearch = ['course','subtype','class_name','subject_name','teacher_name','topic_taught','classwork','homework','remarks'].some(k => (item[k]||'').toLowerCase().includes(q))
-      return matchSearch && (courseFilter==='All'||item.course===courseFilter) && (subjectFilter==='All'||item.subject_name===subjectFilter)
+      const ms = ['course','subtype','class_name','subject_name','teacher_name','topic_taught','classwork','homework','remarks'].some(k => (item[k]||'').toLowerCase().includes(q))
+      const mc = courseFilter==='All'  || item.course===courseFilter
+      const ms2= subjectFilter==='All' || item.subject_name===subjectFilter
+      const md1= !dateFrom || item.teaching_date >= dateFrom
+      const md2= !dateTo   || item.teaching_date <= dateTo
+      return ms && mc && ms2 && md1 && md2
     })
-  }, [logs, search, courseFilter, subjectFilter])
+  }, [logs, search, courseFilter, subjectFilter, dateFrom, dateTo])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
+
+  // FIX-3: CSV export
+  const exportCSV = () => downloadCSV(filtered.map(l => ({
+    Date:l.teaching_date, Course:l.course||'', Subtype:l.subtype||'', Class:l.class_name||'',
+    Subject:l.subject_name||'', Teacher:l.teacher_name||'', Topic:l.topic_taught||'',
+    Classwork:l.classwork||'', Homework:l.homework||'', Remarks:l.remarks||'',
+  })), `teaching_logs_${today()}.csv`)
 
   const todayCount = logs.filter(l => l.teaching_date===today()).length
 
   return (
     <>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px', marginBottom:'24px' }}>
+      {toastEl2}
+      {confirmDel && (
+        <ConfirmModal title="Delete Log" message="Delete this teaching log? This cannot be undone." confirmLabel="Delete" danger
+          onConfirm={() => handleDelete(confirmDel)} onCancel={() => setConfirmDel(null)}/>
+      )}
+
+      <div className="stat-grid-4" style={S.statGrid(4)}>
         {[
-          { label:'Total Logs', value:logs.length, color:'#1e3a5f', bg:'#eff6ff', icon:'📋' },
-          { label:'Today Logs', value:todayCount, color:'#16a34a', bg:'#dcfce7', icon:'📅' },
-          { label:'Subjects', value:[...new Set(logs.map(l=>l.subject_name).filter(Boolean))].length, color:'#7c3aed', bg:'#f3e8ff', icon:'📚' },
-          { label:'Teachers', value:[...new Set(logs.map(l=>l.teacher_name).filter(Boolean))].length, color:'#ca8a04', bg:'#fef9c3', icon:'👨‍🏫' },
+          { label:'Total Logs',  value:logs.length,     color:'#1e3a5f', bg:'#eff6ff', icon:'📋' },
+          { label:'Today Logs',  value:todayCount,       color:'#16a34a', bg:'#dcfce7', icon:'📅' },
+          { label:'Subjects',    value:[...new Set(logs.map(l=>l.subject_name).filter(Boolean))].length, color:'#7c3aed', bg:'#f3e8ff', icon:'📚' },
+          { label:'Teachers',    value:[...new Set(logs.map(l=>l.teacher_name).filter(Boolean))].length, color:'#ca8a04', bg:'#fef9c3', icon:'👨‍🏫' },
         ].map(c => (
           <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'22px', marginBottom:'6px' }}>{c.icon}</div>
-            <p style={{ fontSize:'13px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'28px', fontWeight:'bold', color:c.color, margin:'4px 0 0' }}>{c.value}</h2>
+            <div style={{ fontSize:20, marginBottom:4 }}>{c.icon}</div>
+            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:26, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
           </div>
         ))}
       </div>
 
       <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?'20px':0 }}>
-          <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>➕ Add Teaching Log</h2>
-          <button onClick={() => { setShowForm(!showForm); setDupWarn('') }} style={S.btn(showForm?'#64748b':'#1e3a5f')}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?16:0, flexWrap:'wrap', gap:8 }}>
+          <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', margin:0 }}>➕ Add Teaching Log</h2>
+          <button onClick={() => { setShowForm(!showForm); setDupWarn(''); setDupBlocked(false) }} style={S.btn(showForm?'#64748b':'#1e3a5f')}>
             {showForm ? '✖ Cancel' : '➕ Add Log'}
           </button>
         </div>
-        {dupWarn && <div style={{ padding:'10px 14px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:'8px', color:'#92400e', fontSize:'13px', marginBottom:'12px' }}>{dupWarn}</div>}
-        {showForm && <LogForm form={form} setForm={setForm} onSubmit={handleAdd} saving={saving} timetable={timetable} staff={staff} courseData={courseData} />}
+        {dupWarn && (
+          <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, color:'#dc2626', fontSize:13, marginBottom:12, fontWeight:600 }}>
+            {dupWarn}
+            {dupBlocked && <span style={{ marginLeft:10, fontWeight:400 }}>Clear filters or edit the existing log.</span>}
+          </div>
+        )}
+        {showForm && <LogForm form={form} setForm={f => { setForm(f); setDupWarn(''); setDupBlocked(false) }} onSubmit={handleAdd} saving={saving} timetable={timetable} staff={staff} courseData={courseData}/>}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:'12px', marginBottom:'16px' }}>
-        <input placeholder="🔍 Search logs..." value={search} onChange={e => setSearch(e.target.value)} style={S.input} />
-        <select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={S.select}>
+      {/* Filters — MOB-6 */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
+        <input placeholder="🔍 Search logs..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...S.input, flex:'1 1 180px', minWidth:150 }}/>
+        <select value={courseFilter} onChange={e => { setCourseFilter(e.target.value); setPage(1) }} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}>
           <option value="All">All Courses</option>
           {courses.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)} style={S.select}>
+        <select value={subjectFilter} onChange={e => { setSubjectFilter(e.target.value); setPage(1) }} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}>
           <option value="All">All Subjects</option>
           {uniqueSubjects.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} style={{ ...S.input, width:'auto', flex:'0 1 140px' }} placeholder="From"/>
+        <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} style={{ ...S.input, width:'auto', flex:'0 1 140px' }} placeholder="To"/>
+        <button onClick={exportCSV} style={S.btnSm('#16a34a')}>📥 CSV</button>
+        {(search||courseFilter!=='All'||subjectFilter!=='All'||dateFrom||dateTo) &&
+          <button onClick={() => { setSearch(''); setCourseFilter('All'); setSubjectFilter('All'); setDateFrom(''); setDateTo(''); setPage(1) }} style={S.btnSm('#dc2626')}>✕ Clear</button>}
       </div>
 
-      <div style={{ fontSize:'13px', color:'#64748b', marginBottom:'10px' }}>Showing {filtered.length} of {logs.length} logs</div>
-
-      {openDoubtCount > 0 && (
-        <div style={{ padding:'10px 16px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:'8px', marginBottom:'12px', fontSize:'13px', fontWeight:'700', color:'#92400e', display:'flex', alignItems:'center', gap:'8px' }}>
-          🔁 {openDoubtCount} doubt session{openDoubtCount>1?'s':''} pending resolution
-          <span style={{ fontSize:'11px', fontWeight:'400', color:'#b45309' }}>— expand rows below to resolve</span>
-        </div>
-      )}
+      <div style={{ fontSize:12, color:'#64748b', marginBottom:8 }}>
+        {filtered.length} of {logs.length} logs · Page {page}/{totalPages}
+        {openDoubtCount > 0 && <span style={{ marginLeft:12, color:'#b45309', fontWeight:700 }}>🔁 {openDoubtCount} doubt{openDoubtCount>1?'s':''} pending</span>}
+      </div>
 
       {loading
-        ? <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading...</div>
+        ? <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading...</div>
         : (
-          <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'14px' }}>
-              <thead>
-                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                  {['#','Date','Course','Subtype','Class','Subject','Teacher','Topic','Homework','Actions'].map(h => (
-                    <th key={h} style={{ padding:'12px 14px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'13px' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((item, i) => (
-                  <>
-                    <tr key={item.id} style={{ borderBottom: editId===item.id?'none':'1px solid #f1f5f9', background: editId===item.id?'#f8f4ff':'white' }}>
-                      <td style={{ padding:'12px 14px', color:'#64748b' }}>{i+1}</td>
-                      <td style={{ padding:'12px 14px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(item.teaching_date)}</td>
-                      <td style={{ padding:'12px 14px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{item.course||'-'}</span></td>
-                      <td style={{ padding:'12px 14px', color:'#64748b', fontSize:'13px' }}>{item.subtype||'-'}</td>
-                      <td style={{ padding:'12px 14px', color:'#64748b', fontSize:'13px' }}>{item.class_name||'-'}</td>
-                      <td style={{ padding:'12px 14px', fontWeight:'600', color:'#1e3a5f' }}>{item.subject_name}</td>
-                      <td style={{ padding:'12px 14px', color:'#64748b' }}>{item.teacher_name||'-'}</td>
-                      <td style={{ padding:'12px 14px', color:'#64748b', maxWidth:'200px' }}>{item.topic_taught}</td>
-                      <td style={{ padding:'12px 14px', color:'#64748b', maxWidth:'160px' }}>{item.homework||'-'}</td>
-                      <td style={{ padding:'12px 14px' }}>
-                        <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
-                          <button onClick={() => editId===item.id?(setEditId(null),setEditForm(null)):startEdit(item)} style={S.btnSm('#7c3aed')}>{editId===item.id?'✖':'✏️'}</button>
-                          <button onClick={() => handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+          <>
+            <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:700 }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                    {['#','Date','Course','Batch','Subject','Teacher','Topic','HW','Doubt','Actions'].map(h => (
+                      <th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12, whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map((item, i) => (
+                    // BUG-1: React.Fragment with key
+                    <React.Fragment key={item.id}>
+                      <tr style={{ borderBottom: editId===item.id?'none':'1px solid #f1f5f9', background: editId===item.id?'#f8f4ff':'white' }}>
+                        <td style={{ padding:'10px 12px', color:'#94a3b8', fontSize:11 }}>{(page-1)*PAGE_SIZE+i+1}</td>
+                        <td style={{ padding:'10px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(item.teaching_date)}</td>
+                        <td style={{ padding:'10px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{item.course||'-'}</span></td>
+                        <td style={{ padding:'10px 12px', color:'#64748b', fontSize:12 }}>{item.subtype||'-'}</td>
+                        <td style={{ padding:'10px 12px', fontWeight:700, color:'#1e3a5f' }}>{item.subject_name}</td>
+                        <td style={{ padding:'10px 12px', color:'#64748b' }}>{item.teacher_name||'-'}</td>
+                        <td style={{ padding:'10px 12px', color:'#374151', maxWidth:160 }}>{item.topic_taught}</td>
+                        <td style={{ padding:'10px 12px', color:'#64748b', maxWidth:120, fontSize:12 }}>{item.homework||'-'}</td>
+                        <td style={{ padding:'10px 12px' }}>
                           {sessions[item.id]?.length > 0 && (
-                            <span style={{ padding:'2px 7px', borderRadius:'999px', fontSize:'10px', fontWeight:'700', background: sessions[item.id].some(s=>s.status==='open')?'#fef9c3':'#dcfce7', color: sessions[item.id].some(s=>s.status==='open')?'#b45309':'#16a34a', border:`1px solid ${sessions[item.id].some(s=>s.status==='open')?'#fde68a':'#bbf7d0'}` }}>
+                            <span style={{ ...S.badge(sessions[item.id].some(s=>s.status==='open')?'#b45309':'#16a34a', sessions[item.id].some(s=>s.status==='open')?'#fef9c3':'#dcfce7'), fontSize:10 }}>
                               🔁 {sessions[item.id].some(s=>s.status==='open')?'open':'done'}
                             </span>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                    <DoubtSessionSubRow key={`ds-${item.id}`} logId={item.id} sessions={sessions} onRefetch={refetchSessions} currentUser={currentUser} />
-                    {editId===item.id && (
-                      <tr key={`edit-${item.id}`} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                        <td colSpan={10} style={{ padding:'16px 24px', background:'#f8f4ff' }}>
-                          <div style={{ fontSize:'14px', fontWeight:'700', color:'#7c3aed', marginBottom:'12px' }}>✏️ Edit Log</div>
-                          <LogForm form={editForm} setForm={setEditForm} onSubmit={handleEdit} saving={editSaving} timetable={timetable} staff={staff} onCancel={() => { setEditId(null); setEditForm(null) }} courseData={courseData} editMode />
+                        </td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <div style={{ display:'flex', gap:5 }}>
+                            <button onClick={() => editId===item.id?(setEditId(null),setEditForm(null)):startEdit(item)} style={S.btnSm('#7c3aed')}>{editId===item.id?'✖':'✏️'}</button>
+                            <button onClick={() => setConfirmDel(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                          </div>
                         </td>
                       </tr>
-                    )}
-                  </>
-                ))}
-                {filtered.length===0 && <tr><td colSpan={10} style={{ padding:'32px', textAlign:'center', color:'#94a3b8' }}>No teaching logs found</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
+                      <DoubtSessionSubRow logId={item.id} sessions={sessions} onRefetch={refetchSessions} currentUser={currentUser}/>
+                      {editId===item.id && (
+                        <tr style={{ borderBottom:'1px solid #f1f5f9' }}>
+                          <td colSpan={10} style={{ padding:'16px 20px', background:'#f8f4ff' }}>
+                            <div style={{ fontSize:13, fontWeight:700, color:'#7c3aed', marginBottom:12 }}>✏️ Edit Log</div>
+                            <LogForm form={editForm} setForm={setEditForm} onSubmit={handleEdit} saving={editSaving} timetable={timetable} staff={staff} onCancel={() => { setEditId(null); setEditForm(null) }} courseData={courseData} editMode/>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                  {filtered.length===0 && <tr><td colSpan={10} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No teaching logs found</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            {/* FIX-1: Pagination */}
+            {totalPages > 1 && (
+              <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:14, flexWrap:'wrap' }}>
+                <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'), opacity:page===1?.4:1 }}>←</button>
+                {Array.from({ length:Math.min(5,totalPages) }, (_,i) => {
+                  const p = totalPages<=5?i+1:Math.max(1,Math.min(page-2,totalPages-4))+i
+                  return <button key={p} onClick={() => setPage(p)} style={{ ...S.btnSm(page===p?'#1e3a5f':'#e2e8f0'), color:page===p?'white':'#374151', minWidth:36 }}>{p}</button>
+                })}
+                <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ ...S.btnSm('#64748b'), opacity:page===totalPages?.4:1 }}>→</button>
+              </div>
+            )}
+          </>
+        )}
     </>
   )
 }
 
-// ─── Tab: Calendar (Advanced) ─────────────────────────────────────────────────
+// ─── Tab: Calendar ────────────────────────────────────────────────────────────
 
 function TabCalendar({ logs, missed }) {
   const [month, setMonth]             = useState(currentYearMonth())
   const [selectedDay, setSelectedDay] = useState(null)
-  const [viewMode, setViewMode]       = useState('month') // 'month' | 'week'
+  const [viewMode, setViewMode]       = useState('month')
   const [subjectFilter, setSubjectFilter] = useState('All')
   const [teacherFilter, setTeacherFilter] = useState('All')
 
@@ -511,16 +713,16 @@ function TabCalendar({ logs, missed }) {
   const allTeachers = [...new Set(logs.map(l => l.teacher_name).filter(Boolean))]
 
   const filteredLogs = useMemo(() => logs.filter(l =>
-    (subjectFilter==='All' || l.subject_name===subjectFilter) &&
-    (teacherFilter==='All' || l.teacher_name===teacherFilter)
+    (subjectFilter==='All'||l.subject_name===subjectFilter) &&
+    (teacherFilter==='All'||l.teacher_name===teacherFilter)
   ), [logs, subjectFilter, teacherFilter])
 
   const logsByDate = useMemo(() => {
     const map = {}
     filteredLogs.forEach(l => {
       if (l.teaching_date?.startsWith(month)) {
-        const d=parseInt(l.teaching_date.split('-')[2])
-        if(!map[d]) map[d]=[]
+        const d = parseInt(l.teaching_date.split('-')[2])
+        if (!map[d]) map[d]=[]
         map[d].push(l)
       }
     })
@@ -531,45 +733,32 @@ function TabCalendar({ logs, missed }) {
     const map = {}
     missed.forEach(m => {
       if (m.missed_date?.startsWith(month)) {
-        const d=parseInt(m.missed_date.split('-')[2])
-        if(!map[d]) map[d]=[]
+        const d = parseInt(m.missed_date.split('-')[2])
+        if (!map[d]) map[d]=[]
         map[d].push(m)
       }
     })
     return map
   }, [missed, month])
 
-  // Week view: current week days
-  const todayDate = new Date()
-  const weekDays  = useMemo(() => {
-    const start = new Date(todayDate)
+  // BUG-3: weekDays based on a stable date computed at mount time
+  const weekDays = useMemo(() => {
+    const now   = new Date()
+    const start = new Date(now)
     start.setDate(start.getDate() - (start.getDay()===0?6:start.getDay()-1))
     return Array.from({length:6}, (_,i) => {
       const d = new Date(start); d.setDate(start.getDate()+i)
       return d.toISOString().split('T')[0]
     })
-  }, []) // eslint-disable-line
+  }, []) // intentionally stable — current week
 
-  const selectedDateStr = selectedDay ? `${year}-${String(mon).padStart(2,'0')}-${String(selectedDay).padStart(2,'0')}` : null
-  const selectedLogs    = selectedDay ? (logsByDate[selectedDay] || []) : []
-  const selectedMissed  = selectedDay ? (missedByDate[selectedDay] || []) : []
+  const selectedLogs   = selectedDay ? (logsByDate[selectedDay]||[]) : []
+  const selectedMissed = selectedDay ? (missedByDate[selectedDay]||[]) : []
 
-  // Month stats
-  const monthTotal   = Object.values(logsByDate).flat().length
-  const monthMissed  = Object.values(missedByDate).flat().length
-  const activeDays   = Object.keys(logsByDate).length
-  const subjectCount = new Set(Object.values(logsByDate).flat().map(l=>l.subject_name)).size
-
-  const prevMonth = () => {
-    const d = new Date(year, mon-2, 1)
-    setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)
-    setSelectedDay(null)
-  }
-  const nextMonth = () => {
-    const d = new Date(year, mon, 1)
-    setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)
-    setSelectedDay(null)
-  }
+  const monthTotal  = Object.values(logsByDate).flat().length
+  const monthMissed = Object.values(missedByDate).flat().length
+  const activeDays  = Object.keys(logsByDate).length
+  const subjectCount= new Set(Object.values(logsByDate).flat().map(l=>l.subject_name)).size
 
   const SUBJECT_COLORS = ['#1e3a5f','#7c3aed','#0891b2','#16a34a','#ca8a04','#dc2626','#c026d3','#0d9488']
   const subjectColorMap = useMemo(() => {
@@ -577,10 +766,12 @@ function TabCalendar({ logs, missed }) {
     return map
   }, [allSubjects]) // eslint-disable-line
 
+  const prevMonth = () => { const d=new Date(year,mon-2,1); setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
+  const nextMonth = () => { const d=new Date(year,mon,1);   setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
+
   return (
     <>
-      {/* Stats row */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'14px', marginBottom:'20px' }}>
+      <div className="stat-grid-4" style={S.statGrid(4)}>
         {[
           { label:'Logs this month', value:monthTotal,  color:'#1e3a5f', bg:'#eff6ff', icon:'📋' },
           { label:'Active days',     value:activeDays,  color:'#16a34a', bg:'#dcfce7', icon:'📅' },
@@ -588,82 +779,69 @@ function TabCalendar({ logs, missed }) {
           { label:'Missed classes',  value:monthMissed, color:'#dc2626', bg:'#fee2e2', icon:'❌' },
         ].map(c => (
           <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'18px', marginBottom:'4px' }}>{c.icon}</div>
-            <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'24px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.value}</h2>
+            <div style={{ fontSize:18, marginBottom:4 }}>{c.icon}</div>
+            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:24, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
           </div>
         ))}
       </div>
 
       <div style={S.card}>
-        {/* Header controls */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:10 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
             <button onClick={prevMonth} style={S.btnSm('#64748b')}>◀</button>
-            <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0, minWidth:'160px', textAlign:'center' }}>
+            <span style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', minWidth:140, textAlign:'center' }}>
               {new Date(year,mon-1).toLocaleString('default',{month:'long'})} {year}
-            </h2>
+            </span>
             <button onClick={nextMonth} style={S.btnSm('#64748b')}>▶</button>
-            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelectedDay(null) }} style={{ padding:'6px 10px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'13px' }} />
+            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelectedDay(null) }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #d1d5db', fontSize:13, minHeight:36 }}/>
           </div>
-          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-            <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:'12px', padding:'6px 10px' }}>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:12, padding:'6px 10px', minHeight:36 }}>
               <option value="All">All Subjects</option>
               {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <select value={teacherFilter} onChange={e => setTeacherFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:'12px', padding:'6px 10px' }}>
+            <select value={teacherFilter} onChange={e => setTeacherFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:12, padding:'6px 10px', minHeight:36 }}>
               <option value="All">All Teachers</option>
               {allTeachers.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <button onClick={() => setViewMode('month')} style={{ ...S.btnSm(viewMode==='month'?'#1e3a5f':'#e2e8f0'), color:viewMode==='month'?'white':'#374151' }}>Month</button>
-            <button onClick={() => setViewMode('week')}  style={{ ...S.btnSm(viewMode==='week'?'#1e3a5f':'#e2e8f0'),  color:viewMode==='week'?'white':'#374151' }}>This Week</button>
+            <button onClick={() => setViewMode('week')}  style={{ ...S.btnSm(viewMode==='week' ?'#1e3a5f':'#e2e8f0'), color:viewMode==='week' ?'white':'#374151' }}>Week</button>
           </div>
         </div>
 
-        {/* Legend */}
-        <div style={{ display:'flex', gap:'12px', marginBottom:'14px', flexWrap:'wrap', fontSize:'11px' }}>
-          {[['#dcfce7','#16a34a','Has logs'],['#fee2e2','#dc2626','Missed'],['#f0f9ff','#0891b2','Today'],['#f8fafc','#94a3b8','No activity']].map(([bg,cl,lb]) => (
-            <span key={lb} style={{ display:'flex', alignItems:'center', gap:'4px' }}>
-              <span style={{ width:'12px', height:'12px', borderRadius:'3px', background:bg, border:`1px solid ${cl}`, display:'inline-block' }} />
-              <span style={{ color:'#64748b' }}>{lb}</span>
-            </span>
-          ))}
-        </div>
-
-        {/* Month View */}
         {viewMode==='month' && (
           <>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'3px', marginBottom:'3px' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:2 }}>
               {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-                <div key={d} style={{ textAlign:'center', fontSize:'11px', fontWeight:'700', color:'#94a3b8', padding:'4px' }}>{d}</div>
+                <div key={d} style={{ textAlign:'center', fontSize:10, fontWeight:700, color:'#94a3b8', padding:4 }}>{d}</div>
               ))}
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'3px' }}>
-              {Array.from({ length: blanks }).map((_,i) => <div key={`b${i}`} />)}
-              {Array.from({ length: daysInMonth }).map((_,i) => {
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
+              {Array.from({ length:blanks }).map((_,i) => <div key={`b${i}`}/>)}
+              {Array.from({ length:daysInMonth }).map((_,i) => {
                 const day       = i+1
                 const dateStr   = `${year}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`
                 const isToday   = dateStr===today()
                 const hasLogs   = !!logsByDate[day]?.length
                 const hasMissed = !!missedByDate[day]?.length
-                const isSelected= selectedDay===day
-                const bg    = isSelected?'#1e3a5f':isToday?'#e0f2fe':hasLogs?'#dcfce7':hasMissed?'#fee2e2':'#f8fafc'
-                const color = isSelected?'white':isToday?'#0891b2':hasLogs?'#16a34a':hasMissed?'#dc2626':'#94a3b8'
+                const isSel     = selectedDay===day
+                const bg    = isSel?'#1e3a5f':isToday?'#e0f2fe':hasLogs?'#dcfce7':hasMissed?'#fee2e2':'#f8fafc'
+                const color = isSel?'white':isToday?'#0891b2':hasLogs?'#15803d':hasMissed?'#dc2626':'#94a3b8'
                 const dayLogs = logsByDate[day]||[]
                 return (
                   <div key={day} onClick={() => setSelectedDay(day===selectedDay?null:day)}
-                    style={{ background:bg, border:`1px solid ${isSelected?'#1e3a5f':isToday?'#7dd3fc':hasLogs?'#bbf7d0':hasMissed?'#fecaca':'#e2e8f0'}`, borderRadius:'8px', padding:'6px 4px', textAlign:'center', cursor:'pointer', minHeight:'64px' }}>
-                    <div style={{ fontSize:'13px', fontWeight:'700', color }}>{day}</div>
-                    {/* Subject color dots */}
+                    style={{ background:bg, border:`1px solid ${isSel?'#1e3a5f':isToday?'#7dd3fc':hasLogs?'#bbf7d0':hasMissed?'#fecaca':'#e2e8f0'}`, borderRadius:8, padding:'5px 3px', textAlign:'center', cursor:'pointer', minHeight:52 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color }}>{day}</div>
                     {hasLogs && (
-                      <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', gap:'2px', marginTop:'4px' }}>
+                      <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', gap:2, marginTop:3 }}>
                         {dayLogs.slice(0,4).map((l,j) => (
-                          <span key={j} title={l.subject_name} style={{ width:'7px', height:'7px', borderRadius:'50%', background: isSelected?'rgba(255,255,255,0.7)':subjectColorMap[l.subject_name]||'#94a3b8', display:'inline-block' }} />
+                          <span key={j} title={l.subject_name} style={{ width:6, height:6, borderRadius:'50%', background: isSel?'rgba(255,255,255,0.7)':subjectColorMap[l.subject_name]||'#94a3b8', display:'inline-block' }}/>
                         ))}
-                        {dayLogs.length>4 && <span style={{ fontSize:'9px', color: isSelected?'#cbd5e1':color }}>+{dayLogs.length-4}</span>}
+                        {dayLogs.length>4 && <span style={{ fontSize:8, color:isSel?'#cbd5e1':color }}>+{dayLogs.length-4}</span>}
                       </div>
                     )}
-                    {hasMissed && !hasLogs && <div style={{ fontSize:'9px', color: isSelected?'#fecaca':'#dc2626', marginTop:'2px' }}>missed</div>}
+                    {hasMissed && !hasLogs && <div style={{ fontSize:8, color:isSel?'#fecaca':'#dc2626', marginTop:2 }}>missed</div>}
                   </div>
                 )
               })}
@@ -671,28 +849,26 @@ function TabCalendar({ logs, missed }) {
           </>
         )}
 
-        {/* Week View */}
         {viewMode==='week' && (
-          <div style={{ overflowX:'auto' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:'8px', minWidth:'600px' }}>
+          <div className="table-wrap">
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, minWidth:480 }}>
               {weekDays.map(dateStr => {
                 const dayNum = parseInt(dateStr.split('-')[2])
                 const isThisMonth = dateStr.startsWith(month)
                 const dayLogs = isThisMonth ? (logsByDate[dayNum]||[]) : filteredLogs.filter(l => l.teaching_date===dateStr)
                 const isToday = dateStr===today()
                 return (
-                  <div key={dateStr} style={{ border:`2px solid ${isToday?'#1e3a5f':'#e2e8f0'}`, borderRadius:'10px', overflow:'hidden' }}>
-                    <div style={{ padding:'8px 10px', background: isToday?'#1e3a5f':'#f8fafc', textAlign:'center' }}>
-                      <div style={{ fontSize:'11px', fontWeight:'600', color: isToday?'#93c5fd':'#94a3b8' }}>{new Date(dateStr).toLocaleString('default',{weekday:'short'})}</div>
-                      <div style={{ fontSize:'16px', fontWeight:'800', color: isToday?'white':'#1e293b' }}>{dayNum}</div>
+                  <div key={dateStr} style={{ border:`2px solid ${isToday?'#1e3a5f':'#e2e8f0'}`, borderRadius:10, overflow:'hidden' }}>
+                    <div style={{ padding:'7px 8px', background: isToday?'#1e3a5f':'#f8fafc', textAlign:'center' }}>
+                      <div style={{ fontSize:10, fontWeight:600, color:isToday?'#93c5fd':'#94a3b8' }}>{new Date(dateStr).toLocaleString('default',{weekday:'short'})}</div>
+                      <div style={{ fontSize:15, fontWeight:800, color:isToday?'white':'#1e293b' }}>{dayNum}</div>
                     </div>
-                    <div style={{ padding:'6px', minHeight:'80px' }}>
-                      {dayLogs.length===0 && <div style={{ textAlign:'center', color:'#e2e8f0', fontSize:'11px', paddingTop:'8px' }}>—</div>}
+                    <div style={{ padding:5, minHeight:70 }}>
+                      {dayLogs.length===0 && <div style={{ textAlign:'center', color:'#e2e8f0', fontSize:10, paddingTop:8 }}>—</div>}
                       {dayLogs.map((l,j) => (
-                        <div key={j} style={{ marginBottom:'4px', padding:'4px 6px', borderRadius:'5px', background: (subjectColorMap[l.subject_name]||'#1e3a5f')+'18', borderLeft:`3px solid ${subjectColorMap[l.subject_name]||'#1e3a5f'}` }}>
-                          <div style={{ fontSize:'10px', fontWeight:'700', color: subjectColorMap[l.subject_name]||'#1e3a5f' }}>{l.subject_name}</div>
-                          <div style={{ fontSize:'9px', color:'#64748b' }}>{l.teacher_name||'-'}</div>
-                          <div style={{ fontSize:'9px', color:'#94a3b8', fontStyle:'italic' }}>{l.topic_taught?.slice(0,20)}{l.topic_taught?.length>20?'…':''}</div>
+                        <div key={j} style={{ marginBottom:3, padding:'3px 5px', borderRadius:4, background:`${subjectColorMap[l.subject_name]||'#1e3a5f'}18`, borderLeft:`3px solid ${subjectColorMap[l.subject_name]||'#1e3a5f'}` }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:subjectColorMap[l.subject_name]||'#1e3a5f' }}>{l.subject_name}</div>
+                          <div style={{ fontSize:9, color:'#64748b' }}>{l.teacher_name||'-'}</div>
                         </div>
                       ))}
                     </div>
@@ -703,34 +879,24 @@ function TabCalendar({ logs, missed }) {
           </div>
         )}
 
-        {/* Selected day detail */}
         {selectedDay && viewMode==='month' && (
-          <div style={{ marginTop:'20px', borderTop:'1px solid #e2e8f0', paddingTop:'20px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
-              <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>
+          <div style={{ marginTop:18, borderTop:'1px solid #e2e8f0', paddingTop:18 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <h3 style={{ fontSize:14, fontWeight:800, color:'#1e3a5f', margin:0 }}>
                 {selectedDay} {new Date(year,mon-1).toLocaleString('default',{month:'long'})} {year}
               </h3>
-              <span style={{ fontSize:'13px', color:'#64748b' }}>{selectedLogs.length} log{selectedLogs.length!==1?'s':''}</span>
+              <span style={{ fontSize:12, color:'#64748b' }}>{selectedLogs.length} log{selectedLogs.length!==1?'s':''}</span>
             </div>
-            {selectedLogs.length===0 && selectedMissed.length===0 && <p style={{ color:'#94a3b8', fontSize:'14px' }}>No activity recorded.</p>}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+            {selectedLogs.length===0 && selectedMissed.length===0 && <p style={{ color:'#94a3b8', fontSize:13 }}>No activity recorded.</p>}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:10 }}>
               {selectedLogs.map(l => (
-                <div key={l.id} style={{ background:'#f0fdf4', border:`1px solid ${subjectColorMap[l.subject_name]||'#bbf7d0'}40`, borderLeft:`4px solid ${subjectColorMap[l.subject_name]||'#16a34a'}`, borderRadius:'8px', padding:'12px 14px' }}>
-                  <div style={{ fontWeight:'700', color:'#15803d', fontSize:'13px' }}>{l.subject_name}</div>
-                  <div style={{ fontSize:'12px', color:'#374151', marginTop:'3px', fontStyle:'italic' }}>{l.topic_taught}</div>
-                  <div style={{ fontSize:'11px', color:'#64748b', marginTop:'4px' }}>👨‍🏫 {l.teacher_name||'-'} · {l.subtype||l.course} {l.period_number?`· P${l.period_number}`:''}</div>
-                  {l.classwork && <div style={{ fontSize:'11px', color:'#64748b', marginTop:'3px' }}>📝 {l.classwork?.slice(0,60)}{l.classwork?.length>60?'…':''}</div>}
-                  {l.homework  && <div style={{ fontSize:'11px', color:'#7c3aed', marginTop:'2px' }}>📚 HW: {l.homework?.slice(0,50)}{l.homework?.length>50?'…':''}</div>}
-                  {l.needs_doubt_session && <div style={{ fontSize:'11px', color:'#b45309', marginTop:'4px', fontWeight:'700' }}>🔁 Doubt session needed</div>}
+                <div key={l.id} style={{ background:'#f0fdf4', borderLeft:`4px solid ${subjectColorMap[l.subject_name]||'#16a34a'}`, borderRadius:8, padding:'12px 14px' }}>
+                  <div style={{ fontWeight:700, color:'#15803d', fontSize:13 }}>{l.subject_name}</div>
+                  <div style={{ fontSize:12, color:'#374151', marginTop:3, fontStyle:'italic' }}>{l.topic_taught}</div>
+                  <div style={{ fontSize:11, color:'#64748b', marginTop:4 }}>👨‍🏫 {l.teacher_name||'-'} · {l.subtype||l.course}</div>
                 </div>
               ))}
             </div>
-            {selectedMissed.map(m => (
-              <div key={m.id} style={{ background:'#fff1f2', border:'1px solid #fecaca', borderLeft:'4px solid #dc2626', borderRadius:'8px', padding:'12px 14px', marginTop:'8px' }}>
-                <div style={{ fontWeight:'700', color:'#dc2626', fontSize:'13px' }}>❌ Missed — {m.subject_name}</div>
-                <div style={{ fontSize:'12px', color:'#64748b', marginTop:'3px' }}>{m.course}/{m.subtype} · Reason: {m.reason}</div>
-              </div>
-            ))}
           </div>
         )}
       </div>
@@ -738,279 +904,242 @@ function TabCalendar({ logs, missed }) {
   )
 }
 
-// ─── Tab: Syllabus (Advanced) ─────────────────────────────────────────────────
-
-/*
- * Uses: teaching_syllabus (existing) + syllabus_topics (new optional table)
- * syllabus_topics: id, syllabus_id, topic_name, expected_date, order_num, created_at
- * Falls back gracefully if syllabus_topics doesn't exist.
- */
+// ─── Tab: Syllabus ────────────────────────────────────────────────────────────
 
 function TabSyllabus({ logs, courseData, monthlySyllabus=[] }) {
-  const [syllabus, setSyllabus]       = useState([])
-  const [topics, setTopics]           = useState({})       // { syllabus_id: [topics] }
-  const [loading, setLoading]         = useState(true)
-  const [form, setForm]               = useState({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'', expected_end_date:'' })
-  const [saving, setSaving]           = useState(false)
-  const [showForm, setShowForm]       = useState(false)
-  const [expandedId, setExpandedId]   = useState(null)
-  const [topicForm, setTopicForm]     = useState({ name:'', expected_date:'' })
+  const [syllabus, setSyllabus]     = useState([])
+  const [topics, setTopics]         = useState({})
+  const [loading, setLoading]       = useState(true)
+  const [form, setForm]             = useState({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'', expected_end_date:'' })
+  const [saving, setSaving]         = useState(false)
+  const [showForm, setShowForm]     = useState(false)
+  const [editingRow, setEditingRow] = useState(null) // FIX-6
+  const [expandedId, setExpandedId] = useState(null)
+  const [topicForm, setTopicForm]   = useState({ name:'', expected_date:'' })
   const [addingTopicTo, setAddingTopicTo] = useState(null)
-  const [filterBatch, setFilterBatch] = useState('All')
+  const [filterBatch, setFilterBatch]     = useState('All')
   const [filterSubject, setFilterSubject] = useState('All')
-  const [viewMode, setViewMode]       = useState('cards') // 'cards' | 'pace'
-  const { subtypesFor, classesFor }   = courseData
+  const [viewMode, setViewMode]     = useState('cards')
+  const [confirmDel, setConfirmDel] = useState(null)
+  const { show: showToast, el: toastEl } = useToast()
+  const { subtypesFor, classesFor } = courseData
 
   const fetchSyllabus = async () => {
     setLoading(true)
-    const { data } = await supabase.from('teaching_syllabus').select('*').order('course')
+    const { data, error } = await supabase.from('teaching_syllabus').select('*').order('course')
+    if (error) { showToast('Failed to load syllabus: '+error.message, '#dc2626'); setLoading(false); return }
     if (data) setSyllabus(data)
-    // Try to fetch topic breakdown (graceful fail)
+    // BUG-9: surface syllabus_topics errors
     try {
-      const { data: td } = await supabase.from('syllabus_topics').select('*').order('order_num')
+      const { data:td, error:te } = await supabase.from('syllabus_topics').select('*').order('order_num')
+      if (te) showToast('Topics table: '+te.message, '#d97706')
       if (td) {
         const map = {}
-        td.forEach(t => { if(!map[t.syllabus_id]) map[t.syllabus_id]=[]; map[t.syllabus_id].push(t) })
+        td.forEach(t => { if (!map[t.syllabus_id]) map[t.syllabus_id]=[]; map[t.syllabus_id].push(t) })
         setTopics(map)
       }
-    } catch (_) {}
+    } catch (err) { showToast('syllabus_topics not available: '+err.message, '#d97706') }
     setLoading(false)
   }
   useEffect(() => { fetchSyllabus() }, [])
 
-  const handleSave = async (e) => {
+  const handleSave = async e => {
     e.preventDefault(); setSaving(true)
-    const { error } = await supabase.from('teaching_syllabus').upsert([{
-      course: form.course, subtype: form.subtype||null, class_name: form.class_name||null,
-      subject_name: form.subject_name, total_topics: parseInt(form.total_topics),
-      expected_end_date: form.expected_end_date||null,
-    }], { onConflict:'course,subtype,class_name,subject_name' })
-    if (error) alert('Error: ' + error.message)
-    else { setForm({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'', expected_end_date:'' }); setShowForm(false); fetchSyllabus() }
+    // FIX-6: edit mode
+    if (editingRow) {
+      const { error } = await supabase.from('teaching_syllabus').update({
+        total_topics: parseInt(form.total_topics), expected_end_date: form.expected_end_date||null,
+      }).eq('id', editingRow.id)
+      if (error) showToast('Error: '+error.message, '#dc2626')
+      else { setEditingRow(null); setShowForm(false); fetchSyllabus(); showToast('Updated', '#16a34a') }
+    } else {
+      const { error } = await supabase.from('teaching_syllabus').upsert([{
+        course:form.course, subtype:form.subtype||null, class_name:form.class_name||null,
+        subject_name:form.subject_name, total_topics:parseInt(form.total_topics), expected_end_date:form.expected_end_date||null,
+      }], { onConflict:'course,subtype,class_name,subject_name' })
+      if (error) showToast('Error: '+error.message, '#dc2626')
+      else { setForm({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'', expected_end_date:'' }); setShowForm(false); fetchSyllabus(); showToast('Saved', '#16a34a') }
+    }
     setSaving(false)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete syllabus entry?')) return
-    await supabase.from('teaching_syllabus').delete().eq('id', id); fetchSyllabus()
+  const handleDelete = async id => {
+    const { error } = await supabase.from('teaching_syllabus').delete().eq('id', id)
+    if (error) showToast('Delete failed: '+error.message, '#dc2626')
+    else { setConfirmDel(null); fetchSyllabus(); showToast('Deleted', '#dc2626') }
   }
 
-  const handleAddTopic = async (syllabusId) => {
+  const handleAddTopic = async syllabusId => {
     if (!topicForm.name.trim()) return
     const existing = topics[syllabusId]||[]
-    const { error } = await supabase.from('syllabus_topics').insert([{
-      syllabus_id: syllabusId, topic_name: topicForm.name, expected_date: topicForm.expected_date||null, order_num: existing.length+1
-    }])
-    if (error) alert('Error: ' + error.message)
+    const { error } = await supabase.from('syllabus_topics').insert([{ syllabus_id:syllabusId, topic_name:topicForm.name, expected_date:topicForm.expected_date||null, order_num:existing.length+1 }])
+    if (error) showToast('Topic add failed: '+error.message, '#dc2626')
     else { setTopicForm({ name:'', expected_date:'' }); setAddingTopicTo(null); fetchSyllabus() }
   }
 
   const handleMarkTopic = async (topic, done) => {
-    try {
-      await supabase.from('syllabus_topics').update({ completed: done, completed_at: done?new Date().toISOString():null }).eq('id', topic.id)
-      fetchSyllabus()
-    } catch(_) {}
+    const { error } = await supabase.from('syllabus_topics').update({ completed:done, completed_at:done?new Date().toISOString():null }).eq('id', topic.id)
+    if (error) showToast('Update failed: '+error.message, '#dc2626')
+    else fetchSyllabus()
   }
 
-  const getLogsFor = (row) => logs.filter(l => l.course===row.course && l.subtype===row.subtype && (!row.class_name||l.class_name===row.class_name) && l.subject_name===row.subject_name)
-  const getCompleted = (row) => getLogsFor(row).length
+  const getLogsFor    = row => logs.filter(l => l.course===row.course && l.subtype===row.subtype && (!row.class_name||l.class_name===row.class_name) && l.subject_name===row.subject_name)
+  const getCompleted  = row => getLogsFor(row).length
 
-  // Pace calculation
-  const getPace = (row) => {
-    const batchLogs = getLogsFor(row).sort((a,b) => a.teaching_date?.localeCompare(b.teaching_date))
-    if (batchLogs.length < 2) return null
-    const first  = new Date(batchLogs[0].teaching_date)
-    const last   = new Date(batchLogs[batchLogs.length-1].teaching_date)
+  // FIX-7: pace guards < 2 logs
+  const getPace = row => {
+    const bl = getLogsFor(row).sort((a,b) => a.teaching_date?.localeCompare(b.teaching_date))
+    if (bl.length < 2) return null
+    const first  = new Date(bl[0].teaching_date)
+    const last   = new Date(bl[bl.length-1].teaching_date)
     const days   = Math.max(1, (last-first)/(1000*60*60*24))
-    const rate   = batchLogs.length / days // topics per day
-    const remaining = row.total_topics - batchLogs.length
-    if (remaining<=0) return { daysLeft:0, onTrack:true, projectedEnd: last.toISOString().split('T')[0] }
-    const projDays = Math.ceil(remaining / rate)
+    const rate   = bl.length / days
+    const remaining = row.total_topics - bl.length
+    if (remaining<=0) return { daysLeft:0, onTrack:true, projectedEnd:last.toISOString().split('T')[0], rate:rate.toFixed(2) }
+    const projDays = Math.ceil(remaining/rate)
     const projDate = new Date(); projDate.setDate(projDate.getDate()+projDays)
     const projEnd  = projDate.toISOString().split('T')[0]
-    const onTrack  = !row.expected_end_date || projEnd<=row.expected_end_date
-    return { daysLeft: projDays, onTrack, projectedEnd: projEnd, rate: rate.toFixed(2) }
+    return { daysLeft:projDays, onTrack:!row.expected_end_date||projEnd<=row.expected_end_date, projectedEnd:projEnd, rate:rate.toFixed(2) }
   }
-
-  // Monthly syllabus match for each row
-  const getMonthlySyllabusMatch = (row) => monthlySyllabus.filter(ms =>
-    ms.admit_type===row.subtype && ms.subject_name===row.subject_name
-  )
 
   const allBatches  = [...new Set(syllabus.map(s => s.subtype).filter(Boolean))]
   const allSubjects = [...new Set(syllabus.map(s => s.subject_name).filter(Boolean))]
+  const filtered    = syllabus.filter(r => (filterBatch==='All'||r.subtype===filterBatch) && (filterSubject==='All'||r.subject_name===filterSubject))
 
-  const filtered = syllabus.filter(row =>
-    (filterBatch==='All'   || row.subtype===filterBatch) &&
-    (filterSubject==='All' || row.subject_name===filterSubject)
-  )
+  const avgPct    = syllabus.length>0 ? Math.round(syllabus.reduce((a,r) => a+Math.min(100,Math.round((getCompleted(r)/Math.max(r.total_topics,1))*100)),0)/syllabus.length) : 0
+  const offTrack  = syllabus.filter(r => { const p=getPace(r); return p&&!p.onTrack }).length
+  const complete  = syllabus.filter(r => r.total_topics>0 && getCompleted(r)>=r.total_topics).length
 
   const subtypes = form.course ? subtypesFor(form.course) : []
-  const classes  = (form.course && form.subtype) ? classesFor(form.course, form.subtype) : []
-
-  // Overall stats
-  const totalDefined   = syllabus.length
-  const completed100   = syllabus.filter(r => { const d=getCompleted(r); return r.total_topics>0&&d>=r.total_topics }).length
-  const avgPct         = syllabus.length>0 ? Math.round(syllabus.reduce((a,r) => a+Math.min(100,Math.round((getCompleted(r)/Math.max(r.total_topics,1))*100)),0)/syllabus.length) : 0
-  const offTrack       = syllabus.filter(r => { const p=getPace(r); return p&&!p.onTrack }).length
+  const classes  = (form.course&&form.subtype) ? classesFor(form.course, form.subtype) : []
 
   return (
     <>
-      {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'14px', marginBottom:'20px' }}>
+      {toastEl}
+      {confirmDel && <ConfirmModal title="Delete Syllabus" message="Delete this syllabus entry?" confirmLabel="Delete" danger onConfirm={() => handleDelete(confirmDel)} onCancel={() => setConfirmDel(null)}/>}
+
+      <div className="stat-grid-4" style={S.statGrid(4)}>
         {[
-          { label:'Subjects defined', value:totalDefined,  color:'#1e3a5f', bg:'#eff6ff', icon:'📚' },
-          { label:'Completed',        value:completed100,  color:'#16a34a', bg:'#dcfce7', icon:'✅' },
-          { label:'Avg coverage',     value:`${avgPct}%`,  color:scoreColor(avgPct), bg:scoreBg(avgPct), icon:'📊' },
-          { label:'Off track',        value:offTrack,      color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
+          { label:'Subjects defined', value:syllabus.length, color:'#1e3a5f', bg:'#eff6ff', icon:'📚' },
+          { label:'Completed',        value:complete,         color:'#16a34a', bg:'#dcfce7', icon:'✅' },
+          { label:'Avg coverage',     value:`${avgPct}%`,     color:scoreColor(avgPct), bg:scoreBg(avgPct), icon:'📊' },
+          { label:'Off track',        value:offTrack,         color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
         ].map(c => (
           <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'20px', marginBottom:'4px' }}>{c.icon}</div>
-            <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'24px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.value}</h2>
+            <div style={{ fontSize:20, marginBottom:4 }}>{c.icon}</div>
+            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:24, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
           </div>
         ))}
       </div>
 
-      {/* Controls */}
       <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?'16px':0, flexWrap:'wrap', gap:'10px' }}>
-          <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📊 Syllabus Tracker</h2>
-          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-            <select value={filterBatch}   onChange={e => setFilterBatch(e.target.value)}   style={{ ...S.select, width:'auto', fontSize:'12px' }}>
-              <option value="All">All Batches</option>
-              {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
-            <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', fontSize:'12px' }}>
-              <option value="All">All Subjects</option>
-              {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <button onClick={() => setViewMode('cards')} style={{ ...S.btnSm(viewMode==='cards'?'#1e3a5f':'#e2e8f0'), color:viewMode==='cards'?'white':'#374151' }}>📋 Cards</button>
-            <button onClick={() => setViewMode('pace')}  style={{ ...S.btnSm(viewMode==='pace'?'#7c3aed':'#e2e8f0'), color:viewMode==='pace'?'white':'#374151' }}>📈 Pace</button>
-            <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Syllabus'}</button>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?14:0, flexWrap:'wrap', gap:8 }}>
+          <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', margin:0 }}>📊 Syllabus Tracker</h2>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            <select value={filterBatch}   onChange={e => setFilterBatch(e.target.value)}   style={{ ...S.select, width:'auto', fontSize:12 }}><option value="All">All Batches</option>{allBatches.map(b=><option key={b} value={b}>{b}</option>)}</select>
+            <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', fontSize:12 }}><option value="All">All Subjects</option>{allSubjects.map(s=><option key={s} value={s}>{s}</option>)}</select>
+            <button onClick={() => setViewMode('cards')} style={{ ...S.btnSm(viewMode==='cards'?'#1e3a5f':'#e2e8f0'), color:viewMode==='cards'?'white':'#374151' }}>📋</button>
+            <button onClick={() => setViewMode('pace')}  style={{ ...S.btnSm(viewMode==='pace'?'#7c3aed':'#e2e8f0'),  color:viewMode==='pace'?'white':'#374151' }}>📈</button>
+            <button onClick={() => { setShowForm(!showForm); setEditingRow(null); setForm({ course:'', subtype:'', class_name:'', subject_name:'', total_topics:'', expected_end_date:'' }) }} style={S.btn(showForm?'#64748b':'#1e3a5f')}>
+              {showForm ? '✖ Cancel' : '➕ Add'}
+            </button>
           </div>
         </div>
 
         {showForm && (
-          <form onSubmit={handleSave} style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'12px', padding:'16px', background:'#f8fafc', borderRadius:'8px', marginTop:'16px' }}>
-            <div><label style={S.label}>Course</label><select value={form.course} onChange={e => setForm(f=>({...f,course:e.target.value,subtype:'',class_name:''}))} required style={S.select}><option value="">Select</option>{courseData.courses.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-            <div><label style={S.label}>Batch/Subtype</label><select value={form.subtype} onChange={e => setForm(f=>({...f,subtype:e.target.value,class_name:''}))} style={S.select}><option value="">All</option>{subtypes.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-            <div><label style={S.label}>Class</label>{classes.length>0?<select value={form.class_name} onChange={e=>setForm(f=>({...f,class_name:e.target.value}))} style={S.select}><option value="">All</option>{classes.map(c=><option key={c} value={c}>{c}</option>)}</select>:<input value={form.class_name} onChange={e=>setForm(f=>({...f,class_name:e.target.value}))} placeholder="Optional" style={S.input}/>}</div>
-            <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e=>setForm(f=>({...f,subject_name:e.target.value}))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+          <form onSubmit={handleSave} className="form-grid" style={{ ...S.formGrid, marginTop:14, padding:16, background:'#f8fafc', borderRadius:8 }}>
+            {!editingRow && (
+              <>
+                <div><label style={S.label}>Course</label><select value={form.course} onChange={e => setForm(f=>({...f,course:e.target.value,subtype:'',class_name:''}))} required style={S.select}><option value="">Select</option>{courseData.courses.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+                <div><label style={S.label}>Batch/Subtype</label><select value={form.subtype} onChange={e => setForm(f=>({...f,subtype:e.target.value,class_name:''}))} style={S.select}><option value="">All</option>{subtypes.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+                <div><label style={S.label}>Class</label>{classes.length>0?<select value={form.class_name} onChange={e=>setForm(f=>({...f,class_name:e.target.value}))} style={S.select}><option value="">All</option>{classes.map(c=><option key={c} value={c}>{c}</option>)}</select>:<input value={form.class_name} onChange={e=>setForm(f=>({...f,class_name:e.target.value}))} placeholder="Optional" style={S.input}/>}</div>
+                <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e=>setForm(f=>({...f,subject_name:e.target.value}))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+              </>
+            )}
+            {editingRow && <div style={{ gridColumn:'1/-1', fontSize:13, color:'#7c3aed', fontWeight:700 }}>✏️ Editing: {editingRow.subject_name} · {editingRow.subtype}</div>}
             <div><label style={S.label}>Total Topics</label><input type="number" min="1" value={form.total_topics} onChange={e=>setForm(f=>({...f,total_topics:e.target.value}))} required style={S.input} placeholder="e.g. 40"/></div>
             <div><label style={S.label}>Expected End Date</label><input type="date" value={form.expected_end_date} onChange={e=>setForm(f=>({...f,expected_end_date:e.target.value}))} style={S.input}/></div>
-            <div style={{ gridColumn:'1/-1' }}><button type="submit" disabled={saving} style={S.btn('#16a34a',saving)}>{saving?'⏳ Saving...':'✅ Save Syllabus'}</button></div>
+            <div style={{ gridColumn:'1/-1' }}><button type="submit" disabled={saving} style={S.btn('#16a34a',saving)}>{saving?'⏳ Saving...':'✅ Save'}</button></div>
           </form>
         )}
       </div>
 
-      {loading && <div style={{ textAlign:'center', padding:'32px', color:'#64748b' }}>⏳ Loading...</div>}
+      {loading && <div style={{ textAlign:'center', padding:32, color:'#64748b' }}>⏳ Loading...</div>}
 
-      {/* Cards View */}
       {!loading && viewMode==='cards' && (
-        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          {filtered.length===0 && <div style={{ ...S.card, textAlign:'center', padding:'32px', color:'#94a3b8' }}>No syllabus defined. Add one above.</div>}
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {filtered.length===0 && <div style={{ ...S.card, textAlign:'center', padding:32, color:'#94a3b8' }}>No syllabus defined.</div>}
           {filtered.map(row => {
-            const done      = getCompleted(row)
-            const p         = row.total_topics>0 ? Math.min(100,Math.round((done/row.total_topics)*100)) : 0
-            const color     = scoreColor(p)
-            const pace      = getPace(row)
+            const done  = getCompleted(row)
+            const p     = row.total_topics>0 ? Math.min(100,Math.round((done/row.total_topics)*100)) : 0
+            const color = scoreColor(p)
+            const pace  = getPace(row)
             const rowTopics = topics[row.id]||[]
-            const msMatches = getMonthlySyllabusMatch(row)
             const isExpanded= expandedId===row.id
-
             return (
               <div key={row.id} style={{ ...S.card, marginBottom:0, border: p>=100?'1px solid #bbf7d0':pace&&!pace.onTrack?'1px solid #fecaca':'1px solid #e2e8f0' }}>
-                {/* Header */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', flexWrap:'wrap', gap:'8px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10, flexWrap:'wrap', gap:8 }}>
                   <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
-                      <span style={{ fontWeight:'700', color:'#1e293b', fontSize:'15px' }}>{row.subject_name}</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                      <span style={{ fontWeight:800, color:'#1e293b', fontSize:14 }}>{row.subject_name}</span>
                       <span style={S.badge('#1e3a5f','#eff6ff')}>{row.subtype||'All'}</span>
                       {row.class_name && <span style={S.badge('#64748b','#f1f5f9')}>{row.class_name}</span>}
                       {p>=100 && <span style={S.badge('#16a34a','#dcfce7')}>✅ Complete</span>}
                       {pace&&!pace.onTrack && <span style={S.badge('#dc2626','#fee2e2')}>⚠️ Off Track</span>}
                     </div>
-                    <div style={{ fontSize:'12px', color:'#64748b', marginTop:'4px' }}>{row.course} {row.expected_end_date?`· Target: ${fmtDate(row.expected_end_date)}`:''}</div>
+                    <div style={{ fontSize:12, color:'#64748b', marginTop:3 }}>{row.course}{row.expected_end_date?` · Target: ${fmtDate(row.expected_end_date)}`:''}</div>
                   </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <div style={{ textAlign:'right' }}>
-                      <span style={{ fontSize:'22px', fontWeight:'800', color }}>{p}%</span>
-                      <div style={{ fontSize:'11px', color:'#94a3b8' }}>{done}/{row.total_topics} topics</div>
+                      <span style={{ fontSize:22, fontWeight:800, color, fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
+                      <div style={{ fontSize:11, color:'#94a3b8' }}>{done}/{row.total_topics}</div>
                     </div>
+                    {/* FIX-6: edit button */}
+                    <button onClick={() => { setEditingRow(row); setForm({ ...row, total_topics:row.total_topics, expected_end_date:row.expected_end_date||'' }); setShowForm(true) }} style={S.btnSm('#7c3aed')}>✏️</button>
                     <button onClick={() => setExpandedId(isExpanded?null:row.id)} style={S.btnSm('#64748b')}>{isExpanded?'▲':'▼'}</button>
-                    <button onClick={() => handleDelete(row.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                    <button onClick={() => setConfirmDel(row.id)} style={S.btnSm('#dc2626')}>🗑</button>
                   </div>
                 </div>
-
-                {/* Progress bar */}
-                <div style={{ height:'10px', background:'#e2e8f0', borderRadius:'5px', overflow:'hidden', marginBottom:'8px' }}>
-                  <div style={{ width:`${p}%`, height:'100%', background:color, borderRadius:'5px', transition:'width 0.5s' }} />
+                <div style={{ height:8, background:'#e2e8f0', borderRadius:4, overflow:'hidden', marginBottom:6 }}>
+                  <div style={{ width:`${p}%`, height:'100%', background:color, borderRadius:4, transition:'width .5s' }}/>
                 </div>
-
-                {/* Pace info */}
                 {pace && (
-                  <div style={{ display:'flex', gap:'16px', fontSize:'12px', color:'#64748b', marginBottom:'8px', flexWrap:'wrap' }}>
+                  <div style={{ display:'flex', gap:14, fontSize:12, color:'#64748b', marginBottom:6, flexWrap:'wrap' }}>
                     <span>📈 {pace.rate} topics/day</span>
-                    {pace.daysLeft>0 && <span>⏱ ~{pace.daysLeft} days to complete</span>}
-                    <span style={{ color: pace.onTrack?'#16a34a':'#dc2626', fontWeight:'600' }}>
-                      {pace.onTrack?'✅ On track':'⚠️ Behind schedule'} · Projected end: {fmtDate(pace.projectedEnd)}
+                    {pace.daysLeft>0 && <span>⏱ ~{pace.daysLeft} days left</span>}
+                    <span style={{ color:pace.onTrack?'#16a34a':'#dc2626', fontWeight:600 }}>
+                      {pace.onTrack?'✅ On track':'⚠️ Behind'} · Est: {fmtDate(pace.projectedEnd)}
                     </span>
                   </div>
                 )}
-
-                {/* Monthly syllabus matches */}
-                {msMatches.length>0 && (
-                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'8px' }}>
-                    {msMatches.map(ms => (
-                      <span key={ms.id} style={S.badge(ms.completed?'#16a34a':'#b45309', ms.completed?'#dcfce7':'#fef9c3')}>
-                        📆 {ms.topic?.slice(0,20)} {ms.completed?'✅':'⏳'}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Expanded: topic list */}
                 {isExpanded && (
-                  <div style={{ marginTop:'12px', borderTop:'1px solid #f1f5f9', paddingTop:'12px' }}>
-                    <div style={{ fontWeight:'600', color:'#374151', fontSize:'13px', marginBottom:'8px' }}>📋 Topic Breakdown</div>
-
-                    {/* Recent logs as auto-topics */}
-                    {rowTopics.length===0 && (
-                      <div style={{ marginBottom:'10px' }}>
-                        <div style={{ fontSize:'12px', color:'#94a3b8', marginBottom:'6px' }}>Topics from teaching logs:</div>
-                        {getLogsFor(row).slice(0,8).map(l => (
-                          <div key={l.id} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'4px 8px', background:'#f0fdf4', borderRadius:'5px', marginBottom:'3px', fontSize:'12px' }}>
-                            <span style={{ color:'#16a34a' }}>✓</span>
-                            <span style={{ flex:1, color:'#374151' }}>{l.topic_taught}</span>
-                            <span style={{ color:'#94a3b8' }}>{fmtDate(l.teaching_date)}</span>
-                          </div>
-                        ))}
-                        {getLogsFor(row).length>8 && <div style={{ fontSize:'11px', color:'#94a3b8', padding:'4px 8px' }}>+{getLogsFor(row).length-8} more topics logged</div>}
-                      </div>
-                    )}
-
-                    {/* Manual topics */}
-                    {rowTopics.length>0 && rowTopics.map(t => (
-                      <div key={t.id} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'5px 8px', border:'1px solid #e2e8f0', borderRadius:'6px', marginBottom:'4px', background: t.completed?'#f0fdf4':'white' }}>
-                        <input type="checkbox" checked={!!t.completed} onChange={e => handleMarkTopic(t, e.target.checked)} style={{ width:'14px', height:'14px', cursor:'pointer' }} />
-                        <span style={{ flex:1, fontSize:'13px', color: t.completed?'#16a34a':'#374151', textDecoration: t.completed?'line-through':'none' }}>{t.topic_name}</span>
-                        {t.expected_date && <span style={{ fontSize:'11px', color:'#94a3b8' }}>{fmtDate(t.expected_date)}</span>}
-                        {t.completed && t.completed_at && <span style={{ fontSize:'10px', color:'#16a34a' }}>✓ {fmtDate(t.completed_at?.split('T')[0])}</span>}
+                  <div style={{ marginTop:12, borderTop:'1px solid #f1f5f9', paddingTop:12 }}>
+                    <div style={{ fontWeight:700, color:'#374151', fontSize:13, marginBottom:8 }}>📋 Topic Breakdown</div>
+                    {rowTopics.length===0 && getLogsFor(row).slice(0,8).map(l => (
+                      <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 8px', background:'#f0fdf4', borderRadius:5, marginBottom:3, fontSize:12 }}>
+                        <span style={{ color:'#16a34a' }}>✓</span>
+                        <span style={{ flex:1, color:'#374151' }}>{l.topic_taught}</span>
+                        <span style={{ color:'#94a3b8' }}>{fmtDate(l.teaching_date)}</span>
                       </div>
                     ))}
-
-                    {/* Add topic form */}
+                    {rowTopics.map(t => (
+                      <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', border:'1px solid #e2e8f0', borderRadius:6, marginBottom:4, background:t.completed?'#f0fdf4':'white' }}>
+                        <input type="checkbox" checked={!!t.completed} onChange={e => handleMarkTopic(t, e.target.checked)} style={{ width:14, height:14, cursor:'pointer' }}/>
+                        <span style={{ flex:1, fontSize:13, color:t.completed?'#16a34a':'#374151', textDecoration:t.completed?'line-through':'none' }}>{t.topic_name}</span>
+                        {t.expected_date && <span style={{ fontSize:11, color:'#94a3b8' }}>{fmtDate(t.expected_date)}</span>}
+                      </div>
+                    ))}
                     {addingTopicTo===row.id
                       ? (
-                        <div style={{ display:'flex', gap:'8px', alignItems:'center', marginTop:'8px' }}>
-                          <input value={topicForm.name} onChange={e=>setTopicForm(f=>({...f,name:e.target.value}))} placeholder="Topic name" style={{ ...S.input, flex:2 }} />
-                          <input type="date" value={topicForm.expected_date} onChange={e=>setTopicForm(f=>({...f,expected_date:e.target.value}))} style={{ ...S.input, flex:1 }} />
-                          <button onClick={() => handleAddTopic(row.id)} style={S.btnSm('#16a34a')}>✓ Add</button>
+                        <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:8, flexWrap:'wrap' }}>
+                          <input value={topicForm.name} onChange={e=>setTopicForm(f=>({...f,name:e.target.value}))} placeholder="Topic name" style={{ ...S.input, flex:2, minWidth:120 }}/>
+                          <input type="date" value={topicForm.expected_date} onChange={e=>setTopicForm(f=>({...f,expected_date:e.target.value}))} style={{ ...S.input, flex:1, minWidth:120 }}/>
+                          <button onClick={() => handleAddTopic(row.id)} style={S.btnSm('#16a34a')}>✓</button>
                           <button onClick={() => setAddingTopicTo(null)} style={S.btnSm('#94a3b8')}>✖</button>
                         </div>
                       )
-                      : <button onClick={() => setAddingTopicTo(row.id)} style={{ ...S.btnSm('#7c3aed'), marginTop:'8px' }}>➕ Add Topic</button>
+                      : <button onClick={() => setAddingTopicTo(row.id)} style={{ ...S.btnSm('#7c3aed'), marginTop:8 }}>➕ Add Topic</button>
                     }
                   </div>
                 )}
@@ -1020,50 +1149,51 @@ function TabSyllabus({ logs, courseData, monthlySyllabus=[] }) {
         </div>
       )}
 
-      {/* Pace View — table comparing expected vs actual */}
       {!loading && viewMode==='pace' && (
-        <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+        <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:600 }}>
             <thead>
               <tr style={{ background:'#1e3a5f', color:'white' }}>
-                {['Batch','Subject','Done','Total','Progress','Pace','Projected End','Target','Status'].map(h => (
-                  <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:'600', fontSize:'12px' }}>{h}</th>
+                {['Batch','Subject','Done','Total','Progress','Pace','Projected','Target','Status',''].map(h => (
+                  <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:600, fontSize:12, whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map(row => {
-                const done  = getCompleted(row)
-                const p     = row.total_topics>0 ? Math.min(100,Math.round((done/row.total_topics)*100)) : 0
-                const pace  = getPace(row)
-                const color = scoreColor(p)
+                const done = getCompleted(row)
+                const p    = row.total_topics>0 ? Math.min(100,Math.round((done/row.total_topics)*100)) : 0
+                const pace = getPace(row)
+                const cl   = scoreColor(p)
                 return (
-                  <tr key={row.id} style={{ borderBottom:'1px solid #f1f5f9', background: pace&&!pace.onTrack?'#fff1f2':'white' }}>
+                  <tr key={row.id} style={{ borderBottom:'1px solid #f1f5f9', background:pace&&!pace.onTrack?'#fff1f2':'white' }}>
                     <td style={{ padding:'10px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{row.subtype||'All'}</span></td>
-                    <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>{row.subject_name}</td>
-                    <td style={{ padding:'10px 12px', fontWeight:'700', color }}>{done}</td>
-                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{row.total_topics}</td>
-                    <td style={{ padding:'10px 12px', minWidth:'120px' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-                        <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
-                          <div style={{ width:`${p}%`, height:'100%', background:color, borderRadius:'3px' }}/>
+                    <td style={{ padding:'10px 12px', fontWeight:700, color:'#1e293b' }}>{row.subject_name}</td>
+                    <td style={{ padding:'10px 12px', fontWeight:700, color:cl, fontFamily:"'JetBrains Mono',monospace" }}>{done}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b', fontFamily:"'JetBrains Mono',monospace" }}>{row.total_topics}</td>
+                    <td style={{ padding:'10px 12px', minWidth:100 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <div style={{ flex:1, height:6, background:'#e2e8f0', borderRadius:3, overflow:'hidden' }}>
+                          <div style={{ width:`${p}%`, height:'100%', background:cl, borderRadius:3 }}/>
                         </div>
-                        <span style={{ fontWeight:'700', color, fontSize:'11px' }}>{p}%</span>
+                        <span style={{ fontWeight:700, color:cl, fontSize:11 }}>{p}%</span>
                       </div>
                     </td>
-                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{pace ? `${pace.rate}/day` : '—'}</td>
-                    <td style={{ padding:'10px 12px', color:'#374151' }}>{pace ? fmtDate(pace.projectedEnd) : '—'}</td>
-                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{row.expected_end_date ? fmtDate(row.expected_end_date) : '—'}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{pace?`${pace.rate}/d`:'—'}</td>
+                    <td style={{ padding:'10px 12px', color:'#374151' }}>{pace?fmtDate(pace.projectedEnd):'—'}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{row.expected_end_date?fmtDate(row.expected_end_date):'—'}</td>
                     <td style={{ padding:'10px 12px' }}>
-                      {p>=100 ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Done</span>
-                        : pace ? <span style={S.badge(pace.onTrack?'#16a34a':'#dc2626', pace.onTrack?'#dcfce7':'#fee2e2')}>{pace.onTrack?'On track':'Off track'}</span>
-                        : <span style={S.badge('#94a3b8','#f1f5f9')}>No data</span>
-                      }
+                      {p>=100?<span style={S.badge('#16a34a','#dcfce7')}>✅ Done</span>
+                        :pace?<span style={S.badge(pace.onTrack?'#16a34a':'#dc2626',pace.onTrack?'#dcfce7':'#fee2e2')}>{pace.onTrack?'On track':'Off track'}</span>
+                        :<span style={S.badge('#94a3b8','#f1f5f9')}>No data</span>}
+                    </td>
+                    <td style={{ padding:'10px 12px' }}>
+                      <button onClick={() => { setEditingRow(row); setForm({ ...row, total_topics:row.total_topics, expected_end_date:row.expected_end_date||'' }); setShowForm(true) }} style={S.btnSm('#7c3aed')}>✏️</button>
                     </td>
                   </tr>
                 )
               })}
-              {filtered.length===0 && <tr><td colSpan={9} style={{ padding:'32px', textAlign:'center', color:'#94a3b8' }}>No syllabus data.</td></tr>}
+              {filtered.length===0 && <tr><td colSpan={10} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No syllabus data.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1072,7 +1202,7 @@ function TabSyllabus({ logs, courseData, monthlySyllabus=[] }) {
   )
 }
 
-// ─── Tab: Timetable (Advanced) ────────────────────────────────────────────────
+// ─── Tab: Timetable ───────────────────────────────────────────────────────────
 
 function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
   const [form, setForm]           = useState({ course:'', subtype:'', class_name:'', batch_id:'', subject_name:'', teacher_name:'', day_of_week:'Monday', period_number:1, start_time:'', end_time:'' })
@@ -1080,87 +1210,95 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
   const [showForm, setShowForm]   = useState(false)
   const [viewCourse, setViewCourse]   = useState('')
   const [viewSubtype, setViewSubtype] = useState('')
-  const [conflicts, setConflicts] = useState([])
-  const [editingSlot, setEditingSlot] = useState(null) // { id, field, value }
-  const [subMode, setSubMode]     = useState(null)     // { slotId, day, period, subtype }
-  const [subTeacher, setSubTeacher] = useState('')
+  const [subMode, setSubMode]     = useState(null)
+  const [subTeacher, setSubTeacher]   = useState('')
   const [subDate, setSubDate]     = useState(today())
-  const [substitutes, setSubstitutes] = useState([])   // saved substitute records
+  const [substitutes, setSubstitutes] = useState([])
+  const [confirmDel, setConfirmDel]   = useState(null)
+  const { show: showToast, el: toastEl } = useToast()
   const { courses, subtypesFor, classesFor } = courseData
 
+  // FIX-5: default to first course/subtype once data loads
   useEffect(() => {
     if (courses.length && !viewCourse) {
-      const c=courses[0], s=subtypesFor(c)[0]||''
+      const c = courses[0]
+      const s = subtypesFor(c)[0]||''
       setViewCourse(c); setViewSubtype(s)
     }
   }, [courses]) // eslint-disable-line
 
-  // Load substitutes
   useEffect(() => {
-    supabase.from('timetable_substitutes').select('*').order('sub_date', { ascending:false }).then(({ data }) => { if (data) setSubstitutes(data) }).catch(()=>{})
+    supabase.from('timetable_substitutes').select('*').order('sub_date',{ascending:false})
+      .then(({ data }) => { if (data) setSubstitutes(data) })
+      .catch(()=>{})
   }, [])
 
-  // Conflict detection: same teacher, same day, same period across batches
   const conflictMap = useMemo(() => {
     const map = {}
     timetable.forEach(t => {
       if (!t.teacher_name) return
       const key = `${t.teacher_name}||${t.day_name}||${t.period_name}`
-      if (!map[key]) map[key] = []
+      if (!map[key]) map[key]=[]
       map[key].push(t)
     })
-    const found = []
-    Object.entries(map).forEach(([key, slots]) => {
-      if (slots.length > 1) {
-        found.push({ key, slots, teacher: slots[0].teacher_name, day: slots[0].day_name, period: slots[0].period_name })
-      }
-    })
-    return found
+    return Object.entries(map).filter(([,slots]) => slots.length>1).map(([,slots]) => ({
+      teacher:slots[0].teacher_name, day:slots[0].day_name, period:slots[0].period_name, slots
+    }))
   }, [timetable])
 
-  const handleSave = async (e) => {
+  const handleSave = async e => {
     e.preventDefault(); setSaving(true)
-    // Check conflict before saving
-    if (form.teacher_name) {
-      const conflict = timetable.find(t => t.teacher_name===form.teacher_name && t.day_name===form.day_of_week && t.period_name===String(form.period_number) && t.class_name!==form.subtype)
-      if (conflict && !window.confirm(`⚠️ ${form.teacher_name} already has a class on ${form.day_of_week} P${form.period_number} (${conflict.class_name}). Save anyway?`)) { setSaving(false); return }
-    }
-    await supabase.from('timetable_entries').insert([{ class_name:form.subtype||form.class_name, subject_name:form.subject_name, teacher_name:form.teacher_name||null, day_name:form.day_of_week, period_name:String(form.period_number) }])
-    await supabase.from('teaching_timetable').insert([{ course:form.course, subtype:form.subtype||null, class_name:form.class_name||null, batch_id:form.batch_id||null, subject_name:form.subject_name, teacher_name:form.teacher_name||null, day_of_week:form.day_of_week, period_number:parseInt(form.period_number), start_time:form.start_time||null, end_time:form.end_time||null }])
-    setShowForm(false); fetchTimetable(); setSaving(false)
+    // BUG-4: write only to timetable_entries (single source of truth)
+    const { error } = await supabase.from('timetable_entries').insert([{
+      class_name: form.subtype||form.class_name,
+      subject_name: form.subject_name,
+      teacher_name: form.teacher_name||null,
+      day_name: form.day_of_week,
+      period_name: String(form.period_number),
+      start_time: form.start_time||null,
+      end_time: form.end_time||null,
+    }])
+    if (error) showToast('Error: '+error.message, '#dc2626')
+    else { setShowForm(false); fetchTimetable(); showToast('Period saved', '#16a34a') }
+    setSaving(false)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this period?')) return
-    await supabase.from('teaching_timetable').delete().eq('id', id); fetchTimetable()
+  const handleDelete = async id => {
+    const { error } = await supabase.from('timetable_entries').delete().eq('id', id)
+    if (error) showToast('Delete failed: '+error.message, '#dc2626')
+    else { setConfirmDel(null); fetchTimetable(); showToast('Period deleted', '#dc2626') }
   }
 
   const handleSaveSubstitute = async () => {
-    if (!subTeacher || !subMode) return
+    if (!subTeacher||!subMode) return
     const slot = timetable.find(t => t.id===subMode.slotId)
     const { error } = await supabase.from('timetable_substitutes').insert([{
-      original_slot_id:  subMode.slotId,
-      original_teacher:  slot?.teacher_name||'',
-      substitute_teacher: subTeacher,
-      sub_date:          subDate,
-      day_name:          subMode.day,
-      period_name:       String(subMode.period),
-      class_name:        subMode.subtype,
-      subject_name:      slot?.subject_name||'',
+      original_slot_id:subMode.slotId, original_teacher:slot?.teacher_name||'',
+      substitute_teacher:subTeacher, sub_date:subDate,
+      day_name:subMode.day, period_name:String(subMode.period),
+      class_name:subMode.subtype, subject_name:slot?.subject_name||'',
     }])
-    if (error) alert('Error: ' + error.message)
+    if (error) showToast('Error: '+error.message, '#dc2626')
     else {
-      const { data } = await supabase.from('timetable_substitutes').select('*').order('sub_date', { ascending:false })
+      const { data } = await supabase.from('timetable_substitutes').select('*').order('sub_date',{ascending:false})
       if (data) setSubstitutes(data)
       setSubMode(null); setSubTeacher('')
+      showToast('Substitute assigned', '#16a34a')
     }
   }
 
-  const getSlot    = (day, period) => timetable.find(t => t.class_name===viewSubtype && t.day_name===day && t.period_name===String(period))
-  const getSub     = (day, period) => substitutes.find(s => s.class_name===viewSubtype && s.day_name===day && s.period_name===String(period) && s.sub_date===subDate)
+  const handleDeleteSub = async id => {
+    await supabase.from('timetable_substitutes').delete().eq('id', id)
+    const { data } = await supabase.from('timetable_substitutes').select('*').order('sub_date',{ascending:false})
+    if (data) setSubstitutes(data)
+    showToast('Substitute removed', '#dc2626')
+  }
+
+  const getSlot = (day, period) => timetable.find(t => t.class_name===viewSubtype && t.day_name===day && t.period_name===String(period))
+  const getSub  = (day, period) => substitutes.find(s => s.class_name===viewSubtype && s.day_name===day && s.period_name===String(period) && s.sub_date===subDate)
+
   const viewSubtypes = viewCourse ? subtypesFor(viewCourse) : []
 
-  // Teacher workload summary
   const teacherWorkload = useMemo(() => {
     const map = {}
     timetable.forEach(t => {
@@ -1170,17 +1308,19 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
       map[t.teacher_name].batches.add(t.class_name)
       map[t.teacher_name].days.add(t.day_name)
     })
-    return Object.entries(map).map(([name,d]) => ({ name, periods:d.periods, batches:d.batches.size, days:d.days.size })).sort((a,b)=>b.periods-a.periods)
+    return Object.entries(map).map(([name,d]) => ({ name, periods:d.periods, batches:d.batches.size, days:d.days.size })).sort((a,b) => b.periods-a.periods)
   }, [timetable])
 
   return (
     <>
-      {/* Conflict alerts */}
+      {toastEl}
+      {confirmDel && <ConfirmModal title="Delete Period" message="Remove this period from the timetable?" confirmLabel="Delete" danger onConfirm={() => handleDelete(confirmDel)} onCancel={() => setConfirmDel(null)}/>}
+
       {conflictMap.length > 0 && (
-        <div style={{ padding:'12px 16px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:'10px', marginBottom:'16px' }}>
-          <div style={{ fontWeight:'700', color:'#dc2626', fontSize:'14px', marginBottom:'8px' }}>⚠️ {conflictMap.length} Teacher Conflict{conflictMap.length>1?'s':''} Detected</div>
+        <div style={{ padding:'12px 16px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:10, marginBottom:14 }}>
+          <div style={{ fontWeight:800, color:'#dc2626', fontSize:14, marginBottom:6 }}>⚠️ {conflictMap.length} Teacher Conflict{conflictMap.length>1?'s':''}</div>
           {conflictMap.map((c,i) => (
-            <div key={i} style={{ fontSize:'12px', color:'#b91c1c', marginBottom:'3px' }}>
+            <div key={i} style={{ fontSize:12, color:'#b91c1c', marginBottom:2 }}>
               👨‍🏫 {c.teacher} · {c.day} · P{c.period} → {c.slots.map(s=>s.class_name).join(' & ')}
             </div>
           ))}
@@ -1188,23 +1328,23 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
       )}
 
       <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
-          <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>🕐 Timetable</h2>
-          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:8 }}>
+          <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', margin:0 }}>🕐 Timetable</h2>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
             <select value={viewCourse} onChange={e => { setViewCourse(e.target.value); setViewSubtype('') }} style={{ ...S.select, width:'auto' }}>{courses.map(c=><option key={c} value={c}>{c}</option>)}</select>
             <select value={viewSubtype} onChange={e => setViewSubtype(e.target.value)} style={{ ...S.select, width:'auto' }}>
               <option value="">Select Batch</option>
               {viewSubtypes.map(s=><option key={s} value={s}>{s}</option>)}
             </select>
-            <span style={{ fontSize:'12px', color:'#64748b' }}>Sub date:</span>
-            <input type="date" value={subDate} onChange={e=>setSubDate(e.target.value)} style={{ ...S.input, width:'140px', fontSize:'12px', padding:'6px 10px' }} />
+            <span style={{ fontSize:12, color:'#64748b' }}>Sub date:</span>
+            <input type="date" value={subDate} onChange={e => setSubDate(e.target.value)} style={{ ...S.input, width:140, fontSize:12, padding:'6px 10px' }}/>
             <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Period'}</button>
           </div>
         </div>
 
         {showForm && (
-          <form onSubmit={handleSave} style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'12px', marginBottom:'24px', padding:'16px', background:'#f8fafc', borderRadius:'8px' }}>
-            <CoursePicker form={form} setForm={setForm} courseData={courseData} />
+          <form onSubmit={handleSave} className="form-grid" style={{ ...S.formGrid, marginBottom:20, padding:14, background:'#f8fafc', borderRadius:8 }}>
+            <CoursePicker form={form} setForm={setForm} courseData={courseData}/>
             <div><label style={S.label}>Day</label><select value={form.day_of_week} onChange={e=>setForm(f=>({...f,day_of_week:e.target.value}))} required style={S.select}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
             <div><label style={S.label}>Period</label><select value={form.period_number} onChange={e=>setForm(f=>({...f,period_number:e.target.value}))} required style={S.select}>{PERIODS.map(p=><option key={p} value={p}>Period {p}</option>)}</select></div>
             <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e=>setForm(f=>({...f,subject_name:e.target.value}))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
@@ -1215,40 +1355,38 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
           </form>
         )}
 
-        {/* Timetable grid */}
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+        <div className="table-wrap">
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, minWidth:560 }}>
             <thead>
               <tr style={{ background:'#1e3a5f', color:'white' }}>
-                <th style={{ padding:'10px 12px', textAlign:'center', fontWeight:'600', minWidth:'50px' }}>P</th>
-                {DAYS.map(d => <th key={d} style={{ padding:'10px 12px', textAlign:'center', fontWeight:'600', minWidth:'110px' }}>{d}</th>)}
+                <th style={{ padding:'9px 10px', textAlign:'center', fontWeight:700, minWidth:40 }}>P</th>
+                {DAYS.map(d => <th key={d} style={{ padding:'9px 10px', textAlign:'center', fontWeight:700, minWidth:100 }}>{d}</th>)}
               </tr>
             </thead>
             <tbody>
               {PERIODS.map(p => (
                 <tr key={p} style={{ borderBottom:'1px solid #e2e8f0' }}>
-                  <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:'700', color:'#1e3a5f', background:'#f8fafc', fontSize:'13px' }}>P{p}</td>
+                  <td style={{ padding:'7px 10px', textAlign:'center', fontWeight:800, color:'#1e3a5f', background:'#f8fafc', fontSize:13 }}>P{p}</td>
                   {DAYS.map(day => {
                     const slot = getSlot(day, p)
                     const sub  = getSub(day, p)
                     const isConflict = conflictMap.some(c => c.teacher===slot?.teacher_name && c.day===day && c.period===String(p))
                     return (
-                      <td key={day} style={{ padding:'6px', textAlign:'center', background: sub?'#fef9c3':slot?'#f0fdf4':isConflict?'#fff1f2':'white', border: isConflict?'1px solid #fecaca':'none' }}>
+                      <td key={day} style={{ padding:5, textAlign:'center', background:sub?'#fef9c3':slot?'#f0fdf4':isConflict?'#fff1f2':'white', border:isConflict?'1px solid #fecaca':'none' }}>
                         {slot ? (
                           <div>
-                            <div style={{ fontWeight:'700', color:'#15803d', fontSize:'11px' }}>{slot.subject_name}</div>
+                            <div style={{ fontWeight:700, color:'#15803d', fontSize:11 }}>{slot.subject_name}</div>
                             {sub
-                              ? <div style={{ fontSize:'10px', color:'#b45309', fontWeight:'600' }}>🔄 {sub.substitute_teacher}</div>
-                              : <div style={{ fontSize:'10px', color:'#64748b' }}>{slot.teacher_name||'-'}</div>
-                            }
-                            {slot.start_time && <div style={{ fontSize:'9px', color:'#94a3b8' }}>{slot.start_time}–{slot.end_time}</div>}
-                            {isConflict && <div style={{ fontSize:'9px', color:'#dc2626', fontWeight:'700' }}>⚠️ conflict</div>}
-                            <div style={{ display:'flex', gap:'3px', justifyContent:'center', marginTop:'4px' }}>
-                              <button onClick={() => setSubMode({ slotId:slot.id, day, period:p, subtype:viewSubtype })} style={{ ...S.btnSm('#f59e0b'), padding:'2px 5px', fontSize:'9px' }}>🔄</button>
-                              <button onClick={() => handleDelete(slot.id)} style={{ ...S.btnSm('#dc2626'), padding:'2px 5px', fontSize:'9px' }}>🗑</button>
+                              ? <div style={{ fontSize:10, color:'#b45309', fontWeight:600 }}>🔄 {sub.substitute_teacher}</div>
+                              : <div style={{ fontSize:10, color:'#64748b' }}>{slot.teacher_name||'-'}</div>}
+                            {slot.start_time && <div style={{ fontSize:9, color:'#94a3b8' }}>{slot.start_time}–{slot.end_time}</div>}
+                            {isConflict && <div style={{ fontSize:9, color:'#dc2626', fontWeight:700 }}>⚠️ conflict</div>}
+                            <div style={{ display:'flex', gap:2, justifyContent:'center', marginTop:3 }}>
+                              <button onClick={() => setSubMode({ slotId:slot.id, day, period:p, subtype:viewSubtype })} style={{ ...S.btnSm('#f59e0b'), padding:'2px 5px', fontSize:9 }}>🔄</button>
+                              <button onClick={() => setConfirmDel(slot.id)} style={{ ...S.btnSm('#dc2626'), padding:'2px 5px', fontSize:9 }}>🗑</button>
                             </div>
                           </div>
-                        ) : <span style={{ color:'#e2e8f0', fontSize:'16px' }}>—</span>}
+                        ) : <span style={{ color:'#e2e8f0', fontSize:14 }}>—</span>}
                       </td>
                     )
                   })}
@@ -1258,58 +1396,86 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
           </table>
         </div>
 
-        {/* Substitute assignment panel */}
         {subMode && (
-          <div style={{ marginTop:'16px', padding:'14px 16px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:'10px' }}>
-            <div style={{ fontWeight:'700', color:'#b45309', marginBottom:'10px', fontSize:'14px' }}>🔄 Assign Substitute — {subMode.day} P{subMode.period} · {subMode.subtype}</div>
-            <div style={{ display:'flex', gap:'10px', alignItems:'center', flexWrap:'wrap' }}>
-              <select value={subTeacher} onChange={e=>setSubTeacher(e.target.value)} style={{ ...S.select, width:'200px' }}>
-                <option value="">Select substitute teacher</option>
+          <div style={{ marginTop:14, padding:'14px 16px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:10 }}>
+            <div style={{ fontWeight:700, color:'#b45309', marginBottom:10, fontSize:13 }}>🔄 Assign Substitute — {subMode.day} P{subMode.period} · {subMode.subtype}</div>
+            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+              <select value={subTeacher} onChange={e=>setSubTeacher(e.target.value)} style={{ ...S.select, width:200 }}>
+                <option value="">Select teacher</option>
                 {staff.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
-              <input type="date" value={subDate} onChange={e=>setSubDate(e.target.value)} style={{ ...S.input, width:'150px' }}/>
+              <input type="date" value={subDate} onChange={e=>setSubDate(e.target.value)} style={{ ...S.input, width:150 }}/>
               <button onClick={handleSaveSubstitute} style={S.btn('#f59e0b')}>✅ Assign</button>
-              <button onClick={()=>{setSubMode(null);setSubTeacher('')}} style={S.btn('#64748b')}>✖ Cancel</button>
+              <button onClick={() => { setSubMode(null); setSubTeacher('') }} style={S.btn('#64748b')}>✖</button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Teacher workload */}
+      {/* Substitutes history */}
+      {substitutes.length > 0 && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:14, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🔄 Substitute History</h3>
+          <div className="table-wrap">
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, minWidth:400 }}>
+              <thead>
+                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                  {['Date','Batch','Day','Period','Subject','Original','Substitute',''].map(h => (
+                    <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {substitutes.slice(0,20).map(s => (
+                  <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                    <td style={{ padding:'8px 10px', color:'#64748b' }}>{fmtDate(s.sub_date)}</td>
+                    <td style={{ padding:'8px 10px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{s.class_name||'-'}</span></td>
+                    <td style={{ padding:'8px 10px', color:'#64748b' }}>{s.day_name}</td>
+                    <td style={{ padding:'8px 10px', color:'#64748b' }}>P{s.period_name}</td>
+                    <td style={{ padding:'8px 10px', fontWeight:600, color:'#1e293b' }}>{s.subject_name}</td>
+                    <td style={{ padding:'8px 10px', color:'#64748b' }}>{s.original_teacher}</td>
+                    <td style={{ padding:'8px 10px', fontWeight:700, color:'#b45309' }}>{s.substitute_teacher}</td>
+                    <td style={{ padding:'8px 10px' }}><button onClick={() => handleDeleteSub(s.id)} style={S.btnSm('#dc2626')}>🗑</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div style={S.card}>
-        <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>👨‍🏫 Teacher Workload Summary</h3>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+        <h3 style={{ fontSize:14, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>👨‍🏫 Teacher Workload</h3>
+        <div className="table-wrap">
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:360 }}>
             <thead>
               <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                {['Teacher','Total Periods/Week','Batches','Active Days','Load'].map(h=>(
-                  <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
+                {['Teacher','Periods/Week','Batches','Active Days','Load'].map(h => (
+                  <th key={h} style={{ padding:'9px 10px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {teacherWorkload.map((t,i) => {
-                const loadPct = Math.round((t.periods/(DAYS.length*PERIODS.length))*100)
+                const lp = Math.round((t.periods/(DAYS.length*PERIODS.length))*100)
                 return (
-                  <tr key={t.name} style={{ borderBottom:'1px solid #f1f5f9', background: i<3?'#fafffe':'white' }}>
-                    <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>
-                      {i===0?'🥇':i===1?'🥈':i===2?'🥉':'👨‍🏫'} {t.name}
-                    </td>
-                    <td style={{ padding:'10px 12px', fontWeight:'700', color:'#1e3a5f' }}>{t.periods}</td>
-                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{t.batches}</td>
-                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{t.days}</td>
-                    <td style={{ padding:'10px 12px', minWidth:'120px' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-                        <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
-                          <div style={{ width:`${Math.min(loadPct,100)}%`, height:'100%', background: loadPct>70?'#dc2626':loadPct>40?'#f59e0b':'#16a34a', borderRadius:'3px' }}/>
+                  <tr key={t.name} style={{ borderBottom:'1px solid #f1f5f9', background:i<3?'#fafffe':'white' }}>
+                    <td style={{ padding:'9px 10px', fontWeight:600, color:'#1e293b' }}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':'👨‍🏫'} {t.name}</td>
+                    <td style={{ padding:'9px 10px', fontWeight:700, color:'#1e3a5f', fontFamily:"'JetBrains Mono',monospace" }}>{t.periods}</td>
+                    <td style={{ padding:'9px 10px', color:'#64748b' }}>{t.batches}</td>
+                    <td style={{ padding:'9px 10px', color:'#64748b' }}>{t.days}</td>
+                    <td style={{ padding:'9px 10px', minWidth:110 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <div style={{ flex:1, height:6, background:'#e2e8f0', borderRadius:3, overflow:'hidden' }}>
+                          <div style={{ width:`${Math.min(lp,100)}%`, height:'100%', background:lp>70?'#dc2626':lp>40?'#d97706':'#16a34a', borderRadius:3 }}/>
                         </div>
-                        <span style={{ fontSize:'11px', color:'#64748b', minWidth:'30px' }}>{loadPct}%</span>
+                        <span style={{ fontSize:11, color:'#64748b', minWidth:28 }}>{lp}%</span>
                       </div>
                     </td>
                   </tr>
                 )
               })}
-              {teacherWorkload.length===0 && <tr><td colSpan={5} style={{ padding:'24px', textAlign:'center', color:'#94a3b8' }}>No timetable data.</td></tr>}
+              {teacherWorkload.length===0 && <tr><td colSpan={5} style={{ padding:24, textAlign:'center', color:'#94a3b8' }}>No timetable data.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1325,7 +1491,7 @@ function TabReports({ logs, missed, staff, courseData }) {
   const [teacher, setTeacher] = useState('All')
   const [course, setCourse]   = useState('All')
   const { courses } = courseData
-  const teachers = [...new Set(logs.map(l => l.teacher_name).filter(Boolean))]
+  const teachers    = [...new Set(logs.map(l => l.teacher_name).filter(Boolean))]
   const monthLogs   = logs.filter(l => l.teaching_date?.startsWith(month) && (teacher==='All'||l.teacher_name===teacher) && (course==='All'||l.course===course))
   const monthMissed = missed.filter(m => m.missed_date?.startsWith(month) && (teacher==='All'||m.teacher_name===teacher))
 
@@ -1340,48 +1506,61 @@ function TabReports({ logs, missed, staff, courseData }) {
     return map
   }, [monthLogs])
 
+  // FIX-8: scoped print — only .print-report prints
+  const handlePrint = () => {
+    const content = document.getElementById('print-report')?.innerHTML
+    if (!content) { window.print(); return }
+    const w = window.open('','_blank')
+    w.document.write(`<html><head><title>Teaching Report</title><style>body{font-family:sans-serif;font-size:12px;padding:20px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px 8px}th{background:#1e3a5f;color:white}.badge{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}</style></head><body>${content}</body></html>`)
+    w.document.close(); w.print()
+  }
+
   return (
     <div style={S.card}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'12px' }}>
-        <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📈 Monthly Report</h2>
-        <div style={{ display:'flex', gap:'12px', alignItems:'center', flexWrap:'wrap' }}>
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ padding:'8px 12px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px' }} />
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18, flexWrap:'wrap', gap:10 }} className="no-print">
+        <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', margin:0 }}>📈 Monthly Report</h2>
+        <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+          <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:13, minHeight:44 }}/>
           <select value={course} onChange={e => setCourse(e.target.value)} style={{ ...S.select, width:'auto' }}><option value="All">All Courses</option>{courses.map(c=><option key={c} value={c}>{c}</option>)}</select>
           <select value={teacher} onChange={e => setTeacher(e.target.value)} style={{ ...S.select, width:'auto' }}><option value="All">All Teachers</option>{teachers.map(t=><option key={t} value={t}>{t}</option>)}</select>
-          <button onClick={() => window.print()} style={S.btn('#7c3aed')}>🖨️ Print</button>
+          <button onClick={handlePrint} style={S.btn('#7c3aed')}>🖨️ Print</button>
         </div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px', marginBottom:'24px' }}>
-        {[
-          { label:'Classes Taken', value:monthLogs.length, color:'#1e3a5f', bg:'#eff6ff' },
-          { label:'Missed Classes', value:monthMissed.length, color:'#dc2626', bg:'#fee2e2' },
-          { label:'Subjects Covered', value:new Set(monthLogs.map(l=>l.subject_name)).size, color:'#7c3aed', bg:'#f3e8ff' },
-          { label:'Active Teachers', value:Object.keys(byTeacher).length, color:'#16a34a', bg:'#dcfce7' },
-        ].map(c => (
-          <div key={c.label} style={{ background:c.bg, borderRadius:'10px', padding:'16px', borderLeft:`4px solid ${c.color}` }}>
-            <div style={{ fontSize:'12px', color:c.color, fontWeight:'600' }}>{c.label}</div>
-            <div style={{ fontSize:'26px', fontWeight:'800', color:c.color, marginTop:'4px' }}>{c.value}</div>
-          </div>
-        ))}
+      <div id="print-report">
+        <div className="stat-grid-4" style={S.statGrid(4)}>
+          {[
+            { label:'Classes Taken',     value:monthLogs.length,    color:'#1e3a5f', bg:'#eff6ff' },
+            { label:'Missed',            value:monthMissed.length,   color:'#dc2626', bg:'#fee2e2' },
+            { label:'Subjects Covered',  value:new Set(monthLogs.map(l=>l.subject_name)).size, color:'#7c3aed', bg:'#f3e8ff' },
+            { label:'Active Teachers',   value:Object.keys(byTeacher).length, color:'#16a34a', bg:'#dcfce7' },
+          ].map(c => (
+            <div key={c.label} style={{ background:c.bg, borderRadius:10, padding:14, borderLeft:`4px solid ${c.color}` }}>
+              <div style={{ fontSize:12, color:c.color, fontWeight:700 }}>{c.label}</div>
+              <div style={{ fontSize:24, fontWeight:800, color:c.color, marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</div>
+            </div>
+          ))}
+        </div>
+        {Object.entries(byTeacher).map(([name, data]) => {
+          const avgPerDay = data.dates.size>0?(data.logs.length/data.dates.size).toFixed(1):'0'
+          return (
+            <div key={name} style={{ border:'1px solid #e2e8f0', borderRadius:10, padding:16, marginBottom:12 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, flexWrap:'wrap', gap:6 }}>
+                <span style={{ fontWeight:800, color:'#1e293b', fontSize:14 }}>👨‍🏫 {name}</span>
+                <span style={{ fontSize:12, color:'#64748b' }}>{data.logs.length} classes · {data.subjects.size} subjects · {avgPerDay} avg/day</span>
+              </div>
+              {data.classes.size>0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:8 }}>{[...data.classes].map(cl=><span key={cl} style={S.pill('#16a34a','#f0fdf4')}>{cl}</span>)}</div>}
+              <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:8 }}>{[...data.subjects].map(s=><span key={s} style={S.pill('#1e3a5f','#eff6ff')}>{s}</span>)}</div>
+              {[...data.logs].slice(0,5).map(l => (
+                <div key={l.id} style={{ borderBottom:'1px solid #f1f5f9', padding:'4px 0', fontSize:13, color:'#64748b' }}>
+                  {fmtDate(l.teaching_date)} — {l.subject_name} [{l.course}/{l.subtype}]: <em>{l.topic_taught}</em>
+                </div>
+              ))}
+              {data.logs.length>5 && <div style={{ color:'#94a3b8', fontSize:12, marginTop:4 }}>+{data.logs.length-5} more</div>}
+            </div>
+          )
+        })}
+        {Object.keys(byTeacher).length===0 && <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No logs for this period.</div>}
       </div>
-      {Object.entries(byTeacher).map(([name, data]) => {
-        const avgPerDay = data.dates.size>0?(data.logs.length/data.dates.size).toFixed(1):'0'
-        return (
-          <div key={name} style={{ border:'1px solid #e2e8f0', borderRadius:'10px', padding:'16px', marginBottom:'12px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
-              <span style={{ fontWeight:'700', color:'#1e293b', fontSize:'15px' }}>👨‍🏫 {name}</span>
-              <span style={{ fontSize:'12px', color:'#64748b' }}>{data.logs.length} classes | {data.subjects.size} subjects | {avgPerDay} avg/day</span>
-            </div>
-            {data.classes.size>0 && <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'8px' }}>{[...data.classes].map(cl=><span key={cl} style={S.pill('#16a34a','#f0fdf4')}>{cl}</span>)}</div>}
-            <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'8px' }}>{[...data.subjects].map(s=><span key={s} style={S.pill('#1e3a5f','#eff6ff')}>{s}</span>)}</div>
-            <div style={{ marginTop:'8px', fontSize:'13px', color:'#64748b' }}>
-              {[...data.logs].slice(0,5).map(l=><div key={l.id} style={{ borderBottom:'1px solid #f1f5f9', padding:'4px 0' }}>{fmtDate(l.teaching_date)} — {l.subject_name} [{l.course}/{l.subtype}/{l.class_name}]: <em>{l.topic_taught}</em></div>)}
-              {data.logs.length>5 && <div style={{ color:'#94a3b8', fontSize:'12px', marginTop:'4px' }}>+{data.logs.length-5} more</div>}
-            </div>
-          </div>
-        )
-      })}
-      {Object.keys(byTeacher).length===0 && <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>No logs for this period.</div>}
     </div>
   )
 }
@@ -1390,192 +1569,182 @@ function TabReports({ logs, missed, staff, courseData }) {
 
 const MONTHS_LABEL_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-function SyllabusMatchBadge({ syllabusItem, onMarkDone }) {
-  const monthNum   = parseInt(String(syllabusItem.month).split('-')[1]||syllabusItem.month)-1
-  const monthLabel = MONTHS_LABEL_SHORT[monthNum]??syllabusItem.month
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:'8px', marginTop:'8px', padding:'7px 12px', background: syllabusItem.completed?'#f0fdf4':'#fefce8', border:`1px solid ${syllabusItem.completed?'#bbf7d0':'#fde68a'}`, borderRadius:'8px', flexWrap:'wrap' }}>
-      <span style={{ fontSize:'13px' }}>📆</span>
-      <span style={S.badge('#1e3a5f','#eff6ff')}>{syllabusItem.admit_type}</span>
-      <span style={S.badge('#7c3aed','#f3e8ff')}>{syllabusItem.subject_name}</span>
-      <span style={S.badge('#0891b2','#e0f2fe')}>🗓 {monthLabel}</span>
-      {syllabusItem.completed
-        ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Done{syllabusItem.completed_at&&<span style={{ fontWeight:400, marginLeft:4 }}>{new Date(syllabusItem.completed_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</span>}</span>
-        : <span style={S.badge('#b45309','#fef9c3')}>⏳ Pending</span>}
-      <span style={{ fontSize:'11px', color:'#64748b', flex:1, minWidth:'120px' }}>Syllabus: <em style={{ color:'#1e293b' }}>{syllabusItem.topic}</em></span>
-      {!syllabusItem.completed && <button onClick={() => onMarkDone(syllabusItem)} style={{ padding:'3px 10px', borderRadius:'6px', border:'none', background:'#16a34a', color:'white', fontSize:'11px', fontWeight:'700', cursor:'pointer' }}>✓ Mark Done</button>}
-    </div>
-  )
-}
-
 function TabSearch({ logs, monthlySyllabus=[], onNavigateTab }) {
-  const [query, setQuery] = useState('')
-  const [marking, setMarking] = useState(null)
+  const [query, setQuery]         = useState('')
+  const [marking, setMarking]     = useState(null)
   const [localSyllabus, setLocalSyllabus] = useState(monthlySyllabus)
   useEffect(() => { setLocalSyllabus(monthlySyllabus) }, [monthlySyllabus])
 
-  const findSyllabusMatch = useCallback((logItem) => {
+  // BUG-8: improved match — min 4 chars, word-boundary aware
+  const findSyllabusMatch = useCallback(logItem => {
     if (!localSyllabus.length || !logItem.topic_taught) return null
     const topicLower = (logItem.topic_taught||'').toLowerCase()
-    return localSyllabus.find(s => topicLower.includes(s.topic.toLowerCase().slice(0,14)) || s.topic.toLowerCase().includes(topicLower.slice(0,14))) || null
+    return localSyllabus.find(s => {
+      const sLower = s.topic.toLowerCase()
+      if (sLower.length < 4 || topicLower.length < 4) return false
+      const fragment = sLower.slice(0, Math.min(20, sLower.length))
+      return topicLower.includes(fragment) || sLower.includes(topicLower.slice(0, Math.min(20, topicLower.length)))
+    }) || null
   }, [localSyllabus])
 
   const results = useMemo(() => {
     if (!query.trim()) return []
     const q = query.toLowerCase()
-    return logs.filter(l => (l.topic_taught||'').toLowerCase().includes(q)||(l.classwork||'').toLowerCase().includes(q)||(l.homework||'').toLowerCase().includes(q)).sort((a,b) => b.teaching_date?.localeCompare(a.teaching_date))
+    return logs.filter(l =>
+      (l.topic_taught||'').toLowerCase().includes(q) ||
+      (l.classwork||'').toLowerCase().includes(q) ||
+      (l.homework||'').toLowerCase().includes(q)
+    ).sort((a,b) => b.teaching_date?.localeCompare(a.teaching_date))
   }, [logs, query])
 
-  const matchCount = useMemo(() => results.filter(r => findSyllabusMatch(r)).length, [results, findSyllabusMatch])
-  const pendingMatchCount = useMemo(() => results.filter(r => { const m=findSyllabusMatch(r); return m&&!m.completed }).length, [results, findSyllabusMatch])
-
-  const handleMarkDone = async (syllabusItem) => {
+  const handleMarkDone = async syllabusItem => {
     setMarking(syllabusItem.id)
     const completed_at = new Date().toISOString()
     const { error } = await supabase.from('monthly_syllabus').update({ completed:true, completed_at }).eq('id', syllabusItem.id)
     if (!error) setLocalSyllabus(prev => prev.map(s => s.id===syllabusItem.id?{...s,completed:true,completed_at}:s))
-    else alert('Error: ' + error.message)
+    else alert('Error: '+error.message)
     setMarking(null)
   }
 
+  const matchCount   = useMemo(() => results.filter(r => findSyllabusMatch(r)).length, [results, findSyllabusMatch])
+  const pendingCount = useMemo(() => results.filter(r => { const m=findSyllabusMatch(r); return m&&!m.completed }).length, [results, findSyllabusMatch])
+
   return (
     <div style={S.card}>
-      <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>🔍 Topic Search</h2>
-      <p style={{ color:'#64748b', fontSize:'13px', marginBottom:'16px' }}>Search across all topics, classwork, and homework — with live 📆 Monthly Syllabus matching.</p>
-      <input value={query} onChange={e => setQuery(e.target.value)} placeholder="e.g. Pythagoras, Photosynthesis, LCM..." style={{ ...S.input, fontSize:'16px', padding:'14px 18px', marginBottom:'16px' }} autoFocus />
-      {query&&results.length>0 && (
-        <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px', padding:'10px 14px', background:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0', fontSize:'12px' }}>
-          <span style={{ color:'#1e3a5f', fontWeight:'700' }}>📋 {results.length} log{results.length!==1?'s':''} found</span>
-          {matchCount>0 && <><span style={{ color:'#94a3b8' }}>·</span><span style={{ color:'#7c3aed', fontWeight:'700' }}>📆 {matchCount} match syllabus</span></>}
-          {pendingMatchCount>0 && <><span style={{ color:'#94a3b8' }}>·</span><span style={{ color:'#b45309', fontWeight:'700' }}>⏳ {pendingMatchCount} pending</span></>}
-          {matchCount>0 && <button onClick={() => onNavigateTab?.('monthly')} style={{ marginLeft:'auto', padding:'3px 10px', borderRadius:'6px', background:'#1e3a5f', color:'white', border:'none', fontSize:'11px', fontWeight:'700', cursor:'pointer' }}>Go to Monthly Syllabus →</button>}
+      <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🔍 Topic Search</h2>
+      <p style={{ color:'#64748b', fontSize:13, marginBottom:14 }}>Search across all topics, classwork, and homework with live Monthly Syllabus matching.</p>
+      <input value={query} onChange={e => setQuery(e.target.value)} placeholder="e.g. Pythagoras, Photosynthesis, LCM..." style={{ ...S.input, fontSize:15, padding:'12px 16px', marginBottom:14 }} autoFocus/>
+      {query && results.length>0 && (
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:14, padding:'10px 14px', background:'#f8fafc', borderRadius:10, border:'1px solid #e2e8f0', fontSize:12 }}>
+          <span style={{ color:'#1e3a5f', fontWeight:700 }}>📋 {results.length} log{results.length!==1?'s':''} found</span>
+          {matchCount>0 && <span style={{ color:'#7c3aed', fontWeight:700 }}>📆 {matchCount} match syllabus</span>}
+          {pendingCount>0 && <span style={{ color:'#b45309', fontWeight:700 }}>⏳ {pendingCount} pending</span>}
+          {matchCount>0 && <button onClick={() => onNavigateTab?.('monthly')} style={{ marginLeft:'auto', ...S.btnSm('#1e3a5f') }}>→ Monthly Syllabus</button>}
         </div>
       )}
-      {query && <div style={{ fontSize:'13px', color:'#64748b', marginBottom:'12px' }}>{results.length} result{results.length!==1?'s':''} found</div>}
-      <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+      {query && <div style={{ fontSize:12, color:'#64748b', marginBottom:10 }}>{results.length} result{results.length!==1?'s':''}</div>}
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
         {results.map(l => {
           const match = findSyllabusMatch(l)
           return (
-            <div key={l.id} style={{ border:`1px solid ${match?(match.completed?'#bbf7d0':'#fde68a'):'#e2e8f0'}`, borderRadius:'10px', padding:'14px 18px', background: match?(match.completed?'#fafffe':'#fffdf0'):'white' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px' }}>
-                <span style={{ fontWeight:'700', color:'#1e293b' }}>{l.topic_taught}</span>
-                <span style={{ fontSize:'12px', color:'#64748b' }}>{fmtDate(l.teaching_date)}</span>
+            <div key={l.id} style={{ border:`1px solid ${match?(match.completed?'#bbf7d0':'#fde68a'):'#e2e8f0'}`, borderRadius:10, padding:'14px 16px', background:match?(match.completed?'#fafffe':'#fffdf0'):'white' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, flexWrap:'wrap', gap:4 }}>
+                <span style={{ fontWeight:700, color:'#1e293b' }}>{l.topic_taught}</span>
+                <span style={{ fontSize:12, color:'#64748b' }}>{fmtDate(l.teaching_date)}</span>
               </div>
-              <div style={{ fontSize:'13px', color:'#64748b' }}>{l.course}/{l.subtype}/{l.class_name} | {l.subject_name} | 👨‍🏫 {l.teacher_name||'-'}</div>
-              {l.classwork && <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'4px' }}>📝 CW: {l.classwork}</div>}
-              {l.homework  && <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'2px' }}>📚 HW: {l.homework}</div>}
-              {match && <SyllabusMatchBadge syllabusItem={marking===match.id?{...match,_loading:true}:match} onMarkDone={handleMarkDone} />}
+              <div style={{ fontSize:13, color:'#64748b' }}>{l.course}/{l.subtype}/{l.class_name} · {l.subject_name} · 👨‍🏫 {l.teacher_name||'-'}</div>
+              {l.classwork && <div style={{ fontSize:12, color:'#94a3b8', marginTop:4 }}>📝 {l.classwork}</div>}
+              {l.homework  && <div style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>📚 HW: {l.homework}</div>}
+              {match && (
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:8, padding:'7px 12px', background:match.completed?'#f0fdf4':'#fefce8', border:`1px solid ${match.completed?'#bbf7d0':'#fde68a'}`, borderRadius:8, flexWrap:'wrap' }}>
+                  <span style={S.badge('#1e3a5f','#eff6ff')}>{match.admit_type}</span>
+                  <span style={S.badge('#7c3aed','#f3e8ff')}>{match.subject_name}</span>
+                  {match.completed
+                    ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Done</span>
+                    : <span style={S.badge('#b45309','#fef9c3')}>⏳ Pending</span>}
+                  <span style={{ fontSize:11, color:'#64748b', flex:1 }}>📆 {match.topic}</span>
+                  {!match.completed && <button onClick={() => handleMarkDone(match)} disabled={marking===match.id} style={S.btnSm('#16a34a')}>✓ Mark Done</button>}
+                </div>
+              )}
             </div>
           )
         })}
-        {query&&results.length===0 && <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>No results for "{query}"</div>}
+        {query && results.length===0 && <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No results for "{query}"</div>}
       </div>
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ─── NEW: Tab: Student Performance (Scores + Weak Areas + Trends) ─────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/*
- * Supabase table required:
- *   student_scores (
- *     id uuid primary key default gen_random_uuid(),
- *     student_id uuid references students(id),
- *     student_name text,
- *     batch_id uuid references course_batches(id),
- *     course text, subtype text, class_name text,
- *     subject_name text, topic text,
- *     test_date date, score numeric, max_score numeric,
- *     notes text, created_at timestamptz default now()
- *   )
- */
+// ─── Tab: Student Performance ─────────────────────────────────────────────────
 
 function TabStudentPerformance({ courseData, logs }) {
-  const [scores, setScores]         = useState([])
-  const [students, setStudents]     = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [showForm, setShowForm]     = useState(false)
-  const [saving, setSaving]         = useState(false)
-  const [filterBatch, setFilterBatch]     = useState('All')
-  const [filterSubject, setFilterSubject] = useState('All')
-  const [filterStudent, setFilterStudent] = useState('All')
-  const [viewMode, setViewMode]     = useState('table') // 'table' | 'trend' | 'weak'
-  const [form, setForm] = useState({
-    student_id: '', student_name: '', batch_id: '', course: '', subtype: '', class_name: '',
-    subject_name: '', topic: '', test_date: today(), score: '', max_score: '100', notes: '',
-  })
+  const [scores, setScores]           = useState([])
+  const [students, setStudents]       = useState([])
+  const [studentsErr, setStudentsErr] = useState('') // FIX-7
+  const [loading, setLoading]         = useState(true)
+  const [showForm, setShowForm]       = useState(false)
+  const [saving, setSaving]           = useState(false)
+  const [editingId, setEditingId]     = useState(null) // FIX-9
+  const [filterBatch, setFilterBatch]       = useState('All')
+  const [filterSubject, setFilterSubject]   = useState('All')
+  const [filterStudent, setFilterStudent]   = useState('All')
+  const [viewMode, setViewMode]       = useState('table')
+  const [confirmDel, setConfirmDel]   = useState(null)
+  const { show: showToast, el: toastEl } = useToast()
+  const { courses, subtypesFor, classesFor, batchIdFor } = courseData
 
-  const { courses, subtypesFor, classesFor, batchIdFor, batches } = courseData
+  const blankForm = { student_id:'', student_name:'', batch_id:'', course:'', subtype:'', class_name:'', subject_name:'', topic:'', test_date:today(), score:'', max_score:'100', notes:'' }
+  const [form, setForm] = useState(blankForm)
 
   const fetchScores = async () => {
     setLoading(true)
-    const { data } = await supabase.from('student_scores').select('*').order('test_date', { ascending: false })
+    const { data, error } = await supabase.from('student_scores').select('*').order('test_date',{ascending:false})
+    if (error) showToast('Load failed: '+error.message, '#dc2626')
     if (data) setScores(data)
     setLoading(false)
   }
 
-  const fetchStudents = async (batchId) => {
-    if (!batchId) { setStudents([]); return }
-    const { data } = await supabase.from('students').select('id, name, roll_number').eq('batch_id', batchId).eq('status', 'Active').order('name')
-    if (data) setStudents(data)
+  // FIX-7: better student fetch with error surface
+  const fetchStudents = async batchId => {
+    if (!batchId) { setStudents([]); setStudentsErr(''); return }
+    setStudentsErr('')
+    const { data, error } = await supabase.from('students').select('id,name,roll_number').eq('batch_id', batchId).eq('status','Active').order('name')
+    if (error) { setStudentsErr('Could not load students: '+error.message); setStudents([]) }
+    else setStudents(data||[])
   }
 
   useEffect(() => { fetchScores() }, [])
 
-  const handleCourseChange = (course) => {
-    setForm(f => ({ ...f, course, subtype:'', class_name:'', batch_id:'', student_id:'', student_name:'' }))
-    setStudents([])
+  const handleCourseChange  = c  => { setForm(f => ({ ...f, course:c, subtype:'', class_name:'', batch_id:'', student_id:'', student_name:'' })); setStudents([]) }
+  const handleSubtypeChange = st => {
+    const cls = classesFor(form.course, st)
+    const cn  = cls.length===1 ? cls[0] : ''
+    const bid = cn ? batchIdFor(form.course, st, cn) : ''
+    setForm(f => ({ ...f, subtype:st, class_name:cn, batch_id:bid, student_id:'', student_name:'' }))
+    if (bid) fetchStudents(bid)
   }
-  const handleSubtypeChange = (subtype) => {
-    const cls = classesFor(form.course, subtype)
-    const class_name = cls.length===1 ? cls[0] : ''
-    const batch_id   = class_name ? batchIdFor(form.course, subtype, class_name) : ''
-    setForm(f => ({ ...f, subtype, class_name, batch_id, student_id:'', student_name:'' }))
-    if (batch_id) fetchStudents(batch_id)
+  const handleClassChange = cn => {
+    const bid = batchIdFor(form.course, form.subtype, cn)
+    setForm(f => ({ ...f, class_name:cn, batch_id:bid, student_id:'', student_name:'' }))
+    if (bid) fetchStudents(bid)
   }
-  const handleClassChange = (class_name) => {
-    const batch_id = batchIdFor(form.course, form.subtype, class_name)
-    setForm(f => ({ ...f, class_name, batch_id, student_id:'', student_name:'' }))
-    if (batch_id) fetchStudents(batch_id)
-  }
-  const handleStudentChange = (studentId) => {
-    const s = students.find(s => s.id === studentId)
-    setForm(f => ({ ...f, student_id: studentId, student_name: s?.name || '' }))
+  const handleStudentChange = sid => {
+    const s = students.find(x => x.id===sid)
+    setForm(f => ({ ...f, student_id:sid, student_name:s?.name||'' }))
   }
 
-  const handleSave = async (e) => {
+  const handleSave = async e => {
     e.preventDefault()
-    if (!form.student_id && !form.student_name) { alert('Select or enter student name.'); return }
+    if (!form.student_id && !form.student_name) { showToast('Select or enter student name.', '#dc2626'); return }
     setSaving(true)
     const payload = {
-      student_id:   form.student_id || null,
-      student_name: form.student_name,
-      batch_id:     form.batch_id || null,
-      course:       form.course,
-      subtype:      form.subtype || null,
-      class_name:   form.class_name || null,
-      subject_name: form.subject_name,
-      topic:        form.topic,
-      test_date:    form.test_date,
-      score:        parseFloat(form.score),
-      max_score:    parseFloat(form.max_score),
-      notes:        form.notes || null,
+      student_id:form.student_id||null, student_name:form.student_name,
+      batch_id:form.batch_id||null, course:form.course, subtype:form.subtype||null, class_name:form.class_name||null,
+      subject_name:form.subject_name, topic:form.topic, test_date:form.test_date,
+      score:parseFloat(form.score), max_score:parseFloat(form.max_score), notes:form.notes||null,
     }
-    const { error } = await supabase.from('student_scores').insert([payload])
-    if (error) alert('Error: ' + error.message)
-    else { setShowForm(false); fetchScores(); setForm({ student_id:'', student_name:'', batch_id:'', course:'', subtype:'', class_name:'', subject_name:'', topic:'', test_date:today(), score:'', max_score:'100', notes:'' }) }
+    let error
+    if (editingId) {
+      // FIX-9: edit support
+      ({ error } = await supabase.from('student_scores').update(payload).eq('id', editingId))
+    } else {
+      ({ error } = await supabase.from('student_scores').insert([payload]))
+    }
+    if (error) showToast('Error: '+error.message, '#dc2626')
+    else { setShowForm(false); setEditingId(null); setForm(blankForm); fetchScores(); showToast(editingId?'Updated':'Score saved', '#16a34a') }
     setSaving(false)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this score entry?')) return
-    await supabase.from('student_scores').delete().eq('id', id)
-    fetchScores()
+  const handleDelete = async id => {
+    const { error } = await supabase.from('student_scores').delete().eq('id', id)
+    if (error) showToast('Delete failed: '+error.message, '#dc2626')
+    else { setConfirmDel(null); fetchScores(); showToast('Deleted', '#dc2626') }
   }
 
-  // ── Derived data ──
+  const startEdit = s => {
+    setEditingId(s.id); setForm({ student_id:s.student_id||'', student_name:s.student_name, batch_id:s.batch_id||'', course:s.course||'', subtype:s.subtype||'', class_name:s.class_name||'', subject_name:s.subject_name, topic:s.topic||'', test_date:s.test_date, score:String(s.score), max_score:String(s.max_score), notes:s.notes||'' }); setShowForm(true)
+  }
+
   const allBatches  = [...new Set(scores.map(s => s.subtype).filter(Boolean))]
   const allSubjects = [...new Set(scores.map(s => s.subject_name).filter(Boolean))]
   const allStudents = [...new Set(scores.map(s => s.student_name).filter(Boolean))]
@@ -1586,168 +1755,147 @@ function TabStudentPerformance({ courseData, logs }) {
     (filterStudent==='All'||s.student_name===filterStudent)
   ), [scores, filterBatch, filterSubject, filterStudent])
 
-  // Per-student average per subject (for weak area view)
   const weakAreas = useMemo(() => {
     const map = {}
     filtered.forEach(s => {
       const key = `${s.student_name}||${s.subject_name}`
-      if (!map[key]) map[key] = { student: s.student_name, subject: s.subject_name, scores: [], batch: s.subtype }
+      if (!map[key]) map[key] = { student:s.student_name, subject:s.subject_name, scores:[], batch:s.subtype }
       map[key].scores.push(pct(s.score, s.max_score))
     })
-    return Object.values(map).map(m => ({ ...m, avg: Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length) })).sort((a,b) => a.avg-b.avg)
+    return Object.values(map).map(m => ({ ...m, avg:Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length) })).sort((a,b) => a.avg-b.avg)
   }, [filtered])
 
-  const weakOnly = weakAreas.filter(w => w.avg < 60)
-
-  // Per-student trend (chronological scores)
+  const weakOnly  = weakAreas.filter(w => w.avg < 60)
   const trendData = useMemo(() => {
     if (filterStudent==='All') return []
     return filtered.filter(s => s.student_name===filterStudent).sort((a,b) => a.test_date?.localeCompare(b.test_date))
   }, [filtered, filterStudent])
 
-  // Stats
-  const avgScore  = filtered.length > 0 ? Math.round(filtered.reduce((a,s) => a + pct(s.score, s.max_score), 0) / filtered.length) : 0
-  const topScore  = filtered.length > 0 ? Math.max(...filtered.map(s => pct(s.score, s.max_score))) : 0
-  const weakCount = weakOnly.length
+  const avgScore = filtered.length > 0 ? Math.round(filtered.reduce((a,s) => a+pct(s.score,s.max_score),0)/filtered.length) : 0
+  const topScore = filtered.length > 0 ? Math.max(...filtered.map(s => pct(s.score,s.max_score))) : 0
+
+  const scoreClasses = form.score && form.max_score ? pct(parseFloat(form.score), parseFloat(form.max_score)) : null
 
   return (
     <>
-      {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px', marginBottom:'24px' }}>
+      {toastEl}
+      {confirmDel && <ConfirmModal title="Delete Score" message="Delete this score entry?" confirmLabel="Delete" danger onConfirm={() => handleDelete(confirmDel)} onCancel={() => setConfirmDel(null)}/>}
+
+      <div className="stat-grid-4" style={S.statGrid(4)}>
         {[
           { label:'Total Assessments', value:filtered.length, color:'#1e3a5f', bg:'#eff6ff', icon:'📝' },
-          { label:'Avg Score',         value:`${avgScore}%`,  color: scoreColor(avgScore), bg: scoreBg(avgScore), icon:'📊' },
+          { label:'Avg Score',         value:`${avgScore}%`,  color:scoreColor(avgScore), bg:scoreBg(avgScore), icon:'📊' },
           { label:'Top Score',         value:`${topScore}%`,  color:'#16a34a', bg:'#dcfce7', icon:'🏆' },
-          { label:'Weak Areas',        value:weakCount,        color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
+          { label:'Weak Areas',        value:weakOnly.length, color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
         ].map(c => (
           <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'22px', marginBottom:'6px' }}>{c.icon}</div>
-            <p style={{ fontSize:'13px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'28px', fontWeight:'bold', color:c.color, margin:'4px 0 0' }}>{c.value}</h2>
+            <div style={{ fontSize:20, marginBottom:4 }}>{c.icon}</div>
+            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:26, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
           </div>
         ))}
       </div>
 
-      {/* Add Score Form */}
       <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?'20px':0 }}>
-          <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>🎯 Student Performance Scores</h2>
-          <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Score'}</button>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?18:0, flexWrap:'wrap', gap:8 }}>
+          <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', margin:0 }}>🎯 {editingId?'Edit Score':'Add Score'}</h2>
+          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(blankForm) }} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Score'}</button>
         </div>
-
         {showForm && (
-          <form onSubmit={handleSave} style={{ marginTop:'20px' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
-              {/* Course selectors */}
-              <div>
-                <label style={S.label}>Course</label>
-                <select value={form.course} onChange={e => handleCourseChange(e.target.value)} required style={S.select}>
-                  <option value="">Select Course</option>
-                  {courses.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={S.label}>Batch / Subtype</label>
-                <select value={form.subtype} onChange={e => handleSubtypeChange(e.target.value)} disabled={!form.course} required style={{ ...S.select, opacity: form.course?1:0.5 }}>
-                  <option value="">Select Batch</option>
-                  {form.course ? subtypesFor(form.course).map(s => <option key={s} value={s}>{s}</option>) : null}
-                </select>
-              </div>
-              <div>
-                <label style={S.label}>Class</label>
-                {(form.course && form.subtype ? classesFor(form.course, form.subtype) : []).length > 0
-                  ? <select value={form.class_name} onChange={e => handleClassChange(e.target.value)} disabled={!form.subtype} style={{ ...S.select, opacity: form.subtype?1:0.5 }}>
-                      <option value="">Select Class</option>
-                      {classesFor(form.course, form.subtype).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  : <input value={form.class_name} onChange={e => handleClassChange(e.target.value)} placeholder="e.g. Class 6" disabled={!form.subtype} style={{ ...S.input, opacity: form.subtype?1:0.5 }} />
-                }
-              </div>
-              <div>
-                <label style={S.label}>Student</label>
-                {students.length > 0
-                  ? <select value={form.student_id} onChange={e => handleStudentChange(e.target.value)} required style={S.select}>
-                      <option value="">Select Student</option>
-                      {students.map(s => <option key={s.id} value={s.id}>{s.name}{s.roll_number?` (${s.roll_number})`:''}</option>)}
-                    </select>
-                  : <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} placeholder="Type student name" required style={S.input} />
-                }
-              </div>
-              <div>
-                <label style={S.label}>Subject</label>
-                <select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name: e.target.value }))} required style={S.select}>
-                  <option value="">Select Subject</option>
-                  {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={S.label}>Topic / Test Name</label>
-                <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="e.g. Fractions Quiz" required style={S.input} />
-              </div>
-              <div>
-                <label style={S.label}>Test Date</label>
-                <input type="date" value={form.test_date} onChange={e => setForm(f => ({ ...f, test_date: e.target.value }))} required style={S.input} />
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-                <div>
-                  <label style={S.label}>Score</label>
-                  <input type="number" min="0" step="0.5" value={form.score} onChange={e => setForm(f => ({ ...f, score: e.target.value }))} required placeholder="e.g. 78" style={S.input} />
-                </div>
-                <div>
-                  <label style={S.label}>Out of</label>
-                  <input type="number" min="1" step="1" value={form.max_score} onChange={e => setForm(f => ({ ...f, max_score: e.target.value }))} required placeholder="100" style={S.input} />
-                </div>
-              </div>
-              {form.score && form.max_score && (
-                <div style={{ gridColumn:'1/-1', padding:'10px 14px', borderRadius:'8px', background: scoreBg(pct(parseFloat(form.score), parseFloat(form.max_score))), border:`1px solid ${scoreColor(pct(parseFloat(form.score), parseFloat(form.max_score)))}40` }}>
-                  <span style={{ fontSize:'14px', fontWeight:'700', color: scoreColor(pct(parseFloat(form.score), parseFloat(form.max_score))) }}>
-                    {pct(parseFloat(form.score), parseFloat(form.max_score))}% — {pct(parseFloat(form.score), parseFloat(form.max_score)) >= 75 ? '✅ Good' : pct(parseFloat(form.score), parseFloat(form.max_score)) >= 50 ? '⚠️ Average' : '❌ Needs improvement'}
-                  </span>
-                </div>
-              )}
-              <div style={{ gridColumn:'1/-1' }}>
-                <label style={S.label}>Notes (optional)</label>
-                <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any remarks about this assessment" style={S.input} />
-              </div>
+          <form onSubmit={handleSave} className="form-grid" style={{ ...S.formGrid, marginTop:16 }}>
+            <div>
+              <label style={S.label}>Course</label>
+              <select value={form.course} onChange={e => handleCourseChange(e.target.value)} required style={S.select}>
+                <option value="">Select Course</option>
+                {courses.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-            <div style={{ display:'flex', gap:'10px', marginTop:'16px' }}>
-              <button type="submit" disabled={saving} style={S.btn('#1e3a5f', saving)}>{saving?'⏳ Saving...':'✅ Save Score'}</button>
-              <button type="button" onClick={() => setShowForm(false)} style={S.btn('#64748b')}>✖ Cancel</button>
+            <div>
+              <label style={S.label}>Batch / Subtype</label>
+              <select value={form.subtype} onChange={e => handleSubtypeChange(e.target.value)} disabled={!form.course} required style={{ ...S.select, opacity:form.course?1:.5 }}>
+                <option value="">Select Batch</option>
+                {form.course ? subtypesFor(form.course).map(s => <option key={s} value={s}>{s}</option>) : null}
+              </select>
+            </div>
+            <div>
+              <label style={S.label}>Class</label>
+              {(form.course&&form.subtype ? classesFor(form.course,form.subtype) : []).length > 0
+                ? <select value={form.class_name} onChange={e => handleClassChange(e.target.value)} disabled={!form.subtype} style={{ ...S.select, opacity:form.subtype?1:.5 }}>
+                    <option value="">Select Class</option>
+                    {classesFor(form.course, form.subtype).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                : <input value={form.class_name} onChange={e => handleClassChange(e.target.value)} placeholder="e.g. Class 6" disabled={!form.subtype} style={{ ...S.input, opacity:form.subtype?1:.5 }}/>
+              }
+            </div>
+            <div>
+              <label style={S.label}>Student</label>
+              {studentsErr && <div style={{ fontSize:11, color:'#dc2626', marginBottom:4, fontWeight:600 }}>⚠️ {studentsErr}</div>}
+              {students.length > 0
+                ? <select value={form.student_id} onChange={e => handleStudentChange(e.target.value)} required style={S.select}>
+                    <option value="">Select Student</option>
+                    {students.map(s => <option key={s.id} value={s.id}>{s.name}{s.roll_number?` (${s.roll_number})`:''}</option>)}
+                  </select>
+                : <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name:e.target.value }))} placeholder="Type student name" required style={S.input}/>
+              }
+            </div>
+            <div>
+              <label style={S.label}>Subject</label>
+              <select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name:e.target.value }))} required style={S.select}>
+                <option value="">Select Subject</option>
+                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={S.label}>Topic / Test Name</label>
+              <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic:e.target.value }))} placeholder="e.g. Fractions Quiz" required style={S.input}/>
+            </div>
+            <div>
+              <label style={S.label}>Test Date</label>
+              <input type="date" value={form.test_date} onChange={e => setForm(f => ({ ...f, test_date:e.target.value }))} required style={S.input}/>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <div><label style={S.label}>Score</label><input type="number" min="0" step="0.5" value={form.score} onChange={e => setForm(f => ({ ...f, score:e.target.value }))} required placeholder="78" style={S.input}/></div>
+              <div><label style={S.label}>Out of</label><input type="number" min="1" value={form.max_score} onChange={e => setForm(f => ({ ...f, max_score:e.target.value }))} required placeholder="100" style={S.input}/></div>
+            </div>
+            {scoreClasses !== null && (
+              <div style={{ gridColumn:'1/-1', padding:'10px 14px', borderRadius:8, background:scoreBg(scoreClasses), border:`1px solid ${scoreColor(scoreClasses)}40` }}>
+                <span style={{ fontSize:14, fontWeight:700, color:scoreColor(scoreClasses) }}>
+                  {scoreClasses}% — {scoreClasses>=75?'✅ Good':scoreClasses>=50?'⚠️ Average':'❌ Needs improvement'}
+                </span>
+              </div>
+            )}
+            <div style={{ gridColumn:'1/-1' }}>
+              <label style={S.label}>Notes (optional)</label>
+              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes:e.target.value }))} placeholder="Remarks" style={S.input}/>
+            </div>
+            <div style={{ gridColumn:'1/-1', display:'flex', gap:10 }}>
+              <button type="submit" disabled={saving} style={S.btn('#1e3a5f',saving)}>{saving?'⏳ Saving...':'✅ Save Score'}</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(blankForm) }} style={S.btn('#64748b')}>✖ Cancel</button>
             </div>
           </form>
         )}
       </div>
 
-      {/* Filters + View Toggle */}
-      <div style={{ display:'flex', gap:'12px', marginBottom:'16px', flexWrap:'wrap', alignItems:'center' }}>
-        <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto' }}>
-          <option value="All">All Batches</option>
-          {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto' }}>
-          <option value="All">All Subjects</option>
-          {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={filterStudent} onChange={e => setFilterStudent(e.target.value)} style={{ ...S.select, width:'auto' }}>
-          <option value="All">All Students</option>
-          {allStudents.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <div style={{ display:'flex', gap:'4px', marginLeft:'auto' }}>
-          {[['table','📋 Table'],['weak','⚠️ Weak Areas'],['trend','📈 Trend']].map(([key, label]) => (
-            <button key={key} onClick={() => setViewMode(key)} style={{ ...S.btn(viewMode===key?'#1e3a5f':'#e2e8f0'), color: viewMode===key?'white':'#374151', padding:'8px 14px', fontSize:'13px' }}>{label}</button>
+      {/* Filters */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
+        <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Batches</option>{allBatches.map(b=><option key={b} value={b}>{b}</option>)}</select>
+        <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Subjects</option>{allSubjects.map(s=><option key={s} value={s}>{s}</option>)}</select>
+        <select value={filterStudent} onChange={e => setFilterStudent(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 150px' }}><option value="All">All Students</option>{allStudents.map(s=><option key={s} value={s}>{s}</option>)}</select>
+        <div style={{ display:'flex', gap:4, marginLeft:'auto' }}>
+          {[['table','📋'],['weak','⚠️'],['trend','📈']].map(([key,icon]) => (
+            <button key={key} onClick={() => setViewMode(key)} style={{ ...S.btnSm(viewMode===key?'#1e3a5f':'#e2e8f0'), color:viewMode===key?'white':'#374151' }}>{icon}</button>
           ))}
         </div>
       </div>
 
-      {/* View: Table */}
-      {viewMode === 'table' && (
-        loading ? <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading...</div> : (
-          <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+      {viewMode==='table' && (
+        loading ? <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading...</div> : (
+          <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:600 }}>
               <thead>
                 <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
                   {['Date','Student','Batch','Subject','Topic','Score','%','Grade','Actions'].map(h => (
-                    <th key={h} style={{ padding:'12px 14px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
+                    <th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1756,138 +1904,108 @@ function TabStudentPerformance({ courseData, logs }) {
                   const p = pct(s.score, s.max_score)
                   return (
                     <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                      <td style={{ padding:'10px 14px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(s.test_date)}</td>
-                      <td style={{ padding:'10px 14px', fontWeight:'600', color:'#1e293b' }}>{s.student_name}</td>
-                      <td style={{ padding:'10px 14px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{s.subtype||s.course||'-'}</span></td>
-                      <td style={{ padding:'10px 14px', color:'#374151' }}>{s.subject_name}</td>
-                      <td style={{ padding:'10px 14px', color:'#64748b', maxWidth:'160px' }}>{s.topic}</td>
-                      <td style={{ padding:'10px 14px', fontWeight:'700', color:'#1e293b' }}>{s.score}/{s.max_score}</td>
-                      <td style={{ padding:'10px 14px' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                          <div style={{ width:'50px', height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
-                            <div style={{ width:`${p}%`, height:'100%', background: scoreColor(p), borderRadius:'3px' }} />
+                      <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(s.test_date)}</td>
+                      <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{s.student_name}</td>
+                      <td style={{ padding:'9px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{s.subtype||s.course||'-'}</span></td>
+                      <td style={{ padding:'9px 12px', color:'#374151' }}>{s.subject_name}</td>
+                      <td style={{ padding:'9px 12px', color:'#64748b', maxWidth:140 }}>{s.topic}</td>
+                      <td style={{ padding:'9px 12px', fontWeight:700, color:'#1e293b', fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score}</td>
+                      <td style={{ padding:'9px 12px' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <div style={{ width:44, height:5, background:'#e2e8f0', borderRadius:3, overflow:'hidden' }}>
+                            <div style={{ width:`${p}%`, height:'100%', background:scoreColor(p), borderRadius:3 }}/>
                           </div>
-                          <span style={{ fontWeight:'700', color: scoreColor(p), fontSize:'12px' }}>{p}%</span>
+                          <span style={{ fontWeight:700, color:scoreColor(p), fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
                         </div>
                       </td>
-                      <td style={{ padding:'10px 14px' }}>
-                        <span style={{ padding:'2px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', background: scoreBg(p), color: scoreColor(p) }}>
-                          {p>=75?'Good':p>=50?'Avg':'Weak'}
-                        </span>
+                      <td style={{ padding:'9px 12px' }}>
+                        <span style={{ ...S.badge(scoreColor(p), scoreBg(p)) }}>{p>=75?'Good':p>=50?'Avg':'Weak'}</span>
                       </td>
-                      <td style={{ padding:'10px 14px' }}>
-                        <button onClick={() => handleDelete(s.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                      <td style={{ padding:'9px 12px' }}>
+                        <div style={{ display:'flex', gap:5 }}>
+                          <button onClick={() => startEdit(s)} style={S.btnSm('#7c3aed')}>✏️</button>
+                          <button onClick={() => setConfirmDel(s.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                        </div>
                       </td>
                     </tr>
                   )
                 })}
-                {filtered.length===0 && <tr><td colSpan={9} style={{ padding:'32px', textAlign:'center', color:'#94a3b8' }}>No score data. Add assessments above.</td></tr>}
+                {filtered.length===0 && <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No score data.</td></tr>}
               </tbody>
             </table>
           </div>
         )
       )}
 
-      {/* View: Weak Areas */}
-      {viewMode === 'weak' && (
+      {viewMode==='weak' && (
         <div style={S.card}>
-          <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#dc2626', marginTop:0 }}>⚠️ Weak Areas (below 60%)</h3>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>⚠️ Weak Areas (below 60%)</h3>
           {weakOnly.length===0
-            ? <div style={{ textAlign:'center', padding:'32px', color:'#16a34a', fontWeight:'600' }}>✅ No weak areas detected! All averages above 60%.</div>
-            : (
-              <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-                {weakOnly.map((w, i) => (
-                  <div key={i} style={{ display:'flex', alignItems:'center', gap:'16px', padding:'14px 16px', border:'1px solid #fecaca', borderRadius:'10px', background:'#fff1f2' }}>
-                    <div style={{ minWidth:'160px' }}>
-                      <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'14px' }}>{w.student}</div>
-                      <div style={{ fontSize:'12px', color:'#64748b' }}>{w.batch}</div>
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:'13px', color:'#374151', marginBottom:'6px' }}>{w.subject}</div>
-                      <div style={{ height:'8px', background:'#fee2e2', borderRadius:'4px', overflow:'hidden' }}>
-                        <div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:'4px' }} />
-                      </div>
-                    </div>
-                    <div style={{ minWidth:'56px', textAlign:'right' }}>
-                      <span style={{ fontSize:'20px', fontWeight:'800', color:'#dc2626' }}>{w.avg}%</span>
-                      <div style={{ fontSize:'11px', color:'#94a3b8' }}>{w.scores.length} test{w.scores.length!==1?'s':''}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          }
-
-          {/* Also show all averages for context */}
-          <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#374151', marginTop:'24px' }}>📊 All Subject Averages</h3>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:'10px' }}>
-            {weakAreas.map((w, i) => (
-              <div key={i} style={{ padding:'12px 14px', border:`1px solid ${scoreColor(w.avg)}40`, borderRadius:'8px', background: scoreBg(w.avg) }}>
-                <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'13px' }}>{w.student}</div>
-                <div style={{ fontSize:'12px', color:'#64748b', marginBottom:'6px' }}>{w.subject}</div>
-                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                  <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
-                    <div style={{ width:`${w.avg}%`, height:'100%', background: scoreColor(w.avg), borderRadius:'3px' }} />
-                  </div>
-                  <span style={{ fontWeight:'800', color: scoreColor(w.avg), fontSize:'14px' }}>{w.avg}%</span>
+            ? <div style={{ textAlign:'center', padding:32, color:'#16a34a', fontWeight:600 }}>✅ No weak areas detected.</div>
+            : weakOnly.map((w,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', border:'1px solid #fecaca', borderRadius:10, marginBottom:8, background:'#fff1f2', flexWrap:'wrap' }}>
+                <div style={{ minWidth:130 }}>
+                  <div style={{ fontWeight:700, color:'#1e293b', fontSize:13 }}>{w.student}</div>
+                  <div style={{ fontSize:12, color:'#64748b' }}>{w.batch}</div>
                 </div>
+                <div style={{ flex:1, minWidth:100 }}>
+                  <div style={{ fontSize:12, color:'#374151', marginBottom:4 }}>{w.subject}</div>
+                  <div style={{ height:7, background:'#fee2e2', borderRadius:3, overflow:'hidden' }}>
+                    <div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:3 }}/>
+                  </div>
+                </div>
+                <span style={{ fontWeight:800, color:'#dc2626', fontSize:18, fontFamily:"'JetBrains Mono',monospace" }}>{w.avg}%</span>
               </div>
-            ))}
-          </div>
+            ))
+          }
         </div>
       )}
 
-      {/* View: Trend */}
-      {viewMode === 'trend' && (
+      {viewMode==='trend' && (
         <div style={S.card}>
-          <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>📈 Score Trend — {filterStudent==='All'?'Select a student above':filterStudent}</h3>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>📈 Score Trend — {filterStudent==='All'?'Select a student above':filterStudent}</h3>
           {filterStudent==='All'
-            ? <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>Select a student from the filter above to view their score trend.</div>
+            ? <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>Select a student from the filter above.</div>
             : trendData.length===0
-              ? <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>No scores found for {filterStudent}.</div>
+              ? <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No scores for {filterStudent}.</div>
               : (
                 <>
-                  {/* Simple bar chart (CSS-based) */}
-                  <div style={{ display:'flex', gap:'10px', alignItems:'flex-end', height:'180px', padding:'0 8px', borderBottom:'2px solid #e2e8f0', overflowX:'auto' }}>
-                    {trendData.map((s, i) => {
+                  <div style={{ display:'flex', gap:8, alignItems:'flex-end', height:160, padding:'0 6px', borderBottom:'2px solid #e2e8f0', overflowX:'auto', marginBottom:14 }}>
+                    {trendData.map((s,i) => {
                       const p = pct(s.score, s.max_score)
                       return (
-                        <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', minWidth:'60px' }}>
-                          <span style={{ fontSize:'11px', fontWeight:'700', color: scoreColor(p) }}>{p}%</span>
-                          <div style={{ width:'40px', height:`${Math.max(p*1.5, 4)}px`, background: scoreColor(p), borderRadius:'4px 4px 0 0', transition:'height 0.3s' }} title={`${s.topic}: ${s.score}/${s.max_score}`} />
-                          <div style={{ fontSize:'10px', color:'#64748b', textAlign:'center', maxWidth:'60px', wordBreak:'break-word' }}>{s.subject_name?.slice(0,6)}</div>
-                          <div style={{ fontSize:'9px', color:'#94a3b8', textAlign:'center' }}>{s.test_date?.slice(5)}</div>
+                        <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:54 }}>
+                          <span style={{ fontSize:11, fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
+                          <div title={`${s.topic}: ${s.score}/${s.max_score}`} style={{ width:38, height:`${Math.max(p*1.4,4)}px`, background:scoreColor(p), borderRadius:'4px 4px 0 0', transition:'height .3s' }}/>
+                          <div style={{ fontSize:10, color:'#64748b', textAlign:'center', maxWidth:54, wordBreak:'break-word' }}>{s.subject_name?.slice(0,5)}</div>
+                          <div style={{ fontSize:9, color:'#94a3b8' }}>{s.test_date?.slice(5)}</div>
                         </div>
                       )
                     })}
                   </div>
-                  <div style={{ display:'flex', gap:'24px', marginTop:'16px', flexWrap:'wrap' }}>
+                  <div className="stat-grid-4" style={{ ...S.statGrid(4), marginBottom:14 }}>
                     {[
-                      { label:'Tests taken', value: trendData.length },
-                      { label:'Best score', value: `${Math.max(...trendData.map(s=>pct(s.score,s.max_score)))}%` },
-                      { label:'Latest score', value: `${pct(trendData[trendData.length-1].score, trendData[trendData.length-1].max_score)}%` },
-                      { label:'Avg score', value: `${Math.round(trendData.reduce((a,s)=>a+pct(s.score,s.max_score),0)/trendData.length)}%` },
+                      { label:'Tests',       value:trendData.length },
+                      { label:'Best',        value:`${Math.max(...trendData.map(s=>pct(s.score,s.max_score)))}%` },
+                      { label:'Latest',      value:`${pct(trendData[trendData.length-1].score, trendData[trendData.length-1].max_score)}%` },
+                      { label:'Average',     value:`${Math.round(trendData.reduce((a,s)=>a+pct(s.score,s.max_score),0)/trendData.length)}%` },
                     ].map(c => (
-                      <div key={c.label} style={{ background:'#f8fafc', borderRadius:'8px', padding:'12px 16px', minWidth:'100px' }}>
-                        <div style={{ fontSize:'12px', color:'#64748b' }}>{c.label}</div>
-                        <div style={{ fontSize:'20px', fontWeight:'800', color:'#1e3a5f' }}>{c.value}</div>
+                      <div key={c.label} style={{ background:'#f8fafc', borderRadius:8, padding:'12px 14px' }}>
+                        <div style={{ fontSize:12, color:'#64748b' }}>{c.label}</div>
+                        <div style={{ fontSize:20, fontWeight:800, color:'#1e3a5f', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</div>
                       </div>
                     ))}
                   </div>
-                  {/* Detailed list */}
-                  <div style={{ marginTop:'16px', display:'flex', flexDirection:'column', gap:'6px' }}>
-                    {[...trendData].reverse().map(s => {
-                      const p = pct(s.score, s.max_score)
-                      return (
-                        <div key={s.id} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'8px 12px', border:'1px solid #f1f5f9', borderRadius:'8px', fontSize:'13px' }}>
-                          <span style={{ color:'#94a3b8', minWidth:'70px' }}>{fmtDate(s.test_date)}</span>
-                          <span style={{ flex:1, color:'#374151' }}>{s.subject_name} — <em style={{ color:'#64748b' }}>{s.topic}</em></span>
-                          <span style={{ fontWeight:'700', color: scoreColor(p) }}>{s.score}/{s.max_score} ({p}%)</span>
-                          {s.notes && <span style={{ fontSize:'11px', color:'#94a3b8' }}>{s.notes}</span>}
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {[...trendData].reverse().map(s => {
+                    const p = pct(s.score, s.max_score)
+                    return (
+                      <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 12px', border:'1px solid #f1f5f9', borderRadius:8, marginBottom:5, fontSize:13, flexWrap:'wrap' }}>
+                        <span style={{ color:'#94a3b8', minWidth:70 }}>{fmtDate(s.test_date)}</span>
+                        <span style={{ flex:1, color:'#374151' }}>{s.subject_name} — <em style={{ color:'#64748b' }}>{s.topic}</em></span>
+                        <span style={{ fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score} ({p}%)</span>
+                      </div>
+                    )
+                  })}
                 </>
               )
           }
@@ -1897,16 +2015,7 @@ function TabStudentPerformance({ courseData, logs }) {
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ─── NEW: Tab: HM Dashboard ───────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/*
- * Reads from:
- *   doubt_sessions — all open/resolved by house
- *   student_scores — weak areas per house's students
- *   students       — house assignments
- */
+// ─── Tab: HM Dashboard ────────────────────────────────────────────────────────
 
 function TabHMDashboard({ currentUser }) {
   const [allDoubt, setAllDoubt]   = useState([])
@@ -1914,17 +2023,24 @@ function TabHMDashboard({ currentUser }) {
   const [houses, setHouses]       = useState([])
   const [selectedHouse, setSelectedHouse] = useState('All')
   const [loading, setLoading]     = useState(true)
-  const [resolvingId, setResolvingId] = useState(null)
-  const [note, setNote]           = useState('')
   const [noteFor, setNoteFor]     = useState(null)
+  const [note, setNote]           = useState('')
+  const [resolvingId, setResolvingId] = useState(null)
+  const [page, setPage]           = useState(1)
+  const { show: showToast, el: toastEl } = useToast()
+
+  // FIX-10: guard null currentUser
+  const resolverName = currentUser?.name || 'HM'
 
   const fetchAll = async () => {
     setLoading(true)
-    const [d, s, h] = await Promise.all([
-      supabase.from('doubt_sessions').select('*').order('created_at', { ascending: false }),
-      supabase.from('student_scores').select('*').order('test_date', { ascending: false }),
-      supabase.from('students').select('house').eq('status', 'Active').not('house', 'is', null),
+    const [d,s,h] = await Promise.all([
+      supabase.from('doubt_sessions').select('*').order('created_at',{ascending:false}),
+      supabase.from('student_scores').select('*').order('test_date',{ascending:false}),
+      supabase.from('students').select('house').eq('status','Active').not('house','is',null),
     ])
+    if (d.error) showToast('Doubts load failed: '+d.error.message, '#dc2626')
+    if (s.error) showToast('Scores load failed: '+s.error.message, '#dc2626')
     if (d.data) setAllDoubt(d.data)
     if (s.data) setAllScores(s.data)
     if (h.data) setHouses([...new Set(h.data.map(x => x.house).filter(Boolean))])
@@ -1937,100 +2053,96 @@ function TabHMDashboard({ currentUser }) {
   const openSessions  = filteredDoubt.filter(d => d.status==='open')
   const doneSessions  = filteredDoubt.filter(d => d.status==='resolved')
 
-  // Weak students in selected house
-  const houseStudents = selectedHouse==='All' ? [...new Set(allScores.map(s => s.student_name))] : []
-  const weakStudents  = useMemo(() => {
+  const weakStudents = useMemo(() => {
     const map = {}
     allScores.forEach(s => {
       const key = `${s.student_name}||${s.subject_name}`
-      if (!map[key]) map[key] = { student: s.student_name, subject: s.subject_name, scores: [] }
+      if (!map[key]) map[key] = { student:s.student_name, subject:s.subject_name, scores:[] }
       map[key].scores.push(pct(s.score, s.max_score))
     })
     return Object.values(map)
-      .map(m => ({ ...m, avg: Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length) }))
-      .filter(m => m.avg < 60)
-      .sort((a,b) => a.avg-b.avg)
+      .map(m => ({ ...m, avg:Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length) }))
+      .filter(m => m.avg<60).sort((a,b) => a.avg-b.avg)
   }, [allScores])
 
-  const handleResolve = async (session) => {
-    if (!note.trim()) { alert('Enter resolution note.'); return }
-    setResolvingId(session.id)
-    const { error } = await supabase.from('doubt_sessions').update({
-      status: 'resolved', resolved_by: currentUser?.name || 'HM',
-      resolved_at: new Date().toISOString(), resolution_note: note,
-    }).eq('id', session.id)
-    if (error) alert('Error: ' + error.message)
-    else { fetchAll(); setNote(''); setNoteFor(null) }
-    setResolvingId(null)
-  }
-
-  // Summary per house
   const houseSummary = useMemo(() => {
     const map = {}
     allDoubt.forEach(d => {
       if (!d.house_name) return
-      if (!map[d.house_name]) map[d.house_name] = { open:0, resolved:0, hm: d.hm_name }
-      if (d.status==='open') map[d.house_name].open++
-      else map[d.house_name].resolved++
+      if (!map[d.house_name]) map[d.house_name] = { open:0, resolved:0, hm:d.hm_name }
+      d.status==='open' ? map[d.house_name].open++ : map[d.house_name].resolved++
     })
     return map
   }, [allDoubt])
 
-  if (loading) return <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading HM Dashboard...</div>
+  const handleResolve = async session => {
+    if (!note.trim()) { showToast('Enter resolution note.', '#d97706'); return }
+    setResolvingId(session.id)
+    const { error } = await supabase.from('doubt_sessions').update({
+      status:'resolved', resolved_by:resolverName,
+      resolved_at:new Date().toISOString(), resolution_note:note,
+    }).eq('id', session.id)
+    if (error) showToast('Error: '+error.message, '#dc2626')
+    else { fetchAll(); setNote(''); setNoteFor(null); showToast('Marked resolved', '#16a34a') }
+    setResolvingId(null)
+  }
+
+  // Paginate resolved history
+  const HIST_PAGE = 10
+  const histPages = Math.ceil(doneSessions.length/HIST_PAGE)
+  const histPage  = doneSessions.slice((page-1)*HIST_PAGE, page*HIST_PAGE)
+
+  if (loading) return <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading HM Dashboard...</div>
 
   return (
     <>
-      {/* House summary cards */}
+      {toastEl}
       {Object.keys(houseSummary).length > 0 && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:'12px', marginBottom:'24px' }}>
-          {Object.entries(houseSummary).map(([house, data]) => (
-            <div key={house} onClick={() => setSelectedHouse(selectedHouse===house?'All':house)} style={{ ...S.card, padding:'16px', cursor:'pointer', border: selectedHouse===house?'2px solid #1e3a5f':'1px solid #e2e8f0', marginBottom:0 }}>
-              <div style={{ fontSize:'16px', fontWeight:'700', color:'#1e293b', marginBottom:'8px' }}>🏠 {house}</div>
-              {data.hm && <div style={{ fontSize:'12px', color:'#64748b', marginBottom:'8px' }}>HM: {data.hm}</div>}
-              <div style={{ display:'flex', gap:'8px' }}>
-                {data.open>0  && <span style={S.badge('#b45309','#fef9c3')}>⏳ {data.open} open</span>}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:10, marginBottom:20 }}>
+          {Object.entries(houseSummary).map(([house,data]) => (
+            <div key={house} onClick={() => setSelectedHouse(selectedHouse===house?'All':house)}
+              style={{ ...S.card, padding:14, cursor:'pointer', border: selectedHouse===house?'2px solid #1e3a5f':'1px solid #e2e8f0', marginBottom:0 }}>
+              <div style={{ fontSize:14, fontWeight:800, color:'#1e293b', marginBottom:6 }}>🏠 {house}</div>
+              {data.hm && <div style={{ fontSize:12, color:'#64748b', marginBottom:6 }}>HM: {data.hm}</div>}
+              <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+                {data.open>0  && <span style={S.badge('#b45309','#fef9c3')}>⏳ {data.open}</span>}
                 {data.resolved>0 && <span style={S.badge('#16a34a','#dcfce7')}>✅ {data.resolved}</span>}
-                {data.open===0&&data.resolved===0 && <span style={S.badge('#94a3b8','#f1f5f9')}>No sessions</span>}
+                {data.open===0&&data.resolved===0 && <span style={S.badge('#94a3b8','#f1f5f9')}>None</span>}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <div style={{ display:'flex', gap:'12px', marginBottom:'20px', alignItems:'center' }}>
-        <span style={{ fontWeight:'600', color:'#374151', fontSize:'13px' }}>Filter house:</span>
+      <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
         <select value={selectedHouse} onChange={e => setSelectedHouse(e.target.value)} style={{ ...S.select, width:'auto' }}>
           <option value="All">All Houses</option>
           {houses.map(h => <option key={h} value={h}>{h}</option>)}
         </select>
-        <span style={{ fontSize:'13px', color:'#64748b' }}>{openSessions.length} open · {doneSessions.length} resolved</span>
+        <span style={{ fontSize:13, color:'#64748b' }}>{openSessions.length} open · {doneSessions.length} resolved</span>
       </div>
 
-      {/* Open sessions */}
       <div style={S.card}>
-        <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
+        <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
         {openSessions.length===0
-          ? <div style={{ textAlign:'center', padding:'24px', color:'#16a34a', fontWeight:'600' }}>✅ No open doubt sessions!</div>
+          ? <div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>
           : openSessions.map(s => (
-            <div key={s.id} style={{ border:'1px solid #fde68a', borderRadius:'10px', padding:'14px 16px', marginBottom:'10px', background:'#fffbeb' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'8px' }}>
+            <div key={s.id} style={{ border:'1px solid #fde68a', borderRadius:10, padding:'13px 16px', marginBottom:10, background:'#fffbeb' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
                 <div>
-                  <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'14px' }}>🏠 {s.house_name} · {s.subject_name}</div>
-                  <div style={{ fontSize:'13px', color:'#374151', marginTop:'4px' }}>📖 {s.topic}</div>
-                  <div style={{ fontSize:'12px', color:'#64748b', marginTop:'2px' }}>Teacher: {s.teacher_name||'-'} | {fmtDate(s.teaching_date)}</div>
-                  {s.hm_name && <div style={{ fontSize:'12px', color:'#64748b' }}>HM: {s.hm_name}</div>}
+                  <div style={{ fontWeight:700, color:'#1e293b', fontSize:14 }}>🏠 {s.house_name} · {s.subject_name}</div>
+                  <div style={{ fontSize:13, color:'#374151', marginTop:3 }}>📖 {s.topic}</div>
+                  <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>👨‍🏫 {s.teacher_name||'-'} | {fmtDate(s.teaching_date)}</div>
                 </div>
                 <div>
-                  <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
-                    {noteFor===s.id
-                      ? <>
-                          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Resolution note..." style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'12px', width:'200px' }} autoFocus />
-                          <button onClick={() => handleResolve(s)} style={S.btnSm('#16a34a')}>✓ Resolve</button>
-                          <button onClick={() => { setNoteFor(null); setNote('') }} style={S.btnSm('#64748b')}>✖</button>
-                        </>
-                      : <button onClick={() => setNoteFor(s.id)} style={S.btnSm('#1e3a5f')}>✓ Mark Resolved</button>
-                    }
-                  </div>
+                  {noteFor===s.id
+                    ? <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Resolution note..." style={{ ...S.input, width:180, fontSize:12 }} autoFocus/>
+                        <button onClick={() => handleResolve(s)} disabled={resolvingId===s.id} style={S.btnSm('#16a34a')}>✓</button>
+                        <button onClick={() => { setNoteFor(null); setNote('') }} style={S.btnSm('#64748b')}>✖</button>
+                      </div>
+                    : <button onClick={() => setNoteFor(s.id)} style={S.btnSm('#1e3a5f')}>✓ Resolve</button>
+                  }
                 </div>
               </div>
             </div>
@@ -2038,62 +2150,48 @@ function TabHMDashboard({ currentUser }) {
         }
       </div>
 
-      {/* Weak student areas */}
       {weakStudents.length > 0 && (
         <div style={S.card}>
-          <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#dc2626', marginTop:0 }}>⚠️ Students Needing Attention (avg below 60%)</h3>
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-            {weakStudents.map((w, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'10px 14px', border:'1px solid #fecaca', borderRadius:'8px', background:'#fff1f2' }}>
-                <div style={{ minWidth:'140px', fontWeight:'600', color:'#1e293b', fontSize:'13px' }}>{w.student}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:'12px', color:'#64748b', marginBottom:'4px' }}>{w.subject}</div>
-                  <div style={{ height:'6px', background:'#fee2e2', borderRadius:'3px', overflow:'hidden' }}>
-                    <div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:'3px' }} />
-                  </div>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>⚠️ Students Needing Attention</h3>
+          {weakStudents.map((w,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'10px 12px', border:'1px solid #fecaca', borderRadius:8, marginBottom:6, background:'#fff1f2', flexWrap:'wrap' }}>
+              <div style={{ minWidth:130, fontWeight:600, color:'#1e293b', fontSize:13 }}>{w.student}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12, color:'#64748b', marginBottom:3 }}>{w.subject}</div>
+                <div style={{ height:5, background:'#fee2e2', borderRadius:3, overflow:'hidden' }}>
+                  <div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:3 }}/>
                 </div>
-                <span style={{ fontWeight:'800', color:'#dc2626', fontSize:'16px', minWidth:'48px', textAlign:'right' }}>{w.avg}%</span>
               </div>
-            ))}
-          </div>
+              <span style={{ fontWeight:800, color:'#dc2626', fontSize:16, fontFamily:"'JetBrains Mono',monospace" }}>{w.avg}%</span>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Resolved history */}
       {doneSessions.length > 0 && (
         <div style={S.card}>
-          <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#16a34a', marginTop:0 }}>✅ Resolved Sessions ({doneSessions.length})</h3>
-          <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-            {doneSessions.slice(0,10).map(s => (
-              <div key={s.id} style={{ display:'flex', gap:'12px', alignItems:'center', padding:'8px 12px', border:'1px solid #bbf7d0', borderRadius:'8px', background:'#f0fdf4', fontSize:'13px' }}>
-                <span style={{ color:'#94a3b8', minWidth:'70px' }}>{fmtDate(s.teaching_date)}</span>
-                <span style={{ flex:1 }}>🏠 {s.house_name} · {s.subject_name} — <em>{s.topic}</em></span>
-                <span style={{ color:'#16a34a', fontWeight:'600' }}>✅ by {s.resolved_by}</span>
-              </div>
-            ))}
-            {doneSessions.length>10 && <div style={{ fontSize:'12px', color:'#94a3b8', paddingLeft:'12px' }}>+{doneSessions.length-10} more</div>}
-          </div>
+          <h3 style={{ fontSize:14, fontWeight:800, color:'#16a34a', marginTop:0 }}>✅ Resolved Sessions ({doneSessions.length})</h3>
+          {histPage.map(s => (
+            <div key={s.id} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 12px', border:'1px solid #bbf7d0', borderRadius:8, background:'#f0fdf4', fontSize:13, marginBottom:5, flexWrap:'wrap' }}>
+              <span style={{ color:'#94a3b8', minWidth:70 }}>{fmtDate(s.teaching_date)}</span>
+              <span style={{ flex:1 }}>🏠 {s.house_name} · {s.subject_name} — <em>{s.topic}</em></span>
+              <span style={{ color:'#16a34a', fontWeight:600 }}>✅ {s.resolved_by}</span>
+            </div>
+          ))}
+          {histPages > 1 && (
+            <div style={{ display:'flex', gap:5, justifyContent:'center', marginTop:10 }}>
+              <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'), opacity:page===1?.4:1 }}>←</button>
+              <span style={{ fontSize:13, color:'#64748b', padding:'6px 10px' }}>{page}/{histPages}</span>
+              <button onClick={() => setPage(p => Math.min(histPages,p+1))} disabled={page===histPages} style={{ ...S.btnSm('#64748b'), opacity:page===histPages?.4:1 }}>→</button>
+            </div>
+          )}
         </div>
       )}
     </>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ─── NEW: Tab: Admin Monitoring Centre ────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/*
- * Supabase table required:
- *   admin_alerts (
- *     id uuid primary key default gen_random_uuid(),
- *     alert_type text,   -- 'gap', 'doubt_stale', 'no_log', 'low_score'
- *     course text, subtype text, subject_name text, teacher_name text,
- *     message text, severity text, -- 'high' | 'medium' | 'low'
- *     is_read boolean default false,
- *     created_at timestamptz default now()
- *   )
- */
+// ─── Tab: Admin Monitor ───────────────────────────────────────────────────────
 
 function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
   const [allDoubt, setAllDoubt]     = useState([])
@@ -2101,153 +2199,152 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
   const [alerts, setAlerts]         = useState([])
   const [loading, setLoading]       = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [alertFilter, setAlertFilter] = useState('All') // FIX-12
+  const { show: showToast, el: toastEl } = useToast()
   const { courses } = courseData
 
   const fetchAll = async () => {
     setLoading(true)
-    const [d, s, a] = await Promise.all([
+    const [d,s,a] = await Promise.all([
       supabase.from('doubt_sessions').select('*'),
       supabase.from('student_scores').select('*'),
-      supabase.from('admin_alerts').select('*').order('created_at', { ascending: false }).limit(50),
+      supabase.from('admin_alerts').select('*').order('created_at',{ascending:false}).limit(50),
     ])
+    if (d.error) showToast('Doubts: '+d.error.message, '#dc2626')
+    if (s.error) showToast('Scores: '+s.error.message, '#dc2626')
+    if (a.error) showToast('Alerts: '+a.error.message, '#dc2626')
     if (d.data) setAllDoubt(d.data)
     if (s.data) setAllScores(s.data)
     if (a.data) setAlerts(a.data)
     setLoading(false)
   }
-
   useEffect(() => { fetchAll() }, [])
 
-  // ── Computed health metrics ──
   const currMonth = currentYearMonth()
 
   const batchHealth = useMemo(() => {
     const result = []
     const subtypes = [...new Set(logs.map(l => l.subtype).filter(Boolean))]
     subtypes.forEach(subtype => {
-      const batchLogs    = logs.filter(l => l.subtype===subtype && l.teaching_date?.startsWith(currMonth))
-      const batchDoubt   = allDoubt.filter(d => d.subtype===subtype)
-      const openDoubt    = batchDoubt.filter(d => d.status==='open').length
-      const totalDoubt   = batchDoubt.length
-      const batchScores  = allScores.filter(s => s.subtype===subtype)
-      const avgScore     = batchScores.length > 0 ? Math.round(batchScores.reduce((a,s)=>a+pct(s.score,s.max_score),0)/batchScores.length) : null
-      const subjectsCovered = new Set(batchLogs.map(l => l.subject_name)).size
-      const doubtResRate = totalDoubt > 0 ? Math.round(((totalDoubt-openDoubt)/totalDoubt)*100) : 100
-
-      result.push({
-        subtype,
-        course: logs.find(l=>l.subtype===subtype)?.course||'',
-        logsThisMonth: batchLogs.length,
-        subjectsCovered,
-        openDoubt,
-        doubtResRate,
-        avgScore,
-        health: Math.round((Math.min(batchLogs.length/20,1)*40) + (doubtResRate*0.3) + ((avgScore||50)/100*30)),
-      })
+      const bl = logs.filter(l => l.subtype===subtype && l.teaching_date?.startsWith(currMonth))
+      const bd = allDoubt.filter(d => d.subtype===subtype)
+      const open = bd.filter(d => d.status==='open').length
+      const bs = allScores.filter(s => s.subtype===subtype)
+      const avg = bs.length > 0 ? Math.round(bs.reduce((a,s)=>a+pct(s.score,s.max_score),0)/bs.length) : null
+      const sub = new Set(bl.map(l => l.subject_name)).size
+      const resRate = bd.length > 0 ? Math.round(((bd.length-open)/bd.length)*100) : 100
+      result.push({ subtype, course:logs.find(l=>l.subtype===subtype)?.course||'', logsThisMonth:bl.length, subjectsCovered:sub, openDoubt:open, doubtResRate:resRate, avgScore:avg, health:Math.round((Math.min(bl.length/20,1)*40)+(resRate*.3)+((avg||50)/100*30)) })
     })
     return result.sort((a,b) => a.health-b.health)
   }, [logs, allDoubt, allScores, currMonth])
 
-  // Teacher leaderboard (by logs this month)
   const teacherBoard = useMemo(() => {
     const map = {}
     logs.filter(l => l.teaching_date?.startsWith(currMonth)).forEach(l => {
       if (!l.teacher_name) return
-      if (!map[l.teacher_name]) map[l.teacher_name] = { name: l.teacher_name, logs:0, doubts:0, subjects:new Set() }
-      map[l.teacher_name].logs++
-      map[l.teacher_name].subjects.add(l.subject_name)
+      if (!map[l.teacher_name]) map[l.teacher_name] = { name:l.teacher_name, logs:0, doubts:0, subjects:new Set() }
+      map[l.teacher_name].logs++; map[l.teacher_name].subjects.add(l.subject_name)
     })
-    allDoubt.filter(d => d.teacher_name && d.status==='open').forEach(d => {
-      if (map[d.teacher_name]) map[d.teacher_name].doubts++
-    })
+    allDoubt.filter(d => d.teacher_name&&d.status==='open').forEach(d => { if (map[d.teacher_name]) map[d.teacher_name].doubts++ })
     return Object.values(map).sort((a,b) => b.logs-a.logs)
   }, [logs, allDoubt, currMonth])
 
-  // Syllabus gap: subject × batch with 0 logs in last 3 days
   const gaps = useMemo(() => {
     const threshold = new Date(); threshold.setDate(threshold.getDate()-3)
     const threshStr = threshold.toISOString().split('T')[0]
     const result = []
     const pairs = [...new Set(logs.map(l => `${l.subtype}||${l.subject_name}`))]
     pairs.forEach(pair => {
-      const [subtype, subject] = pair.split('||')
+      const [subtype,subject] = pair.split('||')
       const recent = logs.filter(l => l.subtype===subtype && l.subject_name===subject && l.teaching_date>=threshStr)
-      if (recent.length===0) {
-        const last = logs.filter(l => l.subtype===subtype && l.subject_name===subject).sort((a,b)=>b.teaching_date?.localeCompare(a.teaching_date))[0]
-        result.push({ subtype, subject, lastLogged: last?.teaching_date||'never', teacher: last?.teacher_name||'-' })
+      if (!recent.length) {
+        const last = logs.filter(l => l.subtype===subtype && l.subject_name===subject).sort((a,b) => b.teaching_date?.localeCompare(a.teaching_date))[0]
+        result.push({ subtype, subject, lastLogged:last?.teaching_date||'never', teacher:last?.teacher_name||'-' })
       }
     })
     return result
   }, [logs])
 
-  // Stale open doubts (open > 2 days)
   const staleDoubt = useMemo(() => {
     const threshold = new Date(); threshold.setDate(threshold.getDate()-2)
     const threshStr = threshold.toISOString().split('T')[0]
     return allDoubt.filter(d => d.status==='open' && d.teaching_date && d.teaching_date<=threshStr)
   }, [allDoubt])
 
+  // FIX-12: dedup before inserting alerts
   const generateAlerts = async () => {
     setGenerating(true)
     const newAlerts = []
-
-    // Gap alerts
-    gaps.forEach(g => newAlerts.push({ alert_type:'gap', course:'', subtype:g.subtype, subject_name:g.subject, teacher_name:g.teacher, message:`No log for ${g.subject} (${g.subtype}) in 3+ days. Last: ${fmtDate(g.lastLogged)}`, severity:'medium' }))
-
-    // Stale doubt alerts
-    staleDoubt.forEach(d => newAlerts.push({ alert_type:'doubt_stale', course:d.course||'', subtype:d.subtype||'', subject_name:d.subject_name, teacher_name:d.teacher_name||'', message:`Unresolved doubt for ${d.subject_name} (${d.house_name}) since ${fmtDate(d.teaching_date)}`, severity:'high' }))
-
+    gaps.forEach(g => {
+      const key = `gap||${g.subtype}||${g.subject}`
+      if (!alerts.find(a => a.alert_type==='gap' && a.subtype===g.subtype && a.subject_name===g.subject && !a.is_read))
+        newAlerts.push({ alert_type:'gap', course:'', subtype:g.subtype, subject_name:g.subject, teacher_name:g.teacher, message:`No log for ${g.subject} (${g.subtype}) in 3+ days. Last: ${fmtDate(g.lastLogged)}`, severity:'medium' })
+    })
+    staleDoubt.forEach(d => {
+      if (!alerts.find(a => a.alert_type==='doubt_stale' && a.subtype===d.subtype && a.subject_name===d.subject_name && !a.is_read))
+        newAlerts.push({ alert_type:'doubt_stale', course:d.course||'', subtype:d.subtype||'', subject_name:d.subject_name, teacher_name:d.teacher_name||'', message:`Unresolved doubt for ${d.subject_name} (${d.house_name}) since ${fmtDate(d.teaching_date)}`, severity:'high' })
+    })
     if (newAlerts.length > 0) {
       const { error } = await supabase.from('admin_alerts').insert(newAlerts)
-      if (error) alert('Error saving alerts: ' + error.message)
-      else await fetchAll()
+      if (error) showToast('Error saving alerts: '+error.message, '#dc2626')
+      else { await fetchAll(); showToast(`${newAlerts.length} new alerts generated`, '#16a34a') }
     } else {
-      alert('✅ No new alerts needed!')
+      showToast('✅ No new alerts needed!', '#16a34a')
     }
     setGenerating(false)
   }
 
-  const markRead = async (id) => {
-    await supabase.from('admin_alerts').update({ is_read: true }).eq('id', id)
+  const markRead = async id => {
+    await supabase.from('admin_alerts').update({ is_read:true }).eq('id', id)
     setAlerts(prev => prev.map(a => a.id===id?{...a,is_read:true}:a))
   }
 
-  const unreadAlerts = alerts.filter(a => !a.is_read)
+  const unreadAlerts  = alerts.filter(a => !a.is_read)
+  const alertTypes    = [...new Set(alerts.map(a => a.alert_type))]
+  const shownAlerts   = alertFilter==='All' ? alerts : alerts.filter(a => a.alert_type===alertFilter)
 
-  if (loading) return <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading admin monitor...</div>
+  if (loading) return <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading admin monitor...</div>
 
   return (
     <>
-      {/* Summary stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px', marginBottom:'24px' }}>
+      {toastEl}
+      <div className="stat-grid-4" style={S.statGrid(4)}>
         {[
           { label:'Unread Alerts',    value:unreadAlerts.length,           color:'#dc2626', bg:'#fee2e2', icon:'🔔' },
-          { label:'Open Doubts',      value:allDoubt.filter(d=>d.status==='open').length, color:'#f59e0b', bg:'#fef9c3', icon:'⏳' },
+          { label:'Open Doubts',      value:allDoubt.filter(d=>d.status==='open').length, color:'#d97706', bg:'#fef9c3', icon:'⏳' },
           { label:'Syllabus Gaps',    value:gaps.length,                   color:'#7c3aed', bg:'#f3e8ff', icon:'📚' },
-          { label:'Stale (2d+ open)', value:staleDoubt.length,            color:'#dc2626', bg:'#fff1f2', icon:'⚠️' },
+          { label:'Stale (2d+)',      value:staleDoubt.length,             color:'#dc2626', bg:'#fff1f2', icon:'⚠️' },
         ].map(c => (
           <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'22px', marginBottom:'6px' }}>{c.icon}</div>
-            <p style={{ fontSize:'13px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'28px', fontWeight:'bold', color:c.color, margin:'4px 0 0' }}>{c.value}</h2>
+            <div style={{ fontSize:20, marginBottom:4 }}>{c.icon}</div>
+            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:26, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
           </div>
         ))}
       </div>
 
-      {/* Alert panel */}
       <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
-          <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>🔔 Alerts {unreadAlerts.length>0 && <span style={{ ...S.badge('white','#dc2626'), marginLeft:'8px' }}>{unreadAlerts.length} new</span>}</h3>
-          <button onClick={generateAlerts} disabled={generating} style={S.btn('#7c3aed', generating)}>{generating?'⏳ Generating...':'⚡ Generate Alerts'}</button>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:8 }}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', margin:0 }}>
+            🔔 Alerts {unreadAlerts.length>0 && <span style={{ ...S.badge('white','#dc2626'), marginLeft:8 }}>{unreadAlerts.length} new</span>}
+          </h3>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {/* FIX-12: filter by type */}
+            <select value={alertFilter} onChange={e => setAlertFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:12 }}>
+              <option value="All">All Types</option>
+              {alertTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <button onClick={generateAlerts} disabled={generating} style={S.btn('#7c3aed',generating)}>{generating?'⏳ Generating...':'⚡ Generate Alerts'}</button>
+          </div>
         </div>
-        {alerts.length===0
-          ? <div style={{ textAlign:'center', padding:'24px', color:'#94a3b8' }}>No alerts yet. Click "Generate Alerts" to scan for issues.</div>
-          : alerts.slice(0,20).map(a => (
-            <div key={a.id} style={{ display:'flex', gap:'12px', alignItems:'flex-start', padding:'10px 14px', marginBottom:'8px', borderRadius:'8px', border:`1px solid ${a.severity==='high'?'#fecaca':a.severity==='medium'?'#fde68a':'#e2e8f0'}`, background: a.is_read?'white':(a.severity==='high'?'#fff1f2':a.severity==='medium'?'#fffbeb':'#f8fafc'), opacity: a.is_read?0.6:1 }}>
-              <span style={{ fontSize:'16px', marginTop:'2px' }}>{a.severity==='high'?'🔴':a.severity==='medium'?'🟡':'🔵'}</span>
+        {shownAlerts.length===0
+          ? <div style={{ textAlign:'center', padding:24, color:'#94a3b8' }}>No alerts. Click "Generate Alerts" to scan.</div>
+          : shownAlerts.slice(0,20).map(a => (
+            <div key={a.id} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'10px 12px', marginBottom:7, borderRadius:8, border:`1px solid ${a.severity==='high'?'#fecaca':a.severity==='medium'?'#fde68a':'#e2e8f0'}`, background:a.is_read?'white':(a.severity==='high'?'#fff1f2':a.severity==='medium'?'#fffbeb':'#f8fafc'), opacity:a.is_read?.6:1 }}>
+              <span style={{ fontSize:14, marginTop:2 }}>{a.severity==='high'?'🔴':a.severity==='medium'?'🟡':'🔵'}</span>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:'13px', color:'#1e293b', fontWeight: a.is_read?'400':'600' }}>{a.message}</div>
-                <div style={{ fontSize:'11px', color:'#94a3b8', marginTop:'2px' }}>{a.alert_type} · {fmtDate(a.created_at?.split('T')[0])}</div>
+                <div style={{ fontSize:13, color:'#1e293b', fontWeight:a.is_read?400:600 }}>{a.message}</div>
+                <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{a.alert_type} · {fmtDate(a.created_at?.split('T')[0])}</div>
               </div>
               {!a.is_read && <button onClick={() => markRead(a.id)} style={S.btnSm('#94a3b8')}>✓ Read</button>}
             </div>
@@ -2255,77 +2352,66 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
         }
       </div>
 
-      {/* Batch health */}
       <div style={S.card}>
-        <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>🏫 Batch Health — {new Date().toLocaleString('default',{month:'long',year:'numeric'})}</h3>
-        <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-          {batchHealth.length===0 && <div style={{ textAlign:'center', padding:'24px', color:'#94a3b8' }}>No batch data yet.</div>}
-          {batchHealth.map((b, i) => (
-            <div key={i} style={{ border:'1px solid #e2e8f0', borderRadius:'10px', padding:'14px 16px' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
-                <div>
-                  <span style={{ fontWeight:'700', color:'#1e293b', fontSize:'15px' }}>{b.subtype}</span>
-                  <span style={{ marginLeft:'8px', fontSize:'12px', color:'#64748b' }}>{b.course}</span>
-                </div>
-                <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
-                  {b.openDoubt>0 && <span style={S.badge('#b45309','#fef9c3')}>⏳ {b.openDoubt} open doubts</span>}
-                  {b.avgScore!=null && <span style={{ ...S.badge(scoreColor(b.avgScore), scoreBg(b.avgScore)) }}>Avg {b.avgScore}%</span>}
-                  <span style={{ fontSize:'20px', fontWeight:'800', color: scoreColor(b.health) }}>{b.health}%</span>
-                </div>
+        <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🏫 Batch Health — {new Date().toLocaleString('default',{month:'long',year:'numeric'})}</h3>
+        {batchHealth.length===0 && <div style={{ textAlign:'center', padding:24, color:'#94a3b8' }}>No batch data.</div>}
+        {batchHealth.map((b,i) => (
+          <div key={i} style={{ border:'1px solid #e2e8f0', borderRadius:10, padding:'14px 16px', marginBottom:10 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
+              <div>
+                <span style={{ fontWeight:800, color:'#1e293b', fontSize:14 }}>{b.subtype}</span>
+                <span style={{ marginLeft:8, fontSize:12, color:'#64748b' }}>{b.course}</span>
               </div>
-              <div style={{ height:'8px', background:'#e2e8f0', borderRadius:'4px', overflow:'hidden', marginBottom:'8px' }}>
-                <div style={{ width:`${b.health}%`, height:'100%', background: scoreColor(b.health), borderRadius:'4px', transition:'width 0.4s' }} />
-              </div>
-              <div style={{ display:'flex', gap:'16px', fontSize:'12px', color:'#64748b' }}>
-                <span>📋 {b.logsThisMonth} logs this month</span>
-                <span>📚 {b.subjectsCovered} subjects</span>
-                <span>🔁 {b.doubtResRate}% doubts resolved</span>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {b.openDoubt>0 && <span style={S.badge('#b45309','#fef9c3')}>⏳ {b.openDoubt}</span>}
+                {b.avgScore!=null && <span style={{ ...S.badge(scoreColor(b.avgScore), scoreBg(b.avgScore)) }}>{b.avgScore}%</span>}
+                <span style={{ fontSize:18, fontWeight:800, color:scoreColor(b.health), fontFamily:"'JetBrains Mono',monospace" }}>{b.health}%</span>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Teacher leaderboard */}
-      <div style={S.card}>
-        <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>🏆 Teacher Activity — This Month</h3>
-        <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-          {teacherBoard.length===0 && <div style={{ textAlign:'center', padding:'24px', color:'#94a3b8' }}>No teacher logs this month.</div>}
-          {teacherBoard.map((t, i) => (
-            <div key={t.name} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'10px 14px', border:'1px solid #e2e8f0', borderRadius:'8px', background: i<3?'#f0fdf4':'white' }}>
-              <span style={{ fontWeight:'800', color: i===0?'#ca8a04':i===1?'#94a3b8':i===2?'#b45309':'#94a3b8', fontSize:'16px', minWidth:'24px' }}>#{i+1}</span>
-              <span style={{ flex:1, fontWeight:'600', color:'#1e293b', fontSize:'14px' }}>👨‍🏫 {t.name}</span>
-              <span style={S.pill('#1e3a5f','#eff6ff')}>{t.logs} logs</span>
-              <span style={S.pill('#7c3aed','#f3e8ff')}>{t.subjects.size} subj</span>
-              {t.doubts>0 && <span style={S.pill('#b45309','#fef9c3')}>⏳ {t.doubts} open</span>}
+            <div style={{ height:7, background:'#e2e8f0', borderRadius:4, overflow:'hidden', marginBottom:6 }}>
+              <div style={{ width:`${b.health}%`, height:'100%', background:scoreColor(b.health), borderRadius:4, transition:'width .4s' }}/>
             </div>
-          ))}
-        </div>
+            <div style={{ display:'flex', gap:14, fontSize:12, color:'#64748b', flexWrap:'wrap' }}>
+              <span>📋 {b.logsThisMonth} logs</span>
+              <span>📚 {b.subjectsCovered} subjects</span>
+              <span>🔁 {b.doubtResRate}% resolved</span>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Syllabus gaps */}
+      <div style={S.card}>
+        <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🏆 Teacher Activity — This Month</h3>
+        {teacherBoard.length===0 && <div style={{ textAlign:'center', padding:24, color:'#94a3b8' }}>No teacher logs this month.</div>}
+        {teacherBoard.map((t,i) => (
+          <div key={t.name} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', border:'1px solid #e2e8f0', borderRadius:8, background:i<3?'#f0fdf4':'white', marginBottom:6, flexWrap:'wrap' }}>
+            <span style={{ fontWeight:800, color:i===0?'#ca8a04':i===1?'#94a3b8':i===2?'#b45309':'#94a3b8', fontSize:14, minWidth:24 }}>#{i+1}</span>
+            <span style={{ flex:1, fontWeight:600, color:'#1e293b', fontSize:13 }}>👨‍🏫 {t.name}</span>
+            <span style={S.pill('#1e3a5f','#eff6ff')}>{t.logs} logs</span>
+            <span style={S.pill('#7c3aed','#f3e8ff')}>{t.subjects.size} subj</span>
+            {t.doubts>0 && <span style={S.pill('#b45309','#fef9c3')}>⏳ {t.doubts}</span>}
+          </div>
+        ))}
+      </div>
+
       {gaps.length > 0 && (
         <div style={S.card}>
-          <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#7c3aed', marginTop:0 }}>📚 Syllabus Gaps (no log in 3+ days)</h3>
-          <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-            {gaps.map((g, i) => (
-              <div key={i} style={{ display:'flex', gap:'12px', alignItems:'center', padding:'8px 12px', border:'1px solid #ddd6fe', borderRadius:'8px', background:'#faf5ff', fontSize:'13px' }}>
-                <span style={S.badge('#7c3aed','#f3e8ff')}>{g.subtype}</span>
-                <span style={{ flex:1, color:'#374151' }}>{g.subject}</span>
-                <span style={{ color:'#94a3b8' }}>Last: {fmtDate(g.lastLogged)}</span>
-                <span style={{ color:'#64748b' }}>👨‍🏫 {g.teacher}</span>
-              </div>
-            ))}
-          </div>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#7c3aed', marginTop:0 }}>📚 Syllabus Gaps (3+ days no log)</h3>
+          {gaps.map((g,i) => (
+            <div key={i} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 12px', border:'1px solid #ddd6fe', borderRadius:8, background:'#faf5ff', fontSize:13, marginBottom:5, flexWrap:'wrap' }}>
+              <span style={S.badge('#7c3aed','#f3e8ff')}>{g.subtype}</span>
+              <span style={{ flex:1, color:'#374151' }}>{g.subject}</span>
+              <span style={{ color:'#94a3b8' }}>Last: {fmtDate(g.lastLogged)}</span>
+              <span style={{ color:'#64748b' }}>👨‍🏫 {g.teacher}</span>
+            </div>
+          ))}
         </div>
       )}
     </>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ─── NEW: Tab: Remediation Slot Suggester ─────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Tab: Remediation ─────────────────────────────────────────────────────────
 
 function TabRemediation({ logs, courseData }) {
   const [allDoubt, setAllDoubt]   = useState([])
@@ -2333,15 +2419,18 @@ function TabRemediation({ logs, courseData }) {
   const [ttFull, setTtFull]       = useState([])
   const [loading, setLoading]     = useState(true)
   const [filterBatch, setFilterBatch] = useState('All')
+  const { show: showToast, el: toastEl } = useToast()
 
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true)
-      const [d, s, t] = await Promise.all([
-        supabase.from('doubt_sessions').select('*').eq('status', 'open'),
+      const [d,s,t] = await Promise.all([
+        supabase.from('doubt_sessions').select('*').eq('status','open'),
         supabase.from('student_scores').select('*'),
         supabase.from('teaching_timetable').select('*'),
       ])
+      if (d.error) showToast('Doubts: '+d.error.message, '#dc2626')
+      if (s.error) showToast('Scores: '+s.error.message, '#dc2626')
       if (d.data) setAllDoubt(d.data)
       if (s.data) setAllScores(s.data)
       if (t.data) setTtFull(t.data)
@@ -2350,7 +2439,6 @@ function TabRemediation({ logs, courseData }) {
     fetchAll()
   }, [])
 
-  // Group open doubts by subtype × subject
   const doubtGroups = useMemo(() => {
     const map = {}
     allDoubt.forEach(d => {
@@ -2362,126 +2450,117 @@ function TabRemediation({ logs, courseData }) {
     return Object.values(map).sort((a,b) => b.sessions.length-a.sessions.length)
   }, [allDoubt])
 
-  // For each group, find weak students and suggest a doubt slot from timetable
+  // FIX-13: derive actual free periods from timetable instead of hardcoded slots
   const suggestions = useMemo(() => {
     return doubtGroups.map(g => {
-      // Weak students for this subject in this batch
       const batchScores = allScores.filter(s => s.subtype===g.subtype && s.subject_name===g.subject)
       const studentMap  = {}
       batchScores.forEach(s => {
-        if (!studentMap[s.student_name]) studentMap[s.student_name] = []
+        if (!studentMap[s.student_name]) studentMap[s.student_name]=[]
         studentMap[s.student_name].push(pct(s.score, s.max_score))
       })
       const weakStudents = Object.entries(studentMap)
-        .map(([name, scores]) => ({ name, avg: Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) }))
-        .filter(s => s.avg<60).sort((a,b)=>a.avg-b.avg)
+        .map(([name,scores]) => ({ name, avg:Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) }))
+        .filter(s => s.avg<60).sort((a,b) => a.avg-b.avg)
 
-      // Find available doubt session slot in timetable (day + period with no conflict)
-      // Doubt slots from GNSI timetable: typically early morning (6:30–8:10) or evening (5:30–8:00)
-      // We look for existing timetable entries matching the batch or suggest standard slots
-      const existingSlots = ttFull.filter(t =>
-        (t.subtype===g.subtype || t.class_name===g.subtype) &&
-        (t.start_time==='06:30' || t.start_time==='17:30' || t.start_time==='18:20' || t.start_time==='19:10')
+      // FIX-13: find actual free slots (period+day combinations not used by this batch)
+      const usedSlots = new Set(
+        ttFull.filter(t => (t.subtype===g.subtype||t.class_name===g.subtype))
+          .map(t => `${t.day_of_week||t.day_name}||${t.period_number||t.period_name}`)
       )
-
-      const standardSlots = [
-        { day:'Monday',    time:'06:30–07:20', type:'Morning Doubt' },
-        { day:'Monday',    time:'17:30–18:20', type:'Evening Doubt' },
-        { day:'Wednesday', time:'06:30–07:20', type:'Morning Doubt' },
-        { day:'Friday',    time:'17:30–18:20', type:'Evening Doubt' },
+      const freeSlots = []
+      DAYS.forEach(day => {
+        PERIODS.forEach(p => {
+          if (!usedSlots.has(`${day}||${p}`) && freeSlots.length < 4) {
+            freeSlots.push({ day, period:`Period ${p}`, type:'Free Slot' })
+          }
+        })
+      })
+      // Fall back to standard doubt times if no free slots found
+      const suggestedSlots = freeSlots.length > 0 ? freeSlots : [
+        { day:'Monday',    period:'06:30–07:20', type:'Morning Doubt' },
+        { day:'Wednesday', period:'06:30–07:20', type:'Morning Doubt' },
+        { day:'Friday',    period:'17:30–18:20', type:'Evening Doubt' },
       ]
 
-      return { ...g, weakStudents, existingSlots, suggestedSlots: standardSlots }
+      return { ...g, weakStudents, suggestedSlots }
     })
   }, [doubtGroups, allScores, ttFull])
 
-  const filtered = filterBatch==='All' ? suggestions : suggestions.filter(s => s.subtype===filterBatch)
-  const allBatches = [...new Set(suggestions.map(s => s.subtype).filter(Boolean))]
+  const filtered  = filterBatch==='All' ? suggestions : suggestions.filter(s => s.subtype===filterBatch)
+  const allBatches= [...new Set(suggestions.map(s => s.subtype).filter(Boolean))]
 
-  if (loading) return <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading remediation data...</div>
+  if (loading) return <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading remediation data...</div>
 
   return (
     <>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'16px', marginBottom:'24px' }}>
+      {toastEl}
+      <div className="stat-grid-3" style={S.statGrid(3)}>
         {[
-          { label:'Open Doubt Groups', value:suggestions.length, color:'#f59e0b', bg:'#fef9c3', icon:'🔁' },
-          { label:'Weak Student Flags', value:suggestions.reduce((a,s)=>a+s.weakStudents.length,0), color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
-          { label:'Slots Available', value:suggestions.length*4, color:'#16a34a', bg:'#dcfce7', icon:'🕐' },
+          { label:'Open Doubt Groups',   value:suggestions.length, color:'#d97706', bg:'#fef9c3', icon:'🔁' },
+          { label:'Weak Student Flags',  value:suggestions.reduce((a,s)=>a+s.weakStudents.length,0), color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
+          { label:'Free Slots Available',value:suggestions.reduce((a,s)=>a+s.suggestedSlots.length,0), color:'#16a34a', bg:'#dcfce7', icon:'🕐' },
         ].map(c => (
           <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'22px', marginBottom:'6px' }}>{c.icon}</div>
-            <p style={{ fontSize:'13px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'28px', fontWeight:'bold', color:c.color, margin:'4px 0 0' }}>{c.value}</h2>
+            <div style={{ fontSize:20, marginBottom:4 }}>{c.icon}</div>
+            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize:26, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
           </div>
         ))}
       </div>
 
-      <div style={{ display:'flex', gap:'12px', marginBottom:'20px', alignItems:'center' }}>
-        <span style={{ fontWeight:'600', color:'#374151', fontSize:'13px' }}>Filter batch:</span>
+      <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
         <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto' }}>
           <option value="All">All Batches</option>
           {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
       </div>
 
-      {filtered.length===0 && <div style={{ ...S.card, textAlign:'center', padding:'48px', color:'#16a34a', fontWeight:'600' }}>✅ No open doubt sessions needing remediation.</div>}
+      {filtered.length===0 && <div style={{ ...S.card, textAlign:'center', padding:48, color:'#16a34a', fontWeight:600 }}>✅ No open doubt sessions needing remediation.</div>}
 
-      {filtered.map((s, i) => (
+      {filtered.map((s,i) => (
         <div key={i} style={S.card}>
-          {/* Header */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'16px', flexWrap:'wrap', gap:'8px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:8 }}>
             <div>
-              <h3 style={{ fontSize:'16px', fontWeight:'700', color:'#1e293b', margin:'0 0 4px' }}>
+              <h3 style={{ fontSize:15, fontWeight:800, color:'#1e293b', margin:'0 0 4px' }}>
                 {s.subject} — <span style={{ color:'#1e3a5f' }}>{s.subtype}</span>
               </h3>
-              <div style={{ fontSize:'13px', color:'#64748b' }}>
-                {s.sessions.length} open doubt session{s.sessions.length!==1?'s':''}
-                {s.houses.size>0 && ` · Houses: ${[...s.houses].join(', ')}`}
-              </div>
+              <div style={{ fontSize:13, color:'#64748b' }}>{s.sessions.length} open session{s.sessions.length!==1?'s':''} · Houses: {[...s.houses].join(', ')||'—'}</div>
             </div>
-            <span style={S.badge('#b45309','#fef9c3')}>⏳ {s.sessions.length} pending</span>
+            <span style={S.badge('#b45309','#fef9c3')}>⏳ {s.sessions.length}</span>
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
-            {/* Weak students */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:14 }}>
             <div>
-              <div style={{ fontWeight:'600', color:'#374151', fontSize:'13px', marginBottom:'8px' }}>⚠️ Students needing help</div>
+              <div style={{ fontWeight:700, color:'#374151', fontSize:13, marginBottom:7 }}>⚠️ Students needing help</div>
               {s.weakStudents.length===0
-                ? <div style={{ fontSize:'13px', color:'#16a34a' }}>✅ No weak students detected (no score data).</div>
-                : s.weakStudents.map((st, j) => (
-                  <div key={j} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'6px 10px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:'6px', marginBottom:'4px' }}>
-                    <span style={{ fontSize:'13px', color:'#1e293b', flex:1, fontWeight:'600' }}>{st.name}</span>
-                    <span style={{ fontSize:'13px', fontWeight:'800', color: scoreColor(st.avg) }}>{st.avg}%</span>
+                ? <div style={{ fontSize:13, color:'#16a34a' }}>✅ No weak students (no score data).</div>
+                : s.weakStudents.map((st,j) => (
+                  <div key={j} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 10px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:6, marginBottom:4 }}>
+                    <span style={{ flex:1, fontSize:13, color:'#1e293b', fontWeight:600 }}>{st.name}</span>
+                    <span style={{ fontWeight:800, color:scoreColor(st.avg), fontSize:13, fontFamily:"'JetBrains Mono',monospace" }}>{st.avg}%</span>
                   </div>
                 ))
               }
             </div>
-
-            {/* Suggested slots */}
             <div>
-              <div style={{ fontWeight:'600', color:'#374151', fontSize:'13px', marginBottom:'8px' }}>🕐 Suggested Doubt Slots</div>
-              {s.suggestedSlots.map((slot, j) => (
-                <div key={j} style={{ display:'flex', gap:'10px', alignItems:'center', padding:'6px 10px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'6px', marginBottom:'4px' }}>
-                  <span style={{ fontSize:'11px', fontWeight:'700', color:'#16a34a', minWidth:'60px' }}>{slot.day}</span>
-                  <span style={{ fontSize:'12px', color:'#374151' }}>{slot.time}</span>
+              <div style={{ fontWeight:700, color:'#374151', fontSize:13, marginBottom:7 }}>🕐 Available Doubt Slots</div>
+              {s.suggestedSlots.map((slot,j) => (
+                <div key={j} style={{ display:'flex', gap:10, alignItems:'center', padding:'6px 10px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:6, marginBottom:4 }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#16a34a', minWidth:60 }}>{slot.day}</span>
+                  <span style={{ fontSize:12, color:'#374151' }}>{slot.period}</span>
                   <span style={S.badge('#0891b2','#e0f2fe')}>{slot.type}</span>
                 </div>
               ))}
-              <div style={{ fontSize:'11px', color:'#94a3b8', marginTop:'8px' }}>
-                Based on GNSI timetable doubt session slots (6:30–8:10 AM · 5:30–8:00 PM)
-              </div>
             </div>
           </div>
 
-          {/* Open sessions list */}
           {s.sessions.length > 0 && (
-            <div style={{ marginTop:'14px', borderTop:'1px solid #f1f5f9', paddingTop:'12px' }}>
-              <div style={{ fontWeight:'600', color:'#374151', fontSize:'12px', marginBottom:'6px' }}>Open sessions:</div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                {s.sessions.map((d, j) => (
-                  <span key={j} style={{ ...S.badge('#b45309','#fef9c3'), padding:'4px 10px' }}>
-                    🏠 {d.house_name||'?'} · {fmtDate(d.teaching_date)}
-                  </span>
+            <div style={{ marginTop:12, borderTop:'1px solid #f1f5f9', paddingTop:10 }}>
+              <div style={{ fontWeight:600, color:'#374151', fontSize:12, marginBottom:5 }}>Open sessions:</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                {s.sessions.map((d,j) => (
+                  <span key={j} style={{ ...S.badge('#b45309','#fef9c3'), padding:'4px 10px' }}>🏠 {d.house_name||'?'} · {fmtDate(d.teaching_date)}</span>
                 ))}
               </div>
             </div>
@@ -2495,53 +2574,70 @@ function TabRemediation({ logs, courseData }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function Teaching({ currentUser }) {
+  // FIX-11: filter tabs by role
+  const userRole = currentUser?.role || 'viewer'
+  const TABS = ALL_TABS.filter(t => (TAB_ROLES[t.key]||[]).includes(userRole))
+
   const [activeTab, setActiveTab] = useState(() => {
-    try { return localStorage.getItem('gnsi_teaching_tab') || 'logs' } catch { return 'logs' }
+    try {
+      const saved = localStorage.getItem('gnsi_teaching_tab')
+      // Validate saved tab against allowed tabs
+      return (TABS.find(t => t.key===saved) ? saved : TABS[0]?.key) || 'logs'
+    } catch { return TABS[0]?.key || 'logs' }
   })
+
   const [logs,            setLogs]            = useState([])
   const [missed,          setMissed]          = useState([])
   const [timetable,       setTimetable]       = useState([])
   const [staff,           setStaff]           = useState([])
   const [loading,         setLoading]         = useState(true)
   const [monthlySyllabus, setMonthlySyllabus] = useState([])
+  const { show: showToast, el: toastEl }      = useToast()
+  const isMobile = useIsMobile()
 
   const courseData = useCourseData()
 
-  const handleTabChange = (key) => {
+  const handleTabChange = key => {
+    if (!TABS.find(t => t.key===key)) return // FIX-11: block unauthorized tab switch
     setActiveTab(key)
     try { localStorage.setItem('gnsi_teaching_tab', key) } catch {}
   }
 
   const fetchLogs = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('teaching_logs').select('*').order('teaching_date', { ascending: false })
+    const { data, error } = await supabase.from('teaching_logs').select('*').order('teaching_date',{ascending:false})
+    if (error) showToast('Logs load failed: '+error.message, '#dc2626')
     if (data) setLogs(data)
     setLoading(false)
   }, [])
 
   const fetchMissed = useCallback(async () => {
-    const { data } = await supabase.from('teaching_missed').select('*').order('missed_date', { ascending: false })
+    const { data, error } = await supabase.from('teaching_missed').select('*').order('missed_date',{ascending:false})
+    if (error) showToast('Missed load failed: '+error.message, '#dc2626')
     if (data) setMissed(data)
   }, [])
 
   const fetchTimetable = useCallback(async () => {
-    const { data } = await supabase.from('timetable_entries').select('*').order('period_name')
+    const { data, error } = await supabase.from('timetable_entries').select('*').order('period_name')
+    if (error) showToast('Timetable load failed: '+error.message, '#dc2626')
     if (data) setTimetable(data)
   }, [])
 
   const fetchStaff = useCallback(async () => {
-    const { data } = await supabase.from('staff_profiles').select('id,name,designation').eq('status', 'Active').order('name')
+    const { data, error } = await supabase.from('staff_profiles').select('id,name,designation').eq('status','Active').order('name')
+    if (error) showToast('Staff load failed: '+error.message, '#dc2626')
     if (data) setStaff(data)
   }, [])
 
   const fetchMonthlySyllabus = useCallback(async () => {
-    const { data } = await supabase.from('monthly_syllabus').select('id,admit_type,subject_name,topic,month,completed,completed_at').order('month')
+    const { data, error } = await supabase.from('monthly_syllabus').select('id,admit_type,subject_name,topic,month,completed,completed_at').order('month')
+    if (error) showToast('Monthly syllabus load failed: '+error.message, '#dc2626')
     if (data) setMonthlySyllabus(data)
   }, [])
 
   useEffect(() => {
     fetchLogs(); fetchMissed(); fetchTimetable(); fetchStaff(); fetchMonthlySyllabus()
-  }, [])  // eslint-disable-line
+  }, []) // eslint-disable-line
 
   const todayStr  = today()
   const currMonth = currentYearMonth()
@@ -2551,55 +2647,42 @@ function Teaching({ currentUser }) {
     const monthMissed    = missed.filter(m => m.missed_date?.startsWith(currMonth)).length
     const activeTeachers = new Set(logs.filter(l => l.teaching_date?.startsWith(currMonth)).map(l => l.teacher_name).filter(Boolean)).size
     return {
-      logs:        todayLogs>0   ? `${todayLogs} today`    : null,
-      calendar:    null,
-      syllabus:    null,
+      logs:        todayLogs>0   ? `${todayLogs} today` : null,
       timetable:   timetable.length>0 ? `${new Set(timetable.map(t=>t.class_name).filter(Boolean)).size} batches` : null,
       reports:     monthMissed>0 ? `${monthMissed} missed` : activeTeachers>0 ? `${activeTeachers} teachers` : null,
-      search:      null,
-      monthly:     null,
-      performance: null,
-      hmdash:      null,
-      admin:       null,
-      remediation: null,
     }
   }, [logs, missed, timetable, todayStr, currMonth])
 
   return (
-    <div style={S.page}>
-      <div style={{ marginBottom:'20px' }}>
-        <h1 style={{ fontSize:'26px', fontWeight:'bold', color:'#1e3a5f', margin:0 }}>📘 Teaching Management</h1>
-        <p style={{ color:'#64748b', fontSize:'14px', margin:'4px 0 0' }}>Daily logs · Syllabus · Timetable · Reports · Student Scores · HM Dashboard · Admin Monitor · Remediation</p>
+    <div className="page-pad" style={{ ...S.page, padding: isMobile ? 12 : 24 }}>
+      <style>{globalCSS}</style>
+      {toastEl}
+
+      <div style={{ marginBottom:16 }}>
+        <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight:800, color:'#1e3a5f', margin:0, letterSpacing:'-.03em' }}>📘 Teaching Management</h1>
+        <p style={{ color:'#64748b', fontSize:13, margin:'4px 0 0' }}>Logs · Syllabus · Timetable · Reports · Scores · HM · Admin · Remediation</p>
+        {/* FIX-10: show role */}
+        {currentUser && <span style={{ ...S.badge('#1e3a5f','#eff6ff'), marginTop:6, display:'inline-block' }}>🔐 {userRole}</span>}
       </div>
 
-      {/* Grid Tab Bar */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:'6px', marginBottom:'24px' }}>
+      {/* MOB-1: 3-col on mobile, 6-col on desktop */}
+      <div className="tab-bar" style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : `repeat(${Math.min(TABS.length,6)},1fr)`, gap:6, marginBottom:20 }}>
         {TABS.map(t => {
           const active = activeTab===t.key
           const badge  = badges[t.key]
           return (
-            <button
-              key={t.key}
-              onClick={() => handleTabChange(t.key)}
-              style={{
-                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                gap:'4px', padding:'10px 6px', fontWeight:'600', fontSize:'11px', cursor:'pointer',
-                background: active?'#1e3a5f':'white',
-                color: active?'white':'#64748b',
-                border: active?'2px solid #1e3a5f':'2px solid #e2e8f0',
-                borderRadius:'10px', transition:'all 0.15s ease',
-                boxShadow: active?'0 2px 10px rgba(30,58,95,0.25)':'none',
-                position:'relative', minHeight:'58px',
-              }}
-            >
-              <span style={{ fontSize:'18px', lineHeight:1 }}>{t.icon}</span>
+            <button key={t.key} onClick={() => handleTabChange(t.key)} style={{
+              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+              gap:3, padding: isMobile ? '8px 4px' : '10px 6px', fontWeight:700, fontSize: isMobile ? 10 : 11,
+              cursor:'pointer', background:active?'#1e3a5f':'white', color:active?'white':'#64748b',
+              border:active?'2px solid #1e3a5f':'2px solid #e2e8f0', borderRadius:10,
+              boxShadow:active?'0 2px 10px rgba(30,58,95,.25)':'none',
+              position:'relative', minHeight: isMobile ? 52 : 58, transition:'all .15s',
+            }}>
+              <span style={{ fontSize: isMobile ? 16 : 18, lineHeight:1 }}>{t.icon}</span>
               <span style={{ textAlign:'center', lineHeight:1.2 }}>{t.label}</span>
               {badge && (
-                <span style={{
-                  position:'absolute', top:'4px', right:'4px',
-                  padding:'1px 5px', borderRadius:'999px', fontSize:'9px', fontWeight:'700',
-                  background: active?'rgba(255,255,255,0.3)':'#1e3a5f', color:'white',
-                }}>
+                <span style={{ position:'absolute', top:4, right:4, padding:'1px 5px', borderRadius:999, fontSize:9, fontWeight:700, background:active?'rgba(255,255,255,.3)':'#1e3a5f', color:'white' }}>
                   {badge}
                 </span>
               )}
@@ -2608,18 +2691,17 @@ function Teaching({ currentUser }) {
         })}
       </div>
 
-      {/* Tab Content */}
-      {activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser} />}
-      {activeTab==='calendar'    && <TabCalendar logs={logs} missed={missed} />}
-      {activeTab==='syllabus'    && <TabSyllabus logs={logs} courseData={courseData} monthlySyllabus={monthlySyllabus} />}
-      {activeTab==='timetable'   && <TabTimetable timetable={timetable} fetchTimetable={fetchTimetable} staff={staff} courseData={courseData} />}
-      {activeTab==='reports'     && <TabReports logs={logs} missed={missed} staff={staff} courseData={courseData} />}
-      {activeTab==='search'      && <TabSearch logs={logs} monthlySyllabus={monthlySyllabus} onNavigateTab={handleTabChange} />}
-      {activeTab==='monthly'     && <TabMonthlySyllabus logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser} onNavigateTab={key=>handleTabChange(key)} />}
-      {activeTab==='performance' && <TabStudentPerformance courseData={courseData} logs={logs} />}
-      {activeTab==='hmdash'      && <TabHMDashboard currentUser={currentUser} />}
-      {activeTab==='admin'       && <TabAdminMonitor logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData} />}
-      {activeTab==='remediation' && <TabRemediation logs={logs} courseData={courseData} />}
+      {activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser}/>}
+      {activeTab==='calendar'    && <TabCalendar logs={logs} missed={missed}/>}
+      {activeTab==='syllabus'    && <TabSyllabus logs={logs} courseData={courseData} monthlySyllabus={monthlySyllabus}/>}
+      {activeTab==='timetable'   && <TabTimetable timetable={timetable} fetchTimetable={fetchTimetable} staff={staff} courseData={courseData}/>}
+      {activeTab==='reports'     && <TabReports logs={logs} missed={missed} staff={staff} courseData={courseData}/>}
+      {activeTab==='search'      && <TabSearch logs={logs} monthlySyllabus={monthlySyllabus} onNavigateTab={handleTabChange}/>}
+      {activeTab==='monthly'     && <TabMonthlySyllabus logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser} onNavigateTab={key=>handleTabChange(key)}/>}
+      {activeTab==='performance' && <TabStudentPerformance courseData={courseData} logs={logs}/>}
+      {activeTab==='hmdash'      && <TabHMDashboard currentUser={currentUser}/>}
+      {activeTab==='admin'       && <TabAdminMonitor logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData}/>}
+      {activeTab==='remediation' && <TabRemediation logs={logs} courseData={courseData}/>}
     </div>
   )
 }

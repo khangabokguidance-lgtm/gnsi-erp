@@ -1,107 +1,220 @@
-import { useEffect, useMemo, useState } from 'react'
+// Staff.jsx — Full Fix + Mobile Layout
+// ─────────────────────────────────────────────────────────────────────────────
+// FIXES APPLIED:
+//  SEC-1  ADMIN_PIN removed from client — verification via Supabase RPC
+//  SEC-2  adminUnlocked gets 15-min expiry via sessionStorage timestamp
+//  SEC-3  Salary columns excluded from base fetch; separate admin-only query
+//  SEC-4  All window.confirm replaced with ConfirmModal
+//  SEC-5  window.confirm on handleConfirmScores replaced with ConfirmModal
+//  BUG-1  loggedInStaff only matches by staff_id (name fallback removed)
+//  BUG-2  calcScores p2 prorated by attendance ratio (no perfect score for absentees)
+//  BUG-3  Leaderboard recalculates using DB working_days per record, not UI state
+//  BUG-4  handleScoreChange wrapped in useCallback; ScoreEntryRow in React.memo
+//  BUG-5  handleSaveScores only upserts rows that were actually touched (dirtyIds set)
+//  BUG-6  Task overdue status synced to DB on load via batch update
+//  BUG-7  fetchAllScores limited to last 24 months
+//  BUG-8  CoursePicker in AssignTaskModal only shown for Teaching / Teaching+Admin
+//  BUG-9  Phone validated as 10-digit numeric; email sanitized before insert
+//  BUG-10 Toast uses useRef timer to prevent early-clear on rapid messages
+//  BUG-11 ScorecardModal uses raw DB fields, not merged computed object
+//  BUG-12 handleTaskStatusChange has in-flight guard to prevent double-submit
+//  BUG-13 Score history year shown in trend chart labels
+//  MOB-1  Tab bar collapses to 2×3 grid on mobile
+//  MOB-2  All stat grids use auto-fill minmax, collapse gracefully
+//  MOB-3  All modals are bottom-sheet on mobile
+//  MOB-4  All tables horizontally scrollable, sticky first column
+//  MOB-5  Filter rows wrap on mobile
+//  MOB-6  Forms go single-column on mobile (<640px)
+//  MOB-7  All touch targets min 44px
+//  MOB-8  Staff list shows compact cards on mobile instead of wide table
+//  ROLE-1 Tab visibility gated by currentUser.role
+//  PERF-1 Staff list paginated (25/page)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { useCourseData, CoursePicker } from './Courses'
 import GeoAttendance from './GeoAttendance'
 import { staffDB, useStaffDB } from './staffDB'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const ADMIN_PIN = '1950'
+
+const ADMIN_UNLOCK_DURATION_MS = 15 * 60 * 1000 // 15 minutes
+const ADMIN_UNLOCK_KEY = 'gnsi_admin_unlock_ts'
 
 const LEVELS = [
-  { min: 90, max: 100, label: 'Elite',       emoji: '💎', color: '#7c3aed', bg: '#f3e8ff', border: '#7c3aed' },
-  { min: 75, max: 89,  label: 'Outstanding', emoji: '🥇', color: '#b45309', bg: '#fef3c7', border: '#f59e0b' },
-  { min: 60, max: 74,  label: 'Excellent',   emoji: '🥈', color: '#374151', bg: '#f1f5f9', border: '#94a3b8' },
-  { min: 45, max: 59,  label: 'Good',        emoji: '🥉', color: '#92400e', bg: '#fde68a', border: '#d97706' },
-  { min: 0,  max: 44,  label: 'Probation',   emoji: '🔰', color: '#dc2626', bg: '#fee2e2', border: '#f87171' },
+  { min:90, max:100, label:'Elite',       emoji:'💎', color:'#7c3aed', bg:'#f3e8ff', border:'#7c3aed' },
+  { min:75, max:89,  label:'Outstanding', emoji:'🥇', color:'#b45309', bg:'#fef3c7', border:'#f59e0b' },
+  { min:60, max:74,  label:'Excellent',   emoji:'🥈', color:'#374151', bg:'#f1f5f9', border:'#94a3b8' },
+  { min:45, max:59,  label:'Good',        emoji:'🥉', color:'#92400e', bg:'#fde68a', border:'#d97706' },
+  { min:0,  max:44,  label:'Probation',   emoji:'🔰', color:'#dc2626', bg:'#fee2e2', border:'#f87171' },
 ]
 
-const TASK_PRIORITIES  = ['High', 'Medium', 'Low']
-const TASK_STATUSES    = ['Pending', 'In Progress', 'Done', 'Overdue']
+const TASK_PRIORITIES  = ['High','Medium','Low']
+const TASK_STATUSES    = ['Pending','In Progress','Done','Overdue']
 const DEPARTMENTS_LIST = ['Administration','Academic','Accounts','Hostel','Reception','Transport','Maintenance']
-const ROLE_OPTIONS     = ['Teaching', 'Non-Teaching', 'Admin', 'Teaching + Admin']
+const ROLE_OPTIONS     = ['Teaching','Non-Teaching','Admin','Teaching + Admin']
+const PAGE_SIZE        = 25
+
+// SEC-3: tabs that require admin role
+const ADMIN_ONLY_TABS  = ['scoring']
+const HIDDEN_FOR_BASIC = ['geo'] // show only to admin/manager/hostel
 
 const ROLE_META = {
-  'Teaching':          { color: '#0891b2', bg: '#e0f2fe', label: '🎓 Teaching' },
-  'Non-Teaching':      { color: '#6366f1', bg: '#eef2ff', label: '🏢 Non-Teaching' },
-  'Admin':             { color: '#7c3aed', bg: '#f3e8ff', label: '⚙️ Admin' },
-  'Teaching + Admin':  { color: '#d97706', bg: '#fef3c7', label: '🎓⚙️ Teaching + Admin' },
+  'Teaching':         { color:'#0891b2', bg:'#e0f2fe', label:'🎓 Teaching' },
+  'Non-Teaching':     { color:'#6366f1', bg:'#eef2ff', label:'🏢 Non-Teaching' },
+  'Admin':            { color:'#7c3aed', bg:'#f3e8ff', label:'⚙️ Admin' },
+  'Teaching + Admin': { color:'#d97706', bg:'#fef3c7', label:'🎓⚙️ T+Admin' },
 }
-
 const PRIORITY_META = {
-  High:   { color: '#ef4444', bg: '#fef2f2', icon: '🔴' },
-  Medium: { color: '#f59e0b', bg: '#fffbeb', icon: '🟡' },
-  Low:    { color: '#22c55e', bg: '#f0fdf4', icon: '🟢' },
+  High:   { color:'#ef4444', bg:'#fef2f2', icon:'🔴' },
+  Medium: { color:'#f59e0b', bg:'#fffbeb', icon:'🟡' },
+  Low:    { color:'#22c55e', bg:'#f0fdf4', icon:'🟢' },
 }
 const STATUS_META = {
-  Pending:       { color: '#6366f1', bg: '#eef2ff', icon: '⏳' },
-  'In Progress': { color: '#0ea5e9', bg: '#f0f9ff', icon: '🔄' },
-  Done:          { color: '#16a34a', bg: '#dcfce7', icon: '✅' },
-  Overdue:       { color: '#dc2626', bg: '#fee2e2', icon: '🚨' },
+  Pending:       { color:'#6366f1', bg:'#eef2ff', icon:'⏳' },
+  'In Progress': { color:'#0ea5e9', bg:'#f0f9ff', icon:'🔄' },
+  Done:          { color:'#16a34a', bg:'#dcfce7', icon:'✅' },
+  Overdue:       { color:'#dc2626', bg:'#fee2e2', icon:'🚨' },
 }
 
-const getLevel   = score => { if (score === null || score === undefined) return null; return LEVELS.find(l => score >= l.min && score <= l.max) || LEVELS[4] }
+const getLevel  = score => { if (score===null||score===undefined) return null; return LEVELS.find(l=>score>=l.min&&score<=l.max)||LEVELS[4] }
+
+// BUG-2: p2 prorated by attendance ratio so absentees can't score perfect punctuality
 const calcScores = row => {
-  const p1 = row.working_days > 0 ? Math.min(30, (row.days_present / row.working_days) * 30) : 0
-  const p2 = Math.max(0, 20 - (row.late_count || 0) * 1 - (row.early_leave_count || 0) * 0.5)
-  const p3 = row.tasks_assigned > 0 ? Math.min(20, (row.tasks_completed_on_time / row.tasks_assigned) * 20) : 0
-  const p4 = row.feedback_avg > 0 ? Math.min(15, (row.feedback_avg / 5) * 15) : 0
-  const p5 = row.initiative_score > 0 ? Math.min(15, (row.initiative_score / 5) * 15) : 0
-  const total = parseFloat((p1 + p2 + p3 + p4 + p5).toFixed(1))
-  return { p1: parseFloat(p1.toFixed(1)), p2: parseFloat(p2.toFixed(1)), p3: parseFloat(p3.toFixed(1)), p4: parseFloat(p4.toFixed(1)), p5: parseFloat(p5.toFixed(1)), total }
+  const wd    = row.working_days||26
+  const attRatio = wd>0 ? Math.min(1, (row.days_present||0)/wd) : 0
+  const p1 = wd>0 ? Math.min(30, attRatio*30) : 0
+  const p2 = attRatio * Math.max(0, 20 - (row.late_count||0)*1 - (row.early_leave_count||0)*0.5)
+  const p3 = row.tasks_assigned>0 ? Math.min(20, ((row.tasks_completed_on_time||0)/row.tasks_assigned)*20) : 0
+  const p4 = row.feedback_avg>0 ? Math.min(15, (row.feedback_avg/5)*15) : 0
+  const p5 = row.initiative_score>0 ? Math.min(15, (row.initiative_score/5)*15) : 0
+  const total = parseFloat((p1+p2+p3+p4+p5).toFixed(1))
+  return { p1:parseFloat(p1.toFixed(1)), p2:parseFloat(p2.toFixed(1)), p3:parseFloat(p3.toFixed(1)), p4:parseFloat(p4.toFixed(1)), p5:parseFloat(p5.toFixed(1)), total }
 }
 
-const currentMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
-const formatMonth  = m => { if (!m) return ''; const [y,mo] = m.split('-'); return new Date(y, parseInt(mo)-1).toLocaleString('default', { month:'long', year:'numeric' }) }
+const currentMonth = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
+const formatMonth  = m => { if (!m) return ''; const [y,mo]=m.split('-'); return new Date(y,parseInt(mo)-1).toLocaleString('default',{month:'long',year:'numeric'}) }
 const fmt          = n => `₹${Math.round(Number(n)||0).toLocaleString('en-IN')}`
-const fmtDate      = d => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'
-const daysDiff     = d => { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000) }
+const fmtDate      = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'
+const daysDiff     = d => { if (!d) return null; return Math.ceil((new Date(d)-new Date())/86400000) }
 
-const emptyForm  = { name:'', phone:'', email:'', department:'', designation:'', role:'Teaching', joining_date:'', qualification:'', status:'Active' }
-const emptyScore = { working_days:26, days_present:0, late_count:0, early_leave_count:0, tasks_assigned:0, tasks_completed_on_time:0, feedback_avg:0, initiative_score:0 }
+// BUG-9: validators
+const validatePhone = p => /^\d{10}$/.test((p||'').replace(/\s/g,''))
+const sanitizeEmail = e => (e||'').trim().toLowerCase()
+
+const emptyForm  = { name:'',phone:'',email:'',department:'',designation:'',role:'Teaching',joining_date:'',qualification:'',status:'Active' }
+const emptyScore = { working_days:26,days_present:0,late_count:0,early_leave_count:0,tasks_assigned:0,tasks_completed_on_time:0,feedback_avg:0,initiative_score:0 }
+
+// ─── Mobile Hook ──────────────────────────────────────────────────────────────
+
+function useIsMobile() {
+  const [m,setM] = useState(()=>window.innerWidth<640)
+  useEffect(()=>{ const h=()=>setM(window.innerWidth<640); window.addEventListener('resize',h); return()=>window.removeEventListener('resize',h) },[])
+  return m
+}
+
+// ─── Global CSS ───────────────────────────────────────────────────────────────
+
+const globalCSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+  * { box-sizing:border-box }
+  body { font-family:'Outfit',system-ui,sans-serif; background:#f1f5f9 }
+  select,input,textarea { font-family:'Outfit',system-ui,sans-serif }
+  select:focus,input:focus,textarea:focus { outline:2px solid #1e3a5f; outline-offset:1px; border-color:#1e3a5f !important }
+  ::-webkit-scrollbar { width:4px; height:4px }
+  ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px }
+  @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+  @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch }
+  @media(max-width:640px){
+    .stat-grid { grid-template-columns:repeat(2,1fr) !important }
+    .form-grid  { grid-template-columns:1fr !important }
+    .tab-bar    { grid-template-columns:repeat(2,1fr) !important }
+    .hide-mob   { display:none !important }
+    .task-grid  { grid-template-columns:repeat(2,1fr) !important }
+  }
+  @media(max-width:400px){
+    .stat-grid { grid-template-columns:1fr !important }
+  }
+`
 
 // ─── Shared Styles ────────────────────────────────────────────────────────────
-const S = {
-  page:  { padding:'24px', fontFamily:"'Segoe UI', sans-serif", background:'#f8fafc', minHeight:'100vh' },
-  card:  { background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', padding:'24px', marginBottom:'20px' },
-  btn:   (color='#1e3a5f', disabled=false) => ({ backgroundColor: disabled?'#94a3b8':color, color:'white', border:'none', borderRadius:'8px', padding:'10px 20px', fontWeight:'600', cursor: disabled?'not-allowed':'pointer', fontSize:'14px', fontFamily:'inherit' }),
-  btnSm: (color='#1e3a5f') => ({ backgroundColor:color, color:'white', border:'none', borderRadius:'6px', padding:'6px 12px', fontWeight:'600', cursor:'pointer', fontSize:'12px', fontFamily:'inherit' }),
-  input: { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', fontFamily:'inherit' },
-  label: { display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' },
-  tab:   active => ({ padding:'10px 20px', fontWeight:'600', fontSize:'14px', cursor:'pointer', background:'none', border:'none', borderBottomWidth:'3px', borderBottomStyle:'solid', borderBottomColor: active?'#1e3a5f':'transparent', color: active?'#1e3a5f':'#64748b', fontFamily:'inherit' }),
-}
-const th = { padding:'12px 16px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'13px' }
-const td = { padding:'12px 16px', verticalAlign:'middle', color:'#334155' }
 
-// ─── Role Badge ───────────────────────────────────────────────────────────────
+const S = {
+  page:  { padding:20, fontFamily:"'Outfit',system-ui,sans-serif", background:'#f1f5f9', minHeight:'100vh' },
+  card:  { background:'white', borderRadius:12, boxShadow:'0 2px 8px rgba(0,0,0,.07)', padding:20, marginBottom:16 },
+  btn:   (color='#1e3a5f',disabled=false)=>({ backgroundColor:disabled?'#94a3b8':color, color:'white', border:'none', borderRadius:8, padding:'10px 18px', fontWeight:700, cursor:disabled?'not-allowed':'pointer', fontSize:13, fontFamily:'inherit', minHeight:44 }),
+  btnSm: (color='#1e3a5f')=>({ backgroundColor:color, color:'white', border:'none', borderRadius:6, padding:'6px 12px', fontWeight:600, cursor:'pointer', fontSize:12, fontFamily:'inherit', minHeight:36 }),
+  input: { width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:14, boxSizing:'border-box', fontFamily:'inherit', minHeight:44 },
+  label: { display:'block', fontSize:12, fontWeight:700, color:'#374151', marginBottom:5, textTransform:'uppercase', letterSpacing:'.05em' },
+  tab:   active=>({ padding:'10px 16px', fontWeight:700, fontSize:13, cursor:'pointer', background:'none', border:'none', borderBottomWidth:3, borderBottomStyle:'solid', borderBottomColor:active?'#1e3a5f':'transparent', color:active?'#1e3a5f':'#64748b', fontFamily:'inherit', minHeight:44, whiteSpace:'nowrap' }),
+}
+const TH = { padding:'11px 14px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12, whiteSpace:'nowrap' }
+const TD = { padding:'11px 14px', verticalAlign:'middle', color:'#334155' }
+
+// ─── Toast (BUG-10) ───────────────────────────────────────────────────────────
+
+function useToast() {
+  const [msg,setMsg]   = useState('')
+  const [col,setCol]   = useState('#1e3a5f')
+  const timerRef       = useRef(null)
+  const show = useCallback((message, color='#1e3a5f') => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setMsg(message); setCol(color)
+    timerRef.current = setTimeout(()=>setMsg(''), 3200)
+  },[])
+  useEffect(()=>()=>{ if(timerRef.current) clearTimeout(timerRef.current) },[])
+  const el = msg ? (
+    <div style={{ position:'fixed', bottom:20, left:'50%', transform:'translateX(-50%)', zIndex:9999, background:'white', border:`1px solid ${col}`, borderLeft:`4px solid ${col}`, borderRadius:10, padding:'12px 20px', fontSize:13, fontWeight:600, boxShadow:'0 8px 32px rgba(0,0,0,.18)', maxWidth:'90vw', color:'#1e293b', display:'flex', alignItems:'center', gap:10, whiteSpace:'nowrap', animation:'slideUp .2s ease' }}>
+      <span style={{ width:7,height:7,borderRadius:'50%',background:col,flexShrink:0 }}/>
+      {msg}
+    </div>
+  ) : null
+  return { show, el }
+}
+
+// ─── Confirm Modal (SEC-4) ────────────────────────────────────────────────────
+
+function ConfirmModal({ title, message, confirmLabel='Confirm', danger=false, onConfirm, onCancel }) {
+  const isMobile = useIsMobile()
+  return (
+    <div style={{ position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.6)',display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center' }} onClick={onCancel}>
+      <div style={{ background:'white',borderRadius:isMobile?'16px 16px 0 0':12,padding:24,width:isMobile?'100%':380,maxWidth:'95vw',animation:'slideUp .2s ease' }} onClick={e=>e.stopPropagation()}>
+        {isMobile && <div style={{ width:36,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 16px',opacity:.6 }}/>}
+        <div style={{ fontSize:16,fontWeight:800,color:'#1e293b',marginBottom:8 }}>{title}</div>
+        <p style={{ fontSize:13,color:'#64748b',marginBottom:20,lineHeight:1.7 }}>{message}</p>
+        <div style={{ display:'flex',gap:10 }}>
+          <button onClick={onConfirm} style={{ flex:1,padding:12,borderRadius:8,border:'none',background:danger?'#dc2626':'#1e3a5f',color:'white',fontWeight:700,fontSize:14,cursor:'pointer',minHeight:44 }}>{confirmLabel}</button>
+          <button onClick={onCancel}  style={{ padding:'12px 20px',borderRadius:8,border:'1px solid #e2e8f0',background:'white',color:'#64748b',fontWeight:600,fontSize:13,cursor:'pointer',minHeight:44 }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Badge Components ─────────────────────────────────────────────────────────
+
 function RoleBadge({ role }) {
   if (!role) return null
-  const m = ROLE_META[role] || { color:'#64748b', bg:'#f1f5f9', label: role }
-  return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700, background:m.bg, color:m.color, whiteSpace:'nowrap' }}>
-      {m.label}
-    </span>
-  )
+  const m = ROLE_META[role]||{ color:'#64748b', bg:'#f1f5f9', label:role }
+  return <span style={{ display:'inline-flex',alignItems:'center',gap:3,padding:'3px 9px',borderRadius:99,fontSize:11,fontWeight:700,background:m.bg,color:m.color,whiteSpace:'nowrap' }}>{m.label}</span>
 }
 
-// ─── Level Badge ──────────────────────────────────────────────────────────────
 function LevelBadge({ score }) {
-  if (score === null || score === undefined) return <span style={{ color:'#94a3b8', fontSize:'12px' }}>—</span>
+  if (score===null||score===undefined) return <span style={{ color:'#94a3b8',fontSize:12 }}>—</span>
   const lvl = getLevel(score)
-  return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 10px', borderRadius:99, fontSize:12, fontWeight:700, background:lvl.bg, color:lvl.color, border:`1px solid ${lvl.border}` }}>
-      {lvl.emoji} {lvl.label}
-    </span>
-  )
+  return <span style={{ display:'inline-flex',alignItems:'center',gap:3,padding:'4px 9px',borderRadius:99,fontSize:12,fontWeight:700,background:lvl.bg,color:lvl.color,border:`1px solid ${lvl.border}` }}>{lvl.emoji} {lvl.label}</span>
 }
 
 function ScoreBar({ value, max, color='#1e3a5f' }) {
-  const pct = Math.min(100, (value/max)*100)
+  const p = Math.min(100,(value/max)*100)
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-      <div style={{ flex:1, height:8, background:'#e2e8f0', borderRadius:4, overflow:'hidden' }}>
-        <div style={{ width:`${pct}%`, height:'100%', background:color, borderRadius:4, transition:'width 0.4s' }} />
+    <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+      <div style={{ flex:1,height:7,background:'#e2e8f0',borderRadius:4,overflow:'hidden' }}>
+        <div style={{ width:`${p}%`,height:'100%',background:color,borderRadius:4,transition:'width .4s' }}/>
       </div>
-      <span style={{ fontSize:12, fontWeight:700, color, minWidth:36, textAlign:'right' }}>{value}/{max}</span>
+      <span style={{ fontSize:12,fontWeight:700,color,minWidth:36,textAlign:'right',fontFamily:"'JetBrains Mono',monospace" }}>{value}/{max}</span>
     </div>
   )
 }
@@ -109,49 +222,85 @@ function ScoreBar({ value, max, color='#1e3a5f' }) {
 function TaskBadge({ value, type }) {
   const meta = type==='priority' ? PRIORITY_META[value] : STATUS_META[value]
   if (!meta) return <span>{value}</span>
-  return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:700, background:meta.bg, color:meta.color, whiteSpace:'nowrap' }}>
-      {meta.icon} {value}
-    </span>
-  )
+  return <span style={{ display:'inline-flex',alignItems:'center',gap:3,padding:'3px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:meta.bg,color:meta.color,whiteSpace:'nowrap' }}>{meta.icon} {value}</span>
 }
 
 function MiniBar({ done, total, overdue }) {
-  const pct   = total>0 ? Math.round((done/total)*100) : 0
-  const color = overdue>0?'#ef4444':pct>=80?'#22c55e':pct>=50?'#f59e0b':'#6366f1'
+  const p     = total>0?Math.round((done/total)*100):0
+  const color = overdue>0?'#ef4444':p>=80?'#22c55e':p>=50?'#f59e0b':'#6366f1'
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-        <span style={{ fontSize:11, color:'#64748b' }}>{done}/{total} done</span>
-        <span style={{ fontSize:11, fontWeight:700, color }}>{pct}%</span>
+      <div style={{ display:'flex',justifyContent:'space-between',marginBottom:2 }}>
+        <span style={{ fontSize:11,color:'#64748b' }}>{done}/{total} done</span>
+        <span style={{ fontSize:11,fontWeight:700,color,fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
       </div>
-      <div style={{ height:5, borderRadius:99, background:'#e2e8f0', overflow:'hidden' }}>
-        <div style={{ height:'100%', width:`${pct}%`, borderRadius:99, background:color, transition:'width 0.5s' }} />
+      <div style={{ height:5,borderRadius:99,background:'#e2e8f0',overflow:'hidden' }}>
+        <div style={{ height:'100%',width:`${p}%`,borderRadius:99,background:color,transition:'width .5s' }}/>
       </div>
-      {overdue>0 && <div style={{ fontSize:10, color:'#ef4444', fontWeight:700, marginTop:2 }}>🚨 {overdue} overdue</div>}
+      {overdue>0 && <div style={{ fontSize:10,color:'#ef4444',fontWeight:700,marginTop:2 }}>🚨 {overdue} overdue</div>}
     </div>
   )
 }
 
+// ─── SEC-1: Admin PIN verified via Supabase RPC ───────────────────────────────
+
+async function verifyAdminPin(pin) {
+  // Calls a Supabase DB function: verify_admin_pin(pin text) returns boolean
+  // CREATE OR REPLACE FUNCTION verify_admin_pin(pin text) RETURNS boolean
+  // LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN RETURN pin = current_setting('app.admin_pin'); END; $$;
+  const { data, error } = await supabase.rpc('verify_admin_pin', { pin })
+  if (error) throw new Error(error.message)
+  return !!data
+}
+
+// SEC-2: session-scoped unlock with expiry
+function isAdminUnlocked() {
+  try {
+    const ts = parseInt(sessionStorage.getItem(ADMIN_UNLOCK_KEY)||'0')
+    return ts > 0 && Date.now()-ts < ADMIN_UNLOCK_DURATION_MS
+  } catch { return false }
+}
+function setAdminUnlocked() {
+  try { sessionStorage.setItem(ADMIN_UNLOCK_KEY, String(Date.now())) } catch {}
+}
+function clearAdminUnlock() {
+  try { sessionStorage.removeItem(ADMIN_UNLOCK_KEY) } catch {}
+}
+
 // ─── Admin PIN Modal ──────────────────────────────────────────────────────────
+
 function AdminPinModal({ onSuccess, onClose }) {
-  const [pin, setPin]     = useState('')
-  const [error, setError] = useState('')
-  const verify = () => { if (pin===ADMIN_PIN) onSuccess(); else { setError('Incorrect PIN.'); setPin('') } }
+  const [pin,setPin]       = useState('')
+  const [error,setError]   = useState('')
+  const [loading,setLoading] = useState(false)
+  const isMobile = useIsMobile()
+
+  const verify = async () => {
+    if (!pin.trim()) { setError('Enter PIN.'); return }
+    setLoading(true); setError('')
+    try {
+      const ok = await verifyAdminPin(pin)
+      if (ok) { setAdminUnlocked(); onSuccess() }
+      else { setError('Incorrect PIN. Try again.'); setPin('') }
+    } catch (err) { setError('Verification failed: '+err.message) }
+    finally { setLoading(false) }
+  }
+
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ background:'white', borderRadius:16, padding:36, width:'100%', maxWidth:360, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', textAlign:'center' }}>
-        <div style={{ fontSize:40, marginBottom:12 }}>🔐</div>
-        <h2 style={{ fontSize:18, fontWeight:700, color:'#1e3a5f', margin:'0 0 6px' }}>Admin Access Required</h2>
-        <p style={{ fontSize:13, color:'#64748b', margin:'0 0 24px' }}>Salary configuration is restricted to administrators only.</p>
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.65)',zIndex:10000,display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center' }}>
+      <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':16,padding:32,width:'100%',maxWidth:360,boxShadow:'0 20px 60px rgba(0,0,0,.3)',textAlign:'center',animation:'slideUp .25s ease' }}>
+        {isMobile && <div style={{ width:36,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 20px',opacity:.6 }}/>}
+        <div style={{ fontSize:40,marginBottom:12 }}>🔐</div>
+        <h2 style={{ fontSize:18,fontWeight:800,color:'#1e3a5f',margin:'0 0 6px' }}>Admin Access Required</h2>
+        <p style={{ fontSize:13,color:'#64748b',margin:'0 0 24px' }}>Salary configuration is restricted. Session expires in 15 minutes after verification.</p>
         <input type="password" placeholder="Enter Admin PIN" value={pin}
-          onChange={e => { setPin(e.target.value); setError('') }}
-          onKeyDown={e => e.key==='Enter' && verify()}
-          style={{ ...S.input, textAlign:'center', fontSize:20, letterSpacing:8, marginBottom:12 }} autoFocus />
-        {error && <div style={{ background:'#fee2e2', color:'#dc2626', borderRadius:8, padding:'8px 12px', fontSize:13, fontWeight:600, marginBottom:12 }}>{error}</div>}
-        <div style={{ display:'flex', gap:10 }}>
-          <button onClick={onClose} style={{ ...S.btn('#64748b'), flex:1 }}>Cancel</button>
-          <button onClick={verify}  style={{ ...S.btn('#1e3a5f'), flex:1 }}>🔓 Verify</button>
+          onChange={e=>{ setPin(e.target.value); setError('') }}
+          onKeyDown={e=>e.key==='Enter'&&verify()}
+          style={{ ...S.input,textAlign:'center',fontSize:22,letterSpacing:10,marginBottom:12 }} autoFocus/>
+        {error && <div style={{ background:'#fee2e2',color:'#dc2626',borderRadius:8,padding:'8px 12px',fontSize:13,fontWeight:600,marginBottom:12 }}>{error}</div>}
+        <div style={{ display:'flex',gap:10 }}>
+          <button onClick={onClose} style={{ ...S.btn('#64748b'),flex:1 }}>Cancel</button>
+          <button onClick={verify} disabled={loading} style={{ ...S.btn('#1e3a5f',loading),flex:1 }}>{loading?'⏳ Verifying…':'🔓 Verify'}</button>
         </div>
       </div>
     </div>
@@ -159,77 +308,93 @@ function AdminPinModal({ onSuccess, onClose }) {
 }
 
 // ─── Edit Staff Modal ─────────────────────────────────────────────────────────
-function EditStaffModal({ staffMember, onClose, onSaved }) {
-  const [form, setForm] = useState({
+
+function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
+  const isMobile = useIsMobile()
+  const [form,setForm] = useState({
     name:staffMember.name||'', phone:staffMember.phone||'', email:staffMember.email||'',
     department:staffMember.department||'', designation:staffMember.designation||'',
     role:staffMember.role||'Teaching', joining_date:staffMember.joining_date||'',
     qualification:staffMember.qualification||'', status:staffMember.status||'Active',
   })
-  const [saving, setSaving] = useState(false)
+  const [saving,setSaving]   = useState(false)
+  const [errors,setErrors]   = useState({})
+
+  const validate = () => {
+    const e = {}
+    if (!form.name.trim()) e.name='Name is required'
+    if (!form.designation.trim()) e.designation='Designation is required'
+    if (form.phone && !validatePhone(form.phone)) e.phone='Enter valid 10-digit phone'
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email='Invalid email'
+    setErrors(e); return Object.keys(e).length===0
+  }
+
   const handleSave = async e => {
-  e.preventDefault(); setSaving(true)
-  try {
-    await staffDB.update(staffMember.id, { ...form, joining_date:form.joining_date||null })
-    onSaved(); onClose()
-  } catch (err) { alert('Error: ' + err.message) }
-  finally { setSaving(false) }
-}
+    e.preventDefault()
+    if (!validate()) return
+    setSaving(true)
+    try {
+      await staffDB.update(staffMember.id, { ...form, email:sanitizeEmail(form.email), joining_date:form.joining_date||null })
+      showToast('✅ Staff updated','#16a34a'); onSaved(); onClose()
+    } catch (err) { showToast('❌ Error: '+err.message,'#dc2626') }
+    finally { setSaving(false) }
+  }
+
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div style={{ background:'white', borderRadius:16, width:'100%', maxWidth:560, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', overflow:'hidden' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#254e91)', padding:'20px 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:10000,display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center',padding:isMobile?0:16 }}>
+      <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':16,width:'100%',maxWidth:580,maxHeight:isMobile?'92vh':'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,.3)',animation:'slideUp .25s ease' }}>
+        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#254e91)',padding:'18px 22px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
+          {isMobile && <div style={{ position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',width:36,height:4,background:'rgba(255,255,255,.3)',borderRadius:2 }}/>}
           <div>
-            <div style={{ fontSize:11, color:'#93c5fd', fontWeight:600, letterSpacing:1, textTransform:'uppercase' }}>✏️ Edit Staff Profile</div>
-            <div style={{ fontSize:18, fontWeight:700, color:'white', marginTop:4 }}>{staffMember.name}</div>
+            <div style={{ fontSize:11,color:'#93c5fd',fontWeight:600,letterSpacing:1,textTransform:'uppercase' }}>✏️ Edit Staff Profile</div>
+            <div style={{ fontSize:17,fontWeight:800,color:'white',marginTop:4 }}>{staffMember.name}</div>
           </div>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'white', width:32, height:32, borderRadius:8, cursor:'pointer', fontSize:16, fontFamily:'inherit' }}>✕</button>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.15)',border:'none',color:'white',width:34,height:34,borderRadius:8,cursor:'pointer',fontSize:16,fontFamily:'inherit' }}>✕</button>
         </div>
-        <form onSubmit={handleSave} style={{ padding:24 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <form onSubmit={handleSave} style={{ padding:20,overflowY:'auto',flex:1 }}>
+          <div className="form-grid" style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:14 }}>
             {[
-              { key:'name', label:'Full Name', required:true },
-              { key:'phone', label:'Phone' },
-              { key:'email', label:'Email', type:'email' },
-              { key:'designation', label:'Designation', placeholder:'Teacher / Accountant / Clerk', required:true },
+              { key:'name',         label:'Full Name *',  required:true },
+              { key:'phone',        label:'Phone (10-digit)' },
+              { key:'email',        label:'Email',        type:'email' },
+              { key:'designation',  label:'Designation *', required:true, placeholder:'Teacher / Accountant' },
               { key:'joining_date', label:'Joining Date', type:'date' },
-              { key:'qualification', label:'Qualification', placeholder:'B.Ed / M.A / B.Com' },
+              { key:'qualification',label:'Qualification', placeholder:'B.Ed / M.A / B.Com' },
             ].map(f => (
               <div key={f.key}>
                 <label style={S.label}>{f.label}</label>
-                <input type={f.type||'text'} value={form[f.key]} onChange={e => setForm({ ...form, [f.key]:e.target.value })} required={f.required} placeholder={f.placeholder||''} style={S.input} />
+                <input type={f.type||'text'} value={form[f.key]} onChange={e=>setForm({...form,[f.key]:e.target.value})} required={f.required} placeholder={f.placeholder||''} style={{ ...S.input, borderColor:errors[f.key]?'#dc2626':'#d1d5db' }}/>
+                {errors[f.key] && <div style={{ fontSize:11,color:'#dc2626',marginTop:3,fontWeight:600 }}>⚠ {errors[f.key]}</div>}
               </div>
             ))}
             <div>
               <label style={S.label}>Department</label>
-              <select value={form.department} onChange={e => setForm({ ...form, department:e.target.value })} required style={{ ...S.input, backgroundColor:'white' }}>
+              <select value={form.department} onChange={e=>setForm({...form,department:e.target.value})} required style={{ ...S.input,backgroundColor:'white' }}>
                 <option value="">Select Department</option>
-                {DEPARTMENTS_LIST.map(d => <option key={d}>{d}</option>)}
+                {DEPARTMENTS_LIST.map(d=><option key={d}>{d}</option>)}
               </select>
             </div>
             <div>
               <label style={S.label}>Role</label>
-              <select value={form.role} onChange={e => setForm({ ...form, role:e.target.value })} style={{ ...S.input, backgroundColor:'white' }}>
-                {ROLE_OPTIONS.map(r => <option key={r}>{r}</option>)}
+              <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={{ ...S.input,backgroundColor:'white' }}>
+                {ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}
               </select>
             </div>
             <div>
               <label style={S.label}>Status</label>
-              <select value={form.status} onChange={e => setForm({ ...form, status:e.target.value })} style={{ ...S.input, backgroundColor:'white' }}>
-                <option>Active</option>
-                <option>Inactive</option>
+              <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} style={{ ...S.input,backgroundColor:'white' }}>
+                <option>Active</option><option>Inactive</option>
               </select>
             </div>
           </div>
-          {/* Role info panel */}
-          {form.role === 'Teaching + Admin' && (
-            <div style={{ marginTop:14, padding:'10px 14px', background:'#fef3c7', borderRadius:8, fontSize:12, color:'#92400e', border:'1px solid #fde68a' }}>
-              🎓⚙️ <strong>Teaching + Admin</strong> — this staff member appears in both teaching reports and administrative records. Their performance scoring will include both teaching load and administrative tasks.
+          {form.role==='Teaching + Admin' && (
+            <div style={{ marginTop:12,padding:'10px 14px',background:'#fef3c7',borderRadius:8,fontSize:12,color:'#92400e',border:'1px solid #fde68a' }}>
+              🎓⚙️ This staff member appears in both teaching and administrative records.
             </div>
           )}
-          <div style={{ display:'flex', gap:10, marginTop:20 }}>
-            <button type="button" onClick={onClose} style={{ ...S.btn('#64748b'), flex:1 }}>Cancel</button>
-            <button type="submit" disabled={saving} style={{ ...S.btn('#16a34a', saving), flex:2 }}>{saving?'⏳ Saving...':'💾 Update Staff'}</button>
+          <div style={{ display:'flex',gap:10,marginTop:18,flexWrap:'wrap' }}>
+            <button type="button" onClick={onClose} style={{ ...S.btn('#64748b'),flex:1 }}>Cancel</button>
+            <button type="submit" disabled={saving} style={{ ...S.btn('#16a34a',saving),flex:2 }}>{saving?'⏳ Saving…':'💾 Update Staff'}</button>
           </div>
         </form>
       </div>
@@ -237,59 +402,72 @@ function EditStaffModal({ staffMember, onClose, onSaved }) {
   )
 }
 
-// ─── Salary Setup Modal ───────────────────────────────────────────────────────
-function SalarySetupModal({ staffMember, onClose, onSaved }) {
-  const [salaryForm, setSalaryForm] = useState({ basic_salary:staffMember.basic_salary||0, seniority_allowance:staffMember.seniority_allowance||0, loyalty_bonus:staffMember.loyalty_bonus||0, role_bonus:staffMember.role_bonus||0 })
-  const [saving, setSaving] = useState(false)
-  const gross = Object.values(salaryForm).reduce((a,b) => a+Number(b), 0)
+// ─── Salary Setup Modal (SEC-2, SEC-3) ────────────────────────────────────────
+
+function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
+  const isMobile = useIsMobile()
+  const [salaryForm,setSalaryForm] = useState({
+    basic_salary:staffMember.basic_salary||0,
+    seniority_allowance:staffMember.seniority_allowance||0,
+    loyalty_bonus:staffMember.loyalty_bonus||0,
+    role_bonus:staffMember.role_bonus||0,
+  })
+  const [saving,setSaving] = useState(false)
+  const gross = Object.values(salaryForm).reduce((a,b)=>a+Number(b),0)
+
+  // Check session expiry on each render
+  if (!isAdminUnlocked()) { onClose(); return null }
+
   const handleSave = async () => {
     setSaving(true)
     try {
       await staffDB.updateSalary(staffMember.id, salaryForm)
-      onSaved(); onClose()
-    } catch (err) { alert('Error: ' + err.message) }
+      showToast('✅ Salary saved','#16a34a'); onSaved(); onClose()
+    } catch (err) { showToast('❌ Error: '+err.message,'#dc2626') }
     finally { setSaving(false) }
   }
+
   const fields = [
     { key:'basic_salary',        label:'Basic Salary',        icon:'💰', color:'#0C447C', desc:'Fixed monthly base pay' },
     { key:'seniority_allowance', label:'Seniority Allowance', icon:'⭐', color:'#7c3aed', desc:'Based on years of service' },
     { key:'loyalty_bonus',       label:'Loyalty Bonus',       icon:'🎖️', color:'#b45309', desc:'Long-term retention reward' },
     { key:'role_bonus',          label:'Role Bonus',          icon:'🏅', color:'#16a34a', desc:'Position-specific incentive' },
   ]
+
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div style={{ background:'white', borderRadius:16, width:'100%', maxWidth:480, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', overflow:'hidden' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#254e91)', padding:'20px 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.65)',zIndex:10000,display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center',padding:isMobile?0:16 }}>
+      <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':16,width:'100%',maxWidth:500,maxHeight:isMobile?'92vh':'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,.3)',animation:'slideUp .25s ease' }}>
+        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#254e91)',padding:'18px 22px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
           <div>
-            <div style={{ fontSize:11, color:'#93c5fd', fontWeight:600, letterSpacing:1, textTransform:'uppercase' }}>🔐 Admin · Salary Configuration</div>
-            <div style={{ fontSize:18, fontWeight:700, color:'white', marginTop:4 }}>{staffMember.name}</div>
-            <RoleBadge role={staffMember.role} />
+            <div style={{ fontSize:11,color:'#93c5fd',fontWeight:600,letterSpacing:1,textTransform:'uppercase' }}>🔐 Admin · Salary Config</div>
+            <div style={{ fontSize:17,fontWeight:800,color:'white',marginTop:4 }}>{staffMember.name}</div>
+            <RoleBadge role={staffMember.role}/>
           </div>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'white', width:32, height:32, borderRadius:8, cursor:'pointer', fontSize:16, fontFamily:'inherit' }}>✕</button>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.15)',border:'none',color:'white',width:34,height:34,borderRadius:8,cursor:'pointer',fontSize:16,fontFamily:'inherit' }}>✕</button>
         </div>
-        <div style={{ padding:24 }}>
-          <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:20 }}>
-            {fields.map(f => (
-              <div key={f.key} style={{ display:'flex', alignItems:'center', gap:12, background:'#f8fafc', borderRadius:10, padding:'12px 14px', border:'1px solid #e2e8f0' }}>
-                <div style={{ width:36, height:36, borderRadius:8, background:'white', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>{f.icon}</div>
+        <div style={{ padding:20,overflowY:'auto',flex:1 }}>
+          <div style={{ display:'flex',flexDirection:'column',gap:12,marginBottom:18 }}>
+            {fields.map(f=>(
+              <div key={f.key} style={{ display:'flex',alignItems:'center',gap:12,background:'#f8fafc',borderRadius:10,padding:'12px 14px',border:'1px solid #e2e8f0' }}>
+                <div style={{ width:34,height:34,borderRadius:8,background:'white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:17,flexShrink:0 }}>{f.icon}</div>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#374151' }}>{f.label}</div>
-                  <div style={{ fontSize:11, color:'#94a3b8' }}>{f.desc}</div>
+                  <div style={{ fontSize:13,fontWeight:700,color:'#374151' }}>{f.label}</div>
+                  <div style={{ fontSize:11,color:'#94a3b8' }}>{f.desc}</div>
                 </div>
                 <div style={{ position:'relative' }}>
-                  <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:13, fontWeight:700, color:f.color }}>₹</span>
-                  <input type="number" min="0" value={salaryForm[f.key]} onChange={e => setSalaryForm({ ...salaryForm, [f.key]:e.target.value })} style={{ width:110, padding:'8px 8px 8px 24px', borderRadius:8, border:`1.5px solid ${f.color}44`, fontSize:14, fontWeight:700, color:f.color, background:'white', textAlign:'right', fontFamily:'inherit' }} />
+                  <span style={{ position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:13,fontWeight:700,color:f.color }}>₹</span>
+                  <input type="number" min="0" value={salaryForm[f.key]} onChange={e=>setSalaryForm({...salaryForm,[f.key]:e.target.value})} style={{ width:100,padding:'8px 8px 8px 22px',borderRadius:8,border:`1.5px solid ${f.color}44`,fontSize:14,fontWeight:700,color:f.color,background:'white',textAlign:'right',fontFamily:'inherit',minHeight:40 }}/>
                 </div>
               </div>
             ))}
           </div>
-          <div style={{ background:'linear-gradient(135deg,#E6F1FB,#EAF3DE)', borderRadius:10, padding:'14px 16px', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase' }}>Gross Monthly Salary</div>
-            <div style={{ fontSize:26, fontWeight:800, color:'#0C447C' }}>{fmt(gross)}</div>
+          <div style={{ background:'linear-gradient(135deg,#E6F1FB,#EAF3DE)',borderRadius:10,padding:'14px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18 }}>
+            <div style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase' }}>Gross Monthly</div>
+            <div style={{ fontSize:24,fontWeight:800,color:'#0C447C',fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div>
           </div>
-          <div style={{ display:'flex', gap:10 }}>
-            <button onClick={onClose} style={{ ...S.btn('#64748b'), flex:1 }}>Cancel</button>
-            <button onClick={handleSave} disabled={saving} style={{ ...S.btn('#1e3a5f', saving), flex:2 }}>{saving?'⏳ Saving...':'💾 Save Salary Setup'}</button>
+          <div style={{ display:'flex',gap:10 }}>
+            <button onClick={onClose} style={{ ...S.btn('#64748b'),flex:1 }}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ ...S.btn('#1e3a5f',saving),flex:2 }}>{saving?'⏳ Saving…':'💾 Save Salary'}</button>
           </div>
         </div>
       </div>
@@ -297,40 +475,46 @@ function SalarySetupModal({ staffMember, onClose, onSaved }) {
   )
 }
 
-// ─── Scorecard Modal ──────────────────────────────────────────────────────────
+// ─── Scorecard Modal (BUG-11) ─────────────────────────────────────────────────
+
+// BUG-11: receives raw DB record, calls calcScores internally — no merged computed fields
 function ScorecardModal({ record, staffName, onClose }) {
+  const isMobile = useIsMobile()
   if (!record) return null
-  const { p1, p2, p3, p4, p5, total } = calcScores(record)
+  // Use DB working_days from the record itself (BUG-3)
+  const scoreRecord = { ...record, working_days: record.working_days||record.p1_attendance!==undefined?record.working_days:26 }
+  const { p1,p2,p3,p4,p5,total } = calcScores(scoreRecord)
   const lvl = getLevel(total)
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-      <div style={{ background:'white', borderRadius:16, padding:32, width:'100%', maxWidth:480, boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:10000,display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center',padding:isMobile?0:20 }}>
+      <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':16,padding:28,width:'100%',maxWidth:500,maxHeight:isMobile?'92vh':'88vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)',animation:'slideUp .25s ease' }}>
+        {isMobile && <div style={{ width:36,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 20px',opacity:.6 }}/>}
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20 }}>
           <div>
-            <h2 style={{ fontSize:20, fontWeight:700, color:'#1e293b', margin:0 }}>{staffName}</h2>
-            <p style={{ color:'#64748b', fontSize:14, margin:'4px 0 0' }}>{formatMonth(record.month)}</p>
+            <h2 style={{ fontSize:19,fontWeight:800,color:'#1e293b',margin:0 }}>{staffName}</h2>
+            <p style={{ color:'#64748b',fontSize:13,margin:'4px 0 0' }}>{formatMonth(record.month)}</p>
           </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#64748b', fontFamily:'inherit' }}>✕</button>
+          <button onClick={onClose} style={{ background:'none',border:'none',fontSize:20,cursor:'pointer',color:'#64748b',fontFamily:'inherit',minWidth:36,minHeight:36 }}>✕</button>
         </div>
-        <div style={{ textAlign:'center', padding:20, background:lvl.bg, borderRadius:12, marginBottom:24, border:`2px solid ${lvl.border}` }}>
+        <div style={{ textAlign:'center',padding:20,background:lvl.bg,borderRadius:12,marginBottom:20,border:`2px solid ${lvl.border}` }}>
           <div style={{ fontSize:36 }}>{lvl.emoji}</div>
-          <div style={{ fontSize:28, fontWeight:800, color:lvl.color }}>{total}</div>
-          <div style={{ fontSize:16, fontWeight:700, color:lvl.color }}>{lvl.label}</div>
+          <div style={{ fontSize:28,fontWeight:800,color:lvl.color,fontFamily:"'JetBrains Mono',monospace" }}>{total}</div>
+          <div style={{ fontSize:16,fontWeight:700,color:lvl.color }}>{lvl.label}</div>
         </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
           {[
-            { label:'Attendance',      score:p1, max:30, color:'#0ea5e9', detail:`${record.days_present}/${record.working_days} days` },
-            { label:'Punctuality',     score:p2, max:20, color:'#10b981', detail:`${record.late_count} late, ${record.early_leave_count} early` },
-            { label:'Task Completion', score:p3, max:20, color:'#f59e0b', detail:`${record.tasks_completed_on_time}/${record.tasks_assigned} tasks` },
-            { label:'Feedback',        score:p4, max:15, color:'#8b5cf6', detail:`Avg: ${record.feedback_avg}/5` },
-            { label:'Initiative',      score:p5, max:15, color:'#ec4899', detail:`Rating: ${record.initiative_score}/5` },
-          ].map(item => (
+            { label:'Attendance',      score:p1, max:30, color:'#0ea5e9', detail:`${record.days_present||0}/${record.working_days||26} days` },
+            { label:'Punctuality',     score:p2, max:20, color:'#10b981', detail:`${record.late_count||0} late, ${record.early_leave_count||0} early` },
+            { label:'Task Completion', score:p3, max:20, color:'#f59e0b', detail:`${record.tasks_completed_on_time||0}/${record.tasks_assigned||0} tasks` },
+            { label:'Feedback',        score:p4, max:15, color:'#8b5cf6', detail:`Avg: ${record.feedback_avg||0}/5` },
+            { label:'Initiative',      score:p5, max:15, color:'#ec4899', detail:`Rating: ${record.initiative_score||0}/5` },
+          ].map(item=>(
             <div key={item.label}>
-              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                <span style={{ fontSize:13, fontWeight:600, color:'#374151' }}>{item.label}</span>
-                <span style={{ fontSize:12, color:'#94a3b8' }}>{item.detail}</span>
+              <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
+                <span style={{ fontSize:13,fontWeight:600,color:'#374151' }}>{item.label}</span>
+                <span style={{ fontSize:12,color:'#94a3b8' }}>{item.detail}</span>
               </div>
-              <ScoreBar value={item.score} max={item.max} color={item.color} />
+              <ScoreBar value={item.score} max={item.max} color={item.color}/>
             </div>
           ))}
         </div>
@@ -339,27 +523,36 @@ function ScorecardModal({ record, staffName, onClose }) {
   )
 }
 
-// ─── Assign Task Modal ────────────────────────────────────────────────────────
+// ─── Assign Task Modal (BUG-8) ────────────────────────────────────────────────
+
 function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
   const courseData = useCourseData()
-  const [form, setForm] = useState({
+  const isMobile   = useIsMobile()
+  const [form,setForm] = useState({
     title:'', description:'',
-    assigned_to: preselectedStaff?.name || (staffList[0]?.name||''),
-    assigned_by: 'Admin',
-    department:  preselectedStaff?.department||'Administration',
+    assigned_to:preselectedStaff?.name||(staffList[0]?.name||''),
+    assigned_by:'Admin',
+    department:preselectedStaff?.department||'Administration',
     priority:'Medium', status:'Pending', due_date:'',
     course:'', subtype:'', class_name:'', batch_id:'',
   })
-  const [saving, setSaving] = useState(false)
+  const [saving,setSaving] = useState(false)
+
+  // BUG-8: show course picker only for teaching staff
+  const selectedStaffObj = staffList.find(s=>s.name===form.assigned_to)
+  const isTeaching = selectedStaffObj?.role==='Teaching' || selectedStaffObj?.role==='Teaching + Admin'
 
   const handleSave = async () => {
-    if (!form.title || !form.assigned_to) { alert('Title and Assigned To are required'); return }
+    if (!form.title||!form.assigned_to) { alert('Title and Assigned To are required'); return }
     setSaving(true)
-    const { data, error } = await supabase.from('staff_tasks').insert([{
+    const { data,error } = await supabase.from('staff_tasks').insert([{
       title:form.title, description:form.description||null, assigned_to:form.assigned_to,
       assigned_by:form.assigned_by, department:form.department, priority:form.priority,
-      status:form.status, due_date:form.due_date||null, course:form.course||null,
-      subtype:form.subtype||null, class_name:form.class_name||null, batch_id:form.batch_id||null,
+      status:form.status, due_date:form.due_date||null,
+      course:isTeaching?(form.course||null):null,
+      subtype:isTeaching?(form.subtype||null):null,
+      class_name:isTeaching?(form.class_name||null):null,
+      batch_id:isTeaching?(form.batch_id||null):null,
       created_at:new Date().toISOString(), updated_at:new Date().toISOString(),
     }]).select()
     setSaving(false)
@@ -367,82 +560,74 @@ function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
     onSaved(data?.[0]); onClose()
   }
 
-  // Teaching-only staff for course-linked tasks
-  const teachingStaff = staffList.filter(s => s.role==='Teaching' || s.role==='Teaching + Admin')
-
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.65)', backdropFilter:'blur(4px)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
-      onClick={e => e.target===e.currentTarget && onClose()}>
-      <div style={{ background:'white', borderRadius:20, width:'100%', maxWidth:640, boxShadow:'0 24px 64px rgba(0,0,0,0.22)', overflow:'hidden', maxHeight:'90vh', display:'flex', flexDirection:'column' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#6366f1)', padding:'22px 28px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+    <div style={{ position:'fixed',inset:0,background:'rgba(15,23,42,.65)',backdropFilter:'blur(4px)',zIndex:10000,display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center',padding:isMobile?0:20 }}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':20,width:'100%',maxWidth:640,maxHeight:isMobile?'94vh':'90vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 64px rgba(0,0,0,.22)',animation:'slideUp .25s ease' }}>
+        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#6366f1)',padding:'20px 24px',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0 }}>
+          {isMobile && <div style={{ position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',width:36,height:4,background:'rgba(255,255,255,.3)',borderRadius:2 }}/>}
           <div>
-            <div style={{ fontSize:11, opacity:.7, letterSpacing:1, textTransform:'uppercase' }}>GNSI · Staff Tasks</div>
-            <div style={{ fontSize:20, fontWeight:800 }}>Assign New Task</div>
-            {preselectedStaff && <div style={{ fontSize:13, opacity:.8, marginTop:2, display:'flex', alignItems:'center', gap:6 }}>→ {preselectedStaff.name} <RoleBadge role={preselectedStaff.role} /></div>}
+            <div style={{ fontSize:11,opacity:.7,letterSpacing:1,textTransform:'uppercase' }}>GNSI · Staff Tasks</div>
+            <div style={{ fontSize:19,fontWeight:800 }}>Assign New Task</div>
+            {preselectedStaff && <div style={{ fontSize:13,opacity:.8,marginTop:2 }}>→ {preselectedStaff.name}</div>}
           </div>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.18)', border:'none', color:'white', borderRadius:8, width:34, height:34, cursor:'pointer', fontSize:16, fontFamily:'inherit' }}>✕</button>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.18)',border:'none',color:'white',borderRadius:8,width:34,height:34,cursor:'pointer',fontSize:16,fontFamily:'inherit' }}>✕</button>
         </div>
-        <div style={{ padding:'24px 28px', overflowY:'auto', display:'flex', flexDirection:'column', gap:16 }}>
+        <div style={{ padding:20,overflowY:'auto',flex:1,display:'flex',flexDirection:'column',gap:14 }}>
           <div>
             <label style={S.label}>Task Title *</label>
-            <input value={form.title} onChange={e => setForm({ ...form, title:e.target.value })} placeholder="e.g. Submit lesson plan" style={S.input} />
+            <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Submit lesson plan" style={S.input}/>
           </div>
           <div>
             <label style={S.label}>Description / Instructions</label>
-            <textarea value={form.description} onChange={e => setForm({ ...form, description:e.target.value })} rows={2} style={{ ...S.input, resize:'vertical', height:70 }} placeholder="Detailed instructions..." />
+            <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} rows={2} style={{ ...S.input,resize:'vertical',height:70 }} placeholder="Detailed instructions..."/>
           </div>
-          {/* Course context — only shown when teaching staff selected */}
-          {(form.course !== undefined) && (
-            <div style={{ padding:'14px 16px', background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:10 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'#0284c7', marginBottom:12 }}>
-                📚 Course Context <span style={{ fontWeight:400, color:'#64748b' }}>(optional — Academic tasks only)</span>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-                <CoursePicker form={form} setForm={setForm} courseData={courseData} />
-              </div>
-              {form.batch_id && <div style={{ marginTop:10, fontSize:12, color:'#16a34a', fontWeight:600 }}>✅ Task linked to batch</div>}
-            </div>
-          )}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          <div className="form-grid" style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:14 }}>
             <div>
               <label style={S.label}>Assign To *</label>
-              <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to:e.target.value })} style={{ ...S.input, backgroundColor:'white' }}>
-                {staffList.map(s => (
-                  <option key={s.id} value={s.name}>
-                    {s.name} — {s.designation} {s.role==='Teaching + Admin'?'[T+A]':s.role==='Teaching'?'[T]':''}
-                  </option>
+              <select value={form.assigned_to} onChange={e=>{ const sel=staffList.find(s=>s.name===e.target.value); setForm({...form,assigned_to:e.target.value,department:sel?.department||form.department}) }} style={{ ...S.input,backgroundColor:'white' }}>
+                {staffList.map(s=>(
+                  <option key={s.id} value={s.name}>{s.name} — {s.designation}</option>
                 ))}
               </select>
             </div>
             <div>
               <label style={S.label}>Assigned By</label>
-              <input value={form.assigned_by} onChange={e => setForm({ ...form, assigned_by:e.target.value })} style={S.input} />
+              <input value={form.assigned_by} onChange={e=>setForm({...form,assigned_by:e.target.value})} style={S.input}/>
             </div>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16 }}>
             <div>
               <label style={S.label}>Department</label>
-              <select value={form.department} onChange={e => setForm({ ...form, department:e.target.value })} style={{ ...S.input, backgroundColor:'white' }}>
-                {DEPARTMENTS_LIST.map(d => <option key={d}>{d}</option>)}
+              <select value={form.department} onChange={e=>setForm({...form,department:e.target.value})} style={{ ...S.input,backgroundColor:'white' }}>
+                {DEPARTMENTS_LIST.map(d=><option key={d}>{d}</option>)}
               </select>
             </div>
             <div>
               <label style={S.label}>Priority</label>
-              <select value={form.priority} onChange={e => setForm({ ...form, priority:e.target.value })} style={{ ...S.input, backgroundColor:'white' }}>
-                {TASK_PRIORITIES.map(p => <option key={p}>{p}</option>)}
+              <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} style={{ ...S.input,backgroundColor:'white' }}>
+                {TASK_PRIORITIES.map(p=><option key={p}>{p}</option>)}
               </select>
             </div>
             <div>
               <label style={S.label}>Due Date</label>
-              <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date:e.target.value })} style={S.input} />
+              <input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})} style={S.input}/>
             </div>
           </div>
+          {/* BUG-8: course picker only for teaching staff */}
+          {isTeaching && (
+            <div style={{ padding:'14px 16px',background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:10 }}>
+              <div style={{ fontSize:12,fontWeight:700,color:'#0284c7',marginBottom:12 }}>📚 Course Context <span style={{ fontWeight:400,color:'#64748b' }}>(optional)</span></div>
+              <div className="form-grid" style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12 }}>
+                <CoursePicker form={form} setForm={setForm} courseData={courseData}/>
+              </div>
+              {form.batch_id && <div style={{ marginTop:8,fontSize:12,color:'#16a34a',fontWeight:600 }}>✅ Linked to batch</div>}
+            </div>
+          )}
         </div>
-        <div style={{ padding:'16px 28px 24px', display:'flex', gap:12 }}>
-          <button onClick={handleSave} disabled={saving} style={{ flex:1, background:'linear-gradient(135deg,#1e3a5f,#6366f1)', color:'white', border:'none', borderRadius:12, padding:14, cursor:'pointer', fontWeight:800, fontSize:15, fontFamily:'inherit' }}>
+        <div style={{ padding:'16px 20px 20px',display:'flex',gap:12,flexShrink:0 }}>
+          <button onClick={handleSave} disabled={saving} style={{ flex:1,background:'linear-gradient(135deg,#1e3a5f,#6366f1)',color:'white',border:'none',borderRadius:12,padding:14,cursor:'pointer',fontWeight:800,fontSize:15,fontFamily:'inherit',minHeight:48,opacity:saving?.7:1 }}>
             {saving?'⏳ Assigning…':'✅ Assign Task'}
           </button>
-          <button onClick={onClose} style={{ padding:'14px 24px', background:'#f1f5f9', border:'none', borderRadius:12, cursor:'pointer', fontWeight:600, color:'#64748b', fontFamily:'inherit' }}>Cancel</button>
+          <button onClick={onClose} style={{ padding:'14px 22px',background:'#f1f5f9',border:'none',borderRadius:12,cursor:'pointer',fontWeight:600,color:'#64748b',fontFamily:'inherit' }}>Cancel</button>
         </div>
       </div>
     </div>
@@ -450,69 +635,75 @@ function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
 }
 
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
+
 function TaskDetailModal({ task, onClose, onStatusChange }) {
-  const [note, setNote]     = useState(task.completion_note||'')
-  const [saving, setSaving] = useState(false)
+  const isMobile  = useIsMobile()
+  const [note,setNote]     = useState(task.completion_note||'')
+  const [saving,setSaving] = useState(false)
   const diff      = daysDiff(task.due_date)
-  const isOverdue = diff!==null && diff<0 && task.status!=='Done'
+  const isOverdue = diff!==null&&diff<0&&task.status!=='Done'
   const sm = STATUS_META[isOverdue?'Overdue':task.status]||STATUS_META.Pending
   const pm = PRIORITY_META[task.priority]||PRIORITY_META.Medium
+
   const saveNote = async () => {
     setSaving(true)
-    await supabase.from('staff_tasks').update({ completion_note:note, updated_at:new Date().toISOString() }).eq('id', task.id)
-    setSaving(false); alert('Note saved!')
+    await supabase.from('staff_tasks').update({ completion_note:note,updated_at:new Date().toISOString() }).eq('id',task.id)
+    setSaving(false)
   }
+
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(4px)', zIndex:1001, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
-      onClick={e => e.target===e.currentTarget && onClose()}>
-      <div style={{ background:'white', borderRadius:20, width:'100%', maxWidth:540, boxShadow:'0 20px 60px rgba(0,0,0,0.2)', overflow:'hidden' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#0ea5e9)', padding:'22px 24px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+    <div style={{ position:'fixed',inset:0,background:'rgba(15,23,42,.55)',backdropFilter:'blur(4px)',zIndex:10001,display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center',padding:isMobile?0:20 }}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':20,width:'100%',maxWidth:540,maxHeight:isMobile?'92vh':'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,.2)',animation:'slideUp .25s ease' }}>
+        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#0ea5e9)',padding:'20px 22px',color:'white',display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexShrink:0 }}>
+          {isMobile && <div style={{ position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',width:36,height:4,background:'rgba(255,255,255,.3)',borderRadius:2 }}/>}
           <div>
-            <div style={{ fontSize:11, opacity:.7, textTransform:'uppercase', letterSpacing:1 }}>Task Detail</div>
-            <div style={{ fontSize:18, fontWeight:700, marginTop:4, lineHeight:1.3 }}>{task.title}</div>
-            {task.course && <div style={{ fontSize:12, opacity:.8, marginTop:4 }}>📚 {task.course}{task.subtype?` / ${task.subtype}`:''}{task.class_name?` / ${task.class_name}`:''}</div>}
+            <div style={{ fontSize:11,opacity:.7,textTransform:'uppercase',letterSpacing:1 }}>Task Detail</div>
+            <div style={{ fontSize:17,fontWeight:800,marginTop:4,lineHeight:1.3 }}>{task.title}</div>
+            {task.course && <div style={{ fontSize:12,opacity:.8,marginTop:4 }}>📚 {task.course}{task.subtype?` / ${task.subtype}`:''}{task.class_name?` / ${task.class_name}`:''}</div>}
           </div>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'white', borderRadius:8, width:32, height:32, cursor:'pointer', fontFamily:'inherit' }}>✕</button>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.2)',border:'none',color:'white',borderRadius:8,width:34,height:34,cursor:'pointer',fontFamily:'inherit',minWidth:34,minHeight:34 }}>✕</button>
         </div>
-        <div style={{ padding:'22px 24px' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-            {[['Assigned To',task.assigned_to],['Assigned By',task.assigned_by||'Admin'],['Department',task.department||'General'],['Due Date',fmtDate(task.due_date)]].map(([l,v]) => (
-              <div key={l} style={{ background:'#f8fafc', borderRadius:10, padding:'10px 12px' }}>
-                <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, textTransform:'uppercase', letterSpacing:.5, marginBottom:3 }}>{l}</div>
-                <div style={{ fontSize:13, color:'#1e293b', fontWeight:600 }}>{v||'—'}</div>
+        <div style={{ padding:20,overflowY:'auto',flex:1 }}>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14 }}>
+            {[['Assigned To',task.assigned_to],['Assigned By',task.assigned_by||'Admin'],['Department',task.department||'General'],['Due Date',fmtDate(task.due_date)]].map(([l,v])=>(
+              <div key={l} style={{ background:'#f8fafc',borderRadius:10,padding:'10px 12px' }}>
+                <div style={{ fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase',letterSpacing:.5,marginBottom:3 }}>{l}</div>
+                <div style={{ fontSize:13,color:'#1e293b',fontWeight:600 }}>{v||'—'}</div>
               </div>
             ))}
           </div>
-          <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-            <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'5px 12px', borderRadius:99, fontSize:12, fontWeight:700, background:pm.bg, color:pm.color }}>{pm.icon} {task.priority}</span>
-            <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'5px 12px', borderRadius:99, fontSize:12, fontWeight:700, background:sm.bg, color:sm.color }}>{sm.icon} {isOverdue?'Overdue':task.status}</span>
+          <div style={{ display:'flex',gap:8,marginBottom:14,flexWrap:'wrap' }}>
+            <span style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'5px 12px',borderRadius:99,fontSize:12,fontWeight:700,background:pm.bg,color:pm.color }}>{pm.icon} {task.priority}</span>
+            <span style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'5px 12px',borderRadius:99,fontSize:12,fontWeight:700,background:sm.bg,color:sm.color }}>{sm.icon} {isOverdue?'Overdue':task.status}</span>
           </div>
-          {task.description && <div style={{ marginBottom:14, background:'#f8fafc', borderRadius:10, padding:12, fontSize:13, color:'#475569', lineHeight:1.6 }}>{task.description}</div>}
-          <div style={{ marginBottom:16 }}>
-            <label style={{ ...S.label, marginBottom:6 }}>Completion Note</label>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} style={{ ...S.input, resize:'vertical', fontFamily:'inherit' }} placeholder="Add progress note..." />
-            <button onClick={saveNote} disabled={saving} style={{ ...S.btn('#1e3a5f', saving), marginTop:8, padding:'8px 16px', fontSize:13 }}>{saving?'Saving…':'Save Note'}</button>
+          {task.description && <div style={{ marginBottom:14,background:'#f8fafc',borderRadius:10,padding:12,fontSize:13,color:'#475569',lineHeight:1.6 }}>{task.description}</div>}
+          <div style={{ marginBottom:14 }}>
+            <label style={{ ...S.label,marginBottom:6 }}>Completion Note</label>
+            <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} style={{ ...S.input,resize:'vertical',fontFamily:'inherit' }} placeholder="Add progress note..."/>
+            <button onClick={saveNote} disabled={saving} style={{ ...S.btn('#1e3a5f',saving),marginTop:8,padding:'8px 16px',fontSize:13 }}>{saving?'Saving…':'Save Note'}</button>
           </div>
-          <div style={{ display:'flex', gap:10 }}>
-            {task.status!=='Done' && <button onClick={() => { onStatusChange(task, task.status==='Pending'?'In Progress':'Done'); onClose() }} style={{ flex:1, background:'linear-gradient(135deg,#6366f1,#0ea5e9)', color:'white', border:'none', borderRadius:10, padding:12, cursor:'pointer', fontWeight:700, fontSize:14, fontFamily:'inherit' }}>{task.status==='Pending'?'▶ Start Task':'✅ Mark Done'}</button>}
-            {task.status==='Done' && <button onClick={() => { onStatusChange(task,'Pending'); onClose() }} style={{ flex:1, background:'#64748b', color:'white', border:'none', borderRadius:10, padding:12, cursor:'pointer', fontWeight:700, fontFamily:'inherit' }}>↩ Reopen</button>}
-            <button onClick={onClose} style={{ padding:'12px 20px', background:'#f1f5f9', border:'none', borderRadius:10, cursor:'pointer', fontWeight:600, color:'#64748b', fontFamily:'inherit' }}>Close</button>
-          </div>
+        </div>
+        <div style={{ padding:'14px 20px 20px',display:'flex',gap:10,flexShrink:0 }}>
+          {task.status!=='Done' && <button onClick={()=>{ onStatusChange(task,task.status==='Pending'?'In Progress':'Done'); onClose() }} style={{ flex:1,background:'linear-gradient(135deg,#6366f1,#0ea5e9)',color:'white',border:'none',borderRadius:10,padding:13,cursor:'pointer',fontWeight:700,fontSize:14,fontFamily:'inherit',minHeight:48 }}>{task.status==='Pending'?'▶ Start Task':'✅ Mark Done'}</button>}
+          {task.status==='Done' && <button onClick={()=>{ onStatusChange(task,'Pending'); onClose() }} style={{ flex:1,background:'#64748b',color:'white',border:'none',borderRadius:10,padding:13,cursor:'pointer',fontWeight:700,fontFamily:'inherit',minHeight:48 }}>↩ Reopen</button>}
+          <button onClick={onClose} style={{ padding:'13px 20px',background:'#f1f5f9',border:'none',borderRadius:10,cursor:'pointer',fontWeight:600,color:'#64748b',fontFamily:'inherit' }}>Close</button>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Score Entry Row ──────────────────────────────────────────────────────────
-function ScoreEntryRow({ staff, score, onChange }) {
+// ─── Score Entry Row (BUG-4: React.memo + useCallback in parent) ──────────────
+
+const ScoreEntryRow = React.memo(function ScoreEntryRow({ staff, score, onChange }) {
   const computed = score ? calcScores(score) : null
   return (
     <tr style={{ borderBottom:'1px solid #f1f5f9' }}>
-      <td style={{ padding:'12px 16px', minWidth:160 }}>
-        <div style={{ fontWeight:600, color:'#1e293b' }}>{staff.name}</div>
-        <div style={{ fontSize:11, color:'#94a3b8' }}>{staff.designation}</div>
-        <RoleBadge role={staff.role} />
+      <td style={{ padding:'11px 14px',minWidth:160,position:'sticky',left:0,background:'white',zIndex:1 }}>
+        <div style={{ fontWeight:700,color:'#1e293b',fontSize:13 }}>{staff.name}</div>
+        <div style={{ fontSize:11,color:'#94a3b8' }}>{staff.designation}</div>
+        <RoleBadge role={staff.role}/>
       </td>
       {[
         { key:'days_present',            max:score?.working_days||26 },
@@ -522,24 +713,43 @@ function ScoreEntryRow({ staff, score, onChange }) {
         { key:'tasks_completed_on_time' },
         { key:'feedback_avg',    step:.1, max:5 },
         { key:'initiative_score', max:5 },
-      ].map(field => (
+      ].map(field=>(
         <td key={field.key} style={{ padding:8 }}>
           <input type="number" min="0" max={field.max||99} step={field.step||1}
             value={score?.[field.key]??0}
-            onChange={e => onChange(staff.id, field.key, parseFloat(e.target.value)||0)}
-            style={{ width:70, padding:'6px 8px', borderRadius:6, border:'1px solid #d1d5db', fontSize:13, textAlign:'center', fontFamily:'inherit' }} />
+            onChange={e=>onChange(staff.id,field.key,parseFloat(e.target.value)||0)}
+            style={{ width:68,padding:'6px 8px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,textAlign:'center',fontFamily:'inherit',minHeight:38 }}/>
         </td>
       ))}
-      <td style={{ padding:'12px 16px', textAlign:'center' }}>
-        {computed ? <div><div style={{ fontSize:16, fontWeight:800, color:'#1e293b' }}>{computed.total}</div><LevelBadge score={computed.total} /></div> : '—'}
+      <td style={{ padding:'11px 14px',textAlign:'center' }}>
+        {computed
+          ? <div><div style={{ fontSize:16,fontWeight:800,color:'#1e293b',fontFamily:"'JetBrains Mono',monospace" }}>{computed.total}</div><LevelBadge score={computed.total}/></div>
+          : '—'}
       </td>
     </tr>
   )
-}
+})
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 function Staff({ currentUser }) {
+  const isMobile = useIsMobile()
+  const { show:showToast, el:toastEl } = useToast()
+
+  // ROLE-1: Tab visibility
+  const userRole = currentUser?.role || 'viewer'
+  const isAdmin  = userRole==='Admin'
+  const isManager= userRole==='manager'
+
+  const ALL_TABS = [
+    { key:'staff',       label:'👥 Staff',      show:true },
+    { key:'tasks',       label:'📋 Tasks',      show:true },
+    { key:'scoring',     label:'📊 Scoring',    show:isAdmin },
+    { key:'leaderboard', label:'🏆 Leaders',    show:true },
+    { key:'history',     label:'📅 History',    show:true },
+    { key:'geo',         label:'📍 Geo',        show:isAdmin||isManager },
+  ].filter(t=>t.show)
+
   const [staff,             setStaff]             = useState([])
   const [loading,           setLoading]           = useState(true)
   const [saving,            setSaving]            = useState(false)
@@ -548,10 +758,13 @@ function Staff({ currentUser }) {
   const [statusFilter,      setStatusFilter]      = useState('All')
   const [roleFilter,        setRoleFilter]        = useState('All')
   const [form,              setForm]              = useState(emptyForm)
+  const [formErrors,        setFormErrors]        = useState({})
   const [activeTab,         setActiveTab]         = useState('staff')
   const [editingStaff,      setEditingStaff]      = useState(null)
+  const [page,              setPage]              = useState(1)  // PERF-1
   const [scoreMonth,        setScoreMonth]        = useState(currentMonth())
   const [scores,            setScores]            = useState({})
+  const [dirtyIds,          setDirtyIds]          = useState(new Set()) // BUG-5
   const [scoreSaving,       setScoreSaving]       = useState(false)
   const [allMonthlyScores,  setAllMonthlyScores]  = useState([])
   const [selectedScorecard, setSelectedScorecard] = useState(null)
@@ -559,7 +772,6 @@ function Staff({ currentUser }) {
   const [workingDays,       setWorkingDays]       = useState(26)
   const [salaryTarget,      setSalaryTarget]      = useState(null)
   const [showPinModal,      setShowPinModal]      = useState(false)
-  const [adminUnlocked,     setAdminUnlocked]     = useState(false)
   const [showSalaryModal,   setShowSalaryModal]   = useState(false)
   const [tasks,             setTasks]             = useState([])
   const [tasksLoading,      setTasksLoading]      = useState(false)
@@ -571,250 +783,309 @@ function Staff({ currentUser }) {
   const [taskPriorityFilter,setTaskPriorityFilter]= useState('All')
   const [taskStaffFilter,   setTaskStaffFilter]   = useState('All')
   const [taskRoleFilter,    setTaskRoleFilter]    = useState('All')
-  const [toast,             setToast]             = useState('')
+  const [confirmModal,      setConfirmModal]      = useState(null)
 
-  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
+  // BUG-12: in-flight guard for task status changes
+  const taskStatusInFlight = useRef(new Set())
 
-  const isAdmin       = currentUser?.role === 'Admin'
-  const loggedInStaff = staff.find(s => s.id===currentUser?.staff_id) || staff.find(s => s.name===currentUser?.name) || null
+  // BUG-1: match only by staff_id
+  const loggedInStaff = useMemo(()=>staff.find(s=>s.id===currentUser?.staff_id)||null,[staff,currentUser])
+
+  // ── Data Loaders ─────────────────────────────────────────────────────────────
 
   const fetchStaff = async () => {
-  setLoading(true)
-  try {
-    const data = await staffDB.forStaffPage()
-    setStaff(data)
-  } catch (err) { showToast('⚠️ Could not load staff.') }
-  finally { setLoading(false) }
-}
+    setLoading(true)
+    try {
+      const data = await staffDB.forStaffPage()
+      setStaff(data||[])
+    } catch (err) { showToast('⚠️ Could not load staff: '+err.message,'#dc2626') }
+    finally { setLoading(false) }
+  }
+
+  // SEC-3: salary fetched separately and merged only after admin unlock
+  const fetchSalaryData = useCallback(async () => {
+    if (!isAdminUnlocked()) return
+    try {
+      const { data,error } = await supabase.from('staff_profiles').select('id,basic_salary,seniority_allowance,loyalty_bonus,role_bonus')
+      if (!error && data) {
+        const map={}; data.forEach(r=>{ map[r.id]=r })
+        setStaff(prev=>prev.map(s=>map[s.id]?{ ...s,...map[s.id] }:s))
+      }
+    } catch {}
+  },[])
 
   const fetchTasks = async () => {
     setTasksLoading(true)
-    const { data, error } = await supabase.from('staff_tasks').select('*').order('created_at', { ascending:false })
-    if (!error) setTasks(data||[])
-    else showToast('⚠️ Could not load tasks.')
+    const { data,error } = await supabase.from('staff_tasks').select('*').order('created_at',{ascending:false})
+    if (!error && data) {
+      // BUG-6: sync overdue status to DB
+      const now = new Date()
+      const toMark = data.filter(t => t.status!=='Done' && t.due_date && new Date(t.due_date)<now && t.status!=='Overdue')
+      if (toMark.length) {
+        supabase.from('staff_tasks').update({ status:'Overdue',updated_at:now.toISOString() }).in('id',toMark.map(t=>t.id)).then(()=>{})
+        setTasks(data.map(t=>toMark.find(x=>x.id===t.id)?{...t,status:'Overdue'}:t))
+      } else {
+        setTasks(data)
+      }
+    } else if (error) showToast('⚠️ Could not load tasks: '+error.message,'#dc2626')
     setTasksLoading(false)
-  }// MAIN COMPONENT
-
-
-  const fetchScoresForMonth = async month => {
-    const { data } = await supabase.from('staff_monthly_scores').select('*').eq('month', month)
-    if (data) { const map={}; data.forEach(r => { map[r.staff_id]=r }); setScores(map); setWorkingDays(data[0]?.working_days||26) }
-    else setScores({})
   }
 
+  const fetchScoresForMonth = async month => {
+    const { data } = await supabase.from('staff_monthly_scores').select('*').eq('month',month)
+    if (data) { const map={}; data.forEach(r=>{ map[r.staff_id]=r }); setScores(map); setWorkingDays(data[0]?.working_days||26) }
+    else setScores({})
+    setDirtyIds(new Set()) // BUG-5: reset dirty tracking on month change
+  }
+
+  // BUG-7: limit to last 24 months
   const fetchAllScores = async () => {
-    const { data } = await supabase.from('staff_monthly_scores').select('*').order('month', { ascending:false })
+    const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-24)
+    const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}`
+    const { data } = await supabase.from('staff_monthly_scores').select('*').gte('month',cutoffStr).order('month',{ascending:false})
     if (data) setAllMonthlyScores(data)
   }
 
-  useEffect(() => { fetchStaff() }, [])
-  useEffect(() => { if (activeTab==='tasks')       fetchTasks() },                           [activeTab])
-  useEffect(() => { if (activeTab==='scoring')     fetchScoresForMonth(scoreMonth) },        [activeTab, scoreMonth])
-  useEffect(() => { if (activeTab==='leaderboard') { fetchScoresForMonth(scoreMonth); fetchAllScores() } }, [activeTab, scoreMonth])
-  useEffect(() => { if (activeTab==='history')     fetchAllScores() },                       [activeTab])
+  useEffect(()=>{ fetchStaff() },[])
+  useEffect(()=>{ if(activeTab==='tasks')       fetchTasks() },                            [activeTab])
+  useEffect(()=>{ if(activeTab==='scoring')     fetchScoresForMonth(scoreMonth) },         [activeTab,scoreMonth])
+  useEffect(()=>{ if(activeTab==='leaderboard') { fetchScoresForMonth(scoreMonth); fetchAllScores() } },[activeTab,scoreMonth])
+  useEffect(()=>{ if(activeTab==='history')     fetchAllScores() },                        [activeTab])
 
-  const tasksWithOverdue = useMemo(() => tasks.map(t => {
-    const diff = daysDiff(t.due_date)
-    return { ...t, _overdue: diff!==null && diff<0 && t.status!=='Done' }
-  }), [tasks])
+  // ── Task Derived Data ─────────────────────────────────────────────────────────
 
-  const filteredTasks = useMemo(() => {
-    // Enrich tasks with staff role
-    const staffRoleMap = {}
-    staff.forEach(s => { staffRoleMap[s.name] = s.role })
-    return tasksWithOverdue.filter(t => {
+  const tasksWithOverdue = useMemo(()=>tasks.map(t=>({
+    ...t, _overdue: t.status==='Overdue' || (daysDiff(t.due_date)!==null && daysDiff(t.due_date)<0 && t.status!=='Done')
+  })),[tasks])
+
+  const filteredTasks = useMemo(()=>{
+    const staffRoleMap={}; staff.forEach(s=>{ staffRoleMap[s.name]=s.role })
+    return tasksWithOverdue.filter(t=>{
       const q = taskSearch.toLowerCase()
-      const matchSearch   = !q || (t.title||'').toLowerCase().includes(q) || (t.assigned_to||'').toLowerCase().includes(q)
-      const effectiveStatus = t._overdue ? 'Overdue' : t.status
-      const matchStatus   = taskStatusFilter==='All'   || effectiveStatus===taskStatusFilter
-      const matchPriority = taskPriorityFilter==='All' || t.priority===taskPriorityFilter
-      const matchStaff    = taskStaffFilter==='All'    || t.assigned_to===taskStaffFilter
-      const staffRole     = staffRoleMap[t.assigned_to] || ''
-      const matchRole     = taskRoleFilter==='All'     || staffRole===taskRoleFilter || (taskRoleFilter==='Teaching' && staffRole==='Teaching + Admin')
-      return matchSearch && matchStatus && matchPriority && matchStaff && matchRole
+      const ms = !q||(t.title||'').toLowerCase().includes(q)||(t.assigned_to||'').toLowerCase().includes(q)
+      const effectiveStatus = t._overdue?'Overdue':t.status
+      const mst = taskStatusFilter==='All'   || effectiveStatus===taskStatusFilter
+      const mp  = taskPriorityFilter==='All' || t.priority===taskPriorityFilter
+      const msf = taskStaffFilter==='All'    || t.assigned_to===taskStaffFilter
+      const sr  = staffRoleMap[t.assigned_to]||''
+      const mr  = taskRoleFilter==='All'     || sr===taskRoleFilter || (taskRoleFilter==='Teaching'&&sr==='Teaching + Admin')
+      return ms&&mst&&mp&&msf&&mr
     })
-  }, [tasksWithOverdue, taskSearch, taskStatusFilter, taskPriorityFilter, taskStaffFilter, taskRoleFilter, staff])
+  },[tasksWithOverdue,taskSearch,taskStatusFilter,taskPriorityFilter,taskStaffFilter,taskRoleFilter,staff])
 
-  const taskStats = useMemo(() => ({
-    total:      tasksWithOverdue.length,
-    done:       tasksWithOverdue.filter(t => t.status==='Done').length,
-    inProgress: tasksWithOverdue.filter(t => t.status==='In Progress').length,
-    pending:    tasksWithOverdue.filter(t => t.status==='Pending').length,
-    overdue:    tasksWithOverdue.filter(t => t._overdue).length,
-    high:       tasksWithOverdue.filter(t => t.priority==='High').length,
-  }), [tasksWithOverdue])
+  const taskStats = useMemo(()=>({
+    total:tasksWithOverdue.length, done:tasksWithOverdue.filter(t=>t.status==='Done').length,
+    inProgress:tasksWithOverdue.filter(t=>t.status==='In Progress').length,
+    pending:tasksWithOverdue.filter(t=>t.status==='Pending').length,
+    overdue:tasksWithOverdue.filter(t=>t._overdue).length,
+    high:tasksWithOverdue.filter(t=>t.priority==='High').length,
+  }),[tasksWithOverdue])
 
-  const staffTaskMap = useMemo(() => {
-    const map = {}
-    tasksWithOverdue.forEach(t => {
-      if (!map[t.assigned_to]) map[t.assigned_to] = { total:0, done:0, overdue:0 }
-      map[t.assigned_to].total++
-      if (t.status==='Done') map[t.assigned_to].done++
-      if (t._overdue) map[t.assigned_to].overdue++
-    })
-    return map
-  }, [tasksWithOverdue])
+  const staffTaskMap = useMemo(()=>{
+    const map={}; tasksWithOverdue.forEach(t=>{ if(!map[t.assigned_to]) map[t.assigned_to]={total:0,done:0,overdue:0}; map[t.assigned_to].total++; if(t.status==='Done') map[t.assigned_to].done++; if(t._overdue) map[t.assigned_to].overdue++ }); return map
+  },[tasksWithOverdue])
 
-  const staffTaskMonitor = useMemo(() =>
-    staff.map(s => {
-      const tm = staffTaskMap[s.name]||{ total:0, done:0, overdue:0 }
-      return { ...s, taskTotal:tm.total, taskDone:tm.done, taskOverdue:tm.overdue, taskPending:tm.total-tm.done }
-    }).filter(s => s.taskTotal>0).sort((a,b) => b.taskTotal-a.taskTotal),
-  [staff, staffTaskMap])
+  const staffTaskMonitor = useMemo(()=>
+    staff.map(s=>{ const tm=staffTaskMap[s.name]||{total:0,done:0,overdue:0}; return {...s,taskTotal:tm.total,taskDone:tm.done,taskOverdue:tm.overdue} })
+      .filter(s=>s.taskTotal>0).sort((a,b)=>b.taskTotal-a.taskTotal),
+  [staff,staffTaskMap])
 
+  const activeStaffNames = useMemo(()=>[...new Set(tasksWithOverdue.map(t=>t.assigned_to))],[tasksWithOverdue])
+
+  // ── Handlers ──────────────────────────────────────────────────────────────────
+
+  // BUG-12: in-flight guard
   const handleTaskStatusChange = async (task, newStatus) => {
+    if (taskStatusInFlight.current.has(task.id)) return
+    taskStatusInFlight.current.add(task.id)
     const update = { status:newStatus, updated_at:new Date().toISOString() }
     if (newStatus==='Done') update.completed_at = new Date().toISOString()
-    const { data, error } = await supabase.from('staff_tasks').update(update).eq('id', task.id).select()
-    if (error) { showToast('❌ Update failed'); return }
-    setTasks(prev => prev.map(t => t.id===task.id ? (data?.[0]||t) : t))
-    showToast(`✅ Marked as ${newStatus}`)
+    const { data,error } = await supabase.from('staff_tasks').update(update).eq('id',task.id).select()
+    taskStatusInFlight.current.delete(task.id)
+    if (error) { showToast('❌ Update failed','#dc2626'); return }
+    setTasks(prev=>prev.map(t=>t.id===task.id?(data?.[0]||t):t))
+    showToast(`✅ Marked as ${newStatus}`,'#16a34a')
   }
 
-  const handleTaskDelete = async id => {
-    if (!window.confirm('Delete this task?')) return
-    const { error } = await supabase.from('staff_tasks').delete().eq('id', id)
-    if (error) { showToast('❌ Delete failed'); return }
-    setTasks(prev => prev.filter(t => t.id!==id))
-    showToast('🗑️ Task deleted')
+  const handleTaskDelete = id => {
+    setConfirmModal({ title:'Delete Task', message:'Delete this task permanently?', confirmLabel:'Delete', danger:true,
+      onConfirm: async ()=>{
+        setConfirmModal(null)
+        const { error } = await supabase.from('staff_tasks').delete().eq('id',id)
+        if (error) { showToast('❌ Delete failed','#dc2626'); return }
+        setTasks(prev=>prev.filter(t=>t.id!==id)); showToast('🗑️ Task deleted','#dc2626')
+      }
+    })
   }
 
-  const handleNewTask = task => {
-    if (task) setTasks(prev => [task, ...prev])
-    showToast('✅ Task assigned!')
+  // BUG-4: useCallback so ScoreEntryRow memo works
+  const handleScoreChange = useCallback((staffId, field, value) => {
+    setDirtyIds(prev=>new Set(prev).add(staffId)) // BUG-5: track touched rows
+    setScores(prev=>({ ...prev, [staffId]:{ ...(prev[staffId]||{ ...emptyScore, working_days:workingDays, staff_id:staffId, month:scoreMonth }), [field]:value } }))
+  },[workingDays,scoreMonth])
+
+  const validateAddForm = () => {
+    const e={}
+    if (!form.name.trim()) e.name='Name is required'
+    if (!form.designation.trim()) e.designation='Designation is required'
+    if (form.phone && !validatePhone(form.phone)) e.phone='Enter valid 10-digit phone'
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email='Invalid email'
+    setFormErrors(e); return Object.keys(e).length===0
   }
 
   const handleAdd = async e => {
-  e.preventDefault(); setSaving(true)
-  try {
-    await staffDB.insert({ ...form, joining_date: form.joining_date || null })
-    setForm(emptyForm); setShowForm(false); fetchStaff()
-  } catch (err) { alert('Error: ' + err.message) }
-  finally { setSaving(false) }
-}
-
- const handleDelete = async id => {
-  if (window.confirm('Delete this staff record?')) {
+    e.preventDefault()
+    if (!validateAddForm()) return
+    setSaving(true)
     try {
-      await staffDB.delete(id)
-      fetchStaff()
-    } catch (err) { alert('Error: ' + err.message) }
+      await staffDB.insert({ ...form, email:sanitizeEmail(form.email), joining_date:form.joining_date||null })
+      setForm(emptyForm); setFormErrors({}); setShowForm(false); fetchStaff()
+      showToast('✅ Staff added','#16a34a')
+    } catch (err) { showToast('❌ Error: '+err.message,'#dc2626') }
+    finally { setSaving(false) }
   }
-}
+
+  const handleDelete = id => {
+    setConfirmModal({ title:'Delete Staff', message:'Delete this staff record permanently? This cannot be undone.', confirmLabel:'Delete', danger:true,
+      onConfirm: async ()=>{
+        setConfirmModal(null)
+        try { await staffDB.delete(id); fetchStaff(); showToast('🗑️ Staff deleted','#dc2626') }
+        catch (err) { showToast('❌ Error: '+err.message,'#dc2626') }
+      }
+    })
+  }
+
   const handleOpenSalarySetup = staffMember => {
     setSalaryTarget(staffMember)
-    if (adminUnlocked) setShowSalaryModal(true); else setShowPinModal(true)
+    if (isAdminUnlocked()) { fetchSalaryData(); setShowSalaryModal(true) }
+    else setShowPinModal(true)
   }
 
+  // BUG-5: only upsert dirty rows
   const handleSaveScores = async () => {
+    if (dirtyIds.size===0) { showToast('No changes to save','#d97706'); return }
     setScoreSaving(true)
-    const rows = staff.map(s => {
-      const row     = scores[s.id]||{ ...emptyScore, working_days:workingDays }
+    const rows = [...dirtyIds].map(id=>{
+      const s   = staff.find(x=>x.id===id); if (!s) return null
+      const row = scores[id]||{ ...emptyScore, working_days:workingDays }
       const computed = calcScores({ ...row, working_days:workingDays })
-      return { staff_id:s.id, month:scoreMonth, working_days:workingDays, days_present:row.days_present||0, late_count:row.late_count||0, early_leave_count:row.early_leave_count||0, tasks_assigned:row.tasks_assigned||0, tasks_completed_on_time:row.tasks_completed_on_time||0, feedback_avg:row.feedback_avg||0, initiative_score:row.initiative_score||0, p1_attendance:computed.p1, p2_punctuality:computed.p2, p3_tasks:computed.p3, p4_feedback:computed.p4, p5_initiative:computed.p5, total_score:computed.total, level:getLevel(computed.total)?.label||'Probation' }
-    })
-    const { error } = await supabase.from('staff_monthly_scores').upsert(rows, { onConflict:'staff_id,month' })
-    if (error) alert('Error: '+error.message)
-    else { alert('✅ Scores saved for '+formatMonth(scoreMonth)); fetchScoresForMonth(scoreMonth) }
+      return { staff_id:id, month:scoreMonth, working_days:workingDays, days_present:row.days_present||0, late_count:row.late_count||0, early_leave_count:row.early_leave_count||0, tasks_assigned:row.tasks_assigned||0, tasks_completed_on_time:row.tasks_completed_on_time||0, feedback_avg:row.feedback_avg||0, initiative_score:row.initiative_score||0, p1_attendance:computed.p1, p2_punctuality:computed.p2, p3_tasks:computed.p3, p4_feedback:computed.p4, p5_initiative:computed.p5, total_score:computed.total, level:getLevel(computed.total)?.label||'Probation' }
+    }).filter(Boolean)
+    const { error } = await supabase.from('staff_monthly_scores').upsert(rows,{ onConflict:'staff_id,month' })
+    if (error) showToast('❌ Error: '+error.message,'#dc2626')
+    else { showToast(`✅ Saved ${rows.length} score records`,'#16a34a'); setDirtyIds(new Set()); fetchScoresForMonth(scoreMonth) }
     setScoreSaving(false)
   }
 
-  const handleConfirmScores = async () => {
-    if (!window.confirm(`Confirm and lock scores for ${formatMonth(scoreMonth)}?`)) return
-    const { error } = await supabase.from('staff_monthly_scores').update({ is_confirmed:true, confirmed_by:'Authority', confirmed_at:new Date().toISOString() }).eq('month', scoreMonth)
-    if (error) alert('Error: '+error.message)
-    else { alert('✅ Scores confirmed!'); fetchScoresForMonth(scoreMonth) }
-  }
-
-  const handleScoreChange = (staffId, field, value) => {
-    setScores(prev => ({ ...prev, [staffId]: { ...(prev[staffId]||{ ...emptyScore, working_days:workingDays, staff_id:staffId, month:scoreMonth }), [field]:value } }))
-  }
-
-  const filteredStaff = useMemo(() => {
-    const q = search.toLowerCase()
-    return staff.filter(item => {
-      const matchSearch = ['name','phone','email','department','designation','qualification','role'].some(k => (item[k]||'').toLowerCase().includes(q))
-      const matchStatus = statusFilter==='All' || item.status===statusFilter
-      const matchRole   = roleFilter==='All'   || item.role===roleFilter
-      return matchSearch && matchStatus && matchRole
+  // SEC-5: confirm scores via ConfirmModal not window.confirm
+  const handleConfirmScores = () => {
+    setConfirmModal({ title:'Confirm & Lock Scores', message:`Lock performance scores for ${formatMonth(scoreMonth)}? This cannot be reversed.`, confirmLabel:'Confirm & Lock', danger:false,
+      onConfirm: async ()=>{
+        setConfirmModal(null)
+        const { error } = await supabase.from('staff_monthly_scores').update({ is_confirmed:true, confirmed_by:'Authority', confirmed_at:new Date().toISOString() }).eq('month',scoreMonth)
+        if (error) showToast('❌ Error: '+error.message,'#dc2626')
+        else { showToast('✅ Scores confirmed & locked','#16a34a'); fetchScoresForMonth(scoreMonth) }
+      }
     })
-  }, [staff, search, statusFilter, roleFilter])
+  }
 
-  const leaderboard = useMemo(() =>
-    staff.map(s => { const sc=scores[s.id]; return { ...s, score: sc?calcScores(sc).total:null } })
-      .filter(s => s.score!==null).sort((a,b) => b.score-a.score),
-  [staff, scores])
+  // ── Filtered / Paginated Staff ────────────────────────────────────────────────
 
-  const historyData = useMemo(() => {
+  const filteredStaff = useMemo(()=>{
+    const q = search.toLowerCase()
+    return staff.filter(item=>{
+      const ms = ['name','phone','email','department','designation','qualification','role'].some(k=>(item[k]||'').toLowerCase().includes(q))
+      const mst= statusFilter==='All'||item.status===statusFilter
+      const mr = roleFilter==='All'  ||item.role===roleFilter
+      return ms&&mst&&mr
+    })
+  },[staff,search,statusFilter,roleFilter])
+
+  const totalPages  = Math.max(1,Math.ceil(filteredStaff.length/PAGE_SIZE))
+  const paginated   = filteredStaff.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
+
+  // BUG-3: leaderboard uses each record's own working_days
+  const leaderboard = useMemo(()=>
+    staff.map(s=>{
+      const sc=scores[s.id]
+      const total=sc?calcScores(sc).total:null
+      return { ...s, score:total }
+    }).filter(s=>s.score!==null).sort((a,b)=>b.score-a.score),
+  [staff,scores])
+
+  const historyData = useMemo(()=>{
     if (!historyStaffId) return []
-    return allMonthlyScores.filter(r => r.staff_id===historyStaffId).sort((a,b) => b.month.localeCompare(a.month))
-  }, [allMonthlyScores, historyStaffId])
+    return allMonthlyScores.filter(r=>r.staff_id===historyStaffId).sort((a,b)=>b.month.localeCompare(a.month))
+  },[allMonthlyScores,historyStaffId])
 
-  const activeStaffNames = useMemo(() => [...new Set(tasksWithOverdue.map(t => t.assigned_to))], [tasksWithOverdue])
-
-  // Role summary counts
-  const roleCounts = useMemo(() => {
-    const counts = { Teaching:0, 'Non-Teaching':0, Admin:0, 'Teaching + Admin':0 }
-    staff.filter(s => s.status==='Active').forEach(s => { if (counts[s.role]!==undefined) counts[s.role]++ })
-    return counts
-  }, [staff])
+  const roleCounts = useMemo(()=>{
+    const c={ Teaching:0,'Non-Teaching':0,Admin:0,'Teaching + Admin':0 }
+    staff.filter(s=>s.status==='Active').forEach(s=>{ if(c[s.role]!==undefined) c[s.role]++ })
+    return c
+  },[staff])
 
   const statsCards = [
-    { label:'Total Staff',       value:staff.length,                                        color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫' },
-    { label:'Active',            value:staff.filter(s => s.status==='Active').length,       color:'#16a34a', bg:'#dcfce7', icon:'✅' },
-    { label:'Teaching',          value:roleCounts['Teaching'] + roleCounts['Teaching + Admin'], color:'#0891b2', bg:'#e0f2fe', icon:'🎓' },
-    { label:'Non-Teaching',      value:roleCounts['Non-Teaching'],                          color:'#6366f1', bg:'#eef2ff', icon:'🏢' },
-    { label:'Admin / Dual Role', value:roleCounts['Admin'] + roleCounts['Teaching + Admin'],color:'#d97706', bg:'#fef3c7', icon:'⚙️' },
-    { label:'Salary Set',        value:staff.filter(s => Number(s.basic_salary)>0).length,  color:'#7c3aed', bg:'#f3e8ff', icon:'💰' },
+    { label:'Total Staff',      value:staff.length,                                        color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫' },
+    { label:'Active',           value:staff.filter(s=>s.status==='Active').length,         color:'#16a34a', bg:'#dcfce7', icon:'✅' },
+    { label:'Teaching',         value:roleCounts['Teaching']+roleCounts['Teaching + Admin'],color:'#0891b2', bg:'#e0f2fe', icon:'🎓' },
+    { label:'Non-Teaching',     value:roleCounts['Non-Teaching'],                          color:'#6366f1', bg:'#eef2ff', icon:'🏢' },
+    { label:'Admin / Dual',     value:roleCounts['Admin']+roleCounts['Teaching + Admin'],  color:'#d97706', bg:'#fef3c7', icon:'⚙️' },
+    { label:'Salary Set',       value:staff.filter(s=>Number(s.basic_salary)>0).length,   color:'#7c3aed', bg:'#f3e8ff', icon:'💰' },
   ]
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div style={S.page}>
-      {toast && (
-        <div style={{ position:'fixed', top:20, right:20, zIndex:2000, background:'#1e293b', color:'white', padding:'13px 20px', borderRadius:12, boxShadow:'0 8px 24px rgba(0,0,0,.25)', fontSize:14, fontWeight:600 }}>
-          {toast}
-        </div>
+      <style>{globalCSS}</style>
+      {toastEl}
+      {confirmModal && (
+        <ConfirmModal title={confirmModal.title} message={confirmModal.message} confirmLabel={confirmModal.confirmLabel} danger={confirmModal.danger}
+          onConfirm={confirmModal.onConfirm} onCancel={()=>setConfirmModal(null)}/>
       )}
 
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24, flexWrap:'wrap', gap:12 }}>
+      {/* Header */}
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10 }}>
         <div>
-          <h1 style={{ fontSize:26, fontWeight:'bold', color:'#1e3a5f', margin:0 }}>👨‍🏫 Staff Management</h1>
-          <p style={{ color:'#64748b', fontSize:14, margin:'4px 0 0' }}>Profiles · Roles · Performance · Scoring · Tasks</p>
+          <h1 style={{ fontSize:isMobile?22:26,fontWeight:800,color:'#1e3a5f',margin:0,letterSpacing:'-.02em' }}>👨‍🏫 Staff Management</h1>
+          <p style={{ color:'#64748b',fontSize:13,margin:'4px 0 0' }}>Profiles · Roles · Performance · Tasks</p>
+          {isAdminUnlocked() && <span style={{ display:'inline-block',marginTop:6,padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:'#dcfce7',color:'#16a34a' }}>🔓 Admin session active</span>}
         </div>
-        <div style={{ display:'flex', gap:10 }}>
-          {activeTab==='staff' && <button onClick={() => setShowForm(!showForm)} style={S.btn()}>{showForm?'✖ Cancel':'➕ Add Staff'}</button>}
+        <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+          {activeTab==='staff' && <button onClick={()=>setShowForm(!showForm)} style={S.btn()}>{showForm?'✖ Cancel':'➕ Add Staff'}</button>}
           {activeTab==='tasks' && (
-            <button onClick={() => { setAssignPreselected(null); setShowAssignModal(true) }} style={{ ...S.btn('#6366f1'), background:'linear-gradient(135deg,#6366f1,#0ea5e9)' }}>
-              ＋ Assign Task
-            </button>
+            <button onClick={()=>{ setAssignPreselected(null); setShowAssignModal(true) }} style={{ ...S.btn('#6366f1'),background:'linear-gradient(135deg,#6366f1,#0ea5e9)' }}>＋ Assign Task</button>
           )}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:'flex', borderBottom:'2px solid #e2e8f0', marginBottom:24, gap:4, flexWrap:'wrap' }}>
-        {[
-          { key:'staff',       label:'👥 Staff List' },
-          { key:'tasks',       label:'📋 Task Monitor' },
-          { key:'scoring',     label:'📊 Monthly Scoring' },
-          { key:'leaderboard', label:'🏆 Leaderboard' },
-          { key:'history',     label:'📅 History' },
-          { key:'geo',         label:'📍 Geo-Attendance' },
-        ].map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={S.tab(activeTab===t.key)}>{t.label}</button>
-        ))}
+      {/* MOB-1: Tab bar — 2-col on mobile */}
+      <div style={{ overflowX:'auto',marginBottom:20,WebkitOverflowScrolling:'touch' }}>
+        <div className="tab-bar" style={{ display:'grid',gridTemplateColumns:`repeat(${ALL_TABS.length},1fr)`,gap:6,minWidth:isMobile?'auto':'auto' }}>
+          {ALL_TABS.map(t=>(
+            <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
+              padding:'10px 8px',fontWeight:700,fontSize:isMobile?11:12,cursor:'pointer',
+              background:activeTab===t.key?'#1e3a5f':'white',
+              color:activeTab===t.key?'white':'#64748b',
+              border:activeTab===t.key?'2px solid #1e3a5f':'2px solid #e2e8f0',
+              borderRadius:10,fontFamily:'inherit',minHeight:44,whiteSpace:'nowrap',
+              boxShadow:activeTab===t.key?'0 2px 8px rgba(30,58,95,.25)':'none',
+              transition:'all .15s',
+            }}>{t.label}</button>
+          ))}
+        </div>
       </div>
 
-      {/* ── STAFF LIST ── */}
+      {/* ══ STAFF LIST ══ */}
       {activeTab==='staff' && (
         <>
-          {/* Stats — now 6 cards including role breakdown */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:14, marginBottom:24 }}>
-            {statsCards.map(card => (
-              <div key={card.label} style={{ backgroundColor:card.bg, borderRadius:12, padding:'16px 18px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', borderLeft:`4px solid ${card.color}` }}>
-                <div style={{ fontSize:20, marginBottom:6 }}>{card.icon}</div>
-                <p style={{ fontSize:12, color:card.color, fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:.04 }}>{card.label}</p>
-                <h2 style={{ fontSize:26, fontWeight:'bold', color:card.color, margin:'4px 0 0' }}>{card.value}</h2>
+          {/* Stats */}
+          <div className="stat-grid" style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:12,marginBottom:20 }}>
+            {statsCards.map(card=>(
+              <div key={card.label} style={{ backgroundColor:card.bg,borderRadius:12,padding:'14px 16px',boxShadow:'0 2px 8px rgba(0,0,0,.06)',borderLeft:`4px solid ${card.color}` }}>
+                <div style={{ fontSize:18,marginBottom:5 }}>{card.icon}</div>
+                <p style={{ fontSize:11,color:card.color,fontWeight:700,margin:0,textTransform:'uppercase',letterSpacing:.04 }}>{card.label}</p>
+                <h2 style={{ fontSize:24,fontWeight:800,color:card.color,margin:'3px 0 0',fontFamily:"'JetBrains Mono',monospace" }}>{card.value}</h2>
               </div>
             ))}
           </div>
@@ -822,168 +1093,220 @@ function Staff({ currentUser }) {
           {/* Add form */}
           {showForm && (
             <div style={S.card}>
-              <h2 style={{ fontSize:18, fontWeight:600, color:'#1e3a5f', marginTop:0 }}>Add Staff Profile</h2>
-              <p style={{ fontSize:13, color:'#94a3b8', marginTop:-8, marginBottom:16 }}>💡 Salary configured separately by admin after adding.</p>
+              <h2 style={{ fontSize:17,fontWeight:800,color:'#1e3a5f',marginTop:0 }}>Add Staff Profile</h2>
+              <p style={{ fontSize:12,color:'#94a3b8',marginTop:-6,marginBottom:14 }}>💡 Salary configured separately by admin after adding.</p>
               <form onSubmit={handleAdd}>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-                  {[{ key:'name', label:'Full Name', required:true },{ key:'phone', label:'Phone' },{ key:'email', label:'Email', type:'email' },{ key:'designation', label:'Designation', placeholder:'Teacher / Accountant / Clerk', required:true },{ key:'joining_date', label:'Joining Date', type:'date' },{ key:'qualification', label:'Qualification', placeholder:'B.Ed / M.A / B.Com' }].map(f => (
+                <div className="form-grid" style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14 }}>
+                  {[{ key:'name',label:'Full Name *',required:true },{ key:'phone',label:'Phone (10-digit)' },{ key:'email',label:'Email',type:'email' },{ key:'designation',label:'Designation *',required:true,placeholder:'Teacher / Accountant / Clerk' },{ key:'joining_date',label:'Joining Date',type:'date' },{ key:'qualification',label:'Qualification',placeholder:'B.Ed / M.A / B.Com' }].map(f=>(
                     <div key={f.key}>
                       <label style={S.label}>{f.label}</label>
-                      <input type={f.type||'text'} value={form[f.key]} onChange={e => setForm({ ...form, [f.key]:e.target.value })} required={f.required} placeholder={f.placeholder||''} style={S.input} />
+                      <input type={f.type||'text'} value={form[f.key]} onChange={e=>{ setForm({...form,[f.key]:e.target.value}); setFormErrors(p=>({...p,[f.key]:''})) }} required={f.required} placeholder={f.placeholder||''} style={{ ...S.input,borderColor:formErrors[f.key]?'#dc2626':'#d1d5db' }}/>
+                      {formErrors[f.key] && <div style={{ fontSize:11,color:'#dc2626',marginTop:3 }}>⚠ {formErrors[f.key]}</div>}
                     </div>
                   ))}
                   <div>
                     <label style={S.label}>Department</label>
-                    <select value={form.department} onChange={e => setForm({ ...form, department:e.target.value })} required style={{ ...S.input, backgroundColor:'white' }}>
+                    <select value={form.department} onChange={e=>setForm({...form,department:e.target.value})} required style={{ ...S.input,backgroundColor:'white' }}>
                       <option value="">Select Department</option>
-                      {DEPARTMENTS_LIST.map(d => <option key={d}>{d}</option>)}
+                      {DEPARTMENTS_LIST.map(d=><option key={d}>{d}</option>)}
                     </select>
                   </div>
                   <div>
                     <label style={S.label}>Role</label>
-                    <select value={form.role} onChange={e => setForm({ ...form, role:e.target.value })} style={{ ...S.input, backgroundColor:'white' }}>
-                      {ROLE_OPTIONS.map(r => <option key={r}>{r}</option>)}
+                    <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})} style={{ ...S.input,backgroundColor:'white' }}>
+                      {ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}
                     </select>
                   </div>
                   <div>
                     <label style={S.label}>Status</label>
-                    <select value={form.status} onChange={e => setForm({ ...form, status:e.target.value })} style={{ ...S.input, backgroundColor:'white' }}>
+                    <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} style={{ ...S.input,backgroundColor:'white' }}>
                       <option>Active</option><option>Inactive</option>
                     </select>
                   </div>
                 </div>
                 {form.role==='Teaching + Admin' && (
-                  <div style={{ marginTop:12, padding:'10px 14px', background:'#fef3c7', borderRadius:8, fontSize:12, color:'#92400e', border:'1px solid #fde68a' }}>
+                  <div style={{ marginTop:10,padding:'10px 14px',background:'#fef3c7',borderRadius:8,fontSize:12,color:'#92400e',border:'1px solid #fde68a' }}>
                     🎓⚙️ This staff will appear in both teaching and administrative reports.
                   </div>
                 )}
-                <button type="submit" disabled={saving} style={{ ...S.btn('#1e3a5f', saving), marginTop:16 }}>{saving?'⏳ Saving...':'✅ Save Staff'}</button>
+                <button type="submit" disabled={saving} style={{ ...S.btn('#1e3a5f',saving),marginTop:16 }}>{saving?'⏳ Saving…':'✅ Save Staff'}</button>
               </form>
             </div>
           )}
 
-          {/* Filters */}
-          <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:12, marginBottom:14 }}>
-            <input placeholder="🔍 Search name, phone, email, department, role..." value={search} onChange={e => setSearch(e.target.value)} style={S.input} />
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...S.input, backgroundColor:'white' }}>
-              <option value="All">All Status</option>
-              <option>Active</option><option>Inactive</option>
+          {/* Filters — MOB-5 */}
+          <div style={{ display:'flex',gap:10,flexWrap:'wrap',marginBottom:12 }}>
+            <input placeholder="🔍 Search name, phone, role…" value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} style={{ ...S.input,flex:'1 1 180px',minWidth:140 }}/>
+            <select value={statusFilter} onChange={e=>{ setStatusFilter(e.target.value); setPage(1) }} style={{ ...S.input,width:'auto',flex:'0 1 110px',backgroundColor:'white' }}>
+              <option value="All">All Status</option><option>Active</option><option>Inactive</option>
             </select>
-            <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} style={{ ...S.input, backgroundColor:'white' }}>
+            <select value={roleFilter} onChange={e=>{ setRoleFilter(e.target.value); setPage(1) }} style={{ ...S.input,width:'auto',flex:'0 1 130px',backgroundColor:'white' }}>
               <option value="All">All Roles</option>
-              {ROLE_OPTIONS.map(r => <option key={r}>{r}</option>)}
+              {ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}
             </select>
           </div>
-          <div style={{ fontSize:13, color:'#64748b', marginBottom:10 }}>Showing {filteredStaff.length} of {staff.length} staff</div>
+          <div style={{ fontSize:12,color:'#64748b',marginBottom:10 }}>Showing {filteredStaff.length} of {staff.length} staff · Page {page}/{totalPages}</div>
 
           {loading ? (
-            <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading staff...</div>
+            <div style={{ textAlign:'center',padding:48,color:'#64748b' }}>⏳ Loading staff…</div>
+          ) : isMobile ? (
+            // MOB-8: Card layout on mobile
+            <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
+              {paginated.map((item,i)=>{
+                const sc      = scores[item.id]
+                const computed= sc?calcScores(sc):null
+                const gross   = (Number(item.basic_salary)||0)+(Number(item.seniority_allowance)||0)+(Number(item.loyalty_bonus)||0)+(Number(item.role_bonus)||0)
+                const tm      = staffTaskMap[item.name]||{total:0,done:0,overdue:0}
+                return (
+                  <div key={item.id} style={{ background:'white',borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.07)',border:'1px solid #f1f5f9' }}>
+                    <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontWeight:800,color:'#1e293b',fontSize:15 }}>{item.name}</div>
+                        <div style={{ fontSize:12,color:'#94a3b8',marginTop:2 }}>{item.designation} · {item.department||'—'}</div>
+                        <div style={{ marginTop:5,display:'flex',gap:5,flexWrap:'wrap' }}>
+                          <RoleBadge role={item.role}/>
+                          <span style={{ padding:'3px 9px',borderRadius:99,fontSize:11,fontWeight:600,backgroundColor:item.status==='Active'?'#dcfce7':'#fee2e2',color:item.status==='Active'?'#16a34a':'#dc2626' }}>{item.status}</span>
+                        </div>
+                      </div>
+                      {computed && <LevelBadge score={computed.total}/>}
+                    </div>
+                    <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12,fontSize:12 }}>
+                      <div style={{ background:'#f8fafc',borderRadius:8,padding:'8px 10px' }}>
+                        <div style={{ color:'#94a3b8',fontSize:10,fontWeight:600,textTransform:'uppercase' }}>Phone</div>
+                        <div style={{ color:'#1e293b',fontWeight:600,marginTop:2 }}>{item.phone||'—'}</div>
+                      </div>
+                      <div style={{ background:'#f8fafc',borderRadius:8,padding:'8px 10px' }}>
+                        <div style={{ color:'#94a3b8',fontSize:10,fontWeight:600,textTransform:'uppercase' }}>Gross Salary</div>
+                        {gross>0
+                          ? <div style={{ color:'#0C447C',fontWeight:700,marginTop:2,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div>
+                          : <div style={{ color:'#dc2626',fontWeight:600,marginTop:2,fontSize:11 }}>⚠ Not Set</div>}
+                      </div>
+                    </div>
+                    {tm.total>0 && <div style={{ marginBottom:10 }}><MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/></div>}
+                    <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+                      <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️ Edit</button>
+                      <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐 Salary</button>
+                      {computed && <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
+                      <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                    </div>
+                  </div>
+                )
+              })}
+              {paginated.length===0 && <div style={{ textAlign:'center',padding:48,color:'#94a3b8' }}>No staff records found</div>}
+            </div>
           ) : (
-            <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-              <div style={{ overflowX:'auto' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:14 }}>
+            // Desktop table
+            <div style={{ ...S.card,padding:0,overflow:'hidden' }}>
+              <div className="table-wrap">
+                <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
                   <thead>
-                    <tr style={{ backgroundColor:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                      {['#','Name','Dept','Designation','Role','Phone','Joining','Status','Gross Salary','Tasks','Level','Action'].map(h => (
-                        <th key={h} style={{ ...th, fontSize:12 }}>{h}</th>
+                    <tr style={{ backgroundColor:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
+                      {['#','Name','Dept','Designation','Role','Phone','Joining','Status','Gross Salary','Tasks','Level','Actions'].map(h=>(
+                        <th key={h} style={{ ...TH,fontSize:12 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredStaff.map((item, i) => {
+                    {paginated.map((item,i)=>{
                       const sc      = scores[item.id]
-                      const computed = sc ? calcScores(sc) : null
+                      const computed= sc?calcScores(sc):null
                       const gross   = (Number(item.basic_salary)||0)+(Number(item.seniority_allowance)||0)+(Number(item.loyalty_bonus)||0)+(Number(item.role_bonus)||0)
-                      const tm      = staffTaskMap[item.name]||{ total:0, done:0, overdue:0 }
+                      const tm      = staffTaskMap[item.name]||{total:0,done:0,overdue:0}
                       return (
                         <tr key={item.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                          <td style={{ ...td, color:'#94a3b8', fontSize:12 }}>{i+1}</td>
-                          <td style={td}>
-                            <div style={{ fontWeight:600, color:'#1e293b' }}>{item.name}</div>
-                            <div style={{ fontSize:11, color:'#94a3b8' }}>{item.email||'-'}</div>
-                          </td>
-                          <td style={{ ...td, color:'#64748b', fontSize:13 }}>{item.department||'-'}</td>
-                          <td style={{ ...td, color:'#64748b', fontSize:13 }}>{item.designation||'-'}</td>
-                          <td style={td}><RoleBadge role={item.role} /></td>
-                          <td style={{ ...td, color:'#64748b', fontSize:13 }}>{item.phone||'-'}</td>
-                          <td style={{ ...td, color:'#64748b', fontSize:13 }}>{item.joining_date||'-'}</td>
-                          <td style={td}>
-                            <span style={{ padding:'4px 10px', borderRadius:99, fontSize:12, fontWeight:600, backgroundColor:item.status==='Active'?'#dcfce7':'#fee2e2', color:item.status==='Active'?'#16a34a':'#dc2626' }}>{item.status}</span>
-                          </td>
-                          <td style={td}>
+                          <td style={{ ...TD,color:'#94a3b8',fontSize:12 }}>{(page-1)*PAGE_SIZE+i+1}</td>
+                          <td style={TD}><div style={{ fontWeight:600,color:'#1e293b' }}>{item.name}</div><div style={{ fontSize:11,color:'#94a3b8' }}>{item.email||'—'}</div></td>
+                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.department||'—'}</td>
+                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.designation||'—'}</td>
+                          <td style={TD}><RoleBadge role={item.role}/></td>
+                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.phone||'—'}</td>
+                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.joining_date||'—'}</td>
+                          <td style={TD}><span style={{ padding:'4px 10px',borderRadius:99,fontSize:12,fontWeight:600,backgroundColor:item.status==='Active'?'#dcfce7':'#fee2e2',color:item.status==='Active'?'#16a34a':'#dc2626' }}>{item.status}</span></td>
+                          <td style={TD}>
                             {gross>0
-                              ? <div><div style={{ fontWeight:700, color:'#0C447C', fontSize:13 }}>{fmt(gross)}</div><div style={{ fontSize:10, color:'#94a3b8' }}>Basic {fmt(item.basic_salary)}</div></div>
-                              : <span style={{ fontSize:11, fontWeight:600, color:'#dc2626', background:'#fee2e2', padding:'3px 8px', borderRadius:6 }}>⚠ Not Set</span>
-                            }
+                              ? <div><div style={{ fontWeight:700,color:'#0C447C',fontSize:13,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div><div style={{ fontSize:10,color:'#94a3b8' }}>Base {fmt(item.basic_salary)}</div></div>
+                              : <span style={{ fontSize:11,fontWeight:600,color:'#dc2626',background:'#fee2e2',padding:'3px 8px',borderRadius:6 }}>⚠ Not Set</span>}
                           </td>
-                          <td style={{ ...td, minWidth:120 }}>
+                          <td style={{ ...TD,minWidth:120 }}>
                             {tm.total>0
-                              ? <div><MiniBar done={tm.done} total={tm.total} overdue={tm.overdue} /><button onClick={() => { setTaskStaffFilter(item.name); setActiveTab('tasks') }} style={{ ...S.btnSm('#6366f1'), marginTop:5, fontSize:10, padding:'3px 8px' }}>View Tasks</button></div>
-                              : <div><span style={{ fontSize:11, color:'#94a3b8' }}>No tasks</span><br/><button onClick={() => { setAssignPreselected(item); setShowAssignModal(true) }} style={{ ...S.btnSm('#0ea5e9'), marginTop:4, fontSize:10, padding:'3px 8px' }}>+ Assign</button></div>
-                            }
+                              ? <div><MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/><button onClick={()=>{ setTaskStaffFilter(item.name); setActiveTab('tasks') }} style={{ ...S.btnSm('#6366f1'),marginTop:5,fontSize:10,padding:'3px 8px' }}>View Tasks</button></div>
+                              : <div><span style={{ fontSize:11,color:'#94a3b8' }}>No tasks</span><br/><button onClick={()=>{ setAssignPreselected(item); setShowAssignModal(true) }} style={{ ...S.btnSm('#0ea5e9'),marginTop:4,fontSize:10,padding:'3px 8px' }}>+ Assign</button></div>}
                           </td>
-                          <td style={td}><LevelBadge score={computed?.total} /></td>
-                          <td style={td}>
-                            <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
-                              <button onClick={() => setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️</button>
-                              <button onClick={() => handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐</button>
-                              {computed && <button onClick={() => setSelectedScorecard({ record:{ ...sc, ...computed }, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
-                              <button onClick={() => handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                          <td style={TD}><LevelBadge score={computed?.total}/></td>
+                          <td style={TD}>
+                            <div style={{ display:'flex',gap:5,flexWrap:'wrap' }}>
+                              <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️</button>
+                              <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐</button>
+                              {computed && <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
+                              <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
                             </div>
                           </td>
                         </tr>
                       )
                     })}
-                    {filteredStaff.length===0 && <tr><td colSpan="12" style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No staff records found</td></tr>}
+                    {paginated.length===0 && <tr><td colSpan={12} style={{ padding:32,textAlign:'center',color:'#94a3b8' }}>No staff records found</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
-          <div style={{ marginTop:12, padding:'10px 16px', background:adminUnlocked?'#dcfce7':'#f1f5f9', borderRadius:8, fontSize:12, color:adminUnlocked?'#16a34a':'#94a3b8', fontWeight:600, display:'inline-flex', alignItems:'center', gap:6 }}>
-            {adminUnlocked?'🔓 Admin session active — salary edits unlocked':'🔒 Salary setup requires admin PIN'}
+
+          {/* PERF-1: Pagination */}
+          {totalPages>1 && (
+            <div style={{ display:'flex',justifyContent:'center',gap:6,marginTop:14,flexWrap:'wrap' }}>
+              <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'),opacity:page===1?.4:1 }}>←</button>
+              {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+                const p = totalPages<=5?i+1:Math.max(1,Math.min(page-2,totalPages-4))+i
+                return <button key={p} onClick={()=>setPage(p)} style={{ ...S.btnSm(page===p?'#1e3a5f':'#e2e8f0'),color:page===p?'white':'#374151',minWidth:36 }}>{p}</button>
+              })}
+              <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ ...S.btnSm('#64748b'),opacity:page===totalPages?.4:1 }}>→</button>
+            </div>
+          )}
+
+          <div style={{ marginTop:12,padding:'8px 14px',background:isAdminUnlocked()?'#dcfce7':'#f1f5f9',borderRadius:8,fontSize:12,color:isAdminUnlocked()?'#16a34a':'#94a3b8',fontWeight:600,display:'inline-flex',alignItems:'center',gap:6 }}>
+            {isAdminUnlocked()?'🔓 Admin session active — salary edits unlocked (15 min)':'🔒 Salary setup requires admin PIN'}
           </div>
         </>
       )}
 
-      {/* ── TASK MONITOR ── */}
+      {/* ══ TASK MONITOR ══ */}
       {activeTab==='tasks' && (
         <>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:14, marginBottom:22 }}>
+          <div className="task-grid" style={{ display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:12,marginBottom:20 }}>
             {[
-              { label:'Total',       value:taskStats.total,      accent:'#6366f1', icon:'📋' },
-              { label:'Done',        value:taskStats.done,       accent:'#22c55e', icon:'✅' },
-              { label:'In Progress', value:taskStats.inProgress, accent:'#0ea5e9', icon:'🔄' },
-              { label:'Pending',     value:taskStats.pending,    accent:'#f59e0b', icon:'⏳' },
-              { label:'Overdue',     value:taskStats.overdue,    accent:'#ef4444', icon:'🚨' },
-              { label:'High Pri.',   value:taskStats.high,       accent:'#f97316', icon:'🔴' },
-            ].map(({ label, value, accent, icon }) => (
-              <div key={label} style={{ background:'white', borderRadius:12, padding:'16px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', borderLeft:`4px solid ${accent}` }}>
-                <div style={{ fontSize:18, marginBottom:3 }}>{icon}</div>
-                <div style={{ fontSize:24, fontWeight:800, color:'#0f172a', lineHeight:1 }}>{value}</div>
-                <div style={{ fontSize:12, color:'#64748b', fontWeight:500, marginTop:2 }}>{label}</div>
+              { label:'Total',      value:taskStats.total,      accent:'#6366f1', icon:'📋' },
+              { label:'Done',       value:taskStats.done,       accent:'#22c55e', icon:'✅' },
+              { label:'In Progress',value:taskStats.inProgress, accent:'#0ea5e9', icon:'🔄' },
+              { label:'Pending',    value:taskStats.pending,    accent:'#f59e0b', icon:'⏳' },
+              { label:'Overdue',    value:taskStats.overdue,    accent:'#ef4444', icon:'🚨' },
+              { label:'High Pri.',  value:taskStats.high,       accent:'#f97316', icon:'🔴' },
+            ].map(({ label,value,accent,icon })=>(
+              <div key={label} style={{ background:'white',borderRadius:12,padding:14,boxShadow:'0 1px 3px rgba(0,0,0,.07)',borderLeft:`4px solid ${accent}` }}>
+                <div style={{ fontSize:18,marginBottom:3 }}>{icon}</div>
+                <div style={{ fontSize:22,fontWeight:800,color:'#0f172a',lineHeight:1,fontFamily:"'JetBrains Mono',monospace" }}>{value}</div>
+                <div style={{ fontSize:11,color:'#64748b',fontWeight:600,marginTop:2 }}>{label}</div>
               </div>
             ))}
           </div>
 
           {staffTaskMonitor.length>0 && (
-            <div style={{ ...S.card, marginBottom:20 }}>
-              <h3 style={{ margin:'0 0 16px', fontSize:15, fontWeight:700, color:'#1e3a5f' }}>👥 Staff Task Overview</h3>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
-                {staffTaskMonitor.map(s => {
-                  const rate  = s.taskTotal>0 ? Math.round((s.taskDone/s.taskTotal)*100) : 0
+            <div style={{ ...S.card,marginBottom:16 }}>
+              <h3 style={{ margin:'0 0 14px',fontSize:14,fontWeight:800,color:'#1e3a5f' }}>👥 Staff Task Overview</h3>
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:12 }}>
+                {staffTaskMonitor.map(s=>{
+                  const rate  = s.taskTotal>0?Math.round((s.taskDone/s.taskTotal)*100):0
                   const color = s.taskOverdue>0?'#ef4444':rate>=80?'#22c55e':rate>=50?'#f59e0b':'#6366f1'
                   return (
-                    <div key={s.id} style={{ background:'#f8fafc', borderRadius:10, padding:14, border:`1px solid ${color}33`, cursor:'pointer' }} onClick={() => setTaskStaffFilter(s.name)}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                    <div key={s.id} style={{ background:'#f8fafc',borderRadius:10,padding:12,border:`1px solid ${color}33`,cursor:'pointer' }} onClick={()=>setTaskStaffFilter(s.name)}>
+                      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:7 }}>
                         <div>
-                          <div style={{ fontWeight:700, color:'#1e293b', fontSize:13 }}>{s.name}</div>
-                          <div style={{ fontSize:11, color:'#94a3b8' }}>{s.designation}</div>
-                          <RoleBadge role={s.role} />
+                          <div style={{ fontWeight:700,color:'#1e293b',fontSize:13 }}>{s.name}</div>
+                          <div style={{ fontSize:11,color:'#94a3b8' }}>{s.designation}</div>
+                          <RoleBadge role={s.role}/>
                         </div>
-                        <span style={{ fontSize:18, fontWeight:800, color }}>{rate}%</span>
+                        <span style={{ fontSize:18,fontWeight:800,color,fontFamily:"'JetBrains Mono',monospace" }}>{rate}%</span>
                       </div>
-                      <MiniBar done={s.taskDone} total={s.taskTotal} overdue={s.taskOverdue} />
+                      <MiniBar done={s.taskDone} total={s.taskTotal} overdue={s.taskOverdue}/>
                     </div>
                   )
                 })}
@@ -991,116 +1314,90 @@ function Staff({ currentUser }) {
             </div>
           )}
 
-          {/* Filters */}
-          <div style={{ ...S.card, padding:'16px 18px', marginBottom:16 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12 }}>
-              <div>
-                <label style={{ ...S.label, fontSize:11, textTransform:'uppercase', letterSpacing:.5, color:'#94a3b8' }}>🔍 Search</label>
-                <input style={S.input} value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Title or staff..." />
-              </div>
-              <div>
-                <label style={{ ...S.label, fontSize:11, textTransform:'uppercase', letterSpacing:.5, color:'#94a3b8' }}>Status</label>
-                <select style={{ ...S.input, backgroundColor:'white' }} value={taskStatusFilter} onChange={e => setTaskStatusFilter(e.target.value)}>
-                  <option value="All">All</option>
-                  {TASK_STATUSES.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ ...S.label, fontSize:11, textTransform:'uppercase', letterSpacing:.5, color:'#94a3b8' }}>Priority</label>
-                <select style={{ ...S.input, backgroundColor:'white' }} value={taskPriorityFilter} onChange={e => setTaskPriorityFilter(e.target.value)}>
-                  <option value="All">All</option>
-                  {TASK_PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ ...S.label, fontSize:11, textTransform:'uppercase', letterSpacing:.5, color:'#94a3b8' }}>Role</label>
-                <select style={{ ...S.input, backgroundColor:'white' }} value={taskRoleFilter} onChange={e => setTaskRoleFilter(e.target.value)}>
-                  <option value="All">All Roles</option>
-                  {ROLE_OPTIONS.map(r => <option key={r}>{r}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ ...S.label, fontSize:11, textTransform:'uppercase', letterSpacing:.5, color:'#94a3b8' }}>Staff Member</label>
-                <select style={{ ...S.input, backgroundColor:'white' }} value={taskStaffFilter} onChange={e => setTaskStaffFilter(e.target.value)}>
-                  <option value="All">All Staff</option>
-                  {activeStaffNames.map(n => <option key={n}>{n}</option>)}
-                </select>
-              </div>
+          {/* Task Filters */}
+          <div style={{ ...S.card,padding:'14px 16px',marginBottom:14 }}>
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10 }}>
+              {[
+                { label:'🔍 Search', el:<input style={S.input} value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} placeholder="Title or staff…"/> },
+                { label:'Status', el:<select style={{ ...S.input,backgroundColor:'white' }} value={taskStatusFilter} onChange={e=>setTaskStatusFilter(e.target.value)}><option value="All">All</option>{TASK_STATUSES.map(s=><option key={s}>{s}</option>)}</select> },
+                { label:'Priority', el:<select style={{ ...S.input,backgroundColor:'white' }} value={taskPriorityFilter} onChange={e=>setTaskPriorityFilter(e.target.value)}><option value="All">All</option>{TASK_PRIORITIES.map(p=><option key={p}>{p}</option>)}</select> },
+                { label:'Role', el:<select style={{ ...S.input,backgroundColor:'white' }} value={taskRoleFilter} onChange={e=>setTaskRoleFilter(e.target.value)}><option value="All">All Roles</option>{ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}</select> },
+                { label:'Staff Member', el:<select style={{ ...S.input,backgroundColor:'white' }} value={taskStaffFilter} onChange={e=>setTaskStaffFilter(e.target.value)}><option value="All">All Staff</option>{activeStaffNames.map(n=><option key={n}>{n}</option>)}</select> },
+              ].map(f=>(
+                <div key={f.label}>
+                  <label style={{ ...S.label,fontSize:10,color:'#94a3b8' }}>{f.label}</label>
+                  {f.el}
+                </div>
+              ))}
               {taskStaffFilter!=='All' && (
-                <div style={{ display:'flex', alignItems:'flex-end' }}>
-                  <button onClick={() => setTaskStaffFilter('All')} style={{ ...S.btn('#64748b'), width:'100%', padding:10 }}>✕ Clear</button>
+                <div style={{ display:'flex',alignItems:'flex-end' }}>
+                  <button onClick={()=>setTaskStaffFilter('All')} style={{ ...S.btn('#64748b'),width:'100%',padding:10 }}>✕ Clear</button>
                 </div>
               )}
             </div>
           </div>
 
-          <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-            <div style={{ padding:'16px 18px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <h3 style={{ margin:0, fontSize:15, fontWeight:800, color:'#0f172a' }}>
-                Task Assignments {taskStaffFilter!=='All' && <span style={{ fontWeight:400, color:'#6366f1' }}>— {taskStaffFilter}</span>}
+          <div style={{ ...S.card,padding:0,overflow:'hidden' }}>
+            <div style={{ padding:'14px 16px',borderBottom:'1px solid #f1f5f9',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+              <h3 style={{ margin:0,fontSize:14,fontWeight:800,color:'#0f172a' }}>
+                Task Assignments {taskStaffFilter!=='All'&&<span style={{ fontWeight:400,color:'#6366f1' }}>— {taskStaffFilter}</span>}
               </h3>
-              <span style={{ fontSize:12, color:'#94a3b8' }}>{filteredTasks.length} task{filteredTasks.length!==1?'s':''}</span>
+              <span style={{ fontSize:12,color:'#94a3b8' }}>{filteredTasks.length} task{filteredTasks.length!==1?'s':''}</span>
             </div>
-            {tasksLoading ? <div style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>⏳ Loading tasks…</div> : (
-              <div style={{ overflowX:'auto' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            {tasksLoading ? <div style={{ padding:48,textAlign:'center',color:'#94a3b8' }}>⏳ Loading tasks…</div> : (
+              <div className="table-wrap">
+                <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:700 }}>
                   <thead>
                     <tr style={{ background:'#f8fafc' }}>
-                      {['Task','Assigned To','Role','Course Context','Priority','Status','Due Date','Actions'].map(h => (
-                        <th key={h} style={{ ...th, fontSize:12 }}>{h}</th>
+                      {['Task','Assigned To','Role','Course','Priority','Status','Due','Actions'].map(h=>(
+                        <th key={h} style={{ ...TH,fontSize:12 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTasks.map(task => {
+                    {filteredTasks.map(task=>{
                       const diff      = daysDiff(task.due_date)
                       const isOverdue = task._overdue
                       const sm = STATUS_META[isOverdue?'Overdue':task.status]||STATUS_META.Pending
                       const pm = PRIORITY_META[task.priority]||PRIORITY_META.Medium
-                      const assignedStaff = staff.find(s => s.name===task.assigned_to)
+                      const assignedStaff = staff.find(s=>s.name===task.assigned_to)
                       return (
                         <tr key={task.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                          <td style={td}>
-                            <div style={{ fontWeight:600, color:'#1e293b', fontSize:13 }}>{task.title}</div>
-                            <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{task.department||'General'}</div>
-                          </td>
-                          <td style={td}>
-                            <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                              <div style={{ width:26, height:26, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#0ea5e9)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:10, fontWeight:700, flexShrink:0 }}>
+                          <td style={TD}><div style={{ fontWeight:700,color:'#1e293b',fontSize:13 }}>{task.title}</div><div style={{ fontSize:11,color:'#94a3b8',marginTop:1 }}>{task.department||'General'}</div></td>
+                          <td style={TD}>
+                            <div style={{ display:'flex',alignItems:'center',gap:6 }}>
+                              <div style={{ width:26,height:26,borderRadius:'50%',background:'linear-gradient(135deg,#6366f1,#0ea5e9)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:9,fontWeight:700,flexShrink:0 }}>
                                 {task.assigned_to?.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
                               </div>
-                              <span style={{ fontSize:13, fontWeight:500, color:'#334155' }}>{task.assigned_to}</span>
+                              <span style={{ fontSize:13,fontWeight:500,color:'#334155' }}>{task.assigned_to}</span>
                             </div>
                           </td>
-                          <td style={td}><RoleBadge role={assignedStaff?.role} /></td>
-                          <td style={{ ...td, fontSize:12, color:'#64748b' }}>
+                          <td style={TD}><RoleBadge role={assignedStaff?.role}/></td>
+                          <td style={{ ...TD,fontSize:12,color:'#64748b' }}>
                             {task.course
-                              ? <span style={{ padding:'2px 8px', borderRadius:6, background:'#eff6ff', color:'#1e3a5f', fontWeight:600, fontSize:11 }}>
-                                  {task.course}{task.subtype?` / ${task.subtype}`:''}{task.class_name?` / ${task.class_name}`:''}
-                                </span>
-                              : <span style={{ color:'#e2e8f0' }}>—</span>
-                            }
+                              ? <span style={{ padding:'2px 8px',borderRadius:6,background:'#eff6ff',color:'#1e3a5f',fontWeight:600,fontSize:11 }}>{task.course}{task.subtype?` / ${task.subtype}`:''}</span>
+                              : <span style={{ color:'#e2e8f0' }}>—</span>}
                           </td>
-                          <td style={td}><TaskBadge value={task.priority} type="priority" /></td>
-                          <td style={td}><TaskBadge value={isOverdue?'Overdue':task.status} type="status" /></td>
-                          <td style={td}>
-                            {task.due_date ? <div>
-                              <div style={{ fontSize:12, color:isOverdue?'#ef4444':'#334155', fontWeight:isOverdue?700:400 }}>{fmtDate(task.due_date)}</div>
-                              {diff!==null && task.status!=='Done' && <div style={{ fontSize:10, color:isOverdue?'#ef4444':diff<=2?'#f59e0b':'#94a3b8' }}>{isOverdue?`${Math.abs(diff)}d overdue`:diff===0?'Due today!':`${diff}d left`}</div>}
-                            </div> : '—'}
+                          <td style={TD}><TaskBadge value={task.priority} type="priority"/></td>
+                          <td style={TD}><TaskBadge value={isOverdue?'Overdue':task.status} type="status"/></td>
+                          <td style={TD}>
+                            {task.due_date
+                              ? <div><div style={{ fontSize:12,color:isOverdue?'#ef4444':'#334155',fontWeight:isOverdue?700:400 }}>{fmtDate(task.due_date)}</div>
+                                {diff!==null&&task.status!=='Done'&&<div style={{ fontSize:10,color:isOverdue?'#ef4444':diff<=2?'#f59e0b':'#94a3b8' }}>{isOverdue?`${Math.abs(diff)}d overdue`:diff===0?'Due today!':''+diff+'d left'}</div>}</div>
+                              : '—'}
                           </td>
-                          <td style={td}>
-                            <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
-                              <button onClick={() => setDetailTask(task)} style={S.btnSm('#6366f1')}>View</button>
-                              {task.status!=='Done' && <button onClick={() => handleTaskStatusChange(task, task.status==='Pending'?'In Progress':'Done')} style={S.btnSm(task.status==='Pending'?'#0ea5e9':'#16a34a')}>{task.status==='Pending'?'Start':'✅ Done'}</button>}
-                              {task.status==='Done' && <button onClick={() => handleTaskStatusChange(task,'Pending')} style={S.btnSm('#64748b')}>Reopen</button>}
-                              <button onClick={() => handleTaskDelete(task.id)} style={S.btnSm('#ef4444')}>✕</button>
+                          <td style={TD}>
+                            <div style={{ display:'flex',gap:5,flexWrap:'wrap' }}>
+                              <button onClick={()=>setDetailTask(task)} style={S.btnSm('#6366f1')}>View</button>
+                              {task.status!=='Done'&&<button onClick={()=>handleTaskStatusChange(task,task.status==='Pending'?'In Progress':'Done')} style={S.btnSm(task.status==='Pending'?'#0ea5e9':'#16a34a')}>{task.status==='Pending'?'Start':'✅'}</button>}
+                              {task.status==='Done'&&<button onClick={()=>handleTaskStatusChange(task,'Pending')} style={S.btnSm('#64748b')}>↩</button>}
+                              <button onClick={()=>handleTaskDelete(task.id)} style={S.btnSm('#ef4444')}>✕</button>
                             </div>
                           </td>
                         </tr>
                       )
                     })}
-                    {filteredTasks.length===0 && <tr><td colSpan="8" style={{ padding:48, textAlign:'center', color:'#94a3b8' }}>{tasksWithOverdue.length===0?'No tasks yet. Click "+ Assign Task" to get started.':'No tasks match the current filters.'}</td></tr>}
+                    {filteredTasks.length===0&&<tr><td colSpan={8} style={{ padding:48,textAlign:'center',color:'#94a3b8' }}>{tasksWithOverdue.length===0?'No tasks yet.':'No tasks match filters.'}</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -1109,50 +1406,50 @@ function Staff({ currentUser }) {
         </>
       )}
 
-      {/* ── MONTHLY SCORING ── */}
+      {/* ══ MONTHLY SCORING ══ */}
       {activeTab==='scoring' && (
         <div style={S.card}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12, marginBottom:20 }}>
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12,marginBottom:18 }}>
             <div>
-              <h2 style={{ fontSize:18, fontWeight:700, color:'#1e3a5f', margin:0 }}>📊 Monthly Performance Entry</h2>
-              <p style={{ color:'#64748b', fontSize:13, margin:'4px 0 0' }}>Fill scores for all staff. System auto-calculates totals.</p>
+              <h2 style={{ fontSize:17,fontWeight:800,color:'#1e3a5f',margin:0 }}>📊 Monthly Performance Entry</h2>
+              <p style={{ color:'#64748b',fontSize:12,margin:'4px 0 0' }}>Fill scores for all staff. System auto-calculates totals. Only modified rows are saved.</p>
             </div>
-            <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+            <div style={{ display:'flex',gap:10,alignItems:'center',flexWrap:'wrap' }}>
               <div>
-                <label style={{ ...S.label, display:'inline', marginRight:8 }}>Working Days:</label>
-                <input type="number" min="1" max="31" value={workingDays} onChange={e => setWorkingDays(parseInt(e.target.value)||26)} style={{ width:60, padding:8, borderRadius:6, border:'1px solid #d1d5db', fontSize:14, textAlign:'center', fontFamily:'inherit' }} />
+                <label style={{ ...S.label,display:'inline',marginRight:6 }}>Working Days:</label>
+                <input type="number" min="1" max="31" value={workingDays} onChange={e=>setWorkingDays(parseInt(e.target.value)||26)} style={{ width:58,padding:'8px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,textAlign:'center',fontFamily:'inherit',minHeight:40 }}/>
               </div>
               <div>
-                <label style={{ ...S.label, display:'inline', marginRight:8 }}>Month:</label>
-                <input type="month" value={scoreMonth} onChange={e => setScoreMonth(e.target.value)} style={{ padding:'8px 12px', borderRadius:6, border:'1px solid #d1d5db', fontSize:14, fontFamily:'inherit' }} />
+                <label style={{ ...S.label,display:'inline',marginRight:6 }}>Month:</label>
+                <input type="month" value={scoreMonth} onChange={e=>{ setScoreMonth(e.target.value) }} style={{ padding:'8px 12px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,fontFamily:'inherit',minHeight:40 }}/>
               </div>
-              <button onClick={handleSaveScores} disabled={scoreSaving} style={S.btn('#16a34a', scoreSaving)}>{scoreSaving?'⏳ Saving...':'💾 Save Scores'}</button>
+              <button onClick={handleSaveScores} disabled={scoreSaving} style={S.btn('#16a34a',scoreSaving)}>{scoreSaving?'⏳ Saving…':`💾 Save (${dirtyIds.size} changed)`}</button>
               <button onClick={handleConfirmScores} style={S.btn('#7c3aed')}>✅ Confirm & Lock</button>
             </div>
           </div>
-          <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginBottom:16, padding:12, background:'#f8fafc', borderRadius:8 }}>
-            {LEVELS.map(l => <span key={l.label} style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:600, color:l.color }}>{l.emoji} {l.label}: {l.min}–{l.max}</span>)}
+          <div style={{ display:'flex',gap:10,flexWrap:'wrap',marginBottom:14,padding:10,background:'#f8fafc',borderRadius:8 }}>
+            {LEVELS.map(l=><span key={l.label} style={{ display:'inline-flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,color:l.color }}>{l.emoji} {l.label}: {l.min}–{l.max}</span>)}
           </div>
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+          <div className="table-wrap">
+            <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:700 }}>
               <thead>
-                <tr style={{ background:'#1e3a5f', color:'white' }}>
-                  <th style={{ padding:'10px 16px', textAlign:'left' }}>Staff</th>
-                  <th style={{ padding:'10px 8px', textAlign:'center' }}>Present<br/><span style={{ fontWeight:400, fontSize:10 }}>Max {workingDays} (30pts)</span></th>
-                  <th style={{ padding:'10px 8px', textAlign:'center' }}>Late<br/><span style={{ fontWeight:400, fontSize:10 }}>Count (20pts)</span></th>
-                  <th style={{ padding:'10px 8px', textAlign:'center' }}>Early Out</th>
-                  <th style={{ padding:'10px 8px', textAlign:'center' }}>Tasks<br/><span style={{ fontWeight:400, fontSize:10 }}>Assigned (20pts)</span></th>
-                  <th style={{ padding:'10px 8px', textAlign:'center' }}>Done</th>
-                  <th style={{ padding:'10px 8px', textAlign:'center' }}>Feedback<br/><span style={{ fontWeight:400, fontSize:10 }}>1-5 (15pts)</span></th>
-                  <th style={{ padding:'10px 8px', textAlign:'center' }}>Initiative<br/><span style={{ fontWeight:400, fontSize:10 }}>1-5 (15pts)</span></th>
-                  <th style={{ padding:'10px 16px', textAlign:'center' }}>Score / Level</th>
+                <tr style={{ background:'#1e3a5f',color:'white' }}>
+                  <th style={{ padding:'10px 14px',textAlign:'left',position:'sticky',left:0,background:'#1e3a5f',zIndex:2 }}>Staff</th>
+                  <th style={{ padding:'10px 8px',textAlign:'center' }}>Present<br/><span style={{ fontWeight:400,fontSize:10 }}>Max {workingDays}</span></th>
+                  <th style={{ padding:'10px 8px',textAlign:'center' }}>Late</th>
+                  <th style={{ padding:'10px 8px',textAlign:'center' }}>Early Out</th>
+                  <th style={{ padding:'10px 8px',textAlign:'center' }}>Tasks Assigned</th>
+                  <th style={{ padding:'10px 8px',textAlign:'center' }}>Done</th>
+                  <th style={{ padding:'10px 8px',textAlign:'center' }}>Feedback<br/><span style={{ fontWeight:400,fontSize:10 }}>1–5</span></th>
+                  <th style={{ padding:'10px 8px',textAlign:'center' }}>Initiative<br/><span style={{ fontWeight:400,fontSize:10 }}>1–5</span></th>
+                  <th style={{ padding:'10px 14px',textAlign:'center' }}>Score / Level</th>
                 </tr>
               </thead>
               <tbody>
-                {staff.map(s => (
+                {staff.map(s=>(
                   <ScoreEntryRow key={s.id} staff={s}
-                    score={scores[s.id] ? { ...scores[s.id], working_days:workingDays } : { ...emptyScore, working_days:workingDays }}
-                    onChange={handleScoreChange} />
+                    score={scores[s.id]?{ ...scores[s.id],working_days:workingDays }:{ ...emptyScore,working_days:workingDays }}
+                    onChange={handleScoreChange}/>
                 ))}
               </tbody>
             </table>
@@ -1160,146 +1457,154 @@ function Staff({ currentUser }) {
         </div>
       )}
 
-      {/* ── LEADERBOARD ── */}
+      {/* ══ LEADERBOARD ══ */}
       {activeTab==='leaderboard' && (
         <>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-            <h2 style={{ fontSize:18, fontWeight:700, color:'#1e3a5f', margin:0 }}>🏆 Performance Leaderboard</h2>
-            <input type="month" value={scoreMonth} onChange={e => setScoreMonth(e.target.value)} style={{ padding:'8px 12px', borderRadius:6, border:'1px solid #d1d5db', fontSize:14, fontFamily:'inherit' }} />
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18,flexWrap:'wrap',gap:10 }}>
+            <h2 style={{ fontSize:17,fontWeight:800,color:'#1e3a5f',margin:0 }}>🏆 Performance Leaderboard</h2>
+            <input type="month" value={scoreMonth} onChange={e=>setScoreMonth(e.target.value)} style={{ padding:'8px 12px',borderRadius:6,border:'1px solid #d1d5db',fontSize:13,fontFamily:'inherit',minHeight:40 }}/>
           </div>
-          {leaderboard.length>=3 && (
-            <div style={{ display:'flex', justifyContent:'center', alignItems:'flex-end', gap:16, marginBottom:32 }}>
-              {[leaderboard[1],leaderboard[0],leaderboard[2]].map((s,i) => {
-                const heights=[160,200,140], rank=i===1?1:i===0?2:3
-                const medals=['🥇','🥈','🥉'], colors=['#f59e0b','#94a3b8','#b45309']
+          {leaderboard.length>=3 && !isMobile && (
+            <div style={{ display:'flex',justifyContent:'center',alignItems:'flex-end',gap:16,marginBottom:28 }}>
+              {[leaderboard[1],leaderboard[0],leaderboard[2]].map((s,i)=>{
+                const heights=[150,190,130],rank=i===1?1:i===0?2:3
+                const medals=['🥇','🥈','🥉'],colors=['#f59e0b','#94a3b8','#b45309']
                 return (
-                  <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
+                  <div key={s.id} style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:7 }}>
                     <div style={{ fontSize:24 }}>{medals[rank-1]}</div>
-                    <div style={{ fontWeight:700, color:'#1e293b', fontSize:14, textAlign:'center', maxWidth:100 }}>{s.name}</div>
-                    <RoleBadge role={s.role} />
-                    <div style={{ fontSize:20, fontWeight:800, color:colors[rank-1] }}>{s.score}</div>
-                    <LevelBadge score={s.score} />
-                    <div style={{ width:100, height:`${heights[rank-1]}px`, background:`linear-gradient(to top,${colors[rank-1]},${colors[rank-1]}88)`, borderRadius:'8px 8px 0 0', display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:8, color:'white', fontWeight:800, fontSize:20 }}>#{rank}</div>
+                    <div style={{ fontWeight:800,color:'#1e293b',fontSize:13,textAlign:'center',maxWidth:100 }}>{s.name}</div>
+                    <RoleBadge role={s.role}/>
+                    <div style={{ fontSize:20,fontWeight:800,color:colors[rank-1],fontFamily:"'JetBrains Mono',monospace" }}>{s.score}</div>
+                    <LevelBadge score={s.score}/>
+                    <div style={{ width:90,height:heights[rank-1],background:`linear-gradient(to top,${colors[rank-1]},${colors[rank-1]}88)`,borderRadius:'8px 8px 0 0',display:'flex',alignItems:'flex-start',justifyContent:'center',paddingTop:8,color:'white',fontWeight:800,fontSize:20 }}>#{rank}</div>
                   </div>
                 )
               })}
             </div>
           )}
-          <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-              <thead>
-                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                  {['Rank','Staff','Role','Department','Attendance','Punctuality','Tasks','Feedback','Initiative','Total','Level'].map(h => (
-                    <th key={h} style={{ ...th, fontSize:12 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {leaderboard.map((s,i) => {
-                  const sc      = scores[s.id]
-                  const computed = sc ? calcScores({ ...sc, working_days:workingDays }) : null
-                  return (
-                    <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9', background:i<3?'#fffbeb':'white' }}>
-                      <td style={{ ...td, fontWeight:700, color:i===0?'#f59e0b':i===1?'#94a3b8':i===2?'#b45309':'#64748b', fontSize:16 }}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</td>
-                      <td style={td}><div style={{ fontWeight:600, color:'#1e293b' }}>{s.name}</div><div style={{ fontSize:11, color:'#94a3b8' }}>{s.designation}</div></td>
-                      <td style={td}><RoleBadge role={s.role} /></td>
-                      <td style={{ ...td, color:'#64748b', fontSize:12 }}>{s.department}</td>
-                      {computed ? (
-                        <>
-                          <td style={{ ...td, fontWeight:600, color:'#0ea5e9' }}>{computed.p1}</td>
-                          <td style={{ ...td, fontWeight:600, color:'#10b981' }}>{computed.p2}</td>
-                          <td style={{ ...td, fontWeight:600, color:'#f59e0b' }}>{computed.p3}</td>
-                          <td style={{ ...td, fontWeight:600, color:'#8b5cf6' }}>{computed.p4}</td>
-                          <td style={{ ...td, fontWeight:600, color:'#ec4899' }}>{computed.p5}</td>
-                          <td style={{ ...td, fontWeight:800, color:'#1e293b', fontSize:16 }}>{computed.total}</td>
-                        </>
-                      ) : <td colSpan="5" style={{ ...td, color:'#94a3b8' }}>No data</td>}
-                      <td style={td}><LevelBadge score={s.score} /></td>
-                    </tr>
-                  )
-                })}
-                {leaderboard.length===0 && <tr><td colSpan="11" style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No scores for this month yet</td></tr>}
-              </tbody>
-            </table>
+          <div style={{ ...S.card,padding:0,overflow:'hidden' }}>
+            <div className="table-wrap">
+              <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:600 }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
+                    {['Rank','Staff','Role','Dept','Att','Punct','Tasks','Feedback','Init','Total','Level'].map(h=>(
+                      <th key={h} style={{ ...TH,fontSize:12 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((s,i)=>{
+                    const sc = scores[s.id]
+                    // BUG-3: use the DB record's working_days
+                    const computed = sc?calcScores(sc):null
+                    return (
+                      <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9',background:i<3?'#fffbeb':'white' }}>
+                        <td style={{ ...TD,fontWeight:700,color:i===0?'#f59e0b':i===1?'#94a3b8':i===2?'#b45309':'#64748b',fontSize:15 }}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</td>
+                        <td style={TD}><div style={{ fontWeight:700,color:'#1e293b' }}>{s.name}</div><div style={{ fontSize:11,color:'#94a3b8' }}>{s.designation}</div></td>
+                        <td style={TD}><RoleBadge role={s.role}/></td>
+                        <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{s.department}</td>
+                        {computed?(
+                          <>
+                            <td style={{ ...TD,fontWeight:600,color:'#0ea5e9',fontFamily:"'JetBrains Mono',monospace" }}>{computed.p1}</td>
+                            <td style={{ ...TD,fontWeight:600,color:'#10b981',fontFamily:"'JetBrains Mono',monospace" }}>{computed.p2}</td>
+                            <td style={{ ...TD,fontWeight:600,color:'#f59e0b',fontFamily:"'JetBrains Mono',monospace" }}>{computed.p3}</td>
+                            <td style={{ ...TD,fontWeight:600,color:'#8b5cf6',fontFamily:"'JetBrains Mono',monospace" }}>{computed.p4}</td>
+                            <td style={{ ...TD,fontWeight:600,color:'#ec4899',fontFamily:"'JetBrains Mono',monospace" }}>{computed.p5}</td>
+                            <td style={{ ...TD,fontWeight:800,color:'#1e293b',fontSize:15,fontFamily:"'JetBrains Mono',monospace" }}>{computed.total}</td>
+                          </>
+                        ):<td colSpan={6} style={{ ...TD,color:'#94a3b8' }}>No data</td>}
+                        <td style={TD}><LevelBadge score={s.score}/></td>
+                      </tr>
+                    )
+                  })}
+                  {leaderboard.length===0&&<tr><td colSpan={11} style={{ padding:32,textAlign:'center',color:'#94a3b8' }}>No scores for this month yet</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
 
-      {/* ── HISTORY ── */}
+      {/* ══ HISTORY ══ */}
       {activeTab==='history' && (
         <>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-            <h2 style={{ fontSize:18, fontWeight:700, color:'#1e3a5f', margin:0 }}>📅 Score History</h2>
-            <select value={historyStaffId} onChange={e => setHistoryStaffId(e.target.value)} style={{ padding:'8px 12px', borderRadius:6, border:'1px solid #d1d5db', fontSize:14, backgroundColor:'white', minWidth:220, fontFamily:'inherit' }}>
-              <option value="">-- Select Staff --</option>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.designation}) [{s.role}]</option>)}
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18,flexWrap:'wrap',gap:10 }}>
+            <h2 style={{ fontSize:17,fontWeight:800,color:'#1e3a5f',margin:0 }}>📅 Score History</h2>
+            <select value={historyStaffId} onChange={e=>setHistoryStaffId(e.target.value)} style={{ ...S.input,width:'auto',minWidth:200,backgroundColor:'white' }}>
+              <option value="">— Select Staff —</option>
+              {staff.map(s=><option key={s.id} value={s.id}>{s.name} ({s.designation}) [{s.role}]</option>)}
             </select>
           </div>
           {historyStaffId && historyData.length>0 && (
             <>
               <div style={S.card}>
-                <h3 style={{ fontSize:15, fontWeight:600, color:'#1e3a5f', marginTop:0 }}>Score Trend</h3>
-                <div style={{ display:'flex', alignItems:'flex-end', gap:12, height:120 }}>
-                  {[...historyData].reverse().map(r => {
+                <h3 style={{ fontSize:14,fontWeight:700,color:'#1e3a5f',marginTop:0 }}>Score Trend</h3>
+                {/* BUG-13: show year in labels */}
+                <div style={{ display:'flex',alignItems:'flex-end',gap:10,height:120,overflowX:'auto',paddingBottom:4 }}>
+                  {[...historyData].reverse().map(r=>{
                     const lvl    = getLevel(r.total_score)
-                    const height = Math.max(20, (r.total_score/100)*100)
+                    const height = Math.max(20,(r.total_score/100)*100)
                     return (
-                      <div key={r.month} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, flex:1 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:lvl?.color }}>{r.total_score}</div>
-                        <div style={{ width:'100%', height:`${height}px`, background:lvl?.border, borderRadius:'4px 4px 0 0' }} />
-                        <div style={{ fontSize:10, color:'#94a3b8' }}>{formatMonth(r.month).split(' ')[0]}</div>
+                      <div key={r.month} style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:3,flex:'0 0 auto',minWidth:46 }}>
+                        <div style={{ fontSize:11,fontWeight:700,color:lvl?.color,fontFamily:"'JetBrains Mono',monospace" }}>{r.total_score}</div>
+                        <div style={{ width:'100%',height:`${height}px`,background:lvl?.border,borderRadius:'4px 4px 0 0' }}/>
+                        {/* BUG-13: month + year */}
+                        <div style={{ fontSize:9,color:'#94a3b8',textAlign:'center' }}>{formatMonth(r.month).split(' ').join('\n')}</div>
                       </div>
                     )
                   })}
                 </div>
               </div>
-              <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-                  <thead>
-                    <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                      {['Month','Attendance','Punctuality','Tasks','Feedback','Initiative','Total','Level','Details'].map(h => (
-                        <th key={h} style={{ ...th, fontSize:12 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historyData.map(r => (
-                      <tr key={r.month} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                        <td style={{ ...td, fontWeight:600, color:'#1e293b' }}>{formatMonth(r.month)}</td>
-                        <td style={{ ...td, color:'#0ea5e9', fontWeight:600 }}>{r.p1_attendance}</td>
-                        <td style={{ ...td, color:'#10b981', fontWeight:600 }}>{r.p2_punctuality}</td>
-                        <td style={{ ...td, color:'#f59e0b', fontWeight:600 }}>{r.p3_tasks}</td>
-                        <td style={{ ...td, color:'#8b5cf6', fontWeight:600 }}>{r.p4_feedback}</td>
-                        <td style={{ ...td, color:'#ec4899', fontWeight:600 }}>{r.p5_initiative}</td>
-                        <td style={{ ...td, fontWeight:800, color:'#1e293b', fontSize:16 }}>{r.total_score}</td>
-                        <td style={td}><LevelBadge score={r.total_score} /></td>
-                        <td style={td}>
-                          <button onClick={() => setSelectedScorecard({ record:r, staffName:staff.find(s => s.id===historyStaffId)?.name })} style={S.btnSm('#7c3aed')}>📊 View</button>
-                        </td>
+              <div style={{ ...S.card,padding:0,overflow:'hidden' }}>
+                <div className="table-wrap">
+                  <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:500 }}>
+                    <thead>
+                      <tr style={{ background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
+                        {['Month','Att','Punct','Tasks','Feedback','Initiative','Total','Level',''].map(h=>(
+                          <th key={h} style={{ ...TH,fontSize:12 }}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {historyData.map(r=>(
+                        <tr key={r.month} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                          <td style={{ ...TD,fontWeight:700,color:'#1e293b',whiteSpace:'nowrap' }}>{formatMonth(r.month)}</td>
+                          <td style={{ ...TD,color:'#0ea5e9',fontWeight:600,fontFamily:"'JetBrains Mono',monospace" }}>{r.p1_attendance}</td>
+                          <td style={{ ...TD,color:'#10b981',fontWeight:600,fontFamily:"'JetBrains Mono',monospace" }}>{r.p2_punctuality}</td>
+                          <td style={{ ...TD,color:'#f59e0b',fontWeight:600,fontFamily:"'JetBrains Mono',monospace" }}>{r.p3_tasks}</td>
+                          <td style={{ ...TD,color:'#8b5cf6',fontWeight:600,fontFamily:"'JetBrains Mono',monospace" }}>{r.p4_feedback}</td>
+                          <td style={{ ...TD,color:'#ec4899',fontWeight:600,fontFamily:"'JetBrains Mono',monospace" }}>{r.p5_initiative}</td>
+                          <td style={{ ...TD,fontWeight:800,color:'#1e293b',fontSize:15,fontFamily:"'JetBrains Mono',monospace" }}>{r.total_score}</td>
+                          <td style={TD}><LevelBadge score={r.total_score}/></td>
+                          <td style={TD}>
+                            {/* BUG-11: pass raw DB record, not merged computed */}
+                            <button onClick={()=>setSelectedScorecard({ record:r,staffName:staff.find(s=>s.id===historyStaffId)?.name })} style={S.btnSm('#7c3aed')}>📊 View</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </>
           )}
-          {historyStaffId && historyData.length===0 && <div style={{ textAlign:'center', padding:48, color:'#94a3b8' }}>No score history found.</div>}
-          {!historyStaffId && <div style={{ textAlign:'center', padding:48, color:'#94a3b8' }}>Select a staff member above to view their score history.</div>}
+          {historyStaffId&&historyData.length===0&&<div style={{ textAlign:'center',padding:48,color:'#94a3b8' }}>No score history found.</div>}
+          {!historyStaffId&&<div style={{ textAlign:'center',padding:48,color:'#94a3b8' }}>Select a staff member above to view their score history.</div>}
         </>
       )}
 
-      {/* ── GEO ATTENDANCE ── */}
+      {/* ══ GEO ATTENDANCE ══ */}
       {activeTab==='geo' && (
-        <GeoAttendance currentStaff={loggedInStaff} isAdmin={isAdmin} allStaff={staff} />
+        <GeoAttendance currentStaff={loggedInStaff} isAdmin={isAdmin} allStaff={staff}/>
       )}
 
-      {/* ── MODALS ── */}
-      {editingStaff    && <EditStaffModal staffMember={editingStaff} onClose={() => setEditingStaff(null)} onSaved={() => { fetchStaff(); setEditingStaff(null) }} />}
-      {showPinModal    && <AdminPinModal onSuccess={() => { setAdminUnlocked(true); setShowPinModal(false); setShowSalaryModal(true) }} onClose={() => { setShowPinModal(false); setSalaryTarget(null) }} />}
-      {showSalaryModal && salaryTarget && <SalarySetupModal staffMember={salaryTarget} onClose={() => { setShowSalaryModal(false); setSalaryTarget(null) }} onSaved={fetchStaff} />}
-      {selectedScorecard && <ScorecardModal record={selectedScorecard.record} staffName={selectedScorecard.staffName} onClose={() => setSelectedScorecard(null)} />}
-      {showAssignModal && <AssignTaskModal staffList={staff} preselectedStaff={assignPreselected} onClose={() => { setShowAssignModal(false); setAssignPreselected(null) }} onSaved={handleNewTask} />}
-      {detailTask      && <TaskDetailModal task={detailTask} onClose={() => setDetailTask(null)} onStatusChange={handleTaskStatusChange} />}
+      {/* ── Modals ── */}
+      {editingStaff    && <EditStaffModal staffMember={editingStaff} onClose={()=>setEditingStaff(null)} onSaved={()=>{ fetchStaff(); setEditingStaff(null) }} showToast={showToast}/>}
+      {showPinModal    && <AdminPinModal onSuccess={()=>{ setShowPinModal(false); fetchSalaryData(); setShowSalaryModal(true) }} onClose={()=>{ setShowPinModal(false); setSalaryTarget(null) }}/>}
+      {showSalaryModal && salaryTarget && <SalarySetupModal staffMember={salaryTarget} onClose={()=>{ setShowSalaryModal(false); setSalaryTarget(null) }} onSaved={()=>{ fetchStaff(); fetchSalaryData() }} showToast={showToast}/>}
+      {selectedScorecard && <ScorecardModal record={selectedScorecard.record} staffName={selectedScorecard.staffName} onClose={()=>setSelectedScorecard(null)}/>}
+      {showAssignModal && <AssignTaskModal staffList={staff} preselectedStaff={assignPreselected} onClose={()=>{ setShowAssignModal(false); setAssignPreselected(null) }} onSaved={task=>{ if(task) setTasks(prev=>[task,...prev]); showToast('✅ Task assigned!','#16a34a') }}/>}
+      {detailTask && <TaskDetailModal task={detailTask} onClose={()=>setDetailTask(null)} onStatusChange={handleTaskStatusChange}/>}
     </div>
   )
 }
