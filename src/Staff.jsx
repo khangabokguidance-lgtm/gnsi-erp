@@ -35,7 +35,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { useCourseData, CoursePicker } from './Courses'
 import GeoAttendance from './GeoAttendance'
-import { staffDB, useStaffDB } from './staffDB'
+import { staffDB } from './staffDB'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -482,7 +482,7 @@ function ScorecardModal({ record, staffName, onClose }) {
   const isMobile = useIsMobile()
   if (!record) return null
   // Use DB working_days from the record itself (BUG-3)
-  const scoreRecord = { ...record, working_days: record.working_days||record.p1_attendance!==undefined?record.working_days:26 }
+  const scoreRecord = { ...record, working_days: record.working_days || 26 }
   const { p1,p2,p3,p4,p5,total } = calcScores(scoreRecord)
   const lvl = getLevel(total)
   return (

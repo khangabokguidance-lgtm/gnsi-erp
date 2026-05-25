@@ -24,7 +24,7 @@ const db = {
     return data || [];
   },
   async assignTask(form) {
-    const { data, error } = await supabase.from("staff_tasks").insert([payload]).select().single();
+    const { data, error } = await supabase.from("staff_tasks").insert([form]).select().single();
     if (error) throw error;
     return data;
   },
@@ -1091,9 +1091,17 @@ export default function Checklist({ currentUser: portalUser }) {
   const [reviewTask,  setReviewTask]  = useState(null);
   const [showMore,    setShowMore]    = useState(false);
 
+  const toastTimerRef = useRef(null);
   const showToast = useCallback((msg, type = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ msg, type });
-    setTimeout(() => setToast({ msg:"", type:"success" }), 3000);
+    toastTimerRef.current = setTimeout(() => setToast({ msg:"", type:"success" }), 3000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
   const fetchAll = useCallback(async () => {
@@ -1128,7 +1136,7 @@ export default function Checklist({ currentUser: portalUser }) {
     }
   }, [portalUser, showToast]);
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => { if (currentUser) setActiveView("dashboard"); }, [currentUser?.id]);
 
   const handleSetView = (view) => {
@@ -1279,3 +1287,5 @@ export default function Checklist({ currentUser: portalUser }) {
     </div>
   );
 }
+
+export default Checklist;
