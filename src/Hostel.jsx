@@ -3658,20 +3658,31 @@ function Hostel() {
       </div>
 
       {/* Desktop/Tablet Tab Bar */}
-      {!mobile && (
-        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e2e8f0', marginBottom: 24, overflowX: 'auto' }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-              padding: '9px 16px', border: 'none',
-              borderBottom: activeTab === t.id ? '3px solid #1e3a5f' : '3px solid transparent',
-              background: 'none', cursor: 'pointer', fontSize: 13,
-              fontWeight: activeTab === t.id ? 700 : 500,
-              color: activeTab === t.id ? '#1e3a5f' : '#64748b',
-              marginBottom: -2, whiteSpace: 'nowrap', transition: 'color .15s',
-            }}>{t.label}</button>
-          ))}
-        </div>
-      )}
+      {/* Desktop/Tablet Tab Bar — GRID (no scroll, no missing tabs) */}
+{!mobile && (
+  <div style={{
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+    gap: '6px',
+    marginBottom: '24px',
+  }}>
+    {TABS.map(t => (
+      <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+        padding: '9px 10px',
+        border: 'none',
+        borderRadius: '10px',
+        background: activeTab === t.id ? '#1e3a5f' : '#f1f5f9',
+        color: activeTab === t.id ? 'white' : '#64748b',
+        cursor: 'pointer',
+        fontSize: '12px',
+        fontWeight: activeTab === t.id ? 700 : 500,
+        whiteSpace: 'nowrap',
+        textAlign: 'center',
+        transition: 'all .15s',
+      }}>{t.label}</button>
+    ))}
+  </div>
+)}
 
       {/* Mobile Top Tabs (scrollable) */}
       {mobile && (
@@ -3760,4 +3771,3 @@ function Hostel() {
 }
 
 export default Hostel;
-
