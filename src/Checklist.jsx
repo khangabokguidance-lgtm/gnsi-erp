@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { supabase } from "./supabase";
 
-// ─── Supabase DB Layer ────────────────────────────────────────────────────────
 const db = {
   async getUsers() {
     const { data, error } = await supabase.from("staff_users").select("*").order("name");
@@ -37,7 +36,7 @@ const db = {
   },
   async getDuties() {
     const { data, error } = await supabase.from("staff_duties").select("*").order("created_at", { ascending: false });
-    if (error) throw error;
+    if (error) return [];
     return data || [];
   },
   async addDuty(form) {
@@ -47,7 +46,6 @@ const db = {
   },
 };
 
-// ─── Breakpoint Hook ──────────────────────────────────────────────────────────
 function useBreakpoint() {
   const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
   useEffect(() => {
@@ -58,7 +56,6 @@ function useBreakpoint() {
   return { isMobile: w < 768, isTablet: w >= 768 && w < 1024, w };
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const PRIORITIES  = ["High", "Medium", "Low"];
 const DEPARTMENTS = ["Administration","Academic","Accounts","Hostel","Reception","Transport","Maintenance"];
 const SUB_STATUS  = ["Not Submitted","Under Review","Approved","Rejected"];
@@ -71,7 +68,6 @@ const SUB_STATUS_META = {
 };
 const FILE_ICON = { pdf: "📄", xlsx: "📊", docx: "📝", img: "🖼️", default: "📎" };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtDate  = d => d ? new Date(d).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" }) : "—";
 const fmtTime  = d => d ? new Date(d).toLocaleString("en-IN", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" }) : "—";
 const daysDiff = d => { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000); };
@@ -80,7 +76,6 @@ const initials  = n => n?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpper
 const roleColor = { admin: "#6366f1", incharge: "#0ea5e9", staff: "#22c55e" };
 const roleLabel = { admin: "Admin", incharge: "In-charge", staff: "Staff" };
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
 const T = {
   bg: "#0d1117", surface: "#161b22", surface2: "#1c2333", border: "#30363d",
   accent: "#58a6ff", accentG: "linear-gradient(135deg,#1e40af,#6366f1)",
@@ -99,7 +94,6 @@ const G = {
   td:    { padding: "10px 12px", fontSize: "12px", color: T.text, verticalAlign: "middle", borderBottom: `1px solid ${T.border}` },
 };
 
-// ─── Tiny Components ──────────────────────────────────────────────────────────
 function Badge({ label, color, bg, icon }) {
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, fontSize:11, fontWeight:700, background:bg||"#1c2333", color:color||T.textMid, whiteSpace:"nowrap" }}>
@@ -169,28 +163,27 @@ function FileChip({ file, onRemove }) {
   );
 }
 
-// ─── Bottom Nav (Mobile) ───────────────────────────────────────────────────────
 function BottomNav({ currentUser, activeView, setActiveView }) {
   const navItems = useMemo(() => {
     if (currentUser.role === "admin") return [
-      { id:"dashboard", label:"Home",     icon:"⬛" },
-      { id:"tasks",     label:"Tasks",    icon:"📋" },
-      { id:"staff",     label:"Staff",    icon:"👥" },
-      { id:"review",    label:"Review",   icon:"🔍" },
-      { id:"more",      label:"More",     icon:"⋯"  },
+      { id:"dashboard", label:"Home",   icon:"⬛" },
+      { id:"tasks",     label:"Tasks",  icon:"📋" },
+      { id:"staff",     label:"Staff",  icon:"👥" },
+      { id:"review",    label:"Review", icon:"🔍" },
+      { id:"more",      label:"More",   icon:"⋯"  },
     ];
     if (currentUser.role === "incharge") return [
-      { id:"dashboard", label:"Home",     icon:"⬛" },
-      { id:"tasks",     label:"Tasks",    icon:"📋" },
-      { id:"staff",     label:"Staff",    icon:"👥" },
-      { id:"review",    label:"Review",   icon:"🔍" },
-      { id:"duties",    label:"Duties",   icon:"📌" },
+      { id:"dashboard", label:"Home",   icon:"⬛" },
+      { id:"tasks",     label:"Tasks",  icon:"📋" },
+      { id:"staff",     label:"Staff",  icon:"👥" },
+      { id:"review",    label:"Review", icon:"🔍" },
+      { id:"duties",    label:"Duties", icon:"📌" },
     ];
     return [
-      { id:"dashboard", label:"Home",     icon:"⬛" },
-      { id:"mytasks",   label:"Tasks",    icon:"📋" },
-      { id:"myduties",  label:"Duties",   icon:"📌" },
-      { id:"submit",    label:"Submit",   icon:"📤" },
+      { id:"dashboard", label:"Home",   icon:"⬛" },
+      { id:"mytasks",   label:"Tasks",  icon:"📋" },
+      { id:"myduties",  label:"Duties", icon:"📌" },
+      { id:"submit",    label:"Submit", icon:"📤" },
     ];
   }, [currentUser.role]);
 
@@ -206,7 +199,6 @@ function BottomNav({ currentUser, activeView, setActiveView }) {
   );
 }
 
-// ─── More Menu (Mobile admin extra items) ─────────────────────────────────────
 function MoreMenu({ currentUser, activeView, setActiveView, onClose }) {
   const extras = currentUser.role === "admin"
     ? [{ id:"duties", label:"Duties", icon:"📌" }, { id:"monitoring", label:"Monitoring", icon:"📊" }]
@@ -225,7 +217,6 @@ function MoreMenu({ currentUser, activeView, setActiveView, onClose }) {
   );
 }
 
-// ─── Sidebar (Desktop) ────────────────────────────────────────────────────────
 function Sidebar({ currentUser, activeView, setActiveView, setCurrentUser, users }) {
   const navItems = useMemo(() => {
     if (currentUser.role === "admin") return [
@@ -254,15 +245,16 @@ function Sidebar({ currentUser, activeView, setActiveView, setCurrentUser, users
   return (
     <div style={{ width:220, background:T.surface, borderRight:`1px solid ${T.border}`, display:"flex", flexDirection:"column", flexShrink:0, minHeight:"100vh" }}>
       <div style={{ padding:"20px 18px", borderBottom:`1px solid ${T.border}` }}>
-        <div style={{ fontSize:13, fontWeight:800, color:T.text, letterSpacing:.5 }}>GNSI Portal</div>
+        <div style={{ fontSize:13, fontWeight:800, color:T.text, letterSpacing:.5 }}>GNSI Checklist</div>
         <div style={{ fontSize:11, color:T.textMid, marginTop:2 }}>Task Management</div>
       </div>
-      <div style={{ padding:"12px 12px 0" }}>
-        <div style={{ fontSize:10, color:T.textMid, textTransform:"uppercase", letterSpacing:.06, fontWeight:700, marginBottom:6, paddingLeft:6 }}>Login as</div>
-        <select style={{ ...G.inp, fontSize:11, padding:"7px 10px" }} value={currentUser.id} onChange={e => setCurrentUser(users.find(u => u.id === +e.target.value) || users.find(u => u.id === e.target.value))}>
-          {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-        </select>
-      </div>
+      {users.length > 1 && (
+        <div style={{ padding:"12px 12px 0" }}>
+          <select style={{ ...G.inp, fontSize:11, padding:"7px 10px" }} value={currentUser.id} onChange={e => setCurrentUser(users.find(u => u.id === +e.target.value) || users[0])}>
+            {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+          </select>
+        </div>
+      )}
       <div style={{ padding:"14px 14px 10px", borderBottom:`1px solid ${T.border}`, marginTop:8 }}>
         <div style={{ display:"flex", alignItems:"center", gap:9 }}>
           <Avatar name={currentUser.name} role={currentUser.role} size={34} />
@@ -284,7 +276,6 @@ function Sidebar({ currentUser, activeView, setActiveView, setCurrentUser, users
   );
 }
 
-// ─── Mobile Header ────────────────────────────────────────────────────────────
 function MobileHeader({ currentUser, activeView, tasks, onRefresh, users, setCurrentUser }) {
   const [showUserPicker, setShowUserPicker] = useState(false);
   const VIEW_LABEL = {
@@ -300,7 +291,7 @@ function MobileHeader({ currentUser, activeView, tasks, onRefresh, users, setCur
     <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, position:"sticky", top:0, zIndex:100 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px" }}>
         <div>
-          <div style={{ fontSize:11, color:T.textMid, fontWeight:700, textTransform:"uppercase", letterSpacing:.5 }}>GNSI Portal</div>
+          <div style={{ fontSize:11, color:T.textMid, fontWeight:700, textTransform:"uppercase", letterSpacing:.5 }}>GNSI Checklist</div>
           <div style={{ fontSize:16, fontWeight:800, color:T.text }}>{VIEW_LABEL[activeView] || "Dashboard"}</div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -314,10 +305,10 @@ function MobileHeader({ currentUser, activeView, tasks, onRefresh, users, setCur
           <button onClick={onRefresh} style={{ background:T.surface2, border:`1px solid ${T.border}`, borderRadius:8, padding:"8px", cursor:"pointer", color:T.textMid, fontFamily:"inherit", fontSize:14, lineHeight:1 }}>🔄</button>
         </div>
       </div>
-      {showUserPicker && (
+      {showUserPicker && users.length > 1 && (
         <div style={{ padding:"8px 16px 12px", borderTop:`1px solid ${T.border}` }}>
           <label style={G.lbl}>Switch User</label>
-          <select style={{ ...G.inp }} value={currentUser.id} onChange={e => { setCurrentUser(users.find(u => u.id === +e.target.value) || users.find(u => u.id === e.target.value)); setShowUserPicker(false); }}>
+          <select style={{ ...G.inp }} value={currentUser.id} onChange={e => { setCurrentUser(users.find(u => u.id === +e.target.value) || users[0]); setShowUserPicker(false); }}>
             {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
           </select>
         </div>
@@ -326,7 +317,6 @@ function MobileHeader({ currentUser, activeView, tasks, onRefresh, users, setCur
   );
 }
 
-// ─── Assign Task Modal ─────────────────────────────────────────────────────────
 function AssignTaskModal({ currentUser, staffList, preselected, onClose, onSave }) {
   const [form, setForm] = useState({
     title: "", description: "", priority: "Medium", due_date: "",
@@ -408,7 +398,6 @@ function AssignTaskModal({ currentUser, staffList, preselected, onClose, onSave 
   );
 }
 
-// ─── Submit Work Modal ─────────────────────────────────────────────────────────
 function SubmitWorkModal({ task, onClose, onSubmit }) {
   const [note, setNote]   = useState(task.submission_note || "");
   const [files, setFiles] = useState(task.submission_files || []);
@@ -478,7 +467,6 @@ function SubmitWorkModal({ task, onClose, onSubmit }) {
   );
 }
 
-// ─── Review Modal ─────────────────────────────────────────────────────────────
 function ReviewModal({ task, currentUser, onClose, onReview }) {
   const [feedback, setFeedback] = useState(task.review_feedback || "");
   const [saving, setSaving]     = useState(false);
@@ -538,7 +526,6 @@ function ReviewModal({ task, currentUser, onClose, onReview }) {
   );
 }
 
-// ─── Task Card ─────────────────────────────────────────────────────────────────
 function TaskCard({ task, currentUser, onSubmit, onReview, onStatusChange, onDelete }) {
   const overdue   = isOverdue(task);
   const diff      = daysDiff(task.due_date);
@@ -602,7 +589,6 @@ function TaskCard({ task, currentUser, onSubmit, onReview, onStatusChange, onDel
   );
 }
 
-// ─── Dashboard View ────────────────────────────────────────────────────────────
 function DashboardView({ currentUser, tasks, staff, duties, isMobile }) {
   const myTasks = tasks.filter(t =>
     currentUser.role === "staff" ? t.assigned_to === currentUser.name
@@ -651,8 +637,6 @@ function DashboardView({ currentUser, tasks, staff, duties, isMobile }) {
           <p style={{ fontSize:13, color:T.textMid, margin:0 }}>Welcome back, {currentUser.name}</p>
         </div>
       )}
-
-      {/* Stat cards — 3 cols on mobile, auto-fit on desktop */}
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"repeat(3,1fr)":"repeat(auto-fit,minmax(130px,1fr))", gap:10 }}>
         {STAT_CARDS.map(c => (
           <div key={c.label} style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:12, padding:isMobile?"12px 8px":"16px", borderTop:`3px solid ${c.color}`, textAlign:isMobile?"center":"left" }}>
@@ -662,7 +646,6 @@ function DashboardView({ currentUser, tasks, staff, duties, isMobile }) {
           </div>
         ))}
       </div>
-
       {pendingReview.length > 0 && (currentUser.role==="admin"||currentUser.role==="incharge") && (
         <div style={{ background:"#451a03", border:`1px solid ${T.warn}`, borderRadius:12, padding:"14px 16px" }}>
           <div style={{ fontWeight:700, color:T.warn, fontSize:14, marginBottom:8 }}>⏳ {pendingReview.length} Submission{pendingReview.length>1?"s":""} Awaiting Review</div>
@@ -674,7 +657,6 @@ function DashboardView({ currentUser, tasks, staff, duties, isMobile }) {
           {pendingReview.length > 3 && <div style={{ fontSize:12, color:T.warn }}>…and {pendingReview.length-3} more</div>}
         </div>
       )}
-
       {currentUser.role==="staff" && stats.overdue > 0 && (
         <div style={{ background:"#450a0a", border:`1px solid ${T.danger}`, borderRadius:12, padding:"12px 16px" }}>
           <div style={{ fontWeight:700, color:T.danger, fontSize:14 }}>🚨 {stats.overdue} overdue task{stats.overdue>1?"s":""}. Submit immediately.</div>
@@ -685,7 +667,6 @@ function DashboardView({ currentUser, tasks, staff, duties, isMobile }) {
           <div style={{ fontWeight:700, color:"#fb923c", fontSize:14 }}>❌ {stats.rejected} rejected. Check feedback and resubmit.</div>
         </div>
       )}
-
       <div>
         <div style={{ fontSize:12, fontWeight:700, color:T.textMid, textTransform:"uppercase", letterSpacing:.06, marginBottom:10 }}>Recent Tasks</div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -706,13 +687,12 @@ function DashboardView({ currentUser, tasks, staff, duties, isMobile }) {
   );
 }
 
-// ─── Tasks View ────────────────────────────────────────────────────────────────
 function TasksView({ currentUser, tasks, onSubmit, onReview, onStatusChange, onDelete, onAssign, allStaff, isMobile }) {
-  const [search, setSearch]         = useState("");
-  const [filterStatus, setFStatus]  = useState("All");
-  const [filterSub, setFSub]        = useState("All");
-  const [filterDept, setFDept]      = useState("All");
-  const [showAssign, setShowAssign] = useState(false);
+  const [search, setSearch]           = useState("");
+  const [filterStatus, setFStatus]    = useState("All");
+  const [filterSub, setFSub]          = useState("All");
+  const [filterDept, setFDept]        = useState("All");
+  const [showAssign, setShowAssign]   = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   const visible = useMemo(() => {
@@ -741,11 +721,7 @@ function TasksView({ currentUser, tasks, onSubmit, onReview, onStatusChange, onD
           )}
         </div>
       </div>
-
-      {/* Search always visible */}
       <input style={{ ...G.inp, marginBottom:10 }} placeholder="🔍 Search tasks…" value={search} onChange={e => setSearch(e.target.value)} />
-
-      {/* Filters - collapsible on mobile */}
       {showFilters && (
         <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
           <select style={{ ...G.inp, backgroundColor:T.surface2 }} value={filterStatus} onChange={e => setFStatus(e.target.value)}>
@@ -761,16 +737,13 @@ function TasksView({ currentUser, tasks, onSubmit, onReview, onStatusChange, onD
           )}
         </div>
       )}
-
       <div style={{ fontSize:12, color:T.textMid, marginBottom:8 }}>{visible.length} task{visible.length!==1?"s":""}</div>
-
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
         {visible.length === 0
           ? <div style={{ padding:40, textAlign:"center", color:T.textMid, fontSize:14 }}>No tasks match filters.</div>
           : visible.map(t => <TaskCard key={t.id} task={t} currentUser={currentUser} onSubmit={onSubmit} onReview={onReview} onStatusChange={onStatusChange} onDelete={onDelete} />)
         }
       </div>
-
       {showAssign && (
         <AssignTaskModal currentUser={currentUser} staffList={allStaff} preselected={null}
           onClose={() => setShowAssign(false)}
@@ -780,7 +753,6 @@ function TasksView({ currentUser, tasks, onSubmit, onReview, onStatusChange, onD
   );
 }
 
-// ─── Review Submissions View ───────────────────────────────────────────────────
 function ReviewView({ currentUser, tasks, onReview, isMobile }) {
   const [reviewTask, setReviewTask] = useState(null);
   const [tab, setTab] = useState("Under Review");
@@ -794,8 +766,6 @@ function ReviewView({ currentUser, tasks, onReview, isMobile }) {
   return (
     <div>
       {!isMobile && <h2 style={{ fontSize:18, fontWeight:800, color:T.text, margin:"0 0 14px" }}>Review Submissions</h2>}
-
-      {/* Tab strip */}
       <div style={{ display:"flex", gap:0, marginBottom:14, background:T.surface2, borderRadius:10, padding:4, overflow:"hidden" }}>
         {tabs.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ flex:1, padding:"8px 6px", borderRadius:8, border:"none", background:tab===t?T.surface:"none", color:tab===t?T.text:T.textMid, fontWeight:tab===t?700:500, cursor:"pointer", fontSize:isMobile?11:12, fontFamily:"inherit", textAlign:"center" }}>
@@ -803,7 +773,6 @@ function ReviewView({ currentUser, tasks, onReview, isMobile }) {
           </button>
         ))}
       </div>
-
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
         {filtered.length === 0
           ? <div style={{ padding:40, textAlign:"center", color:T.textMid }}>No submissions here.</div>
@@ -833,7 +802,6 @@ function ReviewView({ currentUser, tasks, onReview, isMobile }) {
           ))
         }
       </div>
-
       {reviewTask && (
         <ReviewModal task={reviewTask} currentUser={currentUser} onClose={() => setReviewTask(null)}
           onReview={async (id, action, feedback, by) => { await onReview(id, action, feedback, by); setReviewTask(null); }} />
@@ -842,7 +810,6 @@ function ReviewView({ currentUser, tasks, onReview, isMobile }) {
   );
 }
 
-// ─── Staff Overview ────────────────────────────────────────────────────────────
 function StaffView({ currentUser, staff, tasks, onAssign, isMobile }) {
   const [showAssign, setShowAssign] = useState(false);
   const [target, setTarget]         = useState(null);
@@ -895,7 +862,6 @@ function StaffView({ currentUser, staff, tasks, onAssign, isMobile }) {
   );
 }
 
-// ─── Duties View ───────────────────────────────────────────────────────────────
 function DutiesView({ currentUser, duties, setDuties, staff, isMobile }) {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -932,7 +898,6 @@ function DutiesView({ currentUser, duties, setDuties, staff, isMobile }) {
           </button>
         )}
       </div>
-
       {showAdd && (
         <div style={{ ...G.card, padding:16, marginBottom:14 }}>
           <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:12, marginBottom:12 }}>
@@ -969,7 +934,6 @@ function DutiesView({ currentUser, duties, setDuties, staff, isMobile }) {
           </button>
         </div>
       )}
-
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {myDuties.length === 0
           ? <div style={{ padding:40, textAlign:"center", color:T.textMid }}>No duties found.</div>
@@ -995,7 +959,6 @@ function DutiesView({ currentUser, duties, setDuties, staff, isMobile }) {
   );
 }
 
-// ─── Monitoring View ───────────────────────────────────────────────────────────
 function MonitoringView({ staff, tasks, isMobile }) {
   const deptMap = {};
   tasks.forEach(t => {
@@ -1016,8 +979,6 @@ function MonitoringView({ staff, tasks, isMobile }) {
   return (
     <div>
       {!isMobile && <h2 style={{ fontSize:18, fontWeight:800, color:T.text, margin:"0 0 14px" }}>Monitoring</h2>}
-
-      {/* Dept summary — cards on mobile, table on desktop */}
       {isMobile ? (
         <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:16 }}>
           <div style={{ fontSize:12, fontWeight:700, color:T.textMid, textTransform:"uppercase", marginBottom:4 }}>Department Summary</div>
@@ -1079,7 +1040,6 @@ function MonitoringView({ staff, tasks, isMobile }) {
           </div>
         </div>
       )}
-
       <div style={{ fontSize:12, fontWeight:700, color:T.textMid, textTransform:"uppercase", marginBottom:10 }}>Staff Performance</div>
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(260px,1fr))", gap:10 }}>
         {staffStats.map(s => {
@@ -1113,13 +1073,25 @@ function MonitoringView({ staff, tasks, isMobile }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ROOT APP
+// ROOT
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function Checklist({ currentUser: portalUser }) {
   const { isMobile } = useBreakpoint();
   const [users,       setUsers]       = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);  // ← internal state
-  // ...
+  const [currentUser, setCurrentUser] = useState(null);
+  const [tasks,       setTasks]       = useState([]);
+  const [duties,      setDuties]      = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [activeView,  setActiveView]  = useState("dashboard");
+  const [toast,       setToast]       = useState({ msg:"", type:"success" });
+  const [submitTask,  setSubmitTask]  = useState(null);
+  const [reviewTask,  setReviewTask]  = useState(null);
+  const [showMore,    setShowMore]    = useState(false);
+
+  const showToast = useCallback((msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast({ msg:"", type:"success" }), 3000);
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -1130,47 +1102,36 @@ export default function Checklist({ currentUser: portalUser }) {
       setUsers(usersData);
       setTasks(tasksData);
       setDuties(dutiesData);
-      // Use portal user if no staff_users exist
       if (usersData.length > 0) {
-        setCurrentUser(usersData.find(u => u.role === "admin") || usersData[0]);
+        setCurrentUser(prev => prev || usersData.find(u => u.role === "admin") || usersData[0]);
       } else if (portalUser) {
-        setCurrentUser({ 
-          id: 1, name: portalUser.name, 
+        setCurrentUser({
+          id: 1, name: portalUser.name,
           role: portalUser.role?.toLowerCase() === "admin" ? "admin" : "staff",
-          department: "Administration"
+          department: "Administration",
         });
       }
     } catch (err) {
       showToast("⚠️ " + err.message, "error");
-      if (portalUser) {
-        setCurrentUser({ 
+      if (portalUser && !currentUser) {
+        setCurrentUser({
           id: 1, name: portalUser.name,
           role: portalUser.role?.toLowerCase() === "admin" ? "admin" : "staff",
-          department: "Administration"
+          department: "Administration",
         });
       }
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [portalUser, showToast]);
 
- const fetchAll = useCallback(async () => {
-  setLoading(true);
-  try {
-    const [usersData, tasksData, dutiesData] = await Promise.all([
-      db.getUsers(), db.getTasks(), db.getDuties()
-    ]);
-    setUsers(usersData);
-    setTasks(tasksData);
-    setDuties(dutiesData);
-    if (!currentUser && usersData.length > 0) {
-      setCurrentUser(usersData.find(u => u.role === "admin") || usersData[0]);
-    }
-  } catch (err) {
-    showToast("⚠️ Failed to load: " + err.message, "error");
-    setLoading(false); // ← add this so spinner doesn't hang
-  } finally {
-    setLoading(false);
-  }
-}, [currentUser, showToast]);
+  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { if (currentUser) setActiveView("dashboard"); }, [currentUser?.id]);
+
+  const handleSetView = (view) => {
+    if (view === "more") { setShowMore(true); return; }
+    setActiveView(view);
+  };
 
   const handleSubmit = useCallback(async (taskId, note, files) => {
     const updated = await db.updateTask(taskId, { status:"Submitted", submission_status:"Under Review", submission_note:note, submission_files:files, submitted_at:new Date().toISOString() });
@@ -1202,7 +1163,8 @@ export default function Checklist({ currentUser: portalUser }) {
     showToast("✅ Task assigned!");
   }, [showToast]);
 
-  const viewProps = { currentUser, tasks, duties, staff: users, allStaff: users, isMobile,
+  const viewProps = {
+    currentUser, tasks, duties, staff: users, allStaff: users, isMobile,
     onSubmit: setSubmitTask, onReview: setReviewTask,
     onStatusChange: handleStatusChange, onDelete: handleDelete, onAssign: handleAssign,
   };
@@ -1223,6 +1185,7 @@ export default function Checklist({ currentUser: portalUser }) {
     }
   };
 
+  // Only show full-page spinner if we have nothing to show yet
   if (loading && !currentUser && !portalUser) {
     return (
       <div style={{ ...G.page, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
@@ -1232,44 +1195,50 @@ export default function Checklist({ currentUser: portalUser }) {
     );
   }
 
+  // If still loading but portalUser exists, use it immediately
+  const activeUser = currentUser || (portalUser ? {
+    id: 1, name: portalUser.name,
+    role: portalUser.role?.toLowerCase() === "admin" ? "admin" : "staff",
+    department: "Administration",
+  } : null);
+
+  if (!activeUser) return <div style={{ ...G.page, display:"flex", alignItems:"center", justifyContent:"center" }}><Spinner /></div>;
+
+  const effectiveViewProps = { ...viewProps, currentUser: activeUser };
+
   return (
     <div style={G.page}>
       <Toast msg={toast.msg} type={toast.type} />
-
       {isMobile ? (
-        /* ── MOBILE LAYOUT ── */
         <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
-          {currentUser && (
-            <MobileHeader
-              currentUser={currentUser} activeView={activeView} tasks={tasks}
-              onRefresh={fetchAll} users={users} setCurrentUser={setCurrentUser}
-            />
-          )}
+          <MobileHeader currentUser={activeUser} activeView={activeView} tasks={tasks} onRefresh={fetchAll} users={users} setCurrentUser={setCurrentUser} />
           <div style={{ flex:1, padding:"16px 14px", paddingBottom:80, overflowY:"auto" }}>
-            {loading ? <Spinner /> : renderView()}
+            {loading ? <Spinner /> : (() => {
+              if (!activeUser) return null;
+              switch (activeView) {
+                case "dashboard": return <DashboardView {...effectiveViewProps} />;
+                case "tasks": case "mytasks": case "submit": return <TasksView {...effectiveViewProps} />;
+                case "staff":     return <StaffView {...effectiveViewProps} />;
+                case "monitoring":return <MonitoringView {...effectiveViewProps} />;
+                case "review":    return <ReviewView {...effectiveViewProps} />;
+                case "duties": case "myduties": return <DutiesView {...effectiveViewProps} setDuties={setDuties} />;
+                default: return <DashboardView {...effectiveViewProps} />;
+              }
+            })()}
           </div>
-          {currentUser && (
-            <BottomNav currentUser={currentUser} activeView={activeView} setActiveView={handleSetView} />
-          )}
-          {showMore && currentUser && (
-            <MoreMenu currentUser={currentUser} activeView={activeView} setActiveView={setActiveView} onClose={() => setShowMore(false)} />
-          )}
+          <BottomNav currentUser={activeUser} activeView={activeView} setActiveView={handleSetView} />
+          {showMore && <MoreMenu currentUser={activeUser} activeView={activeView} setActiveView={setActiveView} onClose={() => setShowMore(false)} />}
         </div>
       ) : (
-        /* ── DESKTOP LAYOUT ── */
         <div style={{ display:"flex", minHeight:"100vh" }}>
-          {currentUser && (
-            <Sidebar currentUser={currentUser} activeView={activeView} setActiveView={setActiveView}
-              setCurrentUser={u => setCurrentUser(u)} users={users} />
-          )}
+          <Sidebar currentUser={activeUser} activeView={activeView} setActiveView={setActiveView} setCurrentUser={u => setCurrentUser(u)} users={users} />
           <div style={{ flex:1, overflow:"auto" }}>
-            {/* Topbar */}
             <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"14px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100 }}>
               <div style={{ fontSize:14, fontWeight:700, color:T.text }}>
-                {({dashboard:"Dashboard", tasks:"Tasks", mytasks:"My Tasks", staff:"Staff", monitoring:"Monitoring", review:"Review Submissions", duties:"Duties", myduties:"My Duties", submit:"Submit Work"})[activeView] || "GNSI Portal"}
+                {({dashboard:"Dashboard", tasks:"Tasks", mytasks:"My Tasks", staff:"Staff", monitoring:"Monitoring", review:"Review Submissions", duties:"Duties", myduties:"My Duties", submit:"Submit Work"})[activeView] || "GNSI Checklist"}
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                {currentUser && tasks.filter(t => t.submission_status === "Under Review" && (currentUser.role === "admin" || (currentUser.role === "incharge" && t.department === currentUser.department))).length > 0 && (
+                {tasks.filter(t => t.submission_status === "Under Review" && (activeUser.role === "admin" || (activeUser.role === "incharge" && t.department === activeUser.department))).length > 0 && (
                   <button onClick={() => setActiveView("review")} style={{ ...G.btnSm(T.warn) }}>
                     🔍 {tasks.filter(t => t.submission_status === "Under Review").length} Pending
                   </button>
@@ -1281,18 +1250,27 @@ export default function Checklist({ currentUser: portalUser }) {
               </div>
             </div>
             <div style={{ padding:24 }}>
-              {loading ? <Spinner /> : renderView()}
+              {loading ? <Spinner /> : (() => {
+                switch (activeView) {
+                  case "dashboard": return <DashboardView {...effectiveViewProps} />;
+                  case "tasks": case "mytasks": case "submit": return <TasksView {...effectiveViewProps} />;
+                  case "staff":     return <StaffView {...effectiveViewProps} />;
+                  case "monitoring":return <MonitoringView {...effectiveViewProps} />;
+                  case "review":    return <ReviewView {...effectiveViewProps} />;
+                  case "duties": case "myduties": return <DutiesView {...effectiveViewProps} setDuties={setDuties} />;
+                  default: return <DashboardView {...effectiveViewProps} />;
+                }
+              })()}
             </div>
           </div>
         </div>
       )}
-
       {submitTask && (
         <SubmitWorkModal task={submitTask} onClose={() => setSubmitTask(null)}
           onSubmit={async (id, note, files) => { await handleSubmit(id, note, files); setSubmitTask(null); }} />
       )}
       {reviewTask && (
-        <ReviewModal task={reviewTask} currentUser={currentUser} onClose={() => setReviewTask(null)}
+        <ReviewModal task={reviewTask} currentUser={activeUser} onClose={() => setReviewTask(null)}
           onReview={async (id, action, feedback, by) => { await handleReview(id, action, feedback, by); setReviewTask(null); }} />
       )}
     </div>
