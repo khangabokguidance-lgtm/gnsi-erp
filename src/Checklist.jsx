@@ -1115,7 +1115,7 @@ function MonitoringView({ staff, tasks, isMobile }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function App() {
+export default function Checklist() {
   const { isMobile } = useBreakpoint();
   const [users,       setUsers]       = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
