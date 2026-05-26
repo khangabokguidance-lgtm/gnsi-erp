@@ -231,6 +231,14 @@ function ComposeSection({ currentUser, quotaLeft, setQuotaLeft, isAdmin }) {
 
   const isScheduled = !!form.scheduled_date
 
+  if (!isAdmin) return (
+    <div className="conn-animate" style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Access Restricted</div>
+      <div style={{ fontSize: 13 }}>Only admins can compose and send messages.</div>
+    </div>
+  )
+
   return (
     <div className="conn-animate">
       <style>{CSS}</style>
