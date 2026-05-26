@@ -126,11 +126,28 @@ export default function Login({ onLogin }) {
       .eq('active', true)
       .single()
 
-    if (dbErr || !data) showError('Invalid username or password.')
-    else                 onLogin(data)
+    if (dbErr || !data) {
+      showError('Invalid username or password.')
+      setLoading(false); return
+    }
+
+    // ── Fetch matching staff_profiles row so Checklist can identify the user ─
+    const { data: profile } = await supabase
+      .from('staff_profiles')
+      .select('id, department, designation, email')
+      .eq('name', data.name)
+      .maybeSingle()
+
+    onLogin({
+      ...data,
+      staff_profile_id: profile?.id         ?? null,
+      department:       profile?.department  ?? null,
+      designation:      profile?.designation ?? null,
+      email:            profile?.email       ?? null,
+    })
 
     setLoading(false)
-  }  // ← end of handleLogin
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   const cardClass = `gnsi-card${shakeCard ? ' shake' : ''}`
