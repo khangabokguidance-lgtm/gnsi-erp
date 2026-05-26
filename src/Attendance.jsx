@@ -486,7 +486,7 @@ function TabMark({ staff, prefill }) {
     if (!form.course) { setStudents([]); setRecords({}); return }
     const fetch = async () => {
       let q = supabase.from('course_enrollments')
-        .select('id,student_name,gcc_no,student_id,hostel_type')
+        .select('id,student_name,gcc_no,student_id,hostel_type,students!student_id(phone)')
         .eq('status','Active').eq('course', form.course)
       if (form.subtype)    q = q.eq('subtype',    form.subtype)
       if (form.class_name) q = q.eq('class_name', form.class_name)
@@ -830,7 +830,7 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
     const rows = students.map(s => ({
       student_name: s.student_name,
       student_id:   s.student_id || null,
-      phone:        s.parent_phone || null,
+      phone:        s.students?.phone || null,
       channel,
       message:      msgFor(s),
       status:       'sent',
@@ -880,7 +880,7 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800] }}>{s.student_name}</div>
                   <div style={{ fontSize: 11, color: C.slate[400] }}>
-                    {s.parent_phone ? `📞 ${s.parent_phone}` : 'No phone on record'}
+                    {s.students?.phone ? `📞 ${s.students.phone}` : 'No phone on record'}
                   </div>
                 </div>
                 <span style={{ fontSize: 10, fontWeight: 800, color: sm.color }}>{status}</span>
