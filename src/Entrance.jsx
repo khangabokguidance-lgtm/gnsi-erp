@@ -15,7 +15,7 @@ const SUBJECTS = {
   'Combined': ['Mathematics', 'English', 'General Knowledge', 'Intelligence', 'Reasoning'],
 }
 
-const TABS = ['Dashboard', 'Exams', 'Candidates', 'Hall Tickets', 'Answer Key', 'Results', 'Merit List', 'Admission']
+const TABS = ['Dashboard', 'Exams', 'Candidates', 'Hall Tickets', 'Answer Key', 'Results', 'Merit List', 'Admission', 'Timeline']
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -1092,8 +1092,17 @@ export default function Entrance() {
   const [candidates, setCandidates] = useState([])
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
+  const [timeline, setTimeline] = useState([])
 
   const fetchAll = useCallback(async () => {
+    const fetchTimeline = useCallback(async () => {
+  const { data } = await supabase
+    .from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100)
+  setTimeline(data || [])
+}, [])
     setLoading(true)
     const [examRes, candRes, resRes] = await Promise.all([
       supabase.from('entrance_exams').select('*').order('exam_date', { ascending: false }),
@@ -1106,7 +1115,7 @@ export default function Entrance() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => { fetchAll(); fetchTimeline() }, [fetchAll, fetchTimeline])
 
   const tabStyle = (t) => ({
     padding: '9px 16px',
@@ -1145,6 +1154,31 @@ export default function Entrance() {
           {activeTab === 'Results' && <ResultsTab exams={exams} candidates={candidates} results={results} onRefresh={fetchAll} />}
           {activeTab === 'Merit List' && <MeritListTab exams={exams} candidates={candidates} results={results} />}
           {activeTab === 'Admission' && <AdmissionTab exams={exams} candidates={candidates} results={results} onRefresh={fetchAll} />}
+          {activeTab === 'Timeline' && (
+  <div style={{background:'#fff',borderRadius:14,padding:20,boxShadow:'0 1px 6px rgba(0,0,0,0.07)'}}>
+    <div style={{fontWeight:800,fontSize:16,color:'#1e3a5f',marginBottom:16}}>🕐 Activity Timeline</div>
+    {timeline.length===0
+      ? <div style={{textAlign:'center',padding:48,color:'#94a3b8'}}>No activity recorded yet.</div>
+      : timeline.map((log,i)=>{
+          const actionColor={insert:'#059669',update:'#d97706',delete:'#dc2626',restore:'#7c3aed',bulk_delete:'#dc2626'}[log.action]||'#64748b'
+          const actionIcon={insert:'➕',update:'✏️',delete:'🗑',restore:'↩️',bulk_delete:'🗑'}[log.action]||'•'
+          return(
+            <div key={i} style={{display:'flex',gap:14,paddingBottom:16,borderBottom:'1px solid #f1f5f9',marginBottom:16}}>
+              <div style={{width:36,height:36,borderRadius:'50%',backgroundColor:actionColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{actionIcon}</div>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontWeight:700,fontSize:13,color:'#1e293b',textTransform:'capitalize'}}>{log.action.replace('_',' ')}</span>
+                  <span style={{fontSize:11,color:'#94a3b8'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
+                </div>
+                <div style={{fontSize:12,color:'#64748b',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
+                {log.new_values&&<div style={{fontSize:11,color:'#94a3b8',marginTop:4,fontFamily:'monospace',background:'#f8fafc',padding:'4px 8px',borderRadius:4,maxWidth:400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
+              </div>
+            </div>
+          )
+        })
+    }
+  </div>
+)}
         </>
       )}
     </div>

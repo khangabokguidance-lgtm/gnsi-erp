@@ -720,6 +720,7 @@ function Accounts({role,userId}){
         ['transactions','🧾 Transactions'],['analytics','📊 Analytics'],['budgets','💰 Budgets'],
         ['recurring','🔁 Recurring'],['daily','📊 Daily Register'],
         ...(isAdmin?[['fraud',totalFraudAlerts>0?`🕵️ Fraud Watch (${totalFraudAlerts})`:'🕵️ Fraud Watch']]:[] ),
+        ['timeline','🕐 Activity'],
       ].map(([id,label])=>(
         <button key={id} style={{...tabStyle(id),...(id==='fraud'?{backgroundColor:activeTab===id?'#7c3aed':'#faf5ff',color:activeTab===id?'white':'#7c3aed',border:'1px solid #e9d5ff'}:{}),...(id==='daily'?{backgroundColor:activeTab===id?'#0369a1':'#f0f9ff',color:activeTab===id?'white':'#0369a1',border:'1px solid #bae6fd'}:{})}} onClick={()=>setActiveTab(id)}>{label}</button>
       ))}
@@ -1112,6 +1113,31 @@ function Accounts({role,userId}){
         </div>
       </div>
     )}
+    {activeTab==='timeline'&&(
+  <div style={{backgroundColor:'white',borderRadius:12,padding:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+    <h3 style={{fontSize:16,fontWeight:700,color:'#1e3a5f',marginBottom:16}}>🕐 Activity Timeline</h3>
+    {auditLog.length===0
+      ? <p style={{color:'#94a3b8',textAlign:'center',padding:32}}>No activity recorded yet.</p>
+      : auditLog.map((log,i)=>{
+          const actionColor={insert:'#16a34a',update:'#f59e0b',delete:'#dc2626',restore:'#7c3aed',bulk_delete:'#dc2626',budget_edit:'#0891b2'}[log.action]||'#64748b'
+          const actionIcon={insert:'➕',update:'✏️',delete:'🗑',restore:'↩️',bulk_delete:'🗑',budget_edit:'💰'}[log.action]||'•'
+          return(
+            <div key={i} style={{display:'flex',gap:14,paddingBottom:16,borderBottom:'1px solid #f1f5f9',marginBottom:16}}>
+              <div style={{width:36,height:36,borderRadius:'50%',backgroundColor:actionColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{actionIcon}</div>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontWeight:700,fontSize:13,color:'#1e293b',textTransform:'capitalize'}}>{log.action.replace('_',' ')}</span>
+                  <span style={{fontSize:11,color:'#94a3b8'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
+                </div>
+                <div style={{fontSize:12,color:'#64748b',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
+                {log.new_values&&<div style={{fontSize:11,color:'#94a3b8',marginTop:4,fontFamily:'monospace',background:'#f8fafc',padding:'4px 8px',borderRadius:4,maxWidth:400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
+              </div>
+            </div>
+          )
+        })
+    }
+  </div>
+)}
 
     {/* ══ P&L MODAL ══ */}
     {showPL&&(
