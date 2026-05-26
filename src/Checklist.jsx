@@ -14,8 +14,8 @@ const db = {
     if (error) throw error;
     return (data || []).map(s => ({
       ...s,
-      role: s.role === "Teaching + Admin" ? "admin"
-          : s.role === "incharge"         ? "incharge"
+      role: s.role === "Teaching + Admin" || s.role === "Administrator" ? "admin"
+          : s.role === "incharge" ? "incharge"
           : "staff",
     }));
   },
@@ -308,62 +308,89 @@ function MoreMenu({ currentUser, activeView, setActiveView, onClose }) {
   );
 }
 
-function Sidebar({ currentUser, activeView, setActiveView, setCurrentUser, users }) {
+function TopNav({ currentUser, activeView, setActiveView, setCurrentUser, users, onRefresh, tasks }) {
   const navItems = useMemo(() => {
     if (currentUser.role === "admin") return [
-      { id:"dashboard",  label:"Dashboard",         icon:"🏠" },
-      { id:"tasks",      label:"All Tasks",          icon:"📋" },
-      { id:"staff",      label:"Staff Overview",     icon:"👥" },
-      { id:"duties",     label:"Duties",             icon:"📌" },
-      { id:"monitoring", label:"Monitoring",         icon:"📊" },
-      { id:"review",     label:"Review Submissions", icon:"🔍" },
+      { id:"dashboard",  label:"Dashboard",  icon:"🏠" },
+      { id:"tasks",      label:"All Tasks",  icon:"📋" },
+      { id:"staff",      label:"Staff",      icon:"👥" },
+      { id:"duties",     label:"Duties",     icon:"📌" },
+      { id:"monitoring", label:"Monitor",    icon:"📊" },
+      { id:"review",     label:"Review",     icon:"🔍" },
     ];
     if (currentUser.role === "incharge") return [
-      { id:"dashboard",  label:"Dashboard",          icon:"🏠" },
-      { id:"tasks",      label:"Dept Tasks",          icon:"📋" },
-      { id:"staff",      label:"My Staff",            icon:"👥" },
-      { id:"duties",     label:"Duties",              icon:"📌" },
-      { id:"review",     label:"Review Submissions",  icon:"🔍" },
+      { id:"dashboard",  label:"Dashboard",  icon:"🏠" },
+      { id:"tasks",      label:"Dept Tasks", icon:"📋" },
+      { id:"staff",      label:"My Staff",   icon:"👥" },
+      { id:"duties",     label:"Duties",     icon:"📌" },
+      { id:"review",     label:"Review",     icon:"🔍" },
     ];
     return [
-      { id:"dashboard",  label:"My Dashboard",       icon:"🏠" },
-      { id:"mytasks",    label:"My Tasks",            icon:"📋" },
-      { id:"myduties",   label:"My Duties",           icon:"📌" },
-      { id:"submit",     label:"Submit Work",         icon:"📤" },
+      { id:"dashboard",  label:"Dashboard",  icon:"🏠" },
+      { id:"mytasks",    label:"My Tasks",   icon:"📋" },
+      { id:"myduties",   label:"My Duties",  icon:"📌" },
+      { id:"submit",     label:"Submit Work",icon:"📤" },
     ];
   }, [currentUser.role]);
 
+  const pendingReview = tasks.filter(t =>
+    t.submission_status === "Under Review" &&
+    (currentUser.role === "admin" || (currentUser.role === "incharge" && t.department === currentUser.department))
+  ).length;
+
   return (
-    <div style={{ width:230, background:T.surface, borderRight:`1px solid ${T.border}`, display:"flex", flexDirection:"column", flexShrink:0, minHeight:"100vh", boxShadow:"2px 0 8px rgba(0,0,0,.04)" }}>
-      <div style={{ padding:"20px 18px", borderBottom:`1px solid ${T.border}`, background:T.accentG }}>
-        <div style={{ fontSize:14, fontWeight:800, color:"white", letterSpacing:.5 }}>GNSI Checklist</div>
-        <div style={{ fontSize:12, color:"rgba(255,255,255,.7)", marginTop:2 }}>Task Management</div>
-      </div>
-      {/* FIX #3: User switcher only visible to admin role */}
-      {currentUser.role === "admin" && users.length > 1 && (
-        <div style={{ padding:"12px 12px 0" }}>
-          <select style={{ ...G.inp, fontSize:12, padding:"8px 10px" }} value={currentUser.id} onChange={e => setCurrentUser(users.find(u => u.id === +e.target.value) || users[0])}>
-            {users.map(u => <option key={u.id} value={u.id}>{u.name} ({roleLabel[u.role] || u.role})</option>)}
-          </select>
+    <div style={{ background:"white", borderBottom:`1px solid ${T.border}`, boxShadow:"0 2px 8px rgba(0,0,0,.06)", position:"sticky", top:0, zIndex:100 }}>
+      {/* Top bar */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 28px", height:56, borderBottom:`1px solid ${T.border}` }}>
+        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+          <div style={{ background:T.accentG, borderRadius:10, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✅</div>
+          <div>
+            <div style={{ fontSize:15, fontWeight:800, color:T.text, letterSpacing:-.2 }}>GNSI Checklist</div>
+            <div style={{ fontSize:11, color:T.textMid }}>Task Management System</div>
+          </div>
         </div>
-      )}
-      <div style={{ padding:"14px 14px 10px", borderBottom:`1px solid ${T.border}`, marginTop:8, background:T.surface2 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <Avatar name={currentUser.name} role={currentUser.role} size={36} />
-          <div style={{ minWidth:0 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:T.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{currentUser.name}</div>
-            <div style={{ fontSize:11, color:roleColor[currentUser.role], fontWeight:700, textTransform:"uppercase" }}>{roleLabel[currentUser.role] || currentUser.role}</div>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          {pendingReview > 0 && (
+            <button onClick={() => setActiveView("review")} style={{ ...G.btnSm(T.warn), display:"flex", alignItems:"center", gap:6, fontSize:12 }}>
+              🔍 {pendingReview} Pending Review
+            </button>
+          )}
+          {currentUser.role === "admin" && users.length > 1 && (
+            <select style={{ ...G.inp, width:"auto", padding:"7px 10px", fontSize:12, border:`1.5px solid ${T.border}`, borderRadius:8 }}
+              value={currentUser.id} onChange={e => setCurrentUser(users.find(u => u.id === +e.target.value) || users[0])}>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name} ({roleLabel[u.role] || u.role})</option>)}
+            </select>
+          )}
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:T.surface2, border:`1.5px solid ${T.border}`, borderRadius:10, padding:"7px 12px" }}>
+            <Avatar name={currentUser.name} role={currentUser.role} size={26} />
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:T.text }}>{currentUser.name}</div>
+              <div style={{ fontSize:10, fontWeight:700, color:roleColor[currentUser.role], textTransform:"uppercase" }}>{roleLabel[currentUser.role]}</div>
+            </div>
+          </div>
+          <button onClick={onRefresh} style={{ ...G.btnSm(T.surface2), border:`1.5px solid ${T.border}`, color:T.textMid, fontSize:13 }}>🔄</button>
+          <div style={{ fontSize:12, color:T.textMid, background:T.surface2, padding:"7px 12px", borderRadius:8, border:`1px solid ${T.border}`, whiteSpace:"nowrap" }}>
+            {new Date().toLocaleDateString("en-IN", { weekday:"short", day:"2-digit", month:"short", year:"numeric" })}
           </div>
         </div>
       </div>
-      <nav style={{ flex:1, padding:"10px 8px" }}>
+      {/* Tab bar */}
+      <div style={{ display:"flex", alignItems:"center", padding:"0 28px", gap:2 }}>
         {navItems.map(n => (
-          <button key={n.id} onClick={() => setActiveView(n.id)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:9, background:activeView===n.id?`${T.accent}10`:"none", border:activeView===n.id?`1px solid ${T.accent}30`:"1px solid transparent", color:activeView===n.id?T.accent:T.textMid, fontSize:13, fontWeight:activeView===n.id?700:500, cursor:"pointer", fontFamily:"inherit", textAlign:"left", marginBottom:3 }}>
+          <button key={n.id} onClick={() => setActiveView(n.id)} style={{
+            display:"flex", alignItems:"center", gap:7, padding:"13px 18px",
+            border:"none", background:"none", cursor:"pointer", fontFamily:"inherit",
+            fontSize:13, fontWeight:activeView===n.id?700:500,
+            color:activeView===n.id?T.accent:T.textMid,
+            borderBottom:activeView===n.id?`2.5px solid ${T.accent}`:"2.5px solid transparent",
+            marginBottom:-1, transition:"all .15s",
+            whiteSpace:"nowrap",
+          }}>
             <span style={{ fontSize:15 }}>{n.icon}</span>
             {n.label}
           </button>
         ))}
-      </nav>
+      </div>
     </div>
   );
 }
@@ -1281,7 +1308,7 @@ export default function Checklist({ currentUser: portalUser }) {
         if (portalUser?.staff_profile_id) activeUser = usersData.find(u => u.id === portalUser.staff_profile_id);
         if (!activeUser && portalUser?.id && typeof portalUser.id === "number") activeUser = usersData.find(u => u.id === portalUser.id);
         if (!activeUser && portalUser?.name) activeUser = usersData.find(u => u.name === portalUser.name);
-        if (!activeUser && portalUser?.role?.toLowerCase() === "admin") activeUser = usersData.find(u => u.role === "admin");
+        if (!activeUser && (portalUser?.role?.toLowerCase() === "admin" || portalUser?.role === "Administrator")) activeUser = usersData.find(u => u.role === "admin");
         if (!activeUser) activeUser = usersData[0];
       }
       if (!mountedRef.current) return;
@@ -1405,38 +1432,28 @@ export default function Checklist({ currentUser: portalUser }) {
           {showMore && <MoreMenu currentUser={activeUser} activeView={activeView} setActiveView={setActiveView} onClose={() => setShowMore(false)} />}
         </div>
       ) : (
-        <div style={{ display:"flex", minHeight:"100vh" }}>
-          <Sidebar currentUser={activeUser} activeView={activeView} setActiveView={setActiveView} setCurrentUser={handleSetCurrentUser} users={users} />
-          <div style={{ flex:1, overflow:"auto", background:T.bg }}>
-            <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"14px 26px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100, boxShadow:"0 2px 8px rgba(0,0,0,.04)" }}>
-              <div style={{ fontSize:15, fontWeight:700, color:T.text }}>
-                {({dashboard:"Dashboard", tasks:"Tasks", mytasks:"My Tasks", staff:"Staff", monitoring:"Monitoring", review:"Review Submissions", duties:"Duties", myduties:"My Duties", submit:"Submit Work"})[activeView] || "GNSI Checklist"}
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                {tasks.filter(t => t.submission_status === "Under Review" && (activeUser.role === "admin" || (activeUser.role === "incharge" && t.department === activeUser.department))).length > 0 && (
-                  <button onClick={() => setActiveView("review")} style={{ ...G.btnSm(T.warn) }}>
-                    🔍 {tasks.filter(t => t.submission_status === "Under Review").length} Pending
-                  </button>
-                )}
-                <button onClick={() => fetchAll(activeUser)} style={{ ...G.btnSm(T.surface), border:`1px solid ${T.border}`, color:T.textMid }}>🔄 Refresh</button>
-                <div style={{ fontSize:12, color:T.textMid, background:T.surface2, padding:"6px 12px", borderRadius:7, border:`1px solid ${T.border}` }}>
-                  {new Date().toLocaleDateString("en-IN", { weekday:"short", day:"2-digit", month:"short", year:"numeric" })}
-                </div>
-              </div>
-            </div>
-            <div style={{ padding:26 }}>
-              {loading ? <Spinner /> : (() => {
-                switch (activeView) {
-                  case "dashboard":  return <DashboardView {...viewProps} />;
-                  case "tasks": case "mytasks": case "submit": return <TasksView {...viewProps} />;
-                  case "staff":      return <StaffView {...viewProps} />;
-                  case "monitoring": return <MonitoringView {...viewProps} />;
-                  case "review":     return <ReviewView {...viewProps} />;
-                  case "duties": case "myduties": return <DutiesView {...viewProps} />;
-                  default:           return <DashboardView {...viewProps} />;
-                }
-              })()}
-            </div>
+        <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh", background:T.bg }}>
+          <TopNav
+            currentUser={activeUser}
+            activeView={activeView}
+            setActiveView={setActiveView}
+            setCurrentUser={handleSetCurrentUser}
+            users={users}
+            onRefresh={() => fetchAll(activeUser)}
+            tasks={tasks}
+          />
+          <div style={{ flex:1, padding:28, overflow:"auto" }}>
+            {loading ? <Spinner /> : (() => {
+              switch (activeView) {
+                case "dashboard":  return <DashboardView {...viewProps} />;
+                case "tasks": case "mytasks": case "submit": return <TasksView {...viewProps} />;
+                case "staff":      return <StaffView {...viewProps} />;
+                case "monitoring": return <MonitoringView {...viewProps} />;
+                case "review":     return <ReviewView {...viewProps} />;
+                case "duties": case "myduties": return <DutiesView {...viewProps} />;
+                default:           return <DashboardView {...viewProps} />;
+              }
+            })()}
           </div>
         </div>
       )}
