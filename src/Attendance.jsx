@@ -486,11 +486,12 @@ function TabMark({ staff, prefill }) {
     if (!form.course) { setStudents([]); setRecords({}); return }
     const fetch = async () => {
       let q = supabase.from('course_enrollments')
-        .select('id,student_name,gcc_no,student_id,hostel_type,students!student_id(phone)')
+        .select('id,student_name,gcc_no,student_id,hostel_type')
         .eq('status','Active').eq('course', form.course)
       if (form.subtype)    q = q.eq('subtype',    form.subtype)
       if (form.class_name) q = q.eq('class_name', form.class_name)
-      const { data } = await q.order('student_name')
+      const { data, error } = await q.order('student_name')
+      if (error) console.error('student fetch error:', error)
       setStudents(data || [])
       const init = {}
       ;(data||[]).forEach(s => { init[s.student_id || s.student_name] = 'Present' })
