@@ -486,7 +486,7 @@ function TabMark({ staff, prefill }) {
     if (!form.course) { setStudents([]); setRecords({}); return }
     const fetch = async () => {
       let q = supabase.from('course_enrollments')
-        .select('id,student_name,gcc_no,student_id,hostel_type,parent_phone')
+        .select('id,student_name,gcc_no,student_id,hostel_type')
         .eq('status','Active').eq('course', form.course)
       if (form.subtype)    q = q.eq('subtype',    form.subtype)
       if (form.class_name) q = q.eq('class_name', form.class_name)
