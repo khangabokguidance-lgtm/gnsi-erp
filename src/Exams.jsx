@@ -75,14 +75,23 @@ const GRADE_PRESETS = [
 ];
 
 // ─── Role permissions ────────────────────────────────────────────────────────
-const ROLE_PERMS = {
-  Admin:    { canEdit: true,  canDelete: true,  canImport: true,  canPrint: true  },
-  Manager:  { canEdit: true,  canDelete: false, canImport: true,  canPrint: true  },
-  Teacher:  { canEdit: true,  canDelete: false, canImport: false, canPrint: true  },
-  Accounts: { canEdit: false, canDelete: false, canImport: false, canPrint: false },
-}
-function usePerm(currentUser) {
-  return ROLE_PERMS[currentUser?.role] || ROLE_PERMS.Teacher
+// Maps the new CRUD perms prop to the shape Exams.jsx uses internally
+function usePerm(currentUser, perms) {
+  // If perms prop passed from App.jsx, use it
+  if (perms) {
+    return {
+      canEdit:   perms.edit   !== false,
+      canDelete: perms.delete !== false,
+      canImport: perms.add    !== false,
+      canPrint:  perms.read   !== false,
+    }
+  }
+  // Fallback: role-based (for standalone use)
+  const role = currentUser?.role
+  if (role === 'Admin')    return { canEdit:true,  canDelete:true,  canImport:true,  canPrint:true  }
+  if (role === 'Manager')  return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
+  if (role === 'Accounts') return { canEdit:false, canDelete:false, canImport:false, canPrint:false }
+  return                          { canEdit:true,  canDelete:false, canImport:false, canPrint:true  }
 }
 
 const TAB_GROUPS = [
@@ -329,8 +338,8 @@ function useRemarks(studentId, examTypeId, examDate) {
 }
 
 // ─── STUDENTS TAB ─────────────────────────────────────────────────────────────
-function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser }) {
-  const perm = usePerm(currentUser)
+function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, perms }) {
+  const perm = usePerm(currentUser, perms)
   const courses = Object.keys(courseSubjects);
 
   const EMPTY_FORM = { name: "", gcc_no: "", admission_no: "", course: courses[0] || "", class_name: "" };
@@ -595,8 +604,8 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser }
 }
 
 // ─── MARK ENTRY ───────────────────────────────────────────────────────────────
-function MarkEntry({ courseSubjects, examTypes, students, currentUser }) {
-  const perm = usePerm(currentUser)
+function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) {
+  const perm = usePerm(currentUser, perms)
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
@@ -4481,7 +4490,7 @@ const printOne = (st) =>
 }
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
-export default function Exams({ currentUser }) {
+export default function Exams({ currentUser, perms }) {
   const [tab, setTab] = useState("entry");
   const [students, setStudents] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
@@ -4521,7 +4530,7 @@ export default function Exams({ currentUser }) {
 
   const sectionMap = {
     dashboard:      <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    toppers:        <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} />,
+    toppers:        <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} />,
     marks:          <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     analytics:      <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     rankings:       <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
@@ -4529,7 +4538,7 @@ export default function Exams({ currentUser }) {
     reportcard:     <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
     schedule:       <Schedule courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
     seatplan:       <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    studentsmgr:    <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} />,
+    studentsmgr:    <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
     coursesubjects: <CourseSubjectsManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} />,
     examtypes:      <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
     settings:       <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
