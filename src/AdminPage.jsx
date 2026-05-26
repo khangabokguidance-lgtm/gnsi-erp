@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -15,23 +15,28 @@ const ALL_MODULES = [
   { key: 'fees',          label: 'Fees',            icon: '💰' },
   { key: 'accounts',      label: 'Accounts',        icon: '📊' },
   { key: 'salary',        label: 'Salary',          icon: '💵' },
-  { key: 'attendance',    label: 'Attendance',       icon: '✅' },
-  { key: 'exams',         label: 'Exams',            icon: '📝' },
-  { key: 'timetable',     label: 'Timetable',        icon: '🗓️' },
-  { key: 'teaching',      label: 'Teaching',         icon: '📖' },
-  { key: 'staff',         label: 'Staff',            icon: '👤' },
-  { key: 'hr',            label: 'HR',               icon: '🏢' },
-  { key: 'leave',         label: 'Leave',            icon: '🌿' },
-  { key: 'hostel',        label: 'Hostel',           icon: '🏠' },
-  { key: 'reception',     label: 'Reception',        icon: '🔔' },
-  { key: 'notice',        label: 'Notice',           icon: '📢' },
-  { key: 'social',        label: 'Social',           icon: '💬' },
-  { key: 'connect',       label: 'Connect',          icon: '🔗' },
-  { key: 'courses',       label: 'Courses',          icon: '📚' },
-  { key: 'reports',       label: 'Reports',          icon: '📈' },
-  { key: 'checklist',     label: 'Checklist',        icon: '☑️' },
-  { key: 'system',        label: 'System',           icon: '⚙️' },
+  { key: 'attendance',    label: 'Attendance',      icon: '✅' },
+  { key: 'exams',         label: 'Exams',           icon: '📝' },
+  { key: 'timetable',     label: 'Timetable',       icon: '🗓️' },
+  { key: 'teaching',      label: 'Teaching',        icon: '📖' },
+  { key: 'staff',         label: 'Staff',           icon: '👤' },
+  { key: 'hr',            label: 'HR',              icon: '🏢' },
+  { key: 'leave',         label: 'Leave',           icon: '🌿' },
+  { key: 'hostel',        label: 'Hostel',          icon: '🏠' },
+  { key: 'reception',     label: 'Reception',       icon: '🔔' },
+  { key: 'notice',        label: 'Notice',          icon: '📢' },
+  { key: 'social',        label: 'Social',          icon: '💬' },
+  { key: 'connect',       label: 'Connect',         icon: '🔗' },
+  { key: 'courses',       label: 'Courses',         icon: '📚' },
+  { key: 'reports',       label: 'Reports',         icon: '📈' },
+  { key: 'checklist',     label: 'Checklist',       icon: '☑️' },
+  { key: 'system',        label: 'System',          icon: '⚙️' },
 ]
+
+const CRUD_KEYS = ['read', 'add', 'edit', 'delete']
+const CRUD_LABELS = { read: '👁 Read', add: '➕ Add', edit: '✏️ Edit', delete: '🗑 Delete' }
+const CRUD_COLORS = { read: '#0369A1', add: '#16A34A', edit: '#D97706', delete: '#DC2626' }
+const CRUD_BG    = { read: '#F0F9FF', add: '#F0FDF4', edit: '#FFFBEB', delete: '#FEF2F2' }
 
 const ALL_ROLES = [
   'Teacher','Staff','Faculty','House Master','Accountant',
@@ -50,20 +55,18 @@ const NAV = [
 ]
 
 // ─────────────────────────────────────────────
-//  HASH UTILITY
+//  HELPERS
 // ─────────────────────────────────────────────
+function emptyCrud() { return { read: false, add: false, edit: false, delete: false } }
+function fullCrud()  { return { read: true,  add: true,  edit: true,  delete: true  } }
+
 async function hashPassword(plain) {
   const enc = new TextEncoder()
   const buf = await crypto.subtle.digest('SHA-256', enc.encode(plain))
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
-async function verifyPassword(plain, hash) {
-  return (await hashPassword(plain)) === hash
-}
+async function verifyPassword(plain, hash) { return (await hashPassword(plain)) === hash }
 
-// ─────────────────────────────────────────────
-//  AUDIT LOGGER
-// ─────────────────────────────────────────────
 async function logAudit(action, currentUser) {
   try {
     await supabase.from('audit_logs').insert({
@@ -107,6 +110,17 @@ const GLOBAL_CSS = `
     box-shadow: 0 0 0 3px rgba(59,130,246,0.12) !important;
     outline: none !important;
   }
+  /* CRUD chip hover */
+  .crud-chip { transition: all .12s; }
+  .crud-chip:hover { opacity: .85; transform: scale(1.04); }
+
+  /* Permissions matrix */
+  .perm-matrix th, .perm-matrix td { padding: 9px 10px; white-space: nowrap; }
+  .perm-matrix thead tr { background: #F8FAFC; }
+  .perm-matrix tbody tr:hover td { background: #F0F9FF; }
+  .perm-toggle { cursor: pointer; user-select: none; border-radius: 6px; transition: all .12s; }
+  .perm-toggle:hover { transform: scale(1.1); }
+
   @media (max-width: 767px) {
     .adm-main-pad   { padding: 14px !important; }
     .adm-grid-3     { grid-template-columns: 1fr !important; }
@@ -135,19 +149,15 @@ function Spinner() {
     </div>
   )
 }
-
 function ErrBox({ msg }) {
   return <div style={{ padding:'11px 14px', borderRadius:8, background:'#FEF2F2', border:'1px solid #FECACA', color:'#991B1B', fontSize:13, marginBottom:14 }}>🚨 {msg}</div>
 }
-
 function SuccessBox({ msg }) {
   return <div style={{ padding:'11px 14px', borderRadius:8, background:'#F0FDF4', border:'1px solid #BBF7D0', color:'#166534', fontSize:13, marginBottom:14 }}>✅ {msg}</div>
 }
-
 function Badge({ label, color='#1D4ED8', bg='#EFF6FF', border='#BFDBFE' }) {
   return <span style={{ background:bg, color, border:`1px solid ${border}`, borderRadius:6, fontSize:11, fontWeight:700, padding:'2px 8px', whiteSpace:'nowrap' }}>{label}</span>
 }
-
 function RoleBadge({ role }) {
   const colors = {
     'Teacher':             { bg:'#F0FDF4', text:'#166534',  border:'#BBF7D0' },
@@ -166,7 +176,6 @@ function RoleBadge({ role }) {
   const c = colors[role] || { bg:'#F3F4F6', text:'#374151', border:'#E5E7EB' }
   return <Badge label={role} color={c.text} bg={c.bg} border={c.border} />
 }
-
 function Toast({ msg }) {
   if (!msg) return null
   return (
@@ -175,7 +184,6 @@ function Toast({ msg }) {
     </div>
   )
 }
-
 function ConfirmModal({ title, message, onConfirm, onCancel, danger }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1200, padding:16, backdropFilter:'blur(2px)' }}>
@@ -190,6 +198,52 @@ function ConfirmModal({ title, message, onConfirm, onCancel, danger }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+//  CRUD CHIP — inline visual
+// ─────────────────────────────────────────────
+function CrudSummaryChips({ crud }) {
+  return (
+    <div style={{ display:'flex', gap:3, flexWrap:'wrap' }}>
+      {CRUD_KEYS.map(k => (
+        <span key={k} className="crud-chip" style={{
+          fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:5,
+          background: crud[k] ? CRUD_BG[k] : '#F1F5F9',
+          color:       crud[k] ? CRUD_COLORS[k] : '#CBD5E1',
+          border:     `1px solid ${crud[k] ? CRUD_COLORS[k]+'33' : '#E2E8F0'}`,
+          textDecoration: crud[k] ? 'none' : 'line-through',
+          opacity:       crud[k] ? 1 : 0.6,
+        }}>{k.toUpperCase()}</span>
+      ))}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+//  CRUD TOGGLE CELL
+// ─────────────────────────────────────────────
+function CrudToggle({ active, type, onClick }) {
+  return (
+    <div
+      className="perm-toggle"
+      onClick={onClick}
+      title={`${active ? 'Revoke' : 'Grant'} ${type}`}
+      style={{
+        width: 30, height: 30,
+        borderRadius: 7,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 14,
+        background: active ? CRUD_BG[type] : '#F8FAFC',
+        border: `1.5px solid ${active ? CRUD_COLORS[type] : '#E2E8F0'}`,
+        color: active ? CRUD_COLORS[type] : '#CBD5E1',
+        fontWeight: 800,
+        margin: '0 auto',
+      }}
+    >
+      {active ? '✓' : '·'}
     </div>
   )
 }
@@ -283,7 +337,6 @@ function UserModal({ existing, onClose, onSaved, currentUser }) {
     if (!isEdit && !form.password)           { setErr('Password is required.'); return }
     if (!isEdit && form.password.length < 8) { setErr('Password must be at least 8 characters.'); return }
     setSaving(true); setErr(null)
-
     if (isEdit) {
       const update = { name: form.name.trim(), role: form.role, updated_at: new Date().toISOString() }
       if (form.password) update.password_hash = await hashPassword(form.password)
@@ -291,10 +344,9 @@ function UserModal({ existing, onClose, onSaved, currentUser }) {
       if (error) { setErr(error.message); setSaving(false); return }
       await logAudit(`Updated user: ${form.name}`, currentUser)
     } else {
-      // FIX: always lowercase username
       const cleanUsername = form.username.trim().toLowerCase()
       const { data: dup } = await supabase.from('portal_users').select('id').eq('username', cleanUsername).maybeSingle()
-      if (dup) { setErr('Username already taken. Choose a different one.'); setSaving(false); return }
+      if (dup) { setErr('Username already taken.'); setSaving(false); return }
       const hashedPw = await hashPassword(form.password)
       const { error } = await supabase.from('portal_users').insert({
         name: form.name.trim(), username: cleanUsername,
@@ -388,7 +440,6 @@ function UsersSection({ currentUser }) {
       {modal && <UserModal existing={modal === 'add' ? null : modal} onClose={() => setModal(null)} onSaved={fetchUsers} currentUser={currentUser} />}
       {confirm && <ConfirmModal title={`Delete ${confirm.user.name}?`} message="This will permanently remove the user. This cannot be undone." danger onConfirm={() => deleteUser(confirm.user)} onCancel={() => setConfirm(null)} />}
 
-      {/* Role filters + Add button */}
       <div className="adm-role-filter" style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
         {['All', ...ALL_ROLES].map(r => (
           <button key={r} onClick={() => setFilter(r)} style={{ padding:'5px 12px', borderRadius:8, fontSize:12, cursor:'pointer', border: filter===r ? '1.5px solid #1D4ED8' : '1px solid #E2E8F0', background: filter===r ? '#EFF6FF' : 'white', color: filter===r ? '#1D4ED8' : '#374151', fontWeight: filter===r ? 600 : 400, whiteSpace:'nowrap', fontFamily:'inherit' }}>{r}</button>
@@ -410,7 +461,7 @@ function UsersSection({ currentUser }) {
               <tr key={u.id} className="adm-row" style={{ borderBottom: i < filtered.length-1 ? '1px solid #F1F5F9' : 'none', transition:'background .1s' }}>
                 <td style={{ padding:'12px 14px', fontWeight:600 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <div style={{ width:32, height:32, borderRadius:'50%', background:'#DBEAFE', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:'#1D4ED8', flexShrink:0, letterSpacing:'.02em' }}>
+                    <div style={{ width:32, height:32, borderRadius:'50%', background:'#DBEAFE', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:'#1D4ED8', flexShrink:0 }}>
                       {(u.name||'?').split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}
                     </div>
                     <span style={{ color:'#0F172A', whiteSpace:'nowrap' }}>{u.name}</span>
@@ -451,78 +502,271 @@ function UsersSection({ currentUser }) {
 }
 
 // ─────────────────────────────────────────────
-//  ROLE PERMISSIONS
+//  ROLE PERMISSIONS — CRUD MATRIX
 // ─────────────────────────────────────────────
 function PermissionsSection({ currentUser }) {
   const [role,    setRole]    = useState('Teacher')
+  // perms: { [module_key]: { read, add, edit, delete } }
   const [perms,   setPerms]   = useState({})
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [saved,   setSaved]   = useState(false)
   const [error,   setError]   = useState(null)
+  const [view,    setView]    = useState('matrix') // 'matrix' | 'cards'
 
   const fetchPerms = useCallback(async (r) => {
     setLoading(true); setError(null)
-    const { data, error } = await supabase.from('role_permissions').select('module_key,allowed').eq('role', r)
+    const { data, error } = await supabase
+      .from('role_permissions')
+      .select('module_key,can_read,can_add,can_edit,can_delete,allowed')
+      .eq('role', r)
     if (error) { setError(error.message); setLoading(false); return }
     const map = {}
-    ;(data||[]).forEach(p => { map[p.module_key] = p.allowed })
+    ;(data||[]).forEach(p => {
+      // Support both old `allowed` column and new CRUD columns
+      if (p.can_read !== undefined || p.can_add !== undefined) {
+        map[p.module_key] = {
+          read:   p.can_read   ?? p.allowed ?? false,
+          add:    p.can_add    ?? false,
+          edit:   p.can_edit   ?? false,
+          delete: p.can_delete ?? false,
+        }
+      } else {
+        map[p.module_key] = {
+          read:   p.allowed ?? false,
+          add:    false,
+          edit:   false,
+          delete: false,
+        }
+      }
+    })
     setPerms(map); setLoading(false)
   }, [])
 
   useEffect(() => { fetchPerms(role) }, [role, fetchPerms])
 
-  const toggle    = key => setPerms(p => ({ ...p, [key]: !p[key] }))
-  const selectAll = () => setPerms(Object.fromEntries(ALL_MODULES.map(m => [m.key, true])))
-  const clearAll  = () => setPerms(Object.fromEntries(ALL_MODULES.map(m => [m.key, false])))
+  const toggle = (key, crud) => {
+    setPerms(p => ({
+      ...p,
+      [key]: { ...(p[key] || emptyCrud()), [crud]: !(p[key]?.[crud] ?? false) }
+    }))
+  }
+
+  const toggleRow = (key) => {
+    const cur = perms[key] || emptyCrud()
+    const allOn = CRUD_KEYS.every(c => cur[c])
+    setPerms(p => ({ ...p, [key]: allOn ? emptyCrud() : fullCrud() }))
+  }
+
+  const toggleCol = (crud) => {
+    const allOn = ALL_MODULES.every(m => perms[m.key]?.[crud])
+    setPerms(p => {
+      const next = { ...p }
+      ALL_MODULES.forEach(m => {
+        next[m.key] = { ...(p[m.key] || emptyCrud()), [crud]: !allOn }
+      })
+      return next
+    })
+  }
+
+  const selectAll = () => {
+    const map = {}
+    ALL_MODULES.forEach(m => { map[m.key] = fullCrud() })
+    setPerms(map)
+  }
+  const clearAll = () => {
+    const map = {}
+    ALL_MODULES.forEach(m => { map[m.key] = emptyCrud() })
+    setPerms(map)
+  }
 
   const savePerms = async () => {
     setSaving(true); setError(null)
     try {
-      const rows = ALL_MODULES.map(m => ({ role, module_key: m.key, allowed: perms[m.key] ?? false }))
-      const { error } = await supabase.from('role_permissions').upsert(rows, { onConflict: 'role,module_key' })
+      const rows = ALL_MODULES.map(m => {
+        const c = perms[m.key] || emptyCrud()
+        return {
+          role,
+          module_key: m.key,
+          // Legacy column for backward compat
+          allowed: c.read,
+          can_read:   c.read,
+          can_add:    c.add,
+          can_edit:   c.edit,
+          can_delete: c.delete,
+        }
+      })
+      const { error } = await supabase
+        .from('role_permissions')
+        .upsert(rows, { onConflict: 'role,module_key' })
       if (error) throw error
-      await logAudit(`Updated permissions for role: ${role}`, currentUser)
+      await logAudit(`Updated CRUD permissions for role: ${role}`, currentUser)
       setSaved(true); setTimeout(() => setSaved(false), 2500)
     } catch(e) { setError(e.message) }
     setSaving(false)
   }
 
+  const colStats = (crud) => {
+    const on = ALL_MODULES.filter(m => perms[m.key]?.[crud]).length
+    return `${on}/${ALL_MODULES.length}`
+  }
+
   return (
     <div>
       {error && <ErrBox msg={error} />}
+
+      {/* Role selector */}
       <div className="adm-role-filter" style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
         {ALL_ROLES.map(r => (
           <button key={r} onClick={() => setRole(r)} style={{ padding:'5px 12px', borderRadius:8, fontSize:12, cursor:'pointer', border: role===r ? '1.5px solid #1D4ED8' : '1px solid #E2E8F0', background: role===r ? '#EFF6FF' : 'white', color: role===r ? '#1D4ED8' : '#374151', fontWeight: role===r ? 700 : 400, whiteSpace:'nowrap', fontFamily:'inherit' }}>{r}</button>
         ))}
-        <div className="adm-perm-actions" style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-          <button onClick={selectAll} style={{ padding:'7px 12px', borderRadius:8, fontSize:12, cursor:'pointer', border:'1px solid #E2E8F0', background:'white', fontFamily:'inherit' }}>Select All</button>
-          <button onClick={clearAll}  style={{ padding:'7px 12px', borderRadius:8, fontSize:12, cursor:'pointer', border:'1px solid #E2E8F0', background:'white', fontFamily:'inherit' }}>Clear All</button>
-          <button onClick={savePerms} disabled={saving} style={{ padding:'7px 18px', borderRadius:8, fontSize:13, cursor:'pointer', border:'none', background: saved ? '#16A34A' : saving ? '#93C5FD' : '#1D4ED8', color:'white', fontWeight:600, fontFamily:'inherit' }}>
-            {saved ? '✓ Saved!' : saving ? 'Saving…' : 'Save'}
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        {/* View toggle */}
+        <div style={{ display:'flex', gap:4, background:'#F1F5F9', borderRadius:8, padding:3 }}>
+          {[['matrix','⊞ Matrix'],['cards','▦ Cards']].map(([k,l]) => (
+            <button key={k} onClick={() => setView(k)} style={{ padding:'5px 12px', borderRadius:6, fontSize:12, cursor:'pointer', border:'none', background: view===k ? 'white' : 'transparent', color: view===k ? '#1D4ED8' : '#64748B', fontWeight: view===k ? 700 : 400, fontFamily:'inherit', boxShadow: view===k ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:6, marginLeft:'auto' }}>
+          <button onClick={selectAll} style={{ padding:'7px 12px', borderRadius:8, fontSize:12, cursor:'pointer', border:'1px solid #E2E8F0', background:'white', fontFamily:'inherit' }}>✓ All</button>
+          <button onClick={clearAll}  style={{ padding:'7px 12px', borderRadius:8, fontSize:12, cursor:'pointer', border:'1px solid #E2E8F0', background:'white', fontFamily:'inherit' }}>✗ Clear</button>
+          <button onClick={savePerms} disabled={saving} style={{ padding:'7px 20px', borderRadius:8, fontSize:13, cursor:'pointer', border:'none', background: saved ? '#16A34A' : saving ? '#93C5FD' : '#1D4ED8', color:'white', fontWeight:700, fontFamily:'inherit' }}>
+            {saved ? '✓ Saved!' : saving ? 'Saving…' : '💾 Save'}
           </button>
         </div>
       </div>
-      {loading ? <Spinner /> : (
-        <div className="adm-grid-3" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
-          {ALL_MODULES.map(m => (
-            <div key={m.key} onClick={() => toggle(m.key)} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', borderRadius:10, cursor:'pointer', border: perms[m.key] ? '1.5px solid #1D4ED8' : '1px solid #E2E8F0', background: perms[m.key] ? '#EFF6FF' : 'white', transition:'all .12s' }}>
-              <div style={{ width:18, height:18, borderRadius:4, flexShrink:0, background: perms[m.key] ? '#1D4ED8' : 'white', border: perms[m.key] ? 'none' : '1.5px solid #CBD5E1', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {perms[m.key] && <span style={{ color:'white', fontSize:12, fontWeight:700 }}>✓</span>}
+
+      {loading ? <Spinner /> : view === 'matrix' ? (
+
+        /* ── MATRIX VIEW ── */
+        <div style={{ background:'white', borderRadius:12, border:'1px solid #E2E8F0', overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
+          <div className="adm-table-wrap">
+            <table className="perm-matrix" style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+              <thead>
+                <tr style={{ borderBottom:'2px solid #E2E8F0' }}>
+                  <th style={{ padding:'12px 16px', textAlign:'left', color:'#64748B', fontWeight:600, fontSize:11, textTransform:'uppercase', letterSpacing:'.06em', minWidth:160 }}>
+                    Module
+                  </th>
+                  {CRUD_KEYS.map(k => (
+                    <th key={k} style={{ textAlign:'center', minWidth:80 }}>
+                      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                        <button
+                          onClick={() => toggleCol(k)}
+                          title={`Toggle all ${k}`}
+                          style={{
+                            padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700,
+                            cursor:'pointer', border:`1.5px solid ${CRUD_COLORS[k]}33`,
+                            background: CRUD_BG[k], color: CRUD_COLORS[k], fontFamily:'inherit',
+                          }}
+                        >
+                          {CRUD_LABELS[k]}
+                        </button>
+                        <span style={{ fontSize:10, color:'#94A3B8' }}>{colStats(k)}</span>
+                      </div>
+                    </th>
+                  ))}
+                  <th style={{ textAlign:'center', minWidth:80, color:'#64748B', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'.06em' }}>All</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ALL_MODULES.map((m, i) => {
+                  const cur = perms[m.key] || emptyCrud()
+                  const allOn = CRUD_KEYS.every(c => cur[c])
+                  const anyOn = CRUD_KEYS.some(c => cur[c])
+                  return (
+                    <tr key={m.key} style={{ borderBottom: i < ALL_MODULES.length-1 ? '1px solid #F1F5F9' : 'none', background: anyOn ? '#FAFCFF' : 'white' }}>
+                      <td style={{ padding:'10px 16px' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          <span style={{ fontSize:16 }}>{m.icon}</span>
+                          <div>
+                            <div style={{ fontWeight:600, fontSize:13, color:'#0F172A' }}>{m.label}</div>
+                            <CrudSummaryChips crud={cur} />
+                          </div>
+                        </div>
+                      </td>
+                      {CRUD_KEYS.map(k => (
+                        <td key={k} style={{ textAlign:'center', padding:'10px 8px' }}>
+                          <CrudToggle active={cur[k]} type={k} onClick={() => toggle(m.key, k)} />
+                        </td>
+                      ))}
+                      <td style={{ textAlign:'center', padding:'10px 8px' }}>
+                        <button
+                          onClick={() => toggleRow(m.key)}
+                          title={allOn ? 'Clear all' : 'Grant all'}
+                          style={{
+                            width:30, height:30, borderRadius:7, border:'none', cursor:'pointer',
+                            background: allOn ? '#1e3a5f' : '#F1F5F9',
+                            color: allOn ? 'white' : '#94A3B8',
+                            fontSize:14, fontWeight:800, fontFamily:'inherit',
+                            margin: '0 auto', display:'flex', alignItems:'center', justifyContent:'center',
+                          }}
+                        >
+                          {allOn ? '✓' : '·'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      ) : (
+
+        /* ── CARDS VIEW ── */
+        <div className="adm-grid-3" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+          {ALL_MODULES.map(m => {
+            const cur = perms[m.key] || emptyCrud()
+            const anyOn = CRUD_KEYS.some(c => cur[c])
+            return (
+              <div key={m.key} style={{ background:'white', border:`1.5px solid ${anyOn ? '#BFDBFE' : '#E2E8F0'}`, borderRadius:12, padding:'14px', transition:'all .12s' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                  <span style={{ fontSize:18 }}>{m.icon}</span>
+                  <span style={{ fontWeight:700, fontSize:13, color:'#0F172A' }}>{m.label}</span>
+                  <button onClick={() => toggleRow(m.key)} style={{ marginLeft:'auto', fontSize:10, padding:'2px 8px', borderRadius:5, border:'none', cursor:'pointer', background: CRUD_KEYS.every(c=>cur[c]) ? '#1e3a5f' : '#F1F5F9', color: CRUD_KEYS.every(c=>cur[c]) ? 'white' : '#64748B', fontWeight:700, fontFamily:'inherit' }}>
+                    {CRUD_KEYS.every(c=>cur[c]) ? 'All ✓' : 'All'}
+                  </button>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5 }}>
+                  {CRUD_KEYS.map(k => (
+                    <button key={k} onClick={() => toggle(m.key, k)} style={{
+                      padding:'6px 8px', borderRadius:7, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
+                      border: `1.5px solid ${cur[k] ? CRUD_COLORS[k] : '#E2E8F0'}`,
+                      background: cur[k] ? CRUD_BG[k] : 'white',
+                      color: cur[k] ? CRUD_COLORS[k] : '#94A3B8',
+                      textAlign:'left',
+                    }}>
+                      {CRUD_LABELS[k]}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <span style={{ fontSize:13, fontWeight: perms[m.key] ? 600 : 400, color: perms[m.key] ? '#1D4ED8' : '#374151' }}>
-                {m.icon} {m.label}
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
+
+      {/* Legend */}
+      <div style={{ marginTop:16, display:'flex', gap:16, flexWrap:'wrap', padding:'10px 14px', background:'white', borderRadius:10, border:'1px solid #E2E8F0' }}>
+        <span style={{ fontSize:12, color:'#94A3B8', fontWeight:600 }}>Legend:</span>
+        {CRUD_KEYS.map(k => (
+          <span key={k} style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, color: CRUD_COLORS[k], fontWeight:600 }}>
+            <span style={{ width:12, height:12, borderRadius:3, background: CRUD_BG[k], border:`1px solid ${CRUD_COLORS[k]}` }} />
+            {CRUD_LABELS[k]}
+          </span>
+        ))}
+        <span style={{ marginLeft:'auto', fontSize:11, color:'#94A3B8' }}>Click column headers to toggle entire column · Click row "All" to toggle entire row</span>
+      </div>
     </div>
   )
 }
 
 // ─────────────────────────────────────────────
-//  USER OVERRIDES
+//  USER OVERRIDES — CRUD
 // ─────────────────────────────────────────────
 function OverridesSection({ currentUser }) {
   const [users,     setUsers]     = useState([])
@@ -541,41 +785,68 @@ function OverridesSection({ currentUser }) {
   const loadUser = useCallback(async (user) => {
     setSelUser(user); setLoading(true)
     const [{ data: rp }, { data: ov }] = await Promise.all([
-      supabase.from('role_permissions').select('module_key,allowed').eq('role', user.role),
-      supabase.from('user_module_overrides').select('module_key,allowed,reason').eq('user_id', user.id),
+      supabase.from('role_permissions').select('module_key,can_read,can_add,can_edit,can_delete,allowed').eq('role', user.role),
+      supabase.from('user_module_overrides').select('module_key,can_read,can_add,can_edit,can_delete,allowed,reason').eq('user_id', user.id),
     ])
-    const rmap = {}; (rp||[]).forEach(p => { rmap[p.module_key] = p.allowed })
-    const omap = {}; (ov||[]).forEach(o => { omap[o.module_key] = { allowed: o.allowed, reason: o.reason } })
+    const rmap = {}
+    ;(rp||[]).forEach(p => {
+      rmap[p.module_key] = {
+        read:   p.can_read   ?? p.allowed ?? false,
+        add:    p.can_add    ?? false,
+        edit:   p.can_edit   ?? false,
+        delete: p.can_delete ?? false,
+      }
+    })
+    const omap = {}
+    ;(ov||[]).forEach(o => {
+      omap[o.module_key] = {
+        read:   o.can_read   ?? o.allowed ?? false,
+        add:    o.can_add    ?? false,
+        edit:   o.can_edit   ?? false,
+        delete: o.can_delete ?? false,
+        reason: o.reason,
+      }
+    })
     setRolePerms(rmap); setOverrides(omap); setLoading(false)
   }, [])
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
-  const applyOverride = async (moduleKey, allowed) => {
+  const applyOverrideCrud = async (moduleKey, crud) => {
     if (!selUser) return
     setSaving(moduleKey)
-    const payload = { user_id: selUser.id, module_key: moduleKey, allowed, reason: reason.trim() || null, set_by: currentUser?.username ?? 'Admin' }
+    const payload = {
+      user_id:    selUser.id,
+      module_key: moduleKey,
+      can_read:   crud.read,
+      can_add:    crud.add,
+      can_edit:   crud.edit,
+      can_delete: crud.delete,
+      allowed:    crud.read,
+      reason:     reason.trim() || null,
+      set_by:     currentUser?.username ?? 'Admin',
+    }
     const { error } = await supabase.from('user_module_overrides').upsert(payload, { onConflict: 'user_id,module_key' })
     if (error) { showToast('❌ Error: ' + error.message); setSaving(null); return }
-    setOverrides(prev => ({ ...prev, [moduleKey]: { allowed, reason: reason.trim() || null } }))
-    await logAudit(`Override: ${selUser.name} → ${moduleKey} = ${allowed ? 'GRANTED' : 'DENIED'}`, currentUser)
-    showToast(`${allowed ? '🔓 Granted' : '🔒 Denied'} ${moduleKey} for ${selUser.name}`)
+    setOverrides(prev => ({ ...prev, [moduleKey]: { ...crud, reason: reason.trim() || null } }))
+    await logAudit(`Override CRUD: ${selUser.name} → ${moduleKey}`, currentUser)
+    showToast(`✅ Override saved for ${moduleKey}`)
     setSaving(null)
   }
 
   const removeOverride = async (moduleKey) => {
     if (!selUser) return
     setSaving(moduleKey)
-    const { error } = await supabase.from('user_module_overrides').delete().eq('user_id', selUser.id).eq('module_key', moduleKey)
-    if (error) { showToast('❌ Error: ' + error.message); setSaving(null); return }
+    await supabase.from('user_module_overrides').delete().eq('user_id', selUser.id).eq('module_key', moduleKey)
     setOverrides(prev => { const n = { ...prev }; delete n[moduleKey]; return n })
     showToast(`↩️ Override removed for ${moduleKey}`)
     setSaving(null)
   }
 
-  const effectiveAccess = key => {
-    if (key in overrides) return { source: 'override', allowed: overrides[key].allowed }
-    return { source: 'role', allowed: rolePerms[key] ?? false }
+  const toggleOverrideCrud = (moduleKey, crudKey) => {
+    const base = overrides[moduleKey] || rolePerms[moduleKey] || emptyCrud()
+    const next = { ...base, [crudKey]: !base[crudKey] }
+    applyOverrideCrud(moduleKey, next)
   }
 
   return (
@@ -592,12 +863,13 @@ function OverridesSection({ currentUser }) {
           ))}
         </div>
       </div>
+
       <div style={{ flex:1, minWidth:0 }}>
         {!selUser ? (
           <div style={{ padding:48, textAlign:'center', color:'#94A3B8', border:'2px dashed #E2E8F0', borderRadius:14 }}>
             <div style={{ fontSize:36, marginBottom:10 }}>⚡</div>
             <div style={{ fontWeight:600, fontSize:15, color:'#64748B' }}>Select a user to manage overrides</div>
-            <div style={{ fontSize:13, marginTop:6 }}>Overrides bypass role permissions immediately</div>
+            <div style={{ fontSize:13, marginTop:6 }}>CRUD overrides bypass role permissions</div>
           </div>
         ) : loading ? <Spinner /> : (
           <>
@@ -615,29 +887,66 @@ function OverridesSection({ currentUser }) {
               <label style={{ fontSize:12, fontWeight:600, color:'#374151', display:'block', marginBottom:4 }}>Reason for override <span style={{ color:'#EF4444', fontSize:11 }}>* required</span></label>
               <input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Temporary access for audit period" style={{ width:'100%', padding:'8px 12px', borderRadius:8, fontSize:13, border:'1px solid #E2E8F0', fontFamily:'inherit' }} />
             </div>
-            <div className="adm-grid-2" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
-              {ALL_MODULES.map(m => {
-                const eff = effectiveAccess(m.key)
-                const hasOverride = m.key in overrides
-                const isSaving = saving === m.key
-                return (
-                  <div key={m.key} style={{ padding:'12px 14px', borderRadius:10, border: hasOverride ? `2px solid ${overrides[m.key].allowed ? '#16A34A' : '#DC2626'}` : '1px solid #E2E8F0', background: hasOverride ? (overrides[m.key].allowed ? '#F0FDF4' : '#FEF2F2') : 'white', position:'relative', transition:'all .12s' }}>
-                    {hasOverride && <span style={{ position:'absolute', top:6, right:8, fontSize:10, fontWeight:700, color: overrides[m.key].allowed ? '#16A34A' : '#DC2626' }}>{overrides[m.key].allowed ? '🔓' : '🔒'}</span>}
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                      <span style={{ fontSize:18 }}>{m.icon}</span>
-                      <div>
-                        <div style={{ fontWeight:600, fontSize:13 }}>{m.label}</div>
-                        <div style={{ fontSize:11, color:'#94A3B8' }}>Default: <span style={{ color: rolePerms[m.key] ? '#16A34A' : '#94A3B8', fontWeight:600 }}>{rolePerms[m.key] ? 'Allowed' : 'Denied'}</span></div>
-                      </div>
-                    </div>
-                    <div style={{ display:'flex', gap:5 }}>
-                      <button onClick={() => applyOverride(m.key, true)} disabled={isSaving} style={{ flex:1, padding:'5px 0', borderRadius:6, fontSize:11, fontWeight:600, cursor:'pointer', border:'none', background: eff.source==='override' && eff.allowed ? '#16A34A' : '#F1F5F9', color: eff.source==='override' && eff.allowed ? 'white' : '#374151', fontFamily:'inherit' }}>🔓 Grant</button>
-                      <button onClick={() => applyOverride(m.key, false)} disabled={isSaving} style={{ flex:1, padding:'5px 0', borderRadius:6, fontSize:11, fontWeight:600, cursor:'pointer', border:'none', background: eff.source==='override' && !eff.allowed ? '#DC2626' : '#F1F5F9', color: eff.source==='override' && !eff.allowed ? 'white' : '#374151', fontFamily:'inherit' }}>🔒 Deny</button>
-                      {hasOverride && <button onClick={() => removeOverride(m.key)} disabled={isSaving} style={{ padding:'5px 10px', borderRadius:6, fontSize:11, cursor:'pointer', border:'1px solid #E2E8F0', background:'white', color:'#64748B', fontFamily:'inherit' }}>↩️</button>}
-                    </div>
-                  </div>
-                )
-              })}
+
+            {/* Override CRUD table */}
+            <div style={{ background:'white', border:'1px solid #E2E8F0', borderRadius:12, overflow:'hidden' }}>
+              <div className="adm-table-wrap">
+                <table className="perm-matrix" style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                  <thead>
+                    <tr style={{ borderBottom:'2px solid #E2E8F0', background:'#F8FAFC' }}>
+                      <th style={{ padding:'10px 14px', textAlign:'left', color:'#64748B', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'.06em', minWidth:160 }}>Module</th>
+                      <th style={{ textAlign:'center', color:'#64748B', fontSize:11, fontWeight:600, textTransform:'uppercase', minWidth:80 }}>Role Default</th>
+                      {CRUD_KEYS.map(k => (
+                        <th key={k} style={{ textAlign:'center', minWidth:70, padding:'10px 6px' }}>
+                          <span style={{ fontSize:11, fontWeight:700, color: CRUD_COLORS[k] }}>{k.toUpperCase()}</span>
+                        </th>
+                      ))}
+                      <th style={{ textAlign:'center', color:'#64748B', fontSize:11, fontWeight:600, textTransform:'uppercase', minWidth:70 }}>Reset</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ALL_MODULES.map((m, i) => {
+                      const rp = rolePerms[m.key] || emptyCrud()
+                      const ov = overrides[m.key]
+                      const cur = ov ? { read:ov.read, add:ov.add, edit:ov.edit, delete:ov.delete } : rp
+                      const hasOverride = !!ov
+                      const isSaving = saving === m.key
+                      return (
+                        <tr key={m.key} style={{ borderBottom: i < ALL_MODULES.length-1 ? '1px solid #F1F5F9' : 'none', background: hasOverride ? '#FFFBEB' : 'white' }}>
+                          <td style={{ padding:'10px 14px' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                              <span>{m.icon}</span>
+                              <div>
+                                <div style={{ fontWeight:600, fontSize:12, color:'#0F172A' }}>{m.label}</div>
+                                {hasOverride && <span style={{ fontSize:10, color:'#D97706', fontWeight:700 }}>⚡ overridden</span>}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ textAlign:'center', padding:'10px 6px' }}>
+                            <CrudSummaryChips crud={rp} />
+                          </td>
+                          {CRUD_KEYS.map(k => (
+                            <td key={k} style={{ textAlign:'center', padding:'10px 4px' }}>
+                              <CrudToggle
+                                active={cur[k]}
+                                type={k}
+                                onClick={() => !isSaving && toggleOverrideCrud(m.key, k)}
+                              />
+                            </td>
+                          ))}
+                          <td style={{ textAlign:'center', padding:'10px 6px' }}>
+                            {hasOverride ? (
+                              <button onClick={() => !isSaving && removeOverride(m.key)} disabled={isSaving} style={{ padding:'4px 10px', borderRadius:6, fontSize:11, cursor:'pointer', border:'1px solid #E2E8F0', background:'white', color:'#64748B', fontFamily:'inherit' }}>
+                                {isSaving ? '…' : '↩️'}
+                              </button>
+                            ) : <span style={{ color:'#E2E8F0' }}>—</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </>
         )}
@@ -883,7 +1192,7 @@ function AuditSection() {
 }
 
 // ─────────────────────────────────────────────
-//  ROOT — HORIZONTAL TAB LAYOUT
+//  ROOT
 // ─────────────────────────────────────────────
 export default function AdminPage({ currentUser, onLogout }) {
   const [activeTab,     setActiveTab]     = useState('users')
@@ -908,37 +1217,23 @@ export default function AdminPage({ currentUser, onLogout }) {
   return (
     <div style={{ minHeight:'100vh', background:'#F1F5F9', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
       <style>{GLOBAL_CSS}</style>
-
       {logoutConfirm && (
-        <ConfirmModal
-          title="Log out?"
-          message="Are you sure you want to log out of the admin panel?"
-          onConfirm={() => { setLogoutConfirm(false); onLogout?.() }}
-          onCancel={() => setLogoutConfirm(false)}
-        />
+        <ConfirmModal title="Log out?" message="Are you sure you want to log out?" onConfirm={() => { setLogoutConfirm(false); onLogout?.() }} onCancel={() => setLogoutConfirm(false)} />
       )}
 
-      {/* ── TOP HEADER ── */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0f2847 0%, #1e3a5f 60%, #1a3355 100%)',
-        boxShadow: '0 2px 20px rgba(15,40,71,0.4)',
-      }}>
-        {/* Brand + user row */}
+      <div style={{ background:'linear-gradient(135deg, #0f2847 0%, #1e3a5f 60%, #1a3355 100%)', boxShadow:'0 2px 20px rgba(15,40,71,0.4)' }}>
         <div style={{ padding: isMobile ? '14px 16px' : '16px 28px', display:'flex', alignItems:'center', gap:14 }}>
-          {/* Logo */}
           <div style={{ width:40, height:40, borderRadius:11, background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.18)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>🔐</div>
           <div>
             <div style={{ fontSize:17, fontWeight:800, color:'white', letterSpacing:'-.02em' }}>Admin Panel</div>
             <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:1 }}>GNSI Portal · Khangabok, Manipur</div>
           </div>
-
-          {/* User info + logout */}
           <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 12px', background:'rgba(255,255,255,0.1)', borderRadius:9, border:'1px solid rgba(255,255,255,0.15)' }}>
               <div style={{ width:7, height:7, borderRadius:'50%', background:'#4ADE80', boxShadow:'0 0 0 2px rgba(74,222,128,0.3)', flexShrink:0 }} />
               <span style={{ fontSize:13, color:'rgba(255,255,255,0.9)', fontWeight:600 }}>{currentUser?.name ?? 'Admin'}</span>
             </div>
-            <button onClick={() => setLogoutConfirm(true)} style={{ padding:'7px 14px', borderRadius:9, border:'1px solid rgba(255,255,255,0.2)', background:'rgba(255,255,255,0.08)', cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.75)', fontFamily:'inherit', fontWeight:500, transition:'all .15s' }}
+            <button onClick={() => setLogoutConfirm(true)} style={{ padding:'7px 14px', borderRadius:9, border:'1px solid rgba(255,255,255,0.2)', background:'rgba(255,255,255,0.08)', cursor:'pointer', fontSize:13, color:'rgba(255,255,255,0.75)', fontFamily:'inherit', fontWeight:500 }}
               onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.15)'; e.currentTarget.style.color='white' }}
               onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.08)'; e.currentTarget.style.color='rgba(255,255,255,0.75)' }}>
               🚪 {isMobile ? '' : 'Logout'}
@@ -946,51 +1241,34 @@ export default function AdminPage({ currentUser, onLogout }) {
           </div>
         </div>
 
-        {/* ── HORIZONTAL TABS ── */}
         <div className="adm-tab-scroll" style={{ paddingLeft: isMobile ? 8 : 20, display:'flex', gap:2, overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
           {NAV.map(tab => {
             const isActive = activeTab === tab.id
             return (
-              <button
-                key={tab.id}
-                className="adm-tab-btn"
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  display:'flex', alignItems:'center', gap:7,
-                  padding: isMobile ? '10px 14px' : '11px 20px',
-                  border:'none', cursor:'pointer', fontFamily:'inherit',
-                  fontSize: isMobile ? 12 : 13, fontWeight: isActive ? 700 : 500,
-                  whiteSpace:'nowrap', flexShrink:0,
-                  background: isActive ? 'rgba(255,255,255,0.15)' : 'transparent',
-                  color: isActive ? 'white' : 'rgba(255,255,255,0.55)',
-                  borderBottom: isActive ? '2.5px solid white' : '2.5px solid transparent',
-                  borderRadius:'0',
-                  transition:'all .15s',
-                  position:'relative',
-                }}>
+              <button key={tab.id} className="adm-tab-btn" onClick={() => setActiveTab(tab.id)} style={{
+                display:'flex', alignItems:'center', gap:7, padding: isMobile ? '10px 14px' : '11px 20px',
+                border:'none', cursor:'pointer', fontFamily:'inherit', fontSize: isMobile ? 12 : 13,
+                fontWeight: isActive ? 700 : 500, whiteSpace:'nowrap', flexShrink:0,
+                background: isActive ? 'rgba(255,255,255,0.15)' : 'transparent',
+                color: isActive ? 'white' : 'rgba(255,255,255,0.55)',
+                borderBottom: isActive ? '2.5px solid white' : '2.5px solid transparent',
+                borderRadius:'0', transition:'all .15s', position:'relative',
+              }}>
                 <span style={{ fontSize: isMobile ? 14 : 15 }}>{tab.icon}</span>
                 {!isMobile && <span>{tab.label}</span>}
                 {isMobile && <span>{tab.label.split(' ')[0]}</span>}
-                {tab.badge && (
-                  <span style={{ fontSize:9, fontWeight:800, background:'#FBBF24', color:'#78350F', borderRadius:4, padding:'1px 5px', letterSpacing:'.04em' }}>
-                    {tab.badge}
-                  </span>
-                )}
+                {tab.badge && <span style={{ fontSize:9, fontWeight:800, background:'#FBBF24', color:'#78350F', borderRadius:4, padding:'1px 5px', letterSpacing:'.04em' }}>{tab.badge}</span>}
               </button>
             )
           })}
         </div>
       </div>
 
-      {/* ── PAGE CONTENT ── */}
-      <div className="adm-main-pad" style={{ padding: isMobile ? '16px' : '28px', maxWidth:1200, margin:'0 auto' }}>
-        {/* Section title */}
+      <div className="adm-main-pad" style={{ padding: isMobile ? '16px' : '28px', maxWidth:1300, margin:'0 auto' }}>
         <div style={{ marginBottom:20, display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:20 }}>{activeNav?.icon}</span>
-          <h2 style={{ margin:0, fontSize:18, fontWeight:800, color:'#0F172A', letterSpacing:'-.02em' }}>{activeNav?.label.replace(' (NEW)','')}</h2>
+          <h2 style={{ margin:0, fontSize:18, fontWeight:800, color:'#0F172A', letterSpacing:'-.02em' }}>{activeNav?.label}</h2>
         </div>
-
-        {/* Section content */}
         <div style={{ animation:'adm-fadein .18s ease' }} key={activeTab}>
           {activeTab==='users'       && <UsersSection         currentUser={currentUser} />}
           {activeTab==='permissions' && <PermissionsSection    currentUser={currentUser} />}
