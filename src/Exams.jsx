@@ -277,7 +277,7 @@ function TabNav({ active, onSelect, perms, isAdmin }) {
     const p = perms || {}
     if (SETUP_TABS.includes(tabId))  return p.edit === true
     if (WRITE_TABS.includes(tabId))  return p.add === true || p.edit === true
-    if (DOC_TABS.includes(tabId))    return p.read === true
+    if (DOC_TABS.includes(tabId))    return false  // Admin only (isAdmin check above handles it)
     return p.read === true  // all result tabs need read
   }
 
