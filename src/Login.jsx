@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 
-// ── Tiny CSS-in-JS keyframe injector ──────────────────────────────────────────
 const injectStyles = () => {
   if (document.getElementById('gnsi-login-styles')) return
   const style = document.createElement('style')
@@ -18,20 +17,17 @@ const injectStyles = () => {
       60%      { transform: translateX(-5px); }
       80%      { transform: translateX(5px); }
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .gnsi-card          { animation: fadeInDown .5s cubic-bezier(.22,1,.36,1) both; }
-    .gnsi-card.shake    { animation: shake .4s ease; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .gnsi-card       { animation: fadeInDown .5s cubic-bezier(.22,1,.36,1) both; }
+    .gnsi-card.shake { animation: shake .4s ease; }
     .gnsi-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
-    .gnsi-btn           { transition: filter .2s, transform .2s, opacity .2s; }
-    .gnsi-input:focus   { border-color: #1e3a5f !important; box-shadow: 0 0 0 3px rgba(30,58,95,.15); }
-    .gnsi-input         { transition: border-color .2s, box-shadow .2s; }
+    .gnsi-btn   { transition: filter .2s, transform .2s, opacity .2s; }
+    .gnsi-input:focus { border-color: #1e3a5f !important; box-shadow: 0 0 0 3px rgba(30,58,95,.15); }
+    .gnsi-input { transition: border-color .2s, box-shadow .2s; }
   `
   document.head.appendChild(style)
 }
 
-// ── Eye icons ──────────────────────────────────────────────────────────────────
 const EyeOpen = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -39,11 +35,12 @@ const EyeOpen = () => (
 )
 const EyeClosed = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
   </svg>
 )
 
-// ── Spinner ────────────────────────────────────────────────────────────────────
 const Spinner = () => (
   <span style={{
     display: 'inline-block', width: 14, height: 14, marginRight: 8, verticalAlign: 'middle',
@@ -51,6 +48,12 @@ const Spinner = () => (
     borderRadius: '50%', animation: 'spin .7s linear infinite',
   }}/>
 )
+
+// ── SHA-256 helper ─────────────────────────────────────────────────────────────
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
+}
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function Login({ onLogin }) {
@@ -64,16 +67,13 @@ export default function Login({ onLogin }) {
 
   const ADMIN_USER = import.meta.env.VITE_ADMIN_USERNAME
 
-  // Inject animations once
   useEffect(() => { injectStyles() }, [])
 
-  // Restore remembered username
   useEffect(() => {
     const saved = localStorage.getItem('gnsi_remembered_user')
     if (saved) { setUsername(saved); setRememberMe(true) }
   }, [])
 
-  // ── Shake + show error helper ─────────────────────────────────────────────
   const showError = (msg) => {
     setError(msg)
     setShakeCard(true)
@@ -88,11 +88,10 @@ export default function Login({ onLogin }) {
     }
     setLoading(true)
 
-    // Remember me
     if (rememberMe) localStorage.setItem('gnsi_remembered_user', username.trim())
     else            localStorage.removeItem('gnsi_remembered_user')
 
-    // Admin path
+    // ── Admin path ──────────────────────────────────────────────────────────
     if (username.trim() === ADMIN_USER) {
       const { data, error: dbErr } = await supabase
         .from('admin_credentials')
@@ -110,18 +109,20 @@ export default function Login({ onLogin }) {
         ? password === data.password_hash
         : password === ADMIN_PASS
 
-      if (!ok) { showError('Invalid password.'); setLoading(false); return }
+      if (!ok) { showError('Invalid username or password.'); setLoading(false); return }
 
       onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin' })
       setLoading(false); return
     }
 
-    // Staff / Teacher path
+    // ── Staff / Teacher path — SHA-256 hash before DB compare ───────────────
+    const hashedPassword = await sha256(password.trim())
+
     const { data, error: dbErr } = await supabase
       .from('portal_users')
       .select('id, name, username, role, active')
-      .eq('username', username.trim())
-      .eq('password_hash', password.trim())
+      .eq('username', username.trim().toLowerCase())
+      .eq('password_hash', hashedPassword)
       .eq('active', true)
       .single()
 
@@ -129,12 +130,11 @@ export default function Login({ onLogin }) {
     else                 onLogin(data)
 
     setLoading(false)
-  }
+  }  // ← end of handleLogin
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   const cardClass = `gnsi-card${shakeCard ? ' shake' : ''}`
 
-  // ── LOGIN PANEL ───────────────────────────────────────────────────────────
   return (
     <PageWrapper>
       <div className={cardClass} style={cardStyle}>
@@ -155,7 +155,7 @@ export default function Login({ onLogin }) {
           />
         </div>
 
-        {/* Password + show/hide */}
+        {/* Password */}
         <div style={{ marginBottom: 8 }}>
           <FieldLabel>Password</FieldLabel>
           <div style={{ position: 'relative' }}>
@@ -197,15 +197,12 @@ export default function Login({ onLogin }) {
           </label>
         </div>
 
-        {/* Contact admin hint */}
         <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', margin: '0 0 14px' }}>
           🔒 Forgot your password? Contact your administrator.
         </p>
 
-        {/* Error */}
         {error && <ErrorBox>{error}</ErrorBox>}
 
-        {/* Sign in button */}
         <button
           className="gnsi-btn"
           onClick={handleLogin}
@@ -221,14 +218,13 @@ export default function Login({ onLogin }) {
   )
 }
 
-// ── Shared sub-components ──────────────────────────────────────────────────────
+// ── Sub-components ─────────────────────────────────────────────────────────────
 const PageWrapper = ({ children }) => (
   <div style={{
     minHeight: '100vh',
     background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #164e8e 100%)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontFamily: "'Segoe UI', system-ui, sans-serif",
-    padding: 16,
+    fontFamily: "'Segoe UI', system-ui, sans-serif", padding: 16,
   }}>
     {children}
   </div>
@@ -251,7 +247,8 @@ const FieldLabel = ({ children }) => (
 const ErrorBox = ({ children }) => (
   <div style={{
     background: '#fee2e2', color: '#dc2626', fontSize: 12, borderRadius: 8,
-    padding: '9px 12px', marginBottom: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
+    padding: '9px 12px', marginBottom: 14, fontWeight: 600,
+    display: 'flex', alignItems: 'center', gap: 6,
   }}>
     ⚠️ {children}
   </div>
@@ -263,7 +260,7 @@ const Footer = () => (
   </p>
 )
 
-// ── Shared styles ──────────────────────────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────────────────────────────────
 const cardStyle = {
   background: '#fff', borderRadius: 20, padding: '36px 32px',
   width: '100%', maxWidth: 380, boxShadow: '0 28px 64px rgba(0,0,0,.4)',
@@ -278,5 +275,6 @@ const inputStyle = {
 const primaryBtnStyle = {
   width: '100%', background: 'linear-gradient(135deg, #1e3a5f, #164e8e)',
   color: '#fff', border: 'none', borderRadius: 8, padding: '12px',
-  fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  fontSize: 14, fontWeight: 700,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
 }
