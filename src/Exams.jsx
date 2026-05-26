@@ -290,6 +290,26 @@ function TabNav({ active, onSelect, perms, isAdmin }) {
   const row2 = filteredGroups.filter(g => ['Schedule','Setup'].includes(g.groupLabel))
   // ... rest of TabNav unchanged, just use filteredGroups instead of TAB_GROUPS slices
 
+  const Divider = () => (
+    <div style={{ width: 1, height: 36, background: "#E5E7EB", margin: "0 6px", flexShrink: 0 }} />
+  );
+
+  const renderGroup = (grp) => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", padding: "0 4px" }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: grp.color, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 3 }}>
+        {grp.groupLabel}
+      </div>
+      <div style={{ display: "flex", gap: 2 }}>
+        {grp.tabs.map(t => (
+          <button key={t.id} onClick={() => onSelect(t.id)} title={t.tip}
+            style={{ ...css.btn, padding: "5px 10px", fontSize: 12, background: active === t.id ? "#1a3c2e" : "transparent", color: active === t.id ? "white" : "#374151", border: active === t.id ? "none" : "1px solid transparent", borderRadius: 7 }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   const renderRow = (groups) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, overflowX: "auto", scrollbarWidth: "none" }}>
       {groups.map((grp, i) => (
