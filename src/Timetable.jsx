@@ -533,7 +533,7 @@ function MonitorPanel({ staffList, entries }) {
 // ══════════════════════════════════════════════════════════════
 //  WEEKLY VIEW
 // ══════════════════════════════════════════════════════════════
-function WeeklyView({ entries, staffList, weekStart, showToast, onSubstituteSaved }) {
+function WeeklyView({ entries, staffList, weekStart, showToast, onSubstituteSaved, isAdmin }) {
   const [substitutions, setSubstitutions] = useState([])
   const [subModal, setSubModal] = useState(null) // { entry, date }
   const weekDates = getWeekDates(weekStart)
@@ -623,7 +623,7 @@ function WeeklyView({ entries, staffList, weekStart, showToast, onSubstituteSave
                                   const sub = getSub(date, e.class_name, e.period_name)
                                   return (
                                     <div key={e.id} style={{ background:sub?T.greenLt:bs.bg, border:`1px solid ${sub?T.green:bs.border}`, borderRadius:8, padding:'7px 9px', cursor:'pointer', marginBottom:2 }}
-                                      onClick={() => setSubModal({ entry:e, date })}>
+                                      onClick={() => isAdmin && setSubModal({ entry:e, date })}>
                                       <div style={{ fontWeight:700, color:sub?T.green:bs.text, fontSize:12, marginBottom:2 }}>{e.subject_name}</div>
                                       {sub ? (
                                         <div style={{ fontSize:11 }}>
@@ -635,7 +635,7 @@ function WeeklyView({ entries, staffList, weekStart, showToast, onSubstituteSave
                                         e.teacher_name && <div style={{ color:T.muted, fontSize:11 }}>👤 {e.teacher_name}</div>
                                       )}
                                       {e.room_name && <div style={{ color:T.muted, fontSize:10 }}>📍 {e.room_name}</div>}
-                                      <div style={{ fontSize:9, color:T.cyan, marginTop:3, opacity:.7 }}>click to substitute</div>
+                                      {isAdmin && <div style={{ fontSize:9, color:T.cyan, marginTop:3, opacity:.7 }}>click to substitute</div>}
                                     </div>
                                   )
                                 })}
@@ -878,7 +878,8 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
 // ══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════
-export default function Timetable() {
+export default function Timetable({ currentUser }) {
+  const isAdmin = currentUser?.role === 'Admin'
   const [entries,       setEntries]       = useState([])
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
@@ -997,7 +998,7 @@ export default function Timetable() {
     { id:'table',   label:'☰ Table' },
     { id:'teacher', label:'👨‍🏫 Teachers' },
     { id:'monitor', label:'📊 Monitor' },
-    { id:'admin',   label:'⚙️ Admin' },
+    ...(isAdmin ? [{ id:'admin', label:'⚙️ Admin' }] : []),
   ]
 
   return (
@@ -1058,9 +1059,9 @@ export default function Timetable() {
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             <button onClick={handleExportCSV} style={{ padding:'8px 14px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.1)', color:'white', fontWeight:600, cursor:'pointer', fontSize:12 }}>📥 CSV</button>
             <button onClick={()=>window.print()} style={{ padding:'8px 14px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.1)', color:'white', fontWeight:600, cursor:'pointer', fontSize:12 }}>🖨️ Print</button>
-            <button onClick={()=>setShowForm(f=>!f)} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:T.gold, color:T.navy, fontWeight:800, cursor:'pointer', fontSize:13 }}>
+            {isAdmin && <button onClick={()=>setShowForm(f=>!f)} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:T.gold, color:T.navy, fontWeight:800, cursor:'pointer', fontSize:13 }}>
               {showForm?'✕ Cancel':'＋ Add Entry'}
-            </button>
+            </button>}
           </div>
         </div>
       </div>
@@ -1095,7 +1096,7 @@ export default function Timetable() {
       </div>
 
       {/* ADD FORM */}
-      {showForm&&(
+      {showForm && isAdmin && (
         <div style={{ background:'white', borderRadius:14, padding:24, marginBottom:20, boxShadow:'0 4px 20px rgba(0,0,0,.08)', border:`1px solid ${T.border}` }}>
           <div style={{ fontSize:16, fontWeight:700, color:T.navy, marginBottom:18 }}>➕ New Timetable Entry</div>
           <form onSubmit={handleAdd}>
@@ -1156,7 +1157,7 @@ export default function Timetable() {
             <Sel value={dayFilter} onChange={e=>setDayFilter(e.target.value)} style={{ width:130 }}><option value="All">All Days</option>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</Sel>
             <Sel value={classFilter} onChange={e=>setClassFilter(e.target.value)} style={{ width:140 }}><option value="All">All Batches</option>{uniqueClasses.map(c=><option key={c} value={c}>{c}</option>)}</Sel>
             <Sel value={teacherFilter} onChange={e=>setTeacherFilter(e.target.value)} style={{ width:150 }}><option value="All">All Teachers</option>{uniqueTeachers.map(t=><option key={t} value={t}>{t}</option>)}</Sel>
-            {viewMode==='table'&&<button onClick={()=>{ setBulkMode(!bulkMode); setSelectedIds(new Set()) }}
+            {viewMode==='table' && isAdmin && <button onClick={()=>{ setBulkMode(!bulkMode); setSelectedIds(new Set()) }}
               style={{ padding:'8px 12px', borderRadius:8, border:`1px solid ${bulkMode?T.navy:T.border}`, background:bulkMode?T.navy:T.surface, color:bulkMode?'white':T.muted, fontWeight:600, cursor:'pointer', fontSize:12 }}>
               {bulkMode?'✓ Done':'☑ Bulk'}
             </button>}
@@ -1178,6 +1179,7 @@ export default function Timetable() {
           weekStart={weekStart}
           showToast={showToast}
           onSubstituteSaved={loadData}
+          isAdmin={isAdmin}
         />
 
       ) : viewMode==='monitor' ? (
@@ -1217,10 +1219,10 @@ export default function Timetable() {
                       </td>
                       <td style={{ padding:'8px 12px' }}><EditCell value={item.room_name||''} onSave={v=>handleFieldSave(item.id,'room_name',v)} /></td>
                       <td style={{ padding:'8px 12px', textAlign:'center' }}>
-                        <div style={{ display:'flex', gap:6, justifyContent:'center' }}>
+                        {isAdmin && <div style={{ display:'flex', gap:6, justifyContent:'center' }}>
                           <button onClick={()=>setEditingEntry(item)} style={{ ...S.btnSm('#eff6ff','#1d4ed8') }}>✏️</button>
                           <button onClick={()=>setDeleteId(item.id)} style={{ ...S.btnSm(T.redLt,T.red) }}>🗑</button>
-                        </div>
+                        </div>}
                       </td>
                     </tr>
                   )
