@@ -375,7 +375,7 @@ function OverviewSection({ courseData, isMobile }) {
 // ─────────────────────────────────────────────────────────────
 // 2. BATCHES
 // ─────────────────────────────────────────────────────────────
-function BatchesSection({ courseData, isMobile }) {
+function BatchesSection({ courseData, isMobile, isAdmin }) {
   const { batches, courses, subtypesFor, reload } = courseData;
   const [showModal,     setShowModal]     = useState(false);
   const [editing,       setEditing]       = useState(null);
@@ -510,7 +510,7 @@ function BatchesSection({ courseData, isMobile }) {
         <FilterBar items={["All", ...courses]} active={courseFilter} onSelect={setCourseFilter} colorMap={COURSE_COLORS} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <FilterBar items={sessions} active={sessionFilter} onSelect={setSessionFilter} colorMap={{ All: { color: "#7C3AED", bg: "#F5F3FF" } }} />
-          <button onClick={openAdd} style={{ ...S.btn(), flexShrink: 0, padding: "7px 14px", fontSize: 13 }}>+ Add</button>
+          {isAdmin && <button onClick={openAdd} style={{ ...S.btn(), flexShrink: 0, padding: "7px 14px", fontSize: 13 }}>+ Add</button>}
         </div>
       </div>
 
@@ -539,10 +539,10 @@ function BatchesSection({ courseData, isMobile }) {
                 {b.capacity     && <span>💺 {b.capacity}</span>}
                 {b.days?.length > 0 && <span style={{ gridColumn: "1/-1" }}>📆 {b.days.join(", ")}</span>}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              {isAdmin && <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => openEdit(b)} style={S.btn("#F3F4F6", "#374151", { padding: "6px 14px", fontSize: 12, flex: 1 })}>Edit</button>
                 <button onClick={() => del(b.id)}   style={S.btn("white", "#DC2626", { border: "1px solid #FECACA", padding: "6px 14px", fontSize: 12 })}>🗑</button>
-              </div>
+              </div>}
             </div>
           );
         })}
@@ -555,7 +555,7 @@ function BatchesSection({ courseData, isMobile }) {
 // ─────────────────────────────────────────────────────────────
 // 3. ENROLLMENTS
 // ─────────────────────────────────────────────────────────────
-function EnrollmentsSection({ courseData, isMobile }) {
+function EnrollmentsSection({ courseData, isMobile, isAdmin }) {
   const { batches, courses, subtypesFor, batchIdFor } = courseData;
   const [enrollments,  setEnrollments]  = useState([]);
   const [students,     setStudents]     = useState([]);
@@ -713,7 +713,7 @@ function EnrollmentsSection({ courseData, isMobile }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Name or GCC…" style={{ ...S.inp(), flex: 1 }} />
-          <button onClick={openAdd} style={{ ...S.btn(), flexShrink: 0, padding: "9px 14px", fontSize: 13 }}>+ Enroll</button>
+          {isAdmin && <button onClick={openAdd} style={{ ...S.btn(), flexShrink: 0, padding: "9px 14px", fontSize: 13 }}>+ Enroll</button>}
         </div>
       </div>
 
@@ -746,10 +746,10 @@ function EnrollmentsSection({ courseData, isMobile }) {
                   {e.session_year && <span>📅 {e.session_year}</span>}
                   {e.batch_id && <span style={{ marginLeft: 8 }}>📋 {batchName(e.batch_id)}</span>}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                {isAdmin && <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => openEdit(e)} style={S.btn("#F3F4F6", "#374151", { padding: "6px 14px", fontSize: 12, flex: 1 })}>Edit</button>
                   <button onClick={() => del(e.id)}   style={S.btn("white", "#DC2626", { border: "1px solid #FECACA", padding: "6px 14px", fontSize: 12 })}>✕</button>
-                </div>
+                </div>}
               </div>
             ))
           }
@@ -785,10 +785,10 @@ function EnrollmentsSection({ courseData, isMobile }) {
                       <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 20, fontWeight: 600, background: e.status === "Active" ? "#F0FDF4" : e.status === "Dropped" ? "#FEF2F2" : "#F3F4F6", color: e.status === "Active" ? "#16A34A" : e.status === "Dropped" ? "#DC2626" : "#6B7280" }}>{e.status}</span>
                     </td>
                     <td style={{ padding: "11px 14px" }}>
-                      <div style={{ display: "flex", gap: 5 }}>
+                      {isAdmin && <div style={{ display: "flex", gap: 5 }}>
                         <button onClick={() => openEdit(e)} style={S.btn("#F3F4F6", "#374151", { padding: "4px 10px", fontSize: 12 })}>Edit</button>
                         <button onClick={() => del(e.id)}   style={S.btn("white", "#DC2626", { border: "1px solid #FECACA", padding: "4px 10px", fontSize: 12 })}>✕</button>
-                      </div>
+                      </div>}
                     </td>
                   </tr>
                 ))}
@@ -805,7 +805,7 @@ function EnrollmentsSection({ courseData, isMobile }) {
 // ─────────────────────────────────────────────────────────────
 // 4. FEE STRUCTURE
 // ─────────────────────────────────────────────────────────────
-function FeesSection({ courseData, isMobile }) {
+function FeesSection({ courseData, isMobile, isAdmin }) {
   const { courses, subtypesFor } = courseData;
   const [fees,      setFees]      = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -918,9 +918,9 @@ function FeesSection({ courseData, isMobile }) {
     <div>
       {showModal && <Modal title={editing ? "Edit Fee" : "Add Fee Structure"} onClose={() => setShowModal(false)} isMobile={isMobile}>{formContent}</Modal>}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      {isAdmin && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <button onClick={openAdd} style={S.btn()}>+ Add Fee</button>
-      </div>
+      </div>}
 
       {courses.map(courseName => {
         const c      = COURSE_COLORS[courseName] || { color: "#374151", bg: "#F9FAFB", border: "#E5E7EB" };
@@ -961,10 +961,10 @@ function FeesSection({ courseData, isMobile }) {
                               </div>
                               {f.notes && <div style={{ fontSize: 11, color: "#9CA3AF", fontStyle: "italic" }}>{f.notes}</div>}
                             </div>
-                            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                            {isAdmin && <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                               <button onClick={() => openEdit(f)} style={S.btn("#F3F4F6", "#374151", { padding: "3px 8px", fontSize: 11 })}>Edit</button>
                               <button onClick={() => del(f.id)}   style={S.btn("white", "#DC2626", { border: "1px solid #FECACA", padding: "3px 8px", fontSize: 11 })}>✕</button>
-                            </div>
+                            </div>}
                           </div>
                         ))}
                       </div>
@@ -983,12 +983,13 @@ function FeesSection({ courseData, isMobile }) {
 // ─────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────
-export default function CoursePage({ currentUser }) {
+export default function CoursePage({ currentUser, perms }) {
+  const isAdmin = currentUser?.role === 'Admin'
   const { isMobile } = useBreakpoint();
   const [activeTab, setActiveTab] = useState("overview");
   const courseData = useCourseData();
 
-  const sectionProps = { courseData, isMobile };
+  const sectionProps = { courseData, isMobile, isAdmin };
 
   const sectionMap = {
     overview:    <OverviewSection    {...sectionProps} />,
