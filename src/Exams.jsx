@@ -8,7 +8,7 @@
  *  ④ Avg% column renamed to "%" for clarity
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
 import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
