@@ -266,31 +266,29 @@ function DashStatCard({ label, value, sub, color, strip }) {
 }
 
 // ─── TabNav ───────────────────────────────────────────────────────────────────
-function TabNav({ active, onSelect }) {
-  const row1 = TAB_GROUPS.slice(0, 3);
-  const row2 = TAB_GROUPS.slice(3);
-  const Divider = () => <div style={{ width: 1, background: "#E5E7EB", alignSelf: "stretch", margin: "0 12px" }} />;
+function TabNav({ active, onSelect, perms, isAdmin }) {
+  // Tabs that require specific CRUD perms to show
+  const SETUP_TABS   = ['studentsmgr','coursesubjects','examtypes','settings']
+  const WRITE_TABS   = ['entry','schedule','seatplan']
+  const DOC_TABS     = ['admitcard','reportcard','bulkreport','toppers']
 
-  const renderGroup = (grp) => (
-    <div key={grp.groupLabel} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ fontSize: 9, fontWeight: 800, color: grp.color, textTransform: "uppercase", letterSpacing: ".12em", writingMode: "vertical-rl", transform: "rotate(180deg)", padding: "4px 0", opacity: 0.85, whiteSpace: "nowrap" }}>
-        {grp.groupLabel}
-      </div>
-      <div style={{ display: "flex", gap: 5 }}>
-        {grp.tabs.map(tab => {
-          const isActive = active === tab.id;
-          return (
-            <button key={tab.id} onClick={() => onSelect(tab.id)} title={tab.tip}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "8px 13px", minWidth: 82, borderRadius: 9, border: isActive ? `1.5px solid ${grp.color}` : "1.5px solid #E5E7EB", background: isActive ? `linear-gradient(160deg,${grp.color}14 0%,${grp.color}06 100%)` : "white", boxShadow: isActive ? `0 2px 10px ${grp.color}25` : "0 1px 2px rgba(0,0,0,0.04)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", transition: "all .15s", position: "relative", overflow: "hidden" }}>
-              {isActive && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2.5, background: grp.color, borderRadius: "9px 9px 0 0" }} />}
-              <span style={{ fontSize: 16, lineHeight: 1 }}>{tab.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, color: isActive ? grp.color : "#6B7280", whiteSpace: "nowrap" }}>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+  const canShow = (tabId) => {
+    if (isAdmin) return true
+    const p = perms || {}
+    if (SETUP_TABS.includes(tabId))  return p.edit === true
+    if (WRITE_TABS.includes(tabId))  return p.add === true || p.edit === true
+    if (DOC_TABS.includes(tabId))    return p.read === true
+    return p.read === true  // all result tabs need read
+  }
+
+  const filteredGroups = TAB_GROUPS.map(g => ({
+    ...g,
+    tabs: g.tabs.filter(t => canShow(t.id))
+  })).filter(g => g.tabs.length > 0)
+
+  const row1 = filteredGroups.filter(g => ['Entry','Results','Documents'].includes(g.groupLabel))
+  const row2 = filteredGroups.filter(g => ['Schedule','Setup'].includes(g.groupLabel))
+  // ... rest of TabNav unchanged, just use filteredGroups instead of TAB_GROUPS slices
 
   const renderRow = (groups) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, overflowX: "auto", scrollbarWidth: "none" }}>
@@ -444,15 +442,17 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-        <button onClick={() => setView("list")} style={{ ...css.btn, padding: "8px 20px", background: view === "list" ? "#1a3c2e" : "#F3F4F6", color: view === "list" ? "white" : "#374151" }}>
-          📋 All Students ({students.length})
-        </button>
-        <button onClick={() => { setView("add"); setError(""); setForm(EMPTY_FORM); setSaved(false); }} style={{ ...css.btn, padding: "8px 20px", background: view === "add" ? "#1a3c2e" : "#F3F4F6", color: view === "add" ? "white" : "#374151" }}>
-          ➕ Add New Student
-        </button>
-      </div>
+  <button onClick={() => setView("list")} style={{ ...css.btn, padding: "8px 20px", background: view === "list" ? "#1a3c2e" : "#F3F4F6", color: view === "list" ? "white" : "#374151" }}>
+    📋 All Students ({students.length})
+  </button>
+  {perm.canEdit && (
+    <button onClick={() => { setView("add"); setError(""); setForm(EMPTY_FORM); setSaved(false); }} style={{ ...css.btn, padding: "8px 20px", background: view === "add" ? "#1a3c2e" : "#F3F4F6", color: view === "add" ? "white" : "#374151" }}>
+      ➕ Add New Student
+    </button>
+  )}
+</div>
 
-      {view === "add" && (
+{view === "add" && (
         <div style={{ maxWidth: 560 }}>
           <div style={{ background: "white", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", overflow: "hidden", marginBottom: 20 }}>
             <div style={{ background: "linear-gradient(135deg,#1a3c2e,#2A5C45)", padding: "18px 24px" }}>
@@ -4578,7 +4578,7 @@ export default function Exams({ currentUser, perms }) {
         </div>
       </div>
 
-      <TabNav active={tab} onSelect={setTab} />
+      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={currentUser?.role === 'Admin'} />
 
       <div style={{ padding: "24px 28px", maxWidth: 1400 }}>
         <div style={{ marginBottom: 18 }}>
