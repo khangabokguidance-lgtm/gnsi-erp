@@ -34,6 +34,7 @@ const ALL_GROUPS = [
       { id: 'teaching',     label: 'Teaching',      icon: '📚' },
       { id: 'courses',      label: 'Courses',       icon: '🎓' },
       { id: 'questionbank', label: 'Question Bank', icon: '❓' },
+      { id: 'entrance', label: 'Entrance Exam', icon: '🏆' },
     ],
   },
   {

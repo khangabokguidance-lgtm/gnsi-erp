@@ -32,6 +32,7 @@ import Exams              from './Exams'
 import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
+import Entrance from './Entrance'
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ const ALL_GROUPS = [
       { id: 'teaching',     label: 'Teaching',      icon: '📚' },
       { id: 'courses',      label: 'Courses',       icon: '🎓' },
       { id: 'questionbank', label: 'Question Bank', icon: '❓' },
+      { id: 'entrance', label: 'Entrance Exam', icon: '🏆' },
     ],
   },
   {
@@ -843,6 +845,7 @@ export default function App() {
     feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
+    entrance: <Entrance currentUser={currentUser} perms={perms('entrance')} />,
   }
 
   const renderContent = () => {
