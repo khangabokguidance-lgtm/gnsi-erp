@@ -155,7 +155,7 @@ function SMSCounter({ text, channel }) {
 }
 
 // ─── COMPOSE (Bulk Message Sender) ────────────────────────────
-function ComposeSection({ currentUser, quotaLeft, setQuotaLeft }) {
+function ComposeSection({ currentUser, quotaLeft, setQuotaLeft, isAdmin }) {
   const [form, setForm] = useState({
     title: '', audience: 'All', role_filter: '', channel: 'SMS',
     priority: 'General', language: 'English', message_body: '',
@@ -236,7 +236,8 @@ function ComposeSection({ currentUser, quotaLeft, setQuotaLeft }) {
       <style>{CSS}</style>
 
       {/* Emergency banner */}
-      <div style={{ background: 'linear-gradient(135deg,#fff1f2,#fee2e2)', border: '1px solid #fca5a5', borderRadius: 12, padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+      {/* Emergency banner - admin only */}
+      {isAdmin && <div style={{ background: 'linear-gradient(135deg,#fff1f2,#fee2e2)', border: '1px solid #fca5a5', borderRadius: 12, padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 14, color: '#991b1b' }}>🚨 Emergency Alert</div>
           <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 2 }}>Broadcasts to ALL via ALL channels simultaneously. Requires double confirmation.</div>
@@ -244,7 +245,7 @@ function ComposeSection({ currentUser, quotaLeft, setQuotaLeft }) {
         <button className="conn-emergency-btn" onClick={() => { f('is_emergency', true); f('priority', 'Urgent'); f('audience', 'All'); setShowConfirm(true) }}>
           🚨 Send Emergency Alert
         </button>
-      </div>
+      </div>}
 
       {sent && <div style={{ padding: '12px 18px', background: '#e3fcef', border: '1px solid #a7f3d0', borderRadius: 10, color: '#065f46', fontWeight: 600, fontSize: 13, marginBottom: 16 }}>✅ Message sent successfully!</div>}
       {dupWarn && (
@@ -338,10 +339,13 @@ function ComposeSection({ currentUser, quotaLeft, setQuotaLeft }) {
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 20, alignItems: 'center' }}>
-            <button className="conn-btn-primary" disabled={!form.message_body || sending} onClick={() => setShowConfirm(true)}>
-              {isScheduled ? '🗓️ Schedule Message' : '📤 Send Now'}
-            </button>
-            <button className="conn-btn-ghost" onClick={() => setForm(p => ({ ...p, message_body: '', title: '' }))}>Clear</button>
+            {isAdmin
+              ? <button className="conn-btn-primary" disabled={!form.message_body || sending} onClick={() => setShowConfirm(true)}>
+                  {isScheduled ? '🗓️ Schedule Message' : '📤 Send Now'}
+                </button>
+              : <div style={{ padding: '10px 14px', background: '#f1f5f9', borderRadius: 8, fontSize: 13, color: '#64748b' }}>👁️ View only — contact Admin to send messages</div>
+            }
+            {isAdmin && <button className="conn-btn-ghost" onClick={() => setForm(p => ({ ...p, message_body: '', title: '' }))}>Clear</button>}
             {recipientCount !== null && (
               <span style={{ marginLeft: 'auto', fontSize: 13, color: '#334155' }}>
                 📬 <strong>{recipientCount}</strong> recipients
@@ -429,7 +433,7 @@ function ComposeSection({ currentUser, quotaLeft, setQuotaLeft }) {
 }
 
 // ─── BROADCASTS HISTORY ───────────────────────────────────────
-function BroadcastsSection() {
+function BroadcastsSection({ isAdmin }) {
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter]   = useState('All')
@@ -472,7 +476,7 @@ function BroadcastsSection() {
                   <td>{statusBadge(r.status)}</td>
                   <td style={{ fontSize: 12, color: '#94a3b8' }}>{r.sent_by || 'Admin'}</td>
                   <td style={{ fontSize: 12, color: '#94a3b8' }}>{fmt(r.created_at)}</td>
-                  <td><button className="conn-btn-danger" onClick={e => { e.stopPropagation(); del(r.id) }}>Delete</button></td>
+                  <td>{isAdmin && <button className="conn-btn-danger" onClick={e => { e.stopPropagation(); del(r.id) }}>Delete</button>}</td>
                 </tr>
                 {expanded === r.id && (
                   <tr key={`${r.id}-exp`}>
@@ -495,7 +499,7 @@ function BroadcastsSection() {
 
 // ─── TWO-WAY INBOX ────────────────────────────────────────────
 // SQL: CREATE TABLE connect_replies (id bigserial PRIMARY KEY, broadcast_id bigint, sender_name text, sender_role text, message text, is_read boolean DEFAULT false, created_at timestamptz DEFAULT now());
-function InboxSection() {
+function InboxSection({ isAdmin }) {
   const [replies, setReplies] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter]   = useState('all')
@@ -533,10 +537,10 @@ function InboxSection() {
               </div>
             </div>
             <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.6 }}>{r.message}</div>
-            <div style={{ marginTop: 10 }}>
+            {isAdmin && <div style={{ marginTop: 10 }}>
               <textarea className="conn-inp" rows={2} placeholder="Type admin reply…" value={reply[r.id] || ''} onChange={e => setReply(p => ({ ...p, [r.id]: e.target.value }))} style={{ fontSize: 12, marginBottom: 6 }} />
               <button className="conn-btn-primary" style={{ fontSize: 12, padding: '6px 14px' }}>Send Reply</button>
-            </div>
+            </div>}
           </div>
         ))}
         {filtered.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No replies yet.</div>}
@@ -547,7 +551,7 @@ function InboxSection() {
 
 // ─── GRIEVANCE CHANNEL ────────────────────────────────────────
 // SQL: CREATE TABLE connect_grievances (id bigserial PRIMARY KEY, ticket_no text UNIQUE, sender_name text, sender_role text, subject text, message text, status text DEFAULT 'Open', admin_note text, created_at timestamptz DEFAULT now());
-function GrievanceSection() {
+function GrievanceSection({ isAdmin }) {
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter]   = useState('Open')
@@ -586,11 +590,11 @@ function GrievanceSection() {
             <div style={{ fontSize: 13, color: '#334155', marginBottom: 8 }}>{r.message}</div>
             <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>From: {r.sender_name} ({r.sender_role}) · {fmt(r.created_at)}</div>
             {r.admin_note && <div style={{ fontSize: 12, background: '#f0f9ff', padding: '8px 12px', borderRadius: 6, color: '#0369a1', marginBottom: 10 }}>Admin note: {r.admin_note}</div>}
-            <div style={{ display: 'flex', gap: 8 }}>
+            {isAdmin && <div style={{ display: 'flex', gap: 8 }}>
               <input className="conn-inp" placeholder="Admin note…" value={note[r.id] || ''} onChange={e => setNote(p => ({ ...p, [r.id]: e.target.value }))} style={{ fontSize: 12, flex: 1 }} />
               <button className="conn-btn-ghost" style={{ fontSize: 12 }} onClick={() => updateStatus(r.id, 'In Progress', note[r.id])}>In Progress</button>
               <button className="conn-btn-primary" style={{ fontSize: 12, background: '#057a55' }} onClick={() => updateStatus(r.id, 'Resolved', note[r.id])}>✓ Resolve</button>
-            </div>
+            </div>}
           </div>
         ))}
         {filtered.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No grievances in this category.</div>}
@@ -601,7 +605,7 @@ function GrievanceSection() {
 
 // ─── CONSENT SLIPS ────────────────────────────────────────────
 // SQL: CREATE TABLE connect_consent (id bigserial PRIMARY KEY, title text, description text, options text[], deadline date, status text DEFAULT 'Active', responses jsonb DEFAULT '{}', created_at timestamptz DEFAULT now());
-function ConsentSection() {
+function ConsentSection({ isAdmin }) {
   const [slips, setSlips]   = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm]     = useState({ title: '', description: '', options: 'Yes,No,Maybe', deadline: '' })
@@ -627,7 +631,7 @@ function ConsentSection() {
 
   return (
     <div className="conn-animate">
-      <div className="conn-card" style={{ padding: 22, marginBottom: 20 }}>
+      {isAdmin && <div className="conn-card" style={{ padding: 22, marginBottom: 20 }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: '#0f2744', marginBottom: 16 }}>➕ Create Consent Slip</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1/-1' }}>
@@ -650,7 +654,7 @@ function ConsentSection() {
         <button className="conn-btn-primary" style={{ marginTop: 14 }} disabled={!form.title || saving} onClick={create}>
           {saving ? 'Creating…' : '✅ Create Consent Slip'}
         </button>
-      </div>
+      </div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {slips.map(s => {
@@ -854,7 +858,7 @@ function AnalyticsSection() {
 }
 
 // ─── TEMPLATES ────────────────────────────────────────────────
-function TemplatesSection() {
+function TemplatesSection({ isAdmin }) {
   const [templates, setTemplates] = useState([])
   const [loading, setLoading]     = useState(true)
   const [form, setForm]           = useState({ template_name: '', category: 'Fee Reminder', channel: 'SMS', language: 'English', template_text: '', status: 'Active' })
@@ -881,7 +885,7 @@ function TemplatesSection() {
 
   return (
     <div className="conn-animate">
-      <div className="conn-card" style={{ padding: 22, marginBottom: 20 }}>
+      {isAdmin && <div className="conn-card" style={{ padding: 22, marginBottom: 20 }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: '#0f2744', marginBottom: 16 }}>➕ New Template</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div><label className="conn-label">Template Name *</label><input className="conn-inp" value={form.template_name} onChange={e => setForm(p => ({ ...p, template_name: e.target.value }))} /></div>
@@ -899,14 +903,14 @@ function TemplatesSection() {
         <button className="conn-btn-primary" style={{ marginTop: 14 }} disabled={!form.template_name || !form.template_text || saving} onClick={save}>
           {saving ? 'Saving…' : '💾 Save Template'}
         </button>
-      </div>
+      </div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 14 }}>
         {templates.map(t => (
           <div key={t.id} className="conn-card" style={{ padding: '16px 18px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>{t.template_name}</div>
-              <button className="conn-btn-danger" onClick={() => del(t.id)}>Delete</button>
+              {isAdmin && <button className="conn-btn-danger" onClick={() => del(t.id)}>Delete</button>}
             </div>
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               {channelBadge(t.channel)}
@@ -982,7 +986,8 @@ function SettingsSection({ quota, setQuota }) {
 }
 
 // ─── ROOT ─────────────────────────────────────────────────────
-export default function Connect({ currentUser }) {
+export default function Connect({ currentUser, perms }) {
+  const isAdmin = currentUser?.role === 'Admin'
   const [activeTab, setActiveTab] = useState('compose')
   const [quota, setQuota]         = useState(200)
   const [quotaLeft, setQuotaLeft] = useState(200)
@@ -1008,7 +1013,7 @@ export default function Connect({ currentUser }) {
           <div style={{ fontWeight: 800, fontSize: 16, color: '#0f2744' }}>🔗 Connect</div>
           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>GNSI Communication Hub</div>
         </div>
-        {NAV_TABS.map(t => (
+        {NAV_TABS.filter(t => t.id !== 'settings' || isAdmin).map(t => (
           <button key={t.id} className={`conn-sidebar-btn ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
             <span>{t.icon}</span>
             <span style={{ flex: 1 }}>{t.label}</span>
@@ -1031,15 +1036,15 @@ export default function Connect({ currentUser }) {
           <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>GNSI Portal · Khangabok, Manipur</p>
         </div>
 
-        {activeTab === 'compose'    && <ComposeSection   currentUser={currentUser} quotaLeft={quotaLeft} setQuotaLeft={setQuotaLeft} />}
-        {activeTab === 'broadcasts' && <BroadcastsSection />}
-        {activeTab === 'inbox'      && <InboxSection />}
-        {activeTab === 'grievance'  && <GrievanceSection />}
-        {activeTab === 'consent'    && <ConsentSection />}
+        {activeTab === 'compose'    && <ComposeSection   currentUser={currentUser} quotaLeft={quotaLeft} setQuotaLeft={setQuotaLeft} isAdmin={isAdmin} />}
+        {activeTab === 'broadcasts' && <BroadcastsSection isAdmin={isAdmin} />}
+        {activeTab === 'inbox'      && <InboxSection isAdmin={isAdmin} />}
+        {activeTab === 'grievance'  && <GrievanceSection isAdmin={isAdmin} />}
+        {activeTab === 'consent'    && <ConsentSection isAdmin={isAdmin} />}
         {activeTab === 'calendar'   && <CalendarSection />}
         {activeTab === 'analytics'  && <AnalyticsSection />}
-        {activeTab === 'templates'  && <TemplatesSection />}
-        {activeTab === 'settings'   && <SettingsSection quota={quota} setQuota={setQuota} />}
+        {activeTab === 'templates'  && <TemplatesSection isAdmin={isAdmin} />}
+        {activeTab === 'settings'   && isAdmin && <SettingsSection quota={quota} setQuota={setQuota} />}
       </div>
     </div>
   )
