@@ -3644,8 +3644,8 @@ function Hostel() {
   }
 
   // Mobile bottom navigation
-  const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'housemaster', 'kitchen', 'hmactivities', 'adminmonitor', 'classtimetable', 'doubtsession']
-
+  const primaryTabs = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'maintenance', 'journal']
+  const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'kitchen', 'housemaster', 'hmactivities', 'adminmonitor', 'classtimetable', 'doubtsession']
   return (
     <div style={{ padding: mobile ? '12px' : '24px', fontFamily: 'system-ui,sans-serif', paddingBottom: mobile ? '80px' : '24px' }}>
       <div style={{ marginBottom: mobile ? '16px' : '24px' }}>
