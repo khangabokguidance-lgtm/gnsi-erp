@@ -3645,7 +3645,7 @@ function Hostel() {
 
   // Mobile bottom navigation
   const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'housemaster', 'kitchen', 'hmactivities', 'adminmonitor', 'classtimetable', 'doubtsession']
-  const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'housemaster', 'kitchen', 'hmactivities', 'adminmonitor']
+  const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'housemaster', 'kitchen', 'hmactivities', 'adminmonitor', 'classtimetable', 'doubtsession']
 
   return (
     <div style={{ padding: mobile ? '12px' : '24px', fontFamily: 'system-ui,sans-serif', paddingBottom: mobile ? '80px' : '24px' }}>
