@@ -68,12 +68,11 @@ const ALL_GROUPS = [
   {
     group: 'PEOPLE',
     items: [
-      { id: 'kitchen', label: 'Kitchen',icon: '🍽️' }, 
-      { id: 'staff',  label: 'Staff',  icon: '👨‍🏫' },
-      { id: 'hr',     label: 'HR',     icon: '🗂️' },
-      { id: 'leave',  label: 'Leave',  icon: '🏖️' },
-      { id: 'hostel', label: 'Hostel', icon: '🏨' },
-      
+      { id: 'kitchen', label: 'Kitchen', icon: '🍽️' },
+      { id: 'staff',   label: 'Staff',   icon: '👨‍🏫' },
+      { id: 'hr',      label: 'HR',      icon: '🗂️' },
+      { id: 'leave',   label: 'Leave',   icon: '🏖️' },
+      { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
     ],
   },
   {
@@ -102,6 +101,38 @@ const BADGES = {
   fees:   { count: 3, color: '#fcd34d', bg: '#78350f' },
   leave:  { count: 2, color: '#fcd34d', bg: '#78350f' },
   notice: { count: 5, color: '#fcd34d', bg: '#78350f' },
+}
+
+// ─── Permission helpers ───────────────────────────────────────────────────────
+
+// Full CRUD access object (for Admin)
+const FULL_CRUD = { read: true, add: true, edit: true, delete: true }
+const NO_CRUD   = { read: false, add: false, edit: false, delete: false }
+
+/**
+ * Build a permissions map from Supabase role_permissions rows.
+ * Shape: { [module_key]: { read, add, edit, delete } }
+ */
+function buildPermMap(rows) {
+  const map = {}
+  ;(rows || []).forEach(r => {
+    map[r.module_key] = {
+      read:   r.can_read   ?? r.allowed ?? false,
+      add:    r.can_add    ?? false,
+      edit:   r.can_edit   ?? false,
+      delete: r.can_delete ?? false,
+    }
+  })
+  return map
+}
+
+/**
+ * Returns the effective CRUD perms for a module key.
+ * Admin always gets full access.
+ */
+function getModulePerms(permMap, moduleKey, isAdmin) {
+  if (isAdmin) return FULL_CRUD
+  return permMap[moduleKey] ?? NO_CRUD
 }
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -189,22 +220,15 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
             background: D.accent, boxShadow: `0 0 8px ${D.accent}`,
           }} />
         )}
-        <span style={{ fontSize: compact ? 13 : 15, lineHeight: 1, flexShrink: 0 }}>
-          {item.icon}
-        </span>
-        <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {item.label}
-        </span>
+        <span style={{ fontSize: compact ? 13 : 15, lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
+        <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
         {badge && (
-          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>
-            {badge.count}
-          </span>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.count}</span>
         )}
         {isPinned && !hov && (
           <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>
         )}
       </button>
-
       {hov && onPin && (
         <button
           onClick={e => { e.stopPropagation(); onPin(item.id) }}
@@ -220,9 +244,7 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
             color: isPinned ? D.accent : D.textFaint,
             transition: 'all .12s',
           }}
-        >
-          {isPinned ? '📌' : '📍'}
-        </button>
+        >{isPinned ? '📌' : '📍'}</button>
       )}
     </div>
   )
@@ -245,23 +267,9 @@ function GroupHeader({ label, collapsed, onToggle, count }) {
         transition: 'background .1s', marginBottom: 2,
       }}
     >
-      <span style={{
-        fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em',
-        color: hov ? D.textMuted : D.textFaint,
-        textTransform: 'uppercase',
-        fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
-        flex: 1, textAlign: 'left', transition: 'color .1s',
-      }}>{label}</span>
-      {count > 0 && (
-        <span style={{ fontSize: 9, color: D.textFaint, background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 99 }}>
-          {count}
-        </span>
-      )}
-      <span style={{
-        fontSize: 9, color: D.textFaint,
-        transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-        transition: 'transform .2s', display: 'inline-block',
-      }}>▾</span>
+      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: hov ? D.textMuted : D.textFaint, textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif", flex: 1, textAlign: 'left', transition: 'color .1s' }}>{label}</span>
+      {count > 0 && <span style={{ fontSize: 9, color: D.textFaint, background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 99 }}>{count}</span>}
+      <span style={{ fontSize: 9, color: D.textFaint, transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform .2s', display: 'inline-block' }}>▾</span>
     </button>
   )
 }
@@ -272,9 +280,7 @@ function PinnedItems({ pins, activePage, onNavigate, onPin }) {
   if (!pins.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
-      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.accentBorder, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-        📌 PINNED
-      </div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.accentBorder, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>📌 PINNED</div>
       {pins.map(id => {
         const item = ALL_ITEMS.find(i => i.id === id)
         if (!item) return null
@@ -290,9 +296,7 @@ function RecentItems({ recents, activePage, onNavigate }) {
   if (!recents.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
-      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.textFaint, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-        RECENT
-      </div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.textFaint, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>RECENT</div>
       {recents.map(id => {
         const item = ALL_ITEMS.find(i => i.id === id)
         if (!item) return null
@@ -315,16 +319,14 @@ function LogoutButton({ onLogout }) {
         width: '100%', display: 'flex', alignItems: 'center', gap: 9,
         padding: '8px 12px', borderRadius: 8,
         border: `1px solid ${hov ? D.accentBorder : D.border}`,
-        cursor: 'pointer', textAlign: 'left',
-        fontSize: 13, fontWeight: 500,
+        cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 500,
         background: hov ? D.accentGlow : D.bgSurface,
         color: hov ? D.accentLight : D.textMuted,
         transition: 'all .15s',
         fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
       }}
     >
-      <span style={{ fontSize: 14 }}>🚪</span>
-      <span>Sign Out</span>
+      <span style={{ fontSize: 14 }}>🚪</span><span>Sign Out</span>
     </button>
   )
 }
@@ -340,22 +342,11 @@ function LogoHeader({ isMobile, onClose }) {
       background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`,
       position: 'relative', overflow: 'hidden',
     }}>
-      <div style={{
-        position: 'absolute', bottom: 0, left: 14, right: 14, height: 1,
-        background: `linear-gradient(90deg, ${D.accent}44, transparent)`,
-      }} />
-      <div style={{
-        width: 36, height: 36, borderRadius: 9, background: D.logoBg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, flexShrink: 0, boxShadow: '0 2px 8px rgba(253,214,86,0.3)',
-      }}>🏫</div>
+      <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1, background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
+      <div style={{ width: 36, height: 36, borderRadius: 9, background: D.logoBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, boxShadow: '0 2px 8px rgba(253,214,86,0.3)' }}>🏫</div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em', lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-          GNSI <span style={{ color: D.accent }}>ERP</span>
-        </div>
-        <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>
-          School Management
-        </div>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em', lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
+        <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>School Management</div>
       </div>
       {isMobile && (
         <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`, borderRadius: 6, cursor: 'pointer', color: D.textMuted, fontSize: 14, lineHeight: 1, padding: '5px 8px' }} aria-label="Close menu">✕</button>
@@ -366,63 +357,53 @@ function LogoHeader({ isMobile, onClose }) {
 
 // ─── SidebarContent ───────────────────────────────────────────────────────────
 
-function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNavClick }) {
+function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNavClick, permMap }) {
   const [search,         setSearch]         = useState('')
-  const [allowedModules, setAllowedModules] = useState(null)
   const [collapsed,      setCollapsed]      = useState(() => LS.get('gnsi_nav_collapsed', {}))
   const [pins,           setPins]           = useState(() => LS.get('gnsi_nav_pins', []))
   const [recents,        setRecents]        = useState(() => LS.get('gnsi_nav_recents', []))
   const searchRef = useRef(null)
 
-  const role = currentUser?.role || 'Teacher'
+  const role    = currentUser?.role || 'Teacher'
+  const isAdmin = role === 'Admin'
+
+  // Build allowed set from permMap (read = can see in sidebar)
+  const allowedModules = useMemo(() => {
+    if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
+    const set = new Set(['dashboard'])
+    Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
+    return set
+  }, [permMap, isAdmin])
 
   useEffect(() => {
     const handler = e => {
       if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
-        e.preventDefault()
-        searchRef.current?.focus()
+        e.preventDefault(); searchRef.current?.focus()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  useEffect(() => {
-    async function fetchPermissions() {
-      if (role === 'Admin') {
-        setAllowedModules(new Set(ALL_ITEMS.map(i => i.id)))
-        return
-      }
-      const { data, error } = await supabase.from('role_permissions').select('module_key').eq('role', role).eq('allowed', true)
-      if (!error && data) setAllowedModules(new Set(data.map(r => r.module_key)))
-      else setAllowedModules(new Set(['dashboard']))
-    }
-    fetchPermissions()
-  }, [role])
-
   const handleNavigate = useCallback((id) => {
-    setActivePage(id)
-    onNavClick?.()
+    setActivePage(id); onNavClick?.()
     setRecents(prev => {
       const next = [id, ...prev.filter(r => r !== id)].slice(0, 5)
-      LS.set('gnsi_nav_recents', next)
-      return next
+      LS.set('gnsi_nav_recents', next); return next
     })
   }, [setActivePage, onNavClick])
 
   const handlePin = useCallback((id) => {
     setPins(prev => {
       const next = prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-      LS.set('gnsi_nav_pins', next)
-      return next
+      LS.set('gnsi_nav_pins', next); return next
     })
   }, [])
 
   const toggleGroup = (group) => {
     setCollapsed(prev => {
       const next = { ...prev, [group]: !prev[group] }
-      LS.set('gnsi_nav_collapsed', next)
-      return next
+      LS.set('gnsi_nav_collapsed', next); return next
     })
   }
 
@@ -431,7 +412,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     : 'US'
 
   const filteredGroups = useMemo(() => {
-    if (!allowedModules) return []
     const q = search.trim().toLowerCase()
     return ALL_GROUPS
       .map(g => ({
@@ -450,16 +430,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
   const totalBadges = Object.values(BADGES).reduce((s, b) => s + b.count, 0)
 
-  if (!allowedModules) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
-        <div style={{ width: 20, height: 20, border: `2px solid ${D.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-        <span style={{ fontSize: 12, color: D.textFaint }}>Loading modules…</span>
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-      </div>
-    )
-  }
-
   return (
     <>
       {/* User card */}
@@ -471,27 +441,15 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         flexShrink: 0, position: 'relative', overflow: 'hidden',
       }}>
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 60, background: `radial-gradient(ellipse at left center, ${D.accentGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />
-        <div style={{
-          width: 36, height: 36, borderRadius: 9, flexShrink: 0,
-          background: D.accentGlow, border: `1.5px solid ${D.accentBorder}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 13, fontWeight: 700, color: D.accentLight,
-          fontFamily: "'Trebuchet MS', monospace", zIndex: 1,
-        }}>{initials}</div>
+        <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, background: D.accentGlow, border: `1.5px solid ${D.accentBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: D.accentLight, fontFamily: "'Trebuchet MS', monospace", zIndex: 1 }}>{initials}</div>
         <div style={{ minWidth: 0, flex: 1, zIndex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: D.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-            {currentUser?.name || 'User'}
-          </div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: D.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>{currentUser?.name || 'User'}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 4, padding: '2px 7px' }}>
               <span style={{ width: 4, height: 4, borderRadius: '50%', background: D.accent, flexShrink: 0 }} />
               <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: D.accent }}>{role}</span>
             </span>
-            {totalBadges > 0 && (
-              <span style={{ fontSize: 9.5, fontWeight: 700, color: '#fcd34d', background: '#78350f', padding: '2px 6px', borderRadius: 99 }}>
-                {totalBadges} pending
-              </span>
-            )}
+            {totalBadges > 0 && <span style={{ fontSize: 9.5, fontWeight: 700, color: '#fcd34d', background: '#78350f', padding: '2px 6px', borderRadius: 99 }}>{totalBadges} pending</span>}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, zIndex: 1 }}>
@@ -504,13 +462,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
       <div style={{ padding: '8px 10px 4px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: D.bgDeep, border: `1px solid ${D.borderStrong}`, borderRadius: 8, padding: '7px 11px' }}>
           <span style={{ fontSize: 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
-          <input
-            ref={searchRef}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search modules…"
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}
-          />
+          <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }} />
           {search
             ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
             : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', letterSpacing: '0.05em', flexShrink: 0 }}>/</span>
@@ -527,9 +479,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
             <div style={{ height: 1, background: D.border, margin: '6px 4px 10px' }} />
           </>
         )}
-        {filteredGroups.length === 0 && (
-          <div style={{ padding: '24px 12px', textAlign: 'center', color: D.textFaint, fontSize: 12 }}>No modules found</div>
-        )}
+        {filteredGroups.length === 0 && <div style={{ padding: '24px 12px', textAlign: 'center', color: D.textFaint, fontSize: 12 }}>No modules found</div>}
         {filteredGroups.map((grp, gi) => {
           const isCollapsed = !!collapsed[grp.group] && !search
           return (
@@ -537,14 +487,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
               {gi > 0 && <div style={{ height: 1, background: D.border, margin: '4px 4px 8px' }} />}
               <GroupHeader label={grp.group} collapsed={isCollapsed} count={grp.items.length} onToggle={() => toggleGroup(grp.group)} />
               {!isCollapsed && grp.items.map(item => (
-                <NavItem
-                  key={item.id}
-                  item={item}
-                  isActive={activePage === item.id}
-                  onClick={() => handleNavigate(item.id)}
-                  onPin={handlePin}
-                  isPinned={pins.includes(item.id)}
-                />
+                <NavItem key={item.id} item={item} isActive={activePage === item.id} onClick={() => handleNavigate(item.id)} onPin={handlePin} isPinned={pins.includes(item.id)} />
               ))}
             </div>
           )
@@ -554,10 +497,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
       {/* Footer */}
       <div style={{ padding: '8px 8px 12px', borderTop: `1px solid ${D.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 7px' }}>
-          <span style={{ fontSize: 10, color: D.textFaint }}>
-            <span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>
-            {' '}to search
-          </span>
+          <span style={{ fontSize: 10, color: D.textFaint }}><span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>{' '}to search</span>
           <span style={{ fontSize: 10, color: D.textFaint }}>v2.1 · © {new Date().getFullYear()} GNSI</span>
         </div>
         <LogoutButton onLogout={onLogout} />
@@ -568,8 +508,8 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
-function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
-  const isMobile  = useIsMobile()
+function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) {
+  const isMobile    = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const totalBadges = Object.values(BADGES).reduce((s, b) => s + b.count, 0)
 
@@ -589,20 +529,14 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
     return (
       <div style={{ ...sidebarStyles, width: 262, height: '100vh', position: 'fixed', left: 0, top: 0, zIndex: 100 }}>
         <LogoHeader isMobile={false} />
-        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} />
+        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} permMap={permMap} />
       </div>
     )
   }
 
   return (
     <>
-      {/* Mobile top bar */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, height: 56,
-        background: D.bg, borderBottom: `1px solid ${D.border}`,
-        display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px',
-        zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
-      }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg, borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
         <button onClick={() => setDrawerOpen(true)} aria-label="Open menu" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative' }}>
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
@@ -613,29 +547,13 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser }) {
           <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>School Management</div>
         </div>
         <div style={{ fontSize: 12, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 9px', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}
-          {ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
+          {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
       </div>
-
       {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
-
-      <div style={{
-        ...sidebarStyles,
-        position: 'fixed', top: 0, left: 0, width: 280, height: '100vh',
-        zIndex: 299, overflowY: 'hidden',
-        transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)',
-        willChange: 'transform',
-      }}>
+      <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh', zIndex: 299, overflowY: 'hidden', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
         <LogoHeader isMobile onClose={() => setDrawerOpen(false)} />
-        <SidebarContent
-          activePage={activePage}
-          setActivePage={setActivePage}
-          onLogout={onLogout}
-          currentUser={currentUser}
-          onNavClick={() => setDrawerOpen(false)}
-        />
+        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} onNavClick={() => setDrawerOpen(false)} permMap={permMap} />
       </div>
     </>
   )
@@ -660,20 +578,16 @@ function StatCard({ icon, label, value, sub, trend, accent }) {
   }
   const c = accents[accent] || accents.blue
   return (
-    <div
-      style={{ background: c.bg, borderRadius: 10, padding: '11px 14px', borderLeft: `3px solid ${c.border}`, display: 'flex', flexDirection: 'column', gap: 2, transition: 'transform .15s' }}
+    <div style={{ background: c.bg, borderRadius: 10, padding: '11px 14px', borderLeft: `3px solid ${c.border}`, display: 'flex', flexDirection: 'column', gap: 2, transition: 'transform .15s' }}
       onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-      onMouseLeave={e => e.currentTarget.style.transform = ''}
-    >
+      onMouseLeave={e => e.currentTarget.style.transform = ''}>
       <div style={{ fontSize: 18 }}>{icon}</div>
       <p style={{ fontSize: 10, color: c.text, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>{label}</p>
       <h2 style={{ fontSize: 20, fontWeight: 800, color: c.text, margin: 0, lineHeight: 1.1 }}>{value}</h2>
       <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>{sub}</p>
       {trend !== undefined && (
         <div style={{ marginTop: 4 }}>
-          <div style={{ height: 3, background: '#fff', borderRadius: 99, overflow: 'hidden' }}>
-            <div style={{ width: `${trend}%`, height: '100%', background: c.border, borderRadius: 99 }} />
-          </div>
+          <div style={{ height: 3, background: '#fff', borderRadius: 99, overflow: 'hidden' }}><div style={{ width: `${trend}%`, height: '100%', background: c.border, borderRadius: 99 }} /></div>
           <p style={{ fontSize: 9, color: c.text, marginTop: 2 }}>{trend}% of target</p>
         </div>
       )}
@@ -698,7 +612,7 @@ function TableCard({ title, sub, cols, rows, emptyMsg }) {
   )
 }
 
-function Badge({ status }) {
+function BadgeStatus({ status }) {
   const map = { Approved: { bg: '#dcfce7', color: '#16a34a' }, Rejected: { bg: '#fee2e2', color: '#dc2626' }, Pending: { bg: '#fef9c3', color: '#b45309' } }
   const s = map[status] || { bg: '#f1f5f9', color: '#64748b' }
   return <span style={{ padding: '3px 9px', borderRadius: 999, fontSize: 10, fontWeight: 700, background: s.bg, color: s.color }}>{status}</span>
@@ -721,9 +635,7 @@ function Ring({ value, max, color, label, size = 64 }) {
 function AdminDashboard({ onNavigate }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-
   useEffect(() => { load() }, [])
-
   const load = async () => {
     setLoading(true)
     try {
@@ -747,12 +659,10 @@ function AdminDashboard({ onNavigate }) {
     } catch (e) { console.error(e) }
     setLoading(false)
   }
-
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading live data…</div>
   if (!data) return null
   const feeTotal    = data.feeCollected + data.feePending
   const feeProgress = feeTotal ? Math.round((data.feeCollected / feeTotal) * 100) : 0
-
   return (
     <div style={{ padding: '16px 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -764,29 +674,29 @@ function AdminDashboard({ onNavigate }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
         {[
-          { icon: '👨‍🎓', label: 'Total Students', value: data.totalStudents, sub: 'Enrolled',          accent: 'blue'   },
-          { icon: '💰',    label: 'Fee Collected',  value: fmt(data.feeCollected), sub: 'Total paid',    accent: 'green',  trend: feeProgress },
-          { icon: '⏳',   label: 'Fee Pending',     value: fmt(data.feePending),   sub: 'Outstanding',   accent: 'amber'  },
-          { icon: '🏫',   label: 'Present Today',   value: data.presentCount,       sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
-          { icon: '📋',   label: 'New Admissions',  value: data.pendingAdm,         sub: 'Awaiting',     accent: 'pink'   },
-          { icon: '📝',   label: 'Total Exams',     value: data.totalExams,         sub: 'Scheduled',    accent: 'cyan'   },
-          { icon: '👨‍🏫', label: 'Total Staff',     value: data.totalStaff,         sub: 'Active',       accent: 'teal'   },
-          { icon: '💵',   label: 'Salary Paid',     value: fmt(data.salaryPaid),    sub: 'This month',   accent: 'indigo' },
-          { icon: '🏖️',  label: 'Leave Requests',  value: data.pendingLeave,       sub: 'Pending',      accent: 'orange' },
+          { icon: '👨‍🎓', label: 'Total Students', value: data.totalStudents,    sub: 'Enrolled',           accent: 'blue'   },
+          { icon: '💰',   label: 'Fee Collected',  value: fmt(data.feeCollected), sub: 'Total paid',         accent: 'green',  trend: feeProgress },
+          { icon: '⏳',   label: 'Fee Pending',    value: fmt(data.feePending),   sub: 'Outstanding',        accent: 'amber'  },
+          { icon: '🏫',   label: 'Present Today',  value: data.presentCount,      sub: `of ${data.totalAtt}`,accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
+          { icon: '📋',   label: 'New Admissions', value: data.pendingAdm,        sub: 'Awaiting',           accent: 'pink'   },
+          { icon: '📝',   label: 'Total Exams',    value: data.totalExams,        sub: 'Scheduled',          accent: 'cyan'   },
+          { icon: '👨‍🏫', label: 'Total Staff',    value: data.totalStaff,        sub: 'Active',             accent: 'teal'   },
+          { icon: '💵',   label: 'Salary Paid',    value: fmt(data.salaryPaid),   sub: 'This month',         accent: 'indigo' },
+          { icon: '🏖️',  label: 'Leave Requests', value: data.pendingLeave,      sub: 'Pending',            accent: 'orange' },
         ].map(c => <StatCard key={c.label} {...c} />)}
       </div>
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', padding: '12px 16px', marginBottom: 16 }}>
         <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', margin: '0 0 12px' }}>📊 Live Progress</h3>
         <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 10 }}>
-          <Ring value={data.feeCollected} max={feeTotal || 1}                          color="#16a34a" label="Fee Collected" />
-          <Ring value={data.presentCount} max={Math.max(data.totalAtt, 1)}             color="#7c3aed" label="Attendance"    />
-          <Ring value={data.approvedAdm}  max={Math.max(data.totalAdm, 1)}             color="#0891b2" label="Admissions"    />
-          <Ring value={data.salaryPaid}   max={Math.max(data.salaryPaid + data.salaryPending, 1)} color="#4f46e5" label="Salary" />
+          <Ring value={data.feeCollected} max={feeTotal || 1}                                   color="#16a34a" label="Fee Collected" />
+          <Ring value={data.presentCount} max={Math.max(data.totalAtt, 1)}                      color="#7c3aed" label="Attendance"    />
+          <Ring value={data.approvedAdm}  max={Math.max(data.totalAdm, 1)}                      color="#0891b2" label="Admissions"    />
+          <Ring value={data.salaryPaid}   max={Math.max(data.salaryPaid + data.salaryPending,1)} color="#4f46e5" label="Salary"       />
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
         <TableCard title="👨‍🎓 Recent Students"   sub="Last 6" cols={['Name','Class','Course']} emptyMsg="No students"   rows={data.recentStudents.map(s   => <tr key={s.id} style={{ borderTop: '1px solid #f1f5f9' }}><td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{s.name}</td><td style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>{s.class_name}</td><td style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>{s.course || '—'}</td></tr>)} />
-        <TableCard title="📋 Recent Admissions" sub="Last 6" cols={['Name','Class','Status']} emptyMsg="No admissions" rows={data.recentAdmissions.map(a => <tr key={a.id} style={{ borderTop: '1px solid #f1f5f9' }}><td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{a.name}</td><td style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>{a.class_name}</td><td style={{ padding: '6px 12px' }}><Badge status={a.status} /></td></tr>)} />
+        <TableCard title="📋 Recent Admissions" sub="Last 6" cols={['Name','Class','Status']} emptyMsg="No admissions" rows={data.recentAdmissions.map(a => <tr key={a.id} style={{ borderTop: '1px solid #f1f5f9' }}><td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{a.name}</td><td style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>{a.class_name}</td><td style={{ padding: '6px 12px' }}><BadgeStatus status={a.status} /></td></tr>)} />
       </div>
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', padding: '12px 16px' }}>
         <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', margin: '0 0 10px' }}>⚡ Quick Actions</h3>
@@ -842,12 +752,12 @@ function UserDashboard({ onNavigate, currentUser }) {
       <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f', margin: '0 0 16px' }}>👤 Welcome, {currentUser.name}</h1>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
-          { icon: '📅', label: 'Days Present',   value: data.presentCount,          sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
-          { icon: '💰', label: 'Fee Due',         value: fmt(data.feeDue),           sub: 'Outstanding',         accent: 'amber'  },
-          { icon: '✅', label: 'Fee Paid',        value: fmt(data.feePaid),          sub: 'Paid so far',         accent: 'green'  },
-          { icon: '📝', label: 'Upcoming Exams',  value: data.upcomingExams.length,  sub: 'Scheduled',           accent: 'cyan'   },
-          { icon: '🏖️',label: 'Leave Pending',   value: data.pendingLeave,          sub: 'Awaiting',            accent: 'orange' },
-          { icon: '🔔', label: 'Notices',         value: data.notices.length,        sub: 'Recent',              accent: 'pink'   },
+          { icon: '📅', label: 'Days Present',  value: data.presentCount,         sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
+          { icon: '💰', label: 'Fee Due',        value: fmt(data.feeDue),          sub: 'Outstanding',         accent: 'amber'  },
+          { icon: '✅', label: 'Fee Paid',       value: fmt(data.feePaid),         sub: 'Paid so far',         accent: 'green'  },
+          { icon: '📝', label: 'Upcoming Exams', value: data.upcomingExams.length, sub: 'Scheduled',           accent: 'cyan'   },
+          { icon: '🏖️',label: 'Leave Pending',  value: data.pendingLeave,         sub: 'Awaiting',            accent: 'orange' },
+          { icon: '🔔', label: 'Notices',        value: data.notices.length,       sub: 'Recent',              accent: 'pink'   },
         ].map(c => <StatCard key={c.label} {...c} />)}
       </div>
     </div>
@@ -869,65 +779,76 @@ function AccessDenied() {
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [active,      setActive]      = useState('dashboard')
-  const [permissions, setPermissions] = useState({})
+  const [permMap,     setPermMap]     = useState({})   // { [module_key]: { read, add, edit, delete } }
   const [permLoading, setPermLoading] = useState(false)
   const isMobile = useIsMobile()
 
   const loadPermissions = async (role) => {
-    if (role === 'Admin') return
+    if (role === 'Admin') { setPermMap({}); return }
     setPermLoading(true)
-    const { data } = await supabase.from('role_permissions').select('module_key, allowed').eq('role', role)
-    const map = {}
-    ;(data || []).forEach(r => { map[r.module_key] = r.allowed })
-    setPermissions(map)
+    const { data } = await supabase
+      .from('role_permissions')
+      .select('module_key, allowed, can_read, can_add, can_edit, can_delete')
+      .eq('role', role)
+    setPermMap(buildPermMap(data))
     setPermLoading(false)
   }
 
   const handleLogin  = (user) => { setCurrentUser(user); setActive('dashboard'); loadPermissions(user.role) }
-  const handleLogout = ()     => { setCurrentUser(null); setActive('dashboard'); setPermissions({}) }
+  const handleLogout = ()     => { setCurrentUser(null); setActive('dashboard'); setPermMap({}) }
 
   if (!currentUser) return <Login onLogin={handleLogin} />
   if (permLoading)  return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
 
-  const isAdmin    = currentUser.role === 'Admin'
-  const canAccess  = (key) => { if (key === 'dashboard') return true; if (isAdmin) return true; return permissions[key] === true }
+  const isAdmin = currentUser.role === 'Admin'
+
+  // Can the user even open this module? (needs read permission)
+  const canAccess = (key) => {
+    if (key === 'dashboard') return true
+    if (isAdmin) return true
+    return permMap[key]?.read === true
+  }
+
+  // Get CRUD perms for a module to pass into the component
+  const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
   const moduleMap = {
-    students:          <Students          currentUser={currentUser} />,
-    admissions:        <Admissions        currentUser={currentUser} />,
-    sessions:          <Sessions          currentUser={currentUser} />,
-    admissionsessions: <AdmissionSessions currentUser={currentUser} />,
-    bulkadmission:     <BulkAdmission     currentUser={currentUser} />,
-    fees:              <Fees              currentUser={currentUser} />,
-    accounts:          <Accounts          role={currentUser.role?.toLowerCase()} />,
-    salary:            <Salary            currentUser={currentUser} />,
-    staff:             <Staff             currentUser={currentUser} />,
-    hr:                <HR                currentUser={currentUser} />,
-    leave:             <Leave             currentUser={currentUser} />,
-    hostel:            <Hostel            currentUser={currentUser} />,
-    reception:         <Reception         currentUser={currentUser} />,
-    notice:            <Notice            currentUser={currentUser} />,
-    social:            <Social            currentUser={currentUser} />,
-    questionbank:      <QuestionBank      currentUser={currentUser} />,
-    connect:           <Connect           currentUser={currentUser} />,
-    reports:           <Reports           currentUser={currentUser} />,
-    checklist:         <Checklist         currentUser={currentUser} />,
-    system:            <SystemSettings    currentUser={currentUser} />,
-    studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} />,
-    courses:           <Courses           currentUser={currentUser} />,
-    teaching:          <Teaching          currentUser={currentUser} />,
-    attendance:        <Attendance        currentUser={currentUser} />,
-    exams:             <Exams             currentUser={currentUser} />,
-    timetable:         <Timetable         currentUser={currentUser} />,
-    feesetup:          <FeeSetup          userRole={currentUser.role} />,
-    admin:             isAdmin ? <AdminPage currentUser={currentUser} /> : <AccessDenied />,
-    kitchen:           <Kitchen           currentUser={currentUser} />,
+    students:          <Students          currentUser={currentUser} perms={perms('students')}         />,
+    admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}       />,
+    sessions:          <Sessions          currentUser={currentUser} perms={perms('sessions')}         />,
+    admissionsessions: <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')}/>,
+    bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}    />,
+    fees:              <Fees              currentUser={currentUser} perms={perms('fees')}             />,
+    accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
+    salary:            <Salary            currentUser={currentUser} perms={perms('salary')}           />,
+    staff:             <Staff             currentUser={currentUser} perms={perms('staff')}            />,
+    hr:                <HR                currentUser={currentUser} perms={perms('hr')}               />,
+    leave:             <Leave             currentUser={currentUser} perms={perms('leave')}            />,
+    hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}           />,
+    reception:         <Reception         currentUser={currentUser} perms={perms('reception')}        />,
+    notice:            <Notice            currentUser={currentUser} perms={perms('notice')}           />,
+    social:            <Social            currentUser={currentUser} perms={perms('social')}           />,
+    questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')}     />,
+    connect:           <Connect           currentUser={currentUser} perms={perms('connect')}          />,
+    reports:           <Reports           currentUser={currentUser} perms={perms('reports')}          />,
+    checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}        />,
+    system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}           />,
+    studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')} />,
+    feeledger:         <StudentFeeLedger  currentUser={currentUser} perms={perms('feeledger')}        />,
+    courses:           <Courses           currentUser={currentUser} perms={perms('courses')}          />,
+    teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}         />,
+    attendance:        <Attendance        currentUser={currentUser} perms={perms('attendance')}       />,
+    exams:             <Exams             currentUser={currentUser} perms={perms('exams')}            />,
+    timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}        />,
+    feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,
+    kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
+    admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
   }
 
   const renderContent = () => {
     if (active === 'dashboard') return isAdmin
-  ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
-  : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
+      ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
+      : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
     if (!canAccess(active)) return <AccessDenied />
     return moduleMap[active] || (
       <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
@@ -939,7 +860,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: '100vh', background: '#f8fafc' }}>
-      <Sidebar activePage={active} setActivePage={setActive} onLogout={handleLogout} currentUser={currentUser} />
+      <Sidebar activePage={active} setActivePage={setActive} onLogout={handleLogout} currentUser={currentUser} permMap={permMap} />
       <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : 262, paddingTop: isMobile ? 56 : 0 }}>
         {renderContent()}
       </main>
