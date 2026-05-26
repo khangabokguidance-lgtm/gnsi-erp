@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
+import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
 
 // ══════════════════════════════════════════════════════════════
 //  MOBILE-FIRST RESPONSIVE STYLES
@@ -96,6 +97,8 @@ const TABS = [
   { id: 'hmdashboard', label: '📊 HM Dash' },
   { id: 'maintenance',  label: '🔧 Repairs' },
   { id: 'journal',     label: '📝 Journal' },
+  { id: 'doubtsession',   label: '🙋 Doubt'   },
+  { id: 'classtimetable', label: '🗓️ Classes' },
 ]
 
 const MONTHS = [
@@ -3636,10 +3639,12 @@ function Hostel() {
     hmdashboard:  <HMDashboard    students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} />,
     maintenance:  <MaintenanceTab currentHousemaster={currentHousemaster} />,
     journal:      <JournalTab     currentHousemaster={currentHousemaster} />,
+    classtimetable: <ClassTimetableTab />,
+    doubtsession:   <DoubtSessionTab  />,
   }
 
   // Mobile bottom navigation
-  const primaryTabs = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'maintenance', 'journal']
+  const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'housemaster', 'kitchen', 'hmactivities', 'adminmonitor', 'classtimetable', 'doubtsession']
   const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'housemaster', 'kitchen', 'hmactivities', 'adminmonitor']
 
   return (
