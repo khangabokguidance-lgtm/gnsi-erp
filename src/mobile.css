@@ -1,108 +1,545 @@
+/* ═══════════════════════════════════════════════════════════════
+   GNSI Portal — Exams Module — Mobile Responsive Stylesheet
+   Breakpoints: 480px (phone), 768px (tablet)
+   Strategy: Progressive enhancement from mobile → desktop
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Smooth scrolling & base touch behaviour ── */
+.exams-root {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+}
+
+.exams-root * {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ════════════════════════════════════════════════
+   TABLET  (≤ 768px)
+   ════════════════════════════════════════════════ */
 @media (max-width: 768px) {
 
-  /* ── Collapse all dual panels to single column ── */
-  .exams-root div[style*="grid-template-columns"] {
-    grid-template-columns: 1fr !important;
+  /* ── 1. ROOT HEADER ──────────────────────────── */
+  .exams-root > div:first-child {
+    padding: 14px 16px 16px !important;
   }
 
-  /* ── Restore 2-col for stat/mini cards ── */
-  .exams-root div[style*="minmax(180px"],
-  .exams-root div[style*="minmax(160px"],
-  .exams-root div[style*="minmax(140px"] {
-    grid-template-columns: repeat(2, 1fr) !important;
+  /* Header inner flex → column */
+  .exams-root > div:first-child > div {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
   }
 
-  /* ── Main content padding ── */
-  .exams-root { font-size: 13px; }
-
-  /* ── Tables scroll horizontally ── */
-  .exams-root table {
-    font-size: 11px !important;
-    min-width: 500px;
-  }
-  .exams-root th,
-  .exams-root td {
-    padding: 6px 7px !important;
-    white-space: nowrap;
+  /* Stats grid → 2×2 */
+  .exams-root > div:first-child > div > div[style*="repeat(4"] {
+    grid-template-columns: repeat(2, auto) !important;
+    gap: 10px 20px !important;
+    width: 100%;
   }
 
-  /* ── Inputs and selects full width ── */
-  .exams-root input,
-  .exams-root select {
-    font-size: 13px !important;
-    min-height: 38px;
+  /* Stat number smaller */
+  .exams-root > div:first-child div[style*="fontSize: 22"] {
+    font-size: 18px !important;
   }
 
-  /* ── Buttons wrap and shrink ── */
-  .exams-root button {
-    font-size: 12px !important;
-    padding: 7px 12px !important;
-  }
-
-  /* ── Tab nav: scroll horizontally, hide group labels ── */
-  .exams-root [style*="padding: 10px 24px"],
-  .exams-root [style*="padding: \"10px 24px\""] {
+  /* ── 2. TAB NAV ──────────────────────────────── */
+  /* Nav container */
+  .exams-root > div:nth-child(2) {
     padding: 8px 10px !important;
     gap: 4px !important;
   }
 
-  /* ── Header: stack vertically ── */
-  .exams-root [style*="padding: 20px 28px"] {
-    padding: 14px 14px !important;
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 12px !important;
+  /* Each tab row → horizontal scroll, no wrap */
+  .exams-root > div:nth-child(2) > div {
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+    padding-bottom: 2px;
   }
 
-  /* ── Main page content padding ── */
-  .exams-root [style*="padding: 24px 28px"] {
+  .exams-root > div:nth-child(2) > div::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Group label → hide on mobile to save space */
+  .exams-root > div:nth-child(2) div[style*="fontSize: 9"] {
+    display: none !important;
+  }
+
+  /* Tab buttons → compact icon-first */
+  .exams-root > div:nth-child(2) button {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0;
+  }
+
+  /* Divider between groups → shorter */
+  .exams-root > div:nth-child(2) > div > div > div[style*="width: 1"] {
+    height: 24px !important;
+    margin: 0 3px !important;
+  }
+
+  /* ── 3. MAIN CONTENT AREA ────────────────────── */
+  .exams-root > div:last-child {
     padding: 12px 10px !important;
   }
 
-  /* ── Cards ── */
-  .exams-root [style*="padding: 28px 36px"],
-  .exams-root [style*="padding: 26px 36px"] {
-    padding: 14px 14px !important;
+  /* Page title */
+  .exams-root > div:last-child > div:first-child h2 {
+    font-size: 16px !important;
   }
 
-  /* ── Flex control bars wrap ── */
-  .exams-root [style*="display: flex"][style*="align-items: flex-end"] {
+  /* ── 4. ALL DUAL / TRIPLE PANEL GRIDS ────────── */
+  /* 220px / 260px / 280px / 300px / 320px / 360px 1fr */
+  .exams-root div[style*="gridTemplateColumns: \"220px"],
+  .exams-root div[style*="gridTemplateColumns: \"260px"],
+  .exams-root div[style*="gridTemplateColumns: \"280px"],
+  .exams-root div[style*="gridTemplateColumns: \"300px"],
+  .exams-root div[style*="gridTemplateColumns: \"320px"],
+  .exams-root div[style*="gridTemplateColumns: \"360px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 1fr 1fr side by side panels */
+  .exams-root div[style*="gridTemplateColumns: \"1fr 1fr\""] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── 5. STAT CARD GRIDS ──────────────────────── */
+  /* repeat(4,1fr) → 2 col */
+  .exams-root div[style*="repeat(4,1fr)"],
+  .exams-root div[style*="repeat(4, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* repeat(3,1fr) podium → stack */
+  .exams-root div[style*="repeat(3,1fr)"],
+  .exams-root div[style*="repeat(3, 1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* auto-fill minmax(180px) stat cards → 2 col */
+  .exams-root div[style*="minmax(180px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* auto-fill minmax(160px) → 2 col */
+  .exams-root div[style*="minmax(160px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* report card grid minmax(300px) → 1 col */
+  .exams-root div[style*="minmax(300px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* settings form minmax(250px) → 1 col */
+  .exams-root div[style*="minmax(250px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── 6. TABLES ───────────────────────────────── */
+  /* All table wrappers → scroll */
+  .exams-root div[style*="overflowX: \"auto\""],
+  .exams-root div[style*="overflow: \"hidden\""] > table,
+  .exams-root div[style*="borderRadius: 12"] > table {
+    overflow-x: auto !important;
+    display: block;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .exams-root table {
+    font-size: 12px !important;
+    min-width: 480px;
+  }
+
+  .exams-root th,
+  .exams-root td {
+    padding: 7px 8px !important;
+    white-space: nowrap;
+  }
+
+  /* ── 7. CONTROL / FILTER BARS ────────────────── */
+  .exams-root div[style*="alignItems: \"flex-end\""] {
     flex-wrap: wrap !important;
   }
 
-  /* ── Student list max height reduce ── */
-  .exams-root [style*="maxHeight: 480"],
-  .exams-root [style*="maxHeight: 420"],
-  .exams-root [style*="maxHeight: 340"] {
-    max-height: 240px !important;
+  /* Date + type select wrappers → full width */
+  .exams-root div[style*="alignItems: \"flex-end\""] > div {
+    min-width: 140px;
+    flex: 1 1 140px;
   }
 
-  /* ── Chart containers ── */
-  .exams-root [style*="height: 320"],
-  .exams-root [style*="height: 260"] {
+  /* Selects → full width inside wrapper */
+  .exams-root div[style*="alignItems: \"flex-end\""] select,
+  .exams-root div[style*="alignItems: \"flex-end\""] input[type="date"] {
+    width: 100% !important;
+    min-width: unset !important;
+  }
+
+  /* ── 8. INPUTS & SELECTS ─────────────────────── */
+  .exams-root input,
+  .exams-root select,
+  .exams-root textarea {
+    font-size: 14px !important; /* prevents iOS zoom on focus */
+    min-height: 40px;
+  }
+
+  /* Mark entry inputs — keep compact */
+  .exams-root table input[type="number"] {
+    width: 48px !important;
+    font-size: 12px !important;
+    min-height: unset !important;
+    padding: 4px 3px !important;
+  }
+
+  /* ── 9. BUTTONS ──────────────────────────────── */
+  .exams-root button {
+    font-size: 12px !important;
+  }
+
+  /* Print / Save buttons that have whiteSpace:nowrap — allow wrap on mobile */
+  .exams-root button[style*="whiteSpace: \"nowrap\""],
+  .exams-root button[style*="whiteSpace:nowrap"] {
+    white-space: normal !important;
+    word-break: break-word;
+  }
+
+  /* Full-width action buttons in control bars */
+  .exams-root div[style*="alignItems: \"flex-end\""] > button {
+    flex: 1 1 auto;
+    min-width: 120px;
+  }
+
+  /* ── 10. CARD PADDING ────────────────────────── */
+  .exams-root div[style*="padding: 20, marginBottom: 16"],
+  .exams-root div[style*="padding: 20"] {
+    padding: 14px !important;
+  }
+
+  /* Report card header padding */
+  .exams-root div[style*="padding: \"28px 36px\""],
+  .exams-root div[style*="padding: 28px 36px"] {
+    padding: 14px 14px !important;
+  }
+
+  .exams-root div[style*="padding: \"26px 36px\""],
+  .exams-root div[style*="padding: 26px 36px"] {
+    padding: 14px 14px !important;
+  }
+
+  /* ── 11. CHART CONTAINERS ────────────────────── */
+  .exams-root div[style*="height: 320"],
+  .exams-root div[style*="height: 260"] {
     height: 200px !important;
   }
 
-  /* ── Print buttons full width on mobile ── */
-  .exams-root [style*="whiteSpace: nowrap"] {
-    white-space: normal !important;
+  /* Analytics 1fr 1fr chart grid → single col */
+  .exams-root div[style*="gap: 20, marginBottom: 20"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── 12. SCROLLABLE LISTS ────────────────────── */
+  .exams-root div[style*="maxHeight: 480"],
+  .exams-root div[style*="maxHeight: 420"] {
+    max-height: 260px !important;
+  }
+
+  .exams-root div[style*="maxHeight: 360"] {
+    max-height: 220px !important;
+  }
+
+  .exams-root div[style*="maxHeight: 340"] {
+    max-height: 200px !important;
+  }
+
+  /* ── 13. SEAT ARRANGEMENT ────────────────────── */
+  /* Inline-flex seat grid → scrollable */
+  .exams-root div[style*="display: \"inline-flex\""],
+  .exams-root div[style*="display:\"inline-flex\""] {
+    overflow-x: auto !important;
+    max-width: 100% !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Seat cells — slightly smaller */
+  .exams-root div[style*="width: 110"] {
+    width: 90px !important;
+  }
+
+  /* ── 14. SCHEDULE MODE BUTTONS ───────────────── */
+  /* Mode switcher → wrap */
+  .exams-root div[style*="display: \"flex\", gap: 8, flexWrap: \"wrap\""] {
+    gap: 6px !important;
+  }
+
+  /* ── 15. BULK REPORTS SECTION BUTTONS ───────── */
+  .exams-root div[style*="display: \"flex\", gap: 12, marginBottom: 24"] {
+    flex-direction: column !important;
+  }
+
+  /* Section selector buttons → full width */
+  .exams-root div[style*="display: \"flex\", gap: 12, marginBottom: 24"] > button {
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+
+  /* ── 16. PROGRESS BAR INFO FLEX ─────────────── */
+  .exams-root div[style*="justifyContent: \"space-between\", alignItems: \"center\", gap: 16"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .exams-root div[style*="justifyContent: \"space-between\", alignItems: \"center\", gap: 16"] button {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  /* ── 17. IMPORT PREVIEW FLEX CARDS ──────────── */
+  .exams-root div[style*="display: \"flex\", gap: 12, marginBottom: 16"] {
+    flex-wrap: wrap !important;
+  }
+
+  .exams-root div[style*="display: \"flex\", gap: 12, marginBottom: 16"] > div[style*="flex: 1"],
+  .exams-root div[style*="display: \"flex\", gap: 12, marginBottom: 16"] > div[style*="flex: 2"] {
+    flex: 1 1 120px !important;
+    min-width: 100px;
+  }
+
+  /* ── 18. MULTI SUBJECT GRID (1fr 140px 80px) ── */
+  .exams-root div[style*="gridTemplateColumns: \"1fr 140px 80px\""] {
+    grid-template-columns: 1fr 110px 64px !important;
+    gap: 4px !important;
+  }
+
+  /* ── 19. STUDENT STRIP IN REPORT CARD ───────── */
+  .exams-root div[style*="grid-template-columns: 1fr 1fr 1fr 1fr"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+}
+
+/* ════════════════════════════════════════════════
+   PHONE  (≤ 480px)
+   ════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+
+  /* ── Header tighter ────────────────────────── */
+  .exams-root > div:first-child {
+    padding: 12px 12px 14px !important;
+  }
+
+  /* Title font smaller */
+  .exams-root > div:first-child div[style*="fontSize: 22"] {
+    font-size: 17px !important;
+  }
+
+  /* Subtitle even smaller */
+  .exams-root > div:first-child div[style*="fontSize: 12"] {
+    font-size: 11px !important;
+  }
+
+  /* Stats → 2 col tight */
+  .exams-root > div:first-child > div > div[style*="repeat(4"] {
+    gap: 8px 14px !important;
+  }
+
+  .exams-root > div:first-child div[style*="fontSize: 18"] {
+    font-size: 16px !important;
+  }
+
+  /* ── Main content ───────────────────────────── */
+  .exams-root > div:last-child {
+    padding: 10px 8px !important;
+  }
+
+  /* ── Tab buttons → icon only on very small ── */
+  /* Keep first word (icon emoji), hide rest */
+  .exams-root > div:nth-child(2) button {
+    padding: 5px 7px !important;
+    font-size: 10px !important;
+    letter-spacing: -0.2px;
+  }
+
+  /* ── Tables even more compact ───────────────── */
+  .exams-root table {
+    font-size: 11px !important;
+    min-width: 420px;
+  }
+
+  .exams-root th,
+  .exams-root td {
+    padding: 5px 6px !important;
+  }
+
+  /* ── Mark entry inputs ──────────────────────── */
+  .exams-root table input[type="number"] {
+    width: 40px !important;
+    font-size: 11px !important;
+    padding: 3px 2px !important;
+  }
+
+  /* ── Stat grids → 2 col ─────────────────────── */
+  .exams-root div[style*="repeat(4,1fr)"],
+  .exams-root div[style*="repeat(4, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .exams-root div[style*="repeat(3,1fr)"],
+  .exams-root div[style*="repeat(3, 1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* DashStatCard value font size */
+  .exams-root div[style*="fontSize: 34"] {
+    font-size: 26px !important;
+  }
+
+  /* ── Charts → shorter ───────────────────────── */
+  .exams-root div[style*="height: 320"],
+  .exams-root div[style*="height: 260"] {
+    height: 180px !important;
+  }
+
+  /* ── Card padding tighter ───────────────────── */
+  .exams-root div[style*="padding: 20"] {
+    padding: 12px !important;
+  }
+
+  /* ── Scrollable lists shorter on phone ──────── */
+  .exams-root div[style*="maxHeight: 480"],
+  .exams-root div[style*="maxHeight: 420"] {
+    max-height: 200px !important;
+  }
+
+  .exams-root div[style*="maxHeight: 360"],
+  .exams-root div[style*="maxHeight: 340"] {
+    max-height: 180px !important;
+  }
+
+  /* ── Compare cards → 1 col ──────────────────── */
+  .exams-root div[style*="repeat(2, 1fr)"],
+  .exams-root div[style*="repeat(2,1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Seat cells shrink more ─────────────────── */
+  .exams-root div[style*="width: 110"] {
+    width: 80px !important;
+    min-height: 60px !important;
+  }
+
+  .exams-root div[style*="width: 110"] div[style*="fontSize: 11"] {
+    font-size: 10px !important;
+  }
+
+  /* ── Multi-subject grid → stack ─────────────── */
+  .exams-root div[style*="gridTemplateColumns: \"1fr 140px 80px\""] {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .exams-root div[style*="gridTemplateColumns: \"1fr 140px 80px\""] > input {
     width: 100% !important;
   }
 
-  /* ── Report card grid single column ── */
-  .exams-root [style*="minmax(300px"] {
-    grid-template-columns: 1fr !important;
+  /* ── Delete confirm modal ───────────────────── */
+  .exams-root div[style*="maxWidth: 380"] {
+    max-width: 95vw !important;
+    padding: 20px !important;
   }
 
-  /* ── Podium top-3 stack ── */
-  .exams-root [style*="repeat(3,1fr)"] {
-    grid-template-columns: 1fr !important;
+  /* ── Badge font ─────────────────────────────── */
+  .exams-root span[style*="fontSize: 12"][style*="borderRadius: 999"] {
+    font-size: 10px !important;
+    padding: 2px 7px !important;
   }
 
-  /* ── Seat grid scroll ── */
-  .exams-root [style*="display: inline-flex"] {
-    overflow-x: auto;
-    max-width: 100%;
+  /* ── Schedule mode buttons → 2 per row ──────── */
+  .exams-root div[style*="flexWrap: \"wrap\""] > button[style*="padding: \"8px 16px\""] {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 120px;
+    text-align: center;
+  }
+
+  /* ── Import preview stat cards ───────────────── */
+  .exams-root div[style*="display: \"flex\", gap: 12, marginBottom: 16"] > div {
+    flex: 1 1 100% !important;
+  }
+
+  /* ── Page heading ───────────────────────────── */
+  .exams-root > div:last-child > div:first-child h2 {
+    font-size: 14px !important;
+  }
+
+  .exams-root > div:last-child > div:first-child p {
+    font-size: 11px !important;
+  }
+
+}
+
+/* ════════════════════════════════════════════════
+   UTILITY — always visible scrollbar hint
+   on horizontally scrollable tables
+   ════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* Scrollable table wrapper: subtle gradient hint on right edge */
+  .exams-root div[style*="overflowX: \"auto\""] {
+    position: relative;
+  }
+
+  /* Table wrappers that might overflow */
+  .exams-root div[style*="overflowX: \"auto\""]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 24px;
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.8));
+    pointer-events: none;
+    border-radius: 0 12px 12px 0;
+  }
+
+  /* ── Safe area for notched phones ──────────── */
+  .exams-root > div:first-child {
+    padding-left: max(16px, env(safe-area-inset-left)) !important;
+    padding-right: max(16px, env(safe-area-inset-right)) !important;
+  }
+
+  /* ── Focus outlines — larger touch targets ── */
+  .exams-root button:focus-visible {
+    outline: 2px solid #2A5C45;
+    outline-offset: 2px;
+  }
+
+  .exams-root input:focus,
+  .exams-root select:focus,
+  .exams-root textarea:focus {
+    outline: 2px solid #2A5C45 !important;
+    outline-offset: 1px;
+    border-color: #2A5C45 !important;
+  }
+
+  /* ── Course picker pills → smaller on mobile ── */
+  .exams-root div[style*="flexWrap: \"wrap\""] > button[style*="fontSize: 12"] {
+    padding: 5px 11px !important;
+    font-size: 11px !important;
+  }
+
+  /* ── Action bars with Save/Export buttons ─── */
+  .exams-root div[style*="display: \"flex\", gap: 12, flexWrap: \"wrap\", marginBottom: 18"] {
+    gap: 8px !important;
+  }
+
+  /* Divider in control bars → hide on mobile */
+  .exams-root div[style*="width: 1, background: \"#E5E7EB\", alignSelf: \"stretch\""] {
+    display: none !important;
   }
 
 }
