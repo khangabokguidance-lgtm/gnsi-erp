@@ -719,9 +719,6 @@ function Staff({ currentUser }) {
 const isAdmin  = ['Admin', 'Teaching + Admin'].includes(userRole)
 const canEdit  = isAdmin
 
-  // ROLE-2: only admins can mutate staff records
-  const canEdit   = isAdmin
-
   // ROLE-3: Geo shown to everyone (self-attendance); admin sees full roster view
   const ALL_TABS = [
     { key:'staff',       label:'👥 Staff',   show:true },
