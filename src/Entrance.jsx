@@ -1095,8 +1095,7 @@ export default function Entrance() {
   const [loading, setLoading] = useState(false)
   const [timeline, setTimeline] = useState([])
 
-  const fetchAll = useCallback(async () => {
-    const fetchTimeline = useCallback(async () => {
+  const fetchTimeline = useCallback(async () => {
   const { data } = await supabase
     .from('audit_log')
     .select('*')
@@ -1104,20 +1103,21 @@ export default function Entrance() {
     .limit(100)
   setTimeline(data || [])
 }, [])
-    setLoading(true)
-    const [examRes, candRes, resRes] = await Promise.all([
-      supabase.from('entrance_exams').select('*').order('exam_date', { ascending: false }),
-      supabase.from('entrance_candidates').select('*').order('roll_number'),
-      supabase.from('entrance_results').select('*'),
-    ])
-    if (!examRes.error) setExams(examRes.data || [])
-    if (!candRes.error) setCandidates(candRes.data || [])
-    if (!resRes.error) setResults(resRes.data || [])
-    setLoading(false)
-  }, [])
 
-  useEffect(() => { fetchAll(); fetchTimeline() }, [fetchAll, fetchTimeline])
+const fetchAll = useCallback(async () => {
+  setLoading(true)
+  const [examRes, candRes, resRes] = await Promise.all([
+    supabase.from('entrance_exams').select('*').order('exam_date', { ascending: false }),
+    supabase.from('entrance_candidates').select('*').order('roll_number'),
+    supabase.from('entrance_results').select('*'),
+  ])
+  if (!examRes.error) setExams(examRes.data || [])
+  if (!candRes.error) setCandidates(candRes.data || [])
+  if (!resRes.error) setResults(resRes.data || [])
+  setLoading(false)
+}, [])
 
+useEffect(() => { fetchAll(); fetchTimeline() }, [fetchAll, fetchTimeline])
   const tabStyle = (t) => ({
     padding: '9px 16px',
     borderRadius: '8px',
