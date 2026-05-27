@@ -267,43 +267,324 @@ function DashStatCard({ label, value, sub, color, strip }) {
 }
 
 // ─── TabNav ───────────────────────────────────────────────────────────────────
+// ─── TabNav (Mobile-Fixed) ────────────────────────────────────────────────────
+// Drop-in replacement for TabNav in Exams.jsx
+// Changes:
+//  ① On mobile: collapsible hamburger menu with grouped tabs
+//  ② On desktop: original two-row layout (preserved exactly)
+//  ③ useWindowWidth hook to switch between layouts
+//  ④ Active tab label shown in header bar on mobile
+
+function useWindowWidth() {
+  const [width, setWidth] = React.useState(
+    typeof window !== "undefined" ? window.innerWidth : 1200
+  );
+  React.useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return width;
+}
+
 function TabNav({ active, onSelect, perms, isAdmin }) {
-  // Tabs that require specific CRUD perms to show
-  const SETUP_TABS   = ['studentsmgr','coursesubjects','examtypes','settings']
-  const WRITE_TABS   = ['entry','schedule','seatplan']
-  const DOC_TABS     = ['admitcard','reportcard','bulkreport','toppers']
+  const width = useWindowWidth();
+  const isMobile = width < 768;
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
+  // ── Permission filter (unchanged from original) ──
+  const SETUP_TABS  = ["studentsmgr", "coursesubjects", "examtypes", "settings"];
+  const WRITE_TABS  = ["entry", "schedule", "seatplan"];
+  const DOC_TABS    = ["admitcard", "reportcard", "bulkreport", "toppers"];
 
   const canShow = (tabId) => {
-    if (isAdmin) return true
-    const p = perms || {}
-    if (SETUP_TABS.includes(tabId))  return p.edit === true
-    if (WRITE_TABS.includes(tabId))  return p.add === true || p.edit === true
-    if (DOC_TABS.includes(tabId))    return false  // Admin only (isAdmin check above handles it)
-    return p.read === true  // all result tabs need read
+    if (isAdmin) return true;
+    const p = perms || {};
+    if (SETUP_TABS.includes(tabId)) return p.edit === true;
+    if (WRITE_TABS.includes(tabId)) return p.add === true || p.edit === true;
+    if (DOC_TABS.includes(tabId))   return false;
+    return p.read === true;
+  };
+
+  const filteredGroups = TAB_GROUPS.map((g) => ({
+    ...g,
+    tabs: g.tabs.filter((t) => canShow(t.id)),
+  })).filter((g) => g.tabs.length > 0);
+
+  const activeTabInfo = TAB_GROUPS.flatMap((g) => g.tabs).find((t) => t.id === active);
+
+  // ── Close menu when a tab is selected ──
+  const handleSelect = (id) => {
+    onSelect(id);
+    setMenuOpen(false);
+  };
+
+  // ── MOBILE LAYOUT ──────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {/* Mobile top bar */}
+        <div
+          style={{
+            background: "white",
+            borderBottom: "1px solid #E5E7EB",
+            padding: "0 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            height: 52,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+            position: "sticky",
+            top: 0,
+            zIndex: 100,
+          }}
+        >
+          {/* Active tab indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{activeTabInfo?.icon}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#1a3c2e" }}>
+              {activeTabInfo?.label}
+            </span>
+          </div>
+
+          {/* Hamburger button */}
+          <button
+            onClick={() => setMenuOpen((p) => !p)}
+            style={{
+              background: menuOpen ? "#1a3c2e" : "#F3F4F6",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 12px",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            aria-label="Toggle navigation menu"
+          >
+            {menuOpen ? (
+              <span style={{ fontSize: 18, color: "white", lineHeight: 1 }}>✕</span>
+            ) : (
+              <>
+                <div style={{ width: 20, height: 2, background: "#374151", borderRadius: 2 }} />
+                <div style={{ width: 20, height: 2, background: "#374151", borderRadius: 2 }} />
+                <div style={{ width: 20, height: 2, background: "#374151", borderRadius: 2 }} />
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Slide-down menu */}
+        {menuOpen && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 200,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Backdrop */}
+            <div
+              onClick={() => setMenuOpen(false)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(0,0,0,0.4)",
+              }}
+            />
+
+            {/* Drawer */}
+            <div
+              style={{
+                position: "relative",
+                background: "white",
+                maxHeight: "85vh",
+                overflowY: "auto",
+                borderBottomLeftRadius: 16,
+                borderBottomRightRadius: 16,
+                boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+                zIndex: 1,
+              }}
+            >
+              {/* Drawer header */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg,#1a3c2e,#2A5C45)",
+                  padding: "16px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "'Playfair Display',serif",
+                    fontSize: 16,
+                    color: "white",
+                  }}
+                >
+                  🎓 Navigation
+                </span>
+                <button
+                  onClick={() => setMenuOpen(false)}
+                  style={{
+                    background: "rgba(255,255,255,0.15)",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "4px 10px",
+                    color: "white",
+                    cursor: "pointer",
+                    fontSize: 14,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Tab groups */}
+              {filteredGroups.map((grp) => (
+                <div key={grp.groupLabel} style={{ padding: "12px 16px 4px" }}>
+                  {/* Group label */}
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: grp.color,
+                      textTransform: "uppercase",
+                      letterSpacing: ".12em",
+                      marginBottom: 8,
+                      paddingLeft: 4,
+                    }}
+                  >
+                    {grp.groupLabel}
+                  </div>
+
+                  {/* Tab buttons — 2-column grid on mobile */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {grp.tabs.map((t) => {
+                      const isActive = active === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => handleSelect(t.id)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: isActive
+                              ? "none"
+                              : "1px solid #E5E7EB",
+                            background: isActive ? "#1a3c2e" : "#F9FAFB",
+                            color: isActive ? "white" : "#374151",
+                            cursor: "pointer",
+                            fontFamily: "'DM Sans',sans-serif",
+                            fontWeight: isActive ? 700 : 500,
+                            fontSize: 13,
+                            textAlign: "left",
+                            transition: "all .12s",
+                          }}
+                        >
+                          <span style={{ fontSize: 16, flexShrink: 0 }}>{t.icon}</span>
+                          <span style={{ lineHeight: 1.3 }}>{t.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Divider between groups */}
+                  <div
+                    style={{
+                      height: 1,
+                      background: "#F1F5F9",
+                      margin: "4px 0 8px",
+                    }}
+                  />
+                </div>
+              ))}
+
+              <div style={{ height: 16 }} />
+            </div>
+          </div>
+        )}
+      </>
+    );
   }
 
-  const filteredGroups = TAB_GROUPS.map(g => ({
-    ...g,
-    tabs: g.tabs.filter(t => canShow(t.id))
-  })).filter(g => g.tabs.length > 0)
-
-  const row1 = filteredGroups.filter(g => ['Entry','Results','Documents'].includes(g.groupLabel))
-  const row2 = filteredGroups.filter(g => ['Schedule','Setup'].includes(g.groupLabel))
-  // ... rest of TabNav unchanged, just use filteredGroups instead of TAB_GROUPS slices
+  // ── DESKTOP LAYOUT (original, unchanged) ──────────────────────────────────
+  const row1 = filteredGroups.filter((g) =>
+    ["Entry", "Results", "Documents"].includes(g.groupLabel)
+  );
+  const row2 = filteredGroups.filter((g) =>
+    ["Schedule", "Setup"].includes(g.groupLabel)
+  );
 
   const Divider = () => (
-    <div style={{ width: 1, height: 36, background: "#E5E7EB", margin: "0 6px", flexShrink: 0 }} />
+    <div
+      style={{
+        width: 1,
+        height: 36,
+        background: "#E5E7EB",
+        margin: "0 6px",
+        flexShrink: 0,
+      }}
+    />
   );
 
   const renderGroup = (grp) => (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", padding: "0 4px" }}>
-      <div style={{ fontSize: 9, fontWeight: 700, color: grp.color, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 3 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        padding: "0 4px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          color: grp.color,
+          textTransform: "uppercase",
+          letterSpacing: ".1em",
+          marginBottom: 3,
+        }}
+      >
         {grp.groupLabel}
       </div>
       <div style={{ display: "flex", gap: 2 }}>
-        {grp.tabs.map(t => (
-          <button key={t.id} onClick={() => onSelect(t.id)} title={t.tip}
-            style={{ ...css.btn, padding: "5px 10px", fontSize: 12, background: active === t.id ? "#1a3c2e" : "transparent", color: active === t.id ? "white" : "#374151", border: active === t.id ? "none" : "1px solid transparent", borderRadius: 7 }}>
+        {grp.tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => onSelect(t.id)}
+            title={t.tip}
+            style={{
+              padding: "5px 10px",
+              fontSize: 12,
+              background: active === t.id ? "#1a3c2e" : "transparent",
+              color: active === t.id ? "white" : "#374151",
+              border: active === t.id ? "none" : "1px solid transparent",
+              borderRadius: 7,
+              cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif",
+              fontWeight: 600,
+            }}
+          >
             {t.icon} {t.label}
           </button>
         ))}
@@ -312,24 +593,42 @@ function TabNav({ active, onSelect, perms, isAdmin }) {
   );
 
   const renderRow = (groups) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 0, overflowX: "auto", scrollbarWidth: "none" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 0,
+        overflowX: "auto",
+        scrollbarWidth: "none",
+      }}
+    >
       {groups.map((grp, i) => (
         <div key={grp.groupLabel} style={{ display: "flex", alignItems: "center" }}>
-          {renderGroup(grp)}{i < groups.length - 1 && <Divider />}
+          {renderGroup(grp)}
+          {i < groups.length - 1 && <Divider />}
         </div>
       ))}
     </div>
   );
 
   return (
-    <div style={{ background: "white", borderBottom: "1px solid #E5E7EB", padding: "10px 24px", display: "flex", flexDirection: "column", gap: 8, boxShadow: "0 2px 6px rgba(0,0,0,0.04)" }}>
+    <div
+      style={{
+        background: "white",
+        borderBottom: "1px solid #E5E7EB",
+        padding: "10px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+      }}
+    >
       {renderRow(row1)}
       <div style={{ height: 1, background: "#F1F5F9", margin: "0 -4px" }} />
       {renderRow(row2)}
     </div>
   );
 }
-
 // ─── Remarks Hook ─────────────────────────────────────────────────────────────
 function useRemarks(studentId, examTypeId, examDate) {
   const [remark, setRemark] = useState("");
