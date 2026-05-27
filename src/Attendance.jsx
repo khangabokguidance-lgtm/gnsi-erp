@@ -1,15 +1,5 @@
 // ============================================================
-//  GNSI Portal — Attendance Module (Advanced v2)
-//  All 9 new features added:
-//   1. Smart Defaulter Alerts (auto-flag < threshold)
-//   2. Leave Management (submit / approve / reject)
-//   3. Auto Session Creation (draft from timetable)
-//   4. Per-Student Heatmap (calendar view)
-//   5. Subject-wise Breakdown (attendance % per subject)
-//   6. Teacher Activity Log (sessions + on-time rate)
-//   7. Today Quick-Mark Panel (home tab)
-//   8. Copy Last Session (pre-fill from previous)
-//   9. Instant Parent Notify (SMS/WhatsApp after save)
+//  GNSI Portal — Attendance Module (Advanced v2 · Mobile-First)
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -80,6 +70,19 @@ const fmtDate  = d  => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN',
 const fmtMonth = m  => { const [y,mo] = m.split('-'); return new Date(y, mo-1).toLocaleDateString('en-IN',{month:'long',year:'numeric'}) }
 const todayDay = () => new Date().toLocaleDateString('en-US', { weekday:'long' })
 
+// ─── Mobile Hook ──────────────────────────────────────────────
+
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 640)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    const h = e => setMobile(e.matches)
+    mq.addEventListener('change', h)
+    return () => mq.removeEventListener('change', h)
+  }, [])
+  return mobile
+}
+
 // ─── Shared UI Primitives ─────────────────────────────────────
 
 const font = "'Outfit', system-ui, sans-serif"
@@ -121,16 +124,19 @@ function CoursePill({ course }) {
   return <Chip label={course} color={cc.badge} bg={cc.light} border={`${cc.accent}30`} />
 }
 
+// FIX 1: StatusCycle — removed minWidth so it doesn't overflow on mobile
 function StatusCycle({ status, onChange }) {
   const sm  = STATUS_META[status] || STATUS_META.Present
   const idx = STATUSES.indexOf(status)
   return (
     <button onClick={() => onChange(STATUSES[(idx + 1) % STATUSES.length])}
       style={{
-        padding: '5px 16px', borderRadius: 999, border: `1.5px solid ${sm.border}`,
-        background: sm.bg, color: sm.color, fontWeight: 800, fontSize: 12,
-        cursor: 'pointer', minWidth: 90, transition: 'all .12s',
+        padding: '6px 10px', borderRadius: 999, border: `1.5px solid ${sm.border}`,
+        background: sm.bg, color: sm.color, fontWeight: 800, fontSize: 11,
+        cursor: 'pointer', transition: 'all .12s', flexShrink: 0,
         fontFamily: font, letterSpacing: '.02em',
+        WebkitTapHighlightColor: 'transparent',
+        whiteSpace: 'nowrap',
       }}>
       {sm.icon} {sm.label}
     </button>
@@ -168,7 +174,7 @@ function MiniBar({ pct }) {
   const color = pct >= 75 ? C.emerald : pct >= 50 ? C.amber : C.red
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, height: 7, background: C.slate[100], borderRadius: 999, overflow: 'hidden', minWidth: 60 }}>
+      <div style={{ flex: 1, height: 7, background: C.slate[100], borderRadius: 999, overflow: 'hidden', minWidth: 48 }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width .4s' }} />
       </div>
       <span style={{ fontSize: 12, fontWeight: 800, color, minWidth: 34 }}>{pct}%</span>
@@ -187,17 +193,33 @@ function Card({ children, style={} }) {
   )
 }
 
+// FIX 2: CardHead — title side gets minWidth:0 + overflow guard; right side doesn't crowd it
 function CardHead({ icon, title, sub, right }) {
+  const isMobile = useIsMobile()
   return (
-    <div style={{ padding: '16px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 4, height: 24, background: `linear-gradient(180deg,${C.navy},${C.indigo})`, borderRadius: 2 }} />
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{icon && <span style={{ marginRight: 7 }}>{icon}</span>}{title}</div>
-          {sub && <div style={{ fontSize: 12, color: C.slate[400], marginTop: 2 }}>{sub}</div>}
+    <div style={{
+      padding: isMobile ? '12px 14px' : '16px 22px',
+      borderBottom: `1px solid ${C.slate[100]}`,
+      display: 'flex', alignItems: 'flex-start',
+      justifyContent: 'space-between', gap: 8,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+        <div style={{ width: 4, height: 24, background: `linear-gradient(180deg,${C.navy},${C.indigo})`, borderRadius: 2, flexShrink: 0 }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontSize: isMobile ? 13 : 15, fontWeight: 800, color: C.navy, lineHeight: 1.3,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {icon && <span style={{ marginRight: 5 }}>{icon}</span>}{title}
+          </div>
+          {sub && <div style={{ fontSize: 10, color: C.slate[400], marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
         </div>
       </div>
-      {right && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{right}</div>}
+      {right && (
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0, maxWidth: isMobile ? '52%' : '60%' }}>
+          {right}
+        </div>
+      )}
     </div>
   )
 }
@@ -211,19 +233,23 @@ function Alert({ type='info', children, onClose }) {
   }
   const s = styles[type]
   return (
-    <div style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 10, padding: '11px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: 13, fontWeight: 600, color: s.color }}>{children}</span>
-      {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.color, fontSize: 16, lineHeight: 1 }}>×</button>}
+    <div style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 10, padding: '11px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: s.color, flex: 1 }}>{children}</span>
+      {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.color, fontSize: 18, lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>}
     </div>
   )
 }
 
-function Btn({ children, onClick, disabled, variant='primary', small }) {
+// FIX 3: Btn — style prop now spread correctly so width:'100%' works on mobile
+function Btn({ children, onClick, disabled, variant='primary', small, style={} }) {
   const base = {
     borderRadius: small ? 7 : 9, border: 'none', fontFamily: font,
     fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer',
-    fontSize: small ? 12 : 13, padding: small ? '6px 14px' : '9px 20px',
-    transition: 'all .12s', display: 'inline-flex', alignItems: 'center', gap: 6,
+    fontSize: small ? 12 : 13, padding: small ? '6px 12px' : '9px 20px',
+    transition: 'all .12s', display: 'inline-flex', alignItems: 'center',
+    justifyContent: 'center', gap: 6,
+    WebkitTapHighlightColor: 'transparent', flexShrink: 0,
+    minHeight: 40,
   }
   const vars = {
     primary:  { background: disabled ? C.slate[200] : `linear-gradient(135deg,${C.navy},${C.indigo})`, color: disabled ? C.slate[400] : 'white' },
@@ -235,15 +261,16 @@ function Btn({ children, onClick, disabled, variant='primary', small }) {
   }
   return (
     <button onClick={disabled ? undefined : onClick} disabled={disabled}
-      style={{ ...base, ...vars[variant] }}>
+      style={{ ...base, ...vars[variant], ...style }}>
       {children}
     </button>
   )
 }
 
-// ─── TAB: HOME (Today Quick-Mark + Defaulter Alerts) ─────────
+// ─── TAB: HOME ────────────────────────────────────────────────
 
 function TabHome({ onNavigate }) {
+  const isMobile = useIsMobile()
   const [sessions,   setSessions]   = useState([])
   const [defaulters, setDefaulters] = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -254,45 +281,24 @@ function TabHome({ onNavigate }) {
     const load = async () => {
       setLoading(true)
       const todayStr = today()
-
-      // Today's sessions from timetable (auto-session creation preview)
       const { data: todaySess } = await supabase
-        .from('attendance_sessions')
-        .select('*')
-        .eq('session_date', todayStr)
-        .order('period_number')
-
-      // All timetable entries for today's day
+        .from('attendance_sessions').select('*').eq('session_date', todayStr).order('period_number')
       const { data: ttEntries } = await supabase
-        .from('timetable_entries')
-        .select('*')
-        .eq('day_name', todayDay())
-
-      // Build unified "today's periods" list
+        .from('timetable_entries').select('*').eq('day_name', todayDay())
       const markedPeriods = new Set((todaySess||[]).map(s => `${s.course}|${s.period_number}`))
       const pendingSessions = (ttEntries||[]).map(tt => ({
         ...tt,
         done: markedPeriods.has(`${tt.course}|${tt.period_name}`),
         session: (todaySess||[]).find(s => s.course === tt.course && String(s.period_number) === String(tt.period_name))
       }))
-
       setSessions(pendingSessions.slice(0, 8))
-
-      // Monthly attendance for defaulter detection
       const monthStart = todayStr.slice(0,7) + '-01'
       const { data: monthSess } = await supabase
-        .from('attendance_sessions')
-        .select('id')
-        .gte('session_date', monthStart)
-        .lte('session_date', todayStr)
-
+        .from('attendance_sessions').select('id').gte('session_date', monthStart).lte('session_date', todayStr)
       if (monthSess?.length) {
         const ids = monthSess.map(s => s.id)
         const { data: recs } = await supabase
-          .from('attendance_records')
-          .select('student_name,gcc_no,status,session_id')
-          .in('session_id', ids)
-
+          .from('attendance_records').select('student_name,gcc_no,status,session_id').in('session_id', ids)
         const map = {}
         recs?.forEach(r => {
           if (!map[r.student_name]) map[r.student_name] = { name:r.student_name, gcc:r.gcc_no, Present:0, total:0 }
@@ -302,14 +308,8 @@ function TabHome({ onNavigate }) {
         const rows = Object.values(map).map(r => ({ ...r, pct: r.total > 0 ? Math.round((r.Present/r.total)*100) : 0 }))
         const atRisk = rows.filter(r => r.pct < threshold).sort((a,b) => a.pct - b.pct)
         setDefaulters(atRisk)
-
         const avgPct = rows.length ? Math.round(rows.reduce((s,r) => s+r.pct, 0) / rows.length) : 0
-        setStats({
-          total: rows.length,
-          pending: pendingSessions.filter(s => !s.done).length,
-          risk: atRisk.length,
-          avgPct,
-        })
+        setStats({ total: rows.length, pending: pendingSessions.filter(s => !s.done).length, risk: atRisk.length, avgPct })
       } else {
         setStats(s => ({ ...s, pending: pendingSessions.filter(x => !x.done).length }))
       }
@@ -320,74 +320,73 @@ function TabHome({ onNavigate }) {
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: C.slate[400] }}>⏳ Loading dashboard…</div>
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+  const statItems = [
+    { label: 'Today pending',    value: stats.pending, color: C.sky,    bg: '#eff6ff' },
+    { label: 'At-risk students', value: stats.risk,    color: C.red,    bg: '#fef2f2' },
+    { label: 'Tracked',          value: stats.total,   color: C.navy,   bg: '#eff6ff' },
+    { label: 'Avg attendance',   value: `${stats.avgPct}%`, color: stats.avgPct>=75?C.emerald:C.amber, bg: stats.avgPct>=75?'#f0fdf4':'#fffbeb' },
+  ]
 
-      {/* ── Stats Overview ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-        {[
-          { label: 'Today pending', value: stats.pending, color: C.sky,    bg: '#eff6ff' },
-          { label: 'At-risk students', value: stats.risk, color: C.red,     bg: '#fef2f2' },
-          { label: 'Students tracked', value: stats.total,color: C.navy,    bg: '#eff6ff' },
-          { label: 'Avg attendance',   value: `${stats.avgPct}%`, color: stats.avgPct>=75?C.emerald:C.amber, bg: stats.avgPct>=75?'#f0fdf4':'#fffbeb' },
-        ].map(s => (
-          <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: '14px 16px', borderLeft: `4px solid ${s.color}` }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: s.color, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontSize: 26, fontWeight: 900, color: s.color, fontFamily: font }}>{s.value}</div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Stats grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+        {statItems.map(s => (
+          <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: isMobile ? '12px 14px' : '14px 16px', borderLeft: `4px solid ${s.color}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: s.color, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: s.color, fontFamily: font }}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* ── Today Quick-Mark Panel ── */}
+      {/* Today Quick-Mark */}
       <Card>
         <CardHead icon="⚡" title="Today's Sessions" sub={`${fmtDate(today())} · ${todayDay()}`}
-          right={<Btn small variant="ghost" onClick={() => onNavigate('mark')}>+ New Session</Btn>} />
-        <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          right={<Btn small variant="ghost" onClick={() => onNavigate('mark')}>+ New</Btn>} />
+        <div style={{ padding: isMobile ? '12px 14px' : '14px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {sessions.length === 0 && (
             <div style={{ textAlign: 'center', padding: '32px 0', color: C.slate[400], fontSize: 13 }}>
-              No timetable entries found for today. <br />
-              <span style={{ fontSize: 12 }}>Add timetable entries or mark attendance manually.</span>
+              No timetable entries for today.<br />
+              <span style={{ fontSize: 12 }}>Mark attendance manually.</span>
             </div>
           )}
           {sessions.map((s, i) => (
             <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px',
+              display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 12px' : '11px 16px',
               borderRadius: 10, border: `1px solid ${s.done ? C.slate[100] : '#bfdbfe'}`,
               background: s.done ? C.slate[50] : '#eff6ff', opacity: s.done ? .65 : 1,
             }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: s.done ? C.emerald : C.sky, flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800] }}>
-                  Period {s.period_name} — {s.subject_name || 'No subject'}
+              <div style={{ width: 9, height: 9, borderRadius: '50%', background: s.done ? C.emerald : C.sky, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  P{s.period_name} — {s.subject_name || 'No subject'}
                 </div>
-                <div style={{ fontSize: 11, color: C.slate[400], marginTop: 2 }}>
+                <div style={{ fontSize: 11, color: C.slate[400], marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {s.class_name}{s.teacher_name ? ` · ${s.teacher_name}` : ''}
                 </div>
               </div>
               {s.done
-                ? <span style={{ fontSize: 11, fontWeight: 800, color: C.emerald }}>✓ Done</span>
-                : <Btn small variant="primary" onClick={() => onNavigate('mark', s)}>Mark now</Btn>
+                ? <span style={{ fontSize: 11, fontWeight: 800, color: C.emerald, flexShrink: 0 }}>✓ Done</span>
+                : <Btn small variant="primary" onClick={() => onNavigate('mark', s)}>Mark</Btn>
               }
             </div>
           ))}
         </div>
       </Card>
 
-      {/* ── Defaulter Alerts ── */}
+      {/* Defaulter Alerts */}
       <Card>
         <CardHead icon="🚨" title="Defaulter Alerts"
-          sub={`Students below ${threshold}% attendance this month`}
+          sub={`Below ${threshold}% this month`}
           right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12, color: C.slate[500] }}>Threshold:</span>
-              <select value={threshold} onChange={e => setThreshold(Number(e.target.value))}
-                style={inp({ width: 'auto', padding: '5px 10px' })}>
-                {[50,60,65,70,75,80,85].map(v => <option key={v} value={v}>{v}%</option>)}
-              </select>
-            </div>
+            <select value={threshold} onChange={e => setThreshold(Number(e.target.value))}
+              style={inp({ width: 'auto', padding: '5px 10px', fontSize: 12 })}>
+              {[50,60,65,70,75,80,85].map(v => <option key={v} value={v}>{v}%</option>)}
+            </select>
           }
         />
-        <div style={{ padding: '14px 22px' }}>
+        <div style={{ padding: isMobile ? '12px 14px' : '14px 22px' }}>
           {defaulters.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: C.emerald, fontWeight: 700, fontSize: 13 }}>
               ✅ No defaulters — all students above {threshold}%
@@ -396,30 +395,30 @@ function TabHome({ onNavigate }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {defaulters.slice(0, 10).map(d => (
                 <div key={d.name} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, padding: isMobile ? '10px 12px' : '10px 14px',
                   borderRadius: 10, border: `1px solid ${d.pct < 50 ? '#fca5a5' : '#fde68a'}`,
                   background: d.pct < 50 ? '#fff5f5' : '#fffbeb',
                 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: d.pct < 50 ? '#fee2e2' : '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: d.pct < 50 ? C.red : C.amber }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: d.pct < 50 ? '#fee2e2' : '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: d.pct < 50 ? C.red : C.amber, flexShrink: 0 }}>
                     {d.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800] }}>{d.name}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
                     {d.gcc && <div style={{ fontSize: 11, color: C.slate[400] }}>GCC-{d.gcc}</div>}
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: d.pct < 50 ? C.red : C.amber }}>{d.pct}%</div>
-                    <div style={{ fontSize: 10, color: C.slate[400] }}>{d.total} sessions</div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: d.pct < 50 ? C.red : C.amber }}>{d.pct}%</div>
+                    <div style={{ fontSize: 10, color: C.slate[400] }}>{d.total} sess.</div>
                   </div>
-                  <div style={{ minWidth: 80 }}><MiniBar pct={d.pct} /></div>
-                  <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: d.pct<50?'#fee2e2':'#fef3c7', color: d.pct<50?C.red:C.amber }}>
-                    {d.pct < 50 ? '🚨 Risk' : '⚠️ Low'}
+                  {!isMobile && <div style={{ minWidth: 80 }}><MiniBar pct={d.pct} /></div>}
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 999, background: d.pct<50?'#fee2e2':'#fef3c7', color: d.pct<50?C.red:C.amber, flexShrink: 0 }}>
+                    {d.pct < 50 ? '🚨' : '⚠️'}
                   </span>
                 </div>
               ))}
               {defaulters.length > 10 && (
                 <div style={{ textAlign: 'center', fontSize: 12, color: C.slate[400], padding: '8px 0' }}>
-                  +{defaulters.length - 10} more · Switch to Reports for full list
+                  +{defaulters.length - 10} more
                 </div>
               )}
             </div>
@@ -430,33 +429,31 @@ function TabHome({ onNavigate }) {
   )
 }
 
-// ─── TAB: MARK ATTENDANCE (+ Copy Last Session + Notify) ─────
+// ─── TAB: MARK ATTENDANCE ────────────────────────────────────
 
 function TabMark({ staff, prefill }) {
-  const [form, setForm]       = useState({
+  const isMobile = useIsMobile()
+  const [form, setForm] = useState({
     session_date: today(), course: prefill?.course||'', subtype: prefill?.subtype||'',
     class_name: prefill?.class_name||'', subject_name: prefill?.subject_name||'',
     teacher_name: prefill?.teacher_name||'', staff_id: '', period_number: prefill?.period_name||'',
     session_type: 'Class', remarks: '',
   })
-  const [students,   setStudents]   = useState([])
-  const [records,    setRecords]    = useState({})
-  const [timetable,  setTimetable]  = useState([])
-  const [saving,     setSaving]     = useState(false)
-  const [toast,      setToast]      = useState(null)
-  const [search,     setSearch]     = useState('')
-  const [batchId,    setBatchId]    = useState(null)
-  const [showNotify, setShowNotify] = useState(false)
-  const [savedSessId,setSavedSessId]= useState(null)
-  const [copying,    setCopying]    = useState(false)
+  const [students,    setStudents]    = useState([])
+  const [records,     setRecords]     = useState({})
+  const [timetable,   setTimetable]   = useState([])
+  const [saving,      setSaving]      = useState(false)
+  const [toast,       setToast]       = useState(null)
+  const [search,      setSearch]      = useState('')
+  const [batchId,     setBatchId]     = useState(null)
+  const [showNotify,  setShowNotify]  = useState(false)
+  const [savedSessId, setSavedSessId] = useState(null)
+  const [copying,     setCopying]     = useState(false)
 
-  const subtypes  = form.course ? COURSE_STRUCTURE[form.course] || [] : []
-  const cc        = COURSE_COLORS[form.course] || COURSE_COLORS.Sainik
-
+  const subtypes = form.course ? COURSE_STRUCTURE[form.course] || [] : []
   const batchSubjects = useMemo(() =>
     timetable.length ? [...new Set(timetable.map(t=>t.subject_name).filter(Boolean))].sort() : SUBJECTS
   , [timetable])
-
   const batchStaff = useMemo(() => {
     if (!timetable.length) return staff
     const names = new Set(timetable.map(t=>t.teacher_name).filter(Boolean))
@@ -464,12 +461,10 @@ function TabMark({ staff, prefill }) {
     return matched.length ? matched : staff
   }, [timetable, staff])
 
-  // Load batch + timetable
   useEffect(() => {
     if (!form.course || !form.subtype) { setTimetable([]); setBatchId(null); return }
     const fetch = async () => {
-      let q = supabase.from('course_batches').select('id,batch_name')
-        .eq('course', form.course).eq('subtype', form.subtype)
+      let q = supabase.from('course_batches').select('id,batch_name').eq('course', form.course).eq('subtype', form.subtype)
       if (form.class_name) q = q.eq('class_name', form.class_name)
       const { data } = await q.limit(1).single()
       const id = data?.id || null
@@ -481,7 +476,6 @@ function TabMark({ staff, prefill }) {
     fetch()
   }, [form.course, form.subtype, form.class_name])
 
-  // Load students
   useEffect(() => {
     if (!form.course) { setStudents([]); setRecords({}); return }
     const fetch = async () => {
@@ -490,8 +484,7 @@ function TabMark({ staff, prefill }) {
         .eq('status','Active').eq('course', form.course)
       if (form.subtype)    q = q.eq('subtype',    form.subtype)
       if (form.class_name) q = q.eq('class_name', form.class_name)
-      const { data, error } = await q.order('student_name')
-      if (error) console.error('student fetch error:', error)
+      const { data } = await q.order('student_name')
       setStudents(data || [])
       const init = {}
       ;(data||[]).forEach(s => { init[s.student_id || s.student_name] = 'Present' })
@@ -500,19 +493,13 @@ function TabMark({ staff, prefill }) {
     fetch()
   }, [form.course, form.subtype, form.class_name])
 
-  // Period auto-fill
   const handlePeriod = (period) => {
     setForm(prev => ({ ...prev, period_number: period }))
     if (!period || !timetable.length) return
     const slot = timetable.find(t => t.period_name === String(period) && t.day_name === todayDay())
     if (slot) {
       const matched = staff.find(s => s.name === slot.teacher_name)
-      setForm(prev => ({
-        ...prev, period_number: period,
-        subject_name: slot.subject_name || prev.subject_name,
-        teacher_name: slot.teacher_name || prev.teacher_name,
-        staff_id:     matched?.id || prev.staff_id,
-      }))
+      setForm(prev => ({ ...prev, period_number: period, subject_name: slot.subject_name || prev.subject_name, teacher_name: slot.teacher_name || prev.teacher_name, staff_id: matched?.id || prev.staff_id }))
     }
   }
 
@@ -536,74 +523,48 @@ function TabMark({ staff, prefill }) {
     setRecords(next)
   }
 
-  // ── Feature: Copy Last Session ────────────────────────────
   const copyLastSession = async () => {
     if (!form.course) { setToast({ type:'warn', msg:'Select a course first.' }); return }
     setCopying(true)
-    const { data: lastSess } = await supabase
-      .from('attendance_sessions')
-      .select('id')
-      .eq('course', form.course)
-      .eq('subtype', form.subtype || '')
-      .order('session_date', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (!lastSess) { setCopying(false); setToast({ type:'warn', msg:'No previous session found for this course.' }); return }
-
-    const { data: lastRecs } = await supabase
-      .from('attendance_records')
-      .select('student_name,student_id,status')
-      .eq('session_id', lastSess.id)
-
+    const { data: lastSess } = await supabase.from('attendance_sessions').select('id').eq('course', form.course).eq('subtype', form.subtype || '').order('session_date', { ascending: false }).limit(1).single()
+    if (!lastSess) { setCopying(false); setToast({ type:'warn', msg:'No previous session found.' }); return }
+    const { data: lastRecs } = await supabase.from('attendance_records').select('student_name,student_id,status').eq('session_id', lastSess.id)
     if (lastRecs?.length) {
       const copied = {}
       lastRecs.forEach(r => { copied[r.student_id || r.student_name] = r.status })
       setRecords(prev => ({ ...prev, ...copied }))
-      setToast({ type:'success', msg:`✅ Copied ${lastRecs.length} records from last session. Adjust any changes.` })
+      setToast({ type:'success', msg:`✅ Copied ${lastRecs.length} records from last session.` })
     }
     setCopying(false)
   }
 
   const handleSave = async () => {
-    if (!form.course || !students.length) { setToast({ type:'warn', msg:'Select a course and ensure students are loaded.' }); return }
+    if (!form.course || !students.length) { setToast({ type:'warn', msg:'Select a course with students.' }); return }
     setSaving(true)
-    const { data: sess, error: e1 } = await supabase.from('attendance_sessions')
-      .insert([{
-        session_date:  form.session_date,
-        course:        form.course,
-        subtype:       form.subtype       || null,
-        class_name:    form.class_name    || null,
-        batch_id:      batchId            || null,
-        subject_name:  form.subject_name  || null,
-        teacher_name:  form.teacher_name  || null,
-        staff_id:      form.staff_id      || null,
-        period_number: form.period_number || null,
-        session_type:  form.session_type,
-        remarks:       form.remarks       || null,
-      }]).select().single()
+    const { data: sess, error: e1 } = await supabase.from('attendance_sessions').insert([{
+      session_date: form.session_date, course: form.course, subtype: form.subtype || null,
+      class_name: form.class_name || null, batch_id: batchId || null,
+      subject_name: form.subject_name || null, teacher_name: form.teacher_name || null,
+      staff_id: form.staff_id || null, period_number: form.period_number || null,
+      session_type: form.session_type, remarks: form.remarks || null,
+    }]).select().single()
     if (e1) { setSaving(false); setToast({ type:'error', msg: e1.message }); return }
-
     const rows = students.map(s => ({
-      session_id:   sess.id,
-      student_id:   s.student_id   || null,
-      student_name: s.student_name,
-      gcc_no:       s.gcc_no       || null,
-      status:       records[s.student_id || s.student_name] || 'Present',
+      session_id: sess.id, student_id: s.student_id || null,
+      student_name: s.student_name, gcc_no: s.gcc_no || null,
+      status: records[s.student_id || s.student_name] || 'Present',
     }))
     const { error: e2 } = await supabase.from('attendance_records').insert(rows)
     setSaving(false)
     if (e2) { setToast({ type:'error', msg: e2.message }); return }
     setSavedSessId(sess.id)
     setShowNotify(true)
-    setToast({ type:'success', msg: `✅ Attendance saved for ${students.length} students!` })
+    setToast({ type:'success', msg: `✅ Saved for ${students.length} students!` })
     setForm(prev => ({ ...prev, subject_name:'', teacher_name:'', staff_id:'', period_number:'', remarks:'' }))
   }
 
   const filteredStudents = useMemo(() =>
-    search.trim()
-      ? students.filter(s => s.student_name.toLowerCase().includes(search.toLowerCase()) || (s.gcc_no||'').includes(search))
-      : students
+    search.trim() ? students.filter(s => s.student_name.toLowerCase().includes(search.toLowerCase()) || (s.gcc_no||'').includes(search)) : students
   , [students, search])
 
   const counts = useMemo(() => {
@@ -613,21 +574,22 @@ function TabMark({ staff, prefill }) {
   }, [records])
 
   const absentStudents = useMemo(() =>
-    students.filter(s => {
-      const k = s.student_id || s.student_name
-      return records[k] === 'Absent' || records[k] === 'Late'
-    })
+    students.filter(s => { const k = s.student_id || s.student_name; return records[k] === 'Absent' || records[k] === 'Late' })
   , [students, records])
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+  const pad = isMobile ? '12px 14px' : '20px 22px'
 
-      {/* ── Session Details ── */}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Session Details */}
       <Card>
-        <CardHead icon="📋" title="Session Details" sub="Configure course, period and session metadata" />
-        <div style={{ padding: '20px 22px' }}>
+        <CardHead icon="📋" title="Session Details" sub="Configure course and period" />
+        <div style={{ padding: pad }}>
           {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+
+          {/* FIX 4: Row 1 — always 1 col on mobile */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: 10 }}>
             <div>
               <Label>Course *</Label>
               <Select value={form.course} onChange={e => setForm(prev => ({ ...prev, course: e.target.value, subtype:'', class_name:'' }))}>
@@ -644,35 +606,61 @@ function TabMark({ staff, prefill }) {
               </Select>
             </div>
             <div>
-              <Label>Class {batchId && <span style={{ fontSize:10, color: C.emerald, fontWeight:800 }}>✓ linked</span>}</Label>
+              <Label>Class {batchId && <span style={{ fontSize:10, color:C.emerald, fontWeight:800 }}>✓ linked</span>}</Label>
               <input value={form.class_name} onChange={e => setForm(prev => ({ ...prev, class_name: e.target.value }))}
                 placeholder="e.g. 9A (optional)" style={inp()} />
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+
+          {/* FIX 4: Row 2 — date full-width, period+subject side-by-side on mobile */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: 10 }}>
             <div>
               <Label>Date</Label>
-              <input type="date" value={form.session_date}
-                onChange={e => setForm(prev => ({ ...prev, session_date: e.target.value }))} style={inp()} />
+              <input type="date" value={form.session_date} onChange={e => setForm(prev => ({ ...prev, session_date: e.target.value }))} style={inp()} />
             </div>
-            <div>
-              <Label badge={form.period_number && timetable.length ? 'AUTO-FILL' : ''}>Period</Label>
-              <Select value={form.period_number} onChange={e => handlePeriod(e.target.value)}>
-                <option value="">— No Period —</option>
-                {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
-              </Select>
+            <div style={isMobile ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, gridColumn: '1 / -1' } : {}}>
+              {isMobile ? (
+                <>
+                  <div>
+                    <Label badge={form.period_number && timetable.length ? 'AUTO' : ''}>Period</Label>
+                    <Select value={form.period_number} onChange={e => handlePeriod(e.target.value)}>
+                      <option value="">— None —</option>
+                      {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
+                    </Select>
+                  </div>
+                  <div>
+                    <Label badge={form.period_number && form.subject_name && timetable.length ? '✓ TT' : ''}>Subject</Label>
+                    <Select value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
+                      <option value="">Select Subject</option>
+                      {batchSubjects.map(s => <option key={s}>{s}</option>)}
+                    </Select>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <Label badge={form.period_number && timetable.length ? 'AUTO' : ''}>Period</Label>
+                  <Select value={form.period_number} onChange={e => handlePeriod(e.target.value)}>
+                    <option value="">— No Period —</option>
+                    {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
+                  </Select>
+                </div>
+              )}
             </div>
-            <div>
-              <Label badge={form.period_number && form.subject_name && timetable.length ? '✓ TIMETABLE' : ''}>Subject</Label>
-              <Select value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
-                <option value="">Select Subject</option>
-                {batchSubjects.map(s => <option key={s}>{s}</option>)}
-              </Select>
-            </div>
+            {!isMobile && (
+              <div>
+                <Label badge={form.period_number && form.subject_name && timetable.length ? '✓ TT' : ''}>Subject</Label>
+                <Select value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
+                  <option value="">Select Subject</option>
+                  {batchSubjects.map(s => <option key={s}>{s}</option>)}
+                </Select>
+              </div>
+            )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+
+          {/* Row 3: Teacher / Type / Remarks */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10 }}>
             <div>
-              <Label badge={form.period_number && form.teacher_name && timetable.length ? '✓ TIMETABLE' : ''}>Teacher</Label>
+              <Label badge={form.period_number && form.teacher_name && timetable.length ? '✓ TT' : ''}>Teacher</Label>
               <Select value={form.teacher_name} onChange={e => handleTeacher(e.target.value)}>
                 <option value="">Select Teacher</option>
                 {batchStaff.map(s => <option key={s.id} value={s.name}>{s.name}{s.designation ? ` — ${s.designation}` : ''}</option>)}
@@ -690,76 +678,99 @@ function TabMark({ staff, prefill }) {
                 placeholder="Optional notes..." style={inp()} />
             </div>
           </div>
+
           {form.course && (
-            <div style={{ marginTop: 16, padding: '10px 16px', borderRadius: 9,
+            <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 9,
               background: students.length ? '#f0fdf4' : '#fffbeb',
               border: `1px solid ${students.length ? '#86efac' : '#fde68a'}`,
               display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: students.length ? C.emerald : C.amber }}>
                 {students.length ? `${students.length} students enrolled` : '⚠️ No students found'}
               </span>
-              {timetable.length > 0 && (
-                <span style={{ fontSize: 11, color: C.sky, fontWeight: 700 }}>
-                  📅 {timetable.length} timetable slots
-                </span>
-              )}
+              {timetable.length > 0 && <span style={{ fontSize: 11, color: C.sky, fontWeight: 700 }}>📅 {timetable.length} timetable slots</span>}
               {form.course && <CoursePill course={form.course} />}
             </div>
           )}
         </div>
       </Card>
 
-      {/* ── Mark Attendance ── */}
+      {/* Mark Attendance */}
       {students.length > 0 && (
         <Card>
           <CardHead icon="✏️" title="Mark Attendance"
-            sub={`${form.course}${form.subtype ? ' / '+form.subtype : ''} · ${fmtDate(form.session_date)}${form.subject_name ? ' · '+form.subject_name : ''}`}
+            sub={`${form.course}${form.subtype ? ' / '+form.subtype : ''}`}
             right={
-              <>
-                {/* Feature: Copy Last Session */}
+              isMobile ? (
                 <Btn small variant="amber" onClick={copyLastSession} disabled={copying}>
-                  {copying ? '⏳' : '📋'} Copy last session
+                  {copying ? '⏳' : '📋'} Copy
                 </Btn>
-                <Btn small variant="ghost" onClick={invertSelection}>⇄ Invert</Btn>
-                {STATUSES.map(s => {
-                  const sm = STATUS_META[s]
-                  return (
-                    <button key={s} onClick={() => markAll(s)}
-                      style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: `1.5px solid ${sm.border}`, background: sm.bg, color: sm.color, cursor: 'pointer', fontFamily: font }}>
-                      All {sm.icon}
-                    </button>
-                  )
-                })}
-              </>
+              ) : (
+                <>
+                  <Btn small variant="amber" onClick={copyLastSession} disabled={copying}>
+                    {copying ? '⏳' : '📋'} Copy last
+                  </Btn>
+                  <Btn small variant="ghost" onClick={invertSelection}>⇄ Invert</Btn>
+                  {STATUSES.map(s => {
+                    const sm = STATUS_META[s]
+                    return (
+                      <button key={s} onClick={() => markAll(s)}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 7, border: `1.5px solid ${sm.border}`, background: sm.bg, color: sm.color, cursor: 'pointer', fontFamily: font }}>
+                        All {sm.icon}
+                      </button>
+                    )
+                  })}
+                </>
+              )
             }
           />
 
-          <div style={{ padding: '14px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-            {STATUSES.map(s => {
-              const sm = STATUS_META[s]
-              const pct = students.length ? Math.round((counts[s]/students.length)*100) : 0
-              return (
-                <div key={s} style={{ background: sm.bg, border: `1px solid ${sm.border}`, borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: sm.color, lineHeight: 1, fontFamily: font }}>{counts[s]}</div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: sm.color }}>{sm.icon} {sm.label}</div>
-                    <div style={{ fontSize: 10, color: sm.color, opacity: .7 }}>{pct}%</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          {/* Mobile: quick action row */}
+          {isMobile && (
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', gap: 6 }}>
+              {STATUSES.map(s => {
+                const sm = STATUS_META[s]
+                return (
+                  <button key={s} onClick={() => markAll(s)}
+                    style={{ flex: 1, fontSize: 11, fontWeight: 700, padding: '8px 4px', borderRadius: 7, border: `1.5px solid ${sm.border}`, background: sm.bg, color: sm.color, cursor: 'pointer', fontFamily: font, WebkitTapHighlightColor: 'transparent' }}>
+                    All {sm.icon}
+                  </button>
+                )
+              })}
+              <button onClick={invertSelection}
+                style={{ flex: 1, fontSize: 11, fontWeight: 700, padding: '8px 4px', borderRadius: 7, border: `1px solid ${C.slate[200]}`, background: C.slate[50], color: C.slate[600], cursor: 'pointer', fontFamily: font, WebkitTapHighlightColor: 'transparent' }}>
+                ⇄
+              </button>
+            </div>
+          )}
 
-          <div style={{ padding: '10px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
+          {/* Status summary */}
+          <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 10 }}>
+              {STATUSES.map(s => {
+                const sm = STATUS_META[s]
+                const pct = students.length ? Math.round((counts[s]/students.length)*100) : 0
+                return (
+                  <div key={s} style={{ background: sm.bg, border: `1px solid ${sm.border}`, borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: sm.color, lineHeight: 1, fontFamily: font }}>{counts[s]}</div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: sm.color }}>{sm.icon} {sm.label}</div>
+                      <div style={{ fontSize: 10, color: sm.color, opacity: .7 }}>{pct}%</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
             <StatBar records={records} />
           </div>
 
-          <div style={{ padding: '12px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
+          {/* Search */}
+          <div style={{ padding: isMobile ? '10px 14px' : '10px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="🔍 Search student name or GCC…" style={inp({ maxWidth: 340 })} />
+              placeholder="🔍 Search name or GCC…" style={inp()} />
           </div>
 
-          <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {/* Student list */}
+          <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {filteredStudents.map((s, i) => {
               const key    = s.student_id || s.student_name
               const status = records[key] || 'Present'
@@ -767,19 +778,23 @@ function TabMark({ staff, prefill }) {
               const hc     = HOSTEL_COLORS[s.hostel_type] || HOSTEL_COLORS['Day Scholar']
               return (
                 <div key={key} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+                  display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12,
+                  padding: isMobile ? '9px 10px' : '10px 16px',
                   borderRadius: 10, border: `1px solid ${status==='Absent'?'#fca5a5':C.slate[100]}`,
                   background: status==='Absent'?'#fff5f5':status==='Late'?'#fffbeb':status==='Leave'?'#faf5ff':'white',
-                  transition: 'all .15s',
+                  transition: 'all .15s', minWidth: 0,
                 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: sm.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: sm.color, flexShrink: 0 }}>
-                    {i + 1}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: C.slate[800], fontSize: 13 }}>{s.student_name}</div>
-                    <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', gap: 8, marginTop: 2 }}>
+                  {/* Index badge — hidden on mobile to save space */}
+                  {!isMobile && (
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: sm.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: sm.color, flexShrink: 0 }}>
+                      {i + 1}
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: C.slate[800], fontSize: isMobile ? 13 : 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.student_name}</div>
+                    <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', gap: 6, marginTop: 2, alignItems: 'center' }}>
                       {s.gcc_no && <span style={{ fontWeight: 800, color: C.navy }}>GCC-{s.gcc_no}</span>}
-                      {s.hostel_type && <Chip label={s.hostel_type} color={hc.color} bg={hc.bg} border={hc.border} />}
+                      {s.hostel_type && !isMobile && <Chip label={s.hostel_type} color={hc.color} bg={hc.bg} border={hc.border} />}
                     </div>
                   </div>
                   <StatusCycle status={status} onChange={next => setRecords(prev => ({ ...prev, [key]: next }))} />
@@ -791,30 +806,32 @@ function TabMark({ staff, prefill }) {
             )}
           </div>
 
-          <div style={{ padding: '14px 22px', borderTop: `1px solid ${C.slate[100]}`, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <Btn variant="success" disabled={saving} onClick={handleSave}>
-              {saving ? '⏳ Saving…' : `✅ Save Attendance (${students.length} students)`}
+          {/* FIX 3: Save button — full width on mobile via style prop (now works) */}
+          <div style={{ padding: isMobile ? '12px 14px' : '14px 22px', borderTop: `1px solid ${C.slate[100]}` }}>
+            <Btn
+              variant="success"
+              disabled={saving}
+              onClick={handleSave}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
+              {saving ? '⏳ Saving…' : `✅ Save (${students.length} students)`}
             </Btn>
           </div>
         </Card>
       )}
 
-      {/* ── Feature: Instant Parent Notify ── */}
+      {/* Notify Panel */}
       {showNotify && absentStudents.length > 0 && (
-        <NotifyPanel
-          students={absentStudents}
-          records={records}
-          sessionInfo={form}
-          onClose={() => setShowNotify(false)}
-        />
+        <NotifyPanel students={absentStudents} records={records} sessionInfo={form} onClose={() => setShowNotify(false)} />
       )}
     </div>
   )
 }
 
-// ─── NOTIFY PANEL (Feature 9: Instant Parent Notify) ─────────
+// ─── NOTIFY PANEL ─────────────────────────────────────────────
 
 function NotifyPanel({ students, records, sessionInfo, onClose }) {
+  const isMobile = useIsMobile()
   const [sent,    setSent]    = useState({})
   const [channel, setChannel] = useState('sms')
   const [sending, setSending] = useState(false)
@@ -826,16 +843,10 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
 
   const sendAll = async () => {
     setSending(true)
-    // In production: call your SMS/WhatsApp API (MSG91, Twilio, etc.)
-    // Here we simulate the send and log to a notifications table
     const rows = students.map(s => ({
-      student_name: s.student_name,
-      student_id:   s.student_id || null,
-      phone:        s.students?.phone || null,
-      channel,
-      message:      msgFor(s),
-      status:       'sent',
-      sent_at:      new Date().toISOString(),
+      student_name: s.student_name, student_id: s.student_id || null,
+      phone: s.students?.phone || null, channel, message: msgFor(s),
+      status: 'sent', sent_at: new Date().toISOString(),
     }))
     await supabase.from('parent_notifications').insert(rows)
     const sentMap = {}
@@ -847,58 +858,49 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
   return (
     <Card style={{ border: `1.5px solid #93c5fd` }}>
       <CardHead icon="📲" title="Notify Parents"
-        sub={`${students.length} absent/late student${students.length > 1 ? 's' : ''} · send ${channel.toUpperCase()} now`}
+        sub={`${students.length} absent/late`}
         right={
           <>
-            <Select value={channel} onChange={e => setChannel(e.target.value)} style={{ width: 'auto' }}>
+            <Select value={channel} onChange={e => setChannel(e.target.value)} style={{ width: 'auto', padding: '5px 10px', fontSize: 12 }}>
               <option value="sms">SMS</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="both">Both</option>
             </Select>
-            <Btn small variant="ghost" onClick={onClose}>✕ Dismiss</Btn>
+            <Btn small variant="ghost" onClick={onClose}>✕</Btn>
           </>
         }
       />
-      <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Message preview */}
-        <div style={{ background: C.slate[50], border: `1px solid ${C.slate[200]}`, borderRadius: 10, padding: '12px 16px' }}>
+      <div style={{ padding: isMobile ? '12px 14px' : '14px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ background: C.slate[50], border: `1px solid ${C.slate[200]}`, borderRadius: 10, padding: '12px 14px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Message preview</div>
-          <div style={{ fontSize: 12, color: C.slate[700], lineHeight: 1.6 }}>
-            {students[0] ? msgFor(students[0]) : '—'}
-          </div>
+          <div style={{ fontSize: 12, color: C.slate[700], lineHeight: 1.6 }}>{students[0] ? msgFor(students[0]) : '—'}</div>
         </div>
-
-        {/* Student list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {students.map(s => {
-            const key    = s.student_id || s.student_name
+            const key = s.student_id || s.student_name
             const status = records[key]
-            const sm     = STATUS_META[status] || STATUS_META.Absent
+            const sm = STATUS_META[status] || STATUS_META.Absent
             const isSent = sent[key]
             return (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderRadius: 9, background: isSent ? '#f0fdf4' : sm.bg, border: `1px solid ${isSent ? '#86efac' : sm.border}` }}>
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 9, background: isSent ? '#f0fdf4' : sm.bg, border: `1px solid ${isSent ? '#86efac' : sm.border}` }}>
                 <span style={{ fontSize: 14, color: sm.color }}>{sm.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800] }}>{s.student_name}</div>
-                  <div style={{ fontSize: 11, color: C.slate[400] }}>
-                    {s.students?.phone ? `📞 ${s.students.phone}` : 'No phone on record'}
-                  </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.student_name}</div>
+                  <div style={{ fontSize: 11, color: C.slate[400] }}>{s.students?.phone ? `📞 ${s.students.phone}` : 'No phone on record'}</div>
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 800, color: sm.color }}>{status}</span>
-                {isSent && <span style={{ fontSize: 11, fontWeight: 800, color: C.emerald }}>✓ Sent</span>}
+                {isSent && <span style={{ fontSize: 11, fontWeight: 800, color: C.emerald, flexShrink: 0 }}>✓ Sent</span>}
               </div>
             )
           })}
         </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
           {Object.keys(sent).length === students.length ? (
             <Alert type="success">✅ All notifications sent!</Alert>
           ) : (
             <>
               <Btn variant="ghost" onClick={onClose}>Skip</Btn>
               <Btn variant={channel === 'whatsapp' ? 'whatsapp' : 'primary'} disabled={sending} onClick={sendAll}>
-                {sending ? '⏳ Sending…' : `📲 Send ${channel === 'both' ? 'SMS + WhatsApp' : channel.toUpperCase()} to ${students.length} parents`}
+                {sending ? '⏳ Sending…' : `📲 Send to ${students.length}`}
               </Btn>
             </>
           )}
@@ -911,6 +913,7 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
 // ─── TAB: VIEW SESSIONS ───────────────────────────────────────
 
 function TabView() {
+  const isMobile = useIsMobile()
   const [sessions,     setSessions]    = useState([])
   const [loading,      setLoading]     = useState(true)
   const [expanded,     setExpanded]    = useState(null)
@@ -950,8 +953,8 @@ function TabView() {
     <Card>
       <CardHead icon="📁" title="Sessions" sub="All recorded attendance sessions"
         right={<span style={{ fontSize: 12, color: C.slate[400], fontWeight: 600 }}>{sessions.length} total</span>} />
-      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={inp({ width: 'auto' })} />
+      <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={inp({ width: 'auto', fontSize: 13, padding: '7px 10px' })} />
         <Select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto' }}>
           <option value="All">All Courses</option>
           {COURSES.map(c => <option key={c}>{c}</option>)}
@@ -960,11 +963,11 @@ function TabView() {
           <Btn small variant="ghost" onClick={() => { setDateFilter(''); setCourseFilter('All') }}>✕ Clear</Btn>
         )}
       </div>
-      <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {loading ? (
           <div style={{ textAlign:'center', padding: '48px 0', color: C.slate[400], fontSize: 13 }}>⏳ Loading sessions…</div>
         ) : sessions.length === 0 ? (
-          <div style={{ textAlign:'center', padding: '48px 0', color: C.slate[400], fontSize: 13 }}>No sessions found for selected filters.</div>
+          <div style={{ textAlign:'center', padding: '48px 0', color: C.slate[400], fontSize: 13 }}>No sessions found.</div>
         ) : sessions.map(sess => {
           const isOpen = expanded === sess.id
           const recs   = records[sess.id] || []
@@ -976,49 +979,47 @@ function TabView() {
           return (
             <div key={sess.id} style={{ border: `1px solid ${C.slate[200]}`, borderRadius: 12, overflow: 'hidden' }}>
               <div onClick={() => expand(sess.id)}
-                style={{ display:'flex', alignItems:'center', gap:12, padding:'13px 18px', cursor:'pointer', background: isOpen ? C.slate[50] : 'white' }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:3 }}>
-                    <span style={{ fontWeight:800, color:C.navy, fontSize:14 }}>{fmtDate(sess.session_date)}</span>
+                style={{ display:'flex', alignItems:'center', gap:10, padding: isMobile ? '12px 14px' : '13px 18px', cursor:'pointer', background: isOpen ? C.slate[50] : 'white' }}>
+                <div style={{ flex:1, minWidth: 0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:3 }}>
+                    <span style={{ fontWeight:800, color:C.navy, fontSize: isMobile ? 13 : 14 }}>{fmtDate(sess.session_date)}</span>
                     <CoursePill course={sess.course} />
-                    {sess.subtype    && <span style={{ fontSize:12, color:C.slate[500] }}>{sess.subtype}</span>}
-                    {sess.class_name && <span style={{ fontSize:12, color:C.slate[500] }}>{sess.class_name}</span>}
-                    {sess.subject_name && <span style={{ fontSize:12, fontWeight:700, color:C.violet }}>{sess.subject_name}</span>}
-                    <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:5, background:C.slate[100], color:C.slate[500] }}>{sess.session_type}</span>
+                    {sess.subject_name && <span style={{ fontSize:11, fontWeight:700, color:C.violet }}>{sess.subject_name}</span>}
                   </div>
-                  <div style={{ fontSize:11, color:C.slate[400] }}>
+                  <div style={{ fontSize:11, color:C.slate[400], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {sess.teacher_name && `👨‍🏫 ${sess.teacher_name}`}
+                    {sess.subtype && ` · ${sess.subtype}`}
                     {sess.period_number && ` · P${sess.period_number}`}
                   </div>
                 </div>
                 <Btn small variant="danger" onClick={e => { e.stopPropagation(); deleteSession(sess.id) }}>🗑</Btn>
-                <span style={{ color:C.slate[300], fontSize:18, transform: isOpen?'rotate(180deg)':'none', transition:'transform .2s' }}>▾</span>
+                <span style={{ color:C.slate[300], fontSize:16, transform: isOpen?'rotate(180deg)':'none', transition:'transform .2s', flexShrink: 0 }}>▾</span>
               </div>
               {isOpen && (
-                <div style={{ borderTop:`1px solid ${C.slate[100]}`, padding:'16px 18px', background: C.slate[50] }}>
-                  <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
+                <div style={{ borderTop:`1px solid ${C.slate[100]}`, padding: isMobile ? '12px 14px' : '16px 18px', background: C.slate[50] }}>
+                  <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
                     {STATUSES.map(s => counts[s] > 0 && (
-                      <span key={s} style={{ padding:'4px 12px', borderRadius:999, fontSize:12, fontWeight:700, background:STATUS_META[s].bg, color:STATUS_META[s].color, border:`1px solid ${STATUS_META[s].border}` }}>
+                      <span key={s} style={{ padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:700, background:STATUS_META[s].bg, color:STATUS_META[s].color, border:`1px solid ${STATUS_META[s].border}` }}>
                         {STATUS_META[s].icon} {counts[s]} {s}
                       </span>
                     ))}
                     {pct !== null && (
                       <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color: pct>=75?C.emerald:pct>=50?C.amber:C.red }}>
-                        {pct}% attendance
+                        {pct}% att.
                       </span>
                     )}
                   </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:7 }}>
+                  <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(210px,1fr))', gap:6 }}>
                     {recs.map(r => {
                       const sm = STATUS_META[r.status] || STATUS_META.Present
                       return (
                         <div key={r.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', borderRadius:8, background:sm.bg, border:`1px solid ${sm.border}` }}>
                           <span style={{ fontSize:14, fontWeight:900, color:sm.color }}>{sm.icon}</span>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:12, fontWeight:700, color:C.slate[800] }}>{r.student_name}</div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:12, fontWeight:700, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.student_name}</div>
                             {r.gcc_no && <div style={{ fontSize:10, color:C.slate[400] }}>GCC-{r.gcc_no}</div>}
                           </div>
-                          <span style={{ fontSize:10, fontWeight:800, color:sm.color }}>{r.status}</span>
+                          <span style={{ fontSize:10, fontWeight:800, color:sm.color, flexShrink:0 }}>{r.status}</span>
                         </div>
                       )
                     })}
@@ -1033,9 +1034,10 @@ function TabView() {
   )
 }
 
-// ─── TAB: REPORTS (+ Heatmap + Subject Breakdown + Teacher Log)
+// ─── TAB: REPORTS ─────────────────────────────────────────────
 
 function TabReport() {
+  const isMobile = useIsMobile()
   const [reportTab, setReportTab] = useState('monthly')
   const [month,     setMonth]     = useState(() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` })
   const [course,    setCourse]    = useState('All')
@@ -1055,15 +1057,12 @@ function TabReport() {
     const { data: sessions } = await q
     if (!sessions?.length) { setData([]); setLoading(false); return }
     const ids = sessions.map(s=>s.id)
-    const { data: recs } = await supabase.from('attendance_records')
-      .select('session_id,student_name,gcc_no,status').in('session_id', ids)
-
+    const { data: recs } = await supabase.from('attendance_records').select('session_id,student_name,gcc_no,status').in('session_id', ids)
     const map = {}
     recs?.forEach(r => {
       if (!map[r.student_name]) map[r.student_name] = { name:r.student_name, gcc:r.gcc_no, Present:0,Absent:0,Late:0,Leave:0,total:0, bySubject:{}, byDate:{} }
       map[r.student_name][r.status]++
       map[r.student_name].total++
-      // Subject breakdown
       const sess = sessions.find(s=>s.id===r.session_id)
       if (sess?.subject_name) {
         const sb = map[r.student_name].bySubject
@@ -1071,10 +1070,7 @@ function TabReport() {
         if (r.status==='Present') sb[sess.subject_name].Present++
         sb[sess.subject_name].total++
       }
-      // Date heatmap
-      if (sess?.session_date) {
-        map[r.student_name].byDate[sess.session_date] = r.status
-      }
+      if (sess?.session_date) map[r.student_name].byDate[sess.session_date] = r.status
     })
     const rows = Object.values(map).map(r => ({ ...r, pct: r.total>0?Math.round((r.Present/r.total)*100):0 }))
     setData(rows)
@@ -1092,13 +1088,6 @@ function TabReport() {
 
   const toggleSort = col => setSort(s => ({ by: col, asc: s.by===col ? !s.asc : true }))
 
-  const SortTh = ({ col, children }) => (
-    <th onClick={() => toggleSort(col)}
-      style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'.06em', color: sort.by===col ? C.navy : C.slate[400], cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}>
-      {children} {sort.by===col ? (sort.asc?'↑':'↓') : ''}
-    </th>
-  )
-
   const stats = useMemo(() => ({
     total: data.length,
     good:  data.filter(r=>r.pct>=75).length,
@@ -1107,41 +1096,35 @@ function TabReport() {
   }), [data])
 
   const REPORT_TABS = [
-    { key:'monthly',   label:'Monthly' },
-    { key:'heatmap',   label:'📅 Heatmap' },
-    { key:'subject',   label:'📚 By Subject' },
-    { key:'teacher',   label:'👨‍🏫 Teachers' },
+    { key:'monthly', label:'Monthly'    },
+    { key:'heatmap', label:'📅 Map'     },
+    { key:'subject', label:'📚 Subject' },
+    { key:'teacher', label:'👨‍🏫 Staff'  },
   ]
 
   return (
     <Card>
-      <CardHead icon="📊" title="Reports" sub={`Attendance analytics · ${fmtMonth(month)}`}
+      <CardHead icon="📊" title="Reports" sub={fmtMonth(month)}
         right={
-          <>
-            <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={inp({width:'auto'})} />
-            <Select value={course} onChange={e=>{setCourse(e.target.value);setSubtype('All')}} style={{width:'auto'}}>
-              <option value="All">All Courses</option>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={inp({width:'auto', fontSize:12, padding:'6px 8px'})} />
+            <Select value={course} onChange={e=>{setCourse(e.target.value);setSubtype('All')}} style={{width:'auto', fontSize:12, padding:'6px 8px'}}>
+              <option value="All">All</option>
               {COURSES.map(c=><option key={c}>{c}</option>)}
             </Select>
-            {subtypes.length > 0 && (
-              <Select value={subtype} onChange={e=>setSubtype(e.target.value)} style={{width:'auto'}}>
-                <option value="All">All Batches</option>
-                {subtypes.map(s=><option key={s}>{s}</option>)}
-              </Select>
-            )}
-            <Btn small onClick={() => window.print()}>🖨️ Print</Btn>
-          </>
+            {!isMobile && <Btn small onClick={() => window.print()}>🖨️</Btn>}
+          </div>
         }
       />
 
       {/* Sub-tabs */}
-      <div style={{ display:'flex', gap:0, borderBottom:`1px solid ${C.slate[200]}`, padding:'0 22px', overflowX:'auto' }}>
+      <div style={{ display:'flex', borderBottom:`1px solid ${C.slate[200]}`, overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
         {REPORT_TABS.map(t => (
           <button key={t.key} onClick={() => setReportTab(t.key)}
-            style={{ padding:'10px 18px', fontWeight:700, fontSize:12, cursor:'pointer', background:'none', border:'none',
+            style={{ padding: isMobile ? '10px 12px' : '10px 18px', fontWeight:700, fontSize:12, cursor:'pointer', background:'none', border:'none',
               fontFamily:font, color: reportTab===t.key ? C.navy : C.slate[400],
               borderBottom: reportTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent',
-              whiteSpace:'nowrap', transition:'color .12s' }}>
+              whiteSpace:'nowrap', transition:'color .12s', flexShrink: 0 }}>
             {t.label}
           </button>
         ))}
@@ -1153,37 +1136,33 @@ function TabReport() {
         <div style={{ textAlign:'center', padding:'60px', color:C.slate[400], fontSize:13 }}>No attendance data for this period.</div>
       ) : (
         <>
-          {/* Summary cards — shown on all sub-tabs */}
-          <div style={{ padding:'18px 22px', borderBottom:`1px solid ${C.slate[100]}`, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
+          {/* Summary cards */}
+          <div style={{ padding: isMobile ? '12px 14px' : '18px 22px', borderBottom:`1px solid ${C.slate[100]}`, display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10 }}>
             {[
-              { label:'Students',     value:stats.total, color:C.navy,    bg:'#eff6ff' },
-              { label:'≥75% (Good)',  value:stats.good,  color:C.emerald, bg:'#f0fdf4' },
-              { label:'50–74% (Low)', value:stats.mid,   color:C.amber,   bg:'#fffbeb' },
-              { label:'<50% (Risk)',  value:stats.risk,  color:C.red,     bg:'#fef2f2' },
+              { label:'Students',    value:stats.total, color:C.navy,    bg:'#eff6ff' },
+              { label:'≥75% Good',   value:stats.good,  color:C.emerald, bg:'#f0fdf4' },
+              { label:'50-74% Low',  value:stats.mid,   color:C.amber,   bg:'#fffbeb' },
+              { label:'<50% Risk',   value:stats.risk,  color:C.red,     bg:'#fef2f2' },
             ].map(s => (
-              <div key={s.label} style={{ background:s.bg, borderRadius:10, padding:'14px 18px', borderLeft:`4px solid ${s.color}` }}>
-                <div style={{ fontSize:11, fontWeight:700, color:s.color, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>{s.label}</div>
-                <div style={{ fontSize:28, fontWeight:900, color:s.color, fontFamily:font }}>{s.value}</div>
+              <div key={s.label} style={{ background:s.bg, borderRadius:10, padding: isMobile ? '10px 12px' : '14px 18px', borderLeft:`4px solid ${s.color}` }}>
+                <div style={{ fontSize:10, fontWeight:700, color:s.color, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>{s.label}</div>
+                <div style={{ fontSize: isMobile ? 22 : 28, fontWeight:900, color:s.color, fontFamily:font }}>{s.value}</div>
               </div>
             ))}
           </div>
 
-          {/* ── Monthly Table ── */}
+          {/* FIX 5: Monthly table — outer wrapper gets WebkitOverflowScrolling */}
           {reportTab === 'monthly' && (
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'thin' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 500 : 'auto' }}>
                 <thead>
                   <tr style={{ background:C.slate[50], borderBottom:`1px solid ${C.slate[200]}` }}>
-                    <th style={{ padding:'10px 12px', fontSize:11, fontWeight:700, color:C.slate[400], textAlign:'left', textTransform:'uppercase', letterSpacing:'.06em' }}>#</th>
-                    <SortTh col="name">Student</SortTh>
-                    <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'.06em', color:C.slate[400] }}>GCC</th>
-                    <SortTh col="Present">Present</SortTh>
-                    <SortTh col="Absent">Absent</SortTh>
-                    <SortTh col="Late">Late</SortTh>
-                    <SortTh col="Leave">Leave</SortTh>
-                    <SortTh col="total">Total</SortTh>
-                    <SortTh col="pct">Attendance %</SortTh>
-                    <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, fontSize:11, textTransform:'uppercase', letterSpacing:'.06em', color:C.slate[400] }}>Status</th>
+                    {['#','Student','GCC','P','A','L','Lv','Tot','Att%',''].map((h,i) => (
+                      <th key={h+i} onClick={i > 2 && i < 8 ? () => toggleSort(['','name','','Present','Absent','Late','Leave','total','pct',''][i]) : undefined}
+                        style={{ padding: isMobile ? '8px 6px' : '10px 12px', textAlign:'left', fontWeight:700, fontSize:10, textTransform:'uppercase', letterSpacing:'.05em', color: C.slate[400], whiteSpace:'nowrap', cursor: i>2&&i<9?'pointer':'default' }}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -1191,18 +1170,18 @@ function TabReport() {
                     const color = row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red
                     return (
                       <tr key={row.name} style={{ borderBottom:`1px solid ${C.slate[100]}`, background: row.pct<50?'#fff5f5':row.pct<75?'#fffbeb':'white' }}>
-                        <td style={{ padding:'10px 12px', color:C.slate[400], fontSize:12 }}>{i+1}</td>
-                        <td style={{ padding:'10px 12px', fontWeight:700, color:C.slate[800] }}>{row.name}</td>
-                        <td style={{ padding:'10px 12px', fontFamily:'monospace', fontSize:12, fontWeight:700, color:C.navy }}>{row.gcc ? `GCC-${row.gcc}` : '—'}</td>
-                        <td style={{ padding:'10px 12px', fontWeight:700, color:C.emerald }}>{row.Present}</td>
-                        <td style={{ padding:'10px 12px', fontWeight:700, color:C.red     }}>{row.Absent}</td>
-                        <td style={{ padding:'10px 12px', fontWeight:700, color:C.amber   }}>{row.Late}</td>
-                        <td style={{ padding:'10px 12px', fontWeight:700, color:C.violet  }}>{row.Leave}</td>
-                        <td style={{ padding:'10px 12px', color:C.slate[500] }}>{row.total}</td>
-                        <td style={{ padding:'10px 12px', minWidth:160 }}><MiniBar pct={row.pct} /></td>
-                        <td style={{ padding:'10px 12px' }}>
-                          <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:999, background:row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', color }}>
-                            {row.pct>=75?'✅ Good':row.pct>=50?'⚠️ Low':'🚨 Risk'}
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', color:C.slate[400], fontSize:11 }}>{i+1}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.slate[800], maxWidth: isMobile ? 80 : 160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.name}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontFamily:'monospace', fontSize:11, fontWeight:700, color:C.navy }}>{row.gcc || '—'}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.emerald }}>{row.Present}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.red     }}>{row.Absent}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.amber   }}>{row.Late}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.violet  }}>{row.Leave}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', color:C.slate[500] }}>{row.total}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', minWidth: isMobile ? 70 : 120 }}><MiniBar pct={row.pct} /></td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px' }}>
+                          <span style={{ fontSize:10, fontWeight:800, padding:'2px 6px', borderRadius:999, background:row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', color, whiteSpace:'nowrap' }}>
+                            {row.pct>=75?'✅':row.pct>=50?'⚠️':'🚨'}
                           </span>
                         </td>
                       </tr>
@@ -1213,42 +1192,30 @@ function TabReport() {
             </div>
           )}
 
-          {/* ── Heatmap Tab (Feature 4) ── */}
           {reportTab === 'heatmap' && (
-            <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {sorted.slice(0, 15).map(row => (
-                <HeatmapRow key={row.name} row={row} month={month} />
-              ))}
-              {sorted.length > 15 && (
-                <div style={{ textAlign:'center', fontSize:12, color:C.slate[400] }}>Showing top 15 students. Use filters to narrow down.</div>
-              )}
+            <div style={{ padding: isMobile ? '12px 14px' : '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {sorted.slice(0, 15).map(row => <HeatmapRow key={row.name} row={row} month={month} />)}
+              {sorted.length > 15 && <div style={{ textAlign:'center', fontSize:12, color:C.slate[400] }}>Showing top 15 students.</div>}
             </div>
           )}
 
-          {/* ── Subject Breakdown Tab (Feature 5) ── */}
-          {reportTab === 'subject' && (
-            <SubjectBreakdown data={data} />
-          )}
-
-          {/* ── Teacher Activity Tab (Feature 6) ── */}
-          {reportTab === 'teacher' && (
-            <TeacherLog month={month} course={course} />
-          )}
+          {reportTab === 'subject' && <SubjectBreakdown data={data} />}
+          {reportTab === 'teacher' && <TeacherLog month={month} course={course} />}
         </>
       )}
     </Card>
   )
 }
 
-// ─── Heatmap Row (Feature 4: Per-Student Heatmap) ────────────
+// ─── Heatmap Row ──────────────────────────────────────────────
 
 function HeatmapRow({ row, month }) {
+  const isMobile = useIsMobile()
   const [y, m] = month.split('-')
   const daysInMonth = new Date(y, m, 0).getDate()
   const firstDay = new Date(y, m-1, 1).getDay()
 
   const cells = []
-  // Pad start
   for (let i = 0; i < firstDay; i++) cells.push(null)
   for (let d = 1; d <= daysInMonth; d++) {
     const key = `${y}-${m}-${String(d).padStart(2,'0')}`
@@ -1256,82 +1223,61 @@ function HeatmapRow({ row, month }) {
   }
 
   const STATUS_COLORS = {
-    Present: { bg: '#dcfce7', color: '#16a34a', label: 'P' },
-    Absent:  { bg: '#fee2e2', color: '#dc2626', label: 'A' },
-    Late:    { bg: '#fef9c3', color: '#92400e', label: 'L' },
-    Leave:   { bg: '#f3e8ff', color: '#7c3aed', label: 'Lv' },
+    Present: { bg: '#dcfce7', color: '#16a34a' },
+    Absent:  { bg: '#fee2e2', color: '#dc2626' },
+    Late:    { bg: '#fef9c3', color: '#92400e' },
+    Leave:   { bg: '#f3e8ff', color: '#7c3aed' },
   }
 
   const streak = (() => {
     let s = 0
     const sorted = Object.entries(row.byDate).sort((a,b)=>a[0]>b[0]?-1:1)
-    for (const [,status] of sorted) {
-      if (status === 'Present') s++
-      else break
-    }
+    for (const [,status] of sorted) { if (status === 'Present') s++; else break }
     return s
   })()
 
   return (
-    <div style={{ background: C.slate[50], borderRadius: 12, padding: '14px 16px', border: `1px solid ${C.slate[200]}` }}>
+    <div style={{ background: C.slate[50], borderRadius: 12, padding: isMobile ? '12px 12px' : '14px 16px', border: `1px solid ${C.slate[200]}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <div style={{ width: 36, height: 36, borderRadius: '50%', background: row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:900, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red }}>
+        <div style={{ width: 34, height: 34, borderRadius: '50%', background: row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:900, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red, flexShrink: 0 }}>
           {row.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
         </div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontWeight:800, fontSize:13, color:C.slate[800] }}>{row.name}</div>
+        <div style={{ flex:1, minWidth: 0 }}>
+          <div style={{ fontWeight:800, fontSize:13, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.name}</div>
           {row.gcc && <div style={{ fontSize:11, color:C.slate[400] }}>GCC-{row.gcc}</div>}
         </div>
-        <div style={{ textAlign:'right' }}>
-          <div style={{ fontSize:18, fontWeight:900, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red }}>{row.pct}%</div>
-        </div>
-        {streak > 0 && (
-          <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:8, padding:'4px 10px', fontSize:11, fontWeight:800, color:'#c2410c' }}>
-            🔥 {streak}d streak
+        <div style={{ fontSize:16, fontWeight:900, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red, flexShrink:0 }}>{row.pct}%</div>
+        {streak > 0 && !isMobile && (
+          <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:8, padding:'3px 8px', fontSize:11, fontWeight:800, color:'#c2410c' }}>
+            🔥 {streak}d
           </div>
         )}
       </div>
-      {/* Day labels */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:3, marginBottom:3 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap: isMobile ? 2 : 3, marginBottom:3 }}>
         {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
           <div key={d} style={{ textAlign:'center', fontSize:9, color:C.slate[400], fontWeight:700 }}>{d}</div>
         ))}
       </div>
-      {/* Calendar cells */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:3 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap: isMobile ? 2 : 3 }}>
         {cells.map((cell, i) => {
           if (!cell) return <div key={`pad-${i}`} />
           const sc = cell.status ? STATUS_COLORS[cell.status] : null
           return (
             <div key={cell.day} title={cell.status || 'No session'}
-              style={{
-                aspectRatio:'1', borderRadius:4, display:'flex', alignItems:'center', justifyContent:'center',
-                fontSize:9, fontWeight:700,
-                background: sc ? sc.bg : C.slate[100],
-                color: sc ? sc.color : C.slate[300],
-              }}>
+              style={{ aspectRatio:'1', borderRadius: isMobile ? 3 : 4, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 8 : 9, fontWeight:700, background: sc ? sc.bg : C.slate[100], color: sc ? sc.color : C.slate[300] }}>
               {cell.day}
             </div>
           )
         })}
       </div>
-      {/* Legend */}
-      <div style={{ display:'flex', gap:10, marginTop:8, flexWrap:'wrap' }}>
-        {Object.entries(STATUS_COLORS).map(([s,sc]) => (
-          <span key={s} style={{ fontSize:10, display:'flex', alignItems:'center', gap:4, color:C.slate[500] }}>
-            <span style={{ width:10, height:10, borderRadius:2, background:sc.bg, border:`1px solid ${sc.color}30`, display:'inline-block' }} />
-            {s}
-          </span>
-        ))}
-      </div>
     </div>
   )
 }
 
-// ─── Subject Breakdown (Feature 5) ───────────────────────────
+// ─── Subject Breakdown ────────────────────────────────────────
 
 function SubjectBreakdown({ data }) {
-  // Aggregate all subjects across all students
+  const isMobile = useIsMobile()
   const subjectMap = useMemo(() => {
     const sm = {}
     data.forEach(row => {
@@ -1342,44 +1288,28 @@ function SubjectBreakdown({ data }) {
         sm[subj].students++
       })
     })
-    return Object.entries(sm)
-      .map(([name, v]) => ({ name, pct: v.total>0?Math.round((v.Present/v.total)*100):0, ...v }))
-      .sort((a,b) => b.pct - a.pct)
+    return Object.entries(sm).map(([name, v]) => ({ name, pct: v.total>0?Math.round((v.Present/v.total)*100):0, ...v })).sort((a,b) => b.pct - a.pct)
   }, [data])
 
   return (
-    <div style={{ padding: '18px 22px' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 14 }}>
-        Average attendance % per subject · {data.length} students
+    <div style={{ padding: isMobile ? '12px 14px' : '18px 22px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
+        Average attendance per subject · {data.length} students
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {subjectMap.map(subj => (
-          <div key={subj.name} style={{ background: subj.pct<50?'#fff5f5':subj.pct<75?'#fffbeb':'white', border:`1px solid ${subj.pct<50?'#fca5a5':subj.pct<75?'#fde68a':C.slate[200]}`, borderRadius: 10, padding: '12px 16px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
-              <div style={{ fontWeight:800, fontSize:13, color:C.slate[800], flex:1 }}>{subj.name}</div>
-              <span style={{ fontSize:11, color:C.slate[400] }}>{subj.students} students · {subj.total} sessions</span>
-              <span style={{ fontSize:16, fontWeight:900, color: subj.pct>=75?C.emerald:subj.pct>=50?C.amber:C.red }}>{subj.pct}%</span>
+          <div key={subj.name} style={{ background: subj.pct<50?'#fff5f5':subj.pct<75?'#fffbeb':'white', border:`1px solid ${subj.pct<50?'#fca5a5':subj.pct<75?'#fde68a':C.slate[200]}`, borderRadius: 10, padding: isMobile ? '10px 12px' : '12px 16px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              <div style={{ fontWeight:800, fontSize:13, color:C.slate[800], flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{subj.name}</div>
+              <span style={{ fontSize:11, color:C.slate[400], flexShrink:0 }}>{subj.students} stu.</span>
+              <span style={{ fontSize:15, fontWeight:900, color: subj.pct>=75?C.emerald:subj.pct>=50?C.amber:C.red, flexShrink:0 }}>{subj.pct}%</span>
             </div>
             <MiniBar pct={subj.pct} />
-
-            {/* Per-student mini breakdown */}
-            <div style={{ marginTop:10, display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:5 }}>
-              {data.filter(r => r.bySubject?.[subj.name]).slice(0,8).map(r => {
-                const sb = r.bySubject[subj.name]
-                const p  = sb.total>0?Math.round((sb.Present/sb.total)*100):0
-                return (
-                  <div key={r.name} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11 }}>
-                    <span style={{ color:C.slate[600], flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</span>
-                    <span style={{ fontWeight:800, color: p>=75?C.emerald:p>=50?C.amber:C.red, minWidth:30 }}>{p}%</span>
-                  </div>
-                )
-              })}
-            </div>
           </div>
         ))}
         {subjectMap.length === 0 && (
           <div style={{ textAlign:'center', padding:'32px 0', color:C.slate[400], fontSize:13 }}>
-            Subject data requires sessions to have a subject_name assigned.
+            Subject data requires sessions with a subject assigned.
           </div>
         )}
       </div>
@@ -1387,25 +1317,21 @@ function SubjectBreakdown({ data }) {
   )
 }
 
-// ─── Teacher Activity Log (Feature 6) ────────────────────────
+// ─── Teacher Log ──────────────────────────────────────────────
 
 function TeacherLog({ month, course }) {
+  const isMobile = useIsMobile()
   const [teacherData, setTeacherData] = useState([])
   const [loading,     setLoading]     = useState(true)
 
   useEffect(() => {
     const fetch = async () => {
       setLoading(true)
-      let q = supabase.from('attendance_sessions')
-        .select('id,teacher_name,staff_id,session_date,period_number,created_at,subject_name,course')
-        .gte('session_date',`${month}-01`).lte('session_date',`${month}-31`)
-        .not('teacher_name', 'is', null)
+      let q = supabase.from('attendance_sessions').select('id,teacher_name,staff_id,session_date,period_number,created_at,subject_name,course')
+        .gte('session_date',`${month}-01`).lte('session_date',`${month}-31`).not('teacher_name', 'is', null)
       if (course !== 'All') q = q.eq('course', course)
       const { data: sessions } = await q
-
       if (!sessions?.length) { setTeacherData([]); setLoading(false); return }
-
-      // Aggregate per teacher
       const map = {}
       sessions.forEach(s => {
         const t = s.teacher_name
@@ -1413,63 +1339,53 @@ function TeacherLog({ month, course }) {
         map[t].sessions++
         if (s.subject_name) map[t].subjects.add(s.subject_name)
         if (s.course)       map[t].courses.add(s.course)
-        // "On time" heuristic: session created within 30 min of start (if timestamps available)
         if (s.created_at && s.session_date) {
           const created = new Date(s.created_at)
           const sessionStart = new Date(s.session_date + 'T07:00:00')
-          const diffHours = (created - sessionStart) / 3600000
-          if (diffHours < 12) map[t].onTimeCount++
+          if ((created - sessionStart) / 3600000 < 12) map[t].onTimeCount++
         } else {
           map[t].onTimeCount++
         }
       })
-
       const rows = Object.values(map).map(t => ({
-        ...t,
-        subjects: [...t.subjects],
-        courses:  [...t.courses],
+        ...t, subjects: [...t.subjects], courses: [...t.courses],
         onTimePct: t.sessions > 0 ? Math.round((t.onTimeCount / t.sessions)*100) : 100,
       })).sort((a,b) => b.sessions - a.sessions)
-
       setTeacherData(rows)
       setLoading(false)
     }
     fetch()
   }, [month, course])
 
-  if (loading) return <div style={{ padding:32, textAlign:'center', color:C.slate[400] }}>⏳ Loading teacher data…</div>
+  if (loading) return <div style={{ padding:32, textAlign:'center', color:C.slate[400] }}>⏳ Loading…</div>
   if (!teacherData.length) return <div style={{ padding:48, textAlign:'center', color:C.slate[400] }}>No teacher data for this period.</div>
 
   return (
-    <div style={{ padding: '18px 22px', display:'flex', flexDirection:'column', gap:10 }}>
+    <div style={{ padding: isMobile ? '12px 14px' : '18px 22px', display:'flex', flexDirection:'column', gap:10 }}>
       {teacherData.map((t, i) => (
-        <div key={t.name} style={{ display:'flex', alignItems:'flex-start', gap:14, padding:'14px 18px', borderRadius:12, border:`1px solid ${C.slate[200]}`, background:'white' }}>
-          <div style={{ width:42, height:42, borderRadius:'50%', background:'#eff6ff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:900, color:C.navy, flexShrink:0 }}>
+        <div key={t.name} style={{ display:'flex', alignItems:'flex-start', gap:12, padding: isMobile ? '12px 14px' : '14px 18px', borderRadius:12, border:`1px solid ${C.slate[200]}`, background:'white' }}>
+          <div style={{ width:40, height:40, borderRadius:'50%', background:'#eff6ff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:900, color:C.navy, flexShrink:0 }}>
             {t.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
           </div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontWeight:800, fontSize:14, color:C.slate[800], marginBottom:4 }}>{t.name}</div>
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:8 }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontWeight:800, fontSize: isMobile ? 13 : 14, color:C.slate[800], marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</div>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
               {t.courses.map(c => <CoursePill key={c} course={c} />)}
-              {t.subjects.slice(0,3).map(s => (
-                <span key={s} style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:5, background:C.slate[100], color:C.slate[600] }}>{s}</span>
-              ))}
-              {t.subjects.length > 3 && <span style={{ fontSize:10, color:C.slate[400] }}>+{t.subjects.length-3} more</span>}
             </div>
-            <div style={{ display:'flex', gap:20, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
               <div>
                 <div style={{ fontSize:10, color:C.slate[400], fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em' }}>Sessions</div>
                 <div style={{ fontSize:20, fontWeight:900, color:C.navy }}>{t.sessions}</div>
               </div>
-              <div>
-                <div style={{ fontSize:10, color:C.slate[400], fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>On-time rate</div>
+              <div style={{ flex:1, minWidth:80 }}>
+                <div style={{ fontSize:10, color:C.slate[400], fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>On-time</div>
                 <MiniBar pct={t.onTimePct} />
               </div>
             </div>
           </div>
           <div style={{ textAlign:'right', flexShrink:0 }}>
             <div style={{ fontSize:10, color:C.slate[400], fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Rank</div>
-            <div style={{ fontSize:22, fontWeight:900, color:C.slate[300] }}>#{i+1}</div>
+            <div style={{ fontSize:20, fontWeight:900, color:C.slate[300] }}>#{i+1}</div>
           </div>
         </div>
       ))}
@@ -1477,15 +1393,16 @@ function TeacherLog({ month, course }) {
   )
 }
 
-// ─── TAB: LEAVE MANAGEMENT (Feature 2) ───────────────────────
+// ─── TAB: LEAVE MANAGEMENT ────────────────────────────────────
 
 function TabLeave({ staff }) {
-  const [leaveTab,  setLeaveTab]  = useState('pending')
-  const [leaves,    setLeaves]    = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [toast,     setToast]     = useState(null)
-  const [form,      setForm]      = useState({ student_name:'', from_date:'', to_date:'', reason:'', course:'', subtype:'' })
-  const [submitting,setSubmitting]= useState(false)
+  const isMobile = useIsMobile()
+  const [leaveTab,   setLeaveTab]   = useState('pending')
+  const [leaves,     setLeaves]     = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [toast,      setToast]      = useState(null)
+  const [form,       setForm]       = useState({ student_name:'', from_date:'', to_date:'', reason:'', course:'', subtype:'' })
+  const [submitting, setSubmitting] = useState(false)
 
   const fetchLeaves = useCallback(async () => {
     setLoading(true)
@@ -1502,23 +1419,18 @@ function TabLeave({ staff }) {
 
   const updateLeave = async (id, status) => {
     await supabase.from('leave_requests').update({ status, reviewed_at: new Date().toISOString() }).eq('id', id)
-    setToast({ type: status==='Approved'?'success':'warn', msg: `Leave ${status.toLowerCase()} successfully.` })
+    setToast({ type: status==='Approved'?'success':'warn', msg: `Leave ${status.toLowerCase()}.` })
     fetchLeaves()
   }
 
   const submitLeave = async () => {
     if (!form.student_name || !form.from_date || !form.to_date || !form.reason) {
-      setToast({ type:'warn', msg:'Please fill all required fields.' }); return
+      setToast({ type:'warn', msg:'Fill all required fields.' }); return
     }
     setSubmitting(true)
     const { error } = await supabase.from('leave_requests').insert([{
-      student_name: form.student_name,
-      from_date:    form.from_date,
-      to_date:      form.to_date,
-      reason:       form.reason,
-      course:       form.course || null,
-      subtype:      form.subtype || null,
-      status:       'Pending',
+      student_name: form.student_name, from_date: form.from_date, to_date: form.to_date,
+      reason: form.reason, course: form.course || null, subtype: form.subtype || null, status: 'Pending',
     }])
     setSubmitting(false)
     if (error) { setToast({ type:'error', msg: error.message }); return }
@@ -1528,10 +1440,10 @@ function TabLeave({ staff }) {
   }
 
   const LEAVE_TABS = [
-    { key:'pending',  label:'⏳ Pending' },
-    { key:'approved', label:'✅ Approved' },
-    { key:'rejected', label:'✗ Rejected' },
-    { key:'apply',    label:'+ Apply' },
+    { key:'pending',  label:'⏳ Pending'  },
+    { key:'approved', label:'✅ Done'     },
+    { key:'rejected', label:'✗ Rejected'  },
+    { key:'apply',    label:'+ Apply'     },
   ]
 
   const statusColors = {
@@ -1542,49 +1454,47 @@ function TabLeave({ staff }) {
 
   return (
     <Card>
-      <CardHead icon="📅" title="Leave Management" sub="Review, approve or submit student leave requests" />
-
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:0, borderBottom:`1px solid ${C.slate[200]}`, padding:'0 22px' }}>
+      <CardHead icon="📅" title="Leave Management" sub="Review and submit leave requests" />
+      <div style={{ display:'flex', borderBottom:`1px solid ${C.slate[200]}`, overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
         {LEAVE_TABS.map(t => (
           <button key={t.key} onClick={() => setLeaveTab(t.key)}
-            style={{ padding:'10px 18px', fontWeight:700, fontSize:12, cursor:'pointer', background:'none', border:'none',
+            style={{ padding: isMobile ? '10px 12px' : '10px 18px', fontWeight:700, fontSize:12, cursor:'pointer', background:'none', border:'none',
               fontFamily:font, color: leaveTab===t.key ? C.navy : C.slate[400],
-              borderBottom: leaveTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent' }}>
+              borderBottom: leaveTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent',
+              whiteSpace:'nowrap', flexShrink:0 }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      <div style={{ padding:'16px 22px' }}>
+      <div style={{ padding: isMobile ? '12px 14px' : '16px 22px' }}>
         {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
-        {/* Leave list */}
         {leaveTab !== 'apply' && (
           loading ? (
             <div style={{ textAlign:'center', padding:'48px 0', color:C.slate[400] }}>⏳ Loading…</div>
           ) : leaves.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'48px 0', color:C.slate[400] }}>No {leaveTab} leave requests.</div>
+            <div style={{ textAlign:'center', padding:'48px 0', color:C.slate[400] }}>No {leaveTab} requests.</div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {leaves.map(lv => {
                 const sc = statusColors[lv.status] || statusColors.Pending
                 const days = Math.ceil((new Date(lv.to_date) - new Date(lv.from_date)) / 86400000) + 1
                 return (
-                  <div key={lv.id} style={{ border:`1px solid ${sc.border}`, borderRadius:12, padding:'14px 18px', background: sc.bg }}>
-                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
-                      <div>
-                        <div style={{ fontWeight:800, fontSize:14, color:C.slate[800] }}>{lv.student_name}</div>
-                        <div style={{ fontSize:12, color:C.slate[500], marginTop:2 }}>
-                          {fmtDate(lv.from_date)} → {fmtDate(lv.to_date)} · <strong>{days} day{days>1?'s':''}</strong>
-                          {lv.course && ` · ${lv.course}${lv.subtype ? ' / '+lv.subtype : ''}`}
+                  <div key={lv.id} style={{ border:`1px solid ${sc.border}`, borderRadius:12, padding: isMobile ? '12px 14px' : '14px 18px', background: sc.bg }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8, gap:8 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:800, fontSize:14, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{lv.student_name}</div>
+                        <div style={{ fontSize:11, color:C.slate[500], marginTop:2 }}>
+                          {fmtDate(lv.from_date)} → {fmtDate(lv.to_date)} · <strong>{days}d</strong>
+                          {lv.course && ` · ${lv.course}`}
                         </div>
                       </div>
-                      <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:999, background: sc.bg, color: sc.color, border:`1px solid ${sc.border}` }}>
+                      <span style={{ fontSize:10, fontWeight:800, padding:'3px 8px', borderRadius:999, background:sc.bg, color:sc.color, border:`1px solid ${sc.border}`, flexShrink:0 }}>
                         {lv.status}
                       </span>
                     </div>
-                    <div style={{ fontSize:13, color:C.slate[700], background:'rgba(255,255,255,.5)', padding:'8px 12px', borderRadius:8, marginBottom: lv.status==='Pending'?10:0 }}>
+                    <div style={{ fontSize:12, color:C.slate[700], background:'rgba(255,255,255,.5)', padding:'8px 12px', borderRadius:8, marginBottom: lv.status==='Pending'?10:0 }}>
                       <em>"{lv.reason}"</em>
                     </div>
                     {lv.status === 'Pending' && (
@@ -1600,10 +1510,9 @@ function TabLeave({ staff }) {
           )
         )}
 
-        {/* Apply form */}
         {leaveTab === 'apply' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap:12 }}>
               <div>
                 <Label>Course</Label>
                 <Select value={form.course} onChange={e => setForm(p => ({ ...p, course: e.target.value, subtype:'' }))}>
@@ -1624,7 +1533,7 @@ function TabLeave({ staff }) {
               <input value={form.student_name} onChange={e => setForm(p => ({ ...p, student_name: e.target.value }))}
                 placeholder="Full name" style={inp()} />
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12 }}>
               <div>
                 <Label>From Date *</Label>
                 <input type="date" value={form.from_date} onChange={e => setForm(p => ({ ...p, from_date: e.target.value }))} style={inp()} />
@@ -1637,14 +1546,11 @@ function TabLeave({ staff }) {
             <div>
               <Label>Reason *</Label>
               <textarea value={form.reason} onChange={e => setForm(p => ({ ...p, reason: e.target.value }))}
-                placeholder="Enter leave reason…" rows={3}
-                style={{ ...inp(), resize:'vertical' }} />
+                placeholder="Enter reason…" rows={3} style={{ ...inp(), resize:'vertical' }} />
             </div>
-            <div style={{ display:'flex', justifyContent:'flex-end' }}>
-              <Btn variant="primary" disabled={submitting} onClick={submitLeave}>
-                {submitting ? '⏳ Submitting…' : '📤 Submit Leave Request'}
-              </Btn>
-            </div>
+            <Btn variant="primary" disabled={submitting} onClick={submitLeave} style={{ width: '100%', justifyContent: 'center' }}>
+              {submitting ? '⏳ Submitting…' : '📤 Submit Leave Request'}
+            </Btn>
           </div>
         )}
       </div>
@@ -1655,17 +1561,18 @@ function TabLeave({ staff }) {
 // ─── MAIN ─────────────────────────────────────────────────────
 
 const TABS = [
-  { key:'home',   label:'🏠 Dashboard' },
-  { key:'mark',   label:'✏️ Mark Attendance' },
+  { key:'home',   label:'🏠 Home'     },
+  { key:'mark',   label:'✏️ Mark'     },
   { key:'view',   label:'📁 Sessions' },
-  { key:'report', label:'📊 Reports' },
-  { key:'leave',  label:'📅 Leaves' },
+  { key:'report', label:'📊 Reports'  },
+  { key:'leave',  label:'📅 Leaves'   },
 ]
 
 export default function Attendance() {
-  const [activeTab, setActiveTab] = useState('home')
-  const [staff,     setStaff]     = useState([])
-  const [markPrefill, setMarkPrefill] = useState(null)
+  const isMobile  = useIsMobile()
+  const [activeTab,    setActiveTab]    = useState('home')
+  const [staff,        setStaff]        = useState([])
+  const [markPrefill,  setMarkPrefill]  = useState(null)
 
   useEffect(() => {
     supabase.from('staff_profiles').select('id,name,designation').order('name')
@@ -1678,25 +1585,33 @@ export default function Attendance() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '24px 20px', fontFamily: font }}>
+    <div style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '14px 10px' : '24px 20px', fontFamily: font }}>
 
       {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: C.slate[400], marginBottom: 4 }}>GNSI Portal</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: C.navy }}>Attendance</div>
-        <div style={{ fontSize: 13, color: C.slate[400], marginTop: 3 }}>Mark, view, analyse and manage attendance across all batches</div>
+      <div style={{ marginBottom: isMobile ? 14 : 24 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: C.slate[400], marginBottom: 3 }}>GNSI Portal</div>
+        <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: C.navy }}>Attendance</div>
+        {!isMobile && <div style={{ fontSize: 13, color: C.slate[400], marginTop: 3 }}>Mark, view, analyse and manage attendance across all batches</div>}
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `2px solid ${C.slate[200]}`, overflowX: 'auto' }}>
+      {/* Tabs — FIX 6: scrollbar hidden on mobile, touch-friendly */}
+      <div style={{
+        display: 'flex', marginBottom: 16,
+        borderBottom: `2px solid ${C.slate[200]}`,
+        overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none', msOverflowStyle: 'none',
+      }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{
-              padding: '10px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              padding: isMobile ? '10px 12px' : '10px 20px',
+              fontWeight: 700, fontSize: isMobile ? 11 : 13, cursor: 'pointer',
               background: 'none', border: 'none', fontFamily: font, whiteSpace: 'nowrap',
               borderBottom: activeTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent',
               color: activeTab===t.key ? C.navy : C.slate[400], marginBottom: -2,
-              transition: 'color .12s',
+              transition: 'color .12s', flexShrink: 0,
+              WebkitTapHighlightColor: 'transparent',
+              minHeight: 44,
             }}>
             {t.label}
           </button>
