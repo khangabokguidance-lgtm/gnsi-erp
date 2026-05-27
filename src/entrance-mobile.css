@@ -1,0 +1,518 @@
+/* ═══════════════════════════════════════════════════════════════
+   GNSI Portal — Entrance Examination Module
+   Mobile Responsive Stylesheet
+   Breakpoints: 480px (phone) · 768px (tablet)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Base touch behaviour ─────────────────────────────────────── */
+.entrance-root {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   TABLET  ≤ 768px
+   ════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── 1. OUTER WRAP ─────────────────────────────────────────── */
+  .entrance-root {
+    padding: 14px 12px !important;
+  }
+
+  /* ── 2. PAGE HEADER ────────────────────────────────────────── */
+  .entrance-root > div:first-child h1 {
+    font-size: 20px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .entrance-root > div:first-child p {
+    font-size: 12px !important;
+    line-height: 1.5;
+  }
+
+  /* ── 3. TAB BAR ────────────────────────────────────────────── */
+  .entrance-root > div:nth-child(2) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    gap: 5px !important;
+    margin-bottom: 16px !important;
+    padding-bottom: 4px;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  .entrance-root > div:nth-child(2)::-webkit-scrollbar {
+    display: none;
+  }
+
+  .entrance-root > div:nth-child(2) button {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    border-radius: 8px !important;
+  }
+
+  /* Refresh button */
+  .entrance-root > div:nth-child(2) button[title="Refresh"] {
+    margin-left: 0 !important;
+    flex-shrink: 0;
+  }
+
+  /* ── 4. STAT CARDS GRID ────────────────────────────────────── */
+  /* grid4 → 2×2 */
+  .entrance-root div[style*="repeat(4, 1fr)"],
+  .entrance-root div[style*="repeat(4,1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* grid3 → 1 col on tablet */
+  .entrance-root div[style*="repeat(3, 1fr)"],
+  .entrance-root div[style*="repeat(3,1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* grid2 → 1 col */
+  .entrance-root div[style*="gridTemplateColumns: \"1fr 1fr\""],
+  .entrance-root div[style*="gridTemplateColumns:'1fr 1fr'"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* StatCard value font */
+  .entrance-root div[style*="fontSize: '30px'"],
+  .entrance-root div[style*="fontSize:30px"] {
+    font-size: 24px !important;
+  }
+
+  /* ── 5. ALL TABLES → HORIZONTAL SCROLL ────────────────────── */
+  .entrance-root div[style*="overflowX: 'auto'"],
+  .entrance-root div[style*="overflowX:'auto'"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .entrance-root table {
+    font-size: 12px !important;
+    min-width: 520px;
+    width: 100%;
+  }
+
+  .entrance-root th {
+    padding: 9px 10px !important;
+    font-size: 10px !important;
+    white-space: nowrap;
+  }
+
+  .entrance-root td {
+    padding: 9px 10px !important;
+    font-size: 12px !important;
+    white-space: nowrap;
+  }
+
+  /* ── 6. FORM GRIDS ─────────────────────────────────────────── */
+  /* grid3 forms → 1 col */
+  .entrance-root form div[style*="repeat(3, 1fr)"],
+  .entrance-root form div[style*="gridTemplateColumns: \"1fr 1fr 1fr\""] {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* gridColumn span reset */
+  .entrance-root form div[style*="gridColumn: '1 / -1'"],
+  .entrance-root form div[style*="gridColumn:'1/-1'"] {
+    grid-column: 1 / -1 !important;
+  }
+
+  /* ── 7. CONTROL / FILTER ROWS ──────────────────────────────── */
+  .entrance-root div[style*="display: 'flex'"][style*="gap: 10"][style*="flexWrap: 'wrap'"],
+  .entrance-root div[style*="display:'flex'"][style*="flexWrap:'wrap'"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* Search + select inputs in filter rows → full width */
+  .entrance-root div[style*="flexWrap"] > input,
+  .entrance-root div[style*="flexWrap"] > select {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  /* marginLeft:auto button group → full width row */
+  .entrance-root div[style*="marginLeft: 'auto'"],
+  .entrance-root div[style*="marginLeft:'auto'"] {
+    margin-left: 0 !important;
+    width: 100%;
+    display: flex !important;
+    gap: 8px !important;
+    flex-wrap: wrap;
+  }
+
+  .entrance-root div[style*="marginLeft: 'auto'"] button,
+  .entrance-root div[style*="marginLeft:'auto'"] button {
+    flex: 1 1 auto;
+  }
+
+  /* ── 8. INPUTS & SELECTS ───────────────────────────────────── */
+  .entrance-root input,
+  .entrance-root select,
+  .entrance-root textarea {
+    font-size: 16px !important; /* prevents iOS zoom */
+    min-height: 42px;
+    border-radius: 8px !important;
+  }
+
+  /* Inline narrow inputs keep their size */
+  .entrance-root input[style*="width: 80"],
+  .entrance-root input[style*="width: 70"],
+  .entrance-root input[style*="width: 90"] {
+    min-width: 70px;
+    max-width: 100px;
+    min-height: 36px !important;
+  }
+
+  /* ── 9. BUTTONS ────────────────────────────────────────────── */
+  .entrance-root button {
+    font-size: 12px !important;
+    min-height: 36px;
+  }
+
+  /* Action buttons in table cells */
+  .entrance-root td button {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+    min-height: 30px !important;
+  }
+
+  /* ── 10. CARD PADDING ──────────────────────────────────────── */
+  .entrance-root div[style*="padding: '20px'"],
+  .entrance-root div[style*="padding:20px"] {
+    padding: 14px !important;
+  }
+
+  .entrance-root div[style*="padding: '16px'"],
+  .entrance-root div[style*="padding:16px"] {
+    padding: 12px !important;
+  }
+
+  /* Form card padding */
+  .entrance-root div[style*="padding: '28px'"],
+  .entrance-root div[style*="padding:28px"] {
+    padding: 18px !important;
+  }
+
+  /* ── 11. UPCOMING EXAMS — flex → column ────────────────────── */
+  .entrance-root div[style*="display: 'flex'"][style*="justifyContent: 'space-between'"][style*="alignItems: 'center'"][style*="padding: '10px 0'"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .entrance-root div[style*="display: 'flex'"][style*="justifyContent: 'space-between'"][style*="alignItems: 'center'"][style*="padding: '10px 0'"] > div:last-child {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+
+  /* ── 12. RESULT ENTRY — subject score grid ──────────────────── */
+  .entrance-root div[style*="repeat(auto-fill, minmax(200px, 1fr))"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* Result score summary row */
+  .entrance-root div[style*="borderRadius: 10"][style*="padding: '12px 16px'"][style*="display: 'flex'"][style*="gap: 20"] {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  /* Result edit form flex row → column */
+  .entrance-root div[style*="display: 'flex', gap: '12px', marginBottom: '14px'"] {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  /* ── 13. HALL TICKET PREVIEW ───────────────────────────────── */
+  .entrance-root div[style*="maxWidth: 580"] {
+    max-width: 100% !important;
+    overflow-x: auto;
+  }
+
+  /* Hall ticket inner width */
+  .entrance-root div[style*="width:560px"],
+  .entrance-root div[style*="width: 560px"] {
+    width: 100% !important;
+    min-width: 300px;
+  }
+
+  /* ── 14. ANSWER KEY GRID ───────────────────────────────────── */
+  .entrance-root div[style*="repeat(auto-fit, minmax(280px, 1fr))"] {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Answer key add form → wrap */
+  .entrance-root div[style*="display: 'flex'"][style*="gap: 10"][style*="flexWrap: 'wrap'"][style*="alignItems: 'flex-end'"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .entrance-root div[style*="display: 'flex'"][style*="gap: 10"][style*="flexWrap: 'wrap'"][style*="alignItems: 'flex-end'"] > div {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 100px;
+  }
+
+  /* ── 15. MERIT LIST STATS ──────────────────────────────────── */
+  .entrance-root div[style*="S.grid3"][style*="marginBottom: 20"],
+  .entrance-root div[style*="gap: '14px'"][style*="marginBottom: '20px'"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* ── 16. ADMISSION ACTION BUTTONS ─────────────────────────── */
+  .entrance-root td > div[style*="display: 'flex'"][style*="gap: 6"] {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  .entrance-root td > div[style*="display: 'flex'"][style*="gap: 6"] button {
+    flex: 1 1 auto;
+    min-width: 56px;
+    padding: 4px 6px !important;
+    font-size: 10px !important;
+  }
+
+  /* ── 17. DASHBOARD UPCOMING EXAM BADGES ────────────────────── */
+  .entrance-root div[style*="display: 'flex'"][style*="gap: 10"][style*="alignItems: 'center'"] span[style*="borderRadius: '20px'"] {
+    font-size: 10px !important;
+    padding: 2px 7px !important;
+  }
+
+  /* ── 18. CONFIRM MODAL ─────────────────────────────────────── */
+  .entrance-root div[style*="maxWidth: 380"] {
+    max-width: 94vw !important;
+    padding: 20px !important;
+  }
+
+  /* ── 19. BULK CSV SECTION ──────────────────────────────────── */
+  .entrance-root div[style*="borderRadius: 10"][style*="border: '1px dashed"] > div:last-child {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .entrance-root div[style*="borderRadius: 10"][style*="border: '1px dashed"] select,
+  .entrance-root div[style*="borderRadius: 10"][style*="border: '1px dashed"] input[type="file"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* ── 20. TIMELINE ──────────────────────────────────────────── */
+  .entrance-root div[style*="fontFamily: 'monospace'"][style*="maxWidth: 400"] {
+    max-width: 100% !important;
+    white-space: pre-wrap !important;
+    word-break: break-all;
+  }
+
+  /* ── 21. TABLE WRAPPER SCROLL HINT ────────────────────────── */
+  .entrance-root div[style*="overflowX"] {
+    position: relative;
+  }
+
+  /* ── 22. SAFE AREA ─────────────────────────────────────────── */
+  .entrance-root {
+    padding-left: max(12px, env(safe-area-inset-left)) !important;
+    padding-right: max(12px, env(safe-area-inset-right)) !important;
+  }
+
+  /* ── 23. FOCUS STATES ──────────────────────────────────────── */
+  .entrance-root input:focus,
+  .entrance-root select:focus,
+  .entrance-root textarea:focus {
+    outline: 2px solid #1e3a5f !important;
+    outline-offset: 1px;
+  }
+
+  .entrance-root button:focus-visible {
+    outline: 2px solid #1e3a5f;
+    outline-offset: 2px;
+  }
+
+}
+
+/* ════════════════════════════════════════════════════════════════
+   PHONE  ≤ 480px
+   ════════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+
+  /* ── Wrap tighter ──────────────────────────────────────────── */
+  .entrance-root {
+    padding: 10px 8px !important;
+  }
+
+  /* ── Header ────────────────────────────────────────────────── */
+  .entrance-root > div:first-child h1 {
+    font-size: 17px !important;
+  }
+
+  .entrance-root > div:first-child p {
+    font-size: 11px !important;
+  }
+
+  /* ── Tabs smaller ──────────────────────────────────────────── */
+  .entrance-root > div:nth-child(2) button {
+    padding: 7px 10px !important;
+    font-size: 11px !important;
+  }
+
+  /* ── Stat grids → 2 col on phone ───────────────────────────── */
+  .entrance-root div[style*="repeat(4, 1fr)"],
+  .entrance-root div[style*="repeat(4,1fr)"],
+  .entrance-root div[style*="repeat(3, 1fr)"],
+  .entrance-root div[style*="repeat(3,1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* StatCard value smaller */
+  .entrance-root div[style*="fontSize: '30px'"] {
+    font-size: 20px !important;
+  }
+
+  /* StatCard label */
+  .entrance-root div[style*="fontSize: '11px'"][style*="textTransform: 'uppercase'"] {
+    font-size: 9px !important;
+    letter-spacing: 0.03em !important;
+  }
+
+  /* ── Tables compact ─────────────────────────────────────────── */
+  .entrance-root table {
+    font-size: 11px !important;
+    min-width: 440px;
+  }
+
+  .entrance-root th {
+    padding: 7px 8px !important;
+    font-size: 9px !important;
+  }
+
+  .entrance-root td {
+    padding: 7px 8px !important;
+    font-size: 11px !important;
+  }
+
+  /* ── Form grids → all 1 col ─────────────────────────────────── */
+  .entrance-root form div[style*="grid"] {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Result subject score grid → 1 col */
+  .entrance-root div[style*="repeat(auto-fill, minmax(200px, 1fr))"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Answer key grid → 1 col */
+  .entrance-root div[style*="repeat(auto-fit, minmax(280px, 1fr))"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Merit list stats → 2 col still ok */
+  /* (already handled above) */
+
+  /* ── Dashboard result funnel ─────────────────────────────────── */
+  .entrance-root div[style*="display: 'flex'"][style*="alignItems: 'center'"][style*="gap: 10"][style*="marginBottom: 10"] {
+    gap: 8px !important;
+  }
+
+  /* ── Cards padding ──────────────────────────────────────────── */
+  .entrance-root div[style*="borderRadius: '14px'"][style*="padding: '20px'"],
+  .entrance-root div[style*="borderRadius: 14px"][style*="padding: 20px"] {
+    padding: 12px !important;
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────── */
+  .entrance-root button {
+    font-size: 11px !important;
+    padding: 7px 10px !important;
+    min-height: 34px !important;
+  }
+
+  .entrance-root td button {
+    padding: 4px 7px !important;
+    font-size: 10px !important;
+    min-height: 28px !important;
+  }
+
+  /* ── Result modal close btn ─────────────────────────────────── */
+  .entrance-root div[style*="border: '2px solid #1e3a5f'"] > div:first-child {
+    flex-direction: column !important;
+    gap: 10px !important;
+    align-items: flex-start !important;
+  }
+
+  /* ── Hall ticket preview ────────────────────────────────────── */
+  .entrance-root div[style*="maxWidth: 580"] {
+    overflow-x: auto !important;
+    border-radius: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Upcoming exam row ──────────────────────────────────────── */
+  .entrance-root div[style*="padding: '10px 0'"][style*="borderBottom"] {
+    padding: 10px 0 !important;
+  }
+
+  /* ── Timeline log line ──────────────────────────────────────── */
+  .entrance-root div[style*="display: 'flex'"][style*="gap: 14"][style*="paddingBottom: 16"] {
+    gap: 10px !important;
+  }
+
+  .entrance-root div[style*="width: 36"][style*="height: 36"] {
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 13px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Timeline time → wrap below name */
+  .entrance-root div[style*="display: 'flex'"][style*="justifyContent: 'space-between'"][style*="alignItems: 'center'"] {
+    flex-wrap: wrap !important;
+    gap: 2px !important;
+  }
+
+  /* ── Admission decision buttons → stacked ───────────────────── */
+  .entrance-root td > div[style*="display: 'flex'"][style*="gap: 6"] {
+    flex-direction: column !important;
+    gap: 3px !important;
+    align-items: stretch !important;
+  }
+
+  .entrance-root td > div[style*="display: 'flex'"][style*="gap: 6"] button {
+    width: 100% !important;
+    text-align: center !important;
+    padding: 5px 4px !important;
+    min-height: 28px !important;
+  }
+
+  /* ── Answer key pill tags ───────────────────────────────────── */
+  .entrance-root div[style*="display: 'flex'"][style*="flexWrap: 'wrap'"][style*="gap: 6"] > div {
+    font-size: 11px !important;
+    padding: 3px 7px !important;
+  }
+
+  /* ── Confirm modal ──────────────────────────────────────────── */
+  .entrance-root div[style*="maxWidth: 380"] {
+    padding: 16px !important;
+  }
+
+  .entrance-root div[style*="maxWidth: 380"] > div:first-child {
+    font-size: 14px !important;
+  }
+
+}

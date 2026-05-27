@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import './entrance-mobile.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1131,7 +1132,7 @@ export default function Entrance() {
   })
 
   return (
-    <div style={S.wrap}>
+    <div className="entrance-root" style={S.wrap}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: '26px', color: '#1e3a5f', fontWeight: '800', marginBottom: 4 }}>🎓 Entrance Examination</h1>
         <p style={{ color: '#64748b', fontSize: '13px' }}>Manage Sainik, Navodaya & Foundation entrance exams — scheduling, candidates, hall tickets, results, merit list & admissions</p>
