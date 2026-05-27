@@ -34,8 +34,6 @@ import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import Entrance from './Entrance'
 
-// ─── Nav structure ────────────────────────────────────────────────────────────
-
 const ALL_GROUPS = [
   {
     group: 'CORE',
@@ -64,7 +62,7 @@ const ALL_GROUPS = [
       { id: 'teaching',     label: 'Teaching',      icon: '📚' },
       { id: 'courses',      label: 'Courses',       icon: '🎓' },
       { id: 'questionbank', label: 'Question Bank', icon: '❓' },
-      { id: 'entrance', label: 'Entrance Exam', icon: '🏆' },
+      { id: 'entrance',     label: 'Entrance Exam', icon: '🏆' },
     ],
   },
   {
@@ -105,16 +103,9 @@ const BADGES = {
   notice: { count: 5, color: '#fcd34d', bg: '#78350f' },
 }
 
-// ─── Permission helpers ───────────────────────────────────────────────────────
-
-// Full CRUD access object (for Admin)
 const FULL_CRUD = { read: true, add: true, edit: true, delete: true }
 const NO_CRUD   = { read: false, add: false, edit: false, delete: false }
 
-/**
- * Build a permissions map from Supabase role_permissions rows.
- * Shape: { [module_key]: { read, add, edit, delete } }
- */
 function buildPermMap(rows) {
   const map = {}
   ;(rows || []).forEach(r => {
@@ -128,16 +119,10 @@ function buildPermMap(rows) {
   return map
 }
 
-/**
- * Returns the effective CRUD perms for a module key.
- * Admin always gets full access.
- */
 function getModulePerms(permMap, moduleKey, isAdmin) {
   if (isAdmin) return FULL_CRUD
   return permMap[moduleKey] ?? NO_CRUD
 }
-
-// ─── Design tokens ────────────────────────────────────────────────────────────
 
 const D = {
   bg:           '#03263a',
@@ -159,14 +144,10 @@ const D = {
   logoBg:       '#fdd656',
 }
 
-// ─── localStorage helpers ─────────────────────────────────────────────────────
-
 const LS = {
   get: (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb } catch { return fb } },
   set: (k, v)  => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} },
 }
-
-// ─── Hooks ────────────────────────────────────────────────────────────────────
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(() => window.innerWidth <= 768)
@@ -179,96 +160,30 @@ function useIsMobile() {
   return mobile
 }
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
-
 function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) {
   const badge = BADGES[item.id]
   const [hov, setHov] = useState(false)
   const [pinHov, setPinHov] = useState(false)
-
   return (
-    <div
-      style={{ position: 'relative' }}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => { setHov(false); setPinHov(false) }}
-    >
-      <button
-        onClick={onClick}
-        style={{
-          width: '100%',
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px',
-          borderRadius: 8, marginBottom: 1,
-          border: isActive
-            ? `1px solid ${D.accentBorder}`
-            : `1px solid ${hov ? D.border : 'transparent'}`,
-          cursor: 'pointer', textAlign: 'left',
-          fontSize: compact ? 12.5 : 13.5,
-          fontWeight: isActive ? 600 : 400,
-          background: isActive
-            ? `linear-gradient(90deg, ${D.bgActive} 0%, rgba(15,30,16,0.6) 100%)`
-            : hov ? D.bgHover : 'transparent',
-          color: isActive ? D.accentLight : hov ? D.textPrimary : D.textSecondary,
-          position: 'relative',
-          transition: 'background .12s, border-color .12s, color .12s',
-          fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
-        }}
-      >
-        {isActive && (
-          <span style={{
-            position: 'absolute', left: 0, top: '50%',
-            transform: 'translateY(-50%)',
-            width: 3, height: 20, borderRadius: '0 3px 3px 0',
-            background: D.accent, boxShadow: `0 0 8px ${D.accent}`,
-          }} />
-        )}
+    <div style={{ position: 'relative' }} onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPinHov(false) }}>
+      <button onClick={onClick} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px', borderRadius: 8, marginBottom: 1, border: isActive ? `1px solid ${D.accentBorder}` : `1px solid ${hov ? D.border : 'transparent'}`, cursor: 'pointer', textAlign: 'left', fontSize: compact ? 12.5 : 13.5, fontWeight: isActive ? 600 : 400, background: isActive ? `linear-gradient(90deg, ${D.bgActive} 0%, rgba(15,30,16,0.6) 100%)` : hov ? D.bgHover : 'transparent', color: isActive ? D.accentLight : hov ? D.textPrimary : D.textSecondary, position: 'relative', transition: 'background .12s, border-color .12s, color .12s', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
+        {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: '0 3px 3px 0', background: D.accent, boxShadow: `0 0 8px ${D.accent}` }} />}
         <span style={{ fontSize: compact ? 13 : 15, lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
         <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
-        {badge && (
-          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.count}</span>
-        )}
-        {isPinned && !hov && (
-          <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>
-        )}
+        {badge && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.count}</span>}
+        {isPinned && !hov && <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>}
       </button>
       {hov && onPin && (
-        <button
-          onClick={e => { e.stopPropagation(); onPin(item.id) }}
-          onMouseEnter={() => setPinHov(true)}
-          onMouseLeave={() => setPinHov(false)}
-          title={isPinned ? 'Unpin' : 'Pin to top'}
-          style={{
-            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
-            background: pinHov ? D.accentGlow : 'transparent',
-            border: `1px solid ${pinHov ? D.accentBorder : 'transparent'}`,
-            borderRadius: 5, padding: '2px 5px',
-            cursor: 'pointer', fontSize: 11,
-            color: isPinned ? D.accent : D.textFaint,
-            transition: 'all .12s',
-          }}
-        >{isPinned ? '📌' : '📍'}</button>
+        <button onClick={e => { e.stopPropagation(); onPin(item.id) }} onMouseEnter={() => setPinHov(true)} onMouseLeave={() => setPinHov(false)} title={isPinned ? 'Unpin' : 'Pin to top'} style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: pinHov ? D.accentGlow : 'transparent', border: `1px solid ${pinHov ? D.accentBorder : 'transparent'}`, borderRadius: 5, padding: '2px 5px', cursor: 'pointer', fontSize: 11, color: isPinned ? D.accent : D.textFaint, transition: 'all .12s' }}>{isPinned ? '📌' : '📍'}</button>
       )}
     </div>
   )
 }
 
-// ─── GroupHeader ──────────────────────────────────────────────────────────────
-
 function GroupHeader({ label, collapsed, onToggle, count }) {
   const [hov, setHov] = useState(false)
   return (
-    <button
-      onClick={onToggle}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        width: '100%', padding: '5px 10px 4px 12px',
-        background: hov ? 'rgba(255,255,255,0.03)' : 'transparent',
-        border: 'none', cursor: 'pointer', borderRadius: 6,
-        transition: 'background .1s', marginBottom: 2,
-      }}
-    >
+    <button onClick={onToggle} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '5px 10px 4px 12px', background: hov ? 'rgba(255,255,255,0.03)' : 'transparent', border: 'none', cursor: 'pointer', borderRadius: 6, transition: 'background .1s', marginBottom: 2 }}>
       <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: hov ? D.textMuted : D.textFaint, textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif", flex: 1, textAlign: 'left', transition: 'color .1s' }}>{label}</span>
       {count > 0 && <span style={{ fontSize: 9, color: D.textFaint, background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 99 }}>{count}</span>}
       <span style={{ fontSize: 9, color: D.textFaint, transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform .2s', display: 'inline-block' }}>▾</span>
@@ -276,100 +191,58 @@ function GroupHeader({ label, collapsed, onToggle, count }) {
   )
 }
 
-// ─── PinnedItems ──────────────────────────────────────────────────────────────
-
 function PinnedItems({ pins, activePage, onNavigate, onPin }) {
   if (!pins.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
       <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.accentBorder, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>📌 PINNED</div>
-      {pins.map(id => {
-        const item = ALL_ITEMS.find(i => i.id === id)
-        if (!item) return null
-        return <NavItem key={id} item={item} isActive={activePage === id} onClick={() => onNavigate(id)} onPin={onPin} isPinned compact />
-      })}
+      {pins.map(id => { const item = ALL_ITEMS.find(i => i.id === id); if (!item) return null; return <NavItem key={id} item={item} isActive={activePage === id} onClick={() => onNavigate(id)} onPin={onPin} isPinned compact /> })}
     </div>
   )
 }
-
-// ─── RecentItems ──────────────────────────────────────────────────────────────
 
 function RecentItems({ recents, activePage, onNavigate }) {
   if (!recents.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
       <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.textFaint, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>RECENT</div>
-      {recents.map(id => {
-        const item = ALL_ITEMS.find(i => i.id === id)
-        if (!item) return null
-        return <NavItem key={id} item={item} isActive={activePage === id} onClick={() => onNavigate(id)} compact />
-      })}
+      {recents.map(id => { const item = ALL_ITEMS.find(i => i.id === id); if (!item) return null; return <NavItem key={id} item={item} isActive={activePage === id} onClick={() => onNavigate(id)} compact /> })}
     </div>
   )
 }
 
-// ─── LogoutButton ─────────────────────────────────────────────────────────────
-
 function LogoutButton({ onLogout }) {
   const [hov, setHov] = useState(false)
   return (
-    <button
-      onClick={onLogout}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-        padding: '8px 12px', borderRadius: 8,
-        border: `1px solid ${hov ? D.accentBorder : D.border}`,
-        cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 500,
-        background: hov ? D.accentGlow : D.bgSurface,
-        color: hov ? D.accentLight : D.textMuted,
-        transition: 'all .15s',
-        fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
-      }}
-    >
+    <button onClick={onLogout} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 8, border: `1px solid ${hov ? D.accentBorder : D.border}`, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 500, background: hov ? D.accentGlow : D.bgSurface, color: hov ? D.accentLight : D.textMuted, transition: 'all .15s', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
       <span style={{ fontSize: 14 }}>🚪</span><span>Sign Out</span>
     </button>
   )
 }
 
-// ─── LogoHeader ───────────────────────────────────────────────────────────────
-
 function LogoHeader({ isMobile, onClose }) {
   return (
-    <div style={{
-      padding: '0 14px', height: 60,
-      display: 'flex', alignItems: 'center', gap: 11,
-      borderBottom: `1px solid ${D.border}`, flexShrink: 0,
-      background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`,
-      position: 'relative', overflow: 'hidden',
-    }}>
+    <div style={{ padding: '0 14px', height: 60, display: 'flex', alignItems: 'center', gap: 11, borderBottom: `1px solid ${D.border}`, flexShrink: 0, background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`, position: 'relative', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1, background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
       <div style={{ width: 36, height: 36, borderRadius: 9, background: D.logoBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, boxShadow: '0 2px 8px rgba(253,214,86,0.3)' }}>🏫</div>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em', lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
         <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>School Management</div>
       </div>
-      {isMobile && (
-        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`, borderRadius: 6, cursor: 'pointer', color: D.textMuted, fontSize: 14, lineHeight: 1, padding: '5px 8px' }} aria-label="Close menu">✕</button>
-      )}
+      {isMobile && <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`, borderRadius: 6, cursor: 'pointer', color: D.textMuted, fontSize: 14, lineHeight: 1, padding: '5px 8px' }} aria-label="Close menu">✕</button>}
     </div>
   )
 }
 
-// ─── SidebarContent ───────────────────────────────────────────────────────────
-
 function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNavClick, permMap }) {
-  const [search,         setSearch]         = useState('')
-  const [collapsed,      setCollapsed]      = useState(() => LS.get('gnsi_nav_collapsed', {}))
-  const [pins,           setPins]           = useState(() => LS.get('gnsi_nav_pins', []))
-  const [recents,        setRecents]        = useState(() => LS.get('gnsi_nav_recents', []))
+  const [search,    setSearch]    = useState('')
+  const [collapsed, setCollapsed] = useState(() => LS.get('gnsi_nav_collapsed', {}))
+  const [pins,      setPins]      = useState(() => LS.get('gnsi_nav_pins', []))
+  const [recents,   setRecents]   = useState(() => LS.get('gnsi_nav_recents', []))
   const searchRef = useRef(null)
-
   const role    = currentUser?.role || 'Teacher'
   const isAdmin = role === 'Admin'
 
-  // Build allowed set from permMap (read = can see in sidebar)
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
@@ -378,70 +251,37 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   }, [permMap, isAdmin])
 
   useEffect(() => {
-    const handler = e => {
-      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
-        e.preventDefault(); searchRef.current?.focus()
-      }
-    }
+    const handler = e => { if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); searchRef.current?.focus() } }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
   const handleNavigate = useCallback((id) => {
     setActivePage(id); onNavClick?.()
-    setRecents(prev => {
-      const next = [id, ...prev.filter(r => r !== id)].slice(0, 5)
-      LS.set('gnsi_nav_recents', next); return next
-    })
+    setRecents(prev => { const next = [id, ...prev.filter(r => r !== id)].slice(0, 5); LS.set('gnsi_nav_recents', next); return next })
   }, [setActivePage, onNavClick])
 
   const handlePin = useCallback((id) => {
-    setPins(prev => {
-      const next = prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-      LS.set('gnsi_nav_pins', next); return next
-    })
+    setPins(prev => { const next = prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]; LS.set('gnsi_nav_pins', next); return next })
   }, [])
 
   const toggleGroup = (group) => {
-    setCollapsed(prev => {
-      const next = { ...prev, [group]: !prev[group] }
-      LS.set('gnsi_nav_collapsed', next); return next
-    })
+    setCollapsed(prev => { const next = { ...prev, [group]: !prev[group] }; LS.set('gnsi_nav_collapsed', next); return next })
   }
 
-  const initials = currentUser?.name
-    ? currentUser.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-    : 'US'
+  const initials = currentUser?.name ? currentUser.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : 'US'
 
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return ALL_GROUPS
-      .map(g => ({
-        ...g,
-        items: g.items.filter(i =>
-          allowedModules.has(i.id) && !pins.includes(i.id) &&
-          (!q || i.label.toLowerCase().includes(q))
-        ),
-      }))
-      .filter(g => g.items.length > 0)
+    return ALL_GROUPS.map(g => ({ ...g, items: g.items.filter(i => allowedModules.has(i.id) && !pins.includes(i.id) && (!q || i.label.toLowerCase().includes(q))) })).filter(g => g.items.length > 0)
   }, [allowedModules, search, pins])
 
-  const visibleRecents = useMemo(() =>
-    recents.filter(id => allowedModules?.has(id) && !pins.includes(id)).slice(0, 4),
-  [recents, allowedModules, pins])
-
+  const visibleRecents = useMemo(() => recents.filter(id => allowedModules?.has(id) && !pins.includes(id)).slice(0, 4), [recents, allowedModules, pins])
   const totalBadges = Object.values(BADGES).reduce((s, b) => s + b.count, 0)
 
   return (
     <>
-      {/* User card */}
-      <div style={{
-        margin: '10px 10px 0',
-        background: `linear-gradient(135deg, ${D.bgSurface} 0%, rgba(15,40,60,0.8) 100%)`,
-        border: `1px solid ${D.border}`, borderRadius: 10,
-        padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
-        flexShrink: 0, position: 'relative', overflow: 'hidden',
-      }}>
+      <div style={{ margin: '10px 10px 0', background: `linear-gradient(135deg, ${D.bgSurface} 0%, rgba(15,40,60,0.8) 100%)`, border: `1px solid ${D.border}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 60, background: `radial-gradient(ellipse at left center, ${D.accentGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />
         <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, background: D.accentGlow, border: `1.5px solid ${D.accentBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: D.accentLight, fontFamily: "'Trebuchet MS', monospace", zIndex: 1 }}>{initials}</div>
         <div style={{ minWidth: 0, flex: 1, zIndex: 1 }}>
@@ -460,27 +300,17 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         </div>
       </div>
 
-      {/* Search */}
       <div style={{ padding: '8px 10px 4px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: D.bgDeep, border: `1px solid ${D.borderStrong}`, borderRadius: 8, padding: '7px 11px' }}>
           <span style={{ fontSize: 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
           <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }} />
-          {search
-            ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
-            : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', letterSpacing: '0.05em', flexShrink: 0 }}>/</span>
-          }
+          {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', letterSpacing: '0.05em', flexShrink: 0 }}>/</span>}
         </div>
       </div>
 
-      {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 8px 8px', scrollbarWidth: 'thin', scrollbarColor: `${D.border} transparent` }}>
         {!search && <PinnedItems pins={pins} activePage={activePage} onNavigate={handleNavigate} onPin={handlePin} />}
-        {!search && visibleRecents.length > 0 && (
-          <>
-            <RecentItems recents={visibleRecents} activePage={activePage} onNavigate={handleNavigate} />
-            <div style={{ height: 1, background: D.border, margin: '6px 4px 10px' }} />
-          </>
-        )}
+        {!search && visibleRecents.length > 0 && (<><RecentItems recents={visibleRecents} activePage={activePage} onNavigate={handleNavigate} /><div style={{ height: 1, background: D.border, margin: '6px 4px 10px' }} /></>)}
         {filteredGroups.length === 0 && <div style={{ padding: '24px 12px', textAlign: 'center', color: D.textFaint, fontSize: 12 }}>No modules found</div>}
         {filteredGroups.map((grp, gi) => {
           const isCollapsed = !!collapsed[grp.group] && !search
@@ -488,15 +318,12 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
             <div key={grp.group} style={{ marginBottom: 2 }}>
               {gi > 0 && <div style={{ height: 1, background: D.border, margin: '4px 4px 8px' }} />}
               <GroupHeader label={grp.group} collapsed={isCollapsed} count={grp.items.length} onToggle={() => toggleGroup(grp.group)} />
-              {!isCollapsed && grp.items.map(item => (
-                <NavItem key={item.id} item={item} isActive={activePage === item.id} onClick={() => handleNavigate(item.id)} onPin={handlePin} isPinned={pins.includes(item.id)} />
-              ))}
+              {!isCollapsed && grp.items.map(item => <NavItem key={item.id} item={item} isActive={activePage === item.id} onClick={() => handleNavigate(item.id)} onPin={handlePin} isPinned={pins.includes(item.id)} />)}
             </div>
           )
         })}
       </nav>
 
-      {/* Footer */}
       <div style={{ padding: '8px 8px 12px', borderTop: `1px solid ${D.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 7px' }}>
           <span style={{ fontSize: 10, color: D.textFaint }}><span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>{' '}to search</span>
@@ -507,8 +334,6 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     </>
   )
 }
-
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) {
   const isMobile    = useIsMobile()
@@ -538,20 +363,41 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) 
 
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg, borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-        <button onClick={() => setDrawerOpen(true)} aria-label="Open menu" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative' }}>
+      {/* ── Mobile top bar with logout button ── */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg, borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
+        <button onClick={() => setDrawerOpen(true)} aria-label="Open menu" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
         </button>
         <div style={{ width: 30, height: 30, borderRadius: 7, background: D.logoBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>🏫</div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1 }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
           <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>School Management</div>
         </div>
-        <div style={{ fontSize: 12, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 9px', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
+        {/* ── Logout button in mobile header ── */}
+        <button
+          onClick={onLogout}
+          title="Sign Out"
+          style={{
+            background: 'rgba(220,38,38,.12)',
+            border: '1px solid rgba(220,38,38,.25)',
+            borderRadius: 8,
+            padding: '7px 10px',
+            cursor: 'pointer',
+            color: '#fca5a5',
+            fontSize: 16,
+            flexShrink: 0,
+            lineHeight: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >🚪</button>
       </div>
+
       {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
       <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh', zIndex: 299, overflowY: 'hidden', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
         <LogoHeader isMobile onClose={() => setDrawerOpen(false)} />
@@ -560,8 +406,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) 
     </>
   )
 }
-
-// ─── Dashboard components ─────────────────────────────────────────────────────
 
 const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN')
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0)
@@ -663,7 +507,7 @@ function AdminDashboard({ onNavigate }) {
   }
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading live data…</div>
   if (!data) return null
-  const feeTotal    = data.feeCollected + data.feePending
+  const feeTotal = data.feeCollected + data.feePending
   const feeProgress = feeTotal ? Math.round((data.feeCollected / feeTotal) * 100) : 0
   return (
     <div style={{ padding: '16px 20px' }}>
@@ -676,24 +520,24 @@ function AdminDashboard({ onNavigate }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
         {[
-          { icon: '👨‍🎓', label: 'Total Students', value: data.totalStudents,    sub: 'Enrolled',           accent: 'blue'   },
-          { icon: '💰',   label: 'Fee Collected',  value: fmt(data.feeCollected), sub: 'Total paid',         accent: 'green',  trend: feeProgress },
-          { icon: '⏳',   label: 'Fee Pending',    value: fmt(data.feePending),   sub: 'Outstanding',        accent: 'amber'  },
-          { icon: '🏫',   label: 'Present Today',  value: data.presentCount,      sub: `of ${data.totalAtt}`,accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
-          { icon: '📋',   label: 'New Admissions', value: data.pendingAdm,        sub: 'Awaiting',           accent: 'pink'   },
-          { icon: '📝',   label: 'Total Exams',    value: data.totalExams,        sub: 'Scheduled',          accent: 'cyan'   },
-          { icon: '👨‍🏫', label: 'Total Staff',    value: data.totalStaff,        sub: 'Active',             accent: 'teal'   },
-          { icon: '💵',   label: 'Salary Paid',    value: fmt(data.salaryPaid),   sub: 'This month',         accent: 'indigo' },
-          { icon: '🏖️',  label: 'Leave Requests', value: data.pendingLeave,      sub: 'Pending',            accent: 'orange' },
+          { icon: '👨‍🎓', label: 'Total Students', value: data.totalStudents,    sub: 'Enrolled',            accent: 'blue'   },
+          { icon: '💰',   label: 'Fee Collected',  value: fmt(data.feeCollected), sub: 'Total paid',          accent: 'green',  trend: feeProgress },
+          { icon: '⏳',   label: 'Fee Pending',    value: fmt(data.feePending),   sub: 'Outstanding',         accent: 'amber'  },
+          { icon: '🏫',   label: 'Present Today',  value: data.presentCount,      sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
+          { icon: '📋',   label: 'New Admissions', value: data.pendingAdm,        sub: 'Awaiting',            accent: 'pink'   },
+          { icon: '📝',   label: 'Total Exams',    value: data.totalExams,        sub: 'Scheduled',           accent: 'cyan'   },
+          { icon: '👨‍🏫', label: 'Total Staff',    value: data.totalStaff,        sub: 'Active',              accent: 'teal'   },
+          { icon: '💵',   label: 'Salary Paid',    value: fmt(data.salaryPaid),   sub: 'This month',          accent: 'indigo' },
+          { icon: '🏖️',  label: 'Leave Requests', value: data.pendingLeave,      sub: 'Pending',             accent: 'orange' },
         ].map(c => <StatCard key={c.label} {...c} />)}
       </div>
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', padding: '12px 16px', marginBottom: 16 }}>
         <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', margin: '0 0 12px' }}>📊 Live Progress</h3>
         <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 10 }}>
-          <Ring value={data.feeCollected} max={feeTotal || 1}                                   color="#16a34a" label="Fee Collected" />
-          <Ring value={data.presentCount} max={Math.max(data.totalAtt, 1)}                      color="#7c3aed" label="Attendance"    />
-          <Ring value={data.approvedAdm}  max={Math.max(data.totalAdm, 1)}                      color="#0891b2" label="Admissions"    />
-          <Ring value={data.salaryPaid}   max={Math.max(data.salaryPaid + data.salaryPending,1)} color="#4f46e5" label="Salary"       />
+          <Ring value={data.feeCollected} max={feeTotal || 1}                                    color="#16a34a" label="Fee Collected" />
+          <Ring value={data.presentCount} max={Math.max(data.totalAtt, 1)}                       color="#7c3aed" label="Attendance"    />
+          <Ring value={data.approvedAdm}  max={Math.max(data.totalAdm, 1)}                       color="#0891b2" label="Admissions"    />
+          <Ring value={data.salaryPaid}   max={Math.max(data.salaryPaid + data.salaryPending, 1)} color="#4f46e5" label="Salary"       />
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
@@ -776,22 +620,17 @@ function AccessDenied() {
   )
 }
 
-// ─── App ──────────────────────────────────────────────────────────────────────
-
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [active,      setActive]      = useState('dashboard')
-  const [permMap,     setPermMap]     = useState({})   // { [module_key]: { read, add, edit, delete } }
+  const [permMap,     setPermMap]     = useState({})
   const [permLoading, setPermLoading] = useState(false)
   const isMobile = useIsMobile()
 
   const loadPermissions = async (role) => {
     if (role === 'Admin') { setPermMap({}); return }
     setPermLoading(true)
-    const { data } = await supabase
-      .from('role_permissions')
-      .select('module_key, allowed, can_read, can_add, can_edit, can_delete')
-      .eq('role', role)
+    const { data } = await supabase.from('role_permissions').select('module_key, allowed, can_read, can_add, can_edit, can_delete').eq('role', role)
     setPermMap(buildPermMap(data))
     setPermLoading(false)
   }
@@ -803,15 +642,7 @@ export default function App() {
   if (permLoading)  return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
 
   const isAdmin = currentUser.role === 'Admin'
-
-  // Can the user even open this module? (needs read permission)
-  const canAccess = (key) => {
-    if (key === 'dashboard') return true
-    if (isAdmin) return true
-    return permMap[key]?.read === true
-  }
-
-  // Get CRUD perms for a module to pass into the component
+  const canAccess = (key) => { if (key === 'dashboard') return true; if (isAdmin) return true; return permMap[key]?.read === true }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
   const moduleMap = {
@@ -845,7 +676,7 @@ export default function App() {
     feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
-    entrance: <Entrance currentUser={currentUser} perms={perms('entrance')} />,
+    entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}         />,
   }
 
   const renderContent = () => {
@@ -864,7 +695,28 @@ export default function App() {
   return (
     <div style={{ display: 'flex', fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: '100vh', background: '#f8fafc' }}>
       <Sidebar activePage={active} setActivePage={setActive} onLogout={handleLogout} currentUser={currentUser} permMap={permMap} />
-      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : 262, paddingTop: isMobile ? 56 : 0 }}>
+
+      {/* Desktop top bar */}
+      {!isMobile && (
+        <div style={{ position: 'fixed', top: 0, left: 262, right: 0, height: 48, background: '#021e2e', borderBottom: '1px solid #1a3347', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 99 }}>
+          <span style={{ fontSize: 12, color: '#4a6b82', fontFamily: 'monospace' }}>
+            {ALL_ITEMS.find(i => i.id === active)?.icon}{' '}{ALL_ITEMS.find(i => i.id === active)?.label || 'Dashboard'}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: '#94afc4' }}>{currentUser?.name}</span>
+            <button
+              onClick={handleLogout}
+              style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(220,38,38,.22)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(220,38,38,.12)'}
+            >
+              🚪 Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : 262, paddingTop: isMobile ? 56 : 48 }}>
         {renderContent()}
       </main>
     </div>
