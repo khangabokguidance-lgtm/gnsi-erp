@@ -1,0 +1,108 @@
+@media (max-width: 768px) {
+
+  /* ── Collapse all dual panels to single column ── */
+  .exams-root div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Restore 2-col for stat/mini cards ── */
+  .exams-root div[style*="minmax(180px"],
+  .exams-root div[style*="minmax(160px"],
+  .exams-root div[style*="minmax(140px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* ── Main content padding ── */
+  .exams-root { font-size: 13px; }
+
+  /* ── Tables scroll horizontally ── */
+  .exams-root table {
+    font-size: 11px !important;
+    min-width: 500px;
+  }
+  .exams-root th,
+  .exams-root td {
+    padding: 6px 7px !important;
+    white-space: nowrap;
+  }
+
+  /* ── Inputs and selects full width ── */
+  .exams-root input,
+  .exams-root select {
+    font-size: 13px !important;
+    min-height: 38px;
+  }
+
+  /* ── Buttons wrap and shrink ── */
+  .exams-root button {
+    font-size: 12px !important;
+    padding: 7px 12px !important;
+  }
+
+  /* ── Tab nav: scroll horizontally, hide group labels ── */
+  .exams-root [style*="padding: 10px 24px"],
+  .exams-root [style*="padding: \"10px 24px\""] {
+    padding: 8px 10px !important;
+    gap: 4px !important;
+  }
+
+  /* ── Header: stack vertically ── */
+  .exams-root [style*="padding: 20px 28px"] {
+    padding: 14px 14px !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  /* ── Main page content padding ── */
+  .exams-root [style*="padding: 24px 28px"] {
+    padding: 12px 10px !important;
+  }
+
+  /* ── Cards ── */
+  .exams-root [style*="padding: 28px 36px"],
+  .exams-root [style*="padding: 26px 36px"] {
+    padding: 14px 14px !important;
+  }
+
+  /* ── Flex control bars wrap ── */
+  .exams-root [style*="display: flex"][style*="align-items: flex-end"] {
+    flex-wrap: wrap !important;
+  }
+
+  /* ── Student list max height reduce ── */
+  .exams-root [style*="maxHeight: 480"],
+  .exams-root [style*="maxHeight: 420"],
+  .exams-root [style*="maxHeight: 340"] {
+    max-height: 240px !important;
+  }
+
+  /* ── Chart containers ── */
+  .exams-root [style*="height: 320"],
+  .exams-root [style*="height: 260"] {
+    height: 200px !important;
+  }
+
+  /* ── Print buttons full width on mobile ── */
+  .exams-root [style*="whiteSpace: nowrap"] {
+    white-space: normal !important;
+    width: 100% !important;
+  }
+
+  /* ── Report card grid single column ── */
+  .exams-root [style*="minmax(300px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Podium top-3 stack ── */
+  .exams-root [style*="repeat(3,1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Seat grid scroll ── */
+  .exams-root [style*="display: inline-flex"] {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+}

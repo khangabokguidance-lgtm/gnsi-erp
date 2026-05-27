@@ -14,6 +14,7 @@ import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
+import './mobile.css';
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
@@ -4571,7 +4572,7 @@ export default function Exams({ currentUser, perms }) {
   const activeTabInfo = TAB_GROUPS.flatMap(g => g.tabs).find(t => t.id === tab);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F7F6F1", fontFamily: "'DM Sans','Inter',sans-serif" }}>
+    <div className="exams-root" style={{ minHeight: "100vh", background: "#F7F6F1", fontFamily: "'DM Sans','Inter',sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#1a3c2e 0%,#2A5C45 60%,#3a7a5c 100%)", padding: "20px 28px", color: "white", position: "relative" }}>
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg,#B8860B,#f0c040,#B8860B)" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
