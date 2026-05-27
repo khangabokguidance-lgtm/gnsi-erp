@@ -152,13 +152,20 @@ const HOSTEL_CFG = {
 }
 
 const ALL_COLUMNS = [
-  {key:'name',label:'Name',default:true},{key:'gcc_no',label:'GCC No.',default:true},
-  {key:'batch',label:'Batch',default:true},{key:'session',label:'Session',default:true},
-  {key:'course',label:'Course',default:true},{key:'house',label:'House',default:true},
-  {key:'hostel_type',label:'Hostel',default:true},{key:'status',label:'Status',default:true},
-  {key:'fee_dues',label:'Fee Dues',default:true},{key:'attendance',label:'Att%',default:true},
-  {key:'gender',label:'Gender',default:false},{key:'phone',label:'Phone',default:false},
-  {key:'father_name',label:'Father',default:false},{key:'last_paid',label:'Last Paid',default:false},
+  {key:'name',        label:'Name',        default:true,  pii:false},
+  {key:'gcc_no',      label:'GCC No.',     default:true,  pii:false},
+  {key:'batch',       label:'Batch',       default:true,  pii:false},
+  {key:'session',     label:'Session',     default:true,  pii:false},
+  {key:'course',      label:'Course',      default:true,  pii:false},
+  {key:'house',       label:'House',       default:true,  pii:false},
+  {key:'hostel_type', label:'Hostel',      default:true,  pii:false},
+  {key:'status',      label:'Status',      default:true,  pii:false},
+  {key:'fee_dues',    label:'Fee Dues',    default:true,  pii:false},
+  {key:'attendance',  label:'Att%',        default:true,  pii:false},
+  {key:'gender',      label:'Gender',      default:false, pii:false},
+  {key:'phone',       label:'Phone',       default:false, pii:true},   // ← PII
+  {key:'father_name', label:'Father',      default:false, pii:true},   // ← PII
+  {key:'last_paid',   label:'Last Paid',   default:false, pii:true},   // ← PII
 ]
 
 const DENSITY = {
@@ -199,12 +206,12 @@ function isRecentlyAdded(createdAt) {
   if (!createdAt) return false
   return Date.now()-new Date(createdAt).getTime() < 7*24*60*60*1000
 }
-function getMissingFields(s) {
-  const m=[]
-  if (!s.gcc_no) m.push('GCC')
-  if (!s.dob) m.push('DOB')
-  if (!s.phone) m.push('Phone')
-  if (!s.course) m.push('Course')
+ function getMissingFields(s, viewPII = false) {
+  const m = []
+  if (!s.gcc_no)           m.push('GCC')
+  if (!s.dob)              m.push('DOB')
+  if (viewPII && !s.phone) m.push('Phone')
+  if (!s.course)           m.push('Course')
   return m
 }
 function getAge(dob) {
@@ -246,16 +253,17 @@ function exportToPDF(title, headers, rows) {
 // ─── Hooks (unchanged logic) ──────────────────────────────────────────────────
 function usePermissions() {
   const { user } = useAuth()
-  const role = user?.app_metadata?.role || user?.user_metadata?.role || 'viewer'
+  const role = user?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'viewer'
   return {
     role,
     can: {
-      write:  ['admin','manager'].includes(role),
-      fees:   ['admin','manager','accounts'].includes(role),
-      exams:  ['admin','manager','teacher'].includes(role),
-      attend: ['admin','manager','teacher','hostel'].includes(role),
-      export: ['admin','manager','accounts'].includes(role),
-      view:   true,
+      write:   ['admin','manager','Admin','Manager'].includes(role),
+      fees:    ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
+      exams:   ['admin','manager','teacher','Admin','Manager','Teacher'].includes(role),
+      attend:  ['admin','manager','teacher','hostel','Admin','Manager','Teacher','Hostel'].includes(role),
+      export:  ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
+      viewPII: ['admin','manager','Admin','Manager'].includes(role), // ← phone, father, address
+      view:    true,
     }
   }
 }
@@ -1199,17 +1207,30 @@ function printIDCard(student) {
   w.document.close()
 }
 
-function printBatchList(students, label) {
-  const rows=students.map((s,i)=>`<tr style="background:${i%2?'#f8fafc':'#fff'}"><td>${i+1}</td><td>${s.gcc_no||''}</td><td>${s.name}</td><td>${s.batch||''}</td><td>${s.house||''}</td><td>${s.hostel_type||''}</td><td>${s.phone||''}</td></tr>`).join('')
-  const w=window.open('','_blank')
+function printBatchList(students, label, canViewPII = false) {
+  const rows = students.map((s, i) => `
+    <tr style="background:${i%2?'#f8fafc':'#fff'}">
+      <td>${i+1}</td><td>${s.gcc_no||''}</td><td>${s.name}</td>
+      <td>${s.batch||''}</td><td>${s.house||''}</td><td>${s.hostel_type||''}</td>
+      <td>${canViewPII ? (s.phone||'') : '🔒'}</td>
+    </tr>`).join('')
+  const w = window.open('', '_blank')
   w.document.write(`<html><head><title>Student List</title><style>
-    body{font-family:system-ui,sans-serif;font-size:11px;padding:20px;color:#334155}h2{color:#0f172a;margin-bottom:4px}
-    table{width:100%;border-collapse:collapse}th,td{border:1px solid #e2e8f0;padding:6px 10px;text-align:left}th{background:#2563EB;color:#fff;font-weight:600}
+    body{font-family:system-ui,sans-serif;font-size:11px;padding:20px;color:#334155}
+    h2{color:#0f172a;margin-bottom:4px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #e2e8f0;padding:6px 10px;text-align:left}
+    th{background:#2563EB;color:#fff;font-weight:600}
   </style></head><body>
-    <h2>GNSI Student List${label?` — ${label}`:''}</h2><p style="color:#64748b;margin-bottom:12px">Total: ${students.length} · ${new Date().toLocaleDateString('en-IN')}</p>
-    <table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>Batch</th><th>House</th><th>Hostel</th><th>Phone</th></tr></thead><tbody>${rows}</tbody></table>
+    <h2>GNSI Student List${label ? ` — ${label}` : ''}</h2>
+    <p style="color:#64748b;margin-bottom:12px">Total: ${students.length} · ${new Date().toLocaleDateString('en-IN')}</p>
+    <table><thead><tr>
+      <th>#</th><th>GCC</th><th>Name</th><th>Batch</th><th>House</th><th>Hostel</th>
+      <th>${canViewPII ? 'Phone' : 'Phone'}</th>
+    </tr></thead><tbody>${rows}</tbody></table>
   </body></html>`)
-  w.document.close();w.print()
+  w.document.close()
+  w.print()
 }
 
 function printFeeReceipt(student, payment) {
@@ -1356,16 +1377,24 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
             <div style={{display:'flex',flexDirection:'column',gap:14}}>
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:8}}>
                 {[
-                  ['Gender',student.gender],['DOB',fmtD(student.dob)],['Phone',student.phone],
-                  ['Father',student.father_name],['Mother',student.mother_name],['Emergency',student.emergency_contact],
-                  ['Prev School',student.prev_school],['Referral',student.referral_source],
-                  ['Admitted',fmtD(student.admission_date)],['Address',student.address],
-                ].filter(([,v])=>v).map(([label,value])=>(
-                  <div key={label} style={{background:T.surface2,borderRadius:T.r8,padding:'10px 12px',border:`1px solid ${T.border}`}}>
-                    <div style={{fontSize:9,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.08em'}}>{label}</div>
-                    <div style={{fontSize:12,fontWeight:600,color:T.text1,marginTop:3}}>{value}</div>
-                  </div>
-                ))}
+  ['Gender',    student.gender],
+  ['DOB',       fmtD(student.dob)],
+  ...(can.viewPII ? [
+    ['Phone',     student.phone],
+    ['Father',    student.father_name],
+    ['Mother',    student.mother_name],
+    ['Emergency', student.emergency_contact],
+    ['Address',   student.address],
+  ] : []),
+  ['Prev School', student.prev_school],
+  ['Referral',    student.referral_source],
+  ['Admitted',    fmtD(student.admission_date)],
+].filter(([, v]) => v).map(([label, value]) => (
+  <div key={label} style={{background:T.surface2,borderRadius:T.r8,padding:'10px 12px',border:`1px solid ${T.border}`}}>
+    <div style={{fontSize:9,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.08em'}}>{label}</div>
+    <div style={{fontSize:12,fontWeight:600,color:T.text1,marginTop:3}}>{value}</div>
+  </div>
+))}
               </div>
               {student.medical_notes&&(
                 <div style={{background:T.orangeLight,border:`1px solid ${T.orangeBorder}`,borderRadius:T.r10,padding:'12px 14px'}}>
@@ -1610,7 +1639,7 @@ function StudentRow({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuick
   const [overflow,setOverflow]=useState(false)
   const att=attData[s.id]
   const dues=feeData[s.id]?.dues||0
-  const missing=getMissingFields(s)
+  const missing=getMissingFields(s, can.viewPII)
   const birthday=isBirthdayToday(s.dob)
   const recent=isRecentlyAdded(s.created_at)
 
@@ -1769,8 +1798,22 @@ export default function Students() {
   const [gccMin,setGccMin]=useState('')
   const [gccMax,setGccMax]=useState('')
 
-  const loadCols=()=>{try{return JSON.parse(localStorage.getItem(COLUMNS_KEY))||ALL_COLUMNS.filter(c=>c.default).map(c=>c.key)}catch{return ALL_COLUMNS.filter(c=>c.default).map(c=>c.key)}}
-  const [visibleCols,setVisibleCols]=useState(loadCols)
+  const loadCols = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_KEY) || 'null')
+    const defaults = ALL_COLUMNS.filter(c => c.default).map(c => c.key)
+    return saved || defaults
+  } catch { 
+    return ALL_COLUMNS.filter(c => c.default).map(c => c.key) 
+  }
+}
+  const [visibleCols, setVisibleCols] = useState(loadCols)
+// Filter out PII columns if user cannot view PII
+const effectiveCols = visibleCols.filter(col => {
+  const colDef = ALL_COLUMNS.find(c => c.key === col)
+  if (colDef?.pii && !can.viewPII) return false
+  return true
+})
   const saveCol=cols=>{setVisibleCols(cols);localStorage.setItem(COLUMNS_KEY,JSON.stringify(cols))}
   const [density,setDensity]=useState(()=>localStorage.getItem(DENSITY_KEY)||'comfortable')
   const changeDensity=d=>{setDensity(d);localStorage.setItem(DENSITY_KEY,d)}
@@ -1956,14 +1999,48 @@ export default function Students() {
     {label:'Low Att.',value:longAbsentCount,color:T.red,icon:'📉',warn:longAbsentCount>0},
   ]
 
-  const EXPORT_ITEMS=[
-    {label:'Student List (CSV)',fn:()=>downloadCSV(filtered.map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Batch:s.batch||'',Course:s.course||'',House:s.house||'',Hostel:s.hostel_type||'',Status:s.status||'',Phone:s.phone||'',Father:s.father_name||'',Admission:s.admission_date||''})),`students_${new Date().toISOString().slice(0,10)}.csv`)},
-    {label:'Student List (PDF)',fn:()=>exportToPDF('Student List',[{key:'gcc_no',label:'GCC'},{key:'name',label:'Name'},{key:'batch',label:'Batch'},{key:'course',label:'Course'},{key:'house',label:'House'},{key:'status',label:'Status'},{key:'phone',label:'Phone'}],filtered.map(s=>({...s,gcc_no:'GCC-'+s.gcc_no})))},
-    {label:'Print Batch List',fn:()=>printBatchList(filtered,filterBatch!=='All'?filterBatch:filterCourse!=='All'?filterCourse:'')},
-    {label:'Fee Dues (CSV)',fn:()=>downloadCSV(filtered.filter(s=>feeData[s.id]?.dues>0).map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Dues:feeData[s.id]?.dues||0,Phone:s.phone||''})),`fee_dues_${new Date().toISOString().slice(0,10)}.csv`)},
-    {label:'Attendance (CSV)',fn:()=>downloadCSV(filtered.map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Batch:s.batch||'',Att:attData[s.id]!=null?`${attData[s.id].toFixed(1)}%`:'—'})),`attendance_${new Date().toISOString().slice(0,10)}.csv`)},
-    {label:'Parent Contacts',fn:()=>downloadCSV(filtered.map(s=>({Name:s.name||'',Father:s.father_name||'',Mother:s.mother_name||'',Phone:s.phone||'',Address:s.address||''})),`parents_${new Date().toISOString().slice(0,10)}.csv`)},
-  ]
+  const EXPORT_ITEMS = [
+  {
+    label: 'Student List (CSV)',
+    fn: () => downloadCSV(filtered.map(s => ({
+      GCC: s.gcc_no || '',
+      Name: s.name || '',
+      Batch: s.batch || '',
+      Course: s.course || '',
+      House: s.house || '',
+      Hostel: s.hostel_type || '',
+      Status: s.status || '',
+      // PII — only for admin/manager
+      ...(can.viewPII ? { Phone: s.phone || '', Father: s.father_name || '' } : {}),
+      Admission: s.admission_date || '',
+    })), `students_${new Date().toISOString().slice(0,10)}.csv`)
+  },
+  {
+    label: 'Student List (PDF)',
+    fn: () => exportToPDF('Student List', [
+      {key:'gcc_no', label:'GCC'},
+      {key:'name',   label:'Name'},
+      {key:'batch',  label:'Batch'},
+      {key:'course', label:'Course'},
+      {key:'house',  label:'House'},
+      {key:'status', label:'Status'},
+      // Only show phone column to admin/manager
+      ...(can.viewPII ? [{key:'phone', label:'Phone'}] : []),
+    ], filtered.map(s => ({...s, gcc_no: 'GCC-' + s.gcc_no})))
+  },
+  {label:'Print Batch List', fn:()=>printBatchList(
+  filtered,
+  filterBatch!=='All'?filterBatch:filterCourse!=='All'?filterCourse:'',
+  can.viewPII  // ← pass permission
+)},
+  {label:'Fee Dues (CSV)',   fn:()=>downloadCSV(filtered.filter(s=>feeData[s.id]?.dues>0).map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Dues:feeData[s.id]?.dues||0,...(can.viewPII?{Phone:s.phone||''}:{})})),`fee_dues_${new Date().toISOString().slice(0,10)}.csv`)},
+  {label:'Attendance (CSV)', fn:()=>downloadCSV(filtered.map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Batch:s.batch||'',Att:attData[s.id]!=null?`${attData[s.id].toFixed(1)}%`:'—'})),`attendance_${new Date().toISOString().slice(0,10)}.csv`)},
+  // Parent contacts — admin/manager only
+  ...(can.viewPII ? [{
+    label: 'Parent Contacts',
+    fn: () => downloadCSV(filtered.map(s=>({Name:s.name||'',Father:s.father_name||'',Mother:s.mother_name||'',Phone:s.phone||'',Address:s.address||''})),`parents_${new Date().toISOString().slice(0,10)}.csv`)
+  }] : []),
+]
 
   const ROLE_CFG={admin:{color:T.red,bg:T.redLight,border:T.redBorder},manager:{color:T.amber,bg:T.amberLight,border:T.amberBorder},accounts:{color:T.green,bg:T.greenLight,border:T.greenBorder},teacher:{color:T.sky,bg:T.skyLight,border:T.skyBorder},hostel:{color:T.violet,bg:T.violetLight,border:T.violetBorder},viewer:{color:T.text3,bg:T.surface2,border:T.border}}
   const rc=ROLE_CFG[role]||ROLE_CFG.viewer
@@ -2000,7 +2077,7 @@ export default function Students() {
         <Modal onClose={()=>setShowColPicker(false)} width={320} title="Visible Columns">
           {ALL_COLUMNS.map(col=>(
             <label key={col.key} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',cursor:'pointer',borderBottom:`1px solid ${T.border}`,minHeight:44}}>
-              <input type="checkbox" checked={visibleCols.includes(col.key)} onChange={e=>saveCol(e.target.checked?[...visibleCols,col.key]:visibleCols.filter(k=>k!==col.key))} style={{accentColor:T.brand,width:16,height:16}}/>
+              <input type="checkbox" checked={effectiveCols.includes(col.key)} onChange={e=>saveCol(e.target.checked?[...visibleCols,col.key]:visibleCols.filter(k=>k!==col.key))} style={{accentColor:T.brand,width:16,height:16}}/>
               <span style={{fontSize:13,fontWeight:600,color:T.text2}}>{col.label}</span>
             </label>
           ))}
@@ -2327,7 +2404,7 @@ export default function Students() {
                 onOpenDetail={setDetailPanel} onQuickAttend={handleQuickAttend}
                 onExamEntry={setExamEntry} onClone={handleClone}
                 feeData={feeData} attData={attData} examData={examData}
-                density={density} visibleCols={visibleCols}
+                density={density} visibleCols={effectiveCols}
                 selected={selected} onSelect={toggleSelect}
               />
             ))}
