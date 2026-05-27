@@ -715,9 +715,9 @@ function Staff({ currentUser }) {
   const isMobile = useIsMobile()
   const { show:showToast, el:toastEl } = useToast()
 
-  const userRole  = currentUser?.role || 'viewer'
-  const isAdmin   = userRole === 'Admin'
-  const isManager = userRole === 'manager'
+  const userRole = currentUser?.role || currentUser?.user_role || currentUser?.profile?.role || 'viewer'
+const isAdmin  = ['Admin', 'Teaching + Admin'].includes(userRole)
+const canEdit  = isAdmin
 
   // ROLE-2: only admins can mutate staff records
   const canEdit   = isAdmin
