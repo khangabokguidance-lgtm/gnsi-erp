@@ -28,6 +28,8 @@
 //  MOB-7  All touch targets min 44px
 //  MOB-8  Staff list shows compact cards on mobile instead of wide table
 //  ROLE-1 Tab visibility gated by currentUser.role
+//  ROLE-2 Add/Edit/Delete/Salary buttons hidden for non-admin (view-only)
+//  ROLE-3 Geo tab shown to ALL roles for self-attendance; admin sees full view
 //  PERF-1 Staff list paginated (25/page)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -39,7 +41,7 @@ import { staffDB } from './staffDB'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ADMIN_UNLOCK_DURATION_MS = 15 * 60 * 1000 // 15 minutes
+const ADMIN_UNLOCK_DURATION_MS = 15 * 60 * 1000
 const ADMIN_UNLOCK_KEY = 'gnsi_admin_unlock_ts'
 
 const LEVELS = [
@@ -55,10 +57,6 @@ const TASK_STATUSES    = ['Pending','In Progress','Done','Overdue']
 const DEPARTMENTS_LIST = ['Administration','Academic','Accounts','Hostel','Reception','Transport','Maintenance']
 const ROLE_OPTIONS     = ['Teaching','Non-Teaching','Admin','Teaching + Admin']
 const PAGE_SIZE        = 25
-
-// SEC-3: tabs that require admin role
-const ADMIN_ONLY_TABS  = ['scoring']
-const HIDDEN_FOR_BASIC = ['geo'] // show only to admin/manager/hostel
 
 const ROLE_META = {
   'Teaching':         { color:'#0891b2', bg:'#e0f2fe', label:'🎓 Teaching' },
@@ -80,9 +78,8 @@ const STATUS_META = {
 
 const getLevel  = score => { if (score===null||score===undefined) return null; return LEVELS.find(l=>score>=l.min&&score<=l.max)||LEVELS[4] }
 
-// BUG-2: p2 prorated by attendance ratio so absentees can't score perfect punctuality
 const calcScores = row => {
-  const wd    = row.working_days||26
+  const wd       = row.working_days||26
   const attRatio = wd>0 ? Math.min(1, (row.days_present||0)/wd) : 0
   const p1 = wd>0 ? Math.min(30, attRatio*30) : 0
   const p2 = attRatio * Math.max(0, 20 - (row.late_count||0)*1 - (row.early_leave_count||0)*0.5)
@@ -99,7 +96,6 @@ const fmt          = n => `₹${Math.round(Number(n)||0).toLocaleString('en-IN')
 const fmtDate      = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'
 const daysDiff     = d => { if (!d) return null; return Math.ceil((new Date(d)-new Date())/86400000) }
 
-// BUG-9: validators
 const validatePhone = p => /^\d{10}$/.test((p||'').replace(/\s/g,''))
 const sanitizeEmail = e => (e||'').trim().toLowerCase()
 
@@ -153,7 +149,7 @@ const S = {
 const TH = { padding:'11px 14px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12, whiteSpace:'nowrap' }
 const TD = { padding:'11px 14px', verticalAlign:'middle', color:'#334155' }
 
-// ─── Toast (BUG-10) ───────────────────────────────────────────────────────────
+// ─── Toast ────────────────────────────────────────────────────────────────────
 
 function useToast() {
   const [msg,setMsg]   = useState('')
@@ -174,7 +170,7 @@ function useToast() {
   return { show, el }
 }
 
-// ─── Confirm Modal (SEC-4) ────────────────────────────────────────────────────
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
 
 function ConfirmModal({ title, message, confirmLabel='Confirm', danger=false, onConfirm, onCancel }) {
   const isMobile = useIsMobile()
@@ -242,18 +238,14 @@ function MiniBar({ done, total, overdue }) {
   )
 }
 
-// ─── SEC-1: Admin PIN verified via Supabase RPC ───────────────────────────────
+// ─── Admin PIN helpers ────────────────────────────────────────────────────────
 
 async function verifyAdminPin(pin) {
-  // Calls a Supabase DB function: verify_admin_pin(pin text) returns boolean
-  // CREATE OR REPLACE FUNCTION verify_admin_pin(pin text) RETURNS boolean
-  // LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN RETURN pin = current_setting('app.admin_pin'); END; $$;
   const { data, error } = await supabase.rpc('verify_admin_pin', { pin })
   if (error) throw new Error(error.message)
   return !!data
 }
 
-// SEC-2: session-scoped unlock with expiry
 function isAdminUnlocked() {
   try {
     const ts = parseInt(sessionStorage.getItem(ADMIN_UNLOCK_KEY)||'0')
@@ -270,8 +262,8 @@ function clearAdminUnlock() {
 // ─── Admin PIN Modal ──────────────────────────────────────────────────────────
 
 function AdminPinModal({ onSuccess, onClose }) {
-  const [pin,setPin]       = useState('')
-  const [error,setError]   = useState('')
+  const [pin,setPin]         = useState('')
+  const [error,setError]     = useState('')
   const [loading,setLoading] = useState(false)
   const isMobile = useIsMobile()
 
@@ -292,7 +284,7 @@ function AdminPinModal({ onSuccess, onClose }) {
         {isMobile && <div style={{ width:36,height:4,background:'#e2e8f0',borderRadius:2,margin:'0 auto 20px',opacity:.6 }}/>}
         <div style={{ fontSize:40,marginBottom:12 }}>🔐</div>
         <h2 style={{ fontSize:18,fontWeight:800,color:'#1e3a5f',margin:'0 0 6px' }}>Admin Access Required</h2>
-        <p style={{ fontSize:13,color:'#64748b',margin:'0 0 24px' }}>Salary configuration is restricted. Session expires in 15 minutes after verification.</p>
+        <p style={{ fontSize:13,color:'#64748b',margin:'0 0 24px' }}>Salary configuration is restricted. Session expires in 15 minutes.</p>
         <input type="password" placeholder="Enter Admin PIN" value={pin}
           onChange={e=>{ setPin(e.target.value); setError('') }}
           onKeyDown={e=>e.key==='Enter'&&verify()}
@@ -317,8 +309,8 @@ function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
     role:staffMember.role||'Teaching', joining_date:staffMember.joining_date||'',
     qualification:staffMember.qualification||'', status:staffMember.status||'Active',
   })
-  const [saving,setSaving]   = useState(false)
-  const [errors,setErrors]   = useState({})
+  const [saving,setSaving] = useState(false)
+  const [errors,setErrors] = useState({})
 
   const validate = () => {
     const e = {}
@@ -344,7 +336,6 @@ function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
     <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:10000,display:'flex',alignItems:isMobile?'flex-end':'center',justifyContent:'center',padding:isMobile?0:16 }}>
       <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':16,width:'100%',maxWidth:580,maxHeight:isMobile?'92vh':'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,.3)',animation:'slideUp .25s ease' }}>
         <div style={{ background:'linear-gradient(135deg,#1e3a5f,#254e91)',padding:'18px 22px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
-          {isMobile && <div style={{ position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',width:36,height:4,background:'rgba(255,255,255,.3)',borderRadius:2 }}/>}
           <div>
             <div style={{ fontSize:11,color:'#93c5fd',fontWeight:600,letterSpacing:1,textTransform:'uppercase' }}>✏️ Edit Staff Profile</div>
             <div style={{ fontSize:17,fontWeight:800,color:'white',marginTop:4 }}>{staffMember.name}</div>
@@ -387,11 +378,6 @@ function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
               </select>
             </div>
           </div>
-          {form.role==='Teaching + Admin' && (
-            <div style={{ marginTop:12,padding:'10px 14px',background:'#fef3c7',borderRadius:8,fontSize:12,color:'#92400e',border:'1px solid #fde68a' }}>
-              🎓⚙️ This staff member appears in both teaching and administrative records.
-            </div>
-          )}
           <div style={{ display:'flex',gap:10,marginTop:18,flexWrap:'wrap' }}>
             <button type="button" onClick={onClose} style={{ ...S.btn('#64748b'),flex:1 }}>Cancel</button>
             <button type="submit" disabled={saving} style={{ ...S.btn('#16a34a',saving),flex:2 }}>{saving?'⏳ Saving…':'💾 Update Staff'}</button>
@@ -402,7 +388,7 @@ function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
   )
 }
 
-// ─── Salary Setup Modal (SEC-2, SEC-3) ────────────────────────────────────────
+// ─── Salary Setup Modal ───────────────────────────────────────────────────────
 
 function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
   const isMobile = useIsMobile()
@@ -415,7 +401,6 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
   const [saving,setSaving] = useState(false)
   const gross = Object.values(salaryForm).reduce((a,b)=>a+Number(b),0)
 
-  // Check session expiry on each render
   if (!isAdminUnlocked()) { onClose(); return null }
 
   const handleSave = async () => {
@@ -475,13 +460,11 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
   )
 }
 
-// ─── Scorecard Modal (BUG-11) ─────────────────────────────────────────────────
+// ─── Scorecard Modal ──────────────────────────────────────────────────────────
 
-// BUG-11: receives raw DB record, calls calcScores internally — no merged computed fields
 function ScorecardModal({ record, staffName, onClose }) {
   const isMobile = useIsMobile()
   if (!record) return null
-  // Use DB working_days from the record itself (BUG-3)
   const scoreRecord = { ...record, working_days: record.working_days || 26 }
   const { p1,p2,p3,p4,p5,total } = calcScores(scoreRecord)
   const lvl = getLevel(total)
@@ -523,7 +506,7 @@ function ScorecardModal({ record, staffName, onClose }) {
   )
 }
 
-// ─── Assign Task Modal (BUG-8) ────────────────────────────────────────────────
+// ─── Assign Task Modal ────────────────────────────────────────────────────────
 
 function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
   const courseData = useCourseData()
@@ -538,7 +521,6 @@ function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
   })
   const [saving,setSaving] = useState(false)
 
-  // BUG-8: show course picker only for teaching staff
   const selectedStaffObj = staffList.find(s=>s.name===form.assigned_to)
   const isTeaching = selectedStaffObj?.role==='Teaching' || selectedStaffObj?.role==='Teaching + Admin'
 
@@ -565,7 +547,6 @@ function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':20,width:'100%',maxWidth:640,maxHeight:isMobile?'94vh':'90vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 64px rgba(0,0,0,.22)',animation:'slideUp .25s ease' }}>
         <div style={{ background:'linear-gradient(135deg,#1e3a5f,#6366f1)',padding:'20px 24px',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0 }}>
-          {isMobile && <div style={{ position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',width:36,height:4,background:'rgba(255,255,255,.3)',borderRadius:2 }}/>}
           <div>
             <div style={{ fontSize:11,opacity:.7,letterSpacing:1,textTransform:'uppercase' }}>GNSI · Staff Tasks</div>
             <div style={{ fontSize:19,fontWeight:800 }}>Assign New Task</div>
@@ -612,7 +593,6 @@ function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
               <input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})} style={S.input}/>
             </div>
           </div>
-          {/* BUG-8: course picker only for teaching staff */}
           {isTeaching && (
             <div style={{ padding:'14px 16px',background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:10 }}>
               <div style={{ fontSize:12,fontWeight:700,color:'#0284c7',marginBottom:12 }}>📚 Course Context <span style={{ fontWeight:400,color:'#64748b' }}>(optional)</span></div>
@@ -656,7 +636,6 @@ function TaskDetailModal({ task, onClose, onStatusChange }) {
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{ background:'white',borderRadius:isMobile?'20px 20px 0 0':20,width:'100%',maxWidth:540,maxHeight:isMobile?'92vh':'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,.2)',animation:'slideUp .25s ease' }}>
         <div style={{ background:'linear-gradient(135deg,#1e3a5f,#0ea5e9)',padding:'20px 22px',color:'white',display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexShrink:0 }}>
-          {isMobile && <div style={{ position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',width:36,height:4,background:'rgba(255,255,255,.3)',borderRadius:2 }}/>}
           <div>
             <div style={{ fontSize:11,opacity:.7,textTransform:'uppercase',letterSpacing:1 }}>Task Detail</div>
             <div style={{ fontSize:17,fontWeight:800,marginTop:4,lineHeight:1.3 }}>{task.title}</div>
@@ -694,7 +673,7 @@ function TaskDetailModal({ task, onClose, onStatusChange }) {
   )
 }
 
-// ─── Score Entry Row (BUG-4: React.memo + useCallback in parent) ──────────────
+// ─── Score Entry Row ──────────────────────────────────────────────────────────
 
 const ScoreEntryRow = React.memo(function ScoreEntryRow({ staff, score, onChange }) {
   const computed = score ? calcScores(score) : null
@@ -736,18 +715,21 @@ function Staff({ currentUser }) {
   const isMobile = useIsMobile()
   const { show:showToast, el:toastEl } = useToast()
 
-  // ROLE-1: Tab visibility
-  const userRole = currentUser?.role || 'viewer'
-  const isAdmin  = userRole==='Admin'
-  const isManager= userRole==='manager'
+  const userRole  = currentUser?.role || 'viewer'
+  const isAdmin   = userRole === 'Admin'
+  const isManager = userRole === 'manager'
 
+  // ROLE-2: only admins can mutate staff records
+  const canEdit   = isAdmin
+
+  // ROLE-3: Geo shown to everyone (self-attendance); admin sees full roster view
   const ALL_TABS = [
-    { key:'staff',       label:'👥 Staff',      show:true },
-    { key:'tasks',       label:'📋 Tasks',      show:true },
-    { key:'scoring',     label:'📊 Scoring',    show:isAdmin },
-    { key:'leaderboard', label:'🏆 Leaders',    show:true },
-    { key:'history',     label:'📅 History',    show:true },
-    { key:'geo',         label:'📍 Geo',        show:isAdmin||isManager },
+    { key:'staff',       label:'👥 Staff',   show:true },
+    { key:'tasks',       label:'📋 Tasks',   show:true },
+    { key:'scoring',     label:'📊 Scoring', show:isAdmin },
+    { key:'leaderboard', label:'🏆 Leaders', show:true },
+    { key:'history',     label:'📅 History', show:true },
+    { key:'geo',         label:'📍 Geo',     show:true },  // ROLE-3: all roles
   ].filter(t=>t.show)
 
   const [staff,             setStaff]             = useState([])
@@ -761,10 +743,10 @@ function Staff({ currentUser }) {
   const [formErrors,        setFormErrors]        = useState({})
   const [activeTab,         setActiveTab]         = useState('staff')
   const [editingStaff,      setEditingStaff]      = useState(null)
-  const [page,              setPage]              = useState(1)  // PERF-1
+  const [page,              setPage]              = useState(1)
   const [scoreMonth,        setScoreMonth]        = useState(currentMonth())
   const [scores,            setScores]            = useState({})
-  const [dirtyIds,          setDirtyIds]          = useState(new Set()) // BUG-5
+  const [dirtyIds,          setDirtyIds]          = useState(new Set())
   const [scoreSaving,       setScoreSaving]       = useState(false)
   const [allMonthlyScores,  setAllMonthlyScores]  = useState([])
   const [selectedScorecard, setSelectedScorecard] = useState(null)
@@ -785,10 +767,8 @@ function Staff({ currentUser }) {
   const [taskRoleFilter,    setTaskRoleFilter]    = useState('All')
   const [confirmModal,      setConfirmModal]      = useState(null)
 
-  // BUG-12: in-flight guard for task status changes
   const taskStatusInFlight = useRef(new Set())
 
-  // BUG-1: match only by staff_id
   const loggedInStaff = useMemo(()=>staff.find(s=>s.id===currentUser?.staff_id)||null,[staff,currentUser])
 
   // ── Data Loaders ─────────────────────────────────────────────────────────────
@@ -802,7 +782,6 @@ function Staff({ currentUser }) {
     finally { setLoading(false) }
   }
 
-  // SEC-3: salary fetched separately and merged only after admin unlock
   const fetchSalaryData = useCallback(async () => {
     if (!isAdminUnlocked()) return
     try {
@@ -818,7 +797,6 @@ function Staff({ currentUser }) {
     setTasksLoading(true)
     const { data,error } = await supabase.from('staff_tasks').select('*').order('created_at',{ascending:false})
     if (!error && data) {
-      // BUG-6: sync overdue status to DB
       const now = new Date()
       const toMark = data.filter(t => t.status!=='Done' && t.due_date && new Date(t.due_date)<now && t.status!=='Overdue')
       if (toMark.length) {
@@ -835,10 +813,9 @@ function Staff({ currentUser }) {
     const { data } = await supabase.from('staff_monthly_scores').select('*').eq('month',month)
     if (data) { const map={}; data.forEach(r=>{ map[r.staff_id]=r }); setScores(map); setWorkingDays(data[0]?.working_days||26) }
     else setScores({})
-    setDirtyIds(new Set()) // BUG-5: reset dirty tracking on month change
+    setDirtyIds(new Set())
   }
 
-  // BUG-7: limit to last 24 months
   const fetchAllScores = async () => {
     const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-24)
     const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}`
@@ -894,7 +871,6 @@ function Staff({ currentUser }) {
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
-  // BUG-12: in-flight guard
   const handleTaskStatusChange = async (task, newStatus) => {
     if (taskStatusInFlight.current.has(task.id)) return
     taskStatusInFlight.current.add(task.id)
@@ -918,9 +894,8 @@ function Staff({ currentUser }) {
     })
   }
 
-  // BUG-4: useCallback so ScoreEntryRow memo works
   const handleScoreChange = useCallback((staffId, field, value) => {
-    setDirtyIds(prev=>new Set(prev).add(staffId)) // BUG-5: track touched rows
+    setDirtyIds(prev=>new Set(prev).add(staffId))
     setScores(prev=>({ ...prev, [staffId]:{ ...(prev[staffId]||{ ...emptyScore, working_days:workingDays, staff_id:staffId, month:scoreMonth }), [field]:value } }))
   },[workingDays,scoreMonth])
 
@@ -961,7 +936,6 @@ function Staff({ currentUser }) {
     else setShowPinModal(true)
   }
 
-  // BUG-5: only upsert dirty rows
   const handleSaveScores = async () => {
     if (dirtyIds.size===0) { showToast('No changes to save','#d97706'); return }
     setScoreSaving(true)
@@ -977,7 +951,6 @@ function Staff({ currentUser }) {
     setScoreSaving(false)
   }
 
-  // SEC-5: confirm scores via ConfirmModal not window.confirm
   const handleConfirmScores = () => {
     setConfirmModal({ title:'Confirm & Lock Scores', message:`Lock performance scores for ${formatMonth(scoreMonth)}? This cannot be reversed.`, confirmLabel:'Confirm & Lock', danger:false,
       onConfirm: async ()=>{
@@ -1001,10 +974,9 @@ function Staff({ currentUser }) {
     })
   },[staff,search,statusFilter,roleFilter])
 
-  const totalPages  = Math.max(1,Math.ceil(filteredStaff.length/PAGE_SIZE))
-  const paginated   = filteredStaff.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
+  const totalPages = Math.max(1,Math.ceil(filteredStaff.length/PAGE_SIZE))
+  const paginated  = filteredStaff.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  // BUG-3: leaderboard uses each record's own working_days
   const leaderboard = useMemo(()=>
     staff.map(s=>{
       const sc=scores[s.id]
@@ -1025,12 +997,12 @@ function Staff({ currentUser }) {
   },[staff])
 
   const statsCards = [
-    { label:'Total Staff',      value:staff.length,                                        color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫' },
-    { label:'Active',           value:staff.filter(s=>s.status==='Active').length,         color:'#16a34a', bg:'#dcfce7', icon:'✅' },
-    { label:'Teaching',         value:roleCounts['Teaching']+roleCounts['Teaching + Admin'],color:'#0891b2', bg:'#e0f2fe', icon:'🎓' },
-    { label:'Non-Teaching',     value:roleCounts['Non-Teaching'],                          color:'#6366f1', bg:'#eef2ff', icon:'🏢' },
-    { label:'Admin / Dual',     value:roleCounts['Admin']+roleCounts['Teaching + Admin'],  color:'#d97706', bg:'#fef3c7', icon:'⚙️' },
-    { label:'Salary Set',       value:staff.filter(s=>Number(s.basic_salary)>0).length,   color:'#7c3aed', bg:'#f3e8ff', icon:'💰' },
+    { label:'Total Staff',  value:staff.length,                                         color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫' },
+    { label:'Active',       value:staff.filter(s=>s.status==='Active').length,          color:'#16a34a', bg:'#dcfce7', icon:'✅' },
+    { label:'Teaching',     value:roleCounts['Teaching']+roleCounts['Teaching + Admin'],color:'#0891b2', bg:'#e0f2fe', icon:'🎓' },
+    { label:'Non-Teaching', value:roleCounts['Non-Teaching'],                           color:'#6366f1', bg:'#eef2ff', icon:'🏢' },
+    { label:'Admin / Dual', value:roleCounts['Admin']+roleCounts['Teaching + Admin'],   color:'#d97706', bg:'#fef3c7', icon:'⚙️' },
+    { label:'Salary Set',   value:staff.filter(s=>Number(s.basic_salary)>0).length,    color:'#7c3aed', bg:'#f3e8ff', icon:'💰' },
   ]
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -1050,18 +1022,24 @@ function Staff({ currentUser }) {
           <h1 style={{ fontSize:isMobile?22:26,fontWeight:800,color:'#1e3a5f',margin:0,letterSpacing:'-.02em' }}>👨‍🏫 Staff Management</h1>
           <p style={{ color:'#64748b',fontSize:13,margin:'4px 0 0' }}>Profiles · Roles · Performance · Tasks</p>
           {isAdminUnlocked() && <span style={{ display:'inline-block',marginTop:6,padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:'#dcfce7',color:'#16a34a' }}>🔓 Admin session active</span>}
+          {/* ROLE-2: show read-only badge for non-admin */}
+          {!canEdit && <span style={{ display:'inline-block',marginTop:6,marginLeft:8,padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:'#f1f5f9',color:'#64748b' }}>👁 View only</span>}
         </div>
         <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-          {activeTab==='staff' && <button onClick={()=>setShowForm(!showForm)} style={S.btn()}>{showForm?'✖ Cancel':'➕ Add Staff'}</button>}
-          {activeTab==='tasks' && (
+          {/* ROLE-2: Add Staff only for admin */}
+          {activeTab==='staff' && canEdit && (
+            <button onClick={()=>setShowForm(!showForm)} style={S.btn()}>{showForm?'✖ Cancel':'➕ Add Staff'}</button>
+          )}
+          {/* ROLE-2: Assign Task only for admin */}
+          {activeTab==='tasks' && canEdit && (
             <button onClick={()=>{ setAssignPreselected(null); setShowAssignModal(true) }} style={{ ...S.btn('#6366f1'),background:'linear-gradient(135deg,#6366f1,#0ea5e9)' }}>＋ Assign Task</button>
           )}
         </div>
       </div>
 
-      {/* MOB-1: Tab bar — 2-col on mobile */}
+      {/* Tab bar */}
       <div style={{ overflowX:'auto',marginBottom:20,WebkitOverflowScrolling:'touch' }}>
-        <div className="tab-bar" style={{ display:'grid',gridTemplateColumns:`repeat(${ALL_TABS.length},1fr)`,gap:6,minWidth:isMobile?'auto':'auto' }}>
+        <div className="tab-bar" style={{ display:'grid',gridTemplateColumns:`repeat(${ALL_TABS.length},1fr)`,gap:6 }}>
           {ALL_TABS.map(t=>(
             <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
               padding:'10px 8px',fontWeight:700,fontSize:isMobile?11:12,cursor:'pointer',
@@ -1079,7 +1057,6 @@ function Staff({ currentUser }) {
       {/* ══ STAFF LIST ══ */}
       {activeTab==='staff' && (
         <>
-          {/* Stats */}
           <div className="stat-grid" style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:12,marginBottom:20 }}>
             {statsCards.map(card=>(
               <div key={card.label} style={{ backgroundColor:card.bg,borderRadius:12,padding:'14px 16px',boxShadow:'0 2px 8px rgba(0,0,0,.06)',borderLeft:`4px solid ${card.color}` }}>
@@ -1090,8 +1067,8 @@ function Staff({ currentUser }) {
             ))}
           </div>
 
-          {/* Add form */}
-          {showForm && (
+          {/* ROLE-2: Add form only for admin */}
+          {showForm && canEdit && (
             <div style={S.card}>
               <h2 style={{ fontSize:17,fontWeight:800,color:'#1e3a5f',marginTop:0 }}>Add Staff Profile</h2>
               <p style={{ fontSize:12,color:'#94a3b8',marginTop:-6,marginBottom:14 }}>💡 Salary configured separately by admin after adding.</p>
@@ -1124,17 +1101,12 @@ function Staff({ currentUser }) {
                     </select>
                   </div>
                 </div>
-                {form.role==='Teaching + Admin' && (
-                  <div style={{ marginTop:10,padding:'10px 14px',background:'#fef3c7',borderRadius:8,fontSize:12,color:'#92400e',border:'1px solid #fde68a' }}>
-                    🎓⚙️ This staff will appear in both teaching and administrative reports.
-                  </div>
-                )}
                 <button type="submit" disabled={saving} style={{ ...S.btn('#1e3a5f',saving),marginTop:16 }}>{saving?'⏳ Saving…':'✅ Save Staff'}</button>
               </form>
             </div>
           )}
 
-          {/* Filters — MOB-5 */}
+          {/* Filters */}
           <div style={{ display:'flex',gap:10,flexWrap:'wrap',marginBottom:12 }}>
             <input placeholder="🔍 Search name, phone, role…" value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} style={{ ...S.input,flex:'1 1 180px',minWidth:140 }}/>
             <select value={statusFilter} onChange={e=>{ setStatusFilter(e.target.value); setPage(1) }} style={{ ...S.input,width:'auto',flex:'0 1 110px',backgroundColor:'white' }}>
@@ -1150,7 +1122,7 @@ function Staff({ currentUser }) {
           {loading ? (
             <div style={{ textAlign:'center',padding:48,color:'#64748b' }}>⏳ Loading staff…</div>
           ) : isMobile ? (
-            // MOB-8: Card layout on mobile
+            // Mobile card layout
             <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
               {paginated.map((item,i)=>{
                 const sc      = scores[item.id]
@@ -1175,20 +1147,30 @@ function Staff({ currentUser }) {
                         <div style={{ color:'#94a3b8',fontSize:10,fontWeight:600,textTransform:'uppercase' }}>Phone</div>
                         <div style={{ color:'#1e293b',fontWeight:600,marginTop:2 }}>{item.phone||'—'}</div>
                       </div>
-                      <div style={{ background:'#f8fafc',borderRadius:8,padding:'8px 10px' }}>
-                        <div style={{ color:'#94a3b8',fontSize:10,fontWeight:600,textTransform:'uppercase' }}>Gross Salary</div>
-                        {gross>0
-                          ? <div style={{ color:'#0C447C',fontWeight:700,marginTop:2,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div>
-                          : <div style={{ color:'#dc2626',fontWeight:600,marginTop:2,fontSize:11 }}>⚠ Not Set</div>}
-                      </div>
+                      {/* ROLE-2: salary visible only to admin */}
+                      {canEdit && (
+                        <div style={{ background:'#f8fafc',borderRadius:8,padding:'8px 10px' }}>
+                          <div style={{ color:'#94a3b8',fontSize:10,fontWeight:600,textTransform:'uppercase' }}>Gross Salary</div>
+                          {gross>0
+                            ? <div style={{ color:'#0C447C',fontWeight:700,marginTop:2,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div>
+                            : <div style={{ color:'#dc2626',fontWeight:600,marginTop:2,fontSize:11 }}>⚠ Not Set</div>}
+                        </div>
+                      )}
                     </div>
                     {tm.total>0 && <div style={{ marginBottom:10 }}><MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/></div>}
-                    <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-                      <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️ Edit</button>
-                      <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐 Salary</button>
-                      {computed && <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
-                      <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
-                    </div>
+                    {/* ROLE-2: action buttons only for admin */}
+                    {canEdit && (
+                      <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+                        <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️ Edit</button>
+                        <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐 Salary</button>
+                        {computed && <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
+                        <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                      </div>
+                    )}
+                    {/* Non-admin: scorecard view only */}
+                    {!canEdit && computed && (
+                      <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊 View Score</button>
+                    )}
                   </div>
                 )
               })}
@@ -1201,7 +1183,9 @@ function Staff({ currentUser }) {
                 <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
                   <thead>
                     <tr style={{ backgroundColor:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
-                      {['#','Name','Dept','Designation','Role','Phone','Joining','Status','Gross Salary','Tasks','Level','Actions'].map(h=>(
+                      {['#','Name','Dept','Designation','Role','Phone','Joining','Status',
+                        ...(canEdit?['Gross Salary']:[]),
+                        'Tasks','Level','Actions'].map(h=>(
                         <th key={h} style={{ ...TH,fontSize:12 }}>{h}</th>
                       ))}
                     </tr>
@@ -1222,36 +1206,46 @@ function Staff({ currentUser }) {
                           <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.phone||'—'}</td>
                           <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.joining_date||'—'}</td>
                           <td style={TD}><span style={{ padding:'4px 10px',borderRadius:99,fontSize:12,fontWeight:600,backgroundColor:item.status==='Active'?'#dcfce7':'#fee2e2',color:item.status==='Active'?'#16a34a':'#dc2626' }}>{item.status}</span></td>
-                          <td style={TD}>
-                            {gross>0
-                              ? <div><div style={{ fontWeight:700,color:'#0C447C',fontSize:13,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div><div style={{ fontSize:10,color:'#94a3b8' }}>Base {fmt(item.basic_salary)}</div></div>
-                              : <span style={{ fontSize:11,fontWeight:600,color:'#dc2626',background:'#fee2e2',padding:'3px 8px',borderRadius:6 }}>⚠ Not Set</span>}
-                          </td>
+                          {/* ROLE-2: salary column only for admin */}
+                          {canEdit && (
+                            <td style={TD}>
+                              {gross>0
+                                ? <div><div style={{ fontWeight:700,color:'#0C447C',fontSize:13,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div><div style={{ fontSize:10,color:'#94a3b8' }}>Base {fmt(item.basic_salary)}</div></div>
+                                : <span style={{ fontSize:11,fontWeight:600,color:'#dc2626',background:'#fee2e2',padding:'3px 8px',borderRadius:6 }}>⚠ Not Set</span>}
+                            </td>
+                          )}
                           <td style={{ ...TD,minWidth:120 }}>
                             {tm.total>0
                               ? <div><MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/><button onClick={()=>{ setTaskStaffFilter(item.name); setActiveTab('tasks') }} style={{ ...S.btnSm('#6366f1'),marginTop:5,fontSize:10,padding:'3px 8px' }}>View Tasks</button></div>
-                              : <div><span style={{ fontSize:11,color:'#94a3b8' }}>No tasks</span><br/><button onClick={()=>{ setAssignPreselected(item); setShowAssignModal(true) }} style={{ ...S.btnSm('#0ea5e9'),marginTop:4,fontSize:10,padding:'3px 8px' }}>+ Assign</button></div>}
+                              : <div>
+                                  <span style={{ fontSize:11,color:'#94a3b8' }}>No tasks</span>
+                                  {canEdit && <><br/><button onClick={()=>{ setAssignPreselected(item); setShowAssignModal(true) }} style={{ ...S.btnSm('#0ea5e9'),marginTop:4,fontSize:10,padding:'3px 8px' }}>+ Assign</button></>}
+                                </div>}
                           </td>
                           <td style={TD}><LevelBadge score={computed?.total}/></td>
                           <td style={TD}>
                             <div style={{ display:'flex',gap:5,flexWrap:'wrap' }}>
-                              <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️</button>
-                              <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐</button>
+                              {/* ROLE-2: edit/delete/salary buttons only for admin */}
+                              {canEdit && <>
+                                <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️</button>
+                                <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐</button>
+                                <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                              </>}
+                              {/* Scorecard visible to everyone */}
                               {computed && <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
-                              <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
                             </div>
                           </td>
                         </tr>
                       )
                     })}
-                    {paginated.length===0 && <tr><td colSpan={12} style={{ padding:32,textAlign:'center',color:'#94a3b8' }}>No staff records found</td></tr>}
+                    {paginated.length===0 && <tr><td colSpan={canEdit?12:11} style={{ padding:32,textAlign:'center',color:'#94a3b8' }}>No staff records found</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* PERF-1: Pagination */}
+          {/* Pagination */}
           {totalPages>1 && (
             <div style={{ display:'flex',justifyContent:'center',gap:6,marginTop:14,flexWrap:'wrap' }}>
               <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'),opacity:page===1?.4:1 }}>←</button>
@@ -1264,7 +1258,9 @@ function Staff({ currentUser }) {
           )}
 
           <div style={{ marginTop:12,padding:'8px 14px',background:isAdminUnlocked()?'#dcfce7':'#f1f5f9',borderRadius:8,fontSize:12,color:isAdminUnlocked()?'#16a34a':'#94a3b8',fontWeight:600,display:'inline-flex',alignItems:'center',gap:6 }}>
-            {isAdminUnlocked()?'🔓 Admin session active — salary edits unlocked (15 min)':'🔒 Salary setup requires admin PIN'}
+            {canEdit
+              ? isAdminUnlocked()?'🔓 Admin session active — salary edits unlocked (15 min)':'🔒 Salary setup requires admin PIN'
+              : '👁 You have read-only access to staff records'}
           </div>
         </>
       )}
@@ -1391,7 +1387,8 @@ function Staff({ currentUser }) {
                               <button onClick={()=>setDetailTask(task)} style={S.btnSm('#6366f1')}>View</button>
                               {task.status!=='Done'&&<button onClick={()=>handleTaskStatusChange(task,task.status==='Pending'?'In Progress':'Done')} style={S.btnSm(task.status==='Pending'?'#0ea5e9':'#16a34a')}>{task.status==='Pending'?'Start':'✅'}</button>}
                               {task.status==='Done'&&<button onClick={()=>handleTaskStatusChange(task,'Pending')} style={S.btnSm('#64748b')}>↩</button>}
-                              <button onClick={()=>handleTaskDelete(task.id)} style={S.btnSm('#ef4444')}>✕</button>
+                              {/* ROLE-2: delete task only for admin */}
+                              {canEdit && <button onClick={()=>handleTaskDelete(task.id)} style={S.btnSm('#ef4444')}>✕</button>}
                             </div>
                           </td>
                         </tr>
@@ -1412,7 +1409,7 @@ function Staff({ currentUser }) {
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12,marginBottom:18 }}>
             <div>
               <h2 style={{ fontSize:17,fontWeight:800,color:'#1e3a5f',margin:0 }}>📊 Monthly Performance Entry</h2>
-              <p style={{ color:'#64748b',fontSize:12,margin:'4px 0 0' }}>Fill scores for all staff. System auto-calculates totals. Only modified rows are saved.</p>
+              <p style={{ color:'#64748b',fontSize:12,margin:'4px 0 0' }}>Fill scores for all staff. Only modified rows are saved.</p>
             </div>
             <div style={{ display:'flex',gap:10,alignItems:'center',flexWrap:'wrap' }}>
               <div>
@@ -1495,7 +1492,6 @@ function Staff({ currentUser }) {
                 <tbody>
                   {leaderboard.map((s,i)=>{
                     const sc = scores[s.id]
-                    // BUG-3: use the DB record's working_days
                     const computed = sc?calcScores(sc):null
                     return (
                       <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9',background:i<3?'#fffbeb':'white' }}>
@@ -1539,7 +1535,6 @@ function Staff({ currentUser }) {
             <>
               <div style={S.card}>
                 <h3 style={{ fontSize:14,fontWeight:700,color:'#1e3a5f',marginTop:0 }}>Score Trend</h3>
-                {/* BUG-13: show year in labels */}
                 <div style={{ display:'flex',alignItems:'flex-end',gap:10,height:120,overflowX:'auto',paddingBottom:4 }}>
                   {[...historyData].reverse().map(r=>{
                     const lvl    = getLevel(r.total_score)
@@ -1548,7 +1543,6 @@ function Staff({ currentUser }) {
                       <div key={r.month} style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:3,flex:'0 0 auto',minWidth:46 }}>
                         <div style={{ fontSize:11,fontWeight:700,color:lvl?.color,fontFamily:"'JetBrains Mono',monospace" }}>{r.total_score}</div>
                         <div style={{ width:'100%',height:`${height}px`,background:lvl?.border,borderRadius:'4px 4px 0 0' }}/>
-                        {/* BUG-13: month + year */}
                         <div style={{ fontSize:9,color:'#94a3b8',textAlign:'center' }}>{formatMonth(r.month).split(' ').join('\n')}</div>
                       </div>
                     )
@@ -1577,7 +1571,6 @@ function Staff({ currentUser }) {
                           <td style={{ ...TD,fontWeight:800,color:'#1e293b',fontSize:15,fontFamily:"'JetBrains Mono',monospace" }}>{r.total_score}</td>
                           <td style={TD}><LevelBadge score={r.total_score}/></td>
                           <td style={TD}>
-                            {/* BUG-11: pass raw DB record, not merged computed */}
                             <button onClick={()=>setSelectedScorecard({ record:r,staffName:staff.find(s=>s.id===historyStaffId)?.name })} style={S.btnSm('#7c3aed')}>📊 View</button>
                           </td>
                         </tr>
@@ -1593,17 +1586,33 @@ function Staff({ currentUser }) {
         </>
       )}
 
-      {/* ══ GEO ATTENDANCE ══ */}
+      {/* ══ GEO ATTENDANCE — ROLE-3: visible to all, admin sees full view ══ */}
       {activeTab==='geo' && (
-        <GeoAttendance currentStaff={loggedInStaff} isAdmin={isAdmin} allStaff={staff}/>
+        <>
+          {/* Non-admin sees self-attendance banner */}
+          {!canEdit && (
+            <div style={{ background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10 }}>
+              <span style={{ fontSize:20 }}>📍</span>
+              <div>
+                <div style={{ fontSize:13,fontWeight:700,color:'#1e3a5f' }}>Self Attendance</div>
+                <div style={{ fontSize:12,color:'#64748b' }}>Mark your own attendance using your device location.</div>
+              </div>
+            </div>
+          )}
+          <GeoAttendance
+            currentStaff={loggedInStaff}
+            isAdmin={isAdmin}
+            allStaff={isAdmin ? staff : [loggedInStaff].filter(Boolean)}
+          />
+        </>
       )}
 
       {/* ── Modals ── */}
-      {editingStaff    && <EditStaffModal staffMember={editingStaff} onClose={()=>setEditingStaff(null)} onSaved={()=>{ fetchStaff(); setEditingStaff(null) }} showToast={showToast}/>}
+      {editingStaff    && canEdit && <EditStaffModal staffMember={editingStaff} onClose={()=>setEditingStaff(null)} onSaved={()=>{ fetchStaff(); setEditingStaff(null) }} showToast={showToast}/>}
       {showPinModal    && <AdminPinModal onSuccess={()=>{ setShowPinModal(false); fetchSalaryData(); setShowSalaryModal(true) }} onClose={()=>{ setShowPinModal(false); setSalaryTarget(null) }}/>}
-      {showSalaryModal && salaryTarget && <SalarySetupModal staffMember={salaryTarget} onClose={()=>{ setShowSalaryModal(false); setSalaryTarget(null) }} onSaved={()=>{ fetchStaff(); fetchSalaryData() }} showToast={showToast}/>}
+      {showSalaryModal && salaryTarget && canEdit && <SalarySetupModal staffMember={salaryTarget} onClose={()=>{ setShowSalaryModal(false); setSalaryTarget(null) }} onSaved={()=>{ fetchStaff(); fetchSalaryData() }} showToast={showToast}/>}
       {selectedScorecard && <ScorecardModal record={selectedScorecard.record} staffName={selectedScorecard.staffName} onClose={()=>setSelectedScorecard(null)}/>}
-      {showAssignModal && <AssignTaskModal staffList={staff} preselectedStaff={assignPreselected} onClose={()=>{ setShowAssignModal(false); setAssignPreselected(null) }} onSaved={task=>{ if(task) setTasks(prev=>[task,...prev]); showToast('✅ Task assigned!','#16a34a') }}/>}
+      {showAssignModal && canEdit && <AssignTaskModal staffList={staff} preselectedStaff={assignPreselected} onClose={()=>{ setShowAssignModal(false); setAssignPreselected(null) }} onSaved={task=>{ if(task) setTasks(prev=>[task,...prev]); showToast('✅ Task assigned!','#16a34a') }}/>}
       {detailTask && <TaskDetailModal task={detailTask} onClose={()=>setDetailTask(null)} onStatusChange={handleTaskStatusChange}/>}
     </div>
   )
