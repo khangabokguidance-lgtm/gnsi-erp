@@ -14,17 +14,31 @@ const scoreClr  = (p) => p >= 75 ? '#16a34a' : p >= 40 ? '#f59e0b' : '#dc2626'
 const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque']
 const FISCAL_MONTHS = ['April','May','June','July','August','September','October','November','December','January','February','March']
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Mobile detection hook ────────────────────────────────────────────────────
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false)
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return isMobile
+}
+
+// ─── Responsive style helpers ─────────────────────────────────────────────────
 
 const S = {
-  page:   { padding:'24px', fontFamily:"'Segoe UI', sans-serif", background:'#f8fafc', minHeight:'100vh' },
-  card:   { background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', padding:'24px', marginBottom:'20px' },
-  btn:    (c='#1e3a5f', dis=false) => ({ backgroundColor:dis?'#94a3b8':c, color:'white', border:'none', borderRadius:'8px', padding:'10px 20px', fontWeight:'600', cursor:dis?'not-allowed':'pointer', fontSize:'14px', opacity:dis?0.7:1 }),
-  btnSm:  (c='#1e3a5f') => ({ backgroundColor:c, color:'white', border:'none', borderRadius:'6px', padding:'6px 12px', fontWeight:'600', cursor:'pointer', fontSize:'12px', lineHeight:'1' }),
+  page:   (mob) => ({ padding: mob ? '12px' : '24px', fontFamily:"'Segoe UI', sans-serif", background:'#f8fafc', minHeight:'100vh' }),
+  card:   { background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', padding:'16px', marginBottom:'16px' },
+  cardMob:{ background:'white', borderRadius:'10px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', padding:'12px', marginBottom:'12px' },
+  btn:    (c='#1e3a5f', dis=false) => ({ backgroundColor:dis?'#94a3b8':c, color:'white', border:'none', borderRadius:'8px', padding:'10px 16px', fontWeight:'600', cursor:dis?'not-allowed':'pointer', fontSize:'13px', opacity:dis?0.7:1, whiteSpace:'nowrap' }),
+  btnSm:  (c='#1e3a5f') => ({ backgroundColor:c, color:'white', border:'none', borderRadius:'6px', padding:'6px 10px', fontWeight:'600', cursor:'pointer', fontSize:'12px', lineHeight:'1', whiteSpace:'nowrap' }),
   inp:    { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
+  inpSm:  { width:'100%', padding:'8px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', boxSizing:'border-box', background:'white' },
   lbl:    { display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' },
-  tab:    (a) => ({ padding:'10px 20px', fontWeight:'600', fontSize:'13px', cursor:'pointer', background:'none', border:'none', borderBottomWidth:a?'3px':'0px', borderBottomStyle:'solid', borderBottomColor:a?'#1e3a5f':'transparent', color:a?'#1e3a5f':'#64748b', transition:'all 0.2s', whiteSpace:'nowrap' }),
-  statCard:(color, bg) => ({ backgroundColor:bg, borderRadius:'12px', padding:'18px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', borderLeft:`4px solid ${color}` }),
+  tab:    (a, mob) => ({ padding: mob ? '8px 12px' : '10px 20px', fontWeight:'600', fontSize: mob ? '12px' : '13px', cursor:'pointer', background:'none', border:'none', borderBottomWidth:a?'3px':'0px', borderBottomStyle:'solid', borderBottomColor:a?'#1e3a5f':'transparent', color:a?'#1e3a5f':'#64748b', transition:'all 0.2s', whiteSpace:'nowrap' }),
+  statCard:(color, bg) => ({ backgroundColor:bg, borderRadius:'10px', padding:'14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', borderLeft:`4px solid ${color}` }),
   badge:  (c, bg) => ({ padding:'3px 10px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', background:bg, color:c, display:'inline-block' }),
 }
 
@@ -151,16 +165,16 @@ function exportToCSV(staffList, dedMap, month) {
 function SlipModal({ s, ded, month, onClose }) {
   if (!s) return null
   return (
-    <div onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'white', borderRadius:'12px', width:'100%', maxWidth:'600px', maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column' }}>
-        <div style={{ background:'#1e3a5f', color:'white', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <span style={{ fontSize:'13px', fontWeight:'600' }}>Salary Slip — {s.name} · {fmtMonth(month)}</span>
-          <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-            <button onClick={()=>printSlip(s,ded,month)} style={S.btnSm('#B8860B')}>🖨 Print A4</button>
-            <button onClick={onClose} style={{ background:'none', border:'none', color:'white', fontSize:'20px', cursor:'pointer' }}>✕</button>
+    <div onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0' }}>
+      <div style={{ background:'white', borderRadius:'12px 12px 0 0', width:'100%', maxWidth:'640px', maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column' }}>
+        <div style={{ background:'#1e3a5f', color:'white', padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+          <span style={{ fontSize:'12px', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, marginRight:'8px' }}>Salary Slip — {s.name} · {fmtMonth(month)}</span>
+          <div style={{ display:'flex', gap:'6px', alignItems:'center', flexShrink:0 }}>
+            <button onClick={()=>printSlip(s,ded,month)} style={S.btnSm('#B8860B')}>🖨 Print</button>
+            <button onClick={onClose} style={{ background:'none', border:'none', color:'white', fontSize:'20px', cursor:'pointer', lineHeight:1 }}>✕</button>
           </div>
         </div>
-        <div style={{ overflowY:'auto', padding:'14px', background:'#f2f4f8', display:'flex', flexDirection:'column', gap:'10px' }}>
+        <div style={{ overflowY:'auto', padding:'12px', background:'#f2f4f8', display:'flex', flexDirection:'column', gap:'10px' }}>
           <div dangerouslySetInnerHTML={{ __html: buildSlipHTML(s,ded,month,'office') }} />
           <div style={{ borderTop:'1.5px dashed #999', padding:'4px 0', textAlign:'center', fontSize:'8px', color:'#aaa', letterSpacing:'2px' }}>CUT HERE</div>
           <div dangerouslySetInnerHTML={{ __html: buildSlipHTML(s,ded,month,'staff') }} />
@@ -170,31 +184,123 @@ function SlipModal({ s, ded, month, onClose }) {
   )
 }
 
+// ─── Mobile Staff Card (replaces table row on mobile) ────────────────────────
+
+function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSelected, toggleSelect, isPaid, regMonth }) {
+  const [expanded, setExpanded] = useState(false)
+  const g = gross(s)
+  const td = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)
+  const net = g - td
+
+  return (
+    <div style={{ background: isPaid ? '#f0fdf4' : 'white', border: `1px solid ${isPaid ? '#bbf7d0' : '#e2e8f0'}`, borderRadius:'10px', marginBottom:'8px', overflow:'hidden', borderLeft: `4px solid ${isPaid ? '#16a34a' : '#1e3a5f'}` }}>
+      {/* Card header — always visible */}
+      <div style={{ padding:'10px 12px', display:'flex', alignItems:'center', gap:'10px' }} onClick={() => setExpanded(v=>!v)}>
+        {bulkMode && (
+          <input type="checkbox" checked={isSelected} onChange={e=>{e.stopPropagation();toggleSelect(s.id)}}
+            style={{ width:'16px', height:'16px', flexShrink:0 }} />
+        )}
+        <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:'#1e3a5f', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <span style={{ fontSize:'11px', fontWeight:'700', color:'white' }}>{(s.name||'').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase()}</span>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'13px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
+          <div style={{ fontSize:'11px', color:'#64748b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.designation||s.department||'—'}</div>
+        </div>
+        <div style={{ textAlign:'right', flexShrink:0 }}>
+          <div style={{ fontSize:'15px', fontWeight:'800', color: isPaid ? '#16a34a' : '#1e3a5f' }}>{fmt(net)}</div>
+          <span style={S.badge(isPaid?'#16a34a':'#dc2626', isPaid?'#dcfce7':'#fee2e2')}>{isPaid?'✅ Paid':'⏳ Unpaid'}</span>
+        </div>
+        <div style={{ fontSize:'16px', color:'#94a3b8', flexShrink:0, transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition:'transform 0.2s' }}>▼</div>
+      </div>
+
+      {/* Expanded details */}
+      {expanded && (
+        <div style={{ borderTop:'1px solid #f1f5f9', padding:'10px 12px', background:'#fafbfc' }}>
+          {/* Earnings row */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px', marginBottom:'10px' }}>
+            {[
+              { label:'Basic', value: fmt(s.basic_salary) },
+              { label:'Gross', value: fmt(g), highlight: true },
+              { label:'Seniority', value: s.seniority_allowance ? fmt(s.seniority_allowance) : '—' },
+              { label:'Loyalty', value: s.loyalty_bonus ? fmt(s.loyalty_bonus) : '—' },
+            ].map(item => (
+              <div key={item.label} style={{ background: item.highlight ? '#E6F1FB' : '#f0f4f8', borderRadius:'6px', padding:'6px 8px' }}>
+                <div style={{ fontSize:'10px', color:'#64748b' }}>{item.label}</div>
+                <div style={{ fontSize:'13px', fontWeight:'700', color: item.highlight ? '#0C447C' : '#1e293b' }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Deduction inputs */}
+          <div style={{ fontSize:'11px', fontWeight:'700', color:'#7B1F1F', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.5px' }}>Deductions</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'10px' }}>
+            {[
+              { field:'advance_deduction', label:'Advance', bg:'#fff' },
+              { field:'late_deduction', label:'Late / Absent', bg:'#fff' },
+              { field:'admin_deduction', label:'Admin', bg:'#FFFBEB' },
+              { field:'pf_deduction', label:'PF', bg:'#f5f3ff' },
+            ].map(({ field, label, bg }) => (
+              <div key={field}>
+                <label style={{ ...S.lbl, fontSize:'11px', marginBottom:'3px' }}>{label}</label>
+                <input type="number" min="0" value={d[field]||0}
+                  onChange={e=>setDed(s.id, field, e.target.value)}
+                  style={{ ...S.inpSm, background:bg, textAlign:'right' }} />
+              </div>
+            ))}
+          </div>
+
+          {/* Net summary */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'6px', marginBottom:'10px' }}>
+            <div style={{ background:'#FCEBEB', borderRadius:'6px', padding:'6px 8px', textAlign:'center' }}>
+              <div style={{ fontSize:'10px', color:'#A32D2D' }}>Total Ded.</div>
+              <div style={{ fontSize:'13px', fontWeight:'700', color:'#A32D2D' }}>{td ? fmt(td) : '—'}</div>
+            </div>
+            <div style={{ background:'#EAF3DE', borderRadius:'6px', padding:'6px 8px', textAlign:'center', gridColumn:'span 2' }}>
+              <div style={{ fontSize:'10px', color:'#27500A' }}>Net Salary</div>
+              <div style={{ fontSize:'16px', fontWeight:'800', color:'#27500A' }}>{fmt(net)}</div>
+            </div>
+          </div>
+
+          {/* Pay mode + actions */}
+          <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+            <select value={d.payment_mode||'Cash'} onChange={e=>setDed(s.id,'payment_mode',e.target.value)}
+              style={{ ...S.inpSm, width:'auto', flex:1, minWidth:'120px' }}>
+              {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            <button onClick={()=>setSlipStaff(s)} style={{ ...S.btnSm('#1e3a5f'), padding:'7px 12px' }}>🧾 Slip</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Pending Payment Dashboard Card ──────────────────────────────────────────
 
-function PendingDashboard({ staff, salaryRows, regMonth, onMarkPaid, dedMap }) {
+function PendingDashboard({ staff, salaryRows, regMonth, onMarkPaid, dedMap, isMobile }) {
   const monthRows = salaryRows.filter(r => r.month===regMonth)
   const paidIds   = new Set(monthRows.filter(r=>r.status==='Paid').map(r=>String(r.staff_id)))
   const unpaid    = staff.filter(s => !paidIds.has(String(s.id)))
   const saved     = monthRows.length > 0
 
   if (!saved) return (
-    <div style={{ ...S.card, background:'#fef9c3', border:'1px solid #f59e0b' }}>
+    <div style={{ ...(isMobile ? S.cardMob : S.card), background:'#fef9c3', border:'1px solid #f59e0b' }}>
       <div style={{ fontSize:'14px', fontWeight:'700', color:'#b45309' }}>⚠️ Register not saved yet for {fmtMonth(regMonth)}</div>
       <div style={{ fontSize:'12px', color:'#92400e', marginTop:'4px' }}>Save the register first to track payment status.</div>
     </div>
   )
 
   return (
-    <div style={S.card}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
-        <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#dc2626', margin:0 }}>⏳ Pending Payments — {fmtMonth(regMonth)}</h3>
+    <div style={isMobile ? S.cardMob : S.card}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'8px' }}>
+        <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#dc2626', margin:0 }}>⏳ Pending Payments — {fmtMonth(regMonth)}</h3>
         <span style={S.badge('#dc2626','#fee2e2')}>{unpaid.length} unpaid</span>
       </div>
       {unpaid.length===0
         ? <div style={{ textAlign:'center', padding:'24px', color:'#16a34a', fontWeight:'700' }}>✅ All staff paid for {fmtMonth(regMonth)}!</div>
         : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'10px' }}>
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(260px,1fr))', gap:'10px' }}>
             {unpaid.map(s => {
               const d=dedMap[s.id]||{}
               const g=gross(s), totDed=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0), net=g-totDed
@@ -205,7 +311,7 @@ function PendingDashboard({ staff, salaryRows, regMonth, onMarkPaid, dedMap }) {
                     <div>
                       <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'13px' }}>{s.name}</div>
                       <div style={{ fontSize:'11px', color:'#64748b' }}>{s.designation||s.department||'-'}</div>
-                      <div style={{ fontSize:'14px', fontWeight:'800', color:'#dc2626', marginTop:'4px' }}>{fmt(net)}</div>
+                      <div style={{ fontSize:'15px', fontWeight:'800', color:'#dc2626', marginTop:'4px' }}>{fmt(net)}</div>
                     </div>
                     {row && <button onClick={()=>onMarkPaid(row.id)} style={{ ...S.btnSm('#16a34a'), fontSize:'11px' }}>✅ Mark Paid</button>}
                   </div>
@@ -221,7 +327,7 @@ function PendingDashboard({ staff, salaryRows, regMonth, onMarkPaid, dedMap }) {
 
 // ─── Annual Summary ───────────────────────────────────────────────────────────
 
-function AnnualSummary({ staff, salaryRows }) {
+function AnnualSummary({ staff, salaryRows, isMobile }) {
   const [selectedStaff, setSelectedStaff] = useState('')
   const [fiscalYear, setFiscalYear]       = useState(() => {
     const now=new Date(); const y=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1; return `${y}-${y+1}`
@@ -270,19 +376,19 @@ function AnnualSummary({ staff, salaryRows }) {
   return (
     <div>
       {/* Controls */}
-      <div style={{ display:'flex', gap:'12px', marginBottom:'20px', flexWrap:'wrap', alignItems:'center' }}>
-        <select value={fiscalYear} onChange={e=>setFiscalYear(e.target.value)} style={{ ...S.inp, width:'auto' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:'10px', marginBottom:'16px' }}>
+        <select value={fiscalYear} onChange={e=>setFiscalYear(e.target.value)} style={isMobile ? S.inpSm : S.inp}>
           {years.map(y=><option key={y} value={y}>FY {y}</option>)}
         </select>
-        <select value={selectedStaff} onChange={e=>setSelectedStaff(e.target.value)} style={{ ...S.inp, width:'auto' }}>
+        <select value={selectedStaff} onChange={e=>setSelectedStaff(e.target.value)} style={isMobile ? S.inpSm : S.inp}>
           <option value="">All Staff</option>
           {staff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <span style={{ fontSize:'13px', color:'#64748b' }}>{staffRows.length} records · {totals.months} months</span>
       </div>
+      <div style={{ fontSize:'12px', color:'#64748b', marginBottom:'14px' }}>{staffRows.length} records · {totals.months} months</div>
 
-      {/* Annual stat cards */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'14px', marginBottom:'20px' }}>
+      {/* Annual stat cards — 2 cols on mobile, 4 on desktop */}
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'10px', marginBottom:'16px' }}>
         {[
           { label:'Total Gross', value:totals.gross, color:'#0C447C', bg:'#E6F1FB', icon:'💰' },
           { label:'Total Deductions', value:totals.ded, color:'#A32D2D', bg:'#FCEBEB', icon:'➖' },
@@ -290,32 +396,34 @@ function AnnualSummary({ staff, salaryRows }) {
           { label:'Net Unpaid', value:totals.net-totals.paid, color:'#dc2626', bg:'#fee2e2', icon:'⏳' },
         ].map(c=>(
           <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'20px', marginBottom:'4px' }}>{c.icon}</div>
-            <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'20px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{fmt(c.value)}</h2>
+            <div style={{ fontSize:'18px', marginBottom:'4px' }}>{c.icon}</div>
+            <p style={{ fontSize:'11px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize: isMobile ? '15px' : '19px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{fmt(c.value)}</h2>
           </div>
         ))}
       </div>
 
-      {/* Month-by-month bar chart */}
-      <div style={S.card}>
-        <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>📊 Monthly Net Salary — FY {fiscalYear}</h3>
-        <div style={{ display:'flex', alignItems:'flex-end', gap:'8px', height:'160px', overflowX:'auto', paddingBottom:'4px' }}>
-          {fiscalMonths.map(m => {
-            const d=byMonth[m]||{net:0,paid:0,count:0}
-            const h=Math.max(8, (d.net/maxNet)*140)
-            const [,mo]=m.split('-')
-            return (
-              <div key={m} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', minWidth:'52px', flex:1 }}>
-                <div style={{ fontSize:'10px', fontWeight:'700', color:'#1e3a5f' }}>{d.net>0?fmt(d.net):''}</div>
-                <div style={{ position:'relative', width:'100%', height:`${h}px` }}>
-                  <div style={{ position:'absolute', bottom:0, width:'100%', height:'100%', background:'#cbd5e1', borderRadius:'4px 4px 0 0' }} />
-                  <div style={{ position:'absolute', bottom:0, width:'100%', height:`${pctBar(d.paid,d.net)}%`, background:'#1e3a5f', borderRadius:'4px 4px 0 0', transition:'height 0.4s' }} />
+      {/* Bar chart */}
+      <div style={isMobile ? S.cardMob : S.card}>
+        <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>📊 Monthly Net — FY {fiscalYear}</h3>
+        <div style={{ overflowX:'auto' }}>
+          <div style={{ display:'flex', alignItems:'flex-end', gap:'6px', height:'140px', paddingBottom:'4px', minWidth: isMobile ? '560px' : 'auto' }}>
+            {fiscalMonths.map(m => {
+              const d=byMonth[m]||{net:0,paid:0,count:0}
+              const h=Math.max(8, (d.net/maxNet)*120)
+              const [,mo]=m.split('-')
+              return (
+                <div key={m} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', minWidth:'42px', flex:1 }}>
+                  <div style={{ fontSize:'9px', fontWeight:'700', color:'#1e3a5f', textAlign:'center' }}>{d.net>0?fmt(d.net):''}</div>
+                  <div style={{ position:'relative', width:'100%', height:`${h}px` }}>
+                    <div style={{ position:'absolute', bottom:0, width:'100%', height:'100%', background:'#cbd5e1', borderRadius:'4px 4px 0 0' }} />
+                    <div style={{ position:'absolute', bottom:0, width:'100%', height:`${pctBar(d.paid,d.net)}%`, background:'#1e3a5f', borderRadius:'4px 4px 0 0', transition:'height 0.4s' }} />
+                  </div>
+                  <div style={{ fontSize:'9px', color:'#94a3b8' }}>{FISCAL_MONTHS[parseInt(mo)-1]?.slice(0,3)}</div>
                 </div>
-                <div style={{ fontSize:'10px', color:'#94a3b8' }}>{FISCAL_MONTHS[parseInt(mo)-1]?.slice(0,3)}</div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
         <div style={{ display:'flex', gap:'12px', fontSize:'11px', color:'#64748b', marginTop:'8px' }}>
           <span><span style={{ display:'inline-block', width:'10px', height:'10px', background:'#1e3a5f', borderRadius:'2px', marginRight:'4px' }}/>Paid</span>
@@ -323,55 +431,85 @@ function AnnualSummary({ staff, salaryRows }) {
         </div>
       </div>
 
-      {/* Month detail table */}
-      <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
-          <thead>
-            <tr style={{ background:'#1e3a5f', color:'white' }}>
-              {['Month','Staff Count','Gross','Deductions','Net Payable','Paid','Unpaid','Coverage'].map(h=>(
-                <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:'600', fontSize:'12px' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {fiscalMonths.filter(m=>byMonth[m]).map(m=>{
-              const d=byMonth[m]
-              const unpaidAmt=d.net-d.paid, cov=pctBar(d.paid,d.net)
-              return (
-                <tr key={m} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                  <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>{fmtMonth(m)}</td>
-                  <td style={{ padding:'10px 12px', color:'#64748b' }}>{d.count}</td>
-                  <td style={{ padding:'10px 12px', color:'#0C447C', fontWeight:'600' }}>{fmt(d.gross)}</td>
-                  <td style={{ padding:'10px 12px', color:'#A32D2D' }}>{fmt(d.ded)}</td>
-                  <td style={{ padding:'10px 12px', fontWeight:'700', color:'#1e293b' }}>{fmt(d.net)}</td>
-                  <td style={{ padding:'10px 12px', color:'#16a34a', fontWeight:'700' }}>{fmt(d.paid)}</td>
-                  <td style={{ padding:'10px 12px', color: unpaidAmt>0?'#dc2626':'#16a34a', fontWeight:'600' }}>{unpaidAmt>0?fmt(unpaidAmt):'—'}</td>
-                  <td style={{ padding:'10px 12px', minWidth:'100px' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-                      <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
-                        <div style={{ width:`${cov}%`, height:'100%', background:scoreClr(cov), borderRadius:'3px' }}/>
-                      </div>
-                      <span style={{ fontSize:'11px', fontWeight:'700', color:scoreClr(cov) }}>{cov}%</span>
+      {/* Month detail — cards on mobile, table on desktop */}
+      {isMobile ? (
+        <div>
+          {fiscalMonths.filter(m=>byMonth[m]).map(m=>{
+            const d=byMonth[m]
+            const unpaidAmt=d.net-d.paid, cov=pctBar(d.paid,d.net)
+            return (
+              <div key={m} style={{ ...S.cardMob, border:'1px solid #e2e8f0' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+                  <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'13px' }}>{fmtMonth(m)}</div>
+                  <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                    <div style={{ width:'60px', height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
+                      <div style={{ width:`${cov}%`, height:'100%', background:scoreClr(cov), borderRadius:'3px' }}/>
                     </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ background:'#f8fafc', fontWeight:'700' }}>
-              <td style={{ padding:'10px 12px', color:'#1e293b' }}>Total</td>
-              <td style={{ padding:'10px 12px', color:'#64748b' }}>{staffRows.length}</td>
-              <td style={{ padding:'10px 12px', color:'#0C447C' }}>{fmt(totals.gross)}</td>
-              <td style={{ padding:'10px 12px', color:'#A32D2D' }}>{fmt(totals.ded)}</td>
-              <td style={{ padding:'10px 12px', color:'#1e293b' }}>{fmt(totals.net)}</td>
-              <td style={{ padding:'10px 12px', color:'#16a34a' }}>{fmt(totals.paid)}</td>
-              <td style={{ padding:'10px 12px', color:'#dc2626' }}>{fmt(totals.net-totals.paid)}</td>
-              <td style={{ padding:'10px 12px' }}>{pctBar(totals.paid,totals.net)}%</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+                    <span style={{ fontSize:'11px', fontWeight:'700', color:scoreClr(cov) }}>{cov}%</span>
+                  </div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'6px' }}>
+                  {[['Gross',d.gross,'#0C447C'],['Paid',d.paid,'#16a34a'],['Unpaid',unpaidAmt, unpaidAmt>0?'#dc2626':'#16a34a']].map(([l,v,c])=>(
+                    <div key={l} style={{ textAlign:'center' }}>
+                      <div style={{ fontSize:'10px', color:'#64748b' }}>{l}</div>
+                      <div style={{ fontSize:'12px', fontWeight:'700', color:c }}>{fmt(v)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+            <thead>
+              <tr style={{ background:'#1e3a5f', color:'white' }}>
+                {['Month','Staff Count','Gross','Deductions','Net Payable','Paid','Unpaid','Coverage'].map(h=>(
+                  <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:'600', fontSize:'12px' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {fiscalMonths.filter(m=>byMonth[m]).map(m=>{
+                const d=byMonth[m]
+                const unpaidAmt=d.net-d.paid, cov=pctBar(d.paid,d.net)
+                return (
+                  <tr key={m} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                    <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>{fmtMonth(m)}</td>
+                    <td style={{ padding:'10px 12px', color:'#64748b' }}>{d.count}</td>
+                    <td style={{ padding:'10px 12px', color:'#0C447C', fontWeight:'600' }}>{fmt(d.gross)}</td>
+                    <td style={{ padding:'10px 12px', color:'#A32D2D' }}>{fmt(d.ded)}</td>
+                    <td style={{ padding:'10px 12px', fontWeight:'700', color:'#1e293b' }}>{fmt(d.net)}</td>
+                    <td style={{ padding:'10px 12px', color:'#16a34a', fontWeight:'700' }}>{fmt(d.paid)}</td>
+                    <td style={{ padding:'10px 12px', color: unpaidAmt>0?'#dc2626':'#16a34a', fontWeight:'600' }}>{unpaidAmt>0?fmt(unpaidAmt):'—'}</td>
+                    <td style={{ padding:'10px 12px', minWidth:'100px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                        <div style={{ flex:1, height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
+                          <div style={{ width:`${cov}%`, height:'100%', background:scoreClr(cov), borderRadius:'3px' }}/>
+                        </div>
+                        <span style={{ fontSize:'11px', fontWeight:'700', color:scoreClr(cov) }}>{cov}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background:'#f8fafc', fontWeight:'700' }}>
+                <td style={{ padding:'10px 12px', color:'#1e293b' }}>Total</td>
+                <td style={{ padding:'10px 12px', color:'#64748b' }}>{staffRows.length}</td>
+                <td style={{ padding:'10px 12px', color:'#0C447C' }}>{fmt(totals.gross)}</td>
+                <td style={{ padding:'10px 12px', color:'#A32D2D' }}>{fmt(totals.ded)}</td>
+                <td style={{ padding:'10px 12px', color:'#1e293b' }}>{fmt(totals.net)}</td>
+                <td style={{ padding:'10px 12px', color:'#16a34a' }}>{fmt(totals.paid)}</td>
+                <td style={{ padding:'10px 12px', color:'#dc2626' }}>{fmt(totals.net-totals.paid)}</td>
+                <td style={{ padding:'10px 12px' }}>{pctBar(totals.paid,totals.net)}%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -379,6 +517,8 @@ function AnnualSummary({ staff, salaryRows }) {
 // ─── Main Salary Component ────────────────────────────────────────────────────
 
 export default function Salary() {
+  const isMobile = useIsMobile()
+
   const [activeTab, setActiveTab] = useState('register')
   const [staff, setStaff]         = useState([])
   const [salaryRows, setSalaryRows] = useState([])
@@ -392,10 +532,10 @@ export default function Salary() {
   const [dedMap, setDedMap]           = useState({})
   const [saving, setSaving]           = useState(false)
   const [slipStaff, setSlipStaff]     = useState(null)
-  const [selected, setSelected]       = useState(new Set())   // bulk select
+  const [selected, setSelected]       = useState(new Set())
   const [bulkMode, setBulkMode]       = useState(false)
   const [bulkPayMode, setBulkPayMode] = useState('Cash')
-  const [stickyHeader, setStickyHeader] = useState(true)
+  const [toolbarOpen, setToolbarOpen] = useState(false)
   const tableRef = useRef(null)
 
   // Advances
@@ -563,43 +703,49 @@ export default function Salary() {
     <th style={{ padding:'7px 6px', textAlign:'center', fontWeight:'500', whiteSpace:'nowrap', fontSize:'12px', borderRight:'.5px solid rgba(255,255,255,.12)', ...style }}>{children}</th>
   )
 
+  // ── Tabs config ──
+
+  const TABS = [
+    { key:'register',  label:'📋 Register',  labelFull:'📋 Salary Register' },
+    { key:'pending',   label:'⏳ Pending',   labelFull:'⏳ Pending Payments' },
+    { key:'advances',  label:'💳 Advances',  labelFull:'💳 Advances' },
+    { key:'history',   label:'📅 History',   labelFull:'📅 History' },
+    { key:'annual',    label:'📆 Annual',    labelFull:'📆 Annual Summary' },
+  ]
+
   // ── JSX ──
 
   return (
-    <div style={S.page}>
+    <div style={S.page(isMobile)}>
       {/* Header */}
-      <div style={{ marginBottom:'20px' }}>
-        <h1 style={{ fontSize:'26px', fontWeight:'bold', color:'#1e3a5f', margin:0 }}>💵 Salary Management</h1>
-        <p style={{ color:'#64748b', fontSize:'14px', margin:'4px 0 0' }}>Salary register · Advances · History · Annual summary</p>
+      <div style={{ marginBottom:'16px' }}>
+        <h1 style={{ fontSize: isMobile ? '20px' : '26px', fontWeight:'bold', color:'#1e3a5f', margin:0 }}>💵 Salary Management</h1>
+        {!isMobile && <p style={{ color:'#64748b', fontSize:'14px', margin:'4px 0 0' }}>Salary register · Advances · History · Annual summary</p>}
       </div>
 
-      {/* Stats grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:'14px', marginBottom:'24px' }}>
+      {/* Stats grid — 2 cols on mobile, 5 on desktop */}
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: isMobile ? '8px' : '14px', marginBottom:'16px' }}>
         {[
-          { label:'Total Staff',     value:staff.length,      color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫', money:false },
-          { label:'Paid This Month', value:paidThisMonth,     color:'#16a34a', bg:'#dcfce7', icon:'✅', money:false },
-          { label:'Total Paid',      value:totalPaid,         color:'#16a34a', bg:'#f0fdf4', icon:'💰', money:true },
-          { label:'Total Unpaid',    value:totalUnpaid,       color:'#dc2626', bg:'#fee2e2', icon:'⏳', money:true },
-          { label:'Advance Outstanding', value:totalAdvOut,   color:'#f59e0b', bg:'#fef3c7', icon:'💳', money:true },
+          { label:'Total Staff',        value:staff.length,   color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫', money:false },
+          { label:'Paid This Month',    value:paidThisMonth,  color:'#16a34a', bg:'#dcfce7', icon:'✅',  money:false },
+          { label:'Total Paid',         value:totalPaid,      color:'#16a34a', bg:'#f0fdf4', icon:'💰',  money:true  },
+          { label:'Total Unpaid',       value:totalUnpaid,    color:'#dc2626', bg:'#fee2e2', icon:'⏳',  money:true  },
+          { label:'Advance Outstanding',value:totalAdvOut,    color:'#f59e0b', bg:'#fef3c7', icon:'💳',  money:true, fullWidth: isMobile },
         ].map(c=>(
-          <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:'20px', marginBottom:'4px' }}>{c.icon}</div>
-            <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:'22px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.money?fmt(c.value):c.value}</h2>
+          <div key={c.label} style={{ ...S.statCard(c.color, c.bg), gridColumn: c.fullWidth ? 'span 2' : 'auto' }}>
+            <div style={{ fontSize:'18px', marginBottom:'2px' }}>{c.icon}</div>
+            <p style={{ fontSize:'11px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
+            <h2 style={{ fontSize: isMobile ? '16px' : '22px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.money?fmt(c.value):c.value}</h2>
           </div>
         ))}
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display:'flex', borderBottom:'2px solid #e2e8f0', marginBottom:'24px', gap:'4px', overflowX:'auto' }}>
-        {[
-          { key:'register',  label:'📋 Salary Register' },
-          { key:'pending',   label:'⏳ Pending Payments' },
-          { key:'advances',  label:'💳 Advances' },
-          { key:'history',   label:'📅 History' },
-          { key:'annual',    label:'📆 Annual Summary' },
-        ].map(t=>(
-          <button key={t.key} onClick={()=>setActiveTab(t.key)} style={S.tab(activeTab===t.key)}>{t.label}</button>
+      {/* Tab bar — scrollable */}
+      <div style={{ display:'flex', borderBottom:'2px solid #e2e8f0', marginBottom:'16px', overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
+        {TABS.map(t=>(
+          <button key={t.key} onClick={()=>setActiveTab(t.key)} style={S.tab(activeTab===t.key, isMobile)}>
+            {isMobile ? t.label : t.labelFull}
+          </button>
         ))}
       </div>
 
@@ -607,178 +753,208 @@ export default function Salary() {
       {activeTab==='register' && (
         <>
           {/* Toolbar */}
-          <div style={{ background:'white', padding:'12px 16px', borderRadius:'10px', boxShadow:'0 2px 8px rgba(0,0,0,0.07)', marginBottom:'14px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', marginBottom:'10px' }}>
-              <div style={{ background:'#1e3a5f', color:'white', padding:'4px 10px', borderRadius:'6px', fontSize:'13px', fontWeight:'700' }}>GNSI</div>
-              <span style={{ fontWeight:'700', color:'#1e3a5f', fontSize:'15px' }}>Salary Register</span>
-              <span style={{ color:'#94a3b8' }}>—</span>
-              <input type="month" value={regMonth} onChange={e=>setRegMonth(e.target.value)} style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px' }} />
-              <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', background:'white' }}>
+          <div style={{ background:'white', padding: isMobile ? '10px 12px' : '12px 16px', borderRadius:'10px', boxShadow:'0 2px 8px rgba(0,0,0,0.07)', marginBottom:'12px' }}>
+            {/* Top row: title + month picker */}
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'8px' }}>
+              <div style={{ background:'#1e3a5f', color:'white', padding:'3px 8px', borderRadius:'6px', fontSize:'12px', fontWeight:'700' }}>GNSI</div>
+              {!isMobile && <span style={{ fontWeight:'700', color:'#1e3a5f', fontSize:'14px' }}>Salary Register</span>}
+              <input type="month" value={regMonth} onChange={e=>setRegMonth(e.target.value)}
+                style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', flex: isMobile ? 1 : 'none' }} />
+              {isMobile && (
+                <button onClick={()=>setToolbarOpen(v=>!v)}
+                  style={{ ...S.btnSm('#64748b'), marginLeft:'auto' }}>
+                  {toolbarOpen ? '✕ Close' : '⚙ Actions'}
+                </button>
+              )}
+            </div>
+
+            {/* Filters row */}
+            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'8px' }}>
+              <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)}
+                style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', background:'white', flex: isMobile ? 1 : 'none', minWidth:'0' }}>
                 <option value="">All Roles</option>
                 {roles.map(r=><option key={r} value={r}>{r}</option>)}
               </select>
-              <input type="search" placeholder="Search name..." value={search} onChange={e=>setSearch(e.target.value)} style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', width:'150px' }} />
-              <div style={{ marginLeft:'auto', display:'flex', gap:'6px', flexWrap:'wrap' }}>
-                <button onClick={resetDeductions} style={S.btnSm('#64748b')}>Reset Ded.</button>
-                <button onClick={()=>exportToCSV(filteredStaff,dedMap,regMonth)} style={S.btnSm('#0891b2')}>⬇ CSV</button>
-                <button onClick={()=>printAllSlips(filteredStaff,dedMap,regMonth)} style={S.btnSm('#B8860B')}>🖨 All Slips</button>
-                <button onClick={()=>printRegister(tableRef)} style={S.btnSm('#1e3a5f')}>🖨 Register</button>
-                <button onClick={handleSaveRegister} disabled={saving} style={S.btn('#16a34a',saving)}>{saving?'⏳ Saving...':'💾 Save Register'}</button>
-              </div>
+              <input type="search" placeholder="Search name..." value={search} onChange={e=>setSearch(e.target.value)}
+                style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', flex:1, minWidth:'0' }} />
             </div>
 
+            {/* Action buttons — collapsible on mobile */}
+            {(!isMobile || toolbarOpen) && (
+              <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                <button onClick={resetDeductions} style={S.btnSm('#64748b')}>Reset Ded.</button>
+                <button onClick={()=>exportToCSV(filteredStaff,dedMap,regMonth)} style={S.btnSm('#0891b2')}>⬇ CSV</button>
+                {!isMobile && <button onClick={()=>printAllSlips(filteredStaff,dedMap,regMonth)} style={S.btnSm('#B8860B')}>🖨 All Slips</button>}
+                {!isMobile && <button onClick={()=>printRegister(tableRef)} style={S.btnSm('#1e3a5f')}>🖨 Register</button>}
+                <button onClick={handleSaveRegister} disabled={saving} style={{ ...S.btn('#16a34a',saving), flex: isMobile ? 1 : 'none' }}>
+                  {saving?'⏳ Saving...':'💾 Save Register'}
+                </button>
+              </div>
+            )}
+
             {/* Bulk action bar */}
-            <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginTop:'8px' }}>
               <label style={{ display:'flex', alignItems:'center', gap:'6px', cursor:'pointer', fontSize:'13px', color:'#374151' }}>
                 <input type="checkbox" checked={bulkMode} onChange={e=>setBulkMode(e.target.checked)} />
-                Bulk select mode
+                Bulk select
               </label>
               {bulkMode && (
                 <>
-                  <button onClick={selectAll} style={S.btnSm('#64748b')}>Select All</button>
+                  <button onClick={selectAll} style={S.btnSm('#64748b')}>All</button>
                   <button onClick={clearSelect} style={S.btnSm('#94a3b8')}>Clear</button>
-                  <span style={{ fontSize:'13px', color:'#64748b' }}>{selected.size} selected</span>
-                  <select value={bulkPayMode} onChange={e=>setBulkPayMode(e.target.value)} style={{ padding:'5px 8px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'12px' }}>
+                  <span style={{ fontSize:'12px', color:'#64748b' }}>{selected.size} sel.</span>
+                  <select value={bulkPayMode} onChange={e=>setBulkPayMode(e.target.value)}
+                    style={{ padding:'5px 8px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'12px' }}>
                     {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
                   </select>
-                  <button onClick={handleBulkMarkPaid} disabled={!selected.size} style={S.btn('#16a34a',!selected.size)}>✅ Mark Selected Paid</button>
+                  <button onClick={handleBulkMarkPaid} disabled={!selected.size} style={S.btn('#16a34a',!selected.size)}>✅ Mark Paid</button>
                 </>
               )}
             </div>
           </div>
 
-          {/* Summary bar */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:'10px', marginBottom:'14px' }}>
+          {/* Summary bar — 2 cols on mobile */}
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap:'8px', marginBottom:'12px' }}>
             {[
-              { label:'Staff', value:filteredStaff.length, money:false, color:'#1e3a5f' },
-              { label:'Total Gross', value:regTotals.tG, money:true, color:'#0C447C' },
-              { label:'Total Ded.', value:regTotals.tD, money:true, color:'#791F1F' },
-              { label:'PF Total', value:regTotals.tPf, money:true, color:'#7c3aed' },
-              { label:'Net Payable', value:regTotals.tN, money:true, color:'#27500A' },
+              { label:'Staff',      value:filteredStaff.length, money:false, color:'#1e3a5f' },
+              { label:'Gross',      value:regTotals.tG,         money:true,  color:'#0C447C' },
+              { label:'Deductions', value:regTotals.tD,         money:true,  color:'#791F1F' },
+              { label:'PF Total',   value:regTotals.tPf,        money:true,  color:'#7c3aed' },
+              { label:'Net Payable',value:regTotals.tN,         money:true,  color:'#27500A', fullWidth: isMobile },
             ].map(c=>(
-              <div key={c.label} style={{ background:'white', borderRadius:'8px', padding:'10px 14px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border:'.5px solid #e2e8f0' }}>
-                <div style={{ fontSize:'11px', color:'#64748b', marginBottom:'2px' }}>{c.label}</div>
-                <div style={{ fontSize:'17px', fontWeight:'700', color:c.color }}>{c.money?fmt(c.value):c.value}</div>
+              <div key={c.label} style={{ background:'white', borderRadius:'8px', padding:'8px 12px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', border:'.5px solid #e2e8f0', gridColumn: c.fullWidth ? 'span 2' : 'auto' }}>
+                <div style={{ fontSize:'10px', color:'#64748b', marginBottom:'2px' }}>{c.label}</div>
+                <div style={{ fontSize: isMobile ? '14px' : '16px', fontWeight:'700', color:c.color }}>{c.money?fmt(c.value):c.value}</div>
               </div>
             ))}
           </div>
 
           {loading
             ? <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading...</div>
-            : (
-              <div style={{ background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', overflow:'hidden' }}>
-                <div style={{ overflowX:'auto' }}>
-                  <table ref={tableRef} style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
-                    <thead style={{ position: stickyHeader?'sticky':'static', top:0, zIndex:10 }}>
-                      <tr style={{ background:'#1e3a5f', color:'white' }}>
-                        {bulkMode && <TH><input type="checkbox" onChange={e=>e.target.checked?selectAll():clearSelect()} checked={selected.size===filteredStaff.length&&filteredStaff.length>0}/></TH>}
-                        <TH style={{ textAlign:'left', paddingLeft:'12px' }}>S.N.</TH>
-                        <TH style={{ textAlign:'left', minWidth:'150px' }}>Staff Name</TH>
-                        <TH style={{ textAlign:'left', minWidth:'110px' }}>Designation</TH>
-                        <TH>Basic</TH>
-                        <TH>Seniority</TH>
-                        <TH>Loyalty</TH>
-                        <TH>Role</TH>
-                        <TH style={{ background:'#254e91', minWidth:'80px' }}>Gross</TH>
-                        <TH>Advance</TH>
-                        <TH>Late</TH>
-                        <TH style={{ background:'#7B3A00' }}>Admin</TH>
-                        <TH style={{ background:'#4a1d96' }}>PF</TH>
-                        <TH style={{ background:'#6B1111' }}>Total Ded.</TH>
-                        <TH style={{ background:'#1A5C1A' }}>Net</TH>
-                        <TH>Pay Mode</TH>
-                        <TH>Status</TH>
-                        <TH>Slip</TH>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredStaff.map((s,i) => {
-                        const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}
-                        const g=gross(s), td=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0), net=g-td
-                        const isPaid=d.status==='Paid'
-                        const rowBg=isPaid?'#f0fdf4':i%2===1?'#fafbfc':'white'
-                        const isSelected=selected.has(s.id)
-                        return (
-                          <tr key={s.id} style={{ borderBottom:'.5px solid #f1f5f9', background:isSelected?'#eff6ff':rowBg, borderLeft:isPaid?'3px solid #16a34a':d.status==='Unpaid'&&isPaid===false?'3px solid #fee2e2':'3px solid transparent' }}>
-                            {bulkMode && <td style={{ padding:'6px', textAlign:'center' }}><input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(s.id)}/></td>}
-                            <td style={{ padding:'6px 12px', color:'#64748b', textAlign:'center' }}>{i+1}</td>
-                            <td style={{ padding:'6px 8px', fontWeight:'600', color:'#1e293b' }}>{s.name}</td>
-                            <td style={{ padding:'6px 8px' }}>
-                              <span style={{ display:'inline-block', fontSize:'10px', padding:'1px 7px', borderRadius:'8px', background:'#E6F1FB', color:'#0C447C', whiteSpace:'nowrap' }}>
-                                {s.designation||s.department||'—'}
-                              </span>
-                            </td>
-                            <td style={{ padding:'6px 8px', textAlign:'right' }}>{fmt(s.basic_salary)}</td>
-                            <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.seniority_allowance?fmt(s.seniority_allowance):'—'}</td>
-                            <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.loyalty_bonus?fmt(s.loyalty_bonus):'—'}</td>
-                            <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.role_bonus?fmt(s.role_bonus):'—'}</td>
-                            <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'600', background:'#E6F1FB', color:'#0C447C' }}>{fmt(g)}</td>
-
-                            {/* Inline editable deductions */}
-                            {[
-                              { field:'advance_deduction', style:{} },
-                              { field:'late_deduction', style:{} },
-                              { field:'admin_deduction', style:{ background:'#FFFBEB' } },
-                              { field:'pf_deduction', style:{ background:'#f5f3ff' } },
-                            ].map(({ field, style:iStyle }) => (
-                              <td key={`${s.id}-${field}`} style={{ padding:'4px 6px', textAlign:'center' }}>
-                                <input type="number" min="0" value={d[field]||0} onChange={e=>setDed(s.id,field,e.target.value)}
-                                  style={{ width:'68px', padding:'3px 5px', borderRadius:'4px', border:'.5px solid #d1d5db', fontSize:'11px', textAlign:'right', ...iStyle }} />
+            : isMobile
+              ? (
+                /* Mobile card layout */
+                <div>
+                  {filteredStaff.map((s,i) => {
+                    const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}
+                    const isPaid = d.status==='Paid'
+                    return (
+                      <MobileStaffCard
+                        key={s.id} s={s} i={i} d={d} dedMap={dedMap} setDed={setDed}
+                        setSlipStaff={setSlipStaff} bulkMode={bulkMode}
+                        isSelected={selected.has(s.id)} toggleSelect={toggleSelect}
+                        isPaid={isPaid} regMonth={regMonth}
+                      />
+                    )
+                  })}
+                </div>
+              )
+              : (
+                /* Desktop table layout */
+                <div style={{ background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', overflow:'hidden' }}>
+                  <div style={{ overflowX:'auto' }}>
+                    <table ref={tableRef} style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+                      <thead style={{ position:'sticky', top:0, zIndex:10 }}>
+                        <tr style={{ background:'#1e3a5f', color:'white' }}>
+                          {bulkMode && <TH><input type="checkbox" onChange={e=>e.target.checked?selectAll():clearSelect()} checked={selected.size===filteredStaff.length&&filteredStaff.length>0}/></TH>}
+                          <TH style={{ textAlign:'left', paddingLeft:'12px' }}>S.N.</TH>
+                          <TH style={{ textAlign:'left', minWidth:'150px' }}>Staff Name</TH>
+                          <TH style={{ textAlign:'left', minWidth:'110px' }}>Designation</TH>
+                          <TH>Basic</TH>
+                          <TH>Seniority</TH>
+                          <TH>Loyalty</TH>
+                          <TH>Role</TH>
+                          <TH style={{ background:'#254e91', minWidth:'80px' }}>Gross</TH>
+                          <TH>Advance</TH>
+                          <TH>Late</TH>
+                          <TH style={{ background:'#7B3A00' }}>Admin</TH>
+                          <TH style={{ background:'#4a1d96' }}>PF</TH>
+                          <TH style={{ background:'#6B1111' }}>Total Ded.</TH>
+                          <TH style={{ background:'#1A5C1A' }}>Net</TH>
+                          <TH>Pay Mode</TH>
+                          <TH>Status</TH>
+                          <TH>Slip</TH>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStaff.map((s,i) => {
+                          const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}
+                          const g=gross(s), td=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0), net=g-td
+                          const isPaid=d.status==='Paid'
+                          const rowBg=isPaid?'#f0fdf4':i%2===1?'#fafbfc':'white'
+                          const isSelected=selected.has(s.id)
+                          return (
+                            <tr key={s.id} style={{ borderBottom:'.5px solid #f1f5f9', background:isSelected?'#eff6ff':rowBg, borderLeft:isPaid?'3px solid #16a34a':'3px solid transparent' }}>
+                              {bulkMode && <td style={{ padding:'6px', textAlign:'center' }}><input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(s.id)}/></td>}
+                              <td style={{ padding:'6px 12px', color:'#64748b', textAlign:'center' }}>{i+1}</td>
+                              <td style={{ padding:'6px 8px', fontWeight:'600', color:'#1e293b' }}>{s.name}</td>
+                              <td style={{ padding:'6px 8px' }}>
+                                <span style={{ display:'inline-block', fontSize:'10px', padding:'1px 7px', borderRadius:'8px', background:'#E6F1FB', color:'#0C447C', whiteSpace:'nowrap' }}>
+                                  {s.designation||s.department||'—'}
+                                </span>
                               </td>
-                            ))}
-
-                            <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'600', background:'#FCEBEB', color:'#791F1F' }}>{td?fmt(td):'—'}</td>
-                            <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'700', background:'#EAF3DE', color:'#27500A', fontSize:'13px' }}>{fmt(net)}</td>
-
-                            {/* Payment mode */}
-                            <td style={{ padding:'4px 6px' }}>
-                              <select value={d.payment_mode||'Cash'} onChange={e=>setDed(s.id,'payment_mode',e.target.value)}
-                                style={{ padding:'3px 5px', borderRadius:'4px', border:'.5px solid #d1d5db', fontSize:'11px', background:'white', width:'80px' }}>
-                                {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
-                              </select>
-                            </td>
-
-                            {/* Status badge */}
-                            <td style={{ padding:'4px 8px', textAlign:'center' }}>
-                              {isPaid
-                                ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Paid</span>
-                                : <span style={S.badge('#dc2626','#fee2e2')}>⏳ Unpaid</span>
-                              }
-                            </td>
-
-                            <td style={{ padding:'4px 6px', textAlign:'center' }}>
-                              <button onClick={()=>setSlipStaff(s)} style={{ ...S.btnSm('#1e3a5f'), padding:'3px 8px', fontSize:'11px' }}>Slip</button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ background:'#1e3a5f', color:'white' }}>
-                        {bulkMode && <td/>}
-                        <td colSpan={3} style={{ padding:'8px 12px', fontWeight:'600', fontSize:'12px', textAlign:'left' }}>Total — {filteredStaff.length} staff</td>
-                        <td colSpan={4}/>
-                        <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'600' }}>{fmt(regTotals.tG)}</td>
-                        <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tA)}</td>
-                        <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tL)}</td>
-                        <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tAd)}</td>
-                        <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tPf)}</td>
-                        <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'700' }}>{fmt(regTotals.tD)}</td>
-                        <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'700' }}>{fmt(regTotals.tN)}</td>
-                        <td colSpan={3}/>
-                      </tr>
-                    </tfoot>
-                  </table>
+                              <td style={{ padding:'6px 8px', textAlign:'right' }}>{fmt(s.basic_salary)}</td>
+                              <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.seniority_allowance?fmt(s.seniority_allowance):'—'}</td>
+                              <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.loyalty_bonus?fmt(s.loyalty_bonus):'—'}</td>
+                              <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.role_bonus?fmt(s.role_bonus):'—'}</td>
+                              <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'600', background:'#E6F1FB', color:'#0C447C' }}>{fmt(g)}</td>
+                              {[
+                                { field:'advance_deduction', style:{} },
+                                { field:'late_deduction', style:{} },
+                                { field:'admin_deduction', style:{ background:'#FFFBEB' } },
+                                { field:'pf_deduction', style:{ background:'#f5f3ff' } },
+                              ].map(({ field, style:iStyle }) => (
+                                <td key={`${s.id}-${field}`} style={{ padding:'4px 6px', textAlign:'center' }}>
+                                  <input type="number" min="0" value={d[field]||0} onChange={e=>setDed(s.id,field,e.target.value)}
+                                    style={{ width:'68px', padding:'3px 5px', borderRadius:'4px', border:'.5px solid #d1d5db', fontSize:'11px', textAlign:'right', ...iStyle }} />
+                                </td>
+                              ))}
+                              <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'600', background:'#FCEBEB', color:'#791F1F' }}>{td?fmt(td):'—'}</td>
+                              <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'700', background:'#EAF3DE', color:'#27500A', fontSize:'13px' }}>{fmt(net)}</td>
+                              <td style={{ padding:'4px 6px' }}>
+                                <select value={d.payment_mode||'Cash'} onChange={e=>setDed(s.id,'payment_mode',e.target.value)}
+                                  style={{ padding:'3px 5px', borderRadius:'4px', border:'.5px solid #d1d5db', fontSize:'11px', background:'white', width:'80px' }}>
+                                  {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
+                                </select>
+                              </td>
+                              <td style={{ padding:'4px 8px', textAlign:'center' }}>
+                                {isPaid
+                                  ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Paid</span>
+                                  : <span style={S.badge('#dc2626','#fee2e2')}>⏳ Unpaid</span>
+                                }
+                              </td>
+                              <td style={{ padding:'4px 6px', textAlign:'center' }}>
+                                <button onClick={()=>setSlipStaff(s)} style={{ ...S.btnSm('#1e3a5f'), padding:'3px 8px', fontSize:'11px' }}>Slip</button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background:'#1e3a5f', color:'white' }}>
+                          {bulkMode && <td/>}
+                          <td colSpan={3} style={{ padding:'8px 12px', fontWeight:'600', fontSize:'12px', textAlign:'left' }}>Total — {filteredStaff.length} staff</td>
+                          <td colSpan={4}/>
+                          <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'600' }}>{fmt(regTotals.tG)}</td>
+                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tA)}</td>
+                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tL)}</td>
+                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tAd)}</td>
+                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tPf)}</td>
+                          <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'700' }}>{fmt(regTotals.tD)}</td>
+                          <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'700' }}>{fmt(regTotals.tN)}</td>
+                          <td colSpan={3}/>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display:'flex', gap:'14px', flexWrap:'wrap', fontSize:'11px', color:'#64748b', padding:'8px 14px', borderTop:'.5px solid #e2e8f0' }}>
+                    {[['#E6F1FB','#185FA5','Gross'],['#FFFBEB','#C8960C','Admin ded'],['#f5f3ff','#7c3aed','PF'],['#FCEBEB','#A32D2D','Total ded'],['#EAF3DE','#3B6D11','Net salary'],['#f0fdf4','#16a34a','Paid row']].map(l=>(
+                      <span key={l[2]}><span style={{ width:'10px', height:'10px', borderRadius:'2px', display:'inline-block', marginRight:'4px', verticalAlign:'middle', background:l[0], border:`.5px solid ${l[1]}` }}/>{l[2]}</span>
+                    ))}
+                  </div>
                 </div>
-
-                {/* Legend */}
-                <div style={{ display:'flex', gap:'14px', flexWrap:'wrap', fontSize:'11px', color:'#64748b', padding:'8px 14px', borderTop:'.5px solid #e2e8f0' }}>
-                  {[['#E6F1FB','#185FA5','Gross'],['#FFFBEB','#C8960C','Admin ded'],['#f5f3ff','#7c3aed','PF'],['#FCEBEB','#A32D2D','Total ded'],['#EAF3DE','#3B6D11','Net salary'],['#f0fdf4','#16a34a','Paid row']].map(l=>(
-                    <span key={l[2]}><span style={{ width:'10px', height:'10px', borderRadius:'2px', display:'inline-block', marginRight:'4px', verticalAlign:'middle', background:l[0], border:`.5px solid ${l[1]}` }}/>{l[2]}</span>
-                  ))}
-                </div>
-              </div>
-            )
+              )
           }
         </>
       )}
@@ -786,47 +962,53 @@ export default function Salary() {
       {/* ══ TAB: PENDING ══ */}
       {activeTab==='pending' && (
         <>
-          <div style={{ display:'flex', gap:'12px', marginBottom:'20px', alignItems:'center' }}>
-            <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>⏳ Pending Payments</h2>
-            <input type="month" value={regMonth} onChange={e=>setRegMonth(e.target.value)} style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px' }} />
+          <div style={{ display:'flex', gap:'10px', marginBottom:'16px', alignItems:'center', flexWrap:'wrap' }}>
+            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>⏳ Pending Payments</h2>
+            <input type="month" value={regMonth} onChange={e=>setRegMonth(e.target.value)}
+              style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', flex: isMobile ? 1 : 'none' }} />
           </div>
-          <PendingDashboard staff={staff} salaryRows={salaryRows} regMonth={regMonth} onMarkPaid={handleMarkPaid} dedMap={dedMap} />
+          <PendingDashboard staff={staff} salaryRows={salaryRows} regMonth={regMonth} onMarkPaid={handleMarkPaid} dedMap={dedMap} isMobile={isMobile} />
         </>
       )}
 
       {/* ══ TAB: ADVANCES ══ */}
       {activeTab==='advances' && (
         <>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'8px' }}>
             <div>
-              <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>💳 Advance Salary</h2>
-              <p style={{ fontSize:'13px', color:'#64748b', margin:'4px 0 0' }}>Auto-deducted when saving salary register</p>
+              <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>💳 Advance Salary</h2>
+              {!isMobile && <p style={{ fontSize:'13px', color:'#64748b', margin:'4px 0 0' }}>Auto-deducted when saving salary register</p>}
             </div>
             <button onClick={()=>setShowAdvForm(!showAdvForm)} style={S.btn()}>{showAdvForm?'✖ Cancel':'➕ Issue Advance'}</button>
           </div>
 
           {showAdvForm && (
-            <div style={S.card}>
-              <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>Issue New Advance</h3>
+            <div style={isMobile ? S.cardMob : S.card}>
+              <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>Issue New Advance</h3>
               <form onSubmit={handleAddAdvance}>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', marginBottom:'16px' }}>
-                  <div><label style={S.lbl}>Staff Member</label>
+                <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap:'12px', marginBottom:'14px' }}>
+                  <div>
+                    <label style={S.lbl}>Staff Member</label>
                     <select value={advForm.staff_id} onChange={e=>setAdvForm({...advForm,staff_id:e.target.value})} required style={{ ...S.inp, background:'white' }}>
                       <option value="">— Select —</option>
                       {staff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
-                  <div><label style={S.lbl}>Amount (₹)</label>
+                  <div>
+                    <label style={S.lbl}>Amount (₹)</label>
                     <input type="number" min="1" required value={advForm.amount} onChange={e=>setAdvForm({...advForm,amount:e.target.value})} style={S.inp}/>
                   </div>
-                  <div><label style={S.lbl}>Issued Month</label>
+                  <div>
+                    <label style={S.lbl}>Issued Month</label>
                     <input type="month" value={advForm.issued_month} onChange={e=>setAdvForm({...advForm,issued_month:e.target.value})} style={S.inp}/>
                   </div>
-                  <div><label style={S.lbl}>Repay Over (months)</label>
+                  <div>
+                    <label style={S.lbl}>Repay Over (months)</label>
                     <input type="number" min="1" max="24" value={advForm.repay_months} onChange={e=>setAdvForm({...advForm,repay_months:e.target.value})} style={S.inp}/>
                     {advForm.amount&&Number(advForm.repay_months)>1&&<div style={{ fontSize:'12px', color:'#7c3aed', marginTop:'4px', fontWeight:'600' }}>≈ {fmt(Math.ceil(Number(advForm.amount)/Number(advForm.repay_months)))} / month</div>}
                   </div>
-                  <div style={{ gridColumn:'span 2' }}><label style={S.lbl}>Reason</label>
+                  <div style={{ gridColumn: isMobile ? 'auto' : 'span 2' }}>
+                    <label style={S.lbl}>Reason</label>
                     <input value={advForm.reason} onChange={e=>setAdvForm({...advForm,reason:e.target.value})} placeholder="Medical / Festival / Personal..." style={S.inp}/>
                   </div>
                 </div>
@@ -836,89 +1018,128 @@ export default function Salary() {
           )}
 
           {/* Advance summary cards */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'14px', marginBottom:'20px' }}>
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap:'10px', marginBottom:'16px' }}>
             {[
               { label:'Active Advances', value:advances.filter(a=>a.status==='Active').length, color:'#f59e0b', bg:'#fef3c7', icon:'💳', money:false },
               { label:'Total Advanced', value:advances.reduce((s,a)=>s+Number(a.amount),0), color:'#0C447C', bg:'#E6F1FB', icon:'💰', money:true },
               { label:'Outstanding', value:totalAdvOut, color:'#dc2626', bg:'#fee2e2', icon:'⚠️', money:true },
             ].map(c=>(
               <div key={c.label} style={S.statCard(c.color, c.bg)}>
-                <div style={{ fontSize:'20px', marginBottom:'4px' }}>{c.icon}</div>
+                <div style={{ fontSize:'18px', marginBottom:'2px' }}>{c.icon}</div>
                 <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-                <h2 style={{ fontSize:'22px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.money?fmt(c.value):c.value}</h2>
+                <h2 style={{ fontSize:'20px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.money?fmt(c.value):c.value}</h2>
               </div>
             ))}
           </div>
 
-          <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
-              <thead>
-                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                  {['#','Staff','Amount','Repaid','Remaining','Per Month','Issued','Over','Reason','Status',''].map(h=>(
-                    <th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {advances.map((a,i) => {
-                  const s=staff.find(x=>String(x.id)===String(a.staff_id))
-                  const rem=Number(a.amount)-Number(a.repaid_amount), pm=Number(a.repay_months)>0?Math.ceil(rem/Number(a.repay_months)):rem
-                  const pct2=Math.min(100,Math.round((Number(a.repaid_amount)/Number(a.amount))*100))
-                  return (
-                    <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                      <td style={{ padding:'10px 12px', color:'#94a3b8' }}>{i+1}</td>
-                      <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>{s?.name||'—'}</td>
-                      <td style={{ padding:'10px 12px', fontWeight:'700' }}>{fmt(a.amount)}</td>
-                      <td style={{ padding:'10px 12px' }}>
-                        <div style={{ color:'#16a34a', fontWeight:'600' }}>{fmt(a.repaid_amount)}</div>
-                        <div style={{ marginTop:'4px', height:'4px', background:'#e2e8f0', borderRadius:'2px', overflow:'hidden', width:'60px' }}>
-                          <div style={{ height:'100%', width:`${pct2}%`, background:'#16a34a' }}/>
-                        </div>
-                      </td>
-                      <td style={{ padding:'10px 12px', fontWeight:'700', color:rem>0?'#dc2626':'#16a34a' }}>{fmt(rem)}</td>
-                      <td style={{ padding:'10px 12px', color:'#7c3aed', fontWeight:'600' }}>{rem>0?fmt(Math.min(pm,rem)):'—'}</td>
-                      <td style={{ padding:'10px 12px', color:'#64748b' }}>{a.issued_month}</td>
-                      <td style={{ padding:'10px 12px', color:'#64748b' }}>{a.repay_months} mo</td>
-                      <td style={{ padding:'10px 12px', color:'#64748b', maxWidth:'120px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.reason||'—'}</td>
-                      <td style={{ padding:'10px 12px' }}>
+          {/* Advances list — cards on mobile, table on desktop */}
+          {isMobile ? (
+            <div>
+              {advances.map((a,i) => {
+                const s=staff.find(x=>String(x.id)===String(a.staff_id))
+                const rem=Number(a.amount)-Number(a.repaid_amount), pm=Number(a.repay_months)>0?Math.ceil(rem/Number(a.repay_months)):rem
+                const pct2=Math.min(100,Math.round((Number(a.repaid_amount)/Number(a.amount))*100))
+                return (
+                  <div key={a.id} style={{ ...S.cardMob, border:'1px solid #e2e8f0', borderLeft:`4px solid ${a.status==='Active'?'#f59e0b':'#16a34a'}` }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'8px' }}>
+                      <div>
+                        <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'13px' }}>{s?.name||'—'}</div>
+                        <div style={{ fontSize:'11px', color:'#64748b' }}>{a.reason||'—'} · {a.issued_month}</div>
+                      </div>
+                      <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
                         <span style={{ padding:'3px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'600', background:a.status==='Active'?'#fef3c7':'#dcfce7', color:a.status==='Active'?'#b45309':'#16a34a' }}>{a.status}</span>
-                      </td>
-                      <td style={{ padding:'10px 12px' }}>
                         <button onClick={()=>handleDeleteAdvance(a.id)} style={S.btnSm('#dc2626')}>🗑</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {advances.length===0 && <tr><td colSpan={11} style={{ padding:'32px', textAlign:'center', color:'#94a3b8' }}>No advance records</td></tr>}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'6px', marginBottom:'8px' }}>
+                      {[['Amount',fmt(a.amount),'#1e293b'],['Repaid',fmt(a.repaid_amount),'#16a34a'],['Remaining',fmt(rem),rem>0?'#dc2626':'#16a34a']].map(([l,v,c])=>(
+                        <div key={l} style={{ textAlign:'center', background:'#f8fafc', borderRadius:'6px', padding:'5px' }}>
+                          <div style={{ fontSize:'10px', color:'#64748b' }}>{l}</div>
+                          <div style={{ fontSize:'13px', fontWeight:'700', color:c }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ height:'6px', background:'#e2e8f0', borderRadius:'3px', overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${pct2}%`, background:'#16a34a', transition:'width 0.3s' }}/>
+                    </div>
+                    <div style={{ fontSize:'11px', color:'#64748b', marginTop:'4px' }}>
+                      {rem>0 ? `≈ ${fmt(Math.min(pm,rem))} / month · ${a.repay_months} mo total` : 'Fully repaid'}
+                    </div>
+                  </div>
+                )
+              })}
+              {advances.length===0 && <div style={{ textAlign:'center', padding:'32px', color:'#94a3b8' }}>No advance records</div>}
+            </div>
+          ) : (
+            <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                    {['#','Staff','Amount','Repaid','Remaining','Per Month','Issued','Over','Reason','Status',''].map(h=>(
+                      <th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {advances.map((a,i) => {
+                    const s=staff.find(x=>String(x.id)===String(a.staff_id))
+                    const rem=Number(a.amount)-Number(a.repaid_amount), pm=Number(a.repay_months)>0?Math.ceil(rem/Number(a.repay_months)):rem
+                    const pct2=Math.min(100,Math.round((Number(a.repaid_amount)/Number(a.amount))*100))
+                    return (
+                      <tr key={a.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                        <td style={{ padding:'10px 12px', color:'#94a3b8' }}>{i+1}</td>
+                        <td style={{ padding:'10px 12px', fontWeight:'600', color:'#1e293b' }}>{s?.name||'—'}</td>
+                        <td style={{ padding:'10px 12px', fontWeight:'700' }}>{fmt(a.amount)}</td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <div style={{ color:'#16a34a', fontWeight:'600' }}>{fmt(a.repaid_amount)}</div>
+                          <div style={{ marginTop:'4px', height:'4px', background:'#e2e8f0', borderRadius:'2px', overflow:'hidden', width:'60px' }}>
+                            <div style={{ height:'100%', width:`${pct2}%`, background:'#16a34a' }}/>
+                          </div>
+                        </td>
+                        <td style={{ padding:'10px 12px', fontWeight:'700', color:rem>0?'#dc2626':'#16a34a' }}>{fmt(rem)}</td>
+                        <td style={{ padding:'10px 12px', color:'#7c3aed', fontWeight:'600' }}>{rem>0?fmt(Math.min(pm,rem)):'—'}</td>
+                        <td style={{ padding:'10px 12px', color:'#64748b' }}>{a.issued_month}</td>
+                        <td style={{ padding:'10px 12px', color:'#64748b' }}>{a.repay_months} mo</td>
+                        <td style={{ padding:'10px 12px', color:'#64748b', maxWidth:'120px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.reason||'—'}</td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <span style={{ padding:'3px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'600', background:a.status==='Active'?'#fef3c7':'#dcfce7', color:a.status==='Active'?'#b45309':'#16a34a' }}>{a.status}</span>
+                        </td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <button onClick={()=>handleDeleteAdvance(a.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {advances.length===0 && <tr><td colSpan={11} style={{ padding:'32px', textAlign:'center', color:'#94a3b8' }}>No advance records</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 
       {/* ══ TAB: HISTORY ══ */}
       {activeTab==='history' && (
         <>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'12px' }}>
-            <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📅 Salary History</h2>
-            <div style={{ display:'flex', gap:'10px', alignItems:'center', flexWrap:'wrap' }}>
-              <select value={histStaffId} onChange={e=>setHistStaffId(e.target.value)} style={{ padding:'8px 12px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'14px', background:'white', minWidth:'200px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
+            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📅 Salary History</h2>
+            <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap', flex: isMobile ? '1 1 100%' : 'none' }}>
+              <select value={histStaffId} onChange={e=>setHistStaffId(e.target.value)}
+                style={{ ...S.inpSm, flex:1, minWidth:'0' }}>
                 <option value="">— Select Staff —</option>
                 {staff.map(s=><option key={s.id} value={s.id}>{s.name} ({s.designation||s.department})</option>)}
               </select>
               {histStaffId && (
-                <>
-                  <span style={{ fontSize:'13px', color:'#64748b' }}>Compare with:</span>
-                  <input type="month" value={compareMonth} onChange={e=>setCompareMonth(e.target.value)} style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px' }} placeholder="Pick month to compare" />
-                </>
+                <input type="month" value={compareMonth} onChange={e=>setCompareMonth(e.target.value)}
+                  style={{ ...S.inpSm, flex:1, minWidth:'0' }} placeholder="Compare month" />
               )}
             </div>
           </div>
 
           {histStaffId && historyData.length>0 && (
             <>
-              {/* Quick stats for this staff */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'14px', marginBottom:'20px' }}>
+              {/* Quick stats — 2 cols on mobile */}
+              <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'10px', marginBottom:'16px' }}>
                 {[
                   { label:'Records', value:historyData.length, color:'#1e3a5f', bg:'#eff6ff', icon:'📋', money:false },
                   { label:'Total Earned', value:historyData.reduce((a,r)=>a+(r.net_salary||0),0), color:'#16a34a', bg:'#dcfce7', icon:'💰', money:true },
@@ -926,39 +1147,36 @@ export default function Salary() {
                   { label:'Highest Month', value:Math.max(...historyData.map(r=>r.net_salary||0)), color:'#ca8a04', bg:'#fef9c3', icon:'🏆', money:true },
                 ].map(c=>(
                   <div key={c.label} style={S.statCard(c.color, c.bg)}>
-                    <div style={{ fontSize:'18px', marginBottom:'4px' }}>{c.icon}</div>
-                    <p style={{ fontSize:'12px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
-                    <h2 style={{ fontSize:'20px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.money?fmt(c.value):c.value}</h2>
+                    <div style={{ fontSize:'16px', marginBottom:'2px' }}>{c.icon}</div>
+                    <p style={{ fontSize:'11px', color:c.color, fontWeight:'600', margin:0 }}>{c.label}</p>
+                    <h2 style={{ fontSize: isMobile ? '15px' : '19px', fontWeight:'bold', color:c.color, margin:'2px 0 0' }}>{c.money?fmt(c.value):c.value}</h2>
                   </div>
                 ))}
               </div>
 
               {/* Trend chart */}
-              <div style={S.card}>
-                <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>Net Salary Trend</h3>
-                <div style={{ display:'flex', alignItems:'flex-end', gap:'8px', height:'120px', overflowX:'auto' }}>
-                  {[...historyData].reverse().map(r => {
-                    const maxNet=Math.max(...historyData.map(x=>x.net_salary))
-                    const h=Math.max(16,(r.net_salary/maxNet)*110)
-                    const isCmp=compareMonth&&r.month===compareMonth
-                    return (
-                      <div key={r.month} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', minWidth:'52px' }}>
-                        <div style={{ fontSize:'10px', fontWeight:'700', color:'#1e3a5f' }}>{fmt(r.net_salary)}</div>
-                        <div style={{ width:'100%', height:`${h}px`, background:isCmp?'#f59e0b':r.status==='Paid'?'#1e3a5f':'#94a3b8', borderRadius:'4px 4px 0 0', transition:'height 0.3s' }} title={r.month}/>
-                        <div style={{ fontSize:'10px', color:'#94a3b8' }}>{r.month.slice(5)}/{r.month.slice(2,4)}</div>
-                        {isCmp && <div style={{ fontSize:'9px', color:'#f59e0b', fontWeight:'700' }}>★ CMP</div>}
-                      </div>
-                    )
-                  })}
-                </div>
-                {compareMonth && (
-                  <div style={{ fontSize:'12px', color:'#f59e0b', marginTop:'8px', fontWeight:'600' }}>
-                    🔶 Highlighted bar = {fmtMonth(compareMonth)} (compare month)
+              <div style={isMobile ? S.cardMob : S.card}>
+                <h3 style={{ fontSize:'13px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>Net Salary Trend</h3>
+                <div style={{ overflowX:'auto' }}>
+                  <div style={{ display:'flex', alignItems:'flex-end', gap:'6px', height:'110px', minWidth: isMobile ? `${historyData.length*52}px` : 'auto' }}>
+                    {[...historyData].reverse().map(r => {
+                      const maxNet=Math.max(...historyData.map(x=>x.net_salary))
+                      const h=Math.max(16,(r.net_salary/maxNet)*100)
+                      const isCmp=compareMonth&&r.month===compareMonth
+                      return (
+                        <div key={r.month} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', minWidth:'44px' }}>
+                          <div style={{ fontSize:'9px', fontWeight:'700', color:'#1e3a5f', textAlign:'center' }}>{fmt(r.net_salary)}</div>
+                          <div style={{ width:'100%', height:`${h}px`, background:isCmp?'#f59e0b':r.status==='Paid'?'#1e3a5f':'#94a3b8', borderRadius:'4px 4px 0 0' }} title={r.month}/>
+                          <div style={{ fontSize:'9px', color:'#94a3b8' }}>{r.month.slice(5)}/{r.month.slice(2,4)}</div>
+                          {isCmp && <div style={{ fontSize:'9px', color:'#f59e0b', fontWeight:'700' }}>★</div>}
+                        </div>
+                      )
+                    })}
                   </div>
-                )}
+                </div>
               </div>
 
-              {/* Year-over-year comparison */}
+              {/* YoY comparison */}
               {compareMonth && (() => {
                 const cmpRow=historyData.find(r=>r.month===compareMonth)
                 const [cy,cm2]=compareMonth.split('-').map(Number)
@@ -966,32 +1184,32 @@ export default function Salary() {
                 const prevRow=historyData.find(r=>r.month===prevYear)
                 if (!cmpRow) return null
                 return (
-                  <div style={S.card}>
-                    <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>📊 Year-over-Year: {fmtMonth(compareMonth)} vs {fmtMonth(prevYear)}</h3>
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+                  <div style={isMobile ? S.cardMob : S.card}>
+                    <h3 style={{ fontSize:'13px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>📊 YoY: {fmtMonth(compareMonth)} vs {fmtMonth(prevYear)}</h3>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                       {[['This Year',cmpRow],['Last Year',prevRow]].map(([label,row])=>(
-                        <div key={label} style={{ padding:'16px', border:'1px solid #e2e8f0', borderRadius:'10px', background:row?'white':'#f8fafc' }}>
-                          <div style={{ fontWeight:'700', color:'#1e3a5f', marginBottom:'12px' }}>{label} — {row?fmtMonth(row.month):'No data'}</div>
+                        <div key={label} style={{ padding:'12px', border:'1px solid #e2e8f0', borderRadius:'8px', background:row?'white':'#f8fafc' }}>
+                          <div style={{ fontWeight:'700', color:'#1e3a5f', marginBottom:'10px', fontSize:'13px' }}>{label} — {row?fmtMonth(row.month):'No data'}</div>
                           {row ? (
-                            <div style={{ display:'flex', flexDirection:'column', gap:'6px', fontSize:'13px' }}>
+                            <div style={{ display:'flex', flexDirection:'column', gap:'5px', fontSize:'12px' }}>
                               {[['Gross',((row.basic_salary||0)+(row.seniority_allowance||0)+(row.loyalty_bonus||0)+(row.role_bonus||0)),'#0C447C'],['Deductions',((row.advance_deduction||0)+(row.late_deduction||0)+(row.admin_deduction||0)),'#A32D2D'],['Net',row.net_salary,'#27500A']].map(([l,v,c])=>(
                                 <div key={l} style={{ display:'flex', justifyContent:'space-between' }}>
                                   <span style={{ color:'#64748b' }}>{l}</span>
                                   <span style={{ fontWeight:'700', color:c }}>{fmt(v)}</span>
                                 </div>
                               ))}
-                              <div style={{ marginTop:'6px' }}>
+                              <div style={{ marginTop:'4px' }}>
                                 <span style={S.badge(row.status==='Paid'?'#16a34a':'#dc2626',row.status==='Paid'?'#dcfce7':'#fee2e2')}>{row.status}</span>
                               </div>
                             </div>
-                          ) : <div style={{ color:'#94a3b8', fontSize:'13px' }}>No record for this period</div>}
+                          ) : <div style={{ color:'#94a3b8', fontSize:'12px' }}>No record for this period</div>}
                         </div>
                       ))}
                     </div>
                     {prevRow&&cmpRow && (
-                      <div style={{ marginTop:'12px', padding:'10px 14px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', fontSize:'13px' }}>
-                        <span style={{ color:'#374151' }}>Net salary change: </span>
-                        <span style={{ fontWeight:'800', color:(cmpRow.net_salary-prevRow.net_salary)>=0?'#16a34a':'#dc2626', fontSize:'16px' }}>
+                      <div style={{ marginTop:'10px', padding:'10px 12px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', fontSize:'12px' }}>
+                        <span style={{ color:'#374151' }}>Net change: </span>
+                        <span style={{ fontWeight:'800', color:(cmpRow.net_salary-prevRow.net_salary)>=0?'#16a34a':'#dc2626', fontSize:'15px' }}>
                           {(cmpRow.net_salary-prevRow.net_salary)>=0?'+':''}{fmt(cmpRow.net_salary-prevRow.net_salary)}
                         </span>
                         <span style={{ color:'#64748b', marginLeft:'8px' }}>({Math.round(((cmpRow.net_salary-prevRow.net_salary)/prevRow.net_salary)*100)}%)</span>
@@ -1001,53 +1219,88 @@ export default function Salary() {
                 )
               })()}
 
-              {/* History table */}
-              <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
-                  <thead>
-                    <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                      {['Month','Basic','Seniority','Loyalty','Role','Gross','Adv Ded','Late','Admin','PF','Net','Pay Mode','Status','Actions'].map(h=>(
-                        <th key={h} style={{ padding:'11px 10px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historyData.map(r => {
-                      const s=staff.find(x=>String(x.id)===String(r.staff_id))
-                      const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
-                      const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, payment_mode:r.payment_mode }
-                      const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,_dedOverride:dedR,_monthOverride:r.month}:null
-                      const isCmp=compareMonth&&r.month===compareMonth
-                      return (
-                        <tr key={r.id} style={{ borderBottom:'1px solid #f1f5f9', background:isCmp?'#fefce8':'white' }}>
-                          <td style={{ padding:'10px', fontWeight:'600', color:'#1e293b' }}>{r.month}{isCmp&&<span style={{ ...S.badge('#f59e0b','#fef9c3'), marginLeft:'6px' }}>★</span>}</td>
-                          <td style={{ padding:'10px' }}>{fmt(r.basic_salary)}</td>
-                          <td style={{ padding:'10px', color:'#64748b' }}>{fmt(r.seniority_allowance)}</td>
-                          <td style={{ padding:'10px', color:'#64748b' }}>{fmt(r.loyalty_bonus)}</td>
-                          <td style={{ padding:'10px', color:'#64748b' }}>{fmt(r.role_bonus)}</td>
-                          <td style={{ padding:'10px', color:'#0C447C', fontWeight:'700', background:'#E6F1FB' }}>{fmt(g)}</td>
-                          <td style={{ padding:'10px', color:'#f59e0b', fontWeight:'600' }}>{fmt(r.advance_deduction)}</td>
-                          <td style={{ padding:'10px', color:'#dc2626', fontWeight:'600' }}>{fmt(r.late_deduction)}</td>
-                          <td style={{ padding:'10px', color:'#B8860B', fontWeight:'600' }}>{fmt(r.admin_deduction)}</td>
-                          <td style={{ padding:'10px', color:'#7c3aed', fontWeight:'600' }}>{fmt(r.pf_deduction||0)}</td>
-                          <td style={{ padding:'10px', fontWeight:'800', color:'#27500A', fontSize:'14px', background:'#EAF3DE' }}>{fmt(r.net_salary)}</td>
-                          <td style={{ padding:'10px', color:'#64748b' }}>{r.payment_mode||'—'}</td>
-                          <td style={{ padding:'10px' }}>
-                            <span style={{ padding:'3px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'600', background:r.status==='Paid'?'#dcfce7':'#fee2e2', color:r.status==='Paid'?'#16a34a':'#dc2626' }}>{r.status}</span>
-                          </td>
-                          <td style={{ padding:'10px' }}>
-                            <div style={{ display:'flex', gap:'4px' }}>
-                              {sForSlip&&<button onClick={()=>setSlipStaff(sForSlip)} style={S.btnSm('#1e3a5f')}>🧾</button>}
-                              {r.status!=='Paid'&&<button onClick={()=>handleMarkPaid(r.id,r.payment_mode)} style={S.btnSm('#16a34a')}>✅</button>}
-                              <button onClick={()=>handleDeleteSalary(r.id)} style={S.btnSm('#dc2626')}>🗑</button>
+              {/* History — cards on mobile, table on desktop */}
+              {isMobile ? (
+                <div>
+                  {historyData.map(r => {
+                    const s=staff.find(x=>String(x.id)===String(r.staff_id))
+                    const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
+                    const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, payment_mode:r.payment_mode }
+                    const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,_dedOverride:dedR,_monthOverride:r.month}:null
+                    const isCmp=compareMonth&&r.month===compareMonth
+                    return (
+                      <div key={r.id} style={{ ...S.cardMob, border:`1px solid ${isCmp?'#f59e0b':'#e2e8f0'}`, background: isCmp ? '#fefce8' : 'white', borderLeft:`4px solid ${r.status==='Paid'?'#16a34a':'#dc2626'}` }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+                          <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'13px' }}>
+                            {r.month} {isCmp && <span style={S.badge('#f59e0b','#fef9c3')}>★ Compare</span>}
+                          </div>
+                          <span style={{ padding:'3px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'600', background:r.status==='Paid'?'#dcfce7':'#fee2e2', color:r.status==='Paid'?'#16a34a':'#dc2626' }}>{r.status}</span>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'6px', marginBottom:'8px' }}>
+                          {[['Gross',g,'#0C447C'],['Net',r.net_salary,'#27500A'],['Via',r.payment_mode||'—','#64748b']].map(([l,v,c])=>(
+                            <div key={l} style={{ textAlign:'center', background:'#f8fafc', borderRadius:'6px', padding:'5px' }}>
+                              <div style={{ fontSize:'10px', color:'#64748b' }}>{l}</div>
+                              <div style={{ fontSize:'12px', fontWeight:'700', color:c }}>{typeof v === 'number' ? fmt(v) : v}</div>
                             </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          ))}
+                        </div>
+                        <div style={{ display:'flex', gap:'6px' }}>
+                          {sForSlip && <button onClick={()=>setSlipStaff(sForSlip)} style={{ ...S.btnSm('#1e3a5f'), flex:1 }}>🧾 Slip</button>}
+                          {r.status!=='Paid' && <button onClick={()=>handleMarkPaid(r.id,r.payment_mode)} style={{ ...S.btnSm('#16a34a'), flex:1 }}>✅ Mark Paid</button>}
+                          <button onClick={()=>handleDeleteSalary(r.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                    <thead>
+                      <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                        {['Month','Basic','Seniority','Loyalty','Role','Gross','Adv Ded','Late','Admin','PF','Net','Pay Mode','Status','Actions'].map(h=>(
+                          <th key={h} style={{ padding:'11px 10px', textAlign:'left', fontWeight:'600', color:'#374151', fontSize:'12px' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyData.map(r => {
+                        const s=staff.find(x=>String(x.id)===String(r.staff_id))
+                        const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
+                        const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, payment_mode:r.payment_mode }
+                        const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,_dedOverride:dedR,_monthOverride:r.month}:null
+                        const isCmp=compareMonth&&r.month===compareMonth
+                        return (
+                          <tr key={r.id} style={{ borderBottom:'1px solid #f1f5f9', background:isCmp?'#fefce8':'white' }}>
+                            <td style={{ padding:'10px', fontWeight:'600', color:'#1e293b' }}>{r.month}{isCmp&&<span style={{ ...S.badge('#f59e0b','#fef9c3'), marginLeft:'6px' }}>★</span>}</td>
+                            <td style={{ padding:'10px' }}>{fmt(r.basic_salary)}</td>
+                            <td style={{ padding:'10px', color:'#64748b' }}>{fmt(r.seniority_allowance)}</td>
+                            <td style={{ padding:'10px', color:'#64748b' }}>{fmt(r.loyalty_bonus)}</td>
+                            <td style={{ padding:'10px', color:'#64748b' }}>{fmt(r.role_bonus)}</td>
+                            <td style={{ padding:'10px', color:'#0C447C', fontWeight:'700', background:'#E6F1FB' }}>{fmt(g)}</td>
+                            <td style={{ padding:'10px', color:'#f59e0b', fontWeight:'600' }}>{fmt(r.advance_deduction)}</td>
+                            <td style={{ padding:'10px', color:'#dc2626', fontWeight:'600' }}>{fmt(r.late_deduction)}</td>
+                            <td style={{ padding:'10px', color:'#B8860B', fontWeight:'600' }}>{fmt(r.admin_deduction)}</td>
+                            <td style={{ padding:'10px', color:'#7c3aed', fontWeight:'600' }}>{fmt(r.pf_deduction||0)}</td>
+                            <td style={{ padding:'10px', fontWeight:'800', color:'#27500A', fontSize:'14px', background:'#EAF3DE' }}>{fmt(r.net_salary)}</td>
+                            <td style={{ padding:'10px', color:'#64748b' }}>{r.payment_mode||'—'}</td>
+                            <td style={{ padding:'10px' }}>
+                              <span style={{ padding:'3px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:'600', background:r.status==='Paid'?'#dcfce7':'#fee2e2', color:r.status==='Paid'?'#16a34a':'#dc2626' }}>{r.status}</span>
+                            </td>
+                            <td style={{ padding:'10px' }}>
+                              <div style={{ display:'flex', gap:'4px' }}>
+                                {sForSlip&&<button onClick={()=>setSlipStaff(sForSlip)} style={S.btnSm('#1e3a5f')}>🧾</button>}
+                                {r.status!=='Paid'&&<button onClick={()=>handleMarkPaid(r.id,r.payment_mode)} style={S.btnSm('#16a34a')}>✅</button>}
+                                <button onClick={()=>handleDeleteSalary(r.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
           {histStaffId&&historyData.length===0&&<div style={{ textAlign:'center', padding:'48px', color:'#94a3b8' }}>No salary records for this staff member.</div>}
@@ -1058,11 +1311,11 @@ export default function Salary() {
       {/* ══ TAB: ANNUAL SUMMARY ══ */}
       {activeTab==='annual' && (
         <>
-          <div style={{ marginBottom:'20px' }}>
-            <h2 style={{ fontSize:'17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📆 Annual Summary</h2>
-            <p style={{ fontSize:'13px', color:'#64748b', margin:'4px 0 0' }}>Financial year overview · Month-by-month trend · Staff totals</p>
+          <div style={{ marginBottom:'16px' }}>
+            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📆 Annual Summary</h2>
+            {!isMobile && <p style={{ fontSize:'13px', color:'#64748b', margin:'4px 0 0' }}>Financial year overview · Month-by-month trend · Staff totals</p>}
           </div>
-          <AnnualSummary staff={staff} salaryRows={salaryRows} />
+          <AnnualSummary staff={staff} salaryRows={salaryRows} isMobile={isMobile} />
         </>
       )}
 
