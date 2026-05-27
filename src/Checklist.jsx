@@ -14,9 +14,9 @@ const db = {
     if (error) throw error;
     return (data || []).map(s => ({
       ...s,
-      role: s.role === "Teaching + Admin" || s.role === "Administrator" ? "admin"
-          : s.role === "incharge" ? "incharge"
-          : "staff",
+      role: ["Teaching + Admin","Administrator","admin","Admin"].includes(s.role) ? "admin"
+    : ["incharge","Incharge","In-charge","manager","Manager"].includes(s.role) ? "incharge"
+    : "staff",
     }));
   },
 
@@ -1308,8 +1308,17 @@ export default function Checklist({ currentUser: portalUser }) {
         if (portalUser?.staff_profile_id) activeUser = usersData.find(u => u.id === portalUser.staff_profile_id);
         if (!activeUser && portalUser?.id && typeof portalUser.id === "number") activeUser = usersData.find(u => u.id === portalUser.id);
         if (!activeUser && portalUser?.name) activeUser = usersData.find(u => u.name === portalUser.name);
-        if (!activeUser && (portalUser?.role?.toLowerCase() === "admin" || portalUser?.role === "Administrator")) activeUser = usersData.find(u => u.role === "admin");
         if (!activeUser) activeUser = usersData[0];
+      }
+
+      // Portal session role overrides DB role — portal is authoritative
+      if (activeUser && portalUser?.role) {
+        const pr = portalUser.role.toLowerCase();
+        if (["admin","administrator"].includes(pr)) {
+          activeUser = { ...activeUser, role: "admin" };
+        } else if (["incharge","in-charge","manager"].includes(pr)) {
+          activeUser = { ...activeUser, role: "incharge" };
+        }
       }
       if (!mountedRef.current) return;
       setCurrentUser(activeUser);
