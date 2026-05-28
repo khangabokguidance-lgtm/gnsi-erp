@@ -662,6 +662,22 @@ useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
 useEffect(() => {
   if (currentUser) loadPermissions(currentUser.role)
 }, [currentUser])
+useEffect(() => {
+  window.history.pushState({ page: active }, '', window.location.href)
+}, [active])
+
+useEffect(() => {
+  const handleBack = (e) => {
+    if (e.state?.page && e.state.page !== active) {
+      setActive(e.state.page)
+      window.history.pushState({ page: e.state.page }, '', window.location.href)
+    } else {
+      window.history.pushState(null, '', window.location.href)
+    }
+  }
+  window.addEventListener('popstate', handleBack)
+  return () => window.removeEventListener('popstate', handleBack)
+}, [active])
 
 if (!currentUser) return <Login onLogin={handleLogin} />
   if (permLoading)  return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
