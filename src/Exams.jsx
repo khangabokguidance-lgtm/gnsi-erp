@@ -3665,27 +3665,114 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
 // ─── EXAM HUB HEADER ──────────────────────────────────────────────────────────
 function ExamHubHeader({ institute, students, courses, examTypes, currentUser }) {
   const isMobile = useMobile();
+
+  const stats = [
+    { label: "Students",   val: students.length,   icon: "👤", color: "#60a5fa" },
+    { label: "Batches",    val: courses.length,     icon: "📚", color: "#34d399" },
+    { label: "Exam Types", val: examTypes.length,   icon: "📝", color: "#f0c040" },
+    { label: "Role",       val: currentUser?.role || "Admin", icon: "🔑", color: "#c084fc" },
+  ];
+
   return (
-    <div style={{ background: "linear-gradient(135deg,#1a3c2e 0%,#2A5C45 60%,#3a7a5c 100%)", padding: isMobile ? "14px 16px" : "20px 28px", color: "white", position: "relative" }}>
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg,#B8860B,#f0c040,#B8860B)" }} />
-      <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontSize: isMobile ? 26 : 32 }}>🎓</div>
+    <div style={{
+      background: "#0d1b2a",
+      borderBottom: "1px solid rgba(255,255,255,0.07)",
+      position: "relative",
+    }}>
+      {/* Gold accent line at top */}
+      <div style={{ height: 3, background: "linear-gradient(90deg,#B8860B 0%,#f0c040 50%,#B8860B 100%)" }} />
+
+      <div style={{ padding: isMobile ? "12px 14px" : "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+
+        {/* Left: icon + title */}
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14 }}>
+          {/* Hexagon-style badge */}
+          <div style={{
+            width: isMobile ? 38 : 46, height: isMobile ? 38 : 46,
+            borderRadius: 10,
+            background: "linear-gradient(135deg,#1a3c2e,#2A5C45)",
+            border: "1.5px solid rgba(184,134,11,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: isMobile ? 18 : 22,
+            flexShrink: 0,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+          }}>🎓</div>
+
           <div>
-            <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: isMobile ? 18 : 22, fontWeight: 400 }}>Exam HUB</div>
-            <div style={{ fontSize: isMobile ? 11 : 12, opacity: 0.75, marginTop: 2 }}>{institute.name} · Per-Batch Examination Management</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{
+                fontFamily: "'DM Sans',sans-serif",
+                fontWeight: 700,
+                fontSize: isMobile ? 16 : 20,
+                color: "white",
+                letterSpacing: "-.2px",
+              }}>Exam</span>
+              <span style={{
+                fontFamily: "'DM Sans',sans-serif",
+                fontWeight: 700,
+                fontSize: isMobile ? 16 : 20,
+                color: "#f0c040",
+                letterSpacing: "-.2px",
+              }}>HUB</span>
+              <span style={{
+                fontSize: isMobile ? 9 : 10,
+                fontWeight: 600,
+                letterSpacing: "2px",
+                color: "rgba(255,255,255,0.35)",
+                textTransform: "uppercase",
+                marginLeft: 2,
+              }}>PRO</span>
+            </div>
+            <div style={{
+              fontSize: isMobile ? 10 : 11,
+              color: "rgba(255,255,255,0.45)",
+              marginTop: 1,
+              fontWeight: 400,
+            }}>
+              {isMobile ? "Per-Batch Exam Management" : `${institute.name} · Per-Batch Examination Management`}
+            </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: isMobile ? "8px 20px" : "0 24px" }}>
-          {[
-            { label: "Students",   val: students.length },
-            { label: "Batches",    val: courses.length },
-            { label: "Exam Types", val: examTypes.length },
-            { label: "Role",       val: currentUser?.role || "Admin" },
-          ].map(s => (
-            <div key={s.label} style={{ textAlign: isMobile ? "left" : "center" }}>
-              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: isMobile ? 18 : 22, fontWeight: 600 }}>{s.val}</div>
-              <div style={{ fontSize: isMobile ? 9 : 10, opacity: 0.7, textTransform: "uppercase", letterSpacing: ".06em" }}>{s.label}</div>
+
+        {/* Right: stat chips */}
+        <div style={{
+          display: "flex",
+          gap: isMobile ? 6 : 10,
+          flexWrap: isMobile ? "wrap" : "nowrap",
+        }}>
+          {stats.map(s => (
+            <div key={s.label} style={{
+              display: "flex",
+              flexDirection: isMobile ? "row" : "column",
+              alignItems: isMobile ? "center" : "center",
+              gap: isMobile ? 5 : 2,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 8,
+              padding: isMobile ? "5px 10px" : "8px 14px",
+              minWidth: isMobile ? 0 : 68,
+            }}>
+              <div style={{ fontSize: isMobile ? 11 : 10, color: s.color }}>{s.icon}</div>
+              <div style={{
+                fontFamily: "'DM Sans',sans-serif",
+                fontSize: isMobile ? 13 : 20,
+                fontWeight: 700,
+                color: "white",
+                lineHeight: 1,
+              }}>{s.val}</div>
+              {!isMobile && (
+                <div style={{
+                  fontSize: 9,
+                  fontWeight: 600,
+                  color: "rgba(255,255,255,0.4)",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                  marginTop: 2,
+                }}>{s.label}</div>
+              )}
+              {isMobile && (
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{s.label}</div>
+              )}
             </div>
           ))}
         </div>
