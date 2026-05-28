@@ -2575,7 +2575,7 @@ function TabRemediation({ logs, courseData }) {
 
 function Teaching({ currentUser }) {
   // FIX-11: filter tabs by role
-  const userRole = currentUser?.role || 'viewer'
+  const userRole = currentUser?.role?.toLowerCase() || 'viewer'
   const TABS = ALL_TABS.filter(t => (TAB_ROLES[t.key]||[]).includes(userRole))
 
   const [activeTab, setActiveTab] = useState(() => {
