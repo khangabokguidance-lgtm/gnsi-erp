@@ -623,7 +623,15 @@ function AccessDenied() {
 }
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null)
+  const [currentUser, setCurrentUser] = useState(() => {
+  try {
+    const s = localStorage.getItem('gnsi_session')
+    if (!s) return null
+    const p = JSON.parse(s)
+    if (p.expiry < Date.now()) { localStorage.removeItem('gnsi_session'); return null }
+    return p.user
+  } catch { return null }
+})
   const [active,      setActive]      = useState('dashboard')
   const [permMap,     setPermMap]     = useState({})
   const [permLoading, setPermLoading] = useState(false)
@@ -643,10 +651,19 @@ useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
     setPermLoading(false)
   }
 
-  const handleLogin  = (user) => { setCurrentUser(user); setActive('dashboard'); loadPermissions(user.role) }
-  const handleLogout = ()     => { setCurrentUser(null); setActive('dashboard'); setPermMap({}) }
+  const handleLogin = (user) => {
+  localStorage.setItem('gnsi_session', JSON.stringify({ user, expiry: Date.now() + 8*60*60*1000 }))
+  setCurrentUser(user); setActive('dashboard'); loadPermissions(user.role)
+}
+  const handleLogout = () => {
+  localStorage.removeItem('gnsi_session')
+  setCurrentUser(null); setActive('dashboard'); setPermMap({})
+}
+useEffect(() => {
+  if (currentUser) loadPermissions(currentUser.role)
+}, [currentUser])
 
-  if (!currentUser) return <Login onLogin={handleLogin} />
+if (!currentUser) return <Login onLogin={handleLogin} />
   if (permLoading)  return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
 
   const isAdmin = currentUser.role === 'Admin'
