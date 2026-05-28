@@ -139,7 +139,7 @@ function Leave({ currentUser: currentUserProp }) {
       .from('leave_requests')
       .select('*, staff_profiles(name, department, designation, daily_salary, leave_balance)')
       .order('created_at', { ascending: false })
-    if (isLimitedUser) query = query.eq('staff_id', currentUser.id)
+    if (isLimitedUser) query = query.eq('staff_id', currentUser.staff_profile_id)
     const { data: leaveData } = await query
     setStaff(isLimitedUser ? allStaff.filter(s => s.id === currentUser.id) : allStaff)
     setLeaves(leaveData || [])
@@ -167,7 +167,7 @@ function Leave({ currentUser: currentUserProp }) {
 
   // ─── Derived values ────────────────────────────────────────────────────────
   const selectedStaff = useMemo(() =>
-    staff.find(s => s.id === Number(form.staff_id)), [staff, form.staff_id])
+    staff.find(s => s.id === form.staff_id), [staff, form.staff_id])
 
   const duration = useMemo(() =>
     calculateDays(form.from_date, form.to_date, form.half_day_type),
