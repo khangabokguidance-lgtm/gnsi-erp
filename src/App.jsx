@@ -626,6 +626,12 @@ export default function App() {
   const [permMap,     setPermMap]     = useState({})
   const [permLoading, setPermLoading] = useState(false)
   const isMobile = useIsMobile()
+  const [sharedStaff, setSharedStaff] = useState([])
+const fetchSharedStaff = useCallback(async () => {
+  const { data } = await supabase.from('staff_profiles').select('*').order('name')
+  if (data) setSharedStaff(data)
+}, [])
+useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
 
   const loadPermissions = async (role) => {
     if (role === 'Admin') { setPermMap({}); return }
@@ -653,8 +659,8 @@ export default function App() {
     bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}    />,
     fees:              <Fees              currentUser={currentUser} perms={perms('fees')}             />,
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
-    salary:            <Salary            currentUser={currentUser} perms={perms('salary')}           />,
-    staff:             <Staff             currentUser={currentUser} perms={perms('staff')}            />,
+    salary:             <Salary currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+    staff:              <Staff  currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
     hr:                <HR                currentUser={currentUser} perms={perms('hr')}               />,
     leave:             <Leave             currentUser={currentUser} perms={perms('leave')}            />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}           />,

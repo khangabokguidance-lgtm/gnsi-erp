@@ -711,11 +711,13 @@ const ScoreEntryRow = React.memo(function ScoreEntryRow({ staff, score, onChange
 })
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-function Staff({ currentUser: currentUserProp, perms }) {
+function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffChange }) {
   const isMobile = useIsMobile()
   const { show:showToast, el:toastEl } = useToast()
   const { currentUser, userLoading, isAdmin, canManage } = useCurrentUser(currentUserProp)
-  const canEdit = isAdmin || canManage 
+  const canEdit = isAdmin || canManage
+  const staff = staffProp || []
+  const fetchStaff = onStaffChange
   // ROLE-3: Geo shown to everyone (self-attendance); admin sees full roster view
   const ALL_TABS = [
     { key:'staff',       label:'👥 Staff',   show:true },
@@ -726,8 +728,6 @@ function Staff({ currentUser: currentUserProp, perms }) {
     { key:'geo',         label:'📍 Geo',     show:true },  // ROLE-3: all roles
   ].filter(t=>t.show)
 
-  const [staff,             setStaff]             = useState([])
-  const [loading,           setLoading]           = useState(true)
   const [saving,            setSaving]            = useState(false)
   const [showForm,          setShowForm]          = useState(false)
   const [search,            setSearch]            = useState('')
@@ -768,26 +768,9 @@ function Staff({ currentUser: currentUserProp, perms }) {
 [staff, currentUser])
 
   // ── Data Loaders ─────────────────────────────────────────────────────────────
-
-  const fetchStaff = async () => {
-    setLoading(true)
-    try {
-      const data = await staffDB.forStaffPage()
-      setStaff(data||[])
-    } catch (err) { showToast('⚠️ Could not load staff: '+err.message,'#dc2626') }
-    finally { setLoading(false) }
-  }
-
-  const fetchSalaryData = useCallback(async () => {
-    if (!isAdminUnlocked()) return
-    try {
-      const { data,error } = await supabase.from('staff_profiles').select('id,basic_salary,seniority_allowance,loyalty_bonus,role_bonus')
-      if (!error && data) {
-        const map={}; data.forEach(r=>{ map[r.id]=r })
-        setStaff(prev=>prev.map(s=>map[s.id]?{ ...s,...map[s.id] }:s))
-      }
-    } catch {}
-  },[])
+const fetchSalaryData = useCallback(async () => {
+  if (onStaffChange) onStaffChange()
+},[onStaffChange])
 
   const fetchTasks = async () => {
     setTasksLoading(true)
@@ -819,7 +802,6 @@ function Staff({ currentUser: currentUserProp, perms }) {
     if (data) setAllMonthlyScores(data)
   }
 
-  useEffect(()=>{ fetchStaff() },[])
   useEffect(()=>{ if(activeTab==='tasks')       fetchTasks() },                            [activeTab])
   useEffect(()=>{ if(activeTab==='scoring')     fetchScoresForMonth(scoreMonth) },         [activeTab,scoreMonth])
   useEffect(()=>{ if(activeTab==='leaderboard') { fetchScoresForMonth(scoreMonth); fetchAllScores() } },[activeTab,scoreMonth])
@@ -1115,9 +1097,7 @@ function Staff({ currentUser: currentUserProp, perms }) {
           </div>
           <div style={{ fontSize:12,color:'#64748b',marginBottom:10 }}>Showing {filteredStaff.length} of {staff.length} staff · Page {page}/{totalPages}</div>
 
-          {loading ? (
-            <div style={{ textAlign:'center',padding:48,color:'#64748b' }}>⏳ Loading staff…</div>
-          ) : isMobile ? (
+          {isMobile ? (
             // Mobile card layout
             <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
               {paginated.map((item,i)=>{
