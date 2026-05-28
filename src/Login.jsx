@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
+import { LOGO_BASE64 } from './logo'
 
 const injectStyles = () => {
   if (document.getElementById('gnsi-login-styles')) return
@@ -558,7 +559,7 @@ export default function Login({ onLogin }) {
       <div className="gnsi-wrap">
         <div className="gnsi-brand">
           <div className="gnsi-logo-ring">
-            <span className="gnsi-logo-icon">🏫</span>
+            <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} />
           </div>
           <h1 className="gnsi-title">GNSI ERP</h1>
           <p className="gnsi-subtitle">School Management System</p>
