@@ -3667,119 +3667,75 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
   const isMobile = useMobile();
 
   const stats = [
-    { label: "Students",   val: students.length,   icon: "👤", color: "#60a5fa" },
-    { label: "Batches",    val: courses.length,     icon: "📚", color: "#34d399" },
-    { label: "Exam Types", val: examTypes.length,   icon: "📝", color: "#f0c040" },
+    { label: "Students",   val: students.length,              icon: "👤", color: "#60a5fa" },
+    { label: "Batches",    val: courses.length,               icon: "📚", color: "#34d399" },
+    { label: "Exam Types", val: examTypes.length,             icon: "📝", color: "#f0c040" },
     { label: "Role",       val: currentUser?.role || "Admin", icon: "🔑", color: "#c084fc" },
   ];
 
-  return (
+  const Badge = (
     <div style={{
-      background: "#0d1b2a",
-      borderBottom: "1px solid rgba(255,255,255,0.07)",
-      position: "relative",
-    }}>
-      {/* Gold accent line at top */}
-      <div style={{ height: 3, background: "linear-gradient(90deg,#B8860B 0%,#f0c040 50%,#B8860B 100%)" }} />
+      width: isMobile ? 34 : 40, height: isMobile ? 34 : 40,
+      borderRadius: 9, flexShrink: 0,
+      background: "linear-gradient(135deg,#1a3c2e,#2A5C45)",
+      border: "1.5px solid rgba(184,134,11,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: isMobile ? 16 : 20,
+    }}>🎓</div>
+  );
 
-      <div style={{ padding: isMobile ? "12px 14px" : "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+  const Title = (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+      <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: isMobile ? 16 : 19, color: "white" }}>Exam</span>
+      <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: isMobile ? 16 : 19, color: "#f0c040" }}>HUB</span>
+      {!isMobile && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginLeft: 4 }}>· {institute.name}</span>}
+    </div>
+  );
 
-        {/* Left: icon + title */}
-        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14 }}>
-          {/* Hexagon-style badge */}
-          <div style={{
-            width: isMobile ? 38 : 46, height: isMobile ? 38 : 46,
-            borderRadius: 10,
-            background: "linear-gradient(135deg,#1a3c2e,#2A5C45)",
-            border: "1.5px solid rgba(184,134,11,0.4)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: isMobile ? 18 : 22,
-            flexShrink: 0,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-          }}>🎓</div>
-
+  const Chips = (
+    <div style={{ display: "flex", gap: isMobile ? 6 : 8, overflowX: isMobile ? "auto" : "visible" }}>
+      {stats.map(s => (
+        <div key={s.label} style={{
+          display: "flex", alignItems: "center",
+          gap: isMobile ? 5 : 7, flexShrink: 0,
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.09)",
+          borderRadius: 8,
+          padding: isMobile ? "5px 10px" : "6px 14px",
+        }}>
+          <span style={{ fontSize: isMobile ? 11 : 13 }}>{s.icon}</span>
           <div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{
-                fontFamily: "'DM Sans',sans-serif",
-                fontWeight: 700,
-                fontSize: isMobile ? 16 : 20,
-                color: "white",
-                letterSpacing: "-.2px",
-              }}>Exam</span>
-              <span style={{
-                fontFamily: "'DM Sans',sans-serif",
-                fontWeight: 700,
-                fontSize: isMobile ? 16 : 20,
-                color: "#f0c040",
-                letterSpacing: "-.2px",
-              }}>HUB</span>
-              <span style={{
-                fontSize: isMobile ? 9 : 10,
-                fontWeight: 600,
-                letterSpacing: "2px",
-                color: "rgba(255,255,255,0.35)",
-                textTransform: "uppercase",
-                marginLeft: 2,
-              }}>PRO</span>
-            </div>
-            <div style={{
-              fontSize: isMobile ? 10 : 11,
-              color: "rgba(255,255,255,0.45)",
-              marginTop: 1,
-              fontWeight: 400,
-            }}>
-              {isMobile ? "Per-Batch Exam Management" : `${institute.name} · Per-Batch Examination Management`}
-            </div>
+            <div style={{ fontWeight: 700, fontSize: isMobile ? 13 : 15, color: "white", lineHeight: 1 }}>{s.val}</div>
+            <div style={{ fontSize: isMobile ? 9 : 9, color: s.color, textTransform: "uppercase", letterSpacing: "1px", marginTop: 2 }}>{s.label}</div>
           </div>
         </div>
+      ))}
+    </div>
+  );
 
-        {/* Right: stat chips */}
-        <div style={{
-          display: "flex",
-          gap: isMobile ? 6 : 10,
-          flexWrap: isMobile ? "wrap" : "nowrap",
-        }}>
-          {stats.map(s => (
-            <div key={s.label} style={{
-              display: "flex",
-              flexDirection: isMobile ? "row" : "column",
-              alignItems: isMobile ? "center" : "center",
-              gap: isMobile ? 5 : 2,
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 8,
-              padding: isMobile ? "5px 10px" : "8px 14px",
-              minWidth: isMobile ? 0 : 68,
-            }}>
-              <div style={{ fontSize: isMobile ? 11 : 10, color: s.color }}>{s.icon}</div>
-              <div style={{
-                fontFamily: "'DM Sans',sans-serif",
-                fontSize: isMobile ? 13 : 20,
-                fontWeight: 700,
-                color: "white",
-                lineHeight: 1,
-              }}>{s.val}</div>
-              {!isMobile && (
-                <div style={{
-                  fontSize: 9,
-                  fontWeight: 600,
-                  color: "rgba(255,255,255,0.4)",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                  marginTop: 2,
-                }}>{s.label}</div>
-              )}
-              {isMobile && (
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{s.label}</div>
-              )}
-            </div>
-          ))}
-        </div>
+  if (isMobile) return (
+    <div style={{ background: "#0d1b2a", borderBottom: "3px solid #B8860B" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px 8px" }}>
+        {Badge}{Title}
       </div>
+      <div style={{ padding: "0 14px 10px" }}>{Chips}</div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      background: "#0d1b2a", borderBottom: "3px solid #B8860B",
+      display: "flex", alignItems: "center",
+      padding: "0 28px", height: 60, gap: 16,
+    }}>
+      {Badge}
+      {Title}
+      <div style={{ flex: 1 }} />
+      {Chips}
     </div>
   );
 }
+
 
 // ─── ROOT EXPORT ──────────────────────────────────────────────────────────────
 export default function Exams({ currentUser, perms }) {
