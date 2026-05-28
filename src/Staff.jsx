@@ -715,7 +715,7 @@ function Staff({ currentUser: currentUserProp, perms }) {
   const isMobile = useIsMobile()
   const { show:showToast, el:toastEl } = useToast()
   const { currentUser, userLoading, isAdmin, canManage } = useCurrentUser(currentUserProp)
-
+  const canEdit = isAdmin || canManage 
   // ROLE-3: Geo shown to everyone (self-attendance); admin sees full roster view
   const ALL_TABS = [
     { key:'staff',       label:'👥 Staff',   show:true },
