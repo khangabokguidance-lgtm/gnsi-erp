@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { staffDB } from './staffDB'
+import { useCurrentUser } from './useCurrentUser'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -14,38 +15,15 @@ function useMobile() {
   return m
 }
 
-// ─── Current user hook ────────────────────────────────────────────────────────
-function useCurrentUser() {
-  const [currentUser, setCurrentUser] = useState(null)
-  const [userLoading, setUserLoading] = useState(true)
-  useEffect(() => {
-    async function load() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setUserLoading(false); return }
-        const all = await staffDB.getAll()
-        const match = all.find(s => s.email?.toLowerCase() === user.email?.toLowerCase())
-        setCurrentUser(match || null)
-      } catch (e) {
-        console.error('useCurrentUser:', e)
-      } finally {
-        setUserLoading(false)
-      }
-    }
-    load()
-  }, [])
-  return { currentUser, userLoading }
-}
-
 // ─── Accrual calculator ───────────────────────────────────────────────────────
-// Academic year: April 1 → March 31
-// 1 day per completed month, resets every April 1
-// April itself counts (staff start with 1 day on April 1)
+// Academic year: January 1 → December 31
+// 1 day per completed month, resets every January 1
+// January itself counts (staff start with 1 day on January 1)
 function calcAccruedDays() {
   const today = new Date()
   const m = today.getMonth()   // 0-indexed
   const y = today.getFullYear()
-  const academicStart = m >= 3 ? new Date(y, 3, 1) : new Date(y - 1, 3, 1)
+  const academicStart = m >= 0 ? new Date(y, 0, 1) : new Date(y - 1, 0, 1)
   const monthsElapsed =
     (today.getFullYear() - academicStart.getFullYear()) * 12 +
     (today.getMonth() - academicStart.getMonth())

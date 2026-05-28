@@ -38,6 +38,7 @@ import { supabase } from './supabase'
 import { useCourseData, CoursePicker } from './Courses'
 import GeoAttendance from './GeoAttendance'
 import { staffDB } from './staffDB'
+import { useCurrentUser } from './useCurrentUser'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -715,9 +716,8 @@ function Staff({ currentUser }) {
   const isMobile = useIsMobile()
   const { show:showToast, el:toastEl } = useToast()
 
-  const userRole = currentUser?.role || currentUser?.user_role || currentUser?.profile?.role || 'viewer'
-const isAdmin  = ['Admin', 'Teaching + Admin'].includes(userRole)
-const canEdit  = isAdmin
+  const { currentUser, userLoading, isAdmin, canManage } = useCurrentUser()
+const canEdit = canManage
 
   // ROLE-3: Geo shown to everyone (self-attendance); admin sees full roster view
   const ALL_TABS = [
@@ -766,7 +766,9 @@ const canEdit  = isAdmin
 
   const taskStatusInFlight = useRef(new Set())
 
-  const loggedInStaff = useMemo(()=>staff.find(s=>s.id===currentUser?.staff_id)||null,[staff,currentUser])
+  const loggedInStaff = useMemo(() =>
+  staff.find(s => s.email?.toLowerCase() === currentUser?.email?.toLowerCase()) || null,
+[staff, currentUser])
 
   // ── Data Loaders ─────────────────────────────────────────────────────────────
 
