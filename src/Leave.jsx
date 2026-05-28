@@ -137,7 +137,7 @@ function Leave({ currentUser: currentUserProp }) {
 )
     let query = supabase
       .from('leave_requests')
-      .select('*, staff_profiles(name, department, designation, daily_salary, leave_balance)')
+      .select('*, staff_profiles!leave_requests_staff_id_fkey(name, department, designation, daily_salary, leave_balance)')
       .order('created_at', { ascending: false })
     if (isLimitedUser) query = query.eq('staff_id', currentUser.staff_profile_id)
     const { data: leaveData } = await query
