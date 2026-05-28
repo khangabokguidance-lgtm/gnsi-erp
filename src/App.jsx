@@ -34,6 +34,7 @@ import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import Entrance from './Entrance'
 import { LOGO_BASE64 } from './logo'
+import LandingPage from './LandingPage'
 
 
 const ALL_GROUPS = [
@@ -633,6 +634,7 @@ export default function App() {
   } catch { return null }
 })
   const [active,      setActive]      = useState('dashboard')
+  const [showLogin, setShowLogin] = useState(false)
   const [permMap,     setPermMap]     = useState({})
   const [permLoading, setPermLoading] = useState(false)
   const isMobile = useIsMobile()
@@ -679,7 +681,10 @@ useEffect(() => {
   return () => window.removeEventListener('popstate', handleBack)
 }, [active])
 
-if (!currentUser) return <Login onLogin={handleLogin} />
+if (!currentUser) {
+  if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} />
+  return <LandingPage onLogin={() => setShowLogin(true)} />
+}
   if (permLoading)  return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
 
   const isAdmin = currentUser.role === 'Admin'
