@@ -141,7 +141,7 @@ function Leave({ currentUser: currentUserProp }) {
       .order('created_at', { ascending: false })
     if (isLimitedUser) query = query.eq('staff_id', currentUser.staff_profile_id)
     const { data: leaveData } = await query
-    setStaff(isLimitedUser ? allStaff.filter(s => s.id === currentUser.id) : allStaff)
+    setStaff(isLimitedUser ? allStaff.filter(s => s.id === currentUser.staff_profile_id) : allStaff)
     setLeaves(leaveData || [])
     setLoading(false)
   }, [currentUser, userLoading, isLimitedUser])
@@ -158,7 +158,7 @@ function Leave({ currentUser: currentUserProp }) {
       }
       if (form.staff_id) {
         const hasOverlap = leaves
-          .filter(l => l.staff_id === Number(form.staff_id) && l.id !== detailModal?.id && l.status !== 'Rejected')
+          .filter(l => l.staff_id === parseInt(form.staff_id, 10) && l.id !== detailModal?.id && l.status !== 'Rejected')
           .some(l => new Date(form.from_date) <= new Date(l.to_date) && new Date(form.to_date) >= new Date(l.from_date))
         if (hasOverlap) setOverlapWarning('\u26A0\uFE0F This staff already has leave in this date range')
       }
