@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GNSI Portal</string>
+    <string name="title_activity_main">GNSI Portal</string>
+    <string name="package_name">in.guidancekhangabok.portal</string>
+    <string name="custom_url_scheme">in.guidancekhangabok.portal</string>
+</resources>
