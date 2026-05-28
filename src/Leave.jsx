@@ -19,22 +19,22 @@ function useMobile() {
 // Academic year: January 1 → December 31
 // 1 day per completed month, resets every January 1
 // January itself counts (staff start with 1 day on January 1)
-function calcAccruedDays() {
+const LEAVE_PER_SESSION = 12
+
+function getSessionStart() {
   const today = new Date()
-  const m = today.getMonth()   // 0-indexed
   const y = today.getFullYear()
-  const academicStart = m >= 0 ? new Date(y, 0, 1) : new Date(y - 1, 0, 1)
-  const monthsElapsed =
-    (today.getFullYear() - academicStart.getFullYear()) * 12 +
-    (today.getMonth() - academicStart.getMonth())
-  return Math.min(monthsElapsed + 1, 12)  // +1 so April counts immediately
+  const sessionStart = new Date(y, 0, 10) // Jan 10 this year
+  return today >= sessionStart ? sessionStart : new Date(y - 1, 0, 10)
 }
 
 function getAcademicYearStart() {
-  const today = new Date()
-  const m = today.getMonth()
-  const y = today.getFullYear()
-  return m >= 3 ? `${y}-04-01` : `${y - 1}-04-01`
+  const s = getSessionStart()
+  return `${s.getFullYear()}-01-10`
+}
+
+function calcAccruedDays() {
+  return LEAVE_PER_SESSION  // all 12 days available from Jan 10
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -177,24 +177,21 @@ function Leave({ currentUser: currentUserProp }) {
   }, [selectedStaff, duration, form.is_paid])
 
   const leaveBalanceInfo = useMemo(() => {
-    if (!selectedStaff || !form.leave_type) return null
-    const accrued = calcAccruedDays()
-    const academicStart = getAcademicYearStart()
-    const used = leaves
-      .filter(l =>
-        l.staff_id === selectedStaff.id &&
-        l.leave_type === form.leave_type &&
-        l.status === 'Approved' &&
-        l.from_date >= academicStart
-      )
-      .reduce((sum, l) => sum + (l.duration_days || 0), 0)
-    return {
-      accrued,
-      used,
-      remaining: Math.max(0, accrued - used),
-      maxForYear: 12
-    }
-  }, [selectedStaff, form.leave_type, leaves])
+  if (!selectedStaff) return null
+  const sessionStart = getAcademicYearStart()
+  const used = leaves
+    .filter(l =>
+      l.staff_id === selectedStaff.id &&
+      l.status === 'Approved' &&
+      l.from_date >= sessionStart
+    )
+    .reduce((sum, l) => sum + (l.duration_days || 0), 0)
+  return {
+    total: LEAVE_PER_SESSION,
+    used,
+    remaining: Math.max(0, LEAVE_PER_SESSION - used),
+  }
+}, [selectedStaff, leaves])
 
   // ─── Actions ───────────────────────────────────────────────────────────────
   const handleAdd = async (e) => {
@@ -398,11 +395,11 @@ function Leave({ currentUser: currentUserProp }) {
 
       {/* Accrual info banner */}
       <div style={{ marginBottom: '16px', padding: '10px 16px', background: '#f0fdf4', borderRadius: '8px', fontSize: '13px', color: '#166534', border: '1px solid #bbf7d0', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-        <span>📅 Academic Year: Apr 1 → Mar 31</span>
-        <span>📈 Accrual: 1 Casual + 1 Sick day per month</span>
-        <span>🔄 Resets every April 1</span>
-        <span style={{ fontWeight: '700' }}>✅ {calcAccruedDays()} days accrued so far this year</span>
-      </div>
+  <span>📅 Session: Jan 10 → Jan 9</span>
+  <span>🏖️ Total Leave: 12 days per session</span>
+  <span>🔄 Resets every January 10</span>
+  <span style={{ fontWeight: '700' }}>✅ {leaveBalanceInfo ? `${leaveBalanceInfo.remaining} days remaining` : '12 days available'}</span>
+</div>
 
       {/* Stats Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : canManage ? 'repeat(6, 1fr)' : 'repeat(4, 1fr)', gap: mobile ? '10px' : '12px', marginBottom: '20px' }}>
