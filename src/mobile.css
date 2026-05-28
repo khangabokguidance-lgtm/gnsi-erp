@@ -1,454 +1,81 @@
-/* ═══════════════════════════════════════════════════════════════
-   GNSI Exam HUB — Mobile & Responsive CSS Fixes
-   Targets: font scaling, scroll bugs, TabNav overflow,
-            table overflow, grid collapse, input sizing,
-            touch targets, and general mobile polish
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   GNSI Portal — mobile.css
+   Replace src/mobile.css with this file.
+   All layout changes that can't be done purely inline go here.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── 1. Base Reset & Font Scaling ─────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
-html {
-  /* Prevent iOS font size inflation on landscape */
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-body {
-  overflow-x: hidden;
-}
-
-/* ── 2. Root / App Shell ──────────────────────────────────────── */
+/* ─── Global ─────────────────────────────────────────────────────────────── */
 .exams-root {
-  min-height: 100vh;
   overflow-x: hidden;
 }
 
-/* ── 3. Header Banner ─────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .exams-root > div:first-child {
-    padding: 14px 16px !important;
+/* ─── Mobile (≤ 767px) ───────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+
+  /* TabNav hamburger drawer */
+  .tabnav-drawer {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 9999 !important;
+    overflow-y: auto !important;
+    background: #0d2818 !important;
+    padding: 16px !important;
   }
 
-  /* Stack header content vertically */
-  .exams-root > div:first-child > div {
+  /* Scrollable tables */
+  .table-scroll-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Sticky name column */
+  .sticky-name {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: inherit;
+  }
+
+  /* Stack two-col layouts */
+  .two-col-layout {
+    display: flex !important;
     flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 12px !important;
   }
 
-  /* Stat pills row: wrap nicely */
-  .exams-root > div:first-child > div > div:last-child {
-    grid-template-columns: repeat(2, auto) !important;
-    gap: 10px 20px !important;
-    width: 100%;
+  /* Analytics chart grid */
+  .analytics-chart-grid {
+    grid-template-columns: 1fr !important;
   }
 
-  /* Institute name font size */
-  .exams-root > div:first-child div[style*="font-size: 22px"],
-  .exams-root > div:first-child div[style*="fontSize: 22"] {
-    font-size: 17px !important;
-  }
-}
-
-/* ── 4. TabNav — Fix horizontal scroll & font ─────────────────── */
-.exams-root div[style*="padding: 10px 24px"] {
-  padding: 8px 12px !important;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;       /* Firefox */
-  -ms-overflow-style: none;    /* IE/Edge */
-}
-.exams-root div[style*="padding: 10px 24px"]::-webkit-scrollbar {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  /* Each tab row: nowrap so buttons stay in line */
-  .exams-root div[style*="padding: 10px 24px"] > div {
-    flex-wrap: nowrap !important;
-    min-width: max-content;
+  /* Rankings podium */
+  .rankings-podium {
+    grid-template-columns: 1fr !important;
+    max-width: 220px !important;
+    margin: 0 auto !important;
   }
 
-  /* Tab button font & padding */
-  .exams-root div[style*="padding: 10px 24px"] button {
-    font-size: 11px !important;
-    padding: 5px 8px !important;
-    white-space: nowrap;
-  }
-
-  /* Group label tiny text */
-  .exams-root div[style*="padding: 10px 24px"] div[style*="font-size: 9px"] {
-    font-size: 8px !important;
-  }
-}
-
-/* ── 5. Main Content Padding ──────────────────────────────────── */
-@media (max-width: 768px) {
+  /* Content area padding */
   .exams-root > div:last-child {
     padding: 14px 12px !important;
   }
-}
 
-/* ── 6. Course Picker Pills ───────────────────────────────────── */
-@media (max-width: 640px) {
-  /* Allow horizontal scroll for pill bars */
-  div[style*="display: flex"][style*="flexWrap: wrap"] {
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
-    scrollbar-width: none;
+  /* Bulk reports stat pills - 2 cols on mobile */
+  .bulk-stat-grid {
+    grid-template-columns: 1fr 1fr !important;
   }
-  div[style*="display: flex"][style*="flexWrap: wrap"]::-webkit-scrollbar {
+
+  /* Schedule mode buttons - icon only */
+  .schedule-mode-btn span:last-child {
     display: none;
   }
 }
 
-/* ── 7. Control Bar (Exam Type + Date + Search row) ───────────── */
-@media (max-width: 640px) {
-  /* Stack control bars vertically */
-  div[style*="display: flex"][style*="flexWrap: wrap"][style*="alignItems: flex-end"] {
-    flex-direction: column !important;
-    align-items: stretch !important;
-  }
-
-  div[style*="display: flex"][style*="flexWrap: wrap"][style*="alignItems: flex-end"] > div,
-  div[style*="display: flex"][style*="flexWrap: wrap"][style*="alignItems: flex-end"] > button {
-    width: 100% !important;
-  }
-
-  div[style*="display: flex"][style*="flexWrap: wrap"][style*="alignItems: flex-end"] select,
-  div[style*="display: flex"][style*="flexWrap: wrap"][style*="alignItems: flex-end"] input[type="date"] {
-    width: 100% !important;
-  }
-}
-
-/* ── 8. Data Tables — Horizontal Scroll ──────────────────────── */
-/* Every table container gets scroll instead of overflow:hidden */
-div[style*="overflowX: auto"],
-div[style*="overflow-x: auto"] {
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Tables: never shrink below their natural width */
-table {
-  min-width: 560px;
-}
-
-/* Mark entry inputs inside table cells */
-@media (max-width: 768px) {
-  table td input[type="number"] {
-    width: 48px !important;
-    font-size: 12px !important;
-    padding: 4px 2px !important;
-  }
-}
-
-/* ── 9. Stat / Dash Cards Grid ────────────────────────────────── */
-@media (max-width: 640px) {
-  /* DashStatCard grid → 2-col */
-  div[style*="gridTemplateColumns: repeat(auto-fill,minmax(180px,1fr))"],
-  div[style*="gridTemplateColumns: repeat(auto-fill, minmax(180px, 1fr))"] {
-    grid-template-columns: 1fr 1fr !important;
-  }
-
-  /* Student stats cards */
-  div[style*="gridTemplateColumns: repeat(auto-fill,minmax(160px,1fr))"],
-  div[style*="gridTemplateColumns: repeat(auto-fill, minmax(160px, 1fr))"] {
-    grid-template-columns: 1fr 1fr !important;
-  }
-
-  /* Report card grid */
-  div[style*="gridTemplateColumns: repeat(auto-fill,minmax(300px,1fr))"],
-  div[style*="gridTemplateColumns: repeat(auto-fill, minmax(300px, 1fr))"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  /* Analytics charts side-by-side → stacked */
-  div[style*="gridTemplateColumns: 1fr 1fr"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  /* Rankings top-3 podium */
-  div[style*="gridTemplateColumns: repeat(3,1fr)"],
-  div[style*="gridTemplateColumns: repeat(3, 1fr)"] {
-    grid-template-columns: 1fr !important;
-    gap: 10px !important;
-  }
-
-  /* 4-col stat pill rows */
-  div[style*="gridTemplateColumns: repeat(4,1fr)"],
-  div[style*="gridTemplateColumns: repeat(4, 1fr)"] {
-    grid-template-columns: 1fr 1fr !important;
-  }
-}
-
-/* ── 10. Two-column layouts → single column on mobile ─────────── */
-@media (max-width: 768px) {
-  /* Mark entry, students, compare, seat plan left+right splits */
-  div[style*="gridTemplateColumns: 280px 1fr"],
-  div[style*="gridTemplateColumns: 260px 1fr"],
-  div[style*="gridTemplateColumns: 220px 1fr"],
-  div[style*="gridTemplateColumns: 300px 1fr"],
-  div[style*="gridTemplateColumns: 320px 1fr"],
-  div[style*="gridTemplateColumns: 360px 1fr"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  div[style*="gridTemplateColumns: 320px 1fr"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  /* Add student form max-width */
-  div[style*="maxWidth: 560"] {
-    max-width: 100% !important;
-  }
-  div[style*="maxWidth: 700"] {
-    max-width: 100% !important;
-  }
-}
-
-/* ── 11. Seat Arrangement ─────────────────────────────────────── */
-@media (max-width: 768px) {
-  /* Seat grid: allow horizontal scroll */
-  div[style*="display: inline-flex"][style*="flexDirection: column"] {
-    min-width: max-content;
-  }
-
-  /* Shrink seat cells a bit on mobile */
-  div[style*="width: 110px"][style*="minHeight: 72px"] {
-    width: 88px !important;
-    min-height: 60px !important;
-    font-size: 10px !important;
-  }
-}
-
-/* ── 12. Schedule Mode Buttons ────────────────────────────────── */
-@media (max-width: 640px) {
-  /* Mode switcher: horizontal scroll */
-  div[style*="display: flex"][style*="gap: 8px"][style*="flexWrap: wrap"] {
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
-    scrollbar-width: none;
-  }
-  div[style*="display: flex"][style*="gap: 8px"][style*="flexWrap: wrap"]::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Multi-subject per-row grid */
-  div[style*="gridTemplateColumns: 1fr 140px 80px"] {
-    grid-template-columns: 1fr 110px 70px !important;
-    font-size: 12px !important;
-  }
-}
-
-/* ── 13. Report Card / Bulk Print buttons ─────────────────────── */
-@media (max-width: 640px) {
-  /* Full-width print buttons */
-  button[style*="whiteSpace: nowrap"] {
-    white-space: normal !important;
-    width: 100% !important;
-  }
-
-  /* Bulk report settings + preview grid */
-  div[style*="gridTemplateColumns: 300px 1fr"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  /* Section selectors row */
-  div[style*="display: flex"][style*="gap: 12px"] > button[style*="flex: 1"] {
-    flex: 1 1 140px !important;
-    font-size: 12px !important;
-  }
-}
-
-/* ── 14. Info Grid (Settings page) ───────────────────────────── */
-@media (max-width: 640px) {
-  div[style*="gridTemplateColumns: repeat(auto-fill,minmax(250px,1fr))"] {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-/* ── 15. Admit Card Tab ───────────────────────────────────────── */
-@media (max-width: 640px) {
-  /* Print all button */
-  .exams-root button[style*="padding: 9px 24px"] {
-    width: 100% !important;
-    justify-content: center;
-  }
-}
-
-/* ── 16. Progress Tab — student list + chart split ────────────── */
-@media (max-width: 768px) {
-  /* Student selector max-height on mobile */
-  div[style*="maxHeight: 480px"] {
-    max-height: 240px !important;
-  }
-}
-
-/* ── 17. Compare Tab — student list max-height ────────────────── */
-@media (max-width: 768px) {
-  div[style*="maxHeight: 420px"] {
-    max-height: 220px !important;
-  }
-}
-
-/* ── 18. Typography Smoothing ─────────────────────────────────── */
-* {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Prevent Playfair Display from being too large on mobile */
-@media (max-width: 640px) {
-  [style*="fontFamily: 'Playfair Display'"],
-  [style*="font-family: 'Playfair Display'"] {
-    letter-spacing: -0.3px;
-  }
-
-  /* DashStatCard value */
-  div[style*="fontSize: 34"] {
-    font-size: 26px !important;
-  }
-
-  /* Rankings big numbers */
-  div[style*="fontSize: 28"][style*="fontFamily"] {
-    font-size: 22px !important;
-  }
-}
-
-/* ── 19. Inputs & Selects — proper touch targets ─────────────── */
-@media (max-width: 640px) {
-  input[type="text"],
-  input[type="number"],
-  input[type="date"],
-  input[type="time"],
-  input[type="email"],
-  select,
-  textarea {
-    font-size: 16px !important; /* Prevents iOS auto-zoom on focus */
-    min-height: 40px;
-  }
-
-  /* Except tiny inline mark-entry inputs */
-  table input[type="number"] {
-    font-size: 13px !important;
-    min-height: 32px;
-  }
-}
-
-/* ── 20. Delete confirmation modal ────────────────────────────── */
-@media (max-width: 480px) {
-  div[style*="maxWidth: 380"] {
-    max-width: 92vw !important;
-    margin: 0 16px;
-  }
-}
-
-/* ── 21. Import Preview table ─────────────────────────────────── */
-@media (max-width: 768px) {
-  div[style*="maxHeight: 340px"] {
-    max-height: 260px !important;
-  }
-}
-
-/* ── 22. Scroll-snap for horizontal pill bars ─────────────────── */
-@media (max-width: 640px) {
-  div[style*="display: flex"][style*="gap: 6px"][style*="flexWrap: wrap"] {
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-  }
-  div[style*="display: flex"][style*="gap: 6px"][style*="flexWrap: wrap"] > button {
-    scroll-snap-align: start;
-    flex-shrink: 0;
-  }
-}
-
-/* ── 23. Canvas / Chart Sizing ────────────────────────────────── */
-@media (max-width: 640px) {
-  div[style*="height: 260px"] {
-    height: 200px !important;
-  }
-  div[style*="height: 320px"] {
-    height: 220px !important;
-  }
-}
-
-/* ── 24. Page-level padding for deepest content pane ─────────── */
-@media (max-width: 480px) {
+/* ─── Tablet (768px – 1024px) ────────────────────────────────────────────── */
+@media (min-width: 768px) and (max-width: 1024px) {
   .exams-root > div:last-child {
-    padding: 10px 8px !important;
-  }
-}
-
-/* ── 25. ExamDashboard (if it renders its own cards) ─────────── */
-@media (max-width: 640px) {
-  .exam-dashboard-grid {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-/* ── 26. Topper certificates tab ─────────────────────────────── */
-@media (max-width: 640px) {
-  .toppers-cert-grid {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-/* ── 27. Safe-area insets (iPhone notch / home bar) ───────────── */
-@supports (padding: max(0px)) {
-  .exams-root {
-    padding-left: max(0px, env(safe-area-inset-left));
-    padding-right: max(0px, env(safe-area-inset-right));
-    padding-bottom: max(0px, env(safe-area-inset-bottom));
-  }
-}
-
-/* ── 28. Active / Focus states for touch ─────────────────────── */
-button:active {
-  opacity: 0.82;
-  transform: scale(0.98);
-  transition: transform 0.08s ease, opacity 0.08s ease;
-}
-
-@media (hover: none) {
-  /* Remove hover-only styles on touch devices */
-  button:hover {
-    opacity: 1;
-  }
-}
-
-/* ── 29. Scrollbar polish (desktop) ──────────────────────────── */
-@media (min-width: 769px) {
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: #F1F5F9;
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #CBD5E1;
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #94A3B8;
-  }
-}
-
-/* ── 30. Print — never apply mobile overrides ─────────────────── */
-@media print {
-  * {
-    -webkit-text-size-adjust: none !important;
-    text-size-adjust: none !important;
-  }
-  .exams-root {
-    padding: 0 !important;
+    padding: 16px 18px !important;
   }
 }
