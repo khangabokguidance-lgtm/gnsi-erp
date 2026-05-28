@@ -132,7 +132,9 @@ function Leave({ currentUser: currentUserProp }) {
   const fetchAll = useCallback(async () => {
     if (userLoading || !currentUser) return
     setLoading(true)
-    const allStaff = await staffDB.getAll()
+    const allStaff = (await staffDB.getAll()).filter(s => 
+  s.id && !isNaN(Number(s.id))
+)
     let query = supabase
       .from('leave_requests')
       .select('*, staff_profiles(name, department, designation, daily_salary, leave_balance)')
@@ -203,7 +205,7 @@ function Leave({ currentUser: currentUserProp }) {
     const deduction    = form.is_paid ? 0 : durationDays * dailySalary
 
     const { error } = await supabase.from('leave_requests').insert([{
-      staff_id:         Number(form.staff_id),
+      staff_id: parseInt(form.staff_id, 10),
       leave_type:       form.leave_type,
       from_date:        form.from_date,
       to_date:          form.to_date,
