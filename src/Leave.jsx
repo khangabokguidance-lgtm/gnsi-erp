@@ -361,7 +361,7 @@ function Leave({ currentUser: currentUserProp }) {
           {!mobile && (
             <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>
               {canManage
-                ? 'Manage staff leave applications · 1 Casual + 1 Sick day accrued per month'
+                ? 'Manage staff leave applications · 12 days leave per session (Jan 10 – Jan 9)'
                 : `Your leave records — ${currentUser.name}`}
             </p>
           )}
@@ -405,7 +405,7 @@ function Leave({ currentUser: currentUserProp }) {
       <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : canManage ? 'repeat(6, 1fr)' : 'repeat(4, 1fr)', gap: mobile ? '10px' : '12px', marginBottom: '20px' }}>
         {[
           { label: 'Total',          value: stats.total,    color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
-          { label: 'This Acad. Year',value: stats.ayTotal,  color: '#0369a1', bg: '#e0f2fe', icon: '📆' },
+          { label: 'This Session', value: stats.ayTotal, color: '#0369a1', bg: '#e0f2fe', icon: '📆' },
           { label: 'Pending',        value: stats.pending,  color: '#ca8a04', bg: '#fef9c3', icon: '⏳' },
           { label: 'Approved',       value: stats.approved, color: '#16a34a', bg: '#dcfce7', icon: '✅' },
           ...(canManage ? [
@@ -483,32 +483,31 @@ function Leave({ currentUser: currentUserProp }) {
                     📊 {form.leave_type} Balance
                   </div>
                   {leaveBalanceInfo ? (
-                    <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
-                        <span>Accrued: <strong>{leaveBalanceInfo.accrued}</strong></span>
-                        <span>Used: <strong style={{ color: '#dc2626' }}>{leaveBalanceInfo.used}</strong></span>
-                        <span>Remaining: <strong style={{ color: leaveBalanceInfo.remaining > 0 ? '#16a34a' : '#dc2626' }}>{leaveBalanceInfo.remaining}</strong></span>
-                      </div>
-                      {/* Progress bar */}
-                      <div style={{ background: '#dbeafe', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%', borderRadius: '4px',
-                          width: `${Math.min((leaveBalanceInfo.used / leaveBalanceInfo.accrued) * 100, 100)}%`,
-                          background: leaveBalanceInfo.remaining === 0 ? '#dc2626' : '#3b82f6'
-                        }} />
-                      </div>
-                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
-                        {leaveBalanceInfo.accrued} of {leaveBalanceInfo.maxForYear} days accrued this academic year
-                      </div>
-                      {duration > leaveBalanceInfo.remaining && (
-                        <div style={{ marginTop: '8px', fontSize: '12px', color: '#dc2626', fontWeight: '600' }}>
-                          ⚠️ Exceeds balance — will be treated as LWP
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <span style={{ fontSize: '13px', color: '#64748b' }}>Select staff to see balance</span>
-                  )}
+  <>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+      <span>Total: <strong>{leaveBalanceInfo.total}</strong></span>
+      <span>Used: <strong style={{ color: '#dc2626' }}>{leaveBalanceInfo.used}</strong></span>
+      <span>Remaining: <strong style={{ color: leaveBalanceInfo.remaining > 0 ? '#16a34a' : '#dc2626' }}>{leaveBalanceInfo.remaining}</strong></span>
+    </div>
+    <div style={{ background: '#dbeafe', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+      <div style={{
+        height: '100%', borderRadius: '4px',
+        width: `${Math.min((leaveBalanceInfo.used / leaveBalanceInfo.total) * 100, 100)}%`,
+        background: leaveBalanceInfo.remaining === 0 ? '#dc2626' : '#3b82f6'
+      }} />
+    </div>
+    <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
+      {leaveBalanceInfo.used} of {leaveBalanceInfo.total} days used this session
+    </div>
+    {duration > leaveBalanceInfo.remaining && (
+      <div style={{ marginTop: '8px', fontSize: '12px', color: '#dc2626', fontWeight: '600' }}>
+        ⚠️ Exceeds balance — will be treated as LWP
+      </div>
+    )}
+  </>
+) : (
+  <span style={{ fontSize: '13px', color: '#64748b' }}>Select staff to see balance</span>
+)}
                 </div>
 
                 {/* Deduction Preview */}
