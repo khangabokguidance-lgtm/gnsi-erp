@@ -712,7 +712,7 @@ const ScoreEntryRow = React.memo(function ScoreEntryRow({ staff, score, onChange
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-function Staff({ currentUser }) {
+function Staff() {
   const isMobile = useIsMobile()
   const { show:showToast, el:toastEl } = useToast()
 
