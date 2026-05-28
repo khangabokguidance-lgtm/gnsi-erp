@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { staffDB } from './staffDB'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -13,225 +14,828 @@ function useMobile() {
   return m
 }
 
-const emptyForm = { staff_id: '', leave_type: 'Casual Leave', from_date: '', to_date: '', reason: '' }
+// ─── Role hook — fetches current user's staff record ─────────────────────────
+function useCurrentUser() {
+  const [currentUser, setCurrentUser] = useState(null)
+  const [userLoading, setUserLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        // Get logged-in user from Supabase auth
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { setUserLoading(false); return }
+
+        // Match to staff_profiles via email
+        const all = await staffDB.getAll()
+        const match = all.find(s => s.email?.toLowerCase() === user.email?.toLowerCase())
+        setCurrentUser(match || null)
+      } catch (e) {
+        console.error('useCurrentUser:', e)
+      } finally {
+        setUserLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  return { currentUser, userLoading }
+}
+
+const emptyForm = {
+  staff_id: '',
+  leave_type: 'Casual Leave',
+  from_date: '',
+  to_date: '',
+  reason: '',
+  is_paid: true,
+  half_day_type: 'Full Day'
+}
 
 const iStyle = { width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', backgroundColor: 'white', boxSizing: 'border-box', fontFamily: 'inherit' }
 const lStyle = { display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }
 
 const statusStyle = (status) => {
-  const map = { Pending: { bg: '#fef9c3', color: '#ca8a04' }, Approved: { bg: '#dcfce7', color: '#16a34a' }, Rejected: { bg: '#fee2e2', color: '#dc2626' } }
+  const map = {
+    Pending:  { bg: '#fef9c3', color: '#ca8a04' },
+    Approved: { bg: '#dcfce7', color: '#16a34a' },
+    Rejected: { bg: '#fee2e2', color: '#dc2626' }
+  }
   const s = map[status] || { bg: '#e5e7eb', color: '#374151' }
   return { padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '600', backgroundColor: s.bg, color: s.color, display: 'inline-block' }
 }
 
+// ─── Role helpers ─────────────────────────────────────────────────────────────
+const isAdminRole = (role) => role === 'Admin' || role === 'Teaching + Admin'
+const isTeacherRole = (role) => role === 'Teaching' || role === 'Non-Teaching'
+
+// ─── Helper Functions ─────────────────────────────────────────────────────────
+const calculateDays = (from, to, halfDayType) => {
+  if (!from || !to) return 0
+  const start = new Date(from)
+  const end = new Date(to)
+  const diffTime = Math.abs(end - start)
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+  if (halfDayType === 'Full Day') return diffDays
+  return diffDays * 0.5
+}
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '—'
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+const formatRelativeTime = (dateStr) => {
+  if (!dateStr) return '—'
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return `${days} days ago`
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`
+  return `${Math.floor(days / 30)} months ago`
+}
+
+const exportToCSV = (data, filename) => {
+  const headers = Object.keys(data[0] || {}).join(',')
+  const rows = data.map(row => Object.values(row).map(v => `"${v}"`).join(','))
+  const csv = [headers, ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+}
+
 function Leave() {
   const mobile = useMobile()
+  const { currentUser, userLoading } = useCurrentUser()
+
+  // ─── Derived permissions ─────────────────────────────────────────────────
+  const canManage  = useMemo(() => isAdminRole(currentUser?.role), [currentUser])  // apply/approve/reject/delete
+  const isLimitedUser = useMemo(() => isTeacherRole(currentUser?.role), [currentUser])  // own records only
+
   const [staff, setStaff] = useState([])
   const [leaves, setLeaves] = useState([])
+  const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [form, setForm] = useState(emptyForm)
+  const [selectedItems, setSelectedItems] = useState(new Set())
+  const [viewMode, setViewMode] = useState('list')
+  const [detailModal, setDetailModal] = useState(null)
+  const [dateError, setDateError] = useState('')
+  const [overlapWarning, setOverlapWarning] = useState('')
 
   const fetchAll = useCallback(async () => {
+    if (userLoading || !currentUser) return
     setLoading(true)
-    const [{ data: staffData }, { data: leaveData }] = await Promise.all([
-      supabase.from('staff_profiles').select('id, name, department, designation').order('name'),
-      supabase.from('leave_requests').select('*, staff_profiles(name, department, designation)').order('created_at', { ascending: false }),
-    ])
-    setStaff(staffData || [])
+
+    // Staff list — limited users only see themselves in the dropdown
+    const allStaff = await staffDB.getAll()
+
+    let leaveQuery = supabase
+      .from('leave_requests')
+      .select('*, staff_profiles(name, department, designation, daily_salary, leave_balance)')
+      .order('created_at', { ascending: false })
+
+    // RLS handles DB filtering, but also filter on client for clarity
+    if (isLimitedUser) {
+      leaveQuery = leaveQuery.eq('staff_id', currentUser.id)
+    }
+
+    const { data: leaveData } = await leaveQuery
+
+    setStaff(isLimitedUser ? allStaff.filter(s => s.id === currentUser.id) : allStaff)
     setLeaves(leaveData || [])
     setLoading(false)
-  }, [])
+  }, [currentUser, userLoading, isLimitedUser])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  // ─── Date Validation & Overlap Check ────────────────────────────────────────
+  useEffect(() => {
+    setDateError('')
+    setOverlapWarning('')
+    if (form.from_date && form.to_date) {
+      if (new Date(form.to_date) < new Date(form.from_date)) {
+        setDateError('\u26A0\uFE0F To Date must be after From Date')
+      }
+      if (form.staff_id) {
+        const staffLeaves = leaves.filter(l =>
+          l.staff_id === Number(form.staff_id) &&
+          l.id !== detailModal?.id &&
+          l.status !== 'Rejected'
+        )
+        const hasOverlap = staffLeaves.some(l => {
+          const existingStart = new Date(l.from_date)
+          const existingEnd = new Date(l.to_date)
+          const newStart = new Date(form.from_date)
+          const newEnd = new Date(form.to_date)
+          return newStart <= existingEnd && newEnd >= existingStart
+        })
+        if (hasOverlap) setOverlapWarning('\u26A0\uFE0F This staff already has leave in this date range')
+      }
+    }
+  }, [form.from_date, form.to_date, form.staff_id, leaves, detailModal])
+
+  const selectedStaff = useMemo(() =>
+    staff.find(s => s.id === Number(form.staff_id)),
+  [staff, form.staff_id])
+
+  const duration = useMemo(() =>
+    calculateDays(form.from_date, form.to_date, form.half_day_type),
+  [form.from_date, form.to_date, form.half_day_type])
+
+  const estimatedDeduction = useMemo(() => {
+    if (!selectedStaff?.daily_salary || form.is_paid) return 0
+    return duration * selectedStaff.daily_salary
+  }, [selectedStaff, duration, form.is_paid])
+
+  const leaveBalanceInfo = useMemo(() => {
+    if (!selectedStaff || !form.leave_type) return null
+    const balance = selectedStaff.leave_balance?.[form.leave_type] || 0
+    const used = leaves.filter(l =>
+      l.staff_id === selectedStaff.id &&
+      l.leave_type === form.leave_type &&
+      l.status === 'Approved'
+    ).reduce((sum, l) => sum + (l.duration_days || 0), 0)
+    return { total: balance, used, remaining: Math.max(0, balance - used) }
+  }, [selectedStaff, form.leave_type, leaves])
+
   const handleAdd = async (e) => {
-    e.preventDefault(); setSaving(true)
-    const { error } = await supabase.from('leave_requests').insert([{ staff_id: Number(form.staff_id), leave_type: form.leave_type, from_date: form.from_date, to_date: form.to_date, reason: form.reason, status: 'Pending' }])
+    e.preventDefault()
+    if (!canManage) return
+    if (dateError || overlapWarning) return
+    setSaving(true)
+    const durationDays = calculateDays(form.from_date, form.to_date, form.half_day_type)
+    const dailySalary = selectedStaff?.daily_salary || 0
+    const deduction = form.is_paid ? 0 : durationDays * dailySalary
+
+    const { error } = await supabase.from('leave_requests').insert([{
+      staff_id: Number(form.staff_id),
+      leave_type: form.leave_type,
+      from_date: form.from_date,
+      to_date: form.to_date,
+      reason: form.reason,
+      status: 'Pending',
+      is_paid: form.is_paid,
+      half_day_type: form.half_day_type,
+      duration_days: durationDays,
+      daily_salary: dailySalary,
+      deduction_amount: deduction,
+      applied_by: currentUser?.name || 'Admin'
+    }])
+
     if (error) alert('Error: ' + error.message)
     else { setForm(emptyForm); setShowForm(false); fetchAll() }
     setSaving(false)
   }
 
   const handleStatus = async (id, status) => {
-    const { error } = await supabase.from('leave_requests').update({ status }).eq('id', id)
+    if (!canManage) return
+    const { error } = await supabase.from('leave_requests')
+      .update({
+        status,
+        approved_by: status === 'Approved' ? currentUser?.name : null,
+        approved_at: status === 'Approved' ? new Date().toISOString() : null
+      })
+      .eq('id', id)
+
     if (error) alert('Error: ' + error.message)
-    else fetchAll()
+    else {
+      await supabase.from('leave_history').insert([{
+        leave_id: id,
+        action: status,
+        performed_by: currentUser?.name,
+        new_status: status
+      }])
+      fetchAll()
+    }
+  }
+
+  const handleBulkStatus = async (status) => {
+    if (!canManage) return
+    if (!window.confirm(`${status} ${selectedItems.size} selected items?`)) return
+    const ids = Array.from(selectedItems)
+    const { error } = await supabase.from('leave_requests')
+      .update({
+        status,
+        approved_by: status === 'Approved' ? currentUser?.name : null,
+        approved_at: status === 'Approved' ? new Date().toISOString() : null
+      })
+      .in('id', ids)
+
+    if (error) alert('Error: ' + error.message)
+    else {
+      await supabase.from('leave_history').insert(
+        ids.map(id => ({
+          leave_id: id,
+          action: `Bulk ${status}`,
+          performed_by: currentUser?.name,
+          new_status: status
+        }))
+      )
+      setSelectedItems(new Set())
+      fetchAll()
+    }
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete?')) return
+    if (!canManage) return
+    if (!window.confirm('Delete this leave request?')) return
     const { error } = await supabase.from('leave_requests').delete().eq('id', id)
     if (error) alert('Error: ' + error.message)
     else fetchAll()
   }
 
+  const handleBulkDelete = async () => {
+    if (!canManage) return
+    if (!window.confirm(`Delete ${selectedItems.size} selected items?`)) return
+    const ids = Array.from(selectedItems)
+    const { error } = await supabase.from('leave_requests').delete().in('id', ids)
+    if (error) alert('Error: ' + error.message)
+    else { setSelectedItems(new Set()); fetchAll() }
+  }
+
+  const fetchHistory = async (leaveId) => {
+    const { data } = await supabase.from('leave_history')
+      .select('*')
+      .eq('leave_id', leaveId)
+      .order('performed_at', { ascending: false })
+    setHistory(data || [])
+  }
+
   const filteredLeaves = useMemo(() => {
     const q = search.toLowerCase()
     return leaves.filter(item => {
-      const matchSearch = (item.staff_profiles?.name + item.staff_profiles?.department + item.staff_profiles?.designation + item.leave_type + item.reason).toLowerCase().includes(q)
+      const matchSearch = (
+        item.staff_profiles?.name +
+        item.staff_profiles?.department +
+        item.staff_profiles?.designation +
+        item.leave_type +
+        item.reason
+      ).toLowerCase().includes(q)
       return matchSearch && (statusFilter === 'All' || item.status === statusFilter)
     })
   }, [leaves, search, statusFilter])
 
-  const stats = {
-    total: leaves.length,
-    pending: leaves.filter(l => l.status === 'Pending').length,
-    approved: leaves.filter(l => l.status === 'Approved').length,
-    rejected: leaves.filter(l => l.status === 'Rejected').length,
+  const stats = useMemo(() => {
+    const totalDeduction = leaves
+      .filter(l => !l.is_paid && l.status === 'Approved')
+      .reduce((sum, l) => sum + (l.deduction_amount || 0), 0)
+    const monthlyDeduction = leaves
+      .filter(l => !l.is_paid && l.status === 'Approved' && l.from_date?.startsWith(new Date().toISOString().slice(0, 7)))
+      .reduce((sum, l) => sum + (l.deduction_amount || 0), 0)
+    return {
+      total: leaves.length,
+      pending: leaves.filter(l => l.status === 'Pending').length,
+      approved: leaves.filter(l => l.status === 'Approved').length,
+      rejected: leaves.filter(l => l.status === 'Rejected').length,
+      totalDeduction,
+      monthlyDeduction
+    }
+  }, [leaves])
+
+  const calendarData = useMemo(() => {
+    const today = new Date()
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const firstDay = new Date(year, month, 1).getDay()
+    const calendarDays = []
+    for (let i = 0; i < firstDay; i++) calendarDays.push(null)
+    for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i)
+    const monthLeaves = leaves.filter(l => {
+      const from = new Date(l.from_date)
+      const to = new Date(l.to_date)
+      return (from.getMonth() === month && from.getFullYear() === year) ||
+             (to.getMonth() === month && to.getFullYear() === year) ||
+             (from < new Date(year, month, 1) && to > new Date(year, month + 1, 0))
+    })
+    return { calendarDays, monthLeaves, year, month }
+  }, [leaves])
+
+  const handleExport = () => {
+    const exportData = filteredLeaves.map(l => ({
+      'Staff Name': l.staff_profiles?.name,
+      'Department': l.staff_profiles?.department,
+      'Leave Type': l.leave_type,
+      'From Date': l.from_date,
+      'To Date': l.to_date,
+      'Duration (Days)': l.duration_days,
+      'Half Day': l.half_day_type,
+      'Status': l.status,
+      'Paid': l.is_paid ? 'Yes' : 'No',
+      'Deduction (\u20B9)': l.deduction_amount,
+      'Applied By': l.applied_by,
+      'Approved By': l.approved_by,
+      'Created At': l.created_at
+    }))
+    exportToCSV(exportData, `leave_report_${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
+  const toggleSelection = (id) => {
+    const newSet = new Set(selectedItems)
+    if (newSet.has(id)) newSet.delete(id)
+    else newSet.add(id)
+    setSelectedItems(newSet)
+  }
+
+  // ─── Loading states ───────────────────────────────────────────────────────
+  if (userLoading) return (
+    <div style={{ textAlign: 'center', padding: '64px', color: '#64748b' }}>
+      ⏳ Loading user...
+    </div>
+  )
+
+  if (!currentUser) return (
+    <div style={{ textAlign: 'center', padding: '64px', color: '#dc2626' }}>
+      ⚠️ Could not identify current user. Please log in again.
+    </div>
+  )
+
   return (
-    <div style={{ padding: mobile ? '14px 12px' : '24px' }}>
+    <div style={{ padding: mobile ? '14px 12px' : '24px', maxWidth: '1400px', margin: '0 auto' }}>
+
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', gap: 10, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: mobile ? '20px' : '26px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>🏖️ Leave</h1>
-          {!mobile && <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>Manage staff leave applications</p>}
+          <h1 style={{ fontSize: mobile ? '20px' : '26px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>
+            🏖️ Leave Management
+          </h1>
+          {!mobile && (
+            <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>
+              {canManage
+                ? 'Manage staff leave applications with payroll integration'
+                : `Viewing your leave records — ${currentUser.name}`}
+            </p>
+          )}
         </div>
-        <button onClick={() => setShowForm(!showForm)} style={{ backgroundColor: '#1e3a5f', color: 'white', border: 'none', borderRadius: '8px', padding: mobile ? '9px 14px' : '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: mobile ? '13px' : '14px', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-          {showForm ? '✖ Cancel' : '➕ Apply'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+            style={{ backgroundColor: '#f1f5f9', color: '#374151', border: 'none', borderRadius: '8px', padding: '10px 16px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+            {viewMode === 'list' ? '📅 Calendar' : '📋 List'}
+          </button>
+          {/* Export — admin/manager only */}
+          {canManage && (
+            <button
+              onClick={handleExport}
+              style={{ backgroundColor: '#f1f5f9', color: '#374151', border: 'none', borderRadius: '8px', padding: '10px 16px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+              📥 Export CSV
+            </button>
+          )}
+          {/* Apply Leave — admin/manager only */}
+          {canManage && (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              style={{ backgroundColor: '#1e3a5f', color: 'white', border: 'none', borderRadius: '8px', padding: mobile ? '9px 14px' : '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: mobile ? '13px' : '14px', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              {showForm ? '✖ Cancel' : '➕ Apply Leave'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Stats — 2-col on mobile */}
-      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: mobile ? '10px' : '16px', marginBottom: '20px' }}>
+      {/* Role badge for limited users */}
+      {isLimitedUser && (
+        <div style={{ marginBottom: '16px', padding: '10px 16px', background: '#eff6ff', borderRadius: '8px', fontSize: '13px', color: '#1e40af', fontWeight: '600', border: '1px solid #bfdbfe' }}>
+          👤 You are viewing your own leave records only. Contact admin to apply or modify leave.
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : canManage ? 'repeat(6, 1fr)' : 'repeat(4, 1fr)', gap: mobile ? '10px' : '12px', marginBottom: '20px' }}>
         {[
           { label: 'Total', value: stats.total, color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
           { label: 'Pending', value: stats.pending, color: '#ca8a04', bg: '#fef9c3', icon: '⏳' },
           { label: 'Approved', value: stats.approved, color: '#16a34a', bg: '#dcfce7', icon: '✅' },
           { label: 'Rejected', value: stats.rejected, color: '#dc2626', bg: '#fee2e2', icon: '❌' },
+          // Deduction cards — admin/manager only
+          ...(canManage ? [
+            { label: 'Monthly Deduction', value: `\u20B9${stats.monthlyDeduction.toLocaleString()}`, color: '#dc2626', bg: '#fee2e2', icon: '💸' },
+            { label: 'Total Deduction', value: `\u20B9${stats.totalDeduction.toLocaleString()}`, color: '#7c3aed', bg: '#ede9fe', icon: '💰' },
+          ] : [])
         ].map(card => (
-          <div key={card.label} style={{ backgroundColor: card.bg, borderRadius: '12px', padding: mobile ? '12px' : '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${card.color}` }}>
-            <div style={{ fontSize: mobile ? '18px' : '22px', marginBottom: '4px' }}>{card.icon}</div>
-            <p style={{ fontSize: '12px', color: card.color, fontWeight: '600', margin: 0 }}>{card.label}</p>
-            <h2 style={{ fontSize: mobile ? '22px' : '28px', fontWeight: 'bold', color: card.color, margin: '2px 0 0' }}>{card.value}</h2>
+          <div key={card.label} style={{ backgroundColor: card.bg, borderRadius: '12px', padding: mobile ? '12px' : '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${card.color}` }}>
+            <div style={{ fontSize: mobile ? '16px' : '20px', marginBottom: '4px' }}>{card.icon}</div>
+            <p style={{ fontSize: '11px', color: card.color, fontWeight: '600', margin: 0 }}>{card.label}</p>
+            <h2 style={{ fontSize: mobile ? '18px' : '22px', fontWeight: 'bold', color: card.color, margin: '2px 0 0' }}>{card.value}</h2>
           </div>
         ))}
       </div>
 
-      {/* Form */}
-      {showForm && (
+      {/* Apply Leave Form — admin/manager only */}
+      {showForm && canManage && (
         <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: mobile ? '16px' : '24px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>Apply Leave</h2>
+          <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>📝 Apply Leave</h2>
           <form onSubmit={handleAdd}>
             <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '14px' }}>
               <div>
-                <label style={lStyle}>Select Staff</label>
+                <label style={lStyle}>Select Staff *</label>
                 <select value={form.staff_id} onChange={e => setForm({ ...form, staff_id: e.target.value })} required style={iStyle}>
                   <option value="">Choose Staff</option>
-                  {staff.map(item => <option key={item.id} value={item.id}>{item.name} - {item.designation || 'Staff'}</option>)}
+                  {staff.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} - {item.designation || 'Staff'} (₹{item.daily_salary}/day)
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label style={lStyle}>Leave Type</label>
+                <label style={lStyle}>Leave Type *</label>
                 <select value={form.leave_type} onChange={e => setForm({ ...form, leave_type: e.target.value })} required style={iStyle}>
                   {['Casual Leave', 'Sick Leave', 'Earned Leave', 'Maternity/Paternity', 'Other'].map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label style={lStyle}>From Date</label>
+                <label style={lStyle}>Half Day Type</label>
+                <select value={form.half_day_type} onChange={e => setForm({ ...form, half_day_type: e.target.value })} style={iStyle}>
+                  <option value="Full Day">Full Day</option>
+                  <option value="First Half">First Half (0.5 day)</option>
+                  <option value="Second Half">Second Half (0.5 day)</option>
+                </select>
+              </div>
+              <div>
+                <label style={lStyle}>From Date *</label>
                 <input type="date" value={form.from_date} onChange={e => setForm({ ...form, from_date: e.target.value })} required style={iStyle} />
               </div>
               <div>
-                <label style={lStyle}>To Date</label>
+                <label style={lStyle}>To Date *</label>
                 <input type="date" value={form.to_date} onChange={e => setForm({ ...form, to_date: e.target.value })} required style={iStyle} />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={lStyle}>Reason</label>
-                <textarea value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} rows="3" style={{ ...iStyle, resize: 'vertical' }} />
+                <label style={lStyle}>Reason *</label>
+                <textarea
+                  value={form.reason}
+                  onChange={e => setForm({ ...form, reason: e.target.value })}
+                  rows="3"
+                  required
+                  placeholder="Enter detailed reason for leave..."
+                  style={{ ...iStyle, resize: 'vertical' }}
+                />
               </div>
             </div>
-            <button type="submit" disabled={saving} style={{ marginTop: '14px', backgroundColor: saving ? '#94a3b8' : '#1e3a5f', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 22px', fontWeight: '600', cursor: saving ? 'not-allowed' : 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>
-              {saving ? '⏳ Saving...' : '✅ Submit Leave'}
+
+            {selectedStaff && (
+              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                <div style={{ background: '#eff6ff', padding: '14px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e40af', marginBottom: '8px' }}>
+                    📊 Leave Balance: {form.leave_type}
+                  </div>
+                  {leaveBalanceInfo ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span>Total: <strong>{leaveBalanceInfo.total}</strong></span>
+                      <span>Used: <strong style={{ color: '#dc2626' }}>{leaveBalanceInfo.used}</strong></span>
+                      <span>Remaining: <strong style={{ color: '#16a34a' }}>{leaveBalanceInfo.remaining}</strong></span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>Loading balance...</span>
+                  )}
+                  {leaveBalanceInfo && duration > leaveBalanceInfo.remaining && (
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#dc2626', fontWeight: '600' }}>
+                      ⚠️ Exceeds balance! Will be marked as unpaid automatically.
+                    </div>
+                  )}
+                </div>
+                <div style={{ background: form.is_paid ? '#dcfce7' : '#fef3c7', padding: '14px', borderRadius: '10px', border: `1px solid ${form.is_paid ? '#86efac' : '#fde68a'}` }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: form.is_paid ? '#166534' : '#92400e', marginBottom: '8px' }}>
+                    💰 Deduction Preview
+                  </div>
+                  <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
+                    <div>Duration: <strong>{duration} day{duration !== 1 ? 's' : ''}</strong></div>
+                    <div>Daily Rate: <strong>₹{selectedStaff.daily_salary || '—'}</strong></div>
+                    <div style={{ marginTop: '6px', fontSize: '14px', fontWeight: '700', color: form.is_paid ? '#16a34a' : '#dc2626' }}>
+                      {form.is_paid ? '✅ Fully Paid Leave' : `💸 Deduction: ₹${estimatedDeduction.toFixed(2)}`}
+                    </div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!form.is_paid} onChange={e => setForm({ ...form, is_paid: !e.target.checked })} />
+                    Mark as Unpaid Leave (LWP)
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {dateError && (
+              <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fee2e2', color: '#dc2626', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}>{dateError}</div>
+            )}
+            {overlapWarning && (
+              <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}>{overlapWarning}</div>
+            )}
+
+            <button type="submit" disabled={saving || !!dateError}
+              style={{ marginTop: '16px', backgroundColor: saving || dateError ? '#94a3b8' : '#1e3a5f', color: 'white', border: 'none', borderRadius: '8px', padding: '12px 28px', fontWeight: '600', cursor: saving || dateError ? 'not-allowed' : 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>
+              {saving ? '⏳ Saving...' : '✅ Submit Leave Request'}
             </button>
           </form>
         </div>
       )}
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexDirection: mobile ? 'column' : 'row' }}>
-        <input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...iStyle, flex: 1 }} />
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexDirection: mobile ? 'column' : 'row', alignItems: 'center' }}>
+        <input placeholder="🔍 Search staff, department, leave type..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...iStyle, flex: 1 }} />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...iStyle, width: mobile ? '100%' : 160 }}>
           <option value="All">All Status</option>
-          <option value="Pending">Pending</option>
-          <option value="Approved">Approved</option>
-          <option value="Rejected">Rejected</option>
+          <option value="Pending">⏳ Pending</option>
+          <option value="Approved">✅ Approved</option>
+          <option value="Rejected">❌ Rejected</option>
         </select>
       </div>
 
-      {/* Records */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading…</div>
-      ) : mobile ? (
-        /* Mobile card list */
-        <div>
-          {filteredLeaves.map((item, i) => (
-            <div key={item.id} style={{ backgroundColor: 'white', borderRadius: '10px', padding: '14px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderLeft: '3px solid ' + (item.status === 'Approved' ? '#16a34a' : item.status === 'Rejected' ? '#dc2626' : '#ca8a04') }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <div>
-                  <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{item.staff_profiles?.name || '—'}</div>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: 2 }}>{item.staff_profiles?.department || '—'} · {item.leave_type}</div>
-                </div>
-                <span style={statusStyle(item.status)}>{item.status}</span>
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: 10 }}>
-                📅 {item.from_date} → {item.to_date}
-                {item.reason && <div style={{ marginTop: 4, color: '#475569' }}>{item.reason}</div>}
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {item.status === 'Pending' && (
-                  <>
-                    <button onClick={() => handleStatus(item.id, 'Approved')} style={{ flex: 1, backgroundColor: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '7px', padding: '7px', fontSize: '13px', cursor: 'pointer', fontWeight: '700' }}>✅ Approve</button>
-                    <button onClick={() => handleStatus(item.id, 'Rejected')} style={{ flex: 1, backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '7px', padding: '7px', fontSize: '13px', cursor: 'pointer', fontWeight: '700' }}>❌ Reject</button>
-                  </>
-                )}
-                <button onClick={() => handleDelete(item.id)} style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '7px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer' }}>🗑</button>
-              </div>
-            </div>
-          ))}
-          {filteredLeaves.length === 0 && <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>No leave requests found</div>}
+      {/* Bulk Actions — admin/manager only */}
+      {canManage && selectedItems.size > 0 && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>{selectedItems.size} selected</span>
+          <button onClick={() => handleBulkStatus('Approved')} style={{ background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>✅ Approve All</button>
+          <button onClick={() => handleBulkStatus('Rejected')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>❌ Reject All</button>
+          <button onClick={handleBulkDelete} style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>🗑 Delete All</button>
+          <button onClick={() => setSelectedItems(new Set())} style={{ background: 'transparent', color: '#64748b', border: '1px solid #d1d5db', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer' }}>Clear</button>
         </div>
-      ) : (
-        /* Desktop table */
-        <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                {['#', 'Staff Name', 'Department', 'Leave Type', 'From', 'To', 'Status', 'Action'].map(h => (
-                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: '#374151', fontSize: '13px' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLeaves.map((item, i) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{i + 1}</td>
-                  <td style={{ padding: '12px 16px', fontWeight: '600', color: '#1e293b' }}>{item.staff_profiles?.name || '-'}</td>
-                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.staff_profiles?.department || '-'}</td>
-                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.leave_type}</td>
-                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.from_date}</td>
-                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.to_date}</td>
-                  <td style={{ padding: '12px 16px' }}><span style={statusStyle(item.status)}>{item.status}</span></td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {item.status === 'Pending' && (
-                        <>
-                          <button onClick={() => handleStatus(item.id, 'Approved')} style={{ backgroundColor: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', fontWeight: '500' }}>✅</button>
-                          <button onClick={() => handleStatus(item.id, 'Rejected')} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', fontWeight: '500' }}>❌</button>
-                        </>
-                      )}
-                      <button onClick={() => handleDelete(item.id)} style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', fontWeight: '500' }}>🗑</button>
+      )}
+
+      {/* Calendar View */}
+      {viewMode === 'calendar' && (
+        <div style={{ background: 'white', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <h3 style={{ margin: '0 0 16px', color: '#1e3a5f', fontSize: '16px' }}>
+            📅 {new Date(calendarData.year, calendarData.month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+              <div key={d} style={{ textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#64748b', padding: '8px' }}>{d}</div>
+            ))}
+            {calendarData.calendarDays.map((day, i) => {
+              if (!day) return <div key={i} style={{ padding: '8px' }} />
+              const dateStr = `${calendarData.year}-${String(calendarData.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+              const dayLeaves = calendarData.monthLeaves.filter(l => {
+                const from = new Date(l.from_date)
+                const to = new Date(l.to_date)
+                const check = new Date(dateStr)
+                return check >= from && check <= to
+              })
+              return (
+                <div key={i} style={{ padding: '6px', minHeight: '60px', border: '1px solid #e2e8f0', borderRadius: '6px', background: dayLeaves.length > 0 ? '#fef9c3' : 'white', fontSize: '12px' }}>
+                  <div style={{ fontWeight: '600', color: '#374151', marginBottom: '4px' }}>{day}</div>
+                  {dayLeaves.slice(0, 2).map((l, idx) => (
+                    <div key={idx} style={{ fontSize: '10px', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {l.staff_profiles?.name?.split(' ')[0]} ({l.half_day_type === 'Full Day' ? 'F' : 'H'})
                     </div>
-                  </td>
+                  ))}
+                  {dayLeaves.length > 2 && <div style={{ fontSize: '10px', color: '#92400e' }}>+{dayLeaves.length - 2} more</div>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* List View */}
+      {viewMode === 'list' && (
+        loading ? (
+          <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading…</div>
+        ) : mobile ? (
+          <div>
+            {filteredLeaves.map((item) => (
+              <div key={item.id} style={{ backgroundColor: 'white', borderRadius: '10px', padding: '14px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', borderLeft: '3px solid ' + (item.status === 'Approved' ? '#16a34a' : item.status === 'Rejected' ? '#dc2626' : '#ca8a04') }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 8, gap: '8px' }}>
+                  {/* Checkbox — admin/manager only */}
+                  {canManage && (
+                    <input type="checkbox" checked={selectedItems.has(item.id)} onChange={() => toggleSelection(item.id)} style={{ marginTop: '4px' }} />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{item.staff_profiles?.name || '—'}</div>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: 2 }}>{item.staff_profiles?.department || '—'} · {item.leave_type}</div>
+                      </div>
+                      <span style={statusStyle(item.status)}>{item.status}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: 8, paddingLeft: canManage ? '24px' : '0' }}>
+                  <div>📅 {formatDate(item.from_date)} → {formatDate(item.to_date)} · {item.duration_days} day{item.duration_days !== 1 ? 's' : ''} · {item.half_day_type}</div>
+                  {item.reason && <div style={{ marginTop: 4, color: '#475569' }}>📝 {item.reason}</div>}
+                  <div style={{ marginTop: 4, fontSize: '11px' }}>
+                    Applied {formatRelativeTime(item.created_at)} by {item.applied_by || '—'}
+                    {item.approved_by && ` · Approved by ${item.approved_by}`}
+                  </div>
+                </div>
+
+                {/* Deduction badge — admin/manager only */}
+                {canManage && (
+                  <div style={{ paddingLeft: '24px', marginBottom: '10px' }}>
+                    <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', background: item.is_paid ? '#dcfce7' : '#fee2e2', color: item.is_paid ? '#16a34a' : '#dc2626' }}>
+                      {item.is_paid ? '✅ Paid' : `💸 \u20B9${item.deduction_amount?.toLocaleString()} deducted`}
+                    </span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, paddingLeft: canManage ? '24px' : '0' }}>
+                  {/* Approve/Reject — admin/manager only */}
+                  {canManage && item.status === 'Pending' && (
+                    <>
+                      <button onClick={() => handleStatus(item.id, 'Approved')} style={{ flex: 1, backgroundColor: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '7px', padding: '7px', fontSize: '13px', cursor: 'pointer', fontWeight: '700' }}>✅ Approve</button>
+                      <button onClick={() => handleStatus(item.id, 'Rejected')} style={{ flex: 1, backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '7px', padding: '7px', fontSize: '13px', cursor: 'pointer', fontWeight: '700' }}>❌ Reject</button>
+                    </>
+                  )}
+                  <button onClick={() => { setDetailModal(item); fetchHistory(item.id) }} style={{ backgroundColor: '#eff6ff', color: '#1e40af', border: 'none', borderRadius: '7px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer' }}>👁</button>
+                  {/* Delete — admin/manager only */}
+                  {canManage && (
+                    <button onClick={() => handleDelete(item.id)} style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '7px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer' }}>🗑</button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {filteredLeaves.length === 0 && <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>No leave requests found</div>}
+          </div>
+        ) : (
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  {/* Select all — admin/manager only */}
+                  {canManage && (
+                    <th style={{ padding: '12px 8px', width: '40px' }}>
+                      <input
+                        type="checkbox"
+                        checked={filteredLeaves.length > 0 && filteredLeaves.every(l => selectedItems.has(l.id))}
+                        onChange={() => {
+                          if (filteredLeaves.every(l => selectedItems.has(l.id))) setSelectedItems(new Set())
+                          else setSelectedItems(new Set(filteredLeaves.map(l => l.id)))
+                        }}
+                      />
+                    </th>
+                  )}
+                  {['#', 'Staff Name', 'Department', 'Type', 'Duration', 'From', 'To', 'Status',
+                    ...(canManage ? ['Payment'] : []),
+                    'Applied', 'Action'
+                  ].map(h => (
+                    <th key={h} style={{ padding: '12px 10px', textAlign: 'left', fontWeight: '600', color: '#374151', fontSize: '12px' }}>{h}</th>
+                  ))}
                 </tr>
+              </thead>
+              <tbody>
+                {filteredLeaves.map((item, i) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    {canManage && (
+                      <td style={{ padding: '10px 8px' }}>
+                        <input type="checkbox" checked={selectedItems.has(item.id)} onChange={() => toggleSelection(item.id)} />
+                      </td>
+                    )}
+                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{i + 1}</td>
+                    <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b', fontSize: '13px' }}>{item.staff_profiles?.name || '-'}</td>
+                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{item.staff_profiles?.department || '-'}</td>
+                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{item.leave_type}</td>
+                    <td style={{ padding: '10px', color: '#374151', fontSize: '13px', fontWeight: '600' }}>
+                      {item.duration_days}d {item.half_day_type !== 'Full Day' && `(H)`}
+                    </td>
+                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{formatDate(item.from_date)}</td>
+                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{formatDate(item.to_date)}</td>
+                    <td style={{ padding: '10px' }}><span style={statusStyle(item.status)}>{item.status}</span></td>
+                    {/* Payment column — admin/manager only */}
+                    {canManage && (
+                      <td style={{ padding: '10px' }}>
+                        <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', background: item.is_paid ? '#dcfce7' : '#fee2e2', color: item.is_paid ? '#16a34a' : '#dc2626' }}>
+                          {item.is_paid ? 'Paid' : `\u20B9${item.deduction_amount?.toLocaleString()}`}
+                        </span>
+                      </td>
+                    )}
+                    <td style={{ padding: '10px', color: '#64748b', fontSize: '12px' }}>
+                      {formatRelativeTime(item.created_at)}
+                      {canManage && <div style={{ fontSize: '11px', color: '#94a3b8' }}>by {item.applied_by || '—'}</div>}
+                    </td>
+                    <td style={{ padding: '10px' }}>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {canManage && item.status === 'Pending' && (
+                          <>
+                            <button onClick={() => handleStatus(item.id, 'Approved')} title="Approve" style={{ backgroundColor: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>✅</button>
+                            <button onClick={() => handleStatus(item.id, 'Rejected')} title="Reject" style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>❌</button>
+                          </>
+                        )}
+                        <button onClick={() => { setDetailModal(item); fetchHistory(item.id) }} title="View Details" style={{ backgroundColor: '#eff6ff', color: '#1e40af', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>👁</button>
+                        {canManage && (
+                          <button onClick={() => handleDelete(item.id)} title="Delete" style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>🗑</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredLeaves.length === 0 && (
+                  <tr><td colSpan={canManage ? 12 : 10} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>No leave requests found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {/* Detail Modal */}
+      {detailModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}
+          onClick={() => setDetailModal(null)}>
+          <div style={{ background: 'white', borderRadius: '16px', padding: '24px', maxWidth: '500px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#1e3a5f' }}>📝 Leave Details</h3>
+              <button onClick={() => setDetailModal(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+            </div>
+            <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
+              {[
+                ['Staff', detailModal.staff_profiles?.name],
+                ['Department', detailModal.staff_profiles?.department],
+                ['Leave Type', detailModal.leave_type],
+                ['Duration', `${detailModal.duration_days} days (${detailModal.half_day_type})`],
+                ['Date Range', `${formatDate(detailModal.from_date)} → ${formatDate(detailModal.to_date)}`],
+                ['Status', null],
+                ...(canManage ? [['Payment', null]] : []),
+                ['Applied By', `${detailModal.applied_by || '—'} on ${formatDate(detailModal.created_at)}`],
+                ...(detailModal.approved_by ? [['Approved By', `${detailModal.approved_by} on ${formatDate(detailModal.approved_at)}`]] : []),
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ color: '#64748b' }}>{label}</span>
+                  {label === 'Status' ? (
+                    <span style={statusStyle(detailModal.status)}>{detailModal.status}</span>
+                  ) : label === 'Payment' ? (
+                    <span style={{ fontWeight: '600', color: detailModal.is_paid ? '#16a34a' : '#dc2626' }}>
+                      {detailModal.is_paid ? '✅ Fully Paid' : `💸 \u20B9${detailModal.deduction_amount?.toLocaleString()} Deduction`}
+                    </span>
+                  ) : (
+                    <span style={{ fontWeight: '600' }}>{value}</span>
+                  )}
+                </div>
               ))}
-              {filteredLeaves.length === 0 && <tr><td colSpan="8" style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>No leave requests found</td></tr>}
-            </tbody>
-          </table>
+              {detailModal.reason && (
+                <div style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ color: '#64748b', display: 'block', marginBottom: '4px' }}>Reason</span>
+                  <span style={{ fontWeight: '500', color: '#374151' }}>{detailModal.reason}</span>
+                </div>
+              )}
+            </div>
+
+            {history.length > 0 && (
+              <div>
+                <h4 style={{ fontSize: '14px', color: '#1e3a5f', marginBottom: '10px' }}>📋 Activity History</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {history.map((h, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '12px' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: h.action === 'Approved' ? '#16a34a' : h.action === 'Rejected' ? '#dc2626' : '#ca8a04', marginTop: '4px', flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#374151' }}>{h.action} by {h.performed_by}</div>
+                        <div style={{ color: '#94a3b8', fontSize: '11px' }}>{formatDate(h.performed_at)} · {formatRelativeTime(h.performed_at)}</div>
+                        {h.notes && <div style={{ color: '#64748b', marginTop: '2px' }}>{h.notes}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
