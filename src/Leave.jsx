@@ -197,15 +197,26 @@ function Leave({ currentUser: currentUserProp }) {
 
   // ─── Actions ───────────────────────────────────────────────────────────────
   const handleAdd = async (e) => {
-    e.preventDefault()
-    if (!canManage || dateError || overlapWarning) return
-    setSaving(true)
+  e.preventDefault()
+  if (!canManage || dateError || overlapWarning) return
+
+  const staffId = parseInt(form.staff_id, 10)
+  console.log('DEBUG staff_id:', form.staff_id, '| parsed:', staffId, '| staff list:', staff) // ← ADD THIS
+
+  if (!form.staff_id || isNaN(staffId)) {
+    alert('Please select a valid staff member')
+    return
+  }
+
+  setSaving(true)
+
+  setSaving(true)
     const durationDays = calculateDays(form.from_date, form.to_date, form.half_day_type)
-    const dailySalary  = selectedStaff?.daily_salary || 0
-    const deduction    = form.is_paid ? 0 : durationDays * dailySalary
+    const dailySalary  = selectedStaff?.daily_salary || 400
+    const deduction    = form.is_paid ? 400 : durationDays * dailySalary
 
     const { error } = await supabase.from('leave_requests').insert([{
-      staff_id: parseInt(form.staff_id, 10),
+      staff_id: staffId, 
       leave_type:       form.leave_type,
       from_date:        form.from_date,
       to_date:          form.to_date,
