@@ -106,9 +106,9 @@ const exportToCSV = (data, filename) => {
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-function Leave() {
+function Leave({ currentUser: currentUserProp }) {
   const mobile = useMobile()
-  const { currentUser, userLoading } = useCurrentUser()
+  const { currentUser, userLoading } = useCurrentUser(currentUserProp)
 
   const canManage     = useMemo(() => currentUser?.role === 'Admin' || currentUser?.role === 'Teaching + Admin', [currentUser])
   const isLimitedUser = useMemo(() => currentUser?.role === 'Teaching' || currentUser?.role === 'Non-Teaching', [currentUser])

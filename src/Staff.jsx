@@ -711,10 +711,10 @@ const ScoreEntryRow = React.memo(function ScoreEntryRow({ staff, score, onChange
 })
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-
-function Staff() {
+function Staff({ currentUser: currentUserProp, perms }) {
   const isMobile = useIsMobile()
   const { show:showToast, el:toastEl } = useToast()
+  const { currentUser, userLoading, isAdmin, canManage } = useCurrentUser(currentUserProp)
 
   const { currentUser, userLoading, isAdmin, canManage } = useCurrentUser()
 const canEdit = canManage
