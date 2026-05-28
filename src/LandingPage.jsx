@@ -113,7 +113,7 @@ export default function LandingPage({ onLogin }) {
         </div>
 
         {/* Desktop nav */}
-        <ul style={{ ...S.navLinks, display: 'none', '@media(min-width:768px)': { display: 'flex' } }} className="gnsi-nav-links">
+        <ul style={S.navLinks} className="gnsi-nav-links">
           {[['notices','Notices'],['results','Results'],['gallery','Gallery'],['events','Events'],['contact','Contact']].map(([id,label]) => (
             <li key={id}><button onClick={() => scrollTo(id)} style={{ ...S.navLink, background: 'none', border: 'none', cursor: 'pointer' }}>{label}</button></li>
           ))}
