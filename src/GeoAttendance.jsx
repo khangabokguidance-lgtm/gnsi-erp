@@ -347,6 +347,7 @@ function AdvanceSummary({ staffId, advances }) {
 
 export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) {
   const safeAllStaff = Array.isArray(allStaff) ? allStaff : []
+   console.log('currentStaff:', currentStaff)
 
   // BUG C FIX: 'monitor' not 'admin'
   const [activeTab,     setActiveTab]     = useState(isAdmin ? 'monitor' : 'checkin')
