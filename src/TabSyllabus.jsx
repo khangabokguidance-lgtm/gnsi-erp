@@ -497,7 +497,22 @@ export default function TabSyllabus({ logs=[], courseData, monthlySyllabus=[], c
   const { show: showToast, el: toastEl } = useToast()
   const { courses=[], subtypesFor=()=>[], classesFor=()=>[], batchIdFor=()=>'' } = courseData || {}
 
-  const isAdmin   = ['admin','manager'].includes(currentUser?.role?.toLowerCase())
+  const _rawRole = (
+  currentUser?.role ||
+  currentUser?.user?.role ||
+  currentUser?.profile?.role ||
+  ''
+).toLowerCase().trim()
+const _name = (
+  currentUser?.name ||
+  currentUser?.user?.name ||
+  currentUser?.profile?.name ||
+  currentUser?.email ||
+  ''
+)
+const isAdmin = !currentUser || ['admin','manager','administrator','principal'].includes(_rawRole)
+const isStaff = _rawRole === 'teacher'
+const staffName = _name
   const isStaff   = currentUser?.role?.toLowerCase() === 'teacher'
   const staffName = currentUser?.name || ''
 
@@ -839,10 +854,16 @@ export default function TabSyllabus({ logs=[], courseData, monthlySyllabus=[], c
       <div style={{ marginBottom:12, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
         {isAdmin && <span style={{ ...S.badge('white','#1e3a5f'), padding:'4px 10px', fontSize:12 }}>🛡️ Admin — full access</span>}
         {isStaff && <span style={{ ...S.badge('white','#16a34a'), padding:'4px 10px', fontSize:12 }}>👨‍🏫 Staff — {staffName} — view own subjects</span>}
-        {durationSettings.length===0 && isAdmin && (
-          <span style={{ ...S.badge('#dc2626','#fee2e2'), padding:'4px 10px', fontSize:12 }}>⚠️ No course durations set — go to ⚙️ Course Duration</span>
-        )}
-      </div>
+       {durationSettings.length===0 && isAdmin && (
+  <span style={{ ...S.badge('#dc2626','#fee2e2'), padding:'4px 10px', fontSize:12 }}>⚠️ No course durations set — go to ⚙️ Course Duration</span>
+)}
+{/* DEBUG — remove after confirming */}
+<span style={{ ...S.badge('#64748b','#f1f5f9'), padding:'4px 10px', fontSize:11, fontFamily:'monospace' }}>
+  🔍 {currentUser ? `role="${_rawRole||'(empty)'}" name="${_name||'(empty)'}"` : 'currentUser prop missing'}
+</span>
+</div>
+
+Save, push, reload the page. The grey 🔍 banner will show exactly what role value the component is receiving, which tells us the final fix needed.
 
       {/* ── Stats ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:12, marginBottom:20 }}>
