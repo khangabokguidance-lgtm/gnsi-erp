@@ -44,6 +44,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import TabMonthlySyllabus from './TabMonthlySyllabus'
 import TabSyllabus from './TabSyllabus'
+import { EnhancedLogForm, HMDoubtSessionPanel } from './EnhancedLogEntry'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -467,6 +468,26 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
   const [confirmDel, setConfirmDel]   = useState(null)
   // PATCH-1: single correct useToast call (removed duplicate broken call)
   const { show: showToast, el: toastEl } = useToast()
+  const [hmFeedback, setHmFeedback] = useState({})
+
+useEffect(() => {
+  if (!logs.length) return
+  supabase
+    .from('hm_notifications')
+    .select('log_id, hm_name, message, status, created_at')
+    .eq('status', 'teacher_alert')
+    .in('log_id', logs.map(l => l.id))
+    .order('created_at', { ascending: false })
+    .then(({ data }) => {
+      if (!data) return
+      const map = {}
+      data.forEach(n => {
+        if (!map[n.log_id]) map[n.log_id] = []
+        map[n.log_id].push(n)
+      })
+      setHmFeedback(map)
+    })
+}, [logs])
 
   const logIds = useMemo(() => logs.map(l => l.id), [logs])
   const { sessions, refetch: refetchSessions } = useDoubtSessions(logIds)
@@ -603,7 +624,15 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
             {dupBlocked && <span style={{ marginLeft:10, fontWeight:400 }}>Clear filters or edit the existing log.</span>}
           </div>
         )}
-        {showForm && <LogForm form={form} setForm={f => { setForm(f); setDupWarn(''); setDupBlocked(false) }} onSubmit={handleAdd} saving={saving} timetable={timetable} staff={staff} courseData={courseData}/>}
+        {showForm && (
+  <EnhancedLogForm
+    onSaved={() => { setShowForm(false); fetchLogs() }}
+    courseData={courseData}
+    staff={staff}
+    currentUser={currentUser}
+    logs={logs}
+  />
+)}
       </div>
 
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
@@ -668,6 +697,15 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
                         </td>
                       </tr>
                       <DoubtSessionSubRow logId={item.id} sessions={sessions} onRefetch={refetchSessions} currentUser={currentUser}/>
+{hmFeedback[item.id]?.map((fb, i) => (
+  <tr key={`fb-${i}`}>
+    <td colSpan={11} style={{ padding:'6px 12px 6px 40px', background:'#f0f9ff', borderBottom:'1px solid #e0f2fe' }}>
+      <span style={{ fontSize:11, color:'#0891b2', fontWeight:700 }}>📨 HM Feedback: </span>
+      <span style={{ fontSize:12, color:'#374151' }}>{fb.message}</span>
+      <span style={{ fontSize:11, color:'#94a3b8', marginLeft:8 }}>— {fb.hm_name}</span>
+    </td>
+  </tr>
+))}
                       {editId===item.id && (
                         <tr style={{ borderBottom:'1px solid #f1f5f9' }}>
                           <td colSpan={10} style={{ padding:'16px 20px', background:'#f8f4ff' }}>
@@ -1636,7 +1674,14 @@ function TabHMDashboard({ currentUser }) {
     if (s.error) showToast('Scores load failed: '+s.error.message, '#dc2626')
     if (d.data) setAllDoubt(d.data)
     if (s.data) setAllScores(s.data)
-    if (h.data) setHouses([...new Set(h.data.map(x => x.house).filter(Boolean))])
+   if (h.data) setHouses([...new Set(h.data.map(x => x.house).filter(Boolean))])
+    if (currentUser?.id) {
+      await supabase
+        .from('hm_notifications')
+        .update({ status: 'read', read_at: new Date().toISOString() })
+        .eq('hm_staff_id', currentUser.id)
+        .eq('status', 'unread')
+    }
     setLoading(false)
   }
 
@@ -1712,20 +1757,17 @@ function TabHMDashboard({ currentUser }) {
       </div>
       <div style={S.card}>
         <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
-        {openSessions.length===0?<div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>:openSessions.map(s => (
-          <div key={s.id} style={{ border:'1px solid #fde68a', borderRadius:10, padding:'13px 16px', marginBottom:10, background:'#fffbeb' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
-              <div>
-                <div style={{ fontWeight:700, color:'#1e293b', fontSize:14 }}>🏠 {s.house_name} · {s.subject_name}</div>
-                <div style={{ fontSize:13, color:'#374151', marginTop:3 }}>📖 {s.topic}</div>
-                <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>👨‍🏫 {s.teacher_name||'-'} | {fmtDate(s.teaching_date)}</div>
-              </div>
-              <div>
-                {noteFor===s.id?<div style={{ display:'flex', gap:6, flexWrap:'wrap' }}><input value={note} onChange={e => setNote(e.target.value)} placeholder="Resolution note..." style={{ ...S.input, width:180, fontSize:12 }} autoFocus/><button onClick={() => handleResolve(s)} disabled={resolvingId===s.id} style={S.btnSm('#16a34a')}>✓</button><button onClick={() => { setNoteFor(null); setNote('') }} style={S.btnSm('#64748b')}>✖</button></div>:<button onClick={() => setNoteFor(s.id)} style={S.btnSm('#1e3a5f')}>✓ Resolve</button>}
-              </div>
-            </div>
-          </div>
-        ))}
+       {openSessions.length===0
+  ? <div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>
+  : openSessions.map(s => (
+      <HMDoubtSessionPanel
+        key={s.id}
+        session={s}
+        onFeedback={fetchAll}
+        currentUser={currentUser}
+      />
+    ))
+}
       </div>
       {weakStudents.length > 0 && (
         <div style={S.card}>
@@ -2158,6 +2200,22 @@ function Teaching({ currentUser }) {
   const isMobile = useIsMobile()
 
   const courseData = useCourseData()
+  const [hmNotifCount, setHmNotifCount] = useState(0)
+
+useEffect(() => {
+  const checkNotifs = async () => {
+    if (!currentUser?.id) return
+    const { count } = await supabase
+      .from('hm_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('hm_staff_id', currentUser.id)
+      .eq('status', 'unread')
+    setHmNotifCount(count || 0)
+  }
+  checkNotifs()
+  const interval = setInterval(checkNotifs, 30000)
+  return () => clearInterval(interval)
+}, [currentUser])
 
   const handleTabChange = key => {
     if (!TABS.find(t => t.key===key)) return
@@ -2209,11 +2267,12 @@ function Teaching({ currentUser }) {
     const monthMissed    = missed.filter(m => m.missed_date?.startsWith(currMonth)).length
     const activeTeachers = new Set(logs.filter(l => l.teaching_date?.startsWith(currMonth)).map(l => l.teacher_name).filter(Boolean)).size
     return {
-      logs:        todayLogs>0   ? `${todayLogs} today` : null,
-      timetable:   timetable.length>0 ? `${new Set(timetable.map(t=>t.class_name).filter(Boolean)).size} batches` : null,
-      reports:     monthMissed>0 ? `${monthMissed} missed` : activeTeachers>0 ? `${activeTeachers} teachers` : null,
-    }
-  }, [logs, missed, timetable, todayStr, currMonth])
+  logs:        todayLogs>0   ? `${todayLogs} today` : null,
+  timetable:   timetable.length>0 ? `${new Set(timetable.map(t=>t.class_name).filter(Boolean)).size} batches` : null,
+  reports:     monthMissed>0 ? `${monthMissed} missed` : activeTeachers>0 ? `${activeTeachers} teachers` : null,
+  hmdash:      hmNotifCount > 0 ? `🔔 ${hmNotifCount}` : null,
+}
+}, [logs, missed, timetable, todayStr, currMonth, hmNotifCount])
 
   return (
     <div className="page-pad" style={{ ...S.page, padding: isMobile ? 12 : 24 }}>
