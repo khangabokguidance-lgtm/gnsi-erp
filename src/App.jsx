@@ -716,7 +716,7 @@ if (!currentUser) {
     feeledger:         <StudentFeeLedger  currentUser={currentUser} perms={perms('feeledger')}        />,
     courses:           <Courses           currentUser={currentUser} perms={perms('courses')}          />,
     teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}         />,
-    attendance:        <Attendance        currentUser={currentUser} perms={perms('attendance')}       />,
+    attendance:         <Attendance       currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} />,
     exams:             <Exams             currentUser={currentUser} perms={perms('exams')}            />,
     timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}        />,
     feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,

@@ -1395,7 +1395,7 @@ function TeacherLog({ month, course }) {
 
 // ─── TAB: LEAVE MANAGEMENT ────────────────────────────────────
 
-function TabLeave({ staff }) {
+function TabLeave({ staff, currentUser, isAdmin }) {
   const isMobile = useIsMobile()
   const [leaveTab,   setLeaveTab]   = useState('pending')
   const [leaves,     setLeaves]     = useState([])
@@ -1407,6 +1407,7 @@ function TabLeave({ staff }) {
   const fetchLeaves = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('leave_requests').select('*').order('created_at', { ascending: false })
+if (!isAdmin && currentUser?.id) q = q.eq('staff_id', currentUser.id)
     if (leaveTab === 'pending')  q = q.eq('status', 'Pending')
     if (leaveTab === 'approved') q = q.eq('status', 'Approved')
     if (leaveTab === 'rejected') q = q.eq('status', 'Rejected')
@@ -1497,12 +1498,12 @@ function TabLeave({ staff }) {
                     <div style={{ fontSize:12, color:C.slate[700], background:'rgba(255,255,255,.5)', padding:'8px 12px', borderRadius:8, marginBottom: lv.status==='Pending'?10:0 }}>
                       <em>"{lv.reason}"</em>
                     </div>
-                    {lv.status === 'Pending' && (
-                      <div style={{ display:'flex', gap:8 }}>
-                        <Btn small variant="success" onClick={() => updateLeave(lv.id, 'Approved')}>✅ Approve</Btn>
-                        <Btn small variant="danger"  onClick={() => updateLeave(lv.id, 'Rejected')}>✗ Reject</Btn>
-                      </div>
-                    )}
+                    {lv.status === 'Pending' && isAdmin && (
+  <div style={{ display:'flex', gap:8 }}>
+    <Btn small variant="success" onClick={() => updateLeave(lv.id, 'Approved')}>✅ Approve</Btn>
+    <Btn small variant="danger"  onClick={() => updateLeave(lv.id, 'Rejected')}>✗ Reject</Btn>
+  </div>
+)}
                   </div>
                 )
               })}
@@ -1568,7 +1569,7 @@ const TABS = [
   { key:'leave',  label:'📅 Leaves'   },
 ]
 
-export default function Attendance() {
+export default function Attendance({ currentUser, isAdmin }) {
   const isMobile  = useIsMobile()
   const [activeTab,    setActiveTab]    = useState('home')
   const [staff,        setStaff]        = useState([])
@@ -1623,7 +1624,7 @@ export default function Attendance() {
       {activeTab === 'mark'   && <TabMark   staff={staff} prefill={markPrefill} />}
       {activeTab === 'view'   && <TabView   />}
       {activeTab === 'report' && <TabReport />}
-      {activeTab === 'leave'  && <TabLeave  staff={staff} />}
+      {activeTab === 'leave'  && <TabLeave  staff={staff} currentUser={currentUser} isAdmin={isAdmin} />}
     </div>
   )
 }
