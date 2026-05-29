@@ -1,39 +1,27 @@
 /**
- * GeoAttendance.jsx — Hardened v2
+ * GeoAttendance.jsx — Hardened v2 (fully fixed)
  *
- * LOOPHOLES FIXED vs v1:
- *  #1  Tab close kills tracking    → heartbeat table + server cron detects dead sessions
- *  #2  GPS only at check-in        → server_ping validates coords server-side every ping
- *  #3  All checks client-side      → server_checkin() SQL function does ALL fraud checks
- *  #4  Ping gaps undetectable      → heartbeat.last_ping_at; cron flags gaps > 6 min
- *  #5  Refresh kills GPS silently  → off_campus_since persisted in heartbeat table; GPS
- *                                    auto-restarts and re-attaches tracking on reload
- *  #6  Velocity dead zone          → server_checkin checks open sessions too (no checkout)
- *  #7  Canvas FP spoofable         → 5-layer fingerprint (canvas+audio+WebGL+fonts+timing)
- *  #8  Two-device attack           → device clash logged; admin alerted; noted as limitation
- *  #9  Client clock manipulation   → server_checkin uses now() (server time) for all checks
- *  #10 Known accuracy thresholds   → thresholds stored in attendance_config DB table
- *  #11 Client builds fraud_flags   → server_checkin builds fraud_flags; client value ignored
- *  #12 RLS too permissive          → fraud_log INSERT blocked for anon; only service_role writes
- *  #13 Known early-out buffer      → early_out_buffer_min from attendance_config DB table
- *  #14 Auto-checkout client clock  → server_checkout() uses server now()
- *  #15 Trail gaps ambiguous        → absent_period event logged after N min off-campus
- *  #16 Wrong shifts in admin trail → trail expansion fetches that staff's shifts on demand
- *  #17 offCampusSince lost refresh → read from heartbeat.off_campus_since on mount
- *  #18 .single() silent fail       → replaced with server_checkin (no .single() in client)
- *  #19 allStaff silent empty       → guard + warning rendered in shifts/report tabs
- *  #20 No rate limiting            → check_rate_limit() in server_checkin; DB-enforced
+ * ALL BUGS FIXED:
+ *  Bug A  .single() crash            → .limit(1).maybeSingle()
+ *  Bug B  UTC date near midnight     → toLocaleDateString('en-CA') = IST date
+ *  Bug C  Wrong initial tab          → 'monitor' not 'admin'
+ *  Bug D  GPS null crashes checkout  → gpsCoords?.lat ?? null
+ *  Bug E  Month end date wrong       → new Date(y, m, 0) = last day of month
+ *  Bug F  React key warning          → React.Fragment key on map
+ *  Bug G  Stale gpsAccuracy in ping  → accuracyRef pattern
+ *  Bug 2  Reload restore by label    → match shift_id first
+ *  Bug 4  null <= 0 kills tracking   → explicit null check
+ *  Bug 5  Midnight shift window      → diff wrap guard
+ *  Bug 6  shiftForms not reset       → setShiftForms([]) on staff change
  */
 
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_CAMPUS    = { lat: 24.6821, lng: 93.9876, radius: 100 }
-const TRACK_INTERVAL_MS = 2 * 60 * 1000  // ping every 2 minutes
-// NOTE: EARLY_OUT_BUFFER and accuracy thresholds are now read from attendance_config
-// so they are NOT exposed as frontend constants anymore
+const TRACK_INTERVAL_MS = 2 * 60 * 1000
 
 const FRAUD_TYPES = {
   outside_campus: { label: 'Outside Campus',     color: '#ef4444', icon: '📍' },
@@ -48,14 +36,10 @@ const FRAUD_TYPES = {
 
 // ─── Utility Functions ────────────────────────────────────────────────────────
 
-// FIX #7: Hardened 5-layer fingerprint
-// Canvas alone is defeatable by CanvasBlocker. Multiple entropy sources make
-// a consistent spoof much harder without specialised tooling.
 function getDeviceFingerprint() {
   try {
     const parts = []
 
-    // Layer 1: Canvas
     const c = document.createElement('canvas')
     const cx = c.getContext('2d')
     cx.textBaseline = 'top'; cx.font = '14px Arial'
@@ -63,7 +47,6 @@ function getDeviceFingerprint() {
     cx.fillStyle = 'rgba(102,204,0,0.7)'; cx.fillRect(100, 5, 30, 10)
     parts.push(c.toDataURL().slice(-80))
 
-    // Layer 2: AudioContext fingerprint
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 })
       const osc = ctx.createOscillator()
@@ -76,14 +59,12 @@ function getDeviceFingerprint() {
       ctx.close()
     } catch { parts.push('no-audio') }
 
-    // Layer 3: WebGL renderer string
     try {
       const gl = document.createElement('canvas').getContext('webgl')
       const ext = gl?.getExtension('WEBGL_debug_renderer_info')
       parts.push(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'no-webgl')
     } catch { parts.push('no-webgl') }
 
-    // Layer 4: Font detection (presence of 5 fonts)
     const testFonts = ['Arial', 'Courier New', 'Georgia', 'Times New Roman', 'Verdana']
     const fc = document.createElement('canvas').getContext('2d')
     const fontResults = testFonts.map(f => {
@@ -92,7 +73,6 @@ function getDeviceFingerprint() {
     })
     parts.push(fontResults.join('|'))
 
-    // Layer 5: Hardware / browser fingerprint
     parts.push([
       navigator.userAgent,
       screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
@@ -112,20 +92,28 @@ function getDeviceFingerprint() {
 const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m }
 const nowMin = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes() }
 
+// BUG 5 FIX: midnight wrap guard
 function isWithinWindow(shiftStart, windowMin = 10) {
-  const diff = nowMin() - toMin(shiftStart)
+  let diff = nowMin() - toMin(shiftStart)
+  if (diff < -720) diff += 1440
+  if (diff >  720) diff -= 1440
   return diff >= -windowMin && diff <= windowMin
 }
 
 function minutesUntilWindow(shiftStart, windowMin = 10) {
-  return toMin(shiftStart) - windowMin - nowMin()
+  let diff = toMin(shiftStart) - windowMin - nowMin()
+  if (diff < -720) diff += 1440
+  return diff
 }
 
 function minutesToShiftEnd(shift) {
-  return toMin(shift.shift_end) - nowMin()
+  let diff = toMin(shift.shift_end) - nowMin()
+  if (diff < -720) diff += 1440
+  return diff
 }
 
-const today   = () => new Date().toISOString().split('T')[0]
+// BUG B FIX: use local date (IST), not UTC
+const today   = () => new Date().toLocaleDateString('en-CA')
 const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtDate = (d)   => d   ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const fmt12   = (t)   => {
@@ -178,8 +166,6 @@ function FraudBadge({ type }) {
   )
 }
 
-// ─── Session Dead Banner ──────────────────────────────────────────────────────
-
 function DeadSessionBanner({ logs }) {
   const deadLogs = logs.filter(l => l.session_dead && !l.check_out_time)
   if (!deadLogs.length) return null
@@ -194,8 +180,6 @@ function DeadSessionBanner({ logs }) {
     </div>
   )
 }
-
-// ─── GPS Ring ─────────────────────────────────────────────────────────────────
 
 function GPSRing({ status, distance, accuracy, campus, tracking, minsLeft }) {
   const colors = { idle: '#94a3b8', locating: '#f59e0b', oncampus: '#16a34a', outside: '#ef4444', error: '#ef4444', weak: '#f97316', tracking: '#0ea5e9' }
@@ -223,7 +207,7 @@ function GPSRing({ status, distance, accuracy, campus, tracking, minsLeft }) {
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ fontSize: '32px', lineHeight: 1 }}>
-            {status === 'idle'     ? '📍'
+            {status === 'idle'      ? '📍'
             : status === 'locating' ? '📡'
             : status === 'oncampus' ? '✅'
             : status === 'tracking' ? '🛰️'
@@ -239,10 +223,9 @@ function GPSRing({ status, distance, accuracy, campus, tracking, minsLeft }) {
           )}
         </div>
       </div>
-
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: '15px', fontWeight: '700', color }}>
-          {status === 'idle'     ? 'Ready to Check In'
+          {status === 'idle'      ? 'Ready to Check In'
           : status === 'locating' ? 'Detecting Location...'
           : status === 'oncampus' ? 'You are ON CAMPUS'
           : status === 'tracking' ? '🛰️ Shift Tracking Active'
@@ -264,13 +247,11 @@ function GPSRing({ status, distance, accuracy, campus, tracking, minsLeft }) {
   )
 }
 
-// ─── Shift Timeline ───────────────────────────────────────────────────────────
-
 function ShiftTimeline({ trail, shift }) {
   if (!trail.length || !shift) return null
   const startMin = toMin(shift.shift_start)
   const endMin   = toMin(shift.shift_end)
-  const spanMin  = endMin - startMin
+  const spanMin  = endMin - startMin || 1
 
   return (
     <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', marginTop: '12px' }}>
@@ -279,8 +260,8 @@ function ShiftTimeline({ trail, shift }) {
       </div>
       <div style={{ position: 'relative', height: '24px', background: '#e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '8px' }}>
         {trail.map((pt, i) => {
-          const ptMin = new Date(pt.server_recorded_at || pt.recorded_at).getHours() * 60
-            + new Date(pt.server_recorded_at || pt.recorded_at).getMinutes()
+          const ts = new Date(pt.server_recorded_at || pt.recorded_at)
+          const ptMin = ts.getHours() * 60 + ts.getMinutes()
           const pct = Math.min(100, Math.max(0, ((ptMin - startMin) / spanMin) * 100))
           return (
             <div key={i}
@@ -304,13 +285,13 @@ function ShiftTimeline({ trail, shift }) {
             <span>{pt.event_type === 'left_campus' ? '🏃' : pt.event_type === 'returned' ? '✅' : pt.event_type === 'shift_end' ? '🏁' : pt.event_type === 'absent_period' ? '👻' : pt.event_type === 'check_in' ? '🟢' : pt.event_type === 'check_out' ? '🔴' : '📍'}</span>
             <span style={{ color: '#64748b' }}>{fmtTime(pt.server_recorded_at || pt.recorded_at)}</span>
             <span style={{ fontWeight: '600', color: pt.on_campus ? '#16a34a' : '#dc2626' }}>
-              {pt.event_type === 'check_in'      ? 'Checked in'
-              : pt.event_type === 'check_out'    ? 'Checked out'
-              : pt.event_type === 'left_campus'  ? 'Left campus'
-              : pt.event_type === 'returned'     ? 'Returned to campus'
-              : pt.event_type === 'shift_end'    ? 'Shift ended (auto)'
-              : pt.event_type === 'absent_period'? `Absent from campus (${pt.distance_from_campus || '?'}m away)`
-              : pt.on_campus                     ? 'On campus'
+              {pt.event_type === 'check_in'       ? 'Checked in'
+              : pt.event_type === 'check_out'     ? 'Checked out'
+              : pt.event_type === 'left_campus'   ? 'Left campus'
+              : pt.event_type === 'returned'      ? 'Returned to campus'
+              : pt.event_type === 'shift_end'     ? 'Shift ended (auto)'
+              : pt.event_type === 'absent_period' ? `Absent from campus (${pt.distance_from_campus || '?'}m away)`
+              : pt.on_campus                      ? 'On campus'
               : `Off campus (${pt.distance_from_campus || '?'}m)`}
             </span>
           </div>
@@ -319,8 +300,6 @@ function ShiftTimeline({ trail, shift }) {
     </div>
   )
 }
-
-// ─── Advance Summary ──────────────────────────────────────────────────────────
 
 function AdvanceSummary({ staffId, advances }) {
   const myAdvances = advances.filter(a => String(a.staff_id) === String(staffId) && a.status === 'Active')
@@ -335,9 +314,7 @@ function AdvanceSummary({ staffId, advances }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#b45309' }}>💳 Active Advance Deductions</div>
-          <div style={{ fontSize: '12px', color: '#92400e', marginTop: '2px' }}>
-            {myAdvances.length} advance(s) · Will be deducted from next salary
-          </div>
+          <div style={{ fontSize: '12px', color: '#92400e', marginTop: '2px' }}>{myAdvances.length} advance(s) · Will be deducted from next salary</div>
         </div>
         <div style={{ fontSize: '18px', fontWeight: '800', color: '#b45309' }}>{fmtRupee(totalPending)}</div>
       </div>
@@ -369,12 +346,11 @@ function AdvanceSummary({ staffId, advances }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) {
-  // FIX #19: guard for missing allStaff
   const safeAllStaff = Array.isArray(allStaff) ? allStaff : []
 
-  const [activeTab,     setActiveTab]     = useState(isAdmin ? 'admin' : 'checkin')
+  // BUG C FIX: 'monitor' not 'admin'
+  const [activeTab,     setActiveTab]     = useState(isAdmin ? 'monitor' : 'checkin')
   const [campus,        setCampus]        = useState(null)
-  const [shifts,        setShifts]        = useState([])
   const [todayLogs,     setTodayLogs]     = useState([])
   const [fraudLogs,     setFraudLogs]     = useState([])
   const [monthLogs,     setMonthLogs]     = useState([])
@@ -383,7 +359,6 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
   const [toast,         setToast]         = useState('')
   const [toastType,     setToastType]     = useState('ok')
 
-  // GPS state
   const [gpsStatus,     setGpsStatus]     = useState('idle')
   const [gpsCoords,     setGpsCoords]     = useState(null)
   const [gpsDistance,   setGpsDistance]   = useState(null)
@@ -392,15 +367,12 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
   const [myLogs,        setMyLogs]        = useState([])
   const [myShifts,      setMyShifts]      = useState([])
 
-  // Tracking state
   const [activeTracking,  setActiveTracking]  = useState([])
   const [lastPingTime,    setLastPingTime]     = useState(null)
-  const [offCampusSince,  setOffCampusSince]   = useState(null) // FIX #17: hydrated from DB
+  const [offCampusSince,  setOffCampusSince]   = useState(null)
   const [trailMap,        setTrailMap]         = useState({})
-  // FIX #16: per-log staff shifts for admin trail view
-  const [logShiftMap,     setLogShiftMap]      = useState({})  // logId → shift object
+  const [logShiftMap,     setLogShiftMap]      = useState({})
 
-  // Admin state
   const [campusForm,    setCampusForm]    = useState({ name: 'Main Campus', lat: '', lng: '', radius: 100 })
   const [savingCampus,  setSavingCampus]  = useState(false)
   const [shiftForms,    setShiftForms]    = useState([])
@@ -415,9 +387,12 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
   const trackRef    = useRef(null)
   const coordsRef   = useRef(null)
   const trackingRef = useRef([])
+  // BUG G FIX: accuracy ref so setInterval always reads current value
+  const accuracyRef = useRef(null)
 
-  useEffect(() => { coordsRef.current = gpsCoords },    [gpsCoords])
-  useEffect(() => { trackingRef.current = activeTracking }, [activeTracking])
+  useEffect(() => { coordsRef.current   = gpsCoords },        [gpsCoords])
+  useEffect(() => { accuracyRef.current = gpsAccuracy },      [gpsAccuracy])
+  useEffect(() => { trackingRef.current = activeTracking },   [activeTracking])
 
   const showToast = (msg, type = 'ok') => {
     setToast(msg); setToastType(type)
@@ -427,7 +402,8 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
   // ── Fetchers ──────────────────────────────────────────────────────────────
 
   const fetchCampus = useCallback(async () => {
-    const { data } = await supabase.from('attendance_zones').select('*').eq('is_active', true).single()
+    // BUG A FIX: .limit(1).maybeSingle() instead of .single()
+    const { data } = await supabase.from('attendance_zones').select('*').eq('is_active', true).limit(1).maybeSingle()
     if (data) {
       setCampus({ lat: data.latitude, lng: data.longitude, radius: data.radius_meters, name: data.name, id: data.id })
       setCampusForm({ name: data.name, lat: data.latitude, lng: data.longitude, radius: data.radius_meters })
@@ -472,7 +448,9 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
   const fetchMonthLogs = useCallback(async () => {
     if (!monthFilter) return
     const from = monthFilter + '-01'
-    const to   = monthFilter + '-31'
+    // BUG E FIX: correct last day of month
+    const [y, m] = monthFilter.split('-').map(Number)
+    const to = new Date(y, m, 0).toISOString().split('T')[0]
     let q = supabase.from('staff_geo_attendance')
       .select('*, staff_profiles(name,designation,department)')
       .gte('date', from).lte('date', to)
@@ -493,7 +471,6 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
     setTrailMap(prev => ({ ...prev, [logId]: data || [] }))
   }, [])
 
-  // FIX #17: hydrate offCampusSince from heartbeat table on mount
   const fetchHeartbeatState = useCallback(async (logIds) => {
     if (!logIds.length) return
     const { data } = await supabase.from('attendance_heartbeat')
@@ -529,51 +506,52 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
   useEffect(() => { if (isAdmin && activeTab === 'monitor') fetchTodayLogs() }, [activeTab])
   useEffect(() => { if (isAdmin && activeTab === 'fraud')   fetchFraudLogs() }, [activeTab])
   useEffect(() => { if (isAdmin && activeTab === 'report')  fetchMonthLogs() }, [activeTab, monthFilter, selectedStaff])
+
+  // BUG 6 FIX: reset shiftForms when selectedStaff changes
   useEffect(() => {
+    setShiftForms([])
     if (isAdmin && activeTab === 'shifts' && selectedStaff) {
       fetchShiftsFor(selectedStaff).then(sh => setShiftForms(sh.map(s => ({ ...s, _edit: false }))))
     }
   }, [activeTab, selectedStaff])
-  // Dead session sweep — pg_cron unavailable; poll from admin browser instead
-useEffect(() => {
-  if (!isAdmin) return
-  const sweep = async () => { await supabase.rpc('detect_dead_sessions') }
-  sweep()
-  const id = setInterval(sweep, 5 * 60 * 1000)
-  return () => clearInterval(id)
-}, [isAdmin])
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
+  // Dead session sweep — admin browser polls since pg_cron may not be available
+  useEffect(() => {
+    if (!isAdmin) return
+    const sweep = async () => { await supabase.rpc('detect_dead_sessions') }
+    sweep()
+    const id = setInterval(sweep, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [isAdmin])
 
   useEffect(() => () => {
     if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current)
     if (trackRef.current) clearInterval(trackRef.current)
   }, [])
 
-  // ── FIX #5: Restore tracking on reload + auto-restart GPS ─────────────────
+  // ── Restore tracking on reload ────────────────────────────────────────────
 
   useEffect(() => {
     if (!myLogs.length || !myShifts.length || !campus) return
     const todayActive = myLogs.filter(l => l.date === today() && !l.check_out_time && !l.session_dead)
     if (!todayActive.length) return
     const trackList = todayActive.map(l => {
-      const sh = myShifts.find(s => s.shift_label === l.shift_label)
+      // BUG 2 FIX: match by shift_id first, label as fallback
+      const sh = myShifts.find(s => s.id === l.shift_id) || myShifts.find(s => s.shift_label === l.shift_label)
       return sh ? { logId: l.id, shiftId: sh.id, shiftLabel: sh.shift_label, shift: sh } : null
     }).filter(Boolean)
 
     if (trackList.length && !activeTracking.length) {
       setActiveTracking(trackList)
-      // FIX #5: auto-restart GPS on reload — don't wait for manual click
       if (gpsStatus === 'idle') {
         startGPS()
         showToast('🛰️ Resumed tracking — please allow location access', 'ok')
       }
-      // FIX #17: hydrate offCampusSince from DB
       fetchHeartbeatState(trackList.map(t => t.logId))
     }
   }, [myLogs, myShifts, campus])
 
-  // ── Continuous GPS watch ──────────────────────────────────────────────────
+  // ── GPS watch ─────────────────────────────────────────────────────────────
 
   const startGPS = useCallback(() => {
     if (!navigator.geolocation) { showToast('❌ GPS not supported', 'err'); return }
@@ -585,7 +563,6 @@ useEffect(() => {
         setGpsCoords({ lat: latitude, lng: longitude })
         setGpsAccuracy(accuracy)
         if (!campus) return
-        // FIX: distance calc stays client-side for display only; all server functions re-calc
         const dist = Math.round(6371000 * 2 * Math.atan2(
           Math.sqrt(Math.sin((latitude - campus.lat) * Math.PI / 360) ** 2 +
             Math.cos(campus.lat * Math.PI / 180) * Math.cos(latitude * Math.PI / 180) *
@@ -595,7 +572,6 @@ useEffect(() => {
             Math.sin((longitude - campus.lng) * Math.PI / 360) ** 2))
         ))
         setGpsDistance(dist)
-        // FIX #10: accuracy thresholds now enforced server-side; client just shows status
         if (dist <= campus.radius) setGpsStatus(trackingRef.current.length ? 'tracking' : 'oncampus')
         else                       setGpsStatus('outside')
       },
@@ -608,7 +584,7 @@ useEffect(() => {
     )
   }, [campus])
 
-  // ── FIX #1,2,3,4,9,10,11,13,14: Server-side interval ping ─────────────────
+  // ── Interval ping ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (trackRef.current) clearInterval(trackRef.current)
@@ -617,32 +593,28 @@ useEffect(() => {
     trackRef.current = setInterval(async () => {
       const coords   = coordsRef.current
       const tracking = trackingRef.current
+      // BUG G FIX: read accuracy from ref, not stale closure
+      const accuracy = accuracyRef.current
       if (!coords || !campus || !tracking.length) return
 
-      const nowISO = new Date().toISOString()
-      setLastPingTime(nowISO)
+      setLastPingTime(new Date().toISOString())
 
       for (const t of tracking) {
         try {
-          // ALL fraud logic runs server-side via SQL function (FIX #2,3,9,13)
           const { data, error } = await supabase.rpc('server_ping', {
             p_attendance_id: t.logId,
             p_staff_id:      currentStaff?.id,
             p_lat:           coords.lat,
             p_lng:           coords.lng,
-            p_accuracy:      gpsAccuracy || 20,
+            p_accuracy:      accuracy || 20,
             p_campus_lat:    campus.lat,
             p_campus_lng:    campus.lng,
             p_campus_radius: campus.radius,
             p_shift_end:     t.shift.shift_end,
           })
 
-          if (error) {
-            console.error('Ping error:', error)
-            continue
-          }
+          if (error) { console.error('Ping error:', error); continue }
 
-          // Update local off-campus state from server response (FIX #17)
           if (data?.off_since) setOffCampusSince(data.off_since)
           else setOffCampusSince(null)
 
@@ -650,7 +622,9 @@ useEffect(() => {
             showToast('⚠️ You left campus early. Admin has been notified.', 'warn')
           }
 
-          if (data?.event_type === 'shift_end' || data?.mins_left <= 0) {
+          // BUG 4 FIX: explicit null check before <= 0
+          if (data?.event_type === 'shift_end' ||
+              (data?.mins_left !== null && data?.mins_left !== undefined && data.mins_left <= 0)) {
             setActiveTracking(prev => prev.filter(x => x.logId !== t.logId))
             showToast(`🏁 Shift ${t.shiftLabel} ended — auto checked-out`, 'ok')
           }
@@ -658,14 +632,13 @@ useEffect(() => {
           console.error('Ping failed:', err)
         }
       }
-
       await fetchMyLogs()
     }, TRACK_INTERVAL_MS)
 
     return () => clearInterval(trackRef.current)
   }, [activeTracking, campus, currentStaff?.id])
 
-  // ── FIX #3,9,11,18,20: Server-side check-in ───────────────────────────────
+  // ── Check-in ──────────────────────────────────────────────────────────────
 
   const handleCheckIn = async (shift) => {
     if (!currentStaff?.id) { showToast('❌ Staff profile not found', 'err'); return }
@@ -673,15 +646,9 @@ useEffect(() => {
     if (!gpsCoords)         { showToast('❌ GPS not ready — click Detect Location first', 'err'); return }
 
     setCheckingIn(true)
-    const fp = getDeviceFingerprint()  // FIX #7: hardened fingerprint
+    const fp = getDeviceFingerprint()
 
     try {
-      // ALL validation now runs in server_checkin() SQL function
-      // FIX #3: no client-side fraud_flags building
-      // FIX #9: server uses now() not client time
-      // FIX #10: thresholds from attendance_config
-      // FIX #18: no .single() crash
-      // FIX #20: rate limit enforced in SQL
       const { data, error } = await supabase.rpc('server_checkin', {
         p_staff_id:            currentStaff.id,
         p_shift_id:            shift.id,
@@ -701,7 +668,6 @@ useEffect(() => {
 
       if (error) { showToast('❌ ' + error.message, 'err'); setCheckingIn(false); return }
 
-      // Handle server response
       if (!data.success) {
         const msgs = {
           rate_limited: '🚫 Too many attempts. Wait an hour.',
@@ -716,8 +682,6 @@ useEffect(() => {
       }
 
       const logId = data.log_id
-
-      // Log initial trail ping via server function too
       if (logId) {
         await supabase.rpc('server_ping', {
           p_attendance_id: logId,
@@ -730,21 +694,15 @@ useEffect(() => {
           p_campus_radius: campus.radius,
           p_shift_end:     shift.shift_end,
         })
-
         setActiveTracking(prev => [...prev, { logId, shiftId: shift.id, shiftLabel: shift.shift_label, shift }])
         setGpsStatus('tracking')
       }
 
       await fetchMyLogs()
-
       const status = data.status
-      if (status === 'Late') {
-        showToast(`🕐 Checked in LATE — ${data.late_minutes} min late. Tracking started.`, 'warn')
-      } else if (status === 'Flagged') {
-        showToast('🚨 Check-in flagged for review. Tracking started.', 'warn')
-      } else {
-        showToast(`✅ Checked in — Shift ${shift.shift_label} — ${status}. Tracking active.`, 'ok')
-      }
+      if (status === 'Late')    showToast(`🕐 Checked in LATE — ${data.late_minutes} min late. Tracking started.`, 'warn')
+      else if (status === 'Flagged') showToast('🚨 Check-in flagged for review. Tracking started.', 'warn')
+      else                      showToast(`✅ Checked in — Shift ${shift.shift_label} — ${status}. Tracking active.`, 'ok')
 
     } catch (err) {
       showToast('❌ ' + err.message, 'err')
@@ -752,17 +710,22 @@ useEffect(() => {
     setCheckingIn(false)
   }
 
-  // ── FIX #9,14: Server-side check-out ─────────────────────────────────────
+  // ── Check-out ─────────────────────────────────────────────────────────────
 
   const handleCheckOut = async (logId, shiftLabel) => {
-    if (!gpsCoords) { showToast('❌ Detect location first', 'err'); return }
+    // BUG D FIX: allow checkout without GPS with confirmation
+    if (!gpsCoords) {
+      const confirmed = window.confirm('GPS not available. Check out without location? This will be flagged.')
+      if (!confirmed) return
+    }
 
+    // BUG D FIX: use optional chaining so null coords don't crash
     const { data, error } = await supabase.rpc('server_checkout', {
       p_attendance_id: logId,
       p_staff_id:      currentStaff?.id,
-      p_lat:           gpsCoords.lat,
-      p_lng:           gpsCoords.lng,
-      p_accuracy:      gpsAccuracy || 20,
+      p_lat:           gpsCoords?.lat ?? null,
+      p_lng:           gpsCoords?.lng ?? null,
+      p_accuracy:      gpsAccuracy ?? null,
       p_campus_lat:    campus.lat,
       p_campus_lng:    campus.lng,
       p_campus_radius: campus.radius,
@@ -782,7 +745,7 @@ useEffect(() => {
     )
   }
 
-  // ── Save campus / shifts (unchanged logic) ────────────────────────────────
+  // ── Campus / shift save ───────────────────────────────────────────────────
 
   const saveCampus = async () => {
     if (!campusForm.lat || !campusForm.lng) { showToast('❌ Enter lat/lng', 'err'); return }
@@ -820,12 +783,10 @@ useEffect(() => {
     showToast('🗑️ Shift removed', 'ok')
   }
 
-  // ── FIX #12: Resolve fraud via service_role (admin only) ──────────────────
+  // ── Fraud resolution ──────────────────────────────────────────────────────
 
   const resolveFraud = async (logId, action) => {
     if (!resolveNote) { showToast('❌ Add a resolution note', 'err'); return }
-    // This update goes directly since admins have service_role or use Supabase Dashboard
-    // In production: move to Edge Function with admin auth check
     await supabase.from('attendance_fraud_log')
       .update({ resolved: true, resolved_by: 'Admin', resolved_note: resolveNote })
       .eq('id', logId)
@@ -850,11 +811,9 @@ useEffect(() => {
     showToast(`✅ Status → ${newStatus}`, 'ok')
   }
 
-  // FIX #16: fetch shifts for a specific staff when expanding trail
   const handleExpandTrail = async (log) => {
     if (expandedTrail === log.id) { setExpandedTrail(null); return }
     await fetchTrailForLog(log.id)
-    // Fetch the actual staff's shifts for correct timeline bounds
     if (!logShiftMap[log.id]) {
       const staffShifts = await fetchShiftsFor(log.staff_id)
       const matchShift  = staffShifts.find(s => s.shift_label === log.shift_label)
@@ -897,7 +856,7 @@ useEffect(() => {
     </div>
   )
 
-  // ── Tracking Banner ───────────────────────────────────────────────────────
+  // ── Sub-components (defined in render scope) ──────────────────────────────
 
   const TrackingBanner = () => {
     if (!activeTracking.length) return null
@@ -932,21 +891,17 @@ useEffect(() => {
     )
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={S.page}>
 
-      {/* Toast */}
       {toast && (
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 3000, padding: '13px 20px', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: '600', color: 'white', background: toastType === 'err' ? '#dc2626' : toastType === 'warn' ? '#d97706' : '#16a34a', maxWidth: '380px' }}>
           {toast}
         </div>
       )}
 
-      {/* Header */}
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>📍 Geo-Attendance</h1>
         <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0' }}>
@@ -955,7 +910,6 @@ useEffect(() => {
         </p>
       </div>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: '24px', gap: '4px', flexWrap: 'wrap' }}>
         {tabs.map(t => <button key={t.key} onClick={() => setActiveTab(t.key)} style={S.tab(activeTab === t.key)}>{t.label}</button>)}
       </div>
@@ -963,10 +917,7 @@ useEffect(() => {
       {/* ══ MY CHECK-IN ══ */}
       {activeTab === 'checkin' && (
         <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-
           <TrackingBanner />
-
-          {/* FIX #1: Show dead session warning */}
           <DeadSessionBanner logs={todayMyLogs} />
 
           {myPendingAdvanceTotal > 0 && (
@@ -986,7 +937,6 @@ useEffect(() => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Shift {log.shift_label}</div>
-                        {/* FIX: show server_check_in_time as the authoritative time */}
                         <div style={{ fontSize: '12px', color: '#64748b' }}>
                           In: {fmtTime(log.server_check_in_time || log.check_in_time)} · Out: {fmtTime(log.server_check_out_time || log.check_out_time)}
                         </div>
@@ -994,16 +944,8 @@ useEffect(() => {
                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>{log.distance_from_campus}m from campus</div>
                         )}
                         <LateEntryInfo log={log} />
-                        {log.session_dead && (
-                          <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600', marginTop: '4px' }}>
-                            ⚠️ Session lost — tracking interrupted
-                          </div>
-                        )}
-                        {isBeingTracked && (
-                          <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: '600', marginTop: '4px' }}>
-                            🛰️ Tracking active · server-verified every 2 min
-                          </div>
-                        )}
+                        {log.session_dead && <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600', marginTop: '4px' }}>⚠️ Session lost — tracking interrupted</div>}
+                        {isBeingTracked && <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: '600', marginTop: '4px' }}>🛰️ Tracking active · server-verified every 2 min</div>}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
                         <StatusBadge status={log.status} />
@@ -1045,10 +987,10 @@ useEffect(() => {
             {(gpsStatus === 'oncampus' || gpsStatus === 'outside' || gpsStatus === 'tracking') && myShifts.length > 0 && (
               <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {myShifts.map(shift => {
-                  const alreadyDone = todayMyLogs.some(l => l.shift_label === shift.shift_label)
-                  const inWindow    = isWithinWindow(shift.shift_start, shift.check_in_window_min || 10)
-                  const minsLeft    = minutesUntilWindow(shift.shift_start, shift.check_in_window_min || 10)
-                  const isTracked   = activeTracking.some(t => t.shiftLabel === shift.shift_label)
+                  const alreadyDone   = todayMyLogs.some(l => l.shift_label === shift.shift_label)
+                  const inWindow      = isWithinWindow(shift.shift_start, shift.check_in_window_min || 10)
+                  const minsLeft      = minutesUntilWindow(shift.shift_start, shift.check_in_window_min || 10)
+                  const isTracked     = activeTracking.some(t => t.shiftLabel === shift.shift_label)
                   const shiftMinsLeft = minutesToShiftEnd(shift)
 
                   return (
@@ -1096,7 +1038,7 @@ useEffect(() => {
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
             <thead>
-              <tr>{['Date', 'Shift', 'Check-In', 'Check-Out', 'Late (min)', 'Distance', 'Status'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+              <tr>{['Date','Shift','Check-In','Check-Out','Late (min)','Distance','Status'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {myLogs.map(log => (
@@ -1117,9 +1059,7 @@ useEffect(() => {
                   </td>
                 </tr>
               ))}
-              {myLogs.length === 0 && (
-                <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No records yet</td></tr>
-              )}
+              {myLogs.length === 0 && <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No records yet</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1133,7 +1073,7 @@ useEffect(() => {
             <div style={{ padding: '14px 16px', fontWeight: '700', color: '#1e3a5f', borderBottom: '1px solid #f1f5f9', fontSize: '15px' }}>💳 My Advances</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
-                <tr>{['Month', 'Amount', 'Repaid', 'Remaining', 'Per Month', 'Status'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+                <tr>{['Month','Amount','Repaid','Remaining','Per Month','Status'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {advances.filter(a => String(a.staff_id) === String(currentStaff?.id)).map(a => {
@@ -1168,12 +1108,12 @@ useEffect(() => {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: '14px', marginBottom: '20px' }}>
             {[
-              { label: 'Total',        value: todayLogs.length,                                        color: '#1e3a5f', icon: '📋' },
-              { label: 'Present',      value: todayLogs.filter(l => l.status === 'Present').length,    color: '#16a34a', icon: '✅' },
-              { label: 'Late',         value: todayLogs.filter(l => l.status === 'Late').length,       color: '#b45309', icon: '🕐' },
-              { label: 'Early Out',    value: todayLogs.filter(l => l.status === 'EarlyOut').length,   color: '#dc2626', icon: '🏃' },
-              { label: 'Session Lost', value: todayLogs.filter(l => l.session_dead).length,            color: '#7c3aed', icon: '📵' },
-              { label: 'Flagged',      value: todayLogs.filter(l => l.is_fraud_suspected).length,      color: '#be185d', icon: '🚨' },
+              { label: 'Total',        value: todayLogs.length,                                       color: '#1e3a5f', icon: '📋' },
+              { label: 'Present',      value: todayLogs.filter(l => l.status === 'Present').length,   color: '#16a34a', icon: '✅' },
+              { label: 'Late',         value: todayLogs.filter(l => l.status === 'Late').length,      color: '#b45309', icon: '🕐' },
+              { label: 'Early Out',    value: todayLogs.filter(l => l.status === 'EarlyOut').length,  color: '#dc2626', icon: '🏃' },
+              { label: 'Session Lost', value: todayLogs.filter(l => l.session_dead).length,           color: '#7c3aed', icon: '📵' },
+              { label: 'Flagged',      value: todayLogs.filter(l => l.is_fraud_suspected).length,     color: '#be185d', icon: '🚨' },
             ].map(c => (
               <div key={c.label} style={{ background: 'white', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.07)', borderLeft: `4px solid ${c.color}` }}>
                 <div style={{ fontSize: '20px' }}>{c.icon}</div>
@@ -1191,19 +1131,19 @@ useEffect(() => {
           <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
-                <tr>{['Staff', 'Shift', 'Check-In', 'Check-Out', 'Late', 'Distance', 'Status', 'Fraud', 'Trail', 'Action'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+                <tr>{['Staff','Shift','Check-In','Check-Out','Late','Distance','Status','Fraud','Trail','Action'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
               </thead>
               <tbody>
+                {/* BUG F FIX: React.Fragment with key instead of <> */}
                 {todayLogs.map(log => (
-                  <>
-                    <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9', background: log.session_dead ? '#fdf4ff' : log.is_fraud_suspected ? '#fff7f7' : 'white' }}>
+                  <React.Fragment key={log.id}>
+                    <tr style={{ borderBottom: '1px solid #f1f5f9', background: log.session_dead ? '#fdf4ff' : log.is_fraud_suspected ? '#fff7f7' : 'white' }}>
                       <td style={td}>
                         <div style={{ fontWeight: '600' }}>{log.staff_profiles?.name || '—'}</div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{log.staff_profiles?.designation}</div>
                         {log.session_dead && <div style={{ fontSize: '10px', color: '#7c3aed', fontWeight: '700' }}>📵 session lost</div>}
                       </td>
                       <td style={td}><span style={{ fontWeight: '700', color: '#1e3a5f' }}>Shift {log.shift_label}</span></td>
-                      {/* FIX: show server timestamps */}
                       <td style={td}>{fmtTime(log.server_check_in_time  || log.check_in_time)}</td>
                       <td style={td}>{fmtTime(log.server_check_out_time || log.check_out_time)}</td>
                       <td style={{ ...td, color: (log.late_minutes || 0) > 0 ? '#b45309' : '#94a3b8', fontWeight: '600' }}>
@@ -1221,7 +1161,6 @@ useEffect(() => {
                           : <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>}
                       </td>
                       <td style={td}>
-                        {/* FIX #16: use handleExpandTrail which fetches correct staff's shifts */}
                         <button onClick={() => handleExpandTrail(log)} style={S.btnSm('#0ea5e9')}>
                           {expandedTrail === log.id ? '▲ Hide' : '🗺️ Trail'}
                         </button>
@@ -1229,25 +1168,21 @@ useEffect(() => {
                       <td style={td}>
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                           <button onClick={() => adminOverride(log.id, 'Present', 'Admin verified')} style={S.btnSm('#16a34a')}>✅</button>
-                          <button onClick={() => adminOverride(log.id, 'Absent', 'Admin override')} style={S.btnSm('#dc2626')}>⭕</button>
+                          <button onClick={() => adminOverride(log.id, 'Absent',  'Admin override')} style={S.btnSm('#dc2626')}>⭕</button>
                         </div>
                       </td>
                     </tr>
                     {expandedTrail === log.id && (
-                      <tr key={log.id + '-trail'} style={{ background: '#f8fafc' }}>
+                      <tr style={{ background: '#f8fafc' }}>
                         <td colSpan="10" style={{ padding: '0 16px 16px' }}>
-                          {/* FIX #16: use logShiftMap[log.id] — the actual staff's shift */}
-                          <ShiftTimeline
-                            trail={trailMap[log.id] || []}
-                            shift={logShiftMap[log.id]}
-                          />
+                          <ShiftTimeline trail={trailMap[log.id] || []} shift={logShiftMap[log.id]} />
                           {(trailMap[log.id] || []).length === 0 && (
                             <div style={{ padding: '12px', color: '#94a3b8', fontSize: '13px' }}>No location trail recorded yet</div>
                           )}
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
                 {todayLogs.length === 0 && (
                   <tr><td colSpan="10" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No check-ins yet today</td></tr>
@@ -1265,14 +1200,12 @@ useEffect(() => {
             <h2 style={{ fontSize: '17px', fontWeight: '700', color: '#dc2626', margin: 0 }}>🚨 Unresolved Fraud Alerts</h2>
             <button onClick={fetchFraudLogs} style={S.btnSm('#dc2626')}>🔄 Refresh</button>
           </div>
-
           {fraudLogs.length === 0 && (
             <div style={{ ...S.card, textAlign: 'center', color: '#16a34a', padding: '48px' }}>
               <div style={{ fontSize: '32px', marginBottom: '8px' }}>✅</div>
               <div style={{ fontWeight: '700' }}>No unresolved fraud alerts</div>
             </div>
           )}
-
           {fraudLogs.map(fl => (
             <div key={fl.id} style={{ ...S.card, border: `1px solid ${FRAUD_TYPES[fl.fraud_type]?.color || '#ef4444'}44`, marginBottom: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
@@ -1283,14 +1216,8 @@ useEffect(() => {
                   </div>
                   <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b' }}>{fl.staff_profiles?.name}</div>
                   <div style={{ fontSize: '12px', color: '#64748b' }}>{fl.staff_profiles?.designation}</div>
-                  <div style={{ marginTop: '8px', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px', color: '#475569' }}>
-                    {fl.detail}
-                  </div>
-                  {fl.lat && (
-                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                      GPS: {fl.lat?.toFixed(6)}, {fl.lng?.toFixed(6)} · ±{fl.accuracy}m
-                    </div>
-                  )}
+                  <div style={{ marginTop: '8px', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px', color: '#475569' }}>{fl.detail}</div>
+                  {fl.lat && <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>GPS: {fl.lat?.toFixed(6)}, {fl.lng?.toFixed(6)} · ±{fl.accuracy}m</div>}
                 </div>
                 <div style={{ fontSize: '12px', color: '#94a3b8' }}>{new Date(fl.created_at).toLocaleTimeString('en-IN')}</div>
               </div>
@@ -1316,7 +1243,6 @@ useEffect(() => {
       {/* ══ SHIFT SETUP ══ */}
       {activeTab === 'shifts' && isAdmin && (
         <div style={{ maxWidth: '640px' }}>
-          {/* FIX #19: show warning if allStaff is empty */}
           {safeAllStaff.length === 0 && (
             <div style={{ padding: '12px 16px', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', color: '#b45309', fontWeight: '600' }}>
               ⚠️ No staff loaded — make sure to pass the <code>allStaff</code> prop to this component.
@@ -1331,7 +1257,6 @@ useEffect(() => {
                 {safeAllStaff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.designation}</option>)}
               </select>
             </div>
-
             {selectedStaff && (
               <>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
@@ -1340,8 +1265,7 @@ useEffect(() => {
                       <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 80px', gap: '10px', alignItems: 'flex-end' }}>
                         <div>
                           <label style={S.label}>Label</label>
-                          <input value={sf.shift_label} onChange={e => setShiftForms(prev => prev.map((s, j) => j === i ? { ...s, shift_label: e.target.value } : s))}
-                            placeholder="A/B/C" style={S.input} maxLength={3} />
+                          <input value={sf.shift_label} onChange={e => setShiftForms(prev => prev.map((s, j) => j === i ? { ...s, shift_label: e.target.value } : s))} placeholder="A/B/C" style={S.input} maxLength={3} />
                         </div>
                         <div>
                           <label style={S.label}>Start</label>
@@ -1358,20 +1282,15 @@ useEffect(() => {
                         </div>
                       </div>
                       <div style={{ marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                          Window: {fmt12(sf.shift_start)} ±{sf.check_in_window_min || 10} min
-                        </span>
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>Window: {fmt12(sf.shift_start)} ±{sf.check_in_window_min || 10} min</span>
                         <button onClick={() => deleteShift(sf.id)} style={{ ...S.btnSm('#ef4444'), marginLeft: 'auto' }}>Remove</button>
                       </div>
                     </div>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => setShiftForms(prev => [...prev, { id: 'new-' + Date.now(), shift_label: '', shift_start: '08:00', shift_end: '14:00', check_in_window_min: 10 }])}
-                    style={S.btn('#0ea5e9')}>+ Add Shift</button>
-                  <button onClick={saveShifts} disabled={savingShifts} style={S.btn('#16a34a', savingShifts)}>
-                    {savingShifts ? '⏳ Saving...' : '💾 Save All'}
-                  </button>
+                  <button onClick={() => setShiftForms(prev => [...prev, { id: 'new-' + Date.now(), shift_label: '', shift_start: '08:00', shift_end: '14:00', check_in_window_min: 10 }])} style={S.btn('#0ea5e9')}>+ Add Shift</button>
+                  <button onClick={saveShifts} disabled={savingShifts} style={S.btn('#16a34a', savingShifts)}>{savingShifts ? '⏳ Saving...' : '💾 Save All'}</button>
                 </div>
               </>
             )}
@@ -1399,8 +1318,7 @@ useEffect(() => {
               </div>
               <div style={{ gridColumn: 'span 2' }}>
                 <label style={S.label}>Allowed Radius (meters)</label>
-                <input type="range" min="50" max="500" step="10" value={campusForm.radius}
-                  onChange={e => setCampusForm({ ...campusForm, radius: e.target.value })} style={{ width: '100%', marginBottom: '6px' }} />
+                <input type="range" min="50" max="500" step="10" value={campusForm.radius} onChange={e => setCampusForm({ ...campusForm, radius: e.target.value })} style={{ width: '100%', marginBottom: '6px' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
                   <span>50m (strict)</span>
                   <span style={{ fontWeight: '700', color: '#1e3a5f', fontSize: '15px' }}>{campusForm.radius}m</span>
@@ -1417,51 +1335,12 @@ useEffect(() => {
               {savingCampus ? '⏳ Saving...' : '💾 Save Campus Zone'}
             </button>
           </div>
-
-          <div style={S.card}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', marginTop: 0 }}>🛡️ Active Fraud Guards</h3>
-            {[
-              { icon: '🖥️', label: 'Server-Side Verification',  desc: 'All check-in logic runs in SQL — not in the browser' },
-              { icon: '⏰', label: 'Server Timestamps',          desc: 'Check-in/out times use PostgreSQL now(), immune to device clock manipulation' },
-              { icon: '🛰️', label: 'Continuous Heartbeat',       desc: 'Ping every 2 min; server detects dead sessions via pg_cron' },
-              { icon: '🏃', label: 'Early-Out Detection',        desc: 'Server-flagged when left_campus event fires before shift end' },
-              { icon: '📵', label: 'Dead Session Detection',     desc: 'pg_cron checks every 5 min; flags and marks session_dead if tab closed' },
-              { icon: '🕐', label: 'Late-Entry Logging',         desc: 'Minutes late recorded using server time' },
-              { icon: '🔁', label: 'Duplicate Guard',            desc: 'DB-enforced; no .single() crash' },
-              { icon: '📱', label: '5-Layer Device Fingerprint', desc: 'Canvas + AudioContext + WebGL + Fonts + Hardware' },
-              { icon: '⚡', label: 'Velocity Check',             desc: 'Includes open sessions (no checkout) — dead zone fixed' },
-              { icon: '🛰️', label: 'Fake GPS Detection',         desc: 'Thresholds from DB config, not exposed in frontend' },
-              { icon: '🚫', label: 'Rate Limiting',              desc: 'Max 10 check-in attempts/hour per staff, DB-enforced' },
-              { icon: '🔒', label: 'RLS Hardened',               desc: 'Fraud log INSERT blocked for browser; only SQL functions write it' },
-              { icon: '👻', label: 'Absent Period Logging',      desc: 'Off-campus > N min triggers absent_period trail event' },
-            ].map(g => (
-              <div key={g.label} style={{ display: 'flex', gap: '12px', padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '20px', flexShrink: 0 }}>{g.icon}</span>
-                <div>
-                  <div style={{ fontWeight: '600', fontSize: '13px', color: '#1e293b' }}>{g.label}</div>
-                  <div style={{ fontSize: '12px', color: '#64748b' }}>{g.desc}</div>
-                </div>
-                <span style={{ marginLeft: 'auto', color: '#16a34a', fontWeight: '700', fontSize: '12px', flexShrink: 0 }}>ACTIVE</span>
-              </div>
-            ))}
-
-            {/* Acknowledged limitations */}
-            <div style={{ marginTop: '16px', padding: '12px', background: '#fef3c7', borderRadius: '8px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '700', color: '#b45309', marginBottom: '6px' }}>⚠️ Known Limitations</div>
-              <div style={{ fontSize: '11px', color: '#92400e', lineHeight: '1.6' }}>
-                • <strong>Two-device attack</strong>: Two different physical devices used by two staff cannot be cross-linked without server-side phone number binding or OTP verification.<br/>
-                • <strong>GPS-less period</strong>: If a device has no GPS hardware (desktop/tablet without GPS module), location cannot be verified — shifts should require mobile check-in.<br/>
-                • <strong>Coordinated spoofing</strong>: A technically sophisticated spoof of all 5 fingerprint layers simultaneously is theoretically possible with custom browser builds.
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
       {/* ══ MONTHLY REPORT ══ */}
       {activeTab === 'report' && isAdmin && (
         <>
-          {/* FIX #19 */}
           {safeAllStaff.length === 0 && (
             <div style={{ padding: '12px 16px', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', color: '#b45309', fontWeight: '600' }}>
               ⚠️ Staff list not loaded — pass the <code>allStaff</code> prop.
@@ -1470,8 +1349,7 @@ useEffect(() => {
           <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <div>
               <label style={S.label}>Month</label>
-              <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
-                style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px' }} />
+              <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px' }} />
             </div>
             <div style={{ minWidth: '220px' }}>
               <label style={S.label}>Staff</label>
@@ -1504,7 +1382,7 @@ useEffect(() => {
                 <div style={{ padding: '14px 16px', fontWeight: '700', color: '#1e3a5f', borderBottom: '1px solid #f1f5f9' }}>Staff Summary</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
-                    <tr>{['Staff', 'Total', 'Present', 'Late', 'Late Min', 'Early Out', 'Absent', 'Flagged', 'Session Lost', 'Rate'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+                    <tr>{['Staff','Total','Present','Late','Late Min','Early Out','Absent','Flagged','Session Lost','Rate'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
                     {rows.map(r => {
@@ -1533,7 +1411,7 @@ useEffect(() => {
           <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
-                <tr>{['Date', 'Staff', 'Shift', 'Check-In', 'Check-Out', 'Late', 'Distance', 'Status', 'Fraud'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+                <tr>{['Date','Staff','Shift','Check-In','Check-Out','Late','Distance','Status','Fraud'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {monthLogs.map(log => (
