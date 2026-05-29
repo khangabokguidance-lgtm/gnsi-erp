@@ -769,6 +769,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [dupWarn, setDupWarn] = useState('')
+  const [attemptedNext, setAttemptedNext] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
 
   useEffect(() => {
@@ -852,6 +853,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   }
 
   const handleNext = () => {
+    setAttemptedNext(true)
     if (step === 0 && isDuplicate()) {
       setDupWarn(`⚠️ A log for ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
       return
@@ -975,7 +977,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, color:C.red, fontSize:13, marginBottom:14, fontWeight:600 }}>{dupWarn}</div>
         )}
 
-        <ValidationMessage form={form} step={step}/>
+        {attemptedNext && <ValidationMessage form={form} step={step}/>}
 
         {step === 0 && <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters}/>}
         {step === 1 && <Step2WhatTaught form={form} setForm={setForm}/>}
@@ -986,7 +988,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         {step === 6 && <StepReview form={form}/>}
 
         <div style={{ display:'flex', justifyContent:'space-between', marginTop:24, paddingTop:16, borderTop:'1px solid #f1f5f9', flexWrap:'wrap', gap:10 }}>
-          <button type="button" onClick={() => setStep(s => Math.max(0, s-1))} disabled={step === 0} style={{ ...S.btn('#94a3b8', step===0), background:'white', color: step===0?'#cbd5e1':'#374151', border:'1px solid #e2e8f0' }}>← Back</button>
+          <button type="button" onClick={() => { setAttemptedNext(false); setStep(s => Math.max(0, s-1)) }} disabled={step === 0} style={{ ...S.btn('#94a3b8', step===0), background:'white', color: step===0?'#cbd5e1':'#374151', border:'1px solid #e2e8f0' }}>← Back</button>
           <div style={{ display:'flex', gap:8 }}>
             {(step === 3 || step === 4) && (
               <button type="button" onClick={() => setStep(s => s+1)} style={{ ...S.btn('#64748b'), background:'white', color:'#64748b', border:'1px solid #e2e8f0' }}>Skip →</button>
