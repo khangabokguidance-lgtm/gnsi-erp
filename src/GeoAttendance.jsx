@@ -347,7 +347,6 @@ function AdvanceSummary({ staffId, advances }) {
 
 export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) {
   const safeAllStaff = Array.isArray(allStaff) ? allStaff : []
-   console.log('currentStaff:', currentStaff)
 
   // BUG C FIX: 'monitor' not 'admin'
   const [activeTab,     setActiveTab]     = useState(isAdmin ? 'monitor' : 'checkin')
@@ -415,7 +414,7 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
 
   const fetchShiftsFor = useCallback(async (staffId) => {
     if (!staffId) return []
-    const { data } = await supabase.from('staff_shifts').select('*').eq('staff_id', staffId).eq('is_active', true).order('shift_start')
+    const { data } = await supabase.from('staff_shifts').select('*').eq('staff_id', parseInt(staffId)).eq('is_active', true).order('shift_start')
     return data || []
   }, [])
 
@@ -765,7 +764,7 @@ export default function GeoAttendance({ currentStaff, isAdmin, allStaff = [] }) 
     setSavingShifts(true)
     for (const sf of shiftForms) {
       if (!sf.shift_label || !sf.shift_start || !sf.shift_end) continue
-      const payload = { staff_id: selectedStaff, shift_label: sf.shift_label, shift_start: sf.shift_start, shift_end: sf.shift_end, check_in_window_min: parseInt(sf.check_in_window_min) || 10, is_active: true, effective_from: today(), created_by: 'Admin' }
+      const payload = { staff_id: parseInt(selectedStaff), shift_label: sf.shift_label, shift_start: sf.shift_start, shift_end: sf.shift_end, check_in_window_min: parseInt(sf.check_in_window_min) || 10, is_active: true, effective_from: today(), created_by: 'Admin' }
       if (sf.id && !String(sf.id).startsWith('new')) await supabase.from('staff_shifts').update(payload).eq('id', sf.id)
       else                                            await supabase.from('staff_shifts').insert(payload)
     }
