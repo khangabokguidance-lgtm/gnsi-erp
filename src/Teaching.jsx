@@ -45,6 +45,7 @@ import { supabase } from './supabase'
 import TabMonthlySyllabus from './TabMonthlySyllabus'
 import TabSyllabus from './TabSyllabus'
 import { EnhancedLogForm, HMDoubtSessionPanel } from './EnhancedLogEntry'
+import SyllabusManager from './SyllabusManager'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ const TAB_ROLES = {
   hmdash:      ['admin','manager','hostel'],
   admin:       ['admin'],
   remediation: ['admin','manager'],
+  syllabus_admin: ['admin'],
 }
 
 const ALL_TABS = [
@@ -84,6 +86,7 @@ const ALL_TABS = [
   { key:'hmdash',      label:'HM Dashboard',      icon:'🏠' },
   { key:'admin',       label:'Admin Monitor',     icon:'🛡️' },
   { key:'remediation', label:'Remediation',       icon:'🔄' },
+  { key:'syllabus_admin', label:'Syllabus Admin', icon:'📚' }
 ]
 
 const today            = () => new Date().toISOString().split('T')[0]
@@ -2321,6 +2324,7 @@ useEffect(() => {
       {activeTab==='hmdash'      && <TabHMDashboard currentUser={currentUser}/>}
       {activeTab==='admin'       && <TabAdminMonitor logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData}/>}
       {activeTab==='remediation' && <TabRemediation logs={logs} courseData={courseData}/>}
+      {activeTab==='syllabus_admin' && <SyllabusManager/>}
     </div>
   )
 }
