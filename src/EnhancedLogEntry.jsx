@@ -1003,3 +1003,161 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
 }
 
 export default EnhancedLogForm
+
+// ─── HM Doubt Session Panel ───────────────────────────────────────────────────
+
+export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
+  const [note, setNote] = useState('')
+  const [sending, setSending] = useState(false)
+  const [showStudents, setShowStudents] = useState(false)
+  const [students, setStudents] = useState([])
+  const [loadingStudents, setLoadingStudents] = useState(false)
+  const { show: showToast, el: toastEl } = useToast()
+
+  const fetchStudents = async () => {
+    if (!session.batch_id && !session.subtype) return
+    setLoadingStudents(true)
+    const q = supabase.from('students').select('id,name,roll_number').eq('status','Active')
+    if (session.batch_id) q.eq('batch_id', session.batch_id)
+    const { data } = await q.order('name')
+    if (data) setStudents(data)
+    setLoadingStudents(false)
+  }
+
+  const handleFeedback = async () => {
+    if (!note.trim()) { showToast('Enter feedback/resolution note', C.amber); return }
+    setSending(true)
+    const { error } = await supabase.from('doubt_sessions').update({
+      status:'resolved',
+      resolved_by: currentUser?.name || 'HM',
+      resolved_at: new Date().toISOString(),
+      resolution_note: note,
+    }).eq('id', session.id)
+    if (error) showToast('Error: ' + error.message, C.red)
+    else { showToast('Doubt session resolved ✓', C.green); onFeedback?.() }
+    setSending(false)
+  }
+
+  const notifyTeacher = async (studentName, doubtDetail) => {
+    const msg = `🏠 HM Update from ${currentUser?.name||'HM'}: Student "${studentName}" — ${doubtDetail}`
+    await supabase.from('hm_notifications').insert([{
+      log_id: session.log_id,
+      hm_staff_id: currentUser?.id || null,
+      hm_name: currentUser?.name || 'HM',
+      message: msg,
+      status: 'teacher_alert',
+      created_at: new Date().toISOString(),
+    }])
+    showToast('Teacher notified ✓', C.green)
+  }
+
+  return (
+    <>
+      {toastEl}
+      <div style={{ border:'2px solid #fde68a', borderRadius:14, padding:20, background:'#fffbeb', marginBottom:12 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:8 }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:800, color:'#1e293b' }}>
+              🏠 {session.house_name||session.batch_name||'—'} · {session.subject_name}
+            </div>
+            <div style={{ fontSize:13, color:'#64748b', marginTop:2 }}>
+              📖 {session.topic} · {fmtDate(session.teaching_date)}
+            </div>
+            <div style={{ fontSize:12, color:'#94a3b8', marginTop:1 }}>
+              Teacher: {session.teacher_name||'—'}
+            </div>
+          </div>
+          <span style={S.badge('#b45309','#fef9c3')}>⏳ Open</span>
+        </div>
+
+        {session.teacher_instructions && (
+          <div style={{ padding:'12px 14px', background:'#1e3a5f', borderRadius:10, marginBottom:14, color:'white' }}>
+            <div style={{ fontSize:11, fontWeight:800, color:'#93c5fd', marginBottom:6, letterSpacing:'.08em' }}>📋 SUBJECT TEACHER'S INSTRUCTIONS</div>
+            <div style={{ fontSize:13, lineHeight:1.8, color:'#e2e8f0' }}>{session.teacher_instructions}</div>
+          </div>
+        )}
+
+        {session.key_concepts && (
+          <div style={{ padding:'10px 14px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#166534', marginBottom:4 }}>✅ KEY CONCEPTS TO EMPHASISE</div>
+            <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>{session.key_concepts}</div>
+          </div>
+        )}
+
+        {session.technique_avoid && (
+          <div style={{ padding:'10px 14px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:8, marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#dc2626', marginBottom:4 }}>🚫 DO NOT DO THIS</div>
+            <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>{session.technique_avoid}</div>
+          </div>
+        )}
+
+        {session.ai_questions_for_hm && (() => {
+          try {
+            const qs = JSON.parse(session.ai_questions_for_hm).filter(q => q.kept)
+            if (!qs.length) return null
+            return (
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:6 }}>❓ QUESTIONS TO ASK STUDENTS</div>
+                {qs.map((q,i) => (
+                  <div key={i} style={{ padding:'8px 12px', background:'white', border:'1px solid #e2e8f0', borderRadius:6, marginBottom:5 }}>
+                    <div style={{ fontSize:13, color:'#1e293b' }}>Q{i+1}. {q.q}</div>
+                    {q.ans && <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>Hint: {q.ans}</div>}
+                  </div>
+                ))}
+              </div>
+            )
+          } catch { return null }
+        })()}
+
+        {session.focus_student_names && (() => {
+          try {
+            const names = JSON.parse(session.focus_student_names)
+            if (!names.length) return null
+            return (
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'#b45309', marginBottom:6 }}>⚠️ FOCUS ON THESE STUDENTS</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {names.map((n,i) => <span key={i} style={S.badge('#b45309','#fef9c3')}>{n}</span>)}
+                </div>
+              </div>
+            )
+          } catch { return null }
+        })()}
+
+        <div style={{ marginBottom:12 }}>
+          <button type="button" onClick={() => {
+            const detail = window.prompt('Enter student doubt to notify teacher:')
+            if (detail) notifyTeacher('(student)', detail)
+          }} style={{ ...S.btnSm(C.sky), marginRight:8 }}>📨 Notify Teacher of Doubt</button>
+          <button type="button" onClick={() => { setShowStudents(!showStudents); if (!students.length) fetchStudents() }} style={S.btnSm('#94a3b8')}>
+            👥 {showStudents ? 'Hide' : 'View'} Batch Students
+          </button>
+        </div>
+
+        {showStudents && (
+          <div style={{ marginBottom:12, padding:10, background:'white', borderRadius:8, border:'1px solid #e2e8f0' }}>
+            {loadingStudents ? <div style={{ fontSize:12, color:'#94a3b8' }}>Loading...</div> :
+              students.length === 0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No students found for this batch.</div> :
+              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                {students.map(s => (
+                  <button key={s.id} type="button" onClick={() => notifyTeacher(s.name, window.prompt(`Enter doubt/issue for ${s.name}:`) || '')}
+                    style={S.pill('#1e293b','#f1f5f9')}>{s.name}</button>
+                ))}
+              </div>
+            }
+          </div>
+        )}
+
+        <div style={{ borderTop:'1px solid #fde68a', paddingTop:14 }}>
+          <label style={S.label}>Resolution Note (what was done in the doubt session)</label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
+            style={{ ...S.input, marginBottom:10, resize:'vertical' }}
+            placeholder="Describe what you covered in the doubt session, which students were helped, what methods you used..."/>
+          <button type="button" onClick={handleFeedback} disabled={sending} style={S.btn(C.green, sending)}>
+            {sending ? '⏳ Saving...' : '✅ Mark Resolved & Notify Teacher'}
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
