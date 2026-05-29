@@ -1304,29 +1304,38 @@ export default function Checklist({ currentUser: portalUser }) {
       setUsers(usersData);
 
      let activeUser = resolvedUser;
-if (!activeUser) {
-  if (portalUser?.staff_profile_id)
-    activeUser = usersData.find(u => u.id === portalUser.staff_profile_id) || null
-  if (!activeUser && portalUser?.name)
-    activeUser = usersData.find(u => u.name === portalUser.name) || null
-}
+const portalRole = portalUser?.role?.toLowerCase() || ''
 
-// Portal session role overrides DB role
-if (activeUser && portalUser?.role) {
-  const pr = portalUser.role.toLowerCase();
-  if (['admin', 'administrator'].includes(pr))
-    activeUser = { ...activeUser, role: 'admin' }
-  else if (['incharge', 'in-charge', 'manager'].includes(pr))
-    activeUser = { ...activeUser, role: 'incharge' }
-  else
-    activeUser = { ...activeUser, role: 'staff' }
-}
-
-// If still no match, show empty — don't fall back to first staff
 if (!activeUser) {
-  showToast('⚠️ Staff profile not found. Contact admin.', 'error')
-  setLoading(false)
-  return
+  // Admin — create virtual user, no staff profile needed
+  if (['admin', 'administrator'].includes(portalRole)) {
+    activeUser = {
+      id: 0,
+      name: 'Administrator',
+      role: 'admin',
+      department: 'Administration',
+      designation: 'Administrator',
+      status: 'Active',
+    }
+  } else {
+    // Match by staff_profile_id first (most accurate)
+    if (portalUser?.staff_profile_id)
+      activeUser = usersData.find(u => u.id === portalUser.staff_profile_id) || null
+    // Fallback: match by name
+    if (!activeUser && portalUser?.name)
+      activeUser = usersData.find(u => u.name === portalUser.name) || null
+    // No match found
+    if (!activeUser) {
+      showToast('⚠️ Staff profile not found. Contact admin.', 'error')
+      setLoading(false)
+      return
+    }
+    // Map portal role to checklist role
+    if (['incharge', 'in-charge', 'manager'].includes(portalRole))
+      activeUser = { ...activeUser, role: 'incharge' }
+    else
+      activeUser = { ...activeUser, role: 'staff' }
+  }
 }
       if (!mountedRef.current) return;
       setCurrentUser(activeUser);
