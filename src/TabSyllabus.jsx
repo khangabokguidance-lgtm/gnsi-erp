@@ -513,8 +513,6 @@ const _name = (
 const isAdmin = !currentUser || ['admin','manager','administrator','principal'].includes(_rawRole)
 const isStaff = _rawRole === 'teacher'
 const staffName = _name
-  const isStaff   = currentUser?.role?.toLowerCase() === 'teacher'
-  const staffName = currentUser?.name || ''
 
   // ── State ──
   const [syllabus,      setSyllabus]     = useState([])
