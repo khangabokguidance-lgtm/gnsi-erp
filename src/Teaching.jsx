@@ -2253,7 +2253,7 @@ function Teaching({ currentUser }) {
 
       {activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser}/>}
       {activeTab==='calendar'    && <TabCalendar logs={logs} missed={missed}/>}
-      {activeTab==='syllabus'    && <TabSyllabus logs={logs} courseData={courseData} monthlySyllabus={monthlySyllabus}/>}
+      {activeTab==='syllabus' && <TabSyllabus logs={logs} courseData={courseData} monthlySyllabus={monthlySyllabus} currentUser={currentUser}/>}
       {activeTab==='timetable'   && <TabTimetable timetable={timetable} fetchTimetable={fetchTimetable} staff={staff} courseData={courseData}/>}
       {activeTab==='reports'     && <TabReports logs={logs} missed={missed} staff={staff} courseData={courseData}/>}
       {activeTab==='search'      && <TabSearch logs={logs} monthlySyllabus={monthlySyllabus} onNavigateTab={handleTabChange}/>}
