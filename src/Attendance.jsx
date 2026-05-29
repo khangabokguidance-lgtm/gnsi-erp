@@ -57,7 +57,7 @@ const STATUS_META = {
 const STATUSES = ['Present', 'Absent', 'Late', 'Leave']
 
 const SESSION_TYPES = ['Class']
-const PERIODS       = [1]
+const PERIODS       = [1,2,3,4,5,6,7,8]
 
 const SUBJECTS = [
   'Mathematics','English Grammar','General Knowledge','General Science',
