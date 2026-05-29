@@ -1303,23 +1303,31 @@ export default function Checklist({ currentUser: portalUser }) {
       if (!mountedRef.current) return;
       setUsers(usersData);
 
-      let activeUser = resolvedUser;
-      if (!activeUser) {
-        if (portalUser?.staff_profile_id) activeUser = usersData.find(u => u.id === portalUser.staff_profile_id);
-        if (!activeUser && portalUser?.id && typeof portalUser.id === "number") activeUser = usersData.find(u => u.id === portalUser.id);
-        if (!activeUser && portalUser?.name) activeUser = usersData.find(u => u.name === portalUser.name);
-        if (!activeUser) activeUser = usersData[0];
-      }
+     let activeUser = resolvedUser;
+if (!activeUser) {
+  if (portalUser?.staff_profile_id)
+    activeUser = usersData.find(u => u.id === portalUser.staff_profile_id) || null
+  if (!activeUser && portalUser?.name)
+    activeUser = usersData.find(u => u.name === portalUser.name) || null
+}
 
-      // Portal session role overrides DB role — portal is authoritative
-      if (activeUser && portalUser?.role) {
-        const pr = portalUser.role.toLowerCase();
-        if (["admin","administrator"].includes(pr)) {
-          activeUser = { ...activeUser, role: "admin" };
-        } else if (["incharge","in-charge","manager"].includes(pr)) {
-          activeUser = { ...activeUser, role: "incharge" };
-        }
-      }
+// Portal session role overrides DB role
+if (activeUser && portalUser?.role) {
+  const pr = portalUser.role.toLowerCase();
+  if (['admin', 'administrator'].includes(pr))
+    activeUser = { ...activeUser, role: 'admin' }
+  else if (['incharge', 'in-charge', 'manager'].includes(pr))
+    activeUser = { ...activeUser, role: 'incharge' }
+  else
+    activeUser = { ...activeUser, role: 'staff' }
+}
+
+// If still no match, show empty — don't fall back to first staff
+if (!activeUser) {
+  showToast('⚠️ Staff profile not found. Contact admin.', 'error')
+  setLoading(false)
+  return
+}
       if (!mountedRef.current) return;
       setCurrentUser(activeUser);
 
