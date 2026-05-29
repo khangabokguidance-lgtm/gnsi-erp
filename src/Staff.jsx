@@ -763,9 +763,12 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
 
   const taskStatusInFlight = useRef(new Set())
 
-  const loggedInStaff = useMemo(() =>
-  staff.find(s => s.email?.toLowerCase() === currentUser?.email?.toLowerCase()) || null,
-[staff, currentUser])
+  const loggedInStaff = useMemo(() => {
+  if (currentUser?.role === 'Admin') return null
+  if (currentUser?.staff_profile_id)
+    return staff.find(s => s.id === currentUser.staff_profile_id) || null
+  return staff.find(s => s.name === currentUser?.name) || null
+}, [staff, currentUser])
 
   // ── Data Loaders ─────────────────────────────────────────────────────────────
 const fetchSalaryData = useCallback(async () => {
