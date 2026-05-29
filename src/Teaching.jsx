@@ -31,6 +31,13 @@
 //  MOB-5  Drawer/modal full-screen on mobile
 //  MOB-6  Filter rows wrap and scroll on mobile
 //  MOB-7  All touch targets min 44px
+//  PATCH-1 Removed duplicate broken useToast call in TabLogs
+//  PATCH-2 teaching_timetable → timetable_entries in TabRemediation
+//  PATCH-3 batch_name + staff_name added to doubt session insert payload
+//  PATCH-4 students query uses batch_id not batch column
+//  PATCH-5 is_read:false added to all admin_alerts inserts
+//  PATCH-6 SUBJECT_COLORS moved to module level (stable memo dep)
+//  PATCH-7 housemasters table fallback comment added
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
@@ -134,7 +141,6 @@ function useToast() {
 
 // ─── Confirm Modal ────────────────────────────────────────────────────────────
 
-// BUG-5: replaces all window.confirm() calls
 function ConfirmModal({ title, message, confirmLabel='Confirm', danger=false, onConfirm, onCancel }) {
   const isMobile = useIsMobile()
   return (
@@ -165,9 +171,7 @@ const S = {
   statCard: (color, bg) => ({ background:bg, borderRadius:12, padding:16, borderLeft:`4px solid ${color}` }),
   badge:  (color, bg) => ({ padding:'3px 9px', borderRadius:999, fontSize:11, fontWeight:700, background:bg, color }),
   pill:   (color, bg) => ({ padding:'4px 12px', borderRadius:999, fontSize:12, fontWeight:600, background:bg, color, display:'inline-block' }),
-  // MOB-2: responsive stat grid
   statGrid: (cols=4) => ({ display:'grid', gridTemplateColumns:`repeat(${cols},1fr)`, gap:12, marginBottom:20 }),
-  // MOB-3: responsive form grid
   formGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:14 },
 }
 
@@ -222,7 +226,6 @@ function useCourseData() {
 
 function useDoubtSessions(logIds) {
   const [sessions, setSessions] = useState({})
-  // BUG-2: safe dep — use length + boundary IDs instead of join
   const depKey = useMemo(() => `${logIds.length}:${logIds[0]||''}:${logIds[logIds.length-1]||''}`, [logIds])
 
   const refetch = useCallback(async () => {
@@ -296,7 +299,6 @@ function DoubtSessionSubRow({ logId, sessions, onRefetch, currentUser }) {
   const list = sessions[logId] || []
   if (!list.length) return null
 
-  // FIX-10: guard null currentUser
   const resolverName = currentUser?.name || 'Staff'
 
   const handleResolve = async session => {
@@ -457,14 +459,14 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
   const [search, setSearch]           = useState('')
   const [courseFilter, setCourseFilter]   = useState('All')
   const [subjectFilter, setSubjectFilter] = useState('All')
-  const [dateFrom, setDateFrom]       = useState('')  // FIX-2
-  const [dateTo, setDateTo]           = useState('')  // FIX-2
-  const [page, setPage]               = useState(1)   // FIX-1
+  const [dateFrom, setDateFrom]       = useState('')
+  const [dateTo, setDateTo]           = useState('')
+  const [page, setPage]               = useState(1)
   const [dupWarn, setDupWarn]         = useState('')
-  const [dupBlocked, setDupBlocked]   = useState(false) // FIX-4
+  const [dupBlocked, setDupBlocked]   = useState(false)
   const [confirmDel, setConfirmDel]   = useState(null)
-  const { toast, el: toastEl } = useToast ? useToast() : { show:()=>{}, el:null }
-  const { show: showToast, el: toastEl2 } = useToast()
+  // PATCH-1: single correct useToast call (removed duplicate broken call)
+  const { show: showToast, el: toastEl } = useToast()
 
   const logIds = useMemo(() => logs.map(l => l.id), [logs])
   const { sessions, refetch: refetchSessions } = useDoubtSessions(logIds)
@@ -486,7 +488,6 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
 
   const handleAdd = async e => {
     e.preventDefault()
-    // FIX-4: hard block on confirmed duplicate
     if (checkDuplicate(form)) {
       setDupWarn(`⚠️ Duplicate log: ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
       setDupBlocked(true)
@@ -498,8 +499,11 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
 
     if (form.needs_doubt_session && logData) {
       try {
-        const { data: students } = await supabase.from('students').select('house').eq('course',form.course).eq('batch',form.subtype).eq('status','Active').not('house','is',null)
+        // PATCH-4: use batch_id instead of 'batch' column for students query
+        const { data: students } = await supabase.from('students').select('house').eq('course',form.course).eq('batch_id',form.batch_id||'').eq('status','Active').not('house','is',null)
         const houses = [...new Set((students||[]).map(s => s.house).filter(Boolean))]
+        // PATCH-7: if 'housemasters' table does not exist in your schema, change to:
+        // supabase.from('staff_profiles').select('id,name,house').eq('role','housemaster').eq('status','Active').in('house',houses.length?houses:['__none__'])
         const { data: hms } = await supabase.from('housemasters').select('id,name,house').eq('status','Active').in('house',houses.length?houses:['__none__'])
         const hmMap = {}; (hms||[]).forEach(hm => { hmMap[hm.house]=hm })
         const ds = houses.map(house => ({
@@ -507,6 +511,8 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
           subject_name:form.subject_name, topic:form.topic_taught, teaching_date:form.teaching_date,
           teacher_name:form.teacher_name||null, teacher_staff_id:form.staff_id||null,
           house_name:house, hm_id:hmMap[house]?.id||null, hm_name:hmMap[house]?.name||null, status:'open',
+          // PATCH-3: added batch_name and staff_name so DoubtSessionSubRow renders them correctly
+          batch_name:form.subtype||null, staff_name:form.teacher_name||null,
         }))
         if (ds.length) await supabase.from('doubt_sessions').insert(ds)
       } catch (err) { showToast('Doubt session create failed: '+err.message, '#d97706') }
@@ -553,7 +559,6 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  // FIX-3: CSV export
   const exportCSV = () => downloadCSV(filtered.map(l => ({
     Date:l.teaching_date, Course:l.course||'', Subtype:l.subtype||'', Class:l.class_name||'',
     Subject:l.subject_name||'', Teacher:l.teacher_name||'', Topic:l.topic_taught||'',
@@ -564,7 +569,7 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
 
   return (
     <>
-      {toastEl2}
+      {toastEl}
       {confirmDel && (
         <ConfirmModal title="Delete Log" message="Delete this teaching log? This cannot be undone." confirmLabel="Delete" danger
           onConfirm={() => handleDelete(confirmDel)} onCancel={() => setConfirmDel(null)}/>
@@ -601,7 +606,6 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
         {showForm && <LogForm form={form} setForm={f => { setForm(f); setDupWarn(''); setDupBlocked(false) }} onSubmit={handleAdd} saving={saving} timetable={timetable} staff={staff} courseData={courseData}/>}
       </div>
 
-      {/* Filters — MOB-6 */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
         <input placeholder="🔍 Search logs..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...S.input, flex:'1 1 180px', minWidth:150 }}/>
         <select value={courseFilter} onChange={e => { setCourseFilter(e.target.value); setPage(1) }} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}>
@@ -639,7 +643,6 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
                 </thead>
                 <tbody>
                   {paginated.map((item, i) => (
-                    // BUG-1: React.Fragment with key
                     <React.Fragment key={item.id}>
                       <tr style={{ borderBottom: editId===item.id?'none':'1px solid #f1f5f9', background: editId===item.id?'#f8f4ff':'white' }}>
                         <td style={{ padding:'10px 12px', color:'#94a3b8', fontSize:11 }}>{(page-1)*PAGE_SIZE+i+1}</td>
@@ -679,7 +682,6 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
                 </tbody>
               </table>
             </div>
-            {/* FIX-1: Pagination */}
             {totalPages > 1 && (
               <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:14, flexWrap:'wrap' }}>
                 <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'), opacity:page===1?.4:1 }}>←</button>
@@ -697,6 +699,10 @@ function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, curre
 }
 
 // ─── Tab: Calendar ────────────────────────────────────────────────────────────
+
+// PATCH-6: SUBJECT_COLORS moved to module level so subjectColorMap memo
+// never goes stale when allSubjects changes between renders
+const SUBJECT_COLORS = ['#1e3a5f','#7c3aed','#0891b2','#16a34a','#ca8a04','#dc2626','#c026d3','#0d9488']
 
 function TabCalendar({ logs, missed }) {
   const [month, setMonth]             = useState(currentYearMonth())
@@ -742,7 +748,6 @@ function TabCalendar({ logs, missed }) {
     return map
   }, [missed, month])
 
-  // BUG-3: weekDays based on a stable date computed at mount time
   const weekDays = useMemo(() => {
     const now   = new Date()
     const start = new Date(now)
@@ -751,7 +756,7 @@ function TabCalendar({ logs, missed }) {
       const d = new Date(start); d.setDate(start.getDate()+i)
       return d.toISOString().split('T')[0]
     })
-  }, []) // intentionally stable — current week
+  }, [])
 
   const selectedLogs   = selectedDay ? (logsByDate[selectedDay]||[]) : []
   const selectedMissed = selectedDay ? (missedByDate[selectedDay]||[]) : []
@@ -761,11 +766,11 @@ function TabCalendar({ logs, missed }) {
   const activeDays  = Object.keys(logsByDate).length
   const subjectCount= new Set(Object.values(logsByDate).flat().map(l=>l.subject_name)).size
 
-  const SUBJECT_COLORS = ['#1e3a5f','#7c3aed','#0891b2','#16a34a','#ca8a04','#dc2626','#c026d3','#0d9488']
+  // PATCH-6: allSubjects dep now stable since SUBJECT_COLORS is module-level
   const subjectColorMap = useMemo(() => {
     const map = {}; allSubjects.forEach((s,i) => { map[s]=SUBJECT_COLORS[i%SUBJECT_COLORS.length] })
     return map
-  }, [allSubjects]) // eslint-disable-line
+  }, [allSubjects])
 
   const prevMonth = () => { const d=new Date(year,mon-2,1); setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
   const nextMonth = () => { const d=new Date(year,mon,1);   setMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
@@ -921,7 +926,6 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
   const { show: showToast, el: toastEl } = useToast()
   const { courses, subtypesFor, classesFor } = courseData
 
-  // FIX-5: default to first course/subtype once data loads
   useEffect(() => {
     if (courses.length && !viewCourse) {
       const c = courses[0]
@@ -951,7 +955,6 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
 
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
-    // BUG-4: write only to timetable_entries (single source of truth)
     const { error } = await supabase.from('timetable_entries').insert([{
       class_name: form.subtype||form.class_name,
       subject_name: form.subject_name,
@@ -1115,7 +1118,6 @@ function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
         )}
       </div>
 
-      {/* Substitutes history */}
       {substitutes.length > 0 && (
         <div style={S.card}>
           <h3 style={{ fontSize:14, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🔄 Substitute History</h3>
@@ -1209,7 +1211,6 @@ function TabReports({ logs, missed, staff, courseData }) {
     return map
   }, [monthLogs])
 
-  // FIX-8: scoped print — only .print-report prints
   const handlePrint = () => {
     const content = document.getElementById('print-report')?.innerHTML
     if (!content) { window.print(); return }
@@ -1270,15 +1271,12 @@ function TabReports({ logs, missed, staff, courseData }) {
 
 // ─── Tab: Search ──────────────────────────────────────────────────────────────
 
-const MONTHS_LABEL_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-
 function TabSearch({ logs, monthlySyllabus=[], onNavigateTab }) {
   const [query, setQuery]         = useState('')
   const [marking, setMarking]     = useState(null)
   const [localSyllabus, setLocalSyllabus] = useState(monthlySyllabus)
   useEffect(() => { setLocalSyllabus(monthlySyllabus) }, [monthlySyllabus])
 
-  // BUG-8: improved match — min 4 chars, word-boundary aware
   const findSyllabusMatch = useCallback(logItem => {
     if (!localSyllabus.length || !logItem.topic_taught) return null
     const topicLower = (logItem.topic_taught||'').toLowerCase()
@@ -1363,11 +1361,11 @@ function TabSearch({ logs, monthlySyllabus=[], onNavigateTab }) {
 function TabStudentPerformance({ courseData, logs }) {
   const [scores, setScores]           = useState([])
   const [students, setStudents]       = useState([])
-  const [studentsErr, setStudentsErr] = useState('') // FIX-7
+  const [studentsErr, setStudentsErr] = useState('')
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
   const [saving, setSaving]           = useState(false)
-  const [editingId, setEditingId]     = useState(null) // FIX-9
+  const [editingId, setEditingId]     = useState(null)
   const [filterBatch, setFilterBatch]       = useState('All')
   const [filterSubject, setFilterSubject]   = useState('All')
   const [filterStudent, setFilterStudent]   = useState('All')
@@ -1387,7 +1385,6 @@ function TabStudentPerformance({ courseData, logs }) {
     setLoading(false)
   }
 
-  // FIX-7: better student fetch with error surface
   const fetchStudents = async batchId => {
     if (!batchId) { setStudents([]); setStudentsErr(''); return }
     setStudentsErr('')
@@ -1428,7 +1425,6 @@ function TabStudentPerformance({ courseData, logs }) {
     }
     let error
     if (editingId) {
-      // FIX-9: edit support
       ({ error } = await supabase.from('student_scores').update(payload).eq('id', editingId))
     } else {
       ({ error } = await supabase.from('student_scores').insert([payload]))
@@ -1476,7 +1472,6 @@ function TabStudentPerformance({ courseData, logs }) {
 
   const avgScore = filtered.length > 0 ? Math.round(filtered.reduce((a,s) => a+pct(s.score,s.max_score),0)/filtered.length) : 0
   const topScore = filtered.length > 0 ? Math.max(...filtered.map(s => pct(s.score,s.max_score))) : 0
-
   const scoreClasses = form.score && form.max_score ? pct(parseFloat(form.score), parseFloat(form.max_score)) : null
 
   return (
@@ -1506,71 +1501,23 @@ function TabStudentPerformance({ courseData, logs }) {
         </div>
         {showForm && (
           <form onSubmit={handleSave} className="form-grid" style={{ ...S.formGrid, marginTop:16 }}>
-            <div>
-              <label style={S.label}>Course</label>
-              <select value={form.course} onChange={e => handleCourseChange(e.target.value)} required style={S.select}>
-                <option value="">Select Course</option>
-                {courses.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={S.label}>Batch / Subtype</label>
-              <select value={form.subtype} onChange={e => handleSubtypeChange(e.target.value)} disabled={!form.course} required style={{ ...S.select, opacity:form.course?1:.5 }}>
-                <option value="">Select Batch</option>
-                {form.course ? subtypesFor(form.course).map(s => <option key={s} value={s}>{s}</option>) : null}
-              </select>
-            </div>
-            <div>
-              <label style={S.label}>Class</label>
-              {(form.course&&form.subtype ? classesFor(form.course,form.subtype) : []).length > 0
-                ? <select value={form.class_name} onChange={e => handleClassChange(e.target.value)} disabled={!form.subtype} style={{ ...S.select, opacity:form.subtype?1:.5 }}>
-                    <option value="">Select Class</option>
-                    {classesFor(form.course, form.subtype).map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                : <input value={form.class_name} onChange={e => handleClassChange(e.target.value)} placeholder="e.g. Class 6" disabled={!form.subtype} style={{ ...S.input, opacity:form.subtype?1:.5 }}/>
-              }
-            </div>
-            <div>
-              <label style={S.label}>Student</label>
-              {studentsErr && <div style={{ fontSize:11, color:'#dc2626', marginBottom:4, fontWeight:600 }}>⚠️ {studentsErr}</div>}
-              {students.length > 0
-                ? <select value={form.student_id} onChange={e => handleStudentChange(e.target.value)} required style={S.select}>
-                    <option value="">Select Student</option>
-                    {students.map(s => <option key={s.id} value={s.id}>{s.name}{s.roll_number?` (${s.roll_number})`:''}</option>)}
-                  </select>
-                : <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name:e.target.value }))} placeholder="Type student name" required style={S.input}/>
-              }
-            </div>
-            <div>
-              <label style={S.label}>Subject</label>
-              <select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name:e.target.value }))} required style={S.select}>
-                <option value="">Select Subject</option>
-                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={S.label}>Topic / Test Name</label>
-              <input value={form.topic} onChange={e => setForm(f => ({ ...f, topic:e.target.value }))} placeholder="e.g. Fractions Quiz" required style={S.input}/>
-            </div>
-            <div>
-              <label style={S.label}>Test Date</label>
-              <input type="date" value={form.test_date} onChange={e => setForm(f => ({ ...f, test_date:e.target.value }))} required style={S.input}/>
-            </div>
+            <div><label style={S.label}>Course</label><select value={form.course} onChange={e => handleCourseChange(e.target.value)} required style={S.select}><option value="">Select Course</option>{courses.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+            <div><label style={S.label}>Batch / Subtype</label><select value={form.subtype} onChange={e => handleSubtypeChange(e.target.value)} disabled={!form.course} required style={{ ...S.select, opacity:form.course?1:.5 }}><option value="">Select Batch</option>{form.course ? subtypesFor(form.course).map(s => <option key={s} value={s}>{s}</option>) : null}</select></div>
+            <div><label style={S.label}>Class</label>{(form.course&&form.subtype ? classesFor(form.course,form.subtype) : []).length > 0?<select value={form.class_name} onChange={e => handleClassChange(e.target.value)} disabled={!form.subtype} style={{ ...S.select, opacity:form.subtype?1:.5 }}><option value="">Select Class</option>{classesFor(form.course, form.subtype).map(c => <option key={c} value={c}>{c}</option>)}</select>:<input value={form.class_name} onChange={e => handleClassChange(e.target.value)} placeholder="e.g. Class 6" disabled={!form.subtype} style={{ ...S.input, opacity:form.subtype?1:.5 }}/>}</div>
+            <div><label style={S.label}>Student</label>{studentsErr && <div style={{ fontSize:11, color:'#dc2626', marginBottom:4, fontWeight:600 }}>⚠️ {studentsErr}</div>}{students.length > 0?<select value={form.student_id} onChange={e => handleStudentChange(e.target.value)} required style={S.select}><option value="">Select Student</option>{students.map(s => <option key={s.id} value={s.id}>{s.name}{s.roll_number?` (${s.roll_number})`:''}</option>)}</select>:<input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name:e.target.value }))} placeholder="Type student name" required style={S.input}/>}</div>
+            <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name:e.target.value }))} required style={S.select}><option value="">Select Subject</option>{SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+            <div><label style={S.label}>Topic / Test Name</label><input value={form.topic} onChange={e => setForm(f => ({ ...f, topic:e.target.value }))} placeholder="e.g. Fractions Quiz" required style={S.input}/></div>
+            <div><label style={S.label}>Test Date</label><input type="date" value={form.test_date} onChange={e => setForm(f => ({ ...f, test_date:e.target.value }))} required style={S.input}/></div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
               <div><label style={S.label}>Score</label><input type="number" min="0" step="0.5" value={form.score} onChange={e => setForm(f => ({ ...f, score:e.target.value }))} required placeholder="78" style={S.input}/></div>
               <div><label style={S.label}>Out of</label><input type="number" min="1" value={form.max_score} onChange={e => setForm(f => ({ ...f, max_score:e.target.value }))} required placeholder="100" style={S.input}/></div>
             </div>
             {scoreClasses !== null && (
               <div style={{ gridColumn:'1/-1', padding:'10px 14px', borderRadius:8, background:scoreBg(scoreClasses), border:`1px solid ${scoreColor(scoreClasses)}40` }}>
-                <span style={{ fontSize:14, fontWeight:700, color:scoreColor(scoreClasses) }}>
-                  {scoreClasses}% — {scoreClasses>=75?'✅ Good':scoreClasses>=50?'⚠️ Average':'❌ Needs improvement'}
-                </span>
+                <span style={{ fontSize:14, fontWeight:700, color:scoreColor(scoreClasses) }}>{scoreClasses}% — {scoreClasses>=75?'✅ Good':scoreClasses>=50?'⚠️ Average':'❌ Needs improvement'}</span>
               </div>
             )}
-            <div style={{ gridColumn:'1/-1' }}>
-              <label style={S.label}>Notes (optional)</label>
-              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes:e.target.value }))} placeholder="Remarks" style={S.input}/>
-            </div>
+            <div style={{ gridColumn:'1/-1' }}><label style={S.label}>Notes (optional)</label><input value={form.notes} onChange={e => setForm(f => ({ ...f, notes:e.target.value }))} placeholder="Remarks" style={S.input}/></div>
             <div style={{ gridColumn:'1/-1', display:'flex', gap:10 }}>
               <button type="submit" disabled={saving} style={S.btn('#1e3a5f',saving)}>{saving?'⏳ Saving...':'✅ Save Score'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(blankForm) }} style={S.btn('#64748b')}>✖ Cancel</button>
@@ -1579,7 +1526,6 @@ function TabStudentPerformance({ courseData, logs }) {
         )}
       </div>
 
-      {/* Filters */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
         <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Batches</option>{allBatches.map(b=><option key={b} value={b}>{b}</option>)}</select>
         <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Subjects</option>{allSubjects.map(s=><option key={s} value={s}>{s}</option>)}</select>
@@ -1591,127 +1537,72 @@ function TabStudentPerformance({ courseData, logs }) {
         </div>
       </div>
 
-      {viewMode==='table' && (
-        loading ? <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading...</div> : (
-          <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:600 }}>
-              <thead>
-                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                  {['Date','Student','Batch','Subject','Topic','Score','%','Grade','Actions'].map(h => (
-                    <th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>{h}</th>
-                  ))}
+      {viewMode==='table' && (loading ? <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading...</div> : (
+        <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:600 }}>
+            <thead><tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>{['Date','Student','Batch','Subject','Topic','Score','%','Grade','Actions'].map(h => (<th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>{h}</th>))}</tr></thead>
+            <tbody>
+              {filtered.map(s => { const p = pct(s.score, s.max_score); return (
+                <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                  <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(s.test_date)}</td>
+                  <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{s.student_name}</td>
+                  <td style={{ padding:'9px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{s.subtype||s.course||'-'}</span></td>
+                  <td style={{ padding:'9px 12px', color:'#374151' }}>{s.subject_name}</td>
+                  <td style={{ padding:'9px 12px', color:'#64748b', maxWidth:140 }}>{s.topic}</td>
+                  <td style={{ padding:'9px 12px', fontWeight:700, color:'#1e293b', fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score}</td>
+                  <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', alignItems:'center', gap:6 }}><div style={{ width:44, height:5, background:'#e2e8f0', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${p}%`, height:'100%', background:scoreColor(p), borderRadius:3 }}/></div><span style={{ fontWeight:700, color:scoreColor(p), fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span></div></td>
+                  <td style={{ padding:'9px 12px' }}><span style={{ ...S.badge(scoreColor(p), scoreBg(p)) }}>{p>=75?'Good':p>=50?'Avg':'Weak'}</span></td>
+                  <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', gap:5 }}><button onClick={() => startEdit(s)} style={S.btnSm('#7c3aed')}>✏️</button><button onClick={() => setConfirmDel(s.id)} style={S.btnSm('#dc2626')}>🗑</button></div></td>
                 </tr>
-              </thead>
-              <tbody>
-                {filtered.map(s => {
-                  const p = pct(s.score, s.max_score)
-                  return (
-                    <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                      <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(s.test_date)}</td>
-                      <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{s.student_name}</td>
-                      <td style={{ padding:'9px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{s.subtype||s.course||'-'}</span></td>
-                      <td style={{ padding:'9px 12px', color:'#374151' }}>{s.subject_name}</td>
-                      <td style={{ padding:'9px 12px', color:'#64748b', maxWidth:140 }}>{s.topic}</td>
-                      <td style={{ padding:'9px 12px', fontWeight:700, color:'#1e293b', fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score}</td>
-                      <td style={{ padding:'9px 12px' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                          <div style={{ width:44, height:5, background:'#e2e8f0', borderRadius:3, overflow:'hidden' }}>
-                            <div style={{ width:`${p}%`, height:'100%', background:scoreColor(p), borderRadius:3 }}/>
-                          </div>
-                          <span style={{ fontWeight:700, color:scoreColor(p), fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
-                        </div>
-                      </td>
-                      <td style={{ padding:'9px 12px' }}>
-                        <span style={{ ...S.badge(scoreColor(p), scoreBg(p)) }}>{p>=75?'Good':p>=50?'Avg':'Weak'}</span>
-                      </td>
-                      <td style={{ padding:'9px 12px' }}>
-                        <div style={{ display:'flex', gap:5 }}>
-                          <button onClick={() => startEdit(s)} style={S.btnSm('#7c3aed')}>✏️</button>
-                          <button onClick={() => setConfirmDel(s.id)} style={S.btnSm('#dc2626')}>🗑</button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {filtered.length===0 && <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No score data.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
+              )})}
+              {filtered.length===0 && <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No score data.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      ))}
 
       {viewMode==='weak' && (
         <div style={S.card}>
           <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>⚠️ Weak Areas (below 60%)</h3>
-          {weakOnly.length===0
-            ? <div style={{ textAlign:'center', padding:32, color:'#16a34a', fontWeight:600 }}>✅ No weak areas detected.</div>
-            : weakOnly.map((w,i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', border:'1px solid #fecaca', borderRadius:10, marginBottom:8, background:'#fff1f2', flexWrap:'wrap' }}>
-                <div style={{ minWidth:130 }}>
-                  <div style={{ fontWeight:700, color:'#1e293b', fontSize:13 }}>{w.student}</div>
-                  <div style={{ fontSize:12, color:'#64748b' }}>{w.batch}</div>
-                </div>
-                <div style={{ flex:1, minWidth:100 }}>
-                  <div style={{ fontSize:12, color:'#374151', marginBottom:4 }}>{w.subject}</div>
-                  <div style={{ height:7, background:'#fee2e2', borderRadius:3, overflow:'hidden' }}>
-                    <div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:3 }}/>
-                  </div>
-                </div>
-                <span style={{ fontWeight:800, color:'#dc2626', fontSize:18, fontFamily:"'JetBrains Mono',monospace" }}>{w.avg}%</span>
-              </div>
-            ))
-          }
+          {weakOnly.length===0?<div style={{ textAlign:'center', padding:32, color:'#16a34a', fontWeight:600 }}>✅ No weak areas detected.</div>:weakOnly.map((w,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', border:'1px solid #fecaca', borderRadius:10, marginBottom:8, background:'#fff1f2', flexWrap:'wrap' }}>
+              <div style={{ minWidth:130 }}><div style={{ fontWeight:700, color:'#1e293b', fontSize:13 }}>{w.student}</div><div style={{ fontSize:12, color:'#64748b' }}>{w.batch}</div></div>
+              <div style={{ flex:1, minWidth:100 }}><div style={{ fontSize:12, color:'#374151', marginBottom:4 }}>{w.subject}</div><div style={{ height:7, background:'#fee2e2', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:3 }}/></div></div>
+              <span style={{ fontWeight:800, color:'#dc2626', fontSize:18, fontFamily:"'JetBrains Mono',monospace" }}>{w.avg}%</span>
+            </div>
+          ))}
         </div>
       )}
 
       {viewMode==='trend' && (
         <div style={S.card}>
           <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>📈 Score Trend — {filterStudent==='All'?'Select a student above':filterStudent}</h3>
-          {filterStudent==='All'
-            ? <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>Select a student from the filter above.</div>
-            : trendData.length===0
-              ? <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No scores for {filterStudent}.</div>
-              : (
-                <>
-                  <div style={{ display:'flex', gap:8, alignItems:'flex-end', height:160, padding:'0 6px', borderBottom:'2px solid #e2e8f0', overflowX:'auto', marginBottom:14 }}>
-                    {trendData.map((s,i) => {
-                      const p = pct(s.score, s.max_score)
-                      return (
-                        <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:54 }}>
-                          <span style={{ fontSize:11, fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
-                          <div title={`${s.topic}: ${s.score}/${s.max_score}`} style={{ width:38, height:`${Math.max(p*1.4,4)}px`, background:scoreColor(p), borderRadius:'4px 4px 0 0', transition:'height .3s' }}/>
-                          <div style={{ fontSize:10, color:'#64748b', textAlign:'center', maxWidth:54, wordBreak:'break-word' }}>{s.subject_name?.slice(0,5)}</div>
-                          <div style={{ fontSize:9, color:'#94a3b8' }}>{s.test_date?.slice(5)}</div>
-                        </div>
-                      )
-                    })}
+          {filterStudent==='All'?<div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>Select a student from the filter above.</div>:trendData.length===0?<div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No scores for {filterStudent}.</div>:(
+            <>
+              <div style={{ display:'flex', gap:8, alignItems:'flex-end', height:160, padding:'0 6px', borderBottom:'2px solid #e2e8f0', overflowX:'auto', marginBottom:14 }}>
+                {trendData.map((s,i) => { const p = pct(s.score, s.max_score); return (
+                  <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:54 }}>
+                    <span style={{ fontSize:11, fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
+                    <div title={`${s.topic}: ${s.score}/${s.max_score}`} style={{ width:38, height:`${Math.max(p*1.4,4)}px`, background:scoreColor(p), borderRadius:'4px 4px 0 0', transition:'height .3s' }}/>
+                    <div style={{ fontSize:10, color:'#64748b', textAlign:'center', maxWidth:54, wordBreak:'break-word' }}>{s.subject_name?.slice(0,5)}</div>
+                    <div style={{ fontSize:9, color:'#94a3b8' }}>{s.test_date?.slice(5)}</div>
                   </div>
-                  <div className="stat-grid-4" style={{ ...S.statGrid(4), marginBottom:14 }}>
-                    {[
-                      { label:'Tests',       value:trendData.length },
-                      { label:'Best',        value:`${Math.max(...trendData.map(s=>pct(s.score,s.max_score)))}%` },
-                      { label:'Latest',      value:`${pct(trendData[trendData.length-1].score, trendData[trendData.length-1].max_score)}%` },
-                      { label:'Average',     value:`${Math.round(trendData.reduce((a,s)=>a+pct(s.score,s.max_score),0)/trendData.length)}%` },
-                    ].map(c => (
-                      <div key={c.label} style={{ background:'#f8fafc', borderRadius:8, padding:'12px 14px' }}>
-                        <div style={{ fontSize:12, color:'#64748b' }}>{c.label}</div>
-                        <div style={{ fontSize:20, fontWeight:800, color:'#1e3a5f', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {[...trendData].reverse().map(s => {
-                    const p = pct(s.score, s.max_score)
-                    return (
-                      <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 12px', border:'1px solid #f1f5f9', borderRadius:8, marginBottom:5, fontSize:13, flexWrap:'wrap' }}>
-                        <span style={{ color:'#94a3b8', minWidth:70 }}>{fmtDate(s.test_date)}</span>
-                        <span style={{ flex:1, color:'#374151' }}>{s.subject_name} — <em style={{ color:'#64748b' }}>{s.topic}</em></span>
-                        <span style={{ fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score} ({p}%)</span>
-                      </div>
-                    )
-                  })}
-                </>
-              )
-          }
+                )})}
+              </div>
+              <div className="stat-grid-4" style={{ ...S.statGrid(4), marginBottom:14 }}>
+                {[{label:'Tests',value:trendData.length},{label:'Best',value:`${Math.max(...trendData.map(s=>pct(s.score,s.max_score)))}%`},{label:'Latest',value:`${pct(trendData[trendData.length-1].score,trendData[trendData.length-1].max_score)}%`},{label:'Average',value:`${Math.round(trendData.reduce((a,s)=>a+pct(s.score,s.max_score),0)/trendData.length)}%`}].map(c=>(
+                  <div key={c.label} style={{ background:'#f8fafc', borderRadius:8, padding:'12px 14px' }}><div style={{ fontSize:12, color:'#64748b' }}>{c.label}</div><div style={{ fontSize:20, fontWeight:800, color:'#1e3a5f', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</div></div>
+                ))}
+              </div>
+              {[...trendData].reverse().map(s => { const p = pct(s.score, s.max_score); return (
+                <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 12px', border:'1px solid #f1f5f9', borderRadius:8, marginBottom:5, fontSize:13, flexWrap:'wrap' }}>
+                  <span style={{ color:'#94a3b8', minWidth:70 }}>{fmtDate(s.test_date)}</span>
+                  <span style={{ flex:1, color:'#374151' }}>{s.subject_name} — <em style={{ color:'#64748b' }}>{s.topic}</em></span>
+                  <span style={{ fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score} ({p}%)</span>
+                </div>
+              )})}
+            </>
+          )}
         </div>
       )}
     </>
@@ -1732,7 +1623,6 @@ function TabHMDashboard({ currentUser }) {
   const [page, setPage]           = useState(1)
   const { show: showToast, el: toastEl } = useToast()
 
-  // FIX-10: guard null currentUser
   const resolverName = currentUser?.name || 'HM'
 
   const fetchAll = async () => {
@@ -1763,9 +1653,7 @@ function TabHMDashboard({ currentUser }) {
       if (!map[key]) map[key] = { student:s.student_name, subject:s.subject_name, scores:[] }
       map[key].scores.push(pct(s.score, s.max_score))
     })
-    return Object.values(map)
-      .map(m => ({ ...m, avg:Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length) }))
-      .filter(m => m.avg<60).sort((a,b) => a.avg-b.avg)
+    return Object.values(map).map(m => ({ ...m, avg:Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length) })).filter(m => m.avg<60).sort((a,b) => a.avg-b.avg)
   }, [allScores])
 
   const houseSummary = useMemo(() => {
@@ -1790,7 +1678,6 @@ function TabHMDashboard({ currentUser }) {
     setResolvingId(null)
   }
 
-  // Paginate resolved history
   const HIST_PAGE = 10
   const histPages = Math.ceil(doneSessions.length/HIST_PAGE)
   const histPage  = doneSessions.slice((page-1)*HIST_PAGE, page*HIST_PAGE)
@@ -1816,7 +1703,6 @@ function TabHMDashboard({ currentUser }) {
           ))}
         </div>
       )}
-
       <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
         <select value={selectedHouse} onChange={e => setSelectedHouse(e.target.value)} style={{ ...S.select, width:'auto' }}>
           <option value="All">All Houses</option>
@@ -1824,53 +1710,35 @@ function TabHMDashboard({ currentUser }) {
         </select>
         <span style={{ fontSize:13, color:'#64748b' }}>{openSessions.length} open · {doneSessions.length} resolved</span>
       </div>
-
       <div style={S.card}>
         <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
-        {openSessions.length===0
-          ? <div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>
-          : openSessions.map(s => (
-            <div key={s.id} style={{ border:'1px solid #fde68a', borderRadius:10, padding:'13px 16px', marginBottom:10, background:'#fffbeb' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
-                <div>
-                  <div style={{ fontWeight:700, color:'#1e293b', fontSize:14 }}>🏠 {s.house_name} · {s.subject_name}</div>
-                  <div style={{ fontSize:13, color:'#374151', marginTop:3 }}>📖 {s.topic}</div>
-                  <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>👨‍🏫 {s.teacher_name||'-'} | {fmtDate(s.teaching_date)}</div>
-                </div>
-                <div>
-                  {noteFor===s.id
-                    ? <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Resolution note..." style={{ ...S.input, width:180, fontSize:12 }} autoFocus/>
-                        <button onClick={() => handleResolve(s)} disabled={resolvingId===s.id} style={S.btnSm('#16a34a')}>✓</button>
-                        <button onClick={() => { setNoteFor(null); setNote('') }} style={S.btnSm('#64748b')}>✖</button>
-                      </div>
-                    : <button onClick={() => setNoteFor(s.id)} style={S.btnSm('#1e3a5f')}>✓ Resolve</button>
-                  }
-                </div>
+        {openSessions.length===0?<div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>:openSessions.map(s => (
+          <div key={s.id} style={{ border:'1px solid #fde68a', borderRadius:10, padding:'13px 16px', marginBottom:10, background:'#fffbeb' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
+              <div>
+                <div style={{ fontWeight:700, color:'#1e293b', fontSize:14 }}>🏠 {s.house_name} · {s.subject_name}</div>
+                <div style={{ fontSize:13, color:'#374151', marginTop:3 }}>📖 {s.topic}</div>
+                <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>👨‍🏫 {s.teacher_name||'-'} | {fmtDate(s.teaching_date)}</div>
+              </div>
+              <div>
+                {noteFor===s.id?<div style={{ display:'flex', gap:6, flexWrap:'wrap' }}><input value={note} onChange={e => setNote(e.target.value)} placeholder="Resolution note..." style={{ ...S.input, width:180, fontSize:12 }} autoFocus/><button onClick={() => handleResolve(s)} disabled={resolvingId===s.id} style={S.btnSm('#16a34a')}>✓</button><button onClick={() => { setNoteFor(null); setNote('') }} style={S.btnSm('#64748b')}>✖</button></div>:<button onClick={() => setNoteFor(s.id)} style={S.btnSm('#1e3a5f')}>✓ Resolve</button>}
               </div>
             </div>
-          ))
-        }
+          </div>
+        ))}
       </div>
-
       {weakStudents.length > 0 && (
         <div style={S.card}>
           <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>⚠️ Students Needing Attention</h3>
           {weakStudents.map((w,i) => (
             <div key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'10px 12px', border:'1px solid #fecaca', borderRadius:8, marginBottom:6, background:'#fff1f2', flexWrap:'wrap' }}>
               <div style={{ minWidth:130, fontWeight:600, color:'#1e293b', fontSize:13 }}>{w.student}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:12, color:'#64748b', marginBottom:3 }}>{w.subject}</div>
-                <div style={{ height:5, background:'#fee2e2', borderRadius:3, overflow:'hidden' }}>
-                  <div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:3 }}/>
-                </div>
-              </div>
+              <div style={{ flex:1 }}><div style={{ fontSize:12, color:'#64748b', marginBottom:3 }}>{w.subject}</div><div style={{ height:5, background:'#fee2e2', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${w.avg}%`, height:'100%', background:'#dc2626', borderRadius:3 }}/></div></div>
               <span style={{ fontWeight:800, color:'#dc2626', fontSize:16, fontFamily:"'JetBrains Mono',monospace" }}>{w.avg}%</span>
             </div>
           ))}
         </div>
       )}
-
       {doneSessions.length > 0 && (
         <div style={S.card}>
           <h3 style={{ fontSize:14, fontWeight:800, color:'#16a34a', marginTop:0 }}>✅ Resolved Sessions ({doneSessions.length})</h3>
@@ -1902,7 +1770,7 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
   const [alerts, setAlerts]         = useState([])
   const [loading, setLoading]       = useState(true)
   const [generating, setGenerating] = useState(false)
-  const [alertFilter, setAlertFilter] = useState('All') // FIX-12
+  const [alertFilter, setAlertFilter] = useState('All')
   const { show: showToast, el: toastEl } = useToast()
   const { courses } = courseData
 
@@ -1974,18 +1842,18 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
     return allDoubt.filter(d => d.status==='open' && d.teaching_date && d.teaching_date<=threshStr)
   }, [allDoubt])
 
-  // FIX-12: dedup before inserting alerts
   const generateAlerts = async () => {
     setGenerating(true)
     const newAlerts = []
     gaps.forEach(g => {
-      const key = `gap||${g.subtype}||${g.subject}`
       if (!alerts.find(a => a.alert_type==='gap' && a.subtype===g.subtype && a.subject_name===g.subject && !a.is_read))
-        newAlerts.push({ alert_type:'gap', course:'', subtype:g.subtype, subject_name:g.subject, teacher_name:g.teacher, message:`No log for ${g.subject} (${g.subtype}) in 3+ days. Last: ${fmtDate(g.lastLogged)}`, severity:'medium' })
+        // PATCH-5: added is_read:false so alerts are correctly identified as unread
+        newAlerts.push({ alert_type:'gap', course:'', subtype:g.subtype, subject_name:g.subject, teacher_name:g.teacher, message:`No log for ${g.subject} (${g.subtype}) in 3+ days. Last: ${fmtDate(g.lastLogged)}`, severity:'medium', is_read:false })
     })
     staleDoubt.forEach(d => {
       if (!alerts.find(a => a.alert_type==='doubt_stale' && a.subtype===d.subtype && a.subject_name===d.subject_name && !a.is_read))
-        newAlerts.push({ alert_type:'doubt_stale', course:d.course||'', subtype:d.subtype||'', subject_name:d.subject_name, teacher_name:d.teacher_name||'', message:`Unresolved doubt for ${d.subject_name} (${d.house_name}) since ${fmtDate(d.teaching_date)}`, severity:'high' })
+        // PATCH-5: added is_read:false so alerts are correctly identified as unread
+        newAlerts.push({ alert_type:'doubt_stale', course:d.course||'', subtype:d.subtype||'', subject_name:d.subject_name, teacher_name:d.teacher_name||'', message:`Unresolved doubt for ${d.subject_name} (${d.house_name}) since ${fmtDate(d.teaching_date)}`, severity:'high', is_read:false })
     })
     if (newAlerts.length > 0) {
       const { error } = await supabase.from('admin_alerts').insert(newAlerts)
@@ -2032,7 +1900,6 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
             🔔 Alerts {unreadAlerts.length>0 && <span style={{ ...S.badge('white','#dc2626'), marginLeft:8 }}>{unreadAlerts.length} new</span>}
           </h3>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-            {/* FIX-12: filter by type */}
             <select value={alertFilter} onChange={e => setAlertFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:12 }}>
               <option value="All">All Types</option>
               {alertTypes.map(t => <option key={t} value={t}>{t}</option>)}
@@ -2061,10 +1928,7 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
         {batchHealth.map((b,i) => (
           <div key={i} style={{ border:'1px solid #e2e8f0', borderRadius:10, padding:'14px 16px', marginBottom:10 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
-              <div>
-                <span style={{ fontWeight:800, color:'#1e293b', fontSize:14 }}>{b.subtype}</span>
-                <span style={{ marginLeft:8, fontSize:12, color:'#64748b' }}>{b.course}</span>
-              </div>
+              <div><span style={{ fontWeight:800, color:'#1e293b', fontSize:14 }}>{b.subtype}</span><span style={{ marginLeft:8, fontSize:12, color:'#64748b' }}>{b.course}</span></div>
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                 {b.openDoubt>0 && <span style={S.badge('#b45309','#fef9c3')}>⏳ {b.openDoubt}</span>}
                 {b.avgScore!=null && <span style={{ ...S.badge(scoreColor(b.avgScore), scoreBg(b.avgScore)) }}>{b.avgScore}%</span>}
@@ -2075,9 +1939,7 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
               <div style={{ width:`${b.health}%`, height:'100%', background:scoreColor(b.health), borderRadius:4, transition:'width .4s' }}/>
             </div>
             <div style={{ display:'flex', gap:14, fontSize:12, color:'#64748b', flexWrap:'wrap' }}>
-              <span>📋 {b.logsThisMonth} logs</span>
-              <span>📚 {b.subjectsCovered} subjects</span>
-              <span>🔁 {b.doubtResRate}% resolved</span>
+              <span>📋 {b.logsThisMonth} logs</span><span>📚 {b.subjectsCovered} subjects</span><span>🔁 {b.doubtResRate}% resolved</span>
             </div>
           </div>
         ))}
@@ -2130,10 +1992,12 @@ function TabRemediation({ logs, courseData }) {
       const [d,s,t] = await Promise.all([
         supabase.from('doubt_sessions').select('*').eq('status','open'),
         supabase.from('student_scores').select('*'),
-        supabase.from('teaching_timetable').select('*'),
+        // PATCH-2: was 'teaching_timetable' — corrected to match all other references in this file
+        supabase.from('timetable_entries').select('*'),
       ])
       if (d.error) showToast('Doubts: '+d.error.message, '#dc2626')
       if (s.error) showToast('Scores: '+s.error.message, '#dc2626')
+      if (t.error) showToast('Timetable: '+t.error.message, '#dc2626')
       if (d.data) setAllDoubt(d.data)
       if (s.data) setAllScores(s.data)
       if (t.data) setTtFull(t.data)
@@ -2153,7 +2017,6 @@ function TabRemediation({ logs, courseData }) {
     return Object.values(map).sort((a,b) => b.sessions.length-a.sessions.length)
   }, [allDoubt])
 
-  // FIX-13: derive actual free periods from timetable instead of hardcoded slots
   const suggestions = useMemo(() => {
     return doubtGroups.map(g => {
       const batchScores = allScores.filter(s => s.subtype===g.subtype && s.subject_name===g.subject)
@@ -2166,7 +2029,6 @@ function TabRemediation({ logs, courseData }) {
         .map(([name,scores]) => ({ name, avg:Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) }))
         .filter(s => s.avg<60).sort((a,b) => a.avg-b.avg)
 
-      // FIX-13: find actual free slots (period+day combinations not used by this batch)
       const usedSlots = new Set(
         ttFull.filter(t => (t.subtype===g.subtype||t.class_name===g.subtype))
           .map(t => `${t.day_of_week||t.day_name}||${t.period_number||t.period_name}`)
@@ -2179,7 +2041,6 @@ function TabRemediation({ logs, courseData }) {
           }
         })
       })
-      // Fall back to standard doubt times if no free slots found
       const suggestedSlots = freeSlots.length > 0 ? freeSlots : [
         { day:'Monday',    period:'06:30–07:20', type:'Morning Doubt' },
         { day:'Wednesday', period:'06:30–07:20', type:'Morning Doubt' },
@@ -2277,14 +2138,12 @@ function TabRemediation({ logs, courseData }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function Teaching({ currentUser }) {
-  // FIX-11: filter tabs by role
   const userRole = currentUser?.role?.toLowerCase() || 'viewer'
   const TABS = ALL_TABS.filter(t => (TAB_ROLES[t.key]||[]).includes(userRole))
 
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const saved = localStorage.getItem('gnsi_teaching_tab')
-      // Validate saved tab against allowed tabs
       return (TABS.find(t => t.key===saved) ? saved : TABS[0]?.key) || 'logs'
     } catch { return TABS[0]?.key || 'logs' }
   })
@@ -2301,7 +2160,7 @@ function Teaching({ currentUser }) {
   const courseData = useCourseData()
 
   const handleTabChange = key => {
-    if (!TABS.find(t => t.key===key)) return // FIX-11: block unauthorized tab switch
+    if (!TABS.find(t => t.key===key)) return
     setActiveTab(key)
     try { localStorage.setItem('gnsi_teaching_tab', key) } catch {}
   }
@@ -2364,11 +2223,9 @@ function Teaching({ currentUser }) {
       <div style={{ marginBottom:16 }}>
         <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight:800, color:'#1e3a5f', margin:0, letterSpacing:'-.03em' }}>📘 Teaching Management</h1>
         <p style={{ color:'#64748b', fontSize:13, margin:'4px 0 0' }}>Logs · Syllabus · Timetable · Reports · Scores · HM · Admin · Remediation</p>
-        {/* FIX-10: show role */}
         {currentUser && <span style={{ ...S.badge('#1e3a5f','#eff6ff'), marginTop:6, display:'inline-block' }}>🔐 {userRole}</span>}
       </div>
 
-      {/* MOB-1: 3-col on mobile, 6-col on desktop */}
       <div className="tab-bar" style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : `repeat(${Math.min(TABS.length,6)},1fr)`, gap:6, marginBottom:20 }}>
         {TABS.map(t => {
           const active = activeTab===t.key
