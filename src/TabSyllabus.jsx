@@ -77,7 +77,7 @@ function computeExactPace(row, logs, durationSetting) {
   const rowLogs = logs
     .filter(l => l.course===row.course && l.subtype===row.subtype &&
       (!row.class_name || l.class_name===row.class_name) && l.subject_name===row.subject_name)
-    .sort((a,b) => a.teaching_date?.localeCompare(b.teaching_date))
+    .sort((a,b) => (a.teaching_date ?? '').localeCompare(b.teaching_date ?? ''))
 
   const done = rowLogs.length
   const remaining = Math.max(0, row.total_topics - done)
