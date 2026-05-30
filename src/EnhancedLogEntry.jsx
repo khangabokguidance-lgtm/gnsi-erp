@@ -26,6 +26,11 @@ const today = () => new Date().toISOString().split('T')[0]
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-'
 const pct = (s, m) => m > 0 ? Math.round((s/m)*100) : 0
 
+const wc = str => str?.trim().split(/\s+/).filter(Boolean).length || 0
+const WC_MIN = { topic_taught:50, classwork:50, homework:30, remarks:50, technique_detail:100, key_concepts:50, technique_avoid:30 }
+const wcOk = (field, val) => wc(val) >= WC_MIN[field]
+const wcMsg = (field, val) => { const w=wc(val); const m=WC_MIN[field]; return w>=m ? null : `${w}/${m} words` }
+
 const C = { navy:'#1e3a5f', green:'#16a34a', amber:'#d97706', purple:'#7c3aed', red:'#dc2626', sky:'#0891b2' }
 
 const S = {
@@ -41,6 +46,16 @@ const S = {
   tag: (active) => ({ padding:'7px 13px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', border:'none', background: active?C.navy:'#f1f5f9', color: active?'white':'#374151' }),
   stepDot: (active, done) => ({ width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, background: done?C.green:active?C.navy:'#e2e8f0', color: done||active?'white':'#94a3b8' }),
   stepLine: (done) => ({ flex:1, height:2, background:done?C.green:'#e2e8f0', marginTop:15 }),
+}
+
+function WCBadge({ field, value }) {
+  const msg = wcMsg(field, value)
+  const ok = !msg
+  return (
+    <span style={{ fontSize:11, fontWeight:600, color: ok ? '#16a34a' : '#dc2626', marginLeft:8 }}>
+      {ok ? '✓' : `⚠️ ${msg}`}
+    </span>
+  )
 }
 
 const css = `@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
@@ -119,16 +134,16 @@ function ValidationMessage({ form, step }) {
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
     if (!form.range_to) errors.push('Range To is required')
-    if (!form.topic_taught) errors.push('Topic Taught is required')
-    if (!form.classwork) errors.push('Classwork is required')
-    if (!form.homework) errors.push('Homework is required')
-    if (!form.remarks) errors.push('Remarks are required')
+    if (!wcOk('topic_taught', form.topic_taught)) errors.push(`Topic Taught: ${wcMsg('topic_taught', form.topic_taught)}`)
+    if (!wcOk('classwork', form.classwork)) errors.push(`Classwork: ${wcMsg('classwork', form.classwork)}`)
+    if (!wcOk('homework', form.homework)) errors.push(`Homework: ${wcMsg('homework', form.homework)}`)
+    if (!wcOk('remarks', form.remarks)) errors.push(`Remarks: ${wcMsg('remarks', form.remarks)}`)
   }
   if (step === 2) {
     if (!(form.techniques || []).length) errors.push('Select at least one Teaching Technique')
-    if (!form.technique_detail) errors.push('Technique Details are required')
-    if (!form.key_concepts) errors.push('Key Concepts are required')
-    if (!form.technique_avoid) errors.push('Avoid Instructions are required')
+    if (!wcOk('technique_detail', form.technique_detail)) errors.push(`Technique Details: ${wcMsg('technique_detail', form.technique_detail)}`)
+    if (!wcOk('key_concepts', form.key_concepts)) errors.push(`Key Concepts: ${wcMsg('key_concepts', form.key_concepts)}`)
+    if (!wcOk('technique_avoid', form.technique_avoid)) errors.push(`Avoid Instructions: ${wcMsg('technique_avoid', form.technique_avoid)}`)
   }
   if (step === 5 && form.needs_doubt_session) {
     if (!form.assigned_hm_id && !form.assigned_hm_name) errors.push('HM is required')
@@ -363,25 +378,25 @@ function Step2WhatTaught({ form, setForm }) {
 
       {/* Topic taught */}
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Topic Taught (summary) <span style={S.required}>*</span></label>
+        <label style={S.label}>Topic Taught (summary) <span style={S.required}>*</span><WCBadge field="topic_taught" value={form.topic_taught}/></label>
         <input value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught:e.target.value }))} required placeholder="Brief description of what was covered today..." style={S.input}/>
       </div>
 
       {/* Classwork */}
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Classwork done <span style={S.required}>*</span></label>
+        <label style={S.label}>Classwork done <span style={S.required}>*</span><WCBadge field="classwork" value={form.classwork}/></label>
         <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="What exercises or work was done in class?"/>
       </div>
 
       {/* Homework */}
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Homework assigned <span style={S.required}>*</span></label>
+        <label style={S.label}>Homework assigned <span style={S.required}>*</span><WCBadge field="homework" value={form.homework}/></label>
         <textarea value={form.homework} onChange={e => setForm(f => ({ ...f, homework:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Questions/exercises assigned for home"/>
       </div>
 
       {/* Remarks */}
       <div>
-        <label style={S.label}>Remarks / Observations <span style={S.required}>*</span></label>
+        <label style={S.label}>Remarks / Observations <span style={S.required}>*</span><WCBadge field="remarks" value={form.remarks}/></label>
         <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Student response, pace, anything notable"/>
       </div>
     </div>
@@ -415,19 +430,19 @@ function Step3Technique({ form, setForm }) {
       )}
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Technique Details <span style={S.required}>*</span></label>
+        <label style={S.label}>Technique Details <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/></label>
         <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Describe in detail HOW you taught this topic.
 
 Example: "Used the number line to show negative integers. Drew diagram on board. Asked 5 rapid-fire questions. Worked Q.1–Q.8 together. Weaker students were asked to repeat steps aloud."`}/>
       </div>
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Key Concepts to Emphasise (for HM) <span style={S.required}>*</span></label>
+        <label style={S.label}>Key Concepts to Emphasise (for HM) <span style={S.required}>*</span><WCBadge field="key_concepts" value={form.key_concepts}/></label>
         <textarea value={form.key_concepts} onChange={e => setForm(f => ({ ...f, key_concepts:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Always draw the diagram first. Common mistake: forgetting sign rules. Focus on Q.5 and Q.9 which students found hardest."/>
       </div>
 
       <div>
-        <label style={S.label}>Do NOT do this during doubt session <span style={S.required}>*</span></label>
+        <label style={S.label}>Do NOT do this during doubt session <span style={S.required}>*</span><WCBadge field="technique_avoid" value={form.technique_avoid}/></label>
         <textarea value={form.technique_avoid} onChange={e => setForm(f => ({ ...f, technique_avoid:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Do NOT jump to answers directly. Make students attempt first. Don't skip the diagram step."/>
       </div>
     </div>
@@ -832,12 +847,17 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              (form.subtopic || form.subtopic_custom)
     }
     if (step === 1) {
-      return form.range_from && form.range_to && form.topic_taught && 
-             form.classwork && form.homework && form.remarks
+      return form.range_from && form.range_to &&
+             wcOk('topic_taught', form.topic_taught) &&
+             wcOk('classwork', form.classwork) &&
+             wcOk('homework', form.homework) &&
+             wcOk('remarks', form.remarks)
     }
     if (step === 2) {
-      return (form.techniques || []).length > 0 && form.technique_detail && 
-             form.key_concepts && form.technique_avoid
+      return (form.techniques || []).length > 0 &&
+             wcOk('technique_detail', form.technique_detail) &&
+             wcOk('key_concepts', form.key_concepts) &&
+             wcOk('technique_avoid', form.technique_avoid)
     }
     if (step === 3) return true
     if (step === 4) return true
@@ -868,6 +888,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       const chapterFinal = form.chapter === '__other__' ? form.chapter_custom : form.chapter
       const subtopicFinal = form.subtopic === '__other__' ? form.subtopic_custom : form.subtopic
 
+      const now = new Date()
+      const isLate = now.getHours() >= 21
       const logPayload = {
         course: form.course, subtype: form.subtype || null, class_name: form.class_name || null,
         batch_id: form.batch_id || null, subject_name: form.subject_name,
@@ -882,6 +904,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         technique_detail: form.technique_detail || null,
         key_concepts: form.key_concepts || null,
         technique_avoid: form.technique_avoid || null,
+        late_submission: isLate,
+        submitted_at: now.toISOString(),
       }
       const { data: logData, error: logError } = await supabase.from('teaching_logs').insert([logPayload]).select().single()
       if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); return }
@@ -967,7 +991,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       <style>{css}</style>
       {toastEl}
       {confirm && (
-        <ConfirmModal title="Save Teaching Log" msg={`Save log for ${form.subject_name} on ${form.teaching_date}?${form.needs_doubt_session ? ' HM will be notified instantly.' : ''}`} confirmLabel="Save Log" onConfirm={handleSave} onCancel={() => setConfirm(false)}/>
+        <ConfirmModal title="Save Teaching Log" msg={`Save log for ${form.subject_name} on ${form.teaching_date}?${form.needs_doubt_session ? ' HM will be notified instantly.' : ''}${new Date().getHours() >= 21 ? ' ⚠️ This log will be flagged as LATE SUBMISSION (after 9 PM).' : ''}`} confirmLabel="Save Log" onConfirm={handleSave} onCancel={() => setConfirm(false)}/>
       )}
 
       <div style={S.card}>
