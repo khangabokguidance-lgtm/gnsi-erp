@@ -33,6 +33,58 @@ const SPOT_CHECK_QUESTIONS = [
 ]
 
 const DIFFICULTY = ['Easy','Medium','Hard']
+
+const SUGGESTIONS = {
+  topic_taught: [
+    'Introduced the concept of {subtopic} with examples from daily life. Explained key definitions and properties. Worked through 3 solved examples on the board.',
+    'Revised previous lesson on {chapter} and connected it to {subtopic}. Students solved 5 problems independently. Checked all work.',
+    'Taught {subtopic} using visual diagrams on the board. Demonstrated step-by-step method. Students practiced Q.1–Q.10.',
+    'Covered {subtopic} through group activity. Each group presented their approach. Common mistakes were corrected collectively.',
+    'Explained {subtopic} theory with real-life examples. Did rapid-fire oral questions. Assigned practice problems.',
+  ],
+  classwork: [
+    'Students solved Q.1 to Q.10 from the textbook independently. Checked all answers. Corrected 3 common errors on board. Weaker students were given simpler variations first.',
+    'Completed 5 board exercises together as a class. Students were called one by one to solve on board. Mistakes corrected immediately with explanation.',
+    'Group work: 4 groups solved different sets of problems. Each group explained their method. Class discussed common errors and best approach.',
+    'Solved examples from textbook Pages {range_from}–{range_to}. Students copied and completed all worked examples. Quick quiz of 5 questions at the end.',
+    'Practice drill: 10 rapid questions solved orally. 5 written questions in notebook. Checked notebooks at end of class.',
+  ],
+  homework: [
+    'Complete Q.11 to Q.20 from textbook. Show all working steps. Bring completed work tomorrow for checking.',
+    'Solve the 5 problems from worksheet distributed today. Attempt all parts. If stuck, mark the question and bring it to class.',
+    'Write a summary of today\'s topic in their own words (minimum 5 sentences). Solve 3 examples from the chapter exercise.',
+    'Complete the remaining questions from class exercise. Revise today\'s lesson and be prepared for a short quiz tomorrow.',
+    'Practice Q.{range_from} to Q.{range_to} from textbook. Also revise definitions covered today.',
+  ],
+  remarks: [
+    'Most students understood the concept well. 3–4 students needed extra explanation. Class was attentive and responsive. Pace was appropriate for the batch.',
+    'Students were initially confused about the main concept but cleared after worked examples. Doubt session needed for weaker students.',
+    'Class was very engaged today. Students asked good questions. Completed more than planned. Ready to move to next subtopic.',
+    'A few students were distracted. Pace was slower than usual. Will need to revise this topic in the next class before moving forward.',
+    'Good participation from most students. Weak students identified — need individual attention. Strong students helped explain to peers.',
+  ],
+  technique_detail: [
+    'Started with a 5-minute revision of previous class. Drew the main diagram on board step by step. Explained each step verbally. Asked students to copy and label. Did 3 solved examples together. Called 4 students to board to solve independently. Corrected mistakes in front of class. Ended with rapid-fire oral questions.',
+    'Used the Socratic method — asked leading questions instead of explaining directly. Students discovered the rule/concept themselves. Then formalized it on board. Practiced with 5 examples. Weaker students were guided with hints rather than direct answers.',
+    'Explained theory with a real-life analogy first. Then moved to formal definition. Drew visual representation on board. Students worked in pairs on practice problems. Pairs compared answers with each other before class discussion.',
+    'Started with a common mistake students make on this topic. Showed why it is wrong. Then taught the correct method step by step. Students practiced 8 problems. I circulated and checked notebooks while they worked.',
+    'Used practice drill method. Rapid 10 questions orally — students answered in turn. Then 5 written questions with time limit. Discussed answers together. Identified and corrected 3 systematic errors.',
+  ],
+  key_concepts: [
+    'Always draw the diagram/table before attempting the calculation. Common mistake: students skip this step and get confused. Focus on Q.5 and Q.8 where most errors occurred. Emphasise the sign rule.',
+    'The main concept to stress is {subtopic}. Make sure students can state the definition in their own words before solving. Do NOT allow them to memorise without understanding.',
+    'Students tend to confuse the two methods — make them choose the right one based on the question type. Drill this distinction. Weaker students need more practice on basic steps before advanced problems.',
+    'Key formula/rule to emphasise. Students must show all steps — no skipping. Check that they understand WHY each step is done, not just HOW.',
+    'Focus on the word problems — students struggle to convert language to mathematical form. Practice this conversion step specifically. Use the examples from today\'s class.',
+  ],
+  technique_avoid: [
+    'Do NOT give answers directly. Make students attempt each problem first, even if they are wrong. Hints are okay but full solutions should come after their attempt.',
+    'Do NOT skip the diagram/drawing step. This is where most students go wrong. Insist on drawing before calculating every time.',
+    'Do NOT rush through the basics. Even if students seem to know it, confirm understanding with oral questions before moving on.',
+    'Do NOT allow students to just copy from board without understanding. Ask them to close notebooks and attempt the next step from memory.',
+    'Do NOT let stronger students answer all questions. Specifically call on weaker students and give them time to think before jumping to the answer.',
+  ],
+}
 const PERIODS = [1,2,3,4,5,6,7,8,9,10]
 
 const PERIOD_TIMES = {
@@ -108,6 +160,46 @@ const S = {
   tag: (active) => ({ padding:'7px 13px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', border:'none', background: active?C.navy:'#f1f5f9', color: active?'white':'#374151' }),
   stepDot: (active, done) => ({ width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, background: done?C.green:active?C.navy:'#e2e8f0', color: done||active?'white':'#94a3b8' }),
   stepLine: (done) => ({ flex:1, height:2, background:done?C.green:'#e2e8f0', marginTop:15 }),
+}
+
+function SuggestionPicker({ field, value, onChange, form }) {
+  const [open, setOpen] = useState(false)
+  const suggestions = SUGGESTIONS[field] || []
+  
+  const fillSuggestion = (s) => {
+    const filled = s
+      .replace(/{subtopic}/g, (form?.subtopic === '__other__' ? form?.subtopic_custom : form?.subtopic) || 'this subtopic')
+      .replace(/{chapter}/g, (form?.chapter === '__other__' ? form?.chapter_custom : form?.chapter) || 'this chapter')
+      .replace(/{range_from}/g, form?.range_from || '1')
+      .replace(/{range_to}/g, form?.range_to || '10')
+    onChange(filled)
+    setOpen(false)
+  }
+
+  return (
+    <div style={{ position:'relative', display:'inline-block', marginLeft:8 }}>
+      <button type="button" onClick={() => setOpen(!open)}
+        style={{ fontSize:10, padding:'2px 8px', borderRadius:4, border:'1px solid #d1d5db', background: open?'#1e3a5f':'#f8fafc', color: open?'white':'#64748b', cursor:'pointer', fontWeight:600 }}>
+        💡 Suggestions {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div style={{ position:'absolute', top:'100%', left:0, zIndex:9999, background:'white', border:'1px solid #e2e8f0', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.12)', width:420, maxWidth:'90vw', marginTop:4 }}>
+          <div style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase' }}>Click to use template</div>
+          {suggestions.map((s, i) => (
+            <div key={i} onClick={() => fillSuggestion(s)}
+              style={{ padding:'10px 12px', fontSize:12, color:'#374151', cursor:'pointer', borderBottom:'1px solid #f8fafc', lineHeight:1.6 }}
+              onMouseEnter={e => e.currentTarget.style.background='#f0f9ff'}
+              onMouseLeave={e => e.currentTarget.style.background='white'}>
+              {s.slice(0, 100)}...
+            </div>
+          ))}
+          <div style={{ padding:'8px 12px', borderTop:'1px solid #f1f5f9' }}>
+            <button type="button" onClick={() => setOpen(false)} style={{ fontSize:11, color:'#94a3b8', background:'none', border:'none', cursor:'pointer' }}>✕ Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function WCBadge({ field, value }) {
@@ -509,25 +601,25 @@ function Step2WhatTaught({ form, setForm }) {
 
       {/* Topic taught */}
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Topic Taught (summary) <span style={S.required}>*</span><WCBadge field="topic_taught" value={form.topic_taught}/></label>
-        <input value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught:e.target.value }))} required placeholder="Brief description of what was covered today..." style={S.input}/>
+        <label style={S.label}>Topic Taught (summary) <span style={S.required}>*</span><WCBadge field="topic_taught" value={form.topic_taught}/><SuggestionPicker field="topic_taught" value={form.topic_taught} onChange={v => setForm(f=>({...f,topic_taught:v}))} form={form}/></label>
+        <textarea value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="Brief description of what was covered today..."/>
       </div>
 
       {/* Classwork */}
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Classwork done <span style={S.required}>*</span><WCBadge field="classwork" value={form.classwork}/></label>
+        <label style={S.label}>Classwork done <span style={S.required}>*</span><WCBadge field="classwork" value={form.classwork}/><SuggestionPicker field="classwork" value={form.classwork} onChange={v => setForm(f=>({...f,classwork:v}))} form={form}/></label>
         <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="What exercises or work was done in class?"/>
       </div>
 
       {/* Homework */}
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Homework assigned <span style={S.required}>*</span><WCBadge field="homework" value={form.homework}/></label>
+        <label style={S.label}>Homework assigned <span style={S.required}>*</span><WCBadge field="homework" value={form.homework}/><SuggestionPicker field="homework" value={form.homework} onChange={v => setForm(f=>({...f,homework:v}))} form={form}/></label>
         <textarea value={form.homework} onChange={e => setForm(f => ({ ...f, homework:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Questions/exercises assigned for home"/>
       </div>
 
       {/* Remarks */}
       <div>
-        <label style={S.label}>Remarks / Observations <span style={S.required}>*</span><WCBadge field="remarks" value={form.remarks}/></label>
+        <label style={S.label}>Remarks / Observations <span style={S.required}>*</span><WCBadge field="remarks" value={form.remarks}/><SuggestionPicker field="remarks" value={form.remarks} onChange={v => setForm(f=>({...f,remarks:v}))} form={form}/></label>
         <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Student response, pace, anything notable"/>
       </div>
 
@@ -589,19 +681,19 @@ function Step3Technique({ form, setForm }) {
       )}
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Technique Details <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/></label>
+        <label style={S.label}>Technique Details <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/><SuggestionPicker field="technique_detail" value={form.technique_detail} onChange={v => setForm(f=>({...f,technique_detail:v}))} form={form}/></label>
         <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Describe in detail HOW you taught this topic.
 
 Example: "Used the number line to show negative integers. Drew diagram on board. Asked 5 rapid-fire questions. Worked Q.1–Q.8 together. Weaker students were asked to repeat steps aloud."`}/>
       </div>
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Key Concepts to Emphasise (for HM) <span style={S.required}>*</span><WCBadge field="key_concepts" value={form.key_concepts}/></label>
+        <label style={S.label}>Key Concepts to Emphasise (for HM) <span style={S.required}>*</span><WCBadge field="key_concepts" value={form.key_concepts}/><SuggestionPicker field="key_concepts" value={form.key_concepts} onChange={v => setForm(f=>({...f,key_concepts:v}))} form={form}/></label>
         <textarea value={form.key_concepts} onChange={e => setForm(f => ({ ...f, key_concepts:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Always draw the diagram first. Common mistake: forgetting sign rules. Focus on Q.5 and Q.9 which students found hardest."/>
       </div>
 
       <div>
-        <label style={S.label}>Do NOT do this during doubt session <span style={S.required}>*</span><WCBadge field="technique_avoid" value={form.technique_avoid}/></label>
+        <label style={S.label}>Do NOT do this during doubt session <span style={S.required}>*</span><WCBadge field="technique_avoid" value={form.technique_avoid}/><SuggestionPicker field="technique_avoid" value={form.technique_avoid} onChange={v => setForm(f=>({...f,technique_avoid:v}))} form={form}/></label>
         <textarea value={form.technique_avoid} onChange={e => setForm(f => ({ ...f, technique_avoid:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Do NOT jump to answers directly. Make students attempt first. Don't skip the diagram step."/>
       </div>
     </div>
