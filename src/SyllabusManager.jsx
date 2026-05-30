@@ -494,7 +494,7 @@ function SyllabusManager() {
       if (!map[key]) map[key] = { course:r.course, subject:r.subject_name, chapters:[] }
       map[key].chapters.push(r)
     })
-    return Object.values(map).sort((a,b) => a.course.localeCompare(b.course) || a.subject.localeCompare(b.subject))
+    return Object.values(map).sort((a,b) => (a.course ?? '').localeCompare(b.course ?? '') || (a.subject ?? '').localeCompare(b.subject ?? ''))
   }, [filtered])
 
   const courseColors = { Navodaya:'#1e3a5f', Sainik:'#16a34a', Foundation:'#7c3aed' }

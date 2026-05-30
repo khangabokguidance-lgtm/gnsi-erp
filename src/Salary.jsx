@@ -589,7 +589,7 @@ export default function Salary() {
 
   const historyData = useMemo(() => {
     if (!histStaffId) return []
-    return salaryRows.filter(r=>String(r.staff_id)===String(histStaffId)).sort((a,b)=>b.month.localeCompare(a.month))
+    return salaryRows.filter(r=>String(r.staff_id)===String(histStaffId)).sort((a,b)=>(b.month ?? '').localeCompare(a.month ?? ''))
   }, [salaryRows, histStaffId])
 
   const totalPaid    = useMemo(() => salaryRows.filter(r=>r.status==='Paid').reduce((s,r)=>s+(r.net_salary||0),0), [salaryRows])
