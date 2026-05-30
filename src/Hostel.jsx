@@ -3726,9 +3726,6 @@ function Hostel() {
     doubtsession:   <DoubtSessionTab  />,
   }
 
-  // Mobile bottom navigation
-  const primaryTabs = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'maintenance', 'journal']
-  const secondaryTabs = ['allotments', 'schedule', 'nightduty', 'house', 'kitchen', 'housemaster', 'hmactivities', 'adminmonitor', 'classtimetable', 'doubtsession']
   return (
     <div style={{ padding: mobile ? '12px' : '24px', fontFamily: 'system-ui,sans-serif', paddingBottom: mobile ? '80px' : '24px' }}>
       <div style={{ marginBottom: mobile ? '16px' : '24px' }}>
@@ -3743,100 +3740,69 @@ function Hostel() {
           }
         </p>
       </div>
-
-      {/* Desktop/Tablet Tab Bar */}
       {/* Desktop/Tablet Tab Bar — GRID (no scroll, no missing tabs) */}
-{!mobile && (
-  <div style={{
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-    gap: '6px',
-    marginBottom: '24px',
-  }}>
-    {TABS.map(t => (
-      <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-        padding: '9px 10px',
-        border: 'none',
-        borderRadius: '10px',
-        background: activeTab === t.id ? '#1e3a5f' : '#f1f5f9',
-        color: activeTab === t.id ? 'white' : '#64748b',
-        cursor: 'pointer',
-        fontSize: '12px',
-        fontWeight: activeTab === t.id ? 700 : 500,
-        whiteSpace: 'nowrap',
-        textAlign: 'center',
-        transition: 'all .15s',
-      }}>{t.label}</button>
-    ))}
-  </div>
-)}
-
-      {/* Mobile Top Tabs (scrollable) */}
-      {mobile && (
-        <div style={{ 
-          display: 'flex', 
-          gap: '6px', 
-          marginBottom: '16px', 
-          overflowX: 'auto',
-          paddingBottom: '4px',
-          WebkitOverflowScrolling: 'touch',
+      {!mobile && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+          gap: '6px',
+          marginBottom: '24px',
         }}>
-          {primaryTabs.map(tid => {
-            const t = TABS.find(tab => tab.id === tid)
-            if (!t) return null
-            return (
-              <button 
-                key={t.id} 
-                onClick={() => setActiveTab(t.id)} 
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '99px',
-                  border: 'none',
-                  background: activeTab === t.id ? '#1e3a5f' : '#f1f5f9',
-                  color: activeTab === t.id ? 'white' : '#64748b',
-                  fontSize: '12px',
-                  fontWeight: activeTab === t.id ? 700 : 500,
-                  whiteSpace: 'nowrap',
-                  cursor: 'pointer',
-                  minHeight: '36px',
-                }}
-              >
-                {t.label}
-              </button>
-            )
-          })}
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              padding: '9px 10px',
+              border: 'none',
+              borderRadius: '10px',
+              background: activeTab === t.id ? '#1e3a5f' : '#f1f5f9',
+              color: activeTab === t.id ? 'white' : '#64748b',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: activeTab === t.id ? 700 : 500,
+              whiteSpace: 'nowrap',
+              textAlign: 'center',
+              transition: 'all .15s',
+            }}>{t.label}</button>
+          ))}
         </div>
       )}
 
-      {/* Mobile Secondary Tabs (smaller, collapsible) */}
+      {/* Mobile Tab Grid — stat card style */}
       {mobile && (
-        <div style={{ 
-          display: 'flex', 
-          gap: '4px', 
-          marginBottom: '12px', 
-          overflowX: 'auto',
-          paddingBottom: '4px',
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          gap: '8px',
+          marginBottom: '16px',
         }}>
-          {secondaryTabs.map(tid => {
-            const t = TABS.find(tab => tab.id === tid)
-            if (!t) return null
+          {TABS.map(t => {
+            const isActive = activeTab === t.id
             return (
-              <button 
-                key={t.id} 
-                onClick={() => setActiveTab(t.id)} 
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
                 style={{
-                  padding: '6px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  background: activeTab === t.id ? '#eff6ff' : 'white',
-                  color: activeTab === t.id ? '#1e3a5f' : '#94a3b8',
+                  padding: '10px 6px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: isActive ? '#1e3a5f' : 'white',
+                  color: isActive ? 'white' : '#64748b',
                   fontSize: '11px',
-                  fontWeight: activeTab === t.id ? 600 : 400,
-                  whiteSpace: 'nowrap',
+                  fontWeight: isActive ? '700' : '500',
                   cursor: 'pointer',
+                  boxShadow: isActive ? '0 2px 8px rgba(30,58,95,0.25)' : '0 1px 4px rgba(0,0,0,0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '4px',
+                  minHeight: '56px',
+                  justifyContent: 'center',
+                  lineHeight: 1.2,
+                  textAlign: 'center',
+                  borderLeft: isActive ? 'none' : '3px solid #e2e8f0',
                 }}
               >
-                {t.label}
+                <span style={{ fontSize: '18px' }}>{t.label.split(' ')[0]}</span>
+                <span>{t.label.split(' ').slice(1).join(' ')}</span>
               </button>
             )
           })}
@@ -3856,5 +3822,3 @@ function Hostel() {
     </div>
   )
 }
-
-export default Hostel;
