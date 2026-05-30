@@ -1336,7 +1336,7 @@ function TabSearch({ logs, monthlySyllabus=[], onNavigateTab }) {
       (l.topic_taught||'').toLowerCase().includes(q) ||
       (l.classwork||'').toLowerCase().includes(q) ||
       (l.homework||'').toLowerCase().includes(q)
-    ).sort((a,b) => b.teaching_date?.localeCompare(a.teaching_date))
+    ).sort((a,b) => (b.teaching_date ?? '').localeCompare(a.teaching_date ?? ''))
   }, [logs, query])
 
   const handleMarkDone = async syllabusItem => {
@@ -1508,7 +1508,7 @@ function TabStudentPerformance({ courseData, logs }) {
   const weakOnly  = weakAreas.filter(w => w.avg < 60)
   const trendData = useMemo(() => {
     if (filterStudent==='All') return []
-    return filtered.filter(s => s.student_name===filterStudent).sort((a,b) => a.test_date?.localeCompare(b.test_date))
+    return filtered.filter(s => s.student_name===filterStudent).sort((a,b) => (a.test_date ?? '').localeCompare(b.test_date ?? ''))
   }, [filtered, filterStudent])
 
   const avgScore = filtered.length > 0 ? Math.round(filtered.reduce((a,s) => a+pct(s.score,s.max_score),0)/filtered.length) : 0
@@ -1874,7 +1874,7 @@ function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
       const [subtype,subject] = pair.split('||')
       const recent = logs.filter(l => l.subtype===subtype && l.subject_name===subject && l.teaching_date>=threshStr)
       if (!recent.length) {
-        const last = logs.filter(l => l.subtype===subtype && l.subject_name===subject).sort((a,b) => b.teaching_date?.localeCompare(a.teaching_date))[0]
+        const last = logs.filter(l => l.subtype===subtype && l.subject_name===subject).sort((a,b) => (b.teaching_date ?? '').localeCompare(a.teaching_date ?? ''))[0]
         result.push({ subtype, subject, lastLogged:last?.teaching_date||'never', teacher:last?.teacher_name||'-' })
       }
     })
