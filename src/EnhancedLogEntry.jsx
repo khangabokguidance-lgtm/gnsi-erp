@@ -35,6 +35,18 @@ const PERIOD_TIMES = {
   10: { label:'Period 10 (7:10–8:00 PM)',  start:[19,10], end:[20,0]  },
 }
 
+const SCHOOL_LAT = 24.62181
+const SCHOOL_LNG = 94.0193087
+const SCHOOL_RADIUS_M = 50
+
+const getDistanceMeters = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+}
+
 const isPeriodUnlocked = (periodNo) => {
   const pt = PERIOD_TIMES[periodNo]
   if (!pt) return true
@@ -820,6 +832,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [confirm, setConfirm] = useState(false)
   const [dupWarn, setDupWarn] = useState('')
   const [attemptedNext, setAttemptedNext] = useState(false)
+  const [gpsStatus, setGpsStatus] = useState('idle') // idle | checking | allowed | denied | error
+  const [gpsDistance, setGpsDistance] = useState(null)
   const { show: showToast, el: toastEl } = useToast()
 
   useEffect(() => {
@@ -873,6 +887,21 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     )
   }, [form, logs])
 
+  const checkGPS = useCallback(() => new Promise((resolve) => {
+    if (!navigator.geolocation) { setGpsStatus('error'); resolve(false); return }
+    setGpsStatus('checking')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const dist = getDistanceMeters(pos.coords.latitude, pos.coords.longitude, SCHOOL_LAT, SCHOOL_LNG)
+        setGpsDistance(Math.round(dist))
+        if (dist <= SCHOOL_RADIUS_M) { setGpsStatus('allowed'); resolve(true) }
+        else { setGpsStatus('denied'); resolve(false) }
+      },
+      () => { setGpsStatus('error'); resolve(false) },
+      { enableHighAccuracy: true, timeout: 8000 }
+    )
+  }), [])
+
   // ALL FIELDS MANDATORY
   const canNext = () => {
     if (step === 0) {
@@ -908,11 +937,15 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     return true
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setAttemptedNext(true)
-    if (step === 0 && isDuplicate()) {
-      setDupWarn(`⚠️ A log for ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
-      return
+    if (step === 0) {
+      if (isDuplicate()) {
+        setDupWarn(`⚠️ A log for ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
+        return
+      }
+      const gpsOk = await checkGPS()
+      if (!gpsOk) return
     }
     setDupWarn('')
     if (step < STEPS.length - 1) setStep(s => s + 1)
@@ -1037,6 +1070,26 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, color:C.red, fontSize:13, marginBottom:14, fontWeight:600 }}>{dupWarn}</div>
         )}
 
+        {gpsStatus === 'checking' && (
+          <div style={{ padding:'10px 14px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.navy }}>
+            📍 Checking your location...
+          </div>
+        )}
+        {gpsStatus === 'denied' && (
+          <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
+            🚫 You are {gpsDistance}m away from campus. Teaching logs can only be submitted from within {SCHOOL_RADIUS_M}m of GNSI Campus.
+          </div>
+        )}
+        {gpsStatus === 'error' && (
+          <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
+            ❌ Location access denied. Please enable GPS and allow location permission to submit logs.
+          </div>
+        )}
+        {gpsStatus === 'allowed' && (
+          <div style={{ padding:'10px 14px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.green }}>
+            ✅ On campus ({gpsDistance}m from centre) — location verified.
+          </div>
+        )}
         {attemptedNext && <ValidationMessage form={form} step={step}/>}
 
         {step === 0 && <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters}/>}
