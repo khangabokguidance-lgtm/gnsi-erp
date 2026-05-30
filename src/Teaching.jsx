@@ -1653,9 +1653,13 @@ function TabStudentPerformance({ courseData, logs }) {
 // ─── Tab: HM Dashboard ────────────────────────────────────────────────────────
 
 function TabHMDashboard({ currentUser }) {
-  const [allDoubt, setAllDoubt]   = useState([])
-  const [allScores, setAllScores] = useState([])
-  const [houses, setHouses]       = useState([])
+  const [allDoubt, setAllDoubt]       = useState([])
+  const [allScores, setAllScores]     = useState([])
+  const [houses, setHouses]           = useState([])
+  const [teachingLogs, setTeachingLogs] = useState([])
+  const [confirmDel, setConfirmDel]   = useState(null)
+  const [photoView, setPhotoView]     = useState(null)
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin'
   const [selectedHouse, setSelectedHouse] = useState('All')
   const [loading, setLoading]     = useState(true)
   const [noteFor, setNoteFor]     = useState(null)
@@ -1666,18 +1670,34 @@ function TabHMDashboard({ currentUser }) {
 
   const resolverName = currentUser?.name || 'HM'
 
+  const handleDeleteLog = async id => {
+    await supabase.from('teaching_logs').delete().eq('id', id)
+    setConfirmDel(null)
+    showToast('Log deleted', '#dc2626')
+    fetchAll()
+  }
+
+  const handleDeleteDoubt = async id => {
+    await supabase.from('doubt_sessions').delete().eq('id', id)
+    setConfirmDel(null)
+    showToast('Doubt session deleted', '#dc2626')
+    fetchAll()
+  }
+
   const fetchAll = async () => {
     setLoading(true)
-    const [d,s,h] = await Promise.all([
+    const [d,s,h,tl] = await Promise.all([
       supabase.from('doubt_sessions').select('*').order('created_at',{ascending:false}),
       supabase.from('student_scores').select('*').order('test_date',{ascending:false}),
       supabase.from('students').select('house').eq('status','Active').not('house','is',null),
+      supabase.from('teaching_logs').select('id,teacher_name,teaching_date,late_submission,copy_paste,spot_check_skipped,spot_check_done,hm_verified,board_photo_url,topic_taught,subject_name,course,subtype').order('teaching_date',{ascending:false}).limit(200),
     ])
     if (d.error) showToast('Doubts load failed: '+d.error.message, '#dc2626')
     if (s.error) showToast('Scores load failed: '+s.error.message, '#dc2626')
     if (d.data) setAllDoubt(d.data)
     if (s.data) setAllScores(s.data)
    if (h.data) setHouses([...new Set(h.data.map(x => x.house).filter(Boolean))])
+    if (tl.data) setTeachingLogs(tl.data)
     if (currentUser?.id) {
       await supabase
         .from('hm_notifications')
@@ -1732,9 +1752,32 @@ function TabHMDashboard({ currentUser }) {
 
   if (loading) return <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading HM Dashboard...</div>
 
+  const flaggedLogs = teachingLogs.filter(l =>
+    l.late_submission || l.copy_paste || l.spot_check_skipped || l.hm_verified === false
+  )
+
   return (
     <>
       {toastEl}
+      {confirmDel && (
+        <ConfirmModal
+          title={confirmDel.type === 'log' ? 'Delete Teaching Log' : 'Delete Doubt Session'}
+          message="This cannot be undone. Are you sure?"
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => confirmDel.type === 'log' ? handleDeleteLog(confirmDel.id) : handleDeleteDoubt(confirmDel.id)}
+          onCancel={() => setConfirmDel(null)}
+        />
+      )}
+      {photoView && (
+        <div style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,.85)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={() => setPhotoView(null)}>
+          <div style={{ background:'white', borderRadius:14, padding:16, maxWidth:'94vw', maxHeight:'90vh' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#1e293b', marginBottom:10 }}>📸 Board Photo — {photoView.teacher} · {photoView.date}</div>
+            <img src={photoView.url} alt="Board" style={{ maxWidth:'80vw', maxHeight:'70vh', borderRadius:8, objectFit:'contain' }}/>
+            <div style={{ textAlign:'center', marginTop:10 }}><button onClick={() => setPhotoView(null)} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#1e3a5f', color:'white', fontWeight:700, cursor:'pointer' }}>✕ Close</button></div>
+          </div>
+        </div>
+      )}
       {Object.keys(houseSummary).length > 0 && (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:10, marginBottom:20 }}>
           {Object.entries(houseSummary).map(([house,data]) => (
@@ -1772,6 +1815,129 @@ function TabHMDashboard({ currentUser }) {
     ))
 }
       </div>
+      {/* ── Accountability Flags ── */}
+      {flaggedLogs.length > 0 && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>🚨 Flagged Teaching Logs ({flaggedLogs.length})</h3>
+          <div className="table-wrap">
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:600 }}>
+              <thead>
+                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                  {['Date','Teacher','Subject','Late','Copy-Paste','Spot-Skip','HM Unverified','Photo','Actions'].map(h => (
+                    <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {flaggedLogs.map(l => (
+                  <tr key={l.id} style={{ borderBottom:'1px solid #f1f5f9', background:'#fff8f8' }}>
+                    <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(l.teaching_date)}</td>
+                    <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{l.teacher_name||'—'}</td>
+                    <td style={{ padding:'9px 12px', color:'#374151' }}>{l.subject_name}</td>
+                    <td style={{ padding:'9px 12px' }}>{l.late_submission ? <span style={S.badge('#dc2626','#fee2e2')}>🌙 Late</span> : <span style={{ color:'#94a3b8', fontSize:12 }}>—</span>}</td>
+                    <td style={{ padding:'9px 12px' }}>{l.copy_paste ? <span style={S.badge('#7c3aed','#f3e8ff')}>🔁 Copy</span> : <span style={{ color:'#94a3b8', fontSize:12 }}>—</span>}</td>
+                    <td style={{ padding:'9px 12px' }}>{l.spot_check_skipped ? <span style={S.badge('#d97706','#fef9c3')}>⚠️ Skipped</span> : l.spot_check_done ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Done</span> : <span style={{ color:'#94a3b8', fontSize:12 }}>—</span>}</td>
+                    <td style={{ padding:'9px 12px' }}>{l.hm_verified === false ? <span style={S.badge('#dc2626','#fee2e2')}>❌ Not Done</span> : l.hm_verified === true ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Verified</span> : <span style={{ color:'#94a3b8', fontSize:12 }}>—</span>}</td>
+                    <td style={{ padding:'9px 12px' }}>
+                      {l.board_photo_url
+                        ? <button onClick={() => setPhotoView({ url:l.board_photo_url, teacher:l.teacher_name, date:l.teaching_date })} style={S.btnSm('#0891b2')}>📸 View</button>
+                        : <span style={{ color:'#dc2626', fontSize:11, fontWeight:600 }}>❌ No photo</span>}
+                    </td>
+                    <td style={{ padding:'9px 12px' }}>
+                      {isAdmin && (
+                        <button onClick={() => setConfirmDel({ id:l.id, type:'log' })} style={S.btnSm('#dc2626')}>🗑 Delete</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── All Teaching Logs (Admin view) ── */}
+      {isAdmin && teachingLogs.length > 0 && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>📋 All Teaching Logs (Admin)</h3>
+          <div className="table-wrap">
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:600 }}>
+              <thead>
+                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                  {['Date','Teacher','Subject','Course','Flags','Photo','Delete'].map(h => (
+                    <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {teachingLogs.slice(0,50).map(l => {
+                  const flags = []
+                  if (l.late_submission)    flags.push(<span key="l" style={S.badge('#dc2626','#fee2e2')}>🌙</span>)
+                  if (l.copy_paste)         flags.push(<span key="c" style={S.badge('#7c3aed','#f3e8ff')}>🔁</span>)
+                  if (l.spot_check_skipped) flags.push(<span key="s" style={S.badge('#d97706','#fef9c3')}>⚠️</span>)
+                  if (l.hm_verified===false)flags.push(<span key="h" style={S.badge('#dc2626','#fee2e2')}>❌</span>)
+                  return (
+                    <tr key={l.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                      <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(l.teaching_date)}</td>
+                      <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{l.teacher_name||'—'}</td>
+                      <td style={{ padding:'9px 12px', color:'#374151' }}>{l.subject_name}</td>
+                      <td style={{ padding:'9px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{l.subtype||l.course}</span></td>
+                      <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>{flags.length ? flags : <span style={{ color:'#16a34a', fontSize:11 }}>✅ Clean</span>}</div></td>
+                      <td style={{ padding:'9px 12px' }}>
+                        {l.board_photo_url
+                          ? <button onClick={() => setPhotoView({ url:l.board_photo_url, teacher:l.teacher_name, date:l.teaching_date })} style={S.btnSm('#0891b2')}>📸</button>
+                          : <span style={{ color:'#dc2626', fontSize:11 }}>None</span>}
+                      </td>
+                      <td style={{ padding:'9px 12px' }}>
+                        <button onClick={() => setConfirmDel({ id:l.id, type:'log' })} style={S.btnSm('#dc2626')}>🗑</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Doubt Sessions with Delete ── */}
+      {isAdmin && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🗑 Manage Doubt Sessions (Admin)</h3>
+          <div className="table-wrap">
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:500 }}>
+              <thead>
+                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                  {['Date','House','Subject','HM','Status','Delete'].map(h => (
+                    <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allDoubt.slice(0,30).map(d => (
+                  <tr key={d.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
+                    <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(d.teaching_date)}</td>
+                    <td style={{ padding:'9px 12px', fontWeight:600 }}>{d.house_name||'—'}</td>
+                    <td style={{ padding:'9px 12px' }}>{d.subject_name}</td>
+                    <td style={{ padding:'9px 12px', color:'#64748b' }}>{d.hm_name||'—'}</td>
+                    <td style={{ padding:'9px 12px' }}>
+                      {d.status==='resolved'
+                        ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Resolved</span>
+                        : d.status==='not_conducted'
+                        ? <span style={S.badge('#dc2626','#fee2e2')}>❌ Not Done</span>
+                        : <span style={S.badge('#b45309','#fef9c3')}>⏳ Open</span>}
+                    </td>
+                    <td style={{ padding:'9px 12px' }}>
+                      <button onClick={() => setConfirmDel({ id:d.id, type:'doubt' })} style={S.btnSm('#dc2626')}>🗑</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {weakStudents.length > 0 && (
         <div style={S.card}>
           <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>⚠️ Students Needing Attention</h3>
