@@ -184,6 +184,7 @@ function ValidationMessage({ form, step }) {
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
     if (!form.range_to) errors.push('Range To is required')
+    if (!form.board_photo_url) errors.push('📸 Board photo is required — take a photo of the blackboard')
     if (!wcOk('topic_taught', form.topic_taught)) errors.push(`Topic Taught: ${wcMsg('topic_taught', form.topic_taught)}`)
     if (!wcOk('classwork', form.classwork)) errors.push(`Classwork: ${wcMsg('classwork', form.classwork)}`)
     if (!wcOk('homework', form.homework)) errors.push(`Homework: ${wcMsg('homework', form.homework)}`)
@@ -416,6 +417,21 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
 function Step2WhatTaught({ form, setForm }) {
   const chapterDisplay = form.chapter === '__other__' ? form.chapter_custom : form.chapter
   const subtopicDisplay = form.subtopic === '__other__' ? form.subtopic_custom : form.subtopic
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setUploadError('Please select an image file.'); return }
+    setUploading(true); setUploadError('')
+    const path = `board-photos/${Date.now()}_${file.name.replace(/\s+/g,'_')}`
+    const { error } = await supabase.storage.from('teaching-evidence').upload(path, file, { upsert: true })
+    if (error) { setUploadError('Upload failed: ' + error.message); setUploading(false); return }
+    const { data: urlData } = supabase.storage.from('teaching-evidence').getPublicUrl(path)
+    setForm(f => ({ ...f, board_photo_url: urlData.publicUrl }))
+    setUploading(false)
+  }
 
   return (
     <div className="elog-fade">
@@ -460,6 +476,34 @@ function Step2WhatTaught({ form, setForm }) {
       <div>
         <label style={S.label}>Remarks / Observations <span style={S.required}>*</span><WCBadge field="remarks" value={form.remarks}/></label>
         <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Student response, pace, anything notable"/>
+      </div>
+
+      {/* Board Photo */}
+      <div style={{ marginTop:14 }}>
+        <label style={S.label}>📸 Blackboard / Whiteboard Photo <span style={S.required}>*</span></label>
+        <div style={{ padding:'14px 16px', background:'#f8fafc', border:'2px dashed #d1d5db', borderRadius:10, textAlign:'center' }}>
+          {form.board_photo_url ? (
+            <div>
+              <img src={form.board_photo_url} alt="Board" style={{ maxWidth:'100%', maxHeight:200, borderRadius:8, marginBottom:10, objectFit:'cover' }}/>
+              <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+                <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Photo uploaded</span>
+                <button type="button" onClick={() => setForm(f => ({ ...f, board_photo_url:'' }))} style={{ fontSize:11, color:C.red, background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>✕ Remove</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize:32, marginBottom:8 }}>📷</div>
+              <div style={{ fontSize:13, color:'#64748b', marginBottom:12 }}>Take a photo of the blackboard/whiteboard as proof of teaching</div>
+              <label style={{ cursor:'pointer' }}>
+                <span style={{ ...S.btn(C.navy), display:'inline-block', fontSize:13, padding:'8px 18px' }}>
+                  {uploading ? '⏳ Uploading...' : '📸 Upload Photo'}
+                </span>
+                <input type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} disabled={uploading} style={{ display:'none' }}/>
+              </label>
+              {uploadError && <div style={{ color:C.red, fontSize:12, marginTop:8, fontWeight:600 }}>{uploadError}</div>}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -834,6 +878,7 @@ const emptyForm = {
   needs_doubt_session:false, assigned_hm_id:'', assigned_hm_name:'',
   doubt_date:'', doubt_time_slot:'',
   hm_instruction_message:'', focus_student_ids:[], weak_students:[],
+  board_photo_url:'',
 }
 
 export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs }) {
@@ -944,7 +989,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              wcOk('topic_taught', form.topic_taught) &&
              wcOk('classwork', form.classwork) &&
              wcOk('homework', form.homework) &&
-             wcOk('remarks', form.remarks)
+             wcOk('remarks', form.remarks) &&
+             !!form.board_photo_url
     }
     if (step === 2) {
       return (form.techniques || []).length > 0 &&
@@ -1006,6 +1052,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         technique_avoid: form.technique_avoid || null,
         late_submission: isLate,
         submitted_at: now.toISOString(),
+        board_photo_url: form.board_photo_url || null,
       }
       const { data: logData, error: logError } = await supabase.from('teaching_logs').insert([logPayload]).select().single()
       if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); return }
