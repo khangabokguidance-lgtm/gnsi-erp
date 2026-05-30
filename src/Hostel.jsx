@@ -773,10 +773,12 @@ function LeaveTab({ students, currentHousemaster }) {
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
     const payload = {
-      ...form,
-      requested_by: currentHousemaster?.name || 'Student',
-      requested_at: editRec ? form.requested_at : new Date().toISOString(),
-    }
+  ...form,
+  expected_return: form.expected_return || null,
+  actual_return:   form.actual_return   || null,
+  requested_by:    currentHousemaster?.name || 'Student',
+  requested_at:    editRec ? form.requested_at : new Date().toISOString(),
+}
     const { error } = editRec
       ? await supabase.from('leave_records').update(payload).eq('id', editRec.id)
       : await supabase.from('leave_records').insert([payload])
