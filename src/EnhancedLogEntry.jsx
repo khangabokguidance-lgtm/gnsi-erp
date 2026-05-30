@@ -135,7 +135,7 @@ function ValidationMessage({ form, step }) {
     if (!form.doubt_date) errors.push('Doubt Date is required')
     if (!form.doubt_time_slot) errors.push('Time Slot is required')
     if (!form.hm_instruction_message) errors.push('HM Instructions are required')
-    if (!(form.focus_student_ids || []).length) errors.push('Select at least one Focus Student')
+    
   }
   if (!errors.length) return null
   return (
@@ -845,7 +845,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       if (form.needs_doubt_session) {
         return (form.assigned_hm_id || form.assigned_hm_name) && form.doubt_date && 
                form.doubt_time_slot && form.hm_instruction_message && 
-               (form.focus_student_ids || []).length > 0
+             (students.length === 0 || (form.focus_student_ids || []).length > 0)
       }
       return true
     }
