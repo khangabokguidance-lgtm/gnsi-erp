@@ -65,6 +65,21 @@ const WC_MIN = { topic_taught:50, classwork:50, homework:30, remarks:50, techniq
 const wcOk = (field, val) => wc(val) >= WC_MIN[field]
 const wcMsg = (field, val) => { const w=wc(val); const m=WC_MIN[field]; return w>=m ? null : `${w}/${m} words` }
 
+const getWordSet = str => new Set((str||'').toLowerCase().trim().split(/\s+/).filter(w => w.length > 3))
+const jaccardSimilarity = (a, b) => {
+  const setA = getWordSet(a), setB = getWordSet(b)
+  if (!setA.size || !setB.size) return 0
+  const intersection = [...setA].filter(w => setB.has(w)).length
+  const union = new Set([...setA, ...setB]).size
+  return intersection / union
+}
+const isSuspiciouslySimilar = (newLog, oldLog) => {
+  const fields = ['topic_taught', 'classwork', 'remarks']
+  const scores = fields.map(f => jaccardSimilarity(newLog[f], oldLog[f]))
+  const avg = scores.reduce((a,b) => a+b, 0) / scores.length
+  return avg >= 0.8
+}
+
 const C = { navy:'#1e3a5f', green:'#16a34a', amber:'#d97706', purple:'#7c3aed', red:'#dc2626', sky:'#0891b2' }
 
 const S = {
@@ -996,6 +1011,44 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); return }
 
       const logId = logData.id
+
+      // ── Similarity check against last 10 logs ──
+      try {
+        const { data: prevLogs } = await supabase
+          .from('teaching_logs')
+          .select('topic_taught,classwork,remarks')
+          .eq('teacher_name', form.teacher_name)
+          .eq('subject_name', form.subject_name)
+          .neq('id', logId)
+          .order('teaching_date', { ascending: false })
+          .limit(10)
+        if (prevLogs?.length) {
+          const suspicious = prevLogs.some(old => isSuspiciouslySimilar(logPayload, old))
+          if (suspicious) {
+            await supabase.from('teaching_logs').update({ copy_paste: true }).eq('id', logId)
+            showToast('⚠️ Log flagged: content too similar to previous logs.', C.amber)
+          }
+        }
+      } catch(e) { console.warn('Similarity check failed:', e.message) }
+
+      // ── Similarity check against last 10 logs ──
+      try {
+        const { data: prevLogs } = await supabase
+          .from('teaching_logs')
+          .select('topic_taught,classwork,remarks')
+          .eq('teacher_name', form.teacher_name)
+          .eq('subject_name', form.subject_name)
+          .neq('id', logId)
+          .order('teaching_date', { ascending: false })
+          .limit(10)
+        if (prevLogs?.length) {
+          const suspicious = prevLogs.some(old => isSuspiciouslySimilar(logPayload, old))
+          if (suspicious) {
+            await supabase.from('teaching_logs').update({ copy_paste: true }).eq('id', logId)
+            showToast('⚠️ Log flagged: content too similar to previous logs.', C.amber)
+          }
+        }
+      } catch(e) { console.warn('Similarity check failed:', e.message) }
 
       if ((form.practice_questions || []).length) {
         const pqs = form.practice_questions.map((q, i) => ({
