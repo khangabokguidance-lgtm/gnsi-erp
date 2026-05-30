@@ -1348,6 +1348,27 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     setLoadingStudents(false)
   }
 
+  const handleNotConducted = async () => {
+    setSending(true)
+    const { error: e1 } = await supabase.from('doubt_sessions').update({
+      status: 'not_conducted',
+      resolved_by: currentUser?.name || 'HM',
+      resolved_at: new Date().toISOString(),
+      resolution_note: 'Doubt session was not conducted.',
+    }).eq('id', session.id)
+    if (e1) { showToast('Error: ' + e1.message, C.red); setSending(false); return }
+    if (session.log_id) {
+      await supabase.from('teaching_logs').update({
+        hm_verified: false,
+        hm_verified_at: new Date().toISOString(),
+        hm_verified_by: currentUser?.name || 'HM',
+      }).eq('id', session.log_id)
+    }
+    showToast('⚠️ Marked as not conducted — teaching log flagged.', C.amber)
+    onFeedback?.()
+    setSending(false)
+  }
+
   const handleFeedback = async () => {
     if (!note.trim()) { showToast('Enter feedback/resolution note', C.amber); return }
     setSending(true)
@@ -1357,8 +1378,16 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
       resolved_at: new Date().toISOString(),
       resolution_note: note,
     }).eq('id', session.id)
-    if (error) showToast('Error: ' + error.message, C.red)
-    else { showToast('Doubt session resolved ✓', C.green); onFeedback?.() }
+    if (error) { showToast('Error: ' + error.message, C.red); setSending(false); return }
+    if (session.log_id) {
+      await supabase.from('teaching_logs').update({
+        hm_verified: true,
+        hm_verified_at: new Date().toISOString(),
+        hm_verified_by: currentUser?.name || 'HM',
+      }).eq('id', session.log_id)
+    }
+    showToast('✅ Doubt session resolved & log verified.', C.green)
+    onFeedback?.()
     setSending(false)
   }
 
@@ -1477,9 +1506,15 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
             style={{ ...S.input, marginBottom:10, resize:'vertical' }}
             placeholder="Describe what you covered in the doubt session, which students were helped, what methods you used..."/>
-          <button type="button" onClick={handleFeedback} disabled={sending} style={S.btn(C.green, sending)}>
-            {sending ? '⏳ Saving...' : '✅ Mark Resolved & Notify Teacher'}
-          </button>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            <button type="button" onClick={handleFeedback} disabled={sending} style={S.btn(C.green, sending)}>
+              {sending ? '⏳ Saving...' : '✅ Mark Resolved & Notify Teacher'}
+            </button>
+            <button type="button" onClick={handleNotConducted} disabled={sending}
+              style={{ backgroundColor:'#fee2e2', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:8, padding:'10px 18px', fontWeight:700, cursor:sending?'not-allowed':'pointer', fontSize:13, minHeight:44 }}>
+              ❌ Not Conducted
+            </button>
+          </div>
         </div>
       </div>
     </>
