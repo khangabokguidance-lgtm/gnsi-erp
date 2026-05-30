@@ -19,6 +19,19 @@ const TEACHING_TECHNIQUES = [
   'Revision / Mind Map','Activity Based Learning','Audio-Visual / Video',
 ]
 
+const SPOT_CHECK_QUESTIONS = [
+  'Name one student who struggled today and explain why.',
+  'What was the most common mistake students made during this class?',
+  'Which question did students find hardest and how did you handle it?',
+  'How did you ensure weaker students understood the topic?',
+  'What would you do differently next time you teach this topic?',
+  'Describe one moment where a student surprised you — positively or negatively.',
+  'Which student was most engaged today and what did they do?',
+  'What part of the lesson took longer than expected and why?',
+  'How did you handle a student who was distracted or disruptive?',
+  'What evidence do you have that students understood the concept?',
+]
+
 const DIFFICULTY = ['Easy','Medium','Hard']
 const PERIODS = [1,2,3,4,5,6,7,8,9,10]
 
@@ -143,6 +156,46 @@ function ConfirmModal({ title, msg, confirmLabel='Confirm', onConfirm, onCancel 
           <button onClick={onConfirm} style={S.btn(C.navy)}>{confirmLabel}</button>
           <button onClick={onCancel} style={{ ...S.btn('#64748b'), background:'white', color:'#64748b', border:'1px solid #e2e8f0' }}>Cancel</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Spot Check Modal ─────────────────────────────────────────────────────────
+
+function SpotCheckModal({ question, onSubmit, onSkip }) {
+  const [answer, setAnswer] = useState('')
+  const words = answer.trim().split(/\s+/).filter(Boolean).length
+  const ok = words >= 20
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:99999, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'white', borderRadius:16, padding:28, width:460, maxWidth:'96vw', boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ fontSize:13, fontWeight:800, color:'#7c3aed', marginBottom:6, textTransform:'uppercase', letterSpacing:'.08em' }}>🎯 Quick Spot-Check</div>
+        <div style={{ fontSize:16, fontWeight:800, color:'#1e293b', marginBottom:6, lineHeight:1.5 }}>{question}</div>
+        <div style={{ fontSize:12, color:'#64748b', marginBottom:16 }}>Answer in at least 20 words to complete your log.</div>
+        <textarea
+          value={answer}
+          onChange={e => setAnswer(e.target.value)}
+          rows={4}
+          autoFocus
+          style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:`1.5px solid ${ok ? '#16a34a' : '#d1d5db'}`, fontSize:13, boxSizing:'border-box', resize:'vertical', fontFamily:'inherit', outline:'none' }}
+          placeholder="Write your answer here..."
+        />
+        <div style={{ fontSize:11, color: ok ? '#16a34a' : '#94a3b8', fontWeight:600, marginBottom:16, marginTop:4 }}>
+          {ok ? '✓ Good answer!' : `${words}/20 words minimum`}
+        </div>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={() => onSubmit(answer)} disabled={!ok}
+            style={{ backgroundColor: ok ? '#16a34a' : '#94a3b8', color:'white', border:'none', borderRadius:8, padding:'10px 20px', fontWeight:700, cursor: ok ? 'pointer' : 'not-allowed', fontSize:13, flex:1 }}>
+            ✅ Submit Answer
+          </button>
+          <button onClick={onSkip}
+            style={{ background:'white', color:'#64748b', border:'1px solid #e2e8f0', borderRadius:8, padding:'10px 16px', fontWeight:600, cursor:'pointer', fontSize:13 }}>
+            Skip
+          </button>
+        </div>
+        <div style={{ fontSize:11, color:'#94a3b8', marginTop:10, textAlign:'center' }}>Skipping will flag this log for admin review.</div>
       </div>
     </div>
   )
@@ -895,6 +948,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [gpsStatus, setGpsStatus] = useState('idle') // idle | checking | allowed | denied | error
   const [gpsDistance, setGpsDistance] = useState(null)
   const [attWarn, setAttWarn] = useState(false)
+  const [spotCheck, setSpotCheck] = useState(null) // { logId, question }
   const { show: showToast, el: toastEl } = useToast()
 
   useEffect(() => {
@@ -974,6 +1028,35 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       .limit(1)
     return (data?.length || 0) > 0
   }, [form.course, form.subtype, form.teaching_date])
+
+  const handleSpotSubmit = async (answer) => {
+    if (spotCheck?.logId) {
+      await supabase.from('teaching_logs').update({
+        spot_check_done: true,
+        spot_check_answer: answer,
+        spot_check_skipped: false,
+      }).eq('id', spotCheck.logId)
+    }
+    setSpotCheck(null)
+    showToast('Log saved successfully ✓', C.green)
+    setForm({ ...emptyForm })
+    setStep(0)
+    onSaved?.()
+  }
+
+  const handleSpotSkip = async () => {
+    if (spotCheck?.logId) {
+      await supabase.from('teaching_logs').update({
+        spot_check_skipped: true,
+        spot_check_done: false,
+      }).eq('id', spotCheck.logId)
+    }
+    setSpotCheck(null)
+    showToast('⚠️ Spot-check skipped — log flagged for review.', C.amber)
+    setForm({ ...emptyForm })
+    setStep(0)
+    onSaved?.()
+  }
 
   // ALL FIELDS MANDATORY
   const canNext = () => {
@@ -1160,10 +1243,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         }])
       }
 
-      showToast('Log saved successfully ✓', C.green)
-      setForm({ ...emptyForm })
-      setStep(0)
-      onSaved?.()
+      const randomQ = SPOT_CHECK_QUESTIONS[Math.floor(Math.random() * SPOT_CHECK_QUESTIONS.length)]
+      setSpotCheck({ logId, question: randomQ })
     } catch (e) {
       showToast('Unexpected error: ' + e.message, C.red)
     }
@@ -1175,6 +1256,13 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     <>
       <style>{css}</style>
       {toastEl}
+      {spotCheck && (
+        <SpotCheckModal
+          question={spotCheck.question}
+          onSubmit={handleSpotSubmit}
+          onSkip={handleSpotSkip}
+        />
+      )}
       {confirm && (
         <ConfirmModal title="Save Teaching Log" msg={`Save log for ${form.subject_name} on ${form.teaching_date}?${form.needs_doubt_session ? ' HM will be notified instantly.' : ''}${new Date().getHours() >= 21 ? ' ⚠️ This log will be flagged as LATE SUBMISSION (after 9 PM).' : ''}`} confirmLabel="Save Log" onConfirm={handleSave} onCancel={() => setConfirm(false)}/>
       )}
