@@ -969,7 +969,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   useEffect(() => {
     if (!form.batch_id) return
     setLoadingStudents(true)
-    supabase.from('students').select('id,name,roll_number,house').eq('batch_id', form.batch_id).eq('status','Active').order('name')
+    supabase.from('students').select('id,name,roll_number').eq('course', form.course).eq('batch', form.subtype||'').eq('status','Active').order('name')
       .then(async ({ data: studs }) => {
         if (!studs?.length) { setStudents([]); setLoadingStudents(false); return }
         const { data: scores } = await supabase.from('student_scores').select('student_id,score,max_score,subject_name').in('student_id', studs.map(s=>s.id))

@@ -1429,7 +1429,7 @@ function TabStudentPerformance({ courseData, logs }) {
   const fetchStudents = async batchId => {
     if (!batchId) { setStudents([]); setStudentsErr(''); return }
     setStudentsErr('')
-    const { data, error } = await supabase.from('students').select('id,name,roll_number').eq('batch_id', batchId).eq('status','Active').order('name')
+    const { data, error } = await supabase.from('students').select('id,name,roll_number').eq('status','Active').order('name')
     if (error) { setStudentsErr('Could not load students: '+error.message); setStudents([]) }
     else setStudents(data||[])
   }
