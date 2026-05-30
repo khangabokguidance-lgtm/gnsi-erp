@@ -834,6 +834,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [attemptedNext, setAttemptedNext] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('idle') // idle | checking | allowed | denied | error
   const [gpsDistance, setGpsDistance] = useState(null)
+  const [attWarn, setAttWarn] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
 
   useEffect(() => {
@@ -902,6 +903,18 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     )
   }), [])
 
+  const checkAttendance = useCallback(async () => {
+    if (!form.course || !form.subtype || !form.teaching_date) return true
+    const { data } = await supabase
+      .from('attendance_sessions')
+      .select('id')
+      .eq('course', form.course)
+      .eq('subtype', form.subtype)
+      .eq('session_date', form.teaching_date)
+      .limit(1)
+    return (data?.length || 0) > 0
+  }, [form.course, form.subtype, form.teaching_date])
+
   // ALL FIELDS MANDATORY
   const canNext = () => {
     if (step === 0) {
@@ -946,6 +959,9 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }
       const gpsOk = await checkGPS()
       if (!gpsOk) return
+      const attOk = await checkAttendance()
+      if (!attOk) { setAttWarn(true); return }
+      setAttWarn(false)
     }
     setDupWarn('')
     if (step < STEPS.length - 1) setStep(s => s + 1)
@@ -1070,6 +1086,11 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, color:C.red, fontSize:13, marginBottom:14, fontWeight:600 }}>{dupWarn}</div>
         )}
 
+        {attWarn && (
+          <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
+            ⚠️ Attendance not marked for <strong>{form.subtype} ({form.course})</strong> on <strong>{form.teaching_date}</strong>. Please mark attendance first before logging.
+          </div>
+        )}
         {gpsStatus === 'checking' && (
           <div style={{ padding:'10px 14px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.navy }}>
             📍 Checking your location...
