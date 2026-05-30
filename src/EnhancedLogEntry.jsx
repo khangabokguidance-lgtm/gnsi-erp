@@ -20,7 +20,29 @@ const TEACHING_TECHNIQUES = [
 ]
 
 const DIFFICULTY = ['Easy','Medium','Hard']
-const PERIODS = [1,2,3,4,5,6,7]
+const PERIODS = [1,2,3,4,5,6,7,8,9,10]
+
+const PERIOD_TIMES = {
+  1:  { label:'Period 1 (7:20–8:10 AM)',   start:[7,20],  end:[8,10]  },
+  2:  { label:'Period 2 (10:20–11:10 AM)', start:[10,20], end:[11,10] },
+  3:  { label:'Period 3 (11:10 AM–12:00)', start:[11,10], end:[12,0]  },
+  4:  { label:'Period 4 (12:00–12:50 PM)', start:[12,0],  end:[12,50] },
+  5:  { label:'Period 5 (1:20–2:10 PM)',   start:[13,20], end:[14,10] },
+  6:  { label:'Period 6 (2:10–2:55 PM)',   start:[14,10], end:[14,55] },
+  7:  { label:'Period 7 (2:55–3:40 PM)',   start:[14,55], end:[15,40] },
+  8:  { label:'Period 8 (5:30–6:20 PM)',   start:[17,30], end:[18,20] },
+  9:  { label:'Period 9 (6:20–7:10 PM)',   start:[18,20], end:[19,10] },
+  10: { label:'Period 10 (7:10–8:00 PM)',  start:[19,10], end:[20,0]  },
+}
+
+const isPeriodUnlocked = (periodNo) => {
+  const pt = PERIOD_TIMES[periodNo]
+  if (!pt) return true
+  const now = new Date()
+  const nowMins = now.getHours() * 60 + now.getMinutes()
+  const startMins = pt.start[0] * 60 + pt.start[1]
+  return nowMins >= startMins
+}
 
 const today = () => new Date().toISOString().split('T')[0]
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-'
@@ -130,6 +152,7 @@ function ValidationMessage({ form, step }) {
     if (!form.period_number) errors.push('Period is required')
     if (!form.chapter && !form.chapter_custom) errors.push('Chapter is required')
     if (!form.subtopic && !form.subtopic_custom) errors.push('Sub-topic is required')
+    if (form.period_number && !isPeriodUnlocked(Number(form.period_number))) errors.push('🔒 Selected period has not started yet — you cannot log in advance')
   }
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
@@ -297,8 +320,20 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
           <label style={S.label}>Period <span style={S.required}>*</span></label>
           <select value={form.period_number} onChange={e => setForm(f => ({ ...f, period_number:e.target.value }))} required style={S.select}>
             <option value="">Select Period</option>
-            {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
+            {PERIODS.map(p => {
+              const unlocked = isPeriodUnlocked(p)
+              return (
+                <option key={p} value={p} disabled={!unlocked}>
+                  {PERIOD_TIMES[p]?.label || `Period ${p}`}{!unlocked ? ' 🔒' : ''}
+                </option>
+              )
+            })}
           </select>
+          {form.period_number && !isPeriodUnlocked(Number(form.period_number)) && (
+            <div style={{ color:C.red, fontSize:12, marginTop:5, fontWeight:600 }}>
+              🔒 This period hasn't started yet. You can only log a period after it begins.
+            </div>
+          )}
         </div>
       </div>
 
@@ -844,7 +879,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       return form.course && form.subtype && form.class_name && form.subject_name && 
              form.teaching_date && form.period_number && 
              (form.chapter || form.chapter_custom) && 
-             (form.subtopic || form.subtopic_custom)
+             (form.subtopic || form.subtopic_custom) &&
+             isPeriodUnlocked(Number(form.period_number))
     }
     if (step === 1) {
       return form.range_from && form.range_to &&
