@@ -82,7 +82,7 @@ const ALL_TABS = [
   { key:'reports',     label:'Reports',           icon:'📈' },
   { key:'search',      label:'Topic Search',      icon:'🔍' },
   { key:'monthly',     label:'Monthly Syllabus',  icon:'📆' },
-  { key:'performance', label:'Student Scores',    icon:'🎯' },
+  { key:'performance', label:'Class Test Scores', icon:'🎯' },
   { key:'hmdash',      label:'HM Dashboard',      icon:'🏠' },
   { key:'admin',       label:'Admin Monitor',     icon:'🛡️' },
   { key:'remediation', label:'Remediation',       icon:'🔄' },
@@ -1417,6 +1417,12 @@ function TabStudentPerformance({ courseData, logs }) {
 
   const blankForm = { student_id:'', student_name:'', batch_id:'', course:'', subtype:'', class_name:'', subject_name:'', topic:'', test_date:today(), score:'', max_score:'100', notes:'' }
   const [form, setForm] = useState(blankForm)
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkForm, setBulkForm] = useState({ course:'', subtype:'', class_name:'', subject_name:'', topic:'', test_date:today(), max_score:'100' })
+  const [bulkStudents, setBulkStudents] = useState([])
+  const [bulkMarks, setBulkMarks] = useState({})
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   const fetchScores = async () => {
     setLoading(true)
@@ -1426,12 +1432,60 @@ function TabStudentPerformance({ courseData, logs }) {
     setLoading(false)
   }
 
-  const fetchStudents = async batchId => {
-    if (!batchId) { setStudents([]); setStudentsErr(''); return }
+  const fetchStudents = async (course, subtype) => {
+    if (!course) { setStudents([]); setStudentsErr(''); return }
     setStudentsErr('')
-    const { data, error } = await supabase.from('students').select('id,name,roll_number').eq('status','Active').order('name')
+    let q = supabase.from('students').select('id,name,roll_number').eq('status','Active').eq('course', course)
+    if (subtype) q = q.eq('batch', subtype)
+    const { data, error } = await q.order('name')
     if (error) { setStudentsErr('Could not load students: '+error.message); setStudents([]) }
     else setStudents(data||[])
+  }
+
+  const fetchBulkStudents = async () => {
+    if (!bulkForm.course) return
+    setBulkLoading(true)
+    let q = supabase.from('students').select('id,name,roll_number,admission_no').eq('status','Active').eq('course', bulkForm.course)
+    if (bulkForm.subtype) q = q.eq('batch', bulkForm.subtype)
+    const { data, error } = await q.order('name')
+    if (error) { showToast('Could not load students: '+error.message, '#dc2626'); setBulkLoading(false); return }
+    setBulkStudents(data||[])
+    const initMarks = {}
+    ;(data||[]).forEach(s => { initMarks[s.id] = '' })
+    setBulkMarks(initMarks)
+    setBulkLoading(false)
+  }
+
+  const handleBulkSave = async () => {
+    if (!bulkForm.subject_name || !bulkForm.topic || !bulkForm.test_date) {
+      showToast('Fill Subject, Test Name and Date first', '#dc2626'); return
+    }
+    const entries = bulkStudents.filter(s => bulkMarks[s.id] !== '' && bulkMarks[s.id] !== undefined)
+    if (!entries.length) { showToast('Enter at least one mark', '#dc2626'); return }
+    setBulkSaving(true)
+    const payload = entries.map(s => ({
+      student_id: s.id,
+      student_name: s.name,
+      course: bulkForm.course,
+      subtype: bulkForm.subtype||null,
+      class_name: bulkForm.class_name||null,
+      subject_name: bulkForm.subject_name,
+      topic: bulkForm.topic,
+      test_date: bulkForm.test_date,
+      score: parseFloat(bulkMarks[s.id]),
+      max_score: parseFloat(bulkForm.max_score)||100,
+    }))
+    const { error } = await supabase.from('student_scores').insert(payload)
+    if (error) showToast('Save failed: '+error.message, '#dc2626')
+    else {
+      showToast(`✅ ${payload.length} scores saved!`, '#16a34a')
+      setBulkStudents([])
+      setBulkMarks({})
+      setBulkForm({ course:'', subtype:'', class_name:'', subject_name:'', topic:'', test_date:today(), max_score:'100' })
+      setBulkMode(false)
+      fetchScores()
+    }
+    setBulkSaving(false)
   }
 
   useEffect(() => { fetchScores() }, [])
@@ -1442,12 +1496,12 @@ function TabStudentPerformance({ courseData, logs }) {
     const cn  = cls.length===1 ? cls[0] : ''
     const bid = cn ? batchIdFor(form.course, st, cn) : ''
     setForm(f => ({ ...f, subtype:st, class_name:cn, batch_id:bid, student_id:'', student_name:'' }))
-    if (bid) fetchStudents(bid)
+    fetchStudents(form.course, st)
   }
   const handleClassChange = cn => {
     const bid = batchIdFor(form.course, form.subtype, cn)
     setForm(f => ({ ...f, class_name:cn, batch_id:bid, student_id:'', student_name:'' }))
-    if (bid) fetchStudents(bid)
+    fetchStudents(form.course, form.subtype)
   }
   const handleStudentChange = sid => {
     const s = students.find(x => x.id===sid)
@@ -1536,10 +1590,127 @@ function TabStudentPerformance({ courseData, logs }) {
       </div>
 
       <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showForm?18:0, flexWrap:'wrap', gap:8 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: (showForm||bulkMode)?18:0, flexWrap:'wrap', gap:8 }}>
           <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', margin:0 }}>🎯 {editingId?'Edit Score':'Add Score'}</h2>
-          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(blankForm) }} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Score'}</button>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={() => { setBulkMode(!bulkMode); setShowForm(false); setEditingId(null) }} style={S.btn(bulkMode?'#64748b':'#7c3aed')}>{bulkMode?'✖ Cancel':'📋 Bulk Entry'}</button>
+            <button onClick={() => { setShowForm(!showForm); setBulkMode(false); setEditingId(null); setForm(blankForm) }} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Score'}</button>
+          </div>
         </div>
+
+        {/* ── Bulk Entry Mode ── */}
+        {bulkMode && (
+          <div>
+            <div style={{ padding:'10px 14px', background:'#f3e8ff', border:'1px solid #ddd6fe', borderRadius:8, marginBottom:14, fontSize:13, color:'#7c3aed', fontWeight:600 }}>
+              📋 Bulk Mode — fill test details, load students, enter marks for all at once
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:12, marginBottom:14 }}>
+              <div>
+                <label style={S.label}>Course *</label>
+                <select value={bulkForm.course} onChange={e => setBulkForm(f=>({...f,course:e.target.value,subtype:'',class_name:''}))} style={S.select}>
+                  <option value="">Select Course</option>
+                  {courses.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Batch / Subtype</label>
+                <select value={bulkForm.subtype} onChange={e => setBulkForm(f=>({...f,subtype:e.target.value}))} disabled={!bulkForm.course} style={{ ...S.select, opacity:bulkForm.course?1:.5 }}>
+                  <option value="">Select Batch</option>
+                  {(bulkForm.course?subtypesFor(bulkForm.course):[]).map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Subject *</label>
+                <select value={bulkForm.subject_name} onChange={e => setBulkForm(f=>({...f,subject_name:e.target.value}))} style={S.select}>
+                  <option value="">Select Subject</option>
+                  {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Test / Topic Name *</label>
+                <input value={bulkForm.topic} onChange={e => setBulkForm(f=>({...f,topic:e.target.value}))} placeholder="e.g. Unit Test 1" style={S.input}/>
+              </div>
+              <div>
+                <label style={S.label}>Test Date *</label>
+                <input type="date" value={bulkForm.test_date} onChange={e => setBulkForm(f=>({...f,test_date:e.target.value}))} style={S.input}/>
+              </div>
+              <div>
+                <label style={S.label}>Max Marks</label>
+                <input type="number" value={bulkForm.max_score} onChange={e => setBulkForm(f=>({...f,max_score:e.target.value}))} placeholder="100" style={S.input}/>
+              </div>
+            </div>
+            <button onClick={fetchBulkStudents} disabled={!bulkForm.course||bulkLoading} style={{ ...S.btn('#0891b2', !bulkForm.course||bulkLoading), marginBottom:16 }}>
+              {bulkLoading ? '⏳ Loading...' : '👥 Load Students'}
+            </button>
+
+            {bulkStudents.length > 0 && (
+              <>
+                <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:10 }}>
+                  📝 Enter marks for {bulkStudents.length} students — Max: {bulkForm.max_score}
+                  <span style={{ marginLeft:12, fontSize:12, color:'#94a3b8', fontWeight:400 }}>Leave blank to skip a student</span>
+                </div>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
+                  <button onClick={() => { const m = {}; bulkStudents.forEach(s => { m[s.id] = bulkForm.max_score }); setBulkMarks(m) }} style={S.btnSm('#16a34a')}>✅ All Full Marks</button>
+                  <button onClick={() => { const m = {}; bulkStudents.forEach(s => { m[s.id] = '' }); setBulkMarks(m) }} style={S.btnSm('#94a3b8')}>✕ Clear All</button>
+                </div>
+                <div style={{ border:'1px solid #e2e8f0', borderRadius:10, overflow:'hidden', marginBottom:14 }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                    <thead>
+                      <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                        <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>#</th>
+                        <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>Student</th>
+                        <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>Marks / {bulkForm.max_score}</th>
+                        <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>%</th>
+                        <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>Grade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkStudents.map((s, i) => {
+                        const mark = bulkMarks[s.id]
+                        const p = mark !== '' && mark !== undefined ? pct(parseFloat(mark), parseFloat(bulkForm.max_score)||100) : null
+                        return (
+                          <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9', background: p!==null?(p>=75?'#f0fdf4':p>=50?'#fffbeb':'#fff1f2'):'white' }}>
+                            <td style={{ padding:'8px 12px', color:'#94a3b8', fontSize:11 }}>{i+1}</td>
+                            <td style={{ padding:'8px 12px', fontWeight:600, color:'#1e293b' }}>
+                              {s.name}
+                              {s.roll_number && <span style={{ marginLeft:6, fontSize:11, color:'#94a3b8' }}>#{s.roll_number}</span>}
+                            </td>
+                            <td style={{ padding:'8px 12px' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max={bulkForm.max_score}
+                                step="0.5"
+                                value={mark||''}
+                                onChange={e => setBulkMarks(prev => ({ ...prev, [s.id]: e.target.value }))}
+                                placeholder="—"
+                                style={{ width:80, padding:'6px 10px', borderRadius:6, border:`1.5px solid ${p!==null?scoreColor(p):'#d1d5db'}`, fontSize:13, fontFamily:'inherit', textAlign:'center' }}
+                              />
+                            </td>
+                            <td style={{ padding:'8px 12px', fontWeight:700, color:p!==null?scoreColor(p):'#94a3b8', fontFamily:"'JetBrains Mono',monospace" }}>
+                              {p !== null ? `${p}%` : '—'}
+                            </td>
+                            <td style={{ padding:'8px 12px' }}>
+                              {p !== null && <span style={{ ...S.badge(scoreColor(p), scoreBg(p)) }}>{p>=75?'Good':p>=50?'Avg':'Weak'}</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+                  <button onClick={handleBulkSave} disabled={bulkSaving} style={S.btn('#16a34a', bulkSaving)}>
+                    {bulkSaving ? '⏳ Saving...' : `✅ Save ${bulkStudents.filter(s => bulkMarks[s.id] !== '').length} Scores`}
+                  </button>
+                  <span style={{ fontSize:12, color:'#64748b' }}>
+                    {bulkStudents.filter(s => bulkMarks[s.id] !== '').length} of {bulkStudents.length} filled
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         {showForm && (
           <form onSubmit={handleSave} className="form-grid" style={{ ...S.formGrid, marginTop:16 }}>
             <div><label style={S.label}>Course</label><select value={form.course} onChange={e => handleCourseChange(e.target.value)} required style={S.select}><option value="">Select Course</option>{courses.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
