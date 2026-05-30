@@ -1130,6 +1130,748 @@ function AttendanceTab({ students, currentHousemaster }) {
   return null
 }
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  TAB: LEAVE / OUTING MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+const LEAVE_TYPES = ['Home Leave', 'Day Outing', 'Night Out', 'Weekend Leave', 'Emergency']
+const LEAVE_STATUSES = ['Pending', 'Approved', 'Rejected', 'Overdue', 'Returned']
+
+function LeaveTab({ students, currentHousemaster }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec, setEditRec] = useState(null)
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState('requests')
+  const mobile = useMobileView()
+
+  const [form, setForm] = useState({
+    student_id: null, student_name: '', gcc_no: '', class_name: '', house: '',
+    leave_type: 'Home Leave', from_date: today(), to_date: today(),
+    expected_return: null, actual_return: null, purpose: '',
+    parent_contact: '', parent_approved: false,
+    status: 'Pending', remarks: '',
+  })
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('leave_records').select('*').order('created_at', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    const now = new Date()
+    const overdueIds = records
+      .filter(r => r.status === 'Approved' && r.expected_return && new Date(r.expected_return) < now && !r.actual_return)
+      .map(r => r.id)
+    if (overdueIds.length > 0) {
+      overdueIds.forEach(async id => {
+        await supabase.from('leave_records').update({ status: 'Overdue' }).eq('id', id)
+      })
+      load()
+    }
+  }, [records])
+
+  const handleStudentSelect = s => {
+    setForm(f => ({
+      ...f, student_id: s.id, student_name: s.name || '',
+      gcc_no: s.gcc_no || '', class_name: getStudentClass(s),
+      house: s.house || '',
+    }))
+  }
+
+  const handleSave = async e => {
+    e.preventDefault(); setSaving(true)
+    const payload = {
+      ...form,
+      expected_return: form.expected_return || null,
+      actual_return: form.actual_return || null,
+      requested_by: currentHousemaster?.name || 'Student',
+      requested_at: editRec ? form.requested_at : new Date().toISOString(),
+    }
+    const { error } = editRec
+      ? await supabase.from('leave_records').update(payload).eq('id', editRec.id)
+      : await supabase.from('leave_records').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm({ ...form, student_id: null, student_name: '', gcc_no: '', purpose: '', parent_contact: '', remarks: '' }); setShowForm(false); setEditRec(null); load() }
+    setSaving(false)
+  }
+
+  const handleStatusChange = async (id, status) => {
+    const updates = { status, approved_by: currentHousemaster?.name || 'Admin', approved_at: new Date().toISOString() }
+    if (status === 'Returned') updates.actual_return = today()
+    await supabase.from('leave_records').update(updates).eq('id', id)
+    load()
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this leave record?')) return
+    await supabase.from('leave_records').delete().eq('id', id)
+    load()
+  }
+
+  const filtered = useMemo(() => {
+    let f = records
+    if (activeTab === 'requests') f = f.filter(r => ['Pending', 'Approved', 'Overdue'].includes(r.status))
+    if (filterStatus !== 'All') f = f.filter(r => r.status === filterStatus)
+    if (search) {
+      const q = search.toLowerCase()
+      f = f.filter(r =>
+        (r.student_name || '').toLowerCase().includes(q) ||
+        String(r.gcc_no || '').includes(q) ||
+        (r.house || '').toLowerCase().includes(q)
+      )
+    }
+    return f
+  }, [records, filterStatus, search, activeTab])
+
+  const stats = {
+    pending: records.filter(r => r.status === 'Pending').length,
+    approved: records.filter(r => r.status === 'Approved').length,
+    overdue: records.filter(r => r.status === 'Overdue').length,
+    returned: records.filter(r => r.status === 'Returned').length,
+  }
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={mobileStatGrid}>
+          <StatCard icon="⏳" label="Pending" value={stats.pending} color="#ca8a04" bg="#fef9c3" compact />
+          <StatCard icon="✅" label="Approved" value={stats.approved} color="#16a34a" bg="#dcfce7" compact />
+          <StatCard icon="⚠️" label="Overdue" value={stats.overdue} color="#dc2626" bg="#fee2e2" compact />
+          <StatCard icon="🏠" label="Returned" value={stats.returned} color="#1e3a5f" bg="#eff6ff" compact />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          {['requests', 'history'].map(t => (
+            <button key={t} onClick={() => setActiveTab(t)} style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: activeTab === t ? '#1e3a5f' : '#f1f5f9', color: activeTab === t ? 'white' : '#64748b', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
+              {t === 'requests' ? '📋 Active' : '📜 History'}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input placeholder="🔍 Search..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1 }} type="search" />
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null) }} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '➕'}</button>
+        </div>
+        {showForm && (
+          <div style={{ ...mobileCard, marginBottom: '12px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>{editRec ? '✏️ Edit Leave' : '🚪 New Leave Request'}</h3>
+            <form onSubmit={handleSave}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <label style={lbl}>Student</label>
+                  <StudentSearchInput students={students} onSelect={handleStudentSelect} placeholder="Search student..." />
+                  {form.student_name && <div style={{ marginTop: '6px', padding: '6px 10px', background: '#dcfce7', borderRadius: '6px', fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>✅ {form.student_name} {form.gcc_no ? `(GCC-${form.gcc_no})` : ''}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ flex: 1 }}><label style={lbl}>From *</label><input type="date" value={form.from_date} onChange={e => setForm(f => ({ ...f, from_date: e.target.value }))} required style={inp} /></div>
+                  <div style={{ flex: 1 }}><label style={lbl}>To *</label><input type="date" value={form.to_date} onChange={e => setForm(f => ({ ...f, to_date: e.target.value }))} required style={inp} /></div>
+                </div>
+                <div><label style={lbl}>Expected Return</label><input type="datetime-local" value={form.expected_return || ''} onChange={e => setForm(f => ({ ...f, expected_return: e.target.value || null }))} style={inp} /></div>
+                <div><label style={lbl}>Leave Type</label><select value={form.leave_type} onChange={e => setForm(f => ({ ...f, leave_type: e.target.value }))} style={inp}>{LEAVE_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+                <div><label style={lbl}>Purpose</label><textarea value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} rows={2} placeholder="Reason for leave..." style={{ ...inp, resize: 'vertical' }} /></div>
+                <div><label style={lbl}>Parent Contact</label><input value={form.parent_contact} onChange={e => setForm(f => ({ ...f, parent_contact: e.target.value }))} placeholder="Phone number" style={inp} /></div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#16a34a'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+        <MobileCardList>
+          {filtered.map(r => (
+            <MobileRecordCard key={r.id} accentColor={r.status === 'Pending' ? '#ca8a04' : r.status === 'Approved' ? '#16a34a' : r.status === 'Overdue' ? '#dc2626' : r.status === 'Rejected' ? '#dc2626' : '#1e3a5f'}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b' }}>{r.student_name}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>GCC-{r.gcc_no || '--'} · {r.house || '—'}</div>
+                </div>
+                <span style={statusStyle(r.status)}>{r.status}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+                <div>📅 {r.from_date} → {r.to_date}</div>
+                <div>🚪 {r.leave_type}</div>
+                {r.expected_return && <div>⏰ Return: {r.expected_return}</div>}
+                {r.actual_return && <div>🏠 Returned: {r.actual_return}</div>}
+                {r.parent_contact && <div>📞 {r.parent_contact}</div>}
+              </div>
+              {r.purpose && <div style={{ fontSize: '13px', color: '#374151', marginBottom: '8px' }}>{r.purpose}</div>}
+              {r.status === 'Pending' && <MobileActionButtons actions={[{ label: '✓ Approve', onClick: () => handleStatusChange(r.id, 'Approved'), bg: '#dcfce7', color: '#16a34a' }, { label: '✕ Reject', onClick: () => handleStatusChange(r.id, 'Rejected'), bg: '#fee2e2', color: '#dc2626' }]} />}
+              {r.status === 'Approved' && <MobileActionButtons actions={[{ label: '🏠 Mark Returned', onClick: () => handleStatusChange(r.id, 'Returned'), bg: '#dbeafe', color: '#1d4ed8', fullWidth: true }]} />}
+              {r.status === 'Overdue' && <div style={{ background: '#fee2e2', padding: '8px', borderRadius: '8px', fontSize: '12px', color: '#dc2626', fontWeight: '600', marginTop: '8px' }}>⚠️ Student is overdue! Contact parent: {r.parent_contact || 'N/A'}</div>}
+            </MobileRecordCard>
+          ))}
+        </MobileCardList>
+        {filtered.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No leave records found</div>}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={statGrid(130)}>
+        <StatCard icon="⏳" label="Pending Approval" value={stats.pending} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="✅" label="Currently Out" value={stats.approved} color="#16a34a" bg="#dcfce7" />
+        <StatCard icon="⚠️" label="Overdue Returns" value={stats.overdue} color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="🏠" label="Returned" value={stats.returned} color="#1e3a5f" bg="#eff6ff" />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Search student..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Status</option>
+            {LEAVE_STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null) }} style={btn()}>{showForm ? '✖ Cancel' : '➕ Request Leave'}</button>
+      </div>
+      {showForm && (
+        <div style={{ ...card, marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>{editRec ? '✏️ Edit Leave' : '🚪 New Leave Request'}</h3>
+          <form onSubmit={handleSave}>
+            <div style={grid2}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={lbl}>Search Student</label>
+                <StudentSearchInput students={students} onSelect={handleStudentSelect} />
+                {form.student_name && <div style={{ marginTop: '8px', padding: '8px 12px', background: '#dcfce7', borderRadius: '8px', fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>✅ {form.student_name} {form.gcc_no ? `(GCC-${form.gcc_no})` : ''}</div>}
+              </div>
+              <div><label style={lbl}>From Date *</label><input type="date" value={form.from_date} onChange={e => setForm(f => ({ ...f, from_date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>To Date *</label><input type="date" value={form.to_date} onChange={e => setForm(f => ({ ...f, to_date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>Expected Return</label><input type="datetime-local" value={form.expected_return || ''} onChange={e => setForm(f => ({ ...f, expected_return: e.target.value || null }))} style={inp} /></div>
+              <div><label style={lbl}>Leave Type</label><select value={form.leave_type} onChange={e => setForm(f => ({ ...f, leave_type: e.target.value }))} style={inp}>{LEAVE_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Purpose</label><textarea value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} rows={2} placeholder="Reason..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div><label style={lbl}>Parent Contact</label><input value={form.parent_contact} onChange={e => setForm(f => ({ ...f, parent_contact: e.target.value }))} placeholder="Phone" style={inp} /></div>
+              <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {loading ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div> : (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 1000 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['#', 'Student', 'GCC', 'Type', 'From', 'To', 'Return By', 'Status', 'Parent', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>
+                  <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
+                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e293b' }}>{r.student_name}</td>
+                  <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: '12px' }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.leave_type}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.from_date}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.to_date}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.expected_return ? new Date(r.expected_return).toLocaleString() : '—'}</td>
+                  <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.parent_contact || '—'}</td>
+                  <td style={{ padding: '11px 14px' }}>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {r.status === 'Pending' && <><button onClick={() => handleStatusChange(r.id, 'Approved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>✓</button><button onClick={() => handleStatusChange(r.id, 'Rejected')} style={{ ...btn('#dc2626'), fontSize: '11px', padding: '4px 8px' }}>✕</button></>}
+                      {r.status === 'Approved' && <button onClick={() => handleStatusChange(r.id, 'Returned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>🏠</button>}
+                      <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: MAINTENANCE / REPAIRS
+// ══════════════════════════════════════════════════════════════
+const MAINTENANCE_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
+const MAINTENANCE_STATUSES = ['Raised', 'Assigned', 'In Progress', 'Resolved', 'Closed']
+const MAINTENANCE_CATEGORIES = ['Plumbing', 'Electrical', 'Furniture', 'Civil', 'Cleaning', 'IT', 'Other']
+
+function MaintenanceTab({ currentHousemaster }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [filterPriority, setFilterPriority] = useState('All')
+  const [search, setSearch] = useState('')
+  const mobile = useMobileView()
+  const [form, setForm] = useState({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' })
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('maintenance_records').select('*').order('created_at', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSave = async e => {
+    e.preventDefault(); setSaving(true)
+    const payload = { ...form, reported_by: currentHousemaster?.name || form.reported_by, raised_at: new Date().toISOString() }
+    const { error } = await supabase.from('maintenance_records').insert([payload])
+    if (error) alert('Error: ' + error.message)
+    else { setForm({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }); setShowForm(false); load() }
+    setSaving(false)
+  }
+
+  const handleStatusChange = async (id, status) => {
+    const updates = { status }
+    if (status === 'Resolved') updates.resolved_at = new Date().toISOString()
+    await supabase.from('maintenance_records').update(updates).eq('id', id)
+    load()
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this maintenance record?')) return
+    await supabase.from('maintenance_records').delete().eq('id', id)
+    load()
+  }
+
+  const filtered = useMemo(() => {
+    let f = records
+    if (filterStatus !== 'All') f = f.filter(r => r.status === filterStatus)
+    if (filterPriority !== 'All') f = f.filter(r => r.priority === filterPriority)
+    if (search) { const q = search.toLowerCase(); f = f.filter(r => (r.description || '').toLowerCase().includes(q) || (r.location || '').toLowerCase().includes(q) || (r.category || '').toLowerCase().includes(q)) }
+    return f
+  }, [records, filterStatus, filterPriority, search])
+
+  const stats = {
+    raised: records.filter(r => r.status === 'Raised').length,
+    inProgress: records.filter(r => ['Assigned', 'In Progress'].includes(r.status)).length,
+    urgent: records.filter(r => r.priority === 'Urgent' && r.status !== 'Closed').length,
+    resolved: records.filter(r => r.status === 'Resolved').length,
+  }
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={mobileStatGrid}>
+          <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" compact />
+          <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" compact />
+          <StatCard icon="🚨" label="Urgent" value={stats.urgent} color="#dc2626" bg="#fee2e2" compact />
+          <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" compact />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input placeholder="🔍 Search..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1 }} type="search" />
+          <button onClick={() => setShowForm(!showForm)} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '➕'}</button>
+        </div>
+        {showForm && (
+          <div style={{ ...mobileCard, marginBottom: '12px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>🔧 New Complaint</h3>
+            <form onSubmit={handleSave}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={{ ...inp, flex: 1 }}>{MAINTENANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+                  <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={{ ...inp, flex: 1 }}>{MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}</select>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Block/Area" style={{ ...inp, flex: 1 }} />
+                  <input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} placeholder="Room No" style={{ ...inp, flex: 1 }} />
+                </div>
+                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} placeholder="Describe the issue..." required style={{ ...inp, resize: 'vertical' }} />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#dc2626'), flex: 1 }}>{saving ? '⏳' : '✓ Raise'}</button>
+                  <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+        <MobileCardList>
+          {filtered.map(r => (
+            <MobileRecordCard key={r.id} accentColor={r.priority === 'Urgent' ? '#dc2626' : r.priority === 'High' ? '#ca8a04' : '#1e3a5f'}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div><span style={{ fontSize: '12px', fontWeight: '700', color: '#1e3a5f', background: '#eff6ff', padding: '2px 8px', borderRadius: '99px' }}>{r.category}</span><span style={{ marginLeft: '6px', ...statusStyle(r.priority) }}>{r.priority}</span></div>
+                <span style={statusStyle(r.status)}>{r.status}</span>
+              </div>
+              <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', marginBottom: '4px' }}>📍 {r.location}{r.room_number ? ` · Room ${r.room_number}` : ''}</div>
+              <div style={{ fontSize: '13px', color: '#374151', marginBottom: '8px' }}>{r.description}</div>
+              {r.status !== 'Closed' && r.status !== 'Resolved' && (
+                <MobileActionButtons actions={[
+                  ...(r.status === 'Raised' ? [{ label: 'Assign', onClick: () => handleStatusChange(r.id, 'Assigned'), bg: '#dbeafe', color: '#1d4ed8' }] : []),
+                  ...(r.status === 'Assigned' ? [{ label: 'Start Work', onClick: () => handleStatusChange(r.id, 'In Progress'), bg: '#fef9c3', color: '#ca8a04' }] : []),
+                  ...(r.status === 'In Progress' ? [{ label: 'Resolve', onClick: () => handleStatusChange(r.id, 'Resolved'), bg: '#dcfce7', color: '#16a34a' }] : []),
+                  { label: 'Close', onClick: () => handleStatusChange(r.id, 'Closed'), bg: '#e5e7eb', color: '#374151' },
+                ]} />
+              )}
+            </MobileRecordCard>
+          ))}
+        </MobileCardList>
+        {filtered.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No maintenance records</div>}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={statGrid(130)}>
+        <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="🚨" label="Urgent Open" value={stats.urgent} color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Search location, issue..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, width: 'auto' }}><option value="All">All Status</option>{MAINTENANCE_STATUSES.map(s => <option key={s}>{s}</option>)}</select>
+          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ ...inp, width: 'auto' }}><option value="All">All Priority</option>{MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}</select>
+        </div>
+        <button onClick={() => setShowForm(!showForm)} style={btn()}>{showForm ? '✖ Cancel' : '➕ Raise Complaint'}</button>
+      </div>
+      {showForm && (
+        <div style={{ ...card, marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>🔧 New Maintenance Request</h3>
+          <form onSubmit={handleSave}>
+            <div style={grid2}>
+              <div><label style={lbl}>Category</label><select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{MAINTENANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
+              <div><label style={lbl}>Priority</label><select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={inp}>{MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></div>
+              <div><label style={lbl}>Location/Block *</label><input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required placeholder="e.g. Block A" style={inp} /></div>
+              <div><label style={lbl}>Room Number</label><input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} placeholder="101" style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Description *</label><textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required rows={3} placeholder="Describe the issue in detail..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div><label style={lbl}>Assigned To</label><input value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))} placeholder="Staff name" style={inp} /></div>
+              <div><label style={lbl}>Estimated Cost</label><input type="number" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} placeholder="0.00" style={inp} /></div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#dc2626')}>{saving ? '⏳ Saving...' : '✅ Raise Ticket'}</button>
+              <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {loading ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div> : (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 900 }}>
+            <thead><tr style={{ background: '#1e3a5f' }}>{['#', 'Category', 'Priority', 'Location', 'Room', 'Description', 'Status', 'Assigned', 'Raised', 'Actions'].map(h => <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {filtered.map((r, i) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>
+                  <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
+                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e3a5f' }}>{r.category}</td>
+                  <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.priority)}>{r.priority}</span></td>
+                  <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.location}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: 'monospace' }}>{r.room_number || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#374151', maxWidth: 200 }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.description}>{r.description}</div></td>
+                  <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
+                  <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.assigned_to || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.raised_at ? new Date(r.raised_at).toLocaleDateString() : '—'}</td>
+                  <td style={{ padding: '11px 14px' }}>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {r.status === 'Raised' && <button onClick={() => handleStatusChange(r.id, 'Assigned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>Assign</button>}
+                      {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#ca8a04'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
+                      {r.status === 'In Progress' && <button onClick={() => handleStatusChange(r.id, 'Resolved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>Resolve</button>}
+                      {r.status === 'Resolved' && <button onClick={() => handleStatusChange(r.id, 'Closed')} style={{ ...btn('#374151'), fontSize: '11px', padding: '4px 8px' }}>Close</button>}
+                      <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: HOUSEMASTER DASHBOARD
+// ══════════════════════════════════════════════════════════════
+function HMDashboard({ students, staffProfiles, currentHousemaster }) {
+  const [attendanceToday, setAttendanceToday] = useState([])
+  const [leaveToday, setLeaveToday] = useState([])
+  const [sickbayToday, setSickbayToday] = useState([])
+  const [maintenanceOpen, setMaintenanceOpen] = useState([])
+  const [disciplineOpen, setDisciplineOpen] = useState([])
+  const [nightDutyTonight, setNightDutyTonight] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const mobile = useMobileView()
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setLoading(true)
+      const todayStr = today()
+      const [a, l, s, m, d, n] = await Promise.all([
+        supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'morning'),
+        supabase.from('leave_records').select('*').eq('from_date', todayStr).in('status', ['Approved', 'Pending']),
+        supabase.from('sickbay_records').select('*').eq('status', 'Admitted'),
+        supabase.from('maintenance_records').select('*').in('status', ['Raised', 'Assigned', 'In Progress']).eq('priority', 'Urgent'),
+        supabase.from('discipline_records').select('*').in('status', ['Open', 'In Progress']),
+        supabase.from('night_duty').select('*').eq('date', todayStr).single(),
+      ])
+      setAttendanceToday(a.data || [])
+      setLeaveToday(l.data || [])
+      setSickbayToday(s.data || [])
+      setMaintenanceOpen(m.data || [])
+      setDisciplineOpen(d.data || [])
+      setNightDutyTonight(n.data)
+      setLoading(false)
+    }
+    loadDashboard()
+  }, [])
+
+  const presentCount = attendanceToday.filter(r => r.status === 'Present').length
+  const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
+  const unmarkedCount = students.filter(s => s.status !== 'Inactive').length - attendanceToday.length
+
+  const quickActions = [
+    { id: 'attendance', label: '✓ Roll Call', icon: '✓', color: '#16a34a', bg: '#dcfce7', desc: `${presentCount}/${students.length} marked` },
+    { id: 'leave', label: '🚪 Leave', icon: '🚪', color: '#1d4ed8', bg: '#dbeafe', desc: `${leaveToday.length} requests` },
+    { id: 'sickbay', label: '🏥 Sickbay', icon: '🏥', color: '#7c3aed', bg: '#f5f3ff', desc: `${sickbayToday.length} admitted` },
+    { id: 'discipline', label: '⚠️ Discipline', icon: '⚠️', color: '#dc2626', bg: '#fee2e2', desc: `${disciplineOpen.length} open` },
+    { id: 'maintenance', label: '🔧 Repairs', icon: '🔧', color: '#ca8a04', bg: '#fef9c3', desc: `${maintenanceOpen.length} urgent` },
+    { id: 'journal', label: '📝 Journal', icon: '📝', color: '#1e3a5f', bg: '#eff6ff', desc: 'Daily notes' },
+  ]
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading dashboard...</div>
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={{ marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}</h2>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{currentHousemaster?.name || 'House Master'} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+        </div>
+        {nightDutyTonight && (
+          <div style={{ ...mobileCard, marginBottom: '16px', background: '#1e3a5f', color: 'white' }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '6px', opacity: 0.8 }}>🌙 TONIGHT'S DUTY</div>
+            <div style={{ fontSize: '16px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
+            <div style={{ fontSize: '13px', marginTop: '4px', opacity: 0.8 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+          {quickActions.map(action => (
+            <button key={action.id} style={{ background: action.bg, border: `1.5px solid ${action.color}20`, borderRadius: '14px', padding: '16px 12px', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '6px', minHeight: '90px' }}>
+              <span style={{ fontSize: '24px' }}>{action.icon}</span>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: action.color }}>{action.label}</span>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>{action.desc}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ ...mobileCard }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 12px' }}>📊 Today's Snapshot</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {[{ label: 'Present', value: presentCount, color: '#16a34a', bg: '#dcfce7' }, { label: 'Absent', value: absentCount, color: '#dc2626', bg: '#fee2e2' }, { label: 'On Leave', value: leaveToday.length, color: '#1d4ed8', bg: '#dbeafe' }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
+              <div key={s.label} style={{ textAlign: 'center', padding: '12px', background: s.bg, borderRadius: '10px' }}>
+                <div style={{ fontSize: '24px', fontWeight: '800', color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {currentHousemaster?.name || 'House Master'}</h2>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+        {nightDutyTonight && (
+          <div style={{ background: '#1e3a5f', color: 'white', padding: '12px 20px', borderRadius: '12px' }}>
+            <div style={{ fontSize: '12px', opacity: 0.8 }}>🌙 TONIGHT'S DUTY</div>
+            <div style={{ fontSize: '16px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
+            <div style={{ fontSize: '12px', opacity: 0.8 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        {quickActions.map(action => (
+          <div key={action.id} style={{ background: action.bg, borderRadius: '14px', padding: '20px', border: `1.5px solid ${action.color}20`, cursor: 'pointer' }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>{action.icon}</div>
+            <div style={{ fontSize: '16px', fontWeight: '700', color: action.color, marginBottom: '4px' }}>{action.label}</div>
+            <div style={{ fontSize: '13px', color: '#64748b' }}>{action.desc}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <div style={card}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>📊 Today's Snapshot</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {[{ label: 'Present', value: presentCount, color: '#16a34a', bg: '#dcfce7' }, { label: 'Absent', value: absentCount, color: '#dc2626', bg: '#fee2e2' }, { label: 'On Leave', value: leaveToday.length, color: '#1d4ed8', bg: '#dbeafe' }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
+              <div key={s.label} style={{ textAlign: 'center', padding: '16px', background: s.bg, borderRadius: '10px' }}>
+                <div style={{ fontSize: '28px', fontWeight: '800', color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={card}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>🚨 Attention Required</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {unmarkedCount > 0 && <div style={{ padding: '12px', background: '#fef9c3', borderRadius: '10px', borderLeft: '3px solid #ca8a04' }}><div style={{ fontWeight: '700', color: '#ca8a04' }}>⏳ {unmarkedCount} students unmarked</div><div style={{ fontSize: '13px', color: '#64748b' }}>Morning roll call pending</div></div>}
+            {maintenanceOpen.map(m => <div key={m.id} style={{ padding: '12px', background: '#fee2e2', borderRadius: '10px', borderLeft: '3px solid #dc2626' }}><div style={{ fontWeight: '700', color: '#dc2626' }}>🔧 Urgent: {m.category}</div><div style={{ fontSize: '13px', color: '#374151' }}>{m.location} · {m.description}</div></div>)}
+            {disciplineOpen.slice(0, 3).map(d => <div key={d.id} style={{ padding: '12px', background: '#fee2e2', borderRadius: '10px', borderLeft: '3px solid #dc2626' }}><div style={{ fontWeight: '700', color: '#dc2626' }}>⚠️ {d.student_name}</div><div style={{ fontSize: '13px', color: '#374151' }}>{d.incident}</div></div>)}
+            {unmarkedCount === 0 && maintenanceOpen.length === 0 && disciplineOpen.length === 0 && <div style={{ textAlign: 'center', padding: '20px', color: '#16a34a', fontWeight: '600' }}>✅ All clear! No urgent items.</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TAB: HOUSEMASTER JOURNAL
+// ══════════════════════════════════════════════════════════════
+function JournalTab({ currentHousemaster }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [date, setDate] = useState(today())
+  const [search, setSearch] = useState('')
+  const mobile = useMobileView()
+  const JOURNAL_CATEGORIES = ['General', 'Assembly', 'Discipline', 'Medical', 'Maintenance', 'Parent Call', 'Staff Handover', 'Inspection', 'Event']
+  const [form, setForm] = useState({ entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false })
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('housemaster_journal').select('*').order('created_at', { ascending: false })
+    setEntries(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const handleSave = async e => {
+    e.preventDefault(); setSaving(true)
+    const { error } = await supabase.from('housemaster_journal').insert([{ ...form, housemaster_name: currentHousemaster?.name || 'Unknown' }])
+    if (error) alert('Error: ' + error.message)
+    else { setForm({ entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false }); setShowForm(false); load() }
+    setSaving(false)
+  }
+
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this journal entry?')) return
+    await supabase.from('housemaster_journal').delete().eq('id', id)
+    load()
+  }
+
+  const filtered = useMemo(() => {
+    let f = entries
+    if (date) f = f.filter(e => e.entry_date === date)
+    if (search) { const q = search.toLowerCase(); f = f.filter(e => (e.title || '').toLowerCase().includes(q) || (e.content || '').toLowerCase().includes(q) || (e.category || '').toLowerCase().includes(q)) }
+    return f
+  }, [entries, date, search])
+
+  const categoryColors = { General: '#1e3a5f', Assembly: '#16a34a', Discipline: '#dc2626', Medical: '#7c3aed', Maintenance: '#ca8a04', 'Parent Call': '#1d4ed8', 'Staff Handover': '#0891b2', Inspection: '#374151', Event: '#059669' }
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, flex: 1 }} />
+          <button onClick={() => setShowForm(!showForm)} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '📝'}</button>
+        </div>
+        {showForm && (
+          <div style={{ ...mobileCard, marginBottom: '12px' }}>
+            <form onSubmit={handleSave}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="date" value={form.entry_date} onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))} required style={{ ...inp, flex: 1 }} />
+                  <input type="time" value={form.entry_time} onChange={e => setForm(f => ({ ...f, entry_time: e.target.value }))} style={{ ...inp, flex: 1 }} />
+                </div>
+                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{JOURNAL_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Entry title..." required style={inp} />
+                <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={4} placeholder="Write your notes here..." required style={{ ...inp, resize: 'vertical' }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151' }}><input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} style={{ width: '20px', height: '20px' }} />🚩 Flag as important</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+        <MobileCardList>
+          {filtered.map(e => (
+            <MobileRecordCard key={e.id} accentColor={categoryColors[e.category] || '#1e3a5f'}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a5f') + '15', color: categoryColors[e.category] || '#1e3a5f' }}>{e.category}</span>
+                  {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
+                </div>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{e.entry_time}</span>
+              </div>
+              <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', marginBottom: '4px' }}>{e.title}</div>
+              <div style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{e.content}</div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>📝 {e.housemaster_name}</span>
+                <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}>🗑 Delete</button>
+              </div>
+            </MobileRecordCard>
+          ))}
+        </MobileCardList>
+        {filtered.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}><div style={{ fontSize: '32px', marginBottom: '8px' }}>📝</div>No journal entries for {date}</div>}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, width: 'auto' }} />
+          <input placeholder="🔍 Search entries..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
+        </div>
+        <button onClick={() => setShowForm(!showForm)} style={btn()}>{showForm ? '✖ Cancel' : '📝 New Entry'}</button>
+      </div>
+      {showForm && (
+        <div style={{ ...card, marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>📝 New Journal Entry</h3>
+          <form onSubmit={handleSave}>
+            <div style={grid2}>
+              <div><label style={lbl}>Date *</label><input type="date" value={form.entry_date} onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>Time</label><input type="time" value={form.entry_time} onChange={e => setForm(f => ({ ...f, entry_time: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Category</label><select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{JOURNAL_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
+              <div><label style={lbl}>House (if specific)</label><input value={form.house} onChange={e => setForm(f => ({ ...f, house: e.target.value }))} placeholder="Leave blank for general" style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Title *</label><input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="Short summary..." style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Content *</label><textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} required rows={5} placeholder="Detailed notes..." style={{ ...inp, resize: 'vertical' }} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151', cursor: 'pointer' }}><input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} />🚩 Flag as important</label></div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Entry'}</button>
+              <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {filtered.map(e => (
+          <div key={e.id} style={{ background: 'white', borderRadius: '12px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${categoryColors[e.category] || '#1e3a5f'}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 10px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a5f') + '15', color: categoryColors[e.category] || '#1e3a5f' }}>{e.category}</span>
+                {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
+                <span style={{ fontSize: '13px', color: '#64748b' }}>{e.entry_date} · {e.entry_time}</span>
+              </div>
+              <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑 Delete</button>
+            </div>
+            <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>{e.title}</h4>
+            <p style={{ fontSize: '14px', color: '#374151', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{e.content}</p>
+            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px' }}>📝 {e.housemaster_name} {e.house && `· 🏠 ${e.house}`}</div>
+          </div>
+        ))}
+        {filtered.length === 0 && <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}><div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div><div style={{ fontSize: '16px', fontWeight: '600' }}>No journal entries found</div></div>}
+      </div>
+    </div>
+  )
+}
 //  TAB 1 — Hostel Allotments
 // ══════════════════════════════════════════════════════════════
 const emptyAllot = {
