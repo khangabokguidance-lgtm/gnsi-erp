@@ -228,6 +228,7 @@ async function loadAllData() {
     selectionsData,
     syllabusCoverageData,
     expensesData,
+    teachingLogsRaw,
   ] = await Promise.all([
     // ── Students (table name is "Students" with capital S) ──
     supabase.from("Students").select("*", {count:"exact", head:true}),
@@ -313,9 +314,12 @@ async function loadAllData() {
 
     // ── Syllabus coverage / teaching ──
     safeFetch(()=>supabase.from("monthly_syllabus").select("teacher_name,subject,batch_name,total_topics,covered_topics,month")),
+    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
 
     // ── Expenses: use accounts with type='Expense' ──
     safeFetch(()=>supabase.from("accounts").select("id,category,amount,entry_date,note,type").eq("type","Expense")),
+    // ── Teaching logs for streak tracker ──
+    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,topic_taught,classwork,remarks")),
   ])
 
   // ════════════════════════════════════════════════════════
@@ -819,6 +823,40 @@ async function loadAllData() {
   const coverageTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,pct:coverageMonthMap[m.key]?.total>0?pct(coverageMonthMap[m.key].covered,coverageMonthMap[m.key].total):0}))
 
   // ════════════════════════════════════════════════════════
+  // TEACHER STREAK TRACKER
+  // ════════════════════════════════════════════════════════
+  const wc = str => str?.trim().split(/\s+/).filter(Boolean).length || 0
+  const teacherLogMap = {}
+  teachingLogsRaw.forEach(l => {
+    const name = l.teacher_name || 'Unknown'
+    if (!teacherLogMap[name]) teacherLogMap[name] = []
+    teacherLogMap[name].push(l)
+  })
+  const teacherStreaks = Object.entries(teacherLogMap).map(([name, logs]) => {
+    const dates = [...new Set(logs.map(l => l.teaching_date))].sort()
+    // Streak calculation
+    let streak = 0, maxStreak = 0, cur = 0
+    const todayD = new Date(today)
+    for (let i = dates.length - 1; i >= 0; i--) {
+      const d = new Date(dates[i])
+      const diff = Math.floor((todayD - d) / 86400000)
+      if (diff === streak) { cur++; streak++ }
+      else break
+    }
+    maxStreak = cur
+    // Missing days this month
+    const monthKey = today.slice(0, 7)
+    const daysInMonth = new Date(todayD.getFullYear(), todayD.getMonth() + 1, 0).getDate()
+    const loggedDays = new Set(logs.filter(l => l.teaching_date?.startsWith(monthKey)).map(l => l.teaching_date)).size
+    const missingDays = todayD.getDate() - loggedDays
+    // Late submissions
+    const lateCount = logs.filter(l => l.late_submission).length
+    // Avg word count
+    const avgWc = logs.length > 0 ? Math.round(logs.reduce((s, l) => s + wc(l.topic_taught) + wc(l.classwork) + wc(l.remarks), 0) / logs.length) : 0
+    return { name, streak: maxStreak, totalLogs: logs.length, missingDays: Math.max(0, missingDays), lateCount, avgWc }
+  }).sort((a, b) => b.streak - a.streak)
+
+  // ════════════════════════════════════════════════════════
   // EXPENSES — accounts table with type='Expense'
   // ════════════════════════════════════════════════════════
   const totalExpenses = expensesData.reduce((s,e)=>s+(Number(e.amount)||0),0)
@@ -932,7 +970,7 @@ async function loadAllData() {
     selectionTrend, selByExam, selByBatch, recentSelections,
 
     // Teaching
-    overallCoverage, teacherCoverage, subjectCoverage, coverageTrend,
+    overallCoverage, teacherCoverage, subjectCoverage, coverageTrend, teacherStreaks,
 
     // Expenses
     totalExpenses, netPL, expenseByCategory, plTrend, recentExpenses,
@@ -1814,6 +1852,28 @@ export default function GNSIDashboard({ scrollToSection }) {
             <KPI icon="✅" label="Covered" value={data.coveredTopics} color={T.emerald} progress={data.coveredTopics} progressMax={data.totalTopics}/>
             <KPI icon="📊" label="Coverage" value={data.overallCoverage} color={data.overallCoverage>=80?T.emerald:data.overallCoverage>=60?T.amber:T.rose} sub={`${data.overallCoverage}%`}/>
           </div>
+          <Panel title="🔥 Teacher Accountability Tracker" sub="Streak · Missing days · Late submissions · Avg word count" style={{marginBottom:16}}>
+            {(data.teacherStreaks||[]).length===0?<EmptyState msg="No teaching logs yet"/>:(
+              <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px"}}>
+                <thead><tr>{["Teacher","Streak","Logs This Month","Missing Days","Late","Avg Words","Status"].map(h=><th key={h} style={{textAlign:"left",fontSize:11,color:T.slate,fontWeight:600,padding:"5px 12px",textTransform:"uppercase",letterSpacing:".06em"}}>{h}</th>)}</tr></thead>
+                <tbody>{(data.teacherStreaks||[]).map((t,i)=>{
+                  const status = t.missingDays===0&&t.lateCount===0?"Excellent":t.missingDays<=2&&t.lateCount<=1?"Good":t.missingDays<=5?"Warning":"At Risk"
+                  const statusCol = {Excellent:T.emerald,Good:T.sky,Warning:T.amber,"At Risk":T.rose}[status]
+                  return(
+                    <tr key={t.name}>
+                      <td style={{fontSize:12,fontWeight:700,color:T.white,padding:"10px 12px",background:"rgba(255,255,255,.03)",borderRadius:"10px 0 0 10px"}}>{t.name}</td>
+                      <td style={{padding:"10px 12px",background:"rgba(255,255,255,.03)"}}><span style={{fontSize:14,fontWeight:900,color:t.streak>=7?T.emerald:t.streak>=3?T.amber:T.rose}}>🔥 {t.streak}d</span></td>
+                      <td style={{fontSize:13,fontWeight:700,color:T.white,padding:"10px 12px",background:"rgba(255,255,255,.03)"}}>{t.totalLogs}</td>
+                      <td style={{padding:"10px 12px",background:"rgba(255,255,255,.03)"}}><span style={{fontSize:13,fontWeight:700,color:t.missingDays===0?T.emerald:t.missingDays<=2?T.amber:T.rose}}>{t.missingDays}</span></td>
+                      <td style={{padding:"10px 12px",background:"rgba(255,255,255,.03)"}}><span style={{fontSize:13,fontWeight:700,color:t.lateCount===0?T.emerald:t.lateCount<=2?T.amber:T.rose}}>{t.lateCount}</span></td>
+                      <td style={{padding:"10px 12px",background:"rgba(255,255,255,.03)"}}><span style={{fontSize:13,fontWeight:700,color:t.avgWc>=100?T.emerald:t.avgWc>=50?T.amber:T.rose}}>{t.avgWc}</span></td>
+                      <td style={{padding:"10px 12px",background:"rgba(255,255,255,.03)",borderRadius:"0 10px 10px 0"}}><Badge label={status} color={statusCol}/></td>
+                    </tr>
+                  )
+                })}</tbody>
+              </table>
+            )}
+          </Panel>
           {data.totalTopics===0?(
             <Panel><EmptyState msg="No data in monthly_syllabus table yet. Add syllabus coverage records to track teaching progress."/></Panel>
           ):(
