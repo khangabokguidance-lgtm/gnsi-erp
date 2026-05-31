@@ -35,6 +35,7 @@ import Kitchen            from './Kitchen.jsx'
 import Entrance from './Entrance'
 import { LOGO_BASE64 } from './logo'
 import LandingPage from './LandingPage'
+import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 
 
 const ALL_GROUPS = [
@@ -726,6 +727,8 @@ if (!currentUser) {
   }
 
   const renderContent = () => {
+     if (active === 'student-leave') return <StudentSelfService />
+  if (active === 'verify')        return <GatePassVerifyPage />
     if (active === 'dashboard') return isAdmin
       ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
       : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
