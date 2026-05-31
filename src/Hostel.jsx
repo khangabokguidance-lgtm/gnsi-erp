@@ -90,8 +90,8 @@ const TABS = [
   { id: 'discipline',  label: '⚠️ Discipline' },
   { id: 'sickbay',     label: '🏥 Sickbay' },
   { id: 'kitchen',     label: '🍽️ Kitchen' },
-  { id: 'nightduty',   label: '🌙 Night' },
-  { id: 'allotments',  label: '🛏️ Rooms' },
+  { id: 'nightduty',   label: '🍽️ Mess Duty' },
+  { id: 'allotments',  label: '📋 Day Scholar' },
   // ─── NEW: House Master Daily Features ──────────────────
   { id: 'attendance',  label: '✓ Roll Call' },
   { id: 'leave',       label: '🚪 Leave' },
@@ -704,12 +704,55 @@ function AttendanceTab({ students, currentHousemaster }) {
               })}
             </div>
 
+            {/* ── ALERT BANNER: Absent + Unmarked reminders ── */}
+            {(() => {
+              const absentCount   = allRecords.filter(r => r.status === 'Absent').length
+              const unmarkedCount = totalStudents - totalMarked
+              if (absentCount === 0 && unmarkedCount === 0) return null
+              return (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {absentCount > 0 && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '13px 16px', background: '#fff1f2',
+                      border: '1.5px solid #fca5a5', borderRadius: '12px',
+                      fontSize: '13px', color: '#dc2626', fontWeight: '700',
+                    }}>
+                      <span style={{ fontSize: '20px' }}>🔴</span>
+                      <div>
+                        <div>{absentCount} student{absentCount > 1 ? 's' : ''} marked <strong>Absent</strong> today</div>
+                        <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
+                          Verify with housemaster · Check if on approved leave
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {unmarkedCount > 0 && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '13px 16px', background: '#fffbeb',
+                      border: '1.5px solid #fcd34d', borderRadius: '12px',
+                      fontSize: '13px', color: '#92400e', fontWeight: '700',
+                    }}>
+                      <span style={{ fontSize: '20px' }}>⏳</span>
+                      <div>
+                        <div>{unmarkedCount} student{unmarkedCount > 1 ? 's' : ''} still <strong>unmarked</strong></div>
+                        <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
+                          Tap a house below to open roll call
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Unassigned students warning */}
             {(() => {
               const unassigned = activeStudents.filter(s => !s.house)
               if (unassigned.length === 0) return null
               return (
-                <div style={{ marginTop: '16px', padding: '12px 16px', background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: '12px', fontSize: '13px', color: '#9a3412', fontWeight: '600' }}>
+                <div style={{ marginTop: '8px', padding: '12px 16px', background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: '12px', fontSize: '13px', color: '#9a3412', fontWeight: '600' }}>
                   ⚠️ {unassigned.length} students have no house assigned and won't appear in roll call.
                 </div>
               )
@@ -1610,15 +1653,18 @@ function JournalTab({ currentHousemaster }) {
     </div>
   )
 }
-//  TAB 1 — Hostel Allotments
+//  TAB 1 — Day Scholar Student Records
 // ══════════════════════════════════════════════════════════════
-const emptyAllot = {
+const emptyDayScholar = {
   student_id: null, gcc_no: '', student_name: '', class_name: '',
-  hostel_name: '', room_number: '', bed_number: '',
-  allotment_date: today(), status: 'Occupied', remarks: '',
+  parent_name: '', parent_phone: '', address: '',
+  transport_route: '', vehicle_number: '',
+  pickup_point: '', drop_point: '',
+  admission_date: today(), status: 'Active',
+  remarks: '',
 }
 
-function AllotmentsTab({ students }) {
+function DayScholarTab({ students }) {
   const [records,      setRecords]      = useState([])
   const [loading,      setLoading]      = useState(true)
   const [saving,       setSaving]       = useState(false)
@@ -1626,12 +1672,13 @@ function AllotmentsTab({ students }) {
   const [editRec,      setEditRec]      = useState(null)
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
-  const [hostelFilter, setHostelFilter] = useState('All')
-  const [form,         setForm]         = useState(emptyAllot)
+  const [routeFilter,  setRouteFilter]  = useState('All')
+  const [form,         setForm]         = useState(emptyDayScholar)
+  const mobile = useMobileView()
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('hostel_allotments').select('*').order('created_at', { ascending: false })
+    const { data } = await supabase.from('day_scholar_records').select('*').order('created_at', { ascending: false })
     setRecords(data || [])
     setLoading(false)
   }
@@ -1639,114 +1686,204 @@ function AllotmentsTab({ students }) {
 
   const handleStudentSelect = s => {
     setForm(f => ({
-      ...f, student_id: s.id, gcc_no: s.gcc_no || '',
-      student_name: s.name || '', class_name: getStudentClass(s),
-      hostel_name: s.hostel_type || f.hostel_name,
+      ...f,
+      student_id: s.id,
+      gcc_no: s.gcc_no || '',
+      student_name: s.name || '',
+      class_name: getStudentClass(s),
     }))
   }
 
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
     const payload = {
-      student_id: form.student_id || null, gcc_no: form.gcc_no || null,
-      student_name: form.student_name, class_name: form.class_name,
-      hostel_name: form.hostel_name, room_number: form.room_number,
-      bed_number: form.bed_number, allotment_date: form.allotment_date,
-      status: form.status, remarks: form.remarks,
+      student_id: form.student_id || null,
+      gcc_no: form.gcc_no || null,
+      student_name: form.student_name,
+      class_name: form.class_name,
+      parent_name: form.parent_name,
+      parent_phone: form.parent_phone,
+      address: form.address,
+      transport_route: form.transport_route,
+      vehicle_number: form.vehicle_number,
+      pickup_point: form.pickup_point,
+      drop_point: form.drop_point,
+      admission_date: form.admission_date,
+      status: form.status,
+      remarks: form.remarks,
     }
     const { error } = editRec
-      ? await supabase.from('hostel_allotments').update(payload).eq('id', editRec.id)
-      : await supabase.from('hostel_allotments').insert([payload])
+      ? await supabase.from('day_scholar_records').update(payload).eq('id', editRec.id)
+      : await supabase.from('day_scholar_records').insert([payload])
     if (error) alert('Error: ' + error.message)
-    else { setForm(emptyAllot); setShowForm(false); setEditRec(null); load() }
+    else { setForm(emptyDayScholar); setShowForm(false); setEditRec(null); load() }
     setSaving(false)
   }
 
-  const handleStatusChange = async (id, status) => {
-    await supabase.from('hostel_allotments').update({ status }).eq('id', id)
-    setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
-  }
-
   const handleDelete = async id => {
-    if (!window.confirm('Delete this allotment?')) return
-    await supabase.from('hostel_allotments').delete().eq('id', id)
+    if (!window.confirm('Delete this day scholar record?')) return
+    await supabase.from('day_scholar_records').delete().eq('id', id)
     load()
   }
 
   const openEdit = rec => {
     setEditRec(rec)
-    setForm({
-      ...rec,
-      housemaster_name: rec.housemaster_name || '',
-      house: rec.house || '',
-      description: rec.description || '',
-      outcome: rec.outcome || '',
-      status: rec.status || 'Completed',
-    })
+    setForm({ ...emptyDayScholar, ...rec })
     setShowForm(true)
   }
 
-  const enriched = useMemo(() => records.map(r => {
-    if (r.student_id) {
-      const s = students.find(s => s.id === r.student_id)
-      if (s) return { ...r, student_name: s.name, gcc_no: s.gcc_no, class_name: getStudentClass(s) || r.class_name, _house: s.house, _course: s.course }
-    }
-    return r
-  }), [records, students])
+  const uniqueRoutes = [...new Set(records.map(r => r.transport_route).filter(Boolean))]
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
-    return enriched.filter(r =>
+    return records.filter(r =>
       (statusFilter === 'All' || r.status === statusFilter) &&
-      (hostelFilter === 'All' || r.hostel_name === hostelFilter) &&
-      [r.student_name, r.class_name, r.hostel_name, r.room_number, r.bed_number, r.gcc_no, r.remarks]
+      (routeFilter === 'All' || r.transport_route === routeFilter) &&
+      [r.student_name, r.class_name, r.gcc_no, r.parent_name, r.parent_phone, r.transport_route, r.pickup_point, r.address]
         .some(v => (v || '').toLowerCase().includes(q))
     )
-  }, [enriched, search, statusFilter, hostelFilter])
+  }, [records, search, statusFilter, routeFilter])
 
-  const uniqueHostels = [...new Set(records.map(r => r.hostel_name).filter(Boolean))]
-  const occupied = records.filter(r => r.status === 'Occupied').length
-  const vacant   = records.filter(r => r.status === 'Vacant').length
-  const shifted  = records.filter(r => r.status === 'Shifted').length
+  const active   = records.filter(r => r.status === 'Active').length
+  const inactive = records.filter(r => r.status === 'Inactive').length
+  const withTransport = records.filter(r => r.transport_route).length
+
+  // ── Supabase migration helper (run once)
+  const createTableSQL = `
+create table if not exists day_scholar_records (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid references students(id),
+  gcc_no text,
+  student_name text not null,
+  class_name text,
+  parent_name text,
+  parent_phone text,
+  address text,
+  transport_route text,
+  vehicle_number text,
+  pickup_point text,
+  drop_point text,
+  admission_date date,
+  status text default 'Active',
+  remarks text,
+  created_at timestamptz default now()
+);`
+
+  if (mobile) {
+    return (
+      <div>
+        <div style={mobileStatGrid}>
+          <StatCard icon="📋" label="Total" value={records.length} color="#1e3a5f" bg="#eff6ff" compact />
+          <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" compact />
+          <StatCard icon="🚌" label="With Transport" value={withTransport} color="#7c3aed" bg="#f5f3ff" compact />
+          <StatCard icon="⏸" label="Inactive" value={inactive} color="#dc2626" bg="#fee2e2" compact />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input placeholder="🔍 Search name, route..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1 }} type="search" />
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyDayScholar) }} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '➕'}</button>
+        </div>
+        {showForm && (
+          <div style={{ ...mobileCard, marginBottom: '12px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>{editRec ? '✏️ Edit Record' : '➕ New Day Scholar'}</h3>
+            <form onSubmit={handleSave}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <label style={lbl}>Search Student</label>
+                  <StudentSearchInput students={students} onSelect={handleStudentSelect} />
+                  {form.student_id && <div style={{ marginTop: 6, padding: '6px 10px', background: '#dcfce7', borderRadius: 6, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✅ {form.student_name}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} placeholder="Student Name *" required style={{ ...inp, flex: 1 }} />
+                  <input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} placeholder="Class/Batch" style={{ ...inp, flex: 1 }} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input value={form.parent_name} onChange={e => setForm(f => ({ ...f, parent_name: e.target.value }))} placeholder="Parent Name" style={{ ...inp, flex: 1 }} />
+                  <input value={form.parent_phone} onChange={e => setForm(f => ({ ...f, parent_phone: e.target.value }))} placeholder="Phone" style={{ ...inp, flex: 1 }} />
+                </div>
+                <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Home Address" style={inp} />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input value={form.transport_route} onChange={e => setForm(f => ({ ...f, transport_route: e.target.value }))} placeholder="Route (e.g. Route 1)" style={{ ...inp, flex: 1 }} />
+                  <input value={form.vehicle_number} onChange={e => setForm(f => ({ ...f, vehicle_number: e.target.value }))} placeholder="Vehicle No." style={{ ...inp, flex: 1 }} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input value={form.pickup_point} onChange={e => setForm(f => ({ ...f, pickup_point: e.target.value }))} placeholder="Pickup Point" style={{ ...inp, flex: 1 }} />
+                  <input value={form.drop_point} onChange={e => setForm(f => ({ ...f, drop_point: e.target.value }))} placeholder="Drop Point" style={{ ...inp, flex: 1 }} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} style={{ ...inp, flex: 1 }} />
+                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={{ ...inp, flex: 1 }}>
+                    <option>Active</option><option>Inactive</option>
+                  </select>
+                </div>
+                <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Remarks..." rows={2} style={{ ...inp, resize: 'vertical' }} />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+        <MobileCardList>
+          {filtered.map(r => (
+            <MobileRecordCard key={r.id} accentColor={r.status === 'Active' ? '#16a34a' : '#94a3b8'}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b' }}>{r.student_name}</div>
+                <span style={statusStyle(r.status)}>{r.status}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                {r.gcc_no ? `GCC-${r.gcc_no}` : '—'} · {r.class_name || '—'}
+              </div>
+              {r.parent_name && <div style={{ fontSize: '12px', color: '#374151' }}>👨‍👩‍👦 {r.parent_name} {r.parent_phone ? `· 📞 ${r.parent_phone}` : ''}</div>}
+              {r.transport_route && <div style={{ fontSize: '12px', color: '#7c3aed', marginTop: '4px' }}>🚌 {r.transport_route} {r.pickup_point ? `· 📍 ${r.pickup_point}` : ''}</div>}
+              <MobileActionButtons actions={[
+                { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
+                { label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' },
+              ]} />
+            </MobileRecordCard>
+          ))}
+        </MobileCardList>
+        {filtered.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No day scholar records found</div>}
+      </div>
+    )
+  }
 
   return (
     <div>
-      {/* FIXED: was repeat(4,1fr) */}
       <div style={statGrid()}>
-        <StatCard icon="📋" label="Total"    value={records.length} color="#1e3a5f" bg="#eff6ff" />
-        <StatCard icon="🛏️" label="Occupied" value={occupied}       color="#16a34a" bg="#dcfce7" />
-        <StatCard icon="🚪" label="Vacant"   value={vacant}         color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🔄" label="Shifted"  value={shifted}        color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="📋" label="Total Day Scholars" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" />
+        <StatCard icon="🚌" label="With Transport" value={withTransport} color="#7c3aed" bg="#f5f3ff" />
+        <StatCard icon="⏸" label="Inactive" value={inactive} color="#dc2626" bg="#fee2e2" />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
-          <input placeholder="🔍 Search student, room, hostel..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 200 }} />
+          <input placeholder="🔍 Search student, route, parent..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 180 }} />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
             <option value="All">All Status</option>
-            {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
+            <option>Active</option><option>Inactive</option>
           </select>
-          <select value={hostelFilter} onChange={e => setHostelFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
-            <option value="All">All Hostels</option>
-            {uniqueHostels.map(h => <option key={h}>{h}</option>)}
+          <select value={routeFilter} onChange={e => setRouteFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="All">All Routes</option>
+            {uniqueRoutes.map(r => <option key={r}>{r}</option>)}
           </select>
         </div>
-        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyAllot) }} style={btn()}>
-          {showForm ? '✖ Cancel' : '➕ Add Allotment'}
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyDayScholar) }} style={btn()}>
+          {showForm ? '✖ Cancel' : '➕ Add Day Scholar'}
         </button>
       </div>
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
           <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '4px' }}>
-            {editRec ? '✏️ Edit Allotment' : '➕ Add Hostel Allotment'}
+            {editRec ? '✏️ Edit Day Scholar Record' : '➕ New Day Scholar Record'}
           </h3>
-          <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>🔗 Student data is pulled live from the Students module</p>
+          <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>🔗 Link to a student from the Students module or enter manually</p>
           <form onSubmit={handleSave}>
-            {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
               <div style={{ gridColumn: '1/-1' }}>
-                <label style={lbl}>🔍 Search & Select Student (live from Students module)</label>
+                <label style={lbl}>🔍 Search & Link Student</label>
                 <StudentSearchInput students={students} onSelect={handleStudentSelect} />
                 {form.student_id && (
                   <div style={{ marginTop: 8, padding: '8px 12px', background: '#dcfce7', borderRadius: 8, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
@@ -1754,47 +1891,31 @@ function AllotmentsTab({ students }) {
                   </div>
                 )}
               </div>
-              <div>
-                <label style={lbl}>GCC No. <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label>
-                <input value={form.gcc_no || ''} onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))} placeholder="e.g. 729" style={inp} />
+              <div><label style={lbl}>GCC No. <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label><input value={form.gcc_no} onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Student Name *</label><input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} required style={inp} /></div>
+              <div><label style={lbl}>Batch / Class</label><input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Admission Date</label><input type="date" value={form.admission_date} onChange={e => setForm(f => ({ ...f, admission_date: e.target.value }))} style={inp} /></div>
+
+              <div style={{ gridColumn: '1/-1', borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>👨‍👩‍👦 Parent / Guardian Details</div>
               </div>
-              <div>
-                <label style={lbl}>Student Name *</label>
-                <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} required placeholder="Auto-filled from search" style={inp} />
+              <div><label style={lbl}>Parent Name</label><input value={form.parent_name} onChange={e => setForm(f => ({ ...f, parent_name: e.target.value }))} placeholder="Father/Mother/Guardian" style={inp} /></div>
+              <div><label style={lbl}>Parent Phone</label><input value={form.parent_phone} onChange={e => setForm(f => ({ ...f, parent_phone: e.target.value }))} placeholder="10-digit mobile" style={inp} /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Home Address</label><textarea value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} rows={2} style={{ ...inp, resize: 'vertical' }} /></div>
+
+              <div style={{ gridColumn: '1/-1', borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>🚌 Transport Details</div>
               </div>
-              <div>
-                <label style={lbl}>Batch / Class <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-filled)</span></label>
-                <input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} placeholder="Auto-filled from student" style={inp} />
-              </div>
-              <div>
-                <label style={lbl}>Hostel Name *</label>
-                <input value={form.hostel_name} onChange={e => setForm(f => ({ ...f, hostel_name: e.target.value }))} required placeholder="Boarder / Day Scholar" style={inp} />
-              </div>
-              <div>
-                <label style={lbl}>Room Number *</label>
-                <input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} required placeholder="101 / A-12" style={inp} />
-              </div>
-              <div>
-                <label style={lbl}>Bed Number</label>
-                <input value={form.bed_number} onChange={e => setForm(f => ({ ...f, bed_number: e.target.value }))} placeholder="Bed 1 / Bed A" style={inp} />
-              </div>
-              <div>
-                <label style={lbl}>Allotment Date *</label>
-                <input type="date" value={form.allotment_date} onChange={e => setForm(f => ({ ...f, allotment_date: e.target.value }))} required style={inp} />
-              </div>
-              <div>
-                <label style={lbl}>Status</label>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
-                  {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div style={{ gridColumn: '1/-1' }}>
-                <label style={lbl}>Remarks</label>
-                <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} rows={2} placeholder="Any extra remarks" style={{ ...inp, resize: 'vertical' }} />
-              </div>
+              <div><label style={lbl}>Route</label><input value={form.transport_route} onChange={e => setForm(f => ({ ...f, transport_route: e.target.value }))} placeholder="Route 1 / Khangabok" style={inp} /></div>
+              <div><label style={lbl}>Vehicle Number</label><input value={form.vehicle_number} onChange={e => setForm(f => ({ ...f, vehicle_number: e.target.value }))} placeholder="MN01 AB 1234" style={inp} /></div>
+              <div><label style={lbl}>Pickup Point</label><input value={form.pickup_point} onChange={e => setForm(f => ({ ...f, pickup_point: e.target.value }))} placeholder="e.g. Market Junction" style={inp} /></div>
+              <div><label style={lbl}>Drop Point</label><input value={form.drop_point} onChange={e => setForm(f => ({ ...f, drop_point: e.target.value }))} placeholder="e.g. Gate No. 2" style={inp} /></div>
+
+              <div><label style={lbl}>Status</label><select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}><option>Active</option><option>Inactive</option></select></div>
+              <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Allotment'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Record'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -1805,10 +1926,10 @@ function AllotmentsTab({ students }) {
         ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
         : (
           <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', minWidth: 1000 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 1000 }}>
               <thead>
                 <tr style={{ background: '#1e3a5f' }}>
-                  {['#', 'GCC', 'Student', 'Batch', 'House', 'Course', 'Hostel', 'Room', 'Bed', 'Date', 'Status', 'Actions'].map(h => (
+                  {['#', 'GCC', 'Student', 'Class', 'Parent', 'Phone', 'Route', 'Pickup', 'Vehicle', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -1823,21 +1944,19 @@ function AllotmentsTab({ students }) {
                     <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
-                      {r.student_id && <div style={{ fontSize: 10, color: '#94a3b8' }}>🔗 linked</div>}
+                      {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
                     </td>
                     <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.class_name || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#7c3aed', fontSize: 12, fontWeight: 600 }}>{r._house || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r._course || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#1e3a5f', fontWeight: 600 }}>{r.hostel_name}</td>
-                    <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.room_number}</td>
-                    <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.bed_number || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r.allotment_date}</td>
+                    <td style={{ padding: '11px 14px', color: '#374151' }}>{r.parent_name || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r.parent_phone || '—'}</td>
                     <td style={{ padding: '11px 14px' }}>
-                      <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)}
-                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}>
-                        {['Occupied', 'Vacant', 'Shifted', 'Vacated'].map(s => <option key={s}>{s}</option>)}
-                      </select>
+                      {r.transport_route
+                        ? <span style={{ padding: '2px 8px', borderRadius: 99, background: '#f5f3ff', color: '#7c3aed', fontSize: 11, fontWeight: 700 }}>🚌 {r.transport_route}</span>
+                        : <span style={{ color: '#94a3b8' }}>—</span>}
                     </td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r.pickup_point || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12, fontFamily: 'monospace' }}>{r.vehicle_number || '—'}</td>
+                    <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => openEdit(r)} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
@@ -1847,97 +1966,170 @@ function AllotmentsTab({ students }) {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No hostel allotments found</td></tr>
+                  <tr><td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No day scholar records found</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )
       }
+
+      {/* SQL hint for first setup */}
+      <details style={{ marginTop: 20 }}>
+        <summary style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>🛠 First time? Show Supabase table SQL</summary>
+        <pre style={{ marginTop: 8, background: '#1e293b', color: '#e2e8f0', padding: '14px', borderRadius: 10, fontSize: 11, overflow: 'auto' }}>{createTableSQL}</pre>
+      </details>
     </div>
   )
 }
-
-// ══════════════════════════════════════════════════════════════
-//  TAB 2 — Daily Schedule
-// ══════════════════════════════════════════════════════════════
-const DEFAULT_WEEKDAY = [
-  { no: 1,  from: '5:30 AM',  to: '6:00 AM',  activity: 'Wake Up Bell & Morning PT' },
-  { no: 2,  from: '6:00 AM',  to: '6:45 AM',  activity: 'PT / Exercise / Sports' },
-  { no: 3,  from: '6:45 AM',  to: '7:30 AM',  activity: 'Bath & Morning Routine' },
-  { no: 4,  from: '7:30 AM',  to: '8:00 AM',  activity: 'Morning Assembly & Roll Call' },
-  { no: 5,  from: '8:00 AM',  to: '8:45 AM',  activity: 'Breakfast' },
-  { no: 6,  from: '9:00 AM',  to: '1:00 PM',  activity: 'Academic Classes' },
-  { no: 7,  from: '1:00 PM',  to: '2:00 PM',  activity: 'Lunch Break' },
-  { no: 8,  from: '2:00 PM',  to: '5:00 PM',  activity: 'Academic Classes' },
-  { no: 9,  from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break' },
-  { no: 10, from: '5:30 PM',  to: '7:00 PM',  activity: 'Recreation / Sports' },
-  { no: 11, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner' },
-  { no: 12, from: '8:00 PM',  to: '10:00 PM', activity: 'Doubt Class / Assignment' },
-  { no: 13, from: '10:00 PM', to: '',         activity: 'Lights Out' },
-]
-const DEFAULT_SUNDAY = [
-  { no: 1, from: '6:00 AM',  to: '7:00 AM',  activity: 'Wake Up & Morning Routine' },
-  { no: 2, from: '7:00 AM',  to: '8:00 AM',  activity: 'Breakfast' },
-  { no: 3, from: '8:00 AM',  to: '12:00 PM', activity: 'Recreation / Free Time' },
-  { no: 4, from: '12:00 PM', to: '1:00 PM',  activity: 'Lunch' },
-  { no: 5, from: '1:00 PM',  to: '5:00 PM',  activity: 'Rest / Recreation' },
-  { no: 6, from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break' },
-  { no: 7, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner' },
-  { no: 8, from: '8:00 PM',  to: '9:30 PM',  activity: 'Academic Review / Self Study' },
-  { no: 9, from: '10:00 PM', to: '',         activity: 'Lights Out' },
-]
-
-const todayKey  = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+// ─── Default activity templates ───────────────────────────────
+const DEFAULT_HOSTEL_ACTIVITIES = {
+  weekday: [
+    { no: 1,  from: '5:30 AM',  to: '6:00 AM',  activity: 'Wake Up Bell & Morning PT',      category: 'Routine' },
+    { no: 2,  from: '6:00 AM',  to: '6:45 AM',  activity: 'PT / Exercise / Sports',          category: 'Physical' },
+    { no: 3,  from: '6:45 AM',  to: '7:30 AM',  activity: 'Bath & Morning Routine',           category: 'Routine' },
+    { no: 4,  from: '7:30 AM',  to: '8:00 AM',  activity: 'Morning Assembly & Roll Call',    category: 'Assembly' },
+    { no: 5,  from: '8:00 AM',  to: '8:45 AM',  activity: 'Breakfast',                       category: 'Meals' },
+    { no: 6,  from: '9:00 AM',  to: '1:00 PM',  activity: 'Academic Classes',                category: 'Academic' },
+    { no: 7,  from: '1:00 PM',  to: '2:00 PM',  activity: 'Lunch Break',                     category: 'Meals' },
+    { no: 8,  from: '2:00 PM',  to: '5:00 PM',  activity: 'Academic Classes',                category: 'Academic' },
+    { no: 9,  from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break',                       category: 'Meals' },
+    { no: 10, from: '5:30 PM',  to: '7:00 PM',  activity: 'Recreation / Sports',             category: 'Physical' },
+    { no: 11, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner',                          category: 'Meals' },
+    { no: 12, from: '8:00 PM',  to: '10:00 PM', activity: 'Doubt Class / Assignment',        category: 'Academic' },
+    { no: 13, from: '10:00 PM', to: '',         activity: 'Lights Out',                      category: 'Routine' },
+  ],
+  sunday: [
+    { no: 1, from: '6:00 AM',  to: '7:00 AM',  activity: 'Wake Up & Morning Routine',        category: 'Routine' },
+    { no: 2, from: '7:00 AM',  to: '8:00 AM',  activity: 'Breakfast',                        category: 'Meals' },
+    { no: 3, from: '8:00 AM',  to: '12:00 PM', activity: 'Recreation / Free Time',           category: 'Physical' },
+    { no: 4, from: '12:00 PM', to: '1:00 PM',  activity: 'Lunch',                            category: 'Meals' },
+    { no: 5, from: '1:00 PM',  to: '5:00 PM',  activity: 'Rest / Recreation',                category: 'Physical' },
+    { no: 6, from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break',                        category: 'Meals' },
+    { no: 7, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner',                           category: 'Meals' },
+    { no: 8, from: '8:00 PM',  to: '9:30 PM',  activity: 'Academic Review / Self Study',     category: 'Academic' },
+    { no: 9, from: '10:00 PM', to: '',         activity: 'Lights Out',                       category: 'Routine' },
+  ],
+  holiday: [
+    { no: 1, from: '6:30 AM',  to: '7:30 AM',  activity: 'Wake Up & Morning Routine',        category: 'Routine' },
+    { no: 2, from: '7:30 AM',  to: '8:30 AM',  activity: 'Breakfast',                        category: 'Meals' },
+    { no: 3, from: '8:30 AM',  to: '12:00 PM', activity: 'Holiday Activities / Excursion',   category: 'Special' },
+    { no: 4, from: '12:00 PM', to: '1:00 PM',  activity: 'Lunch',                            category: 'Meals' },
+    { no: 5, from: '1:00 PM',  to: '5:00 PM',  activity: 'Free Time / Cultural Activities',  category: 'Special' },
+    { no: 6, from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break',                        category: 'Meals' },
+    { no: 7, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner',                           category: 'Meals' },
+    { no: 8, from: '8:00 PM',  to: '9:00 PM',  activity: 'Evening Study Hour',               category: 'Academic' },
+    { no: 9, from: '10:00 PM', to: '',         activity: 'Lights Out',                       category: 'Routine' },
+  ],
 }
-const loadCheck = () => {
-  try { return JSON.parse(localStorage.getItem('gnsi_sched_' + todayKey()) || '{}') }
-  catch { return {} }
+
+const ACTIVITY_CATEGORIES = ['Routine', 'Physical', 'Assembly', 'Meals', 'Academic', 'Special', 'Other']
+
+const CATEGORY_STYLE = {
+  Routine:  { color: '#0891b2', bg: '#e0f2fe' },
+  Physical: { color: '#16a34a', bg: '#dcfce7' },
+  Assembly: { color: '#7c3aed', bg: '#f5f3ff' },
+  Meals:    { color: '#ca8a04', bg: '#fef9c3' },
+  Academic: { color: '#1d4ed8', bg: '#dbeafe' },
+  Special:  { color: '#be185d', bg: '#fce7f3' },
+  Other:    { color: '#374151', bg: '#f1f5f9' },
 }
-const saveCheck = obj => localStorage.setItem('gnsi_sched_' + todayKey(), JSON.stringify(obj))
+
+const SCHED_STORAGE_KEY = 'gnsi_hostel_activities_v2'
+const CHECK_KEY         = () => 'gnsi_sched_check_' + todayKey()
+
+function loadActivities() {
+  try {
+    const saved = localStorage.getItem(SCHED_STORAGE_KEY)
+    return saved ? JSON.parse(saved) : DEFAULT_HOSTEL_ACTIVITIES
+  } catch { return DEFAULT_HOSTEL_ACTIVITIES }
+}
+function saveActivities(obj) {
+  try { localStorage.setItem(SCHED_STORAGE_KEY, JSON.stringify(obj)) } catch {}
+}
+function loadChecks() {
+  try { return JSON.parse(localStorage.getItem(CHECK_KEY()) || '{}') } catch { return {} }
+}
+function saveChecks(obj) {
+  try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch {}
+}
 
 function ScheduleTab() {
-  const [type,     setType]     = useState('weekday')
-  const [schedule, setSchedule] = useState({ weekday: DEFAULT_WEEKDAY, sunday: DEFAULT_SUNDAY })
-  const [checked,  setChecked]  = useState(loadCheck)
-  const [addForm,  setAddForm]  = useState(false)
-  const [editRow,  setEditRow]  = useState(null)
-  const [newRow,   setNewRow]   = useState({ from: '', to: '', activity: '' })
+  const TYPE_TABS = [
+    { id: 'weekday', label: '📅 Mon–Sat' },
+    { id: 'sunday',  label: '🌿 Sunday' },
+    { id: 'holiday', label: '🎉 Holiday' },
+  ]
 
-  const rows = schedule[type]
-  const done = rows.filter(r => checked[`${type}_${r.no}`]).length
-  const pct  = rows.length ? Math.round(done / rows.length * 100) : 0
+  const [type,      setType]      = useState('weekday')
+  const [schedule,  setSchedule]  = useState(loadActivities)
+  const [checked,   setChecked]   = useState(loadChecks)
+  const [adminMode, setAdminMode] = useState(false)
+  const [addForm,   setAddForm]   = useState(false)
+  const [editRow,   setEditRow]   = useState(null)
+  const [catFilter, setCatFilter] = useState('All')
+  const [newRow,    setNewRow]    = useState({ from: '', to: '', activity: '', category: 'Routine' })
+  const mobile = useMobileView()
+
+  // Persist on every schedule change
+  useEffect(() => { saveActivities(schedule) }, [schedule])
+
+  const rows    = schedule[type] || []
+  const visible = catFilter === 'All' ? rows : rows.filter(r => r.category === catFilter)
+  const done    = rows.filter(r => checked[`${type}_${r.no}`]).length
+  const pct     = rows.length ? Math.round(done / rows.length * 100) : 0
+  const todayDayType = (() => {
+    const day = new Date().getDay()
+    if (day === 0) return 'sunday'
+    return 'weekday'
+  })()
 
   const toggle = no => {
     const k    = `${type}_${no}`
     const next = { ...checked, [k]: !checked[k] }
-    setChecked(next); saveCheck(next)
+    setChecked(next); saveChecks(next)
   }
 
   const saveEdit = no => {
-    const from = document.getElementById(`se-from-${no}`)?.value || ''
-    const to   = document.getElementById(`se-to-${no}`)?.value || ''
-    const act  = document.getElementById(`se-act-${no}`)?.value || ''
-    setSchedule(s => ({ ...s, [type]: s[type].map(r => r.no === no ? { ...r, from, to, activity: act } : r) }))
+    const fromEl = document.getElementById(`se-from-${no}`)
+    const toEl   = document.getElementById(`se-to-${no}`)
+    const actEl  = document.getElementById(`se-act-${no}`)
+    const catEl  = document.getElementById(`se-cat-${no}`)
+    setSchedule(s => ({
+      ...s,
+      [type]: s[type].map(r => r.no === no ? {
+        ...r,
+        from: fromEl?.value || r.from,
+        to:   toEl?.value   || r.to,
+        activity: actEl?.value || r.activity,
+        category: catEl?.value || r.category,
+      } : r),
+    }))
     setEditRow(null)
   }
 
   const deleteRow = no => {
-    if (!window.confirm('Delete this row?')) return
+    if (!window.confirm('Remove this activity?')) return
     setSchedule(s => ({ ...s, [type]: s[type].filter(r => r.no !== no) }))
   }
 
   const addRow = () => {
-    if (!newRow.from || !newRow.activity) { alert('From time and activity are required'); return }
+    if (!newRow.from || !newRow.activity) { alert('From time and activity name are required'); return }
     const maxNo = rows.length ? Math.max(...rows.map(r => r.no)) : 0
-    setSchedule(s => ({ ...s, [type]: [...s[type], { no: maxNo + 1, ...newRow }] }))
-    setNewRow({ from: '', to: '', activity: '' }); setAddForm(false)
+    setSchedule(s => ({
+      ...s,
+      [type]: [...s[type], { no: maxNo + 1, ...newRow }],
+    }))
+    setNewRow({ from: '', to: '', activity: '', category: 'Routine' })
+    setAddForm(false)
   }
 
-  const highlight = a => ['Doubt', 'Academic', 'Lunch', 'Dinner', 'Tea', 'Recreation'].some(k => a.includes(k))
-  const actIcon   = a => {
+  const resetToDefault = () => {
+    if (!window.confirm(`Reset ${type} schedule to default? All custom activities will be lost.`)) return
+    setSchedule(s => ({ ...s, [type]: DEFAULT_HOSTEL_ACTIVITIES[type] }))
+  }
+
+  const actIcon = a => {
     if (a.includes('PT') || a.includes('Exercise') || a.includes('Sports')) return '🏃'
     if (a.includes('Doubt') || a.includes('Assignment') || a.includes('Study')) return '📖'
     if (a.includes('Lunch') || a.includes('Dinner') || a.includes('Breakfast')) return '🍽️'
@@ -1949,136 +2141,311 @@ function ScheduleTab() {
     if (a.includes('Lights')) return '💡'
     if (a.includes('Bath') || a.includes('Routine')) return '🚿'
     if (a.includes('Rest')) return '😴'
+    if (a.includes('Holiday') || a.includes('Excursion')) return '🎉'
+    if (a.includes('Cultural')) return '🎭'
     return '•'
   }
 
+  const catStyle = cat => CATEGORY_STYLE[cat] || CATEGORY_STYLE['Other']
+
   return (
     <div>
-      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
-        {[['weekday', '📅 Mon–Sat Schedule'], ['sunday', '🌿 Sunday / Holiday']].map(([id, label]) => (
-          <button key={id} onClick={() => setType(id)} style={{
-            flex: 1, padding: '9px 18px', border: 'none',
-            borderBottom: type === id ? '3px solid #1e3a5f' : '3px solid transparent',
-            background: 'none', cursor: 'pointer', fontSize: 13,
-            fontWeight: type === id ? 700 : 500,
-            color: type === id ? '#1e3a5f' : '#64748b',
-            marginBottom: -2,
-          }}>{label}</button>
+      {/* Header with mode indicator */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: '16px', flexWrap: 'wrap', gap: '10px',
+      }}>
+        <div>
+          <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>🏠 Hostel Daily Activities</h2>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>
+            Today is a <strong style={{ color: todayDayType === 'sunday' ? '#16a34a' : '#1d4ed8' }}>
+              {todayDayType === 'sunday' ? 'Sunday / Rest Day' : 'Weekday'}
+            </strong> · Tracking {rows.length} activities
+          </p>
+        </div>
+        <button
+          onClick={() => setAdminMode(m => !m)}
+          style={{
+            ...btn(adminMode ? '#dc2626' : '#f1f5f9', adminMode ? 'white' : '#374151'),
+            fontSize: '12px', padding: '8px 14px',
+          }}
+        >
+          {adminMode ? '🔓 Admin Mode ON' : '🔒 Admin Mode'}
+        </button>
+      </div>
+
+      {/* Schedule type tabs */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', background: '#f1f5f9', padding: '6px', borderRadius: '12px' }}>
+        {TYPE_TABS.map(t => (
+          <button key={t.id} onClick={() => { setType(t.id); setCatFilter('All') }} style={{
+            flex: 1, padding: '9px 10px', border: 'none', borderRadius: '8px',
+            background: type === t.id ? '#1e3a5f' : 'transparent',
+            color: type === t.id ? 'white' : '#64748b',
+            cursor: 'pointer', fontSize: '13px',
+            fontWeight: type === t.id ? 700 : 500,
+            transition: 'all .15s',
+          }}>{t.label}</button>
         ))}
       </div>
 
-      <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>📋 Today's Schedule Progress</span>
-          <span style={{ fontSize: 12, fontFamily: 'monospace', color: pct === 100 ? '#16a34a' : pct > 50 ? '#ca8a04' : '#64748b' }}>
-            {done} / {rows.length} done · {pct}%
-          </span>
+      {/* Progress tracker */}
+      <div style={{
+        background: '#1e3a5f', borderRadius: '14px', padding: '16px 20px',
+        marginBottom: '16px', color: 'white',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: '700', opacity: 0.8 }}>TODAY'S ACTIVITY PROGRESS</div>
+            <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '2px' }}>
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '28px', fontWeight: '800', color: pct === 100 ? '#4ade80' : '#60a5fa' }}>{pct}%</div>
+            <div style={{ fontSize: '11px', opacity: 0.6 }}>{done} / {rows.length} done</div>
+          </div>
         </div>
-        <div style={{ height: 8, background: '#e2e8f0', borderRadius: 20, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#16a34a' : pct > 50 ? '#ca8a04' : '#1e3a5f', borderRadius: 20, transition: 'width .4s' }} />
+        <div style={{ height: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '99px', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', width: `${pct}%`,
+            background: pct === 100 ? '#4ade80' : pct > 60 ? '#60a5fa' : '#fbbf24',
+            borderRadius: '99px', transition: 'width 0.4s',
+          }} />
         </div>
-        {pct === 100 && <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, marginTop: 6 }}>🎉 All activities completed for today!</div>}
+        {pct === 100 && (
+          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4ade80', fontWeight: '700' }}>
+            🎉 All activities completed for today!
+          </div>
+        )}
+        {/* Category summary row */}
+        <div style={{ display: 'flex', gap: '6px', marginTop: '12px', flexWrap: 'wrap' }}>
+          {ACTIVITY_CATEGORIES.map(cat => {
+            const catRows = rows.filter(r => r.category === cat)
+            if (catRows.length === 0) return null
+            const catDone = catRows.filter(r => checked[`${type}_${r.no}`]).length
+            const cs = catStyle(cat)
+            return (
+              <button key={cat} onClick={() => setCatFilter(catFilter === cat ? 'All' : cat)} style={{
+                padding: '3px 10px', borderRadius: '99px', border: 'none',
+                background: catFilter === cat ? 'white' : 'rgba(255,255,255,0.15)',
+                color: catFilter === cat ? cs.color : 'rgba(255,255,255,0.8)',
+                fontSize: '11px', fontWeight: '700', cursor: 'pointer',
+              }}>
+                {cat} {catDone}/{catRows.length}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      {addForm && (
-        /* FIXED: was '1fr 1fr 2fr auto' — breaks on mobile */
-        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, alignItems: 'end' }}>
-          <div>
-            <label style={lbl}>From *</label>
-            <input value={newRow.from} onChange={e => setNewRow(n => ({ ...n, from: e.target.value }))} placeholder="6:00 AM" style={inp} />
+      {/* Admin controls */}
+      {adminMode && (
+        <div style={{
+          background: '#fff7ed', border: '1.5px solid #fed7aa',
+          borderRadius: '12px', padding: '14px', marginBottom: '14px',
+          display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center',
+        }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400e', flex: 1 }}>
+            🔧 Admin Mode — Edit, add, or remove activities for the {type} schedule
           </div>
-          <div>
-            <label style={lbl}>To</label>
-            <input value={newRow.to} onChange={e => setNewRow(n => ({ ...n, to: e.target.value }))} placeholder="7:00 AM" style={inp} />
+          <button onClick={() => setAddForm(f => !f)} style={{ ...btn(), fontSize: '12px', padding: '7px 14px' }}>
+            {addForm ? '✕ Cancel' : '➕ Add Activity'}
+          </button>
+          <button onClick={resetToDefault} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '12px', padding: '7px 14px' }}>
+            ↺ Reset to Default
+          </button>
+        </div>
+      )}
+
+      {/* Add form (admin only) */}
+      {adminMode && addForm && (
+        <div style={{
+          background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px',
+          padding: '16px', marginBottom: '14px',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', alignItems: 'end',
+        }}>
+          <div><label style={lbl}>From *</label><input value={newRow.from} onChange={e => setNewRow(n => ({ ...n, from: e.target.value }))} placeholder="6:00 AM" style={inp} /></div>
+          <div><label style={lbl}>To</label><input value={newRow.to} onChange={e => setNewRow(n => ({ ...n, to: e.target.value }))} placeholder="7:00 AM" style={inp} /></div>
+          <div style={{ gridColumn: 'span 2' }}><label style={lbl}>Activity Name *</label><input value={newRow.activity} onChange={e => setNewRow(n => ({ ...n, activity: e.target.value }))} placeholder="e.g. Special Assembly" style={inp} /></div>
+          <div><label style={lbl}>Category</label>
+            <select value={newRow.category} onChange={e => setNewRow(n => ({ ...n, category: e.target.value }))} style={inp}>
+              {ACTIVITY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
           </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label style={lbl}>Activity *</label>
-            <input value={newRow.activity} onChange={e => setNewRow(n => ({ ...n, activity: e.target.value }))} placeholder="e.g. Morning PT" style={inp} />
-          </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
             <button onClick={addRow} style={btn('#16a34a')}>✓ Add</button>
             <button onClick={() => setAddForm(false)} style={btn('#f1f5f9', '#374151')}>✕</button>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button onClick={() => setAddForm(true)} style={{ ...btn(), fontSize: 13, padding: '8px 16px' }}>➕ Add Row</button>
-      </div>
-
-      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
-          <thead>
-            <tr style={{ background: '#1e3a5f' }}>
-              {['#', 'From', 'To', 'Activity', '', '✓'].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => {
-              const isDone = !!checked[`${type}_${r.no}`]
-              const isEdit = editRow === r.no
-              if (isEdit) return (
-                <tr key={r.no} style={{ background: '#eff6ff' }}>
-                  <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                  <td style={{ padding: '8px 14px' }}><input id={`se-from-${r.no}`} defaultValue={r.from} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
-                  <td style={{ padding: '8px 14px' }}><input id={`se-to-${r.no}`} defaultValue={r.to} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
-                  <td style={{ padding: '8px 14px' }}><input id={`se-act-${r.no}`} defaultValue={r.activity} style={{ ...inp, padding: '5px 8px', fontSize: 12 }} /></td>
-                  <td style={{ padding: '8px 14px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => saveEdit(r.no)} style={{ ...btn('#16a34a'), fontSize: 11, padding: '4px 10px' }}>✓ Save</button>
-                      <button onClick={() => setEditRow(null)} style={{ ...btn('#f1f5f9', '#374151'), fontSize: 11, padding: '4px 10px' }}>Cancel</button>
-                    </div>
-                  </td>
-                  <td />
-                </tr>
-              )
-              return (
-                <tr key={r.no} style={{ background: isDone ? '#f0fdf4' : highlight(r.activity) ? '#eff6ff' : 'white', borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{r.from}</td>
-                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to || '—'}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
-                    <span style={{ fontWeight: highlight(r.activity) ? 700 : 500, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>{r.activity}</span>
-                  </td>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => setEditRow(r.no)} style={{ background: '#eff6ff', color: '#1e3a5f', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
-                      <button onClick={() => deleteRow(r.no)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✕</button>
-                    </div>
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                    <button onClick={() => toggle(r.no)} title={isDone ? 'Mark pending' : 'Mark done'} style={{
-                      width: 32, height: 32, borderRadius: '50%',
-                      border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
-                      background: isDone ? '#16a34a' : 'transparent',
-                      color: isDone ? 'white' : '#94a3b8',
-                      cursor: 'pointer', fontSize: 15, fontWeight: 700,
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
-                    }}>{isDone ? '✓' : ''}</button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* Activity list */}
+      {mobile ? (
+        /* ── Mobile card view ── */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {visible.map(r => {
+            const isDone  = !!checked[`${type}_${r.no}`]
+            const cs      = catStyle(r.category || 'Other')
+            const isEdit  = adminMode && editRow === r.no
+            if (isEdit) return (
+              <div key={r.no} style={{ background: '#eff6ff', borderRadius: '12px', padding: '14px', border: '2px solid #60a5fa' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <input id={`se-from-${r.no}`} defaultValue={r.from} placeholder="From" style={{ ...inp, fontSize: '13px' }} />
+                  <input id={`se-to-${r.no}`} defaultValue={r.to} placeholder="To" style={{ ...inp, fontSize: '13px' }} />
+                  <input id={`se-act-${r.no}`} defaultValue={r.activity} placeholder="Activity" style={{ ...inp, fontSize: '13px', gridColumn: '1/-1' }} />
+                  <select id={`se-cat-${r.no}`} defaultValue={r.category || 'Routine'} style={{ ...inp, fontSize: '13px', gridColumn: '1/-1' }}>
+                    {ACTIVITY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => saveEdit(r.no)} style={{ ...btn('#16a34a'), flex: 1, fontSize: '12px' }}>✓ Save</button>
+                  <button onClick={() => setEditRow(null)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1, fontSize: '12px' }}>Cancel</button>
+                </div>
+              </div>
+            )
+            return (
+              <div key={r.no} style={{
+                background: isDone ? '#f0fdf4' : 'white',
+                borderRadius: '12px', padding: '13px 14px',
+                boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+                borderLeft: `4px solid ${isDone ? '#16a34a' : cs.color}`,
+                display: 'flex', alignItems: 'center', gap: '12px',
+                opacity: isDone ? 0.75 : 1, transition: 'opacity 0.2s',
+              }}>
+                <div style={{ fontSize: '20px' }}>{actIcon(r.activity)}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '3px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', textDecoration: isDone ? 'line-through' : 'none' }}>{r.activity}</span>
+                    <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: cs.bg, color: cs.color, fontWeight: '700', whiteSpace: 'nowrap' }}>{r.category}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>
+                    {r.from}{r.to ? ` → ${r.to}` : ''}
+                  </div>
+                </div>
+                {adminMode && (
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => setEditRow(r.no)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#eff6ff', color: '#1e3a5f', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
+                    <button onClick={() => deleteRow(r.no)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+                  </div>
+                )}
+                <button onClick={() => toggle(r.no)} style={{
+                  width: '36px', height: '36px', borderRadius: '50%',
+                  border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
+                  background: isDone ? '#16a34a' : 'transparent',
+                  color: isDone ? 'white' : '#94a3b8',
+                  cursor: 'pointer', fontSize: '16px', fontWeight: '700',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>{isDone ? '✓' : ''}</button>
+              </div>
+            )
+          })}
+          {visible.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No activities in this category</div>
+          )}
+        </div>
+      ) : (
+        /* ── Desktop table view ── */
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 560 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['#', 'From', 'To', 'Activity', 'Category', adminMode ? 'Actions' : '', '✓ Done'].map((h, i) => (
+                  <th key={i} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(r => {
+                const isDone = !!checked[`${type}_${r.no}`]
+                const cs     = catStyle(r.category || 'Other')
+                const isEdit = adminMode && editRow === r.no
+                if (isEdit) return (
+                  <tr key={r.no} style={{ background: '#eff6ff' }}>
+                    <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
+                    <td style={{ padding: '8px 14px' }}><input id={`se-from-${r.no}`} defaultValue={r.from} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
+                    <td style={{ padding: '8px 14px' }}><input id={`se-to-${r.no}`} defaultValue={r.to} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
+                    <td style={{ padding: '8px 14px' }}><input id={`se-act-${r.no}`} defaultValue={r.activity} style={{ ...inp, padding: '5px 8px', fontSize: 12 }} /></td>
+                    <td style={{ padding: '8px 14px' }}>
+                      <select id={`se-cat-${r.no}`} defaultValue={r.category || 'Routine'} style={{ ...inp, padding: '5px 8px', fontSize: 12 }}>
+                        {ACTIVITY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '8px 14px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => saveEdit(r.no)} style={{ ...btn('#16a34a'), fontSize: 11, padding: '4px 10px' }}>✓ Save</button>
+                        <button onClick={() => setEditRow(null)} style={{ ...btn('#f1f5f9', '#374151'), fontSize: 11, padding: '4px 10px' }}>Cancel</button>
+                      </div>
+                    </td>
+                    <td />
+                  </tr>
+                )
+                return (
+                  <tr key={r.no} style={{ background: isDone ? '#f0fdf4' : 'white', borderBottom: '1px solid #f1f5f9', opacity: isDone ? 0.75 : 1, transition: 'opacity 0.2s' }}>
+                    <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{r.from}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to || '—'}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
+                      <span style={{ fontWeight: 600, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>{r.activity}</span>
+                    </td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: '99px', fontSize: 11, fontWeight: 700, background: cs.bg, color: cs.color }}>{r.category || 'Other'}</span>
+                    </td>
+                    {adminMode ? (
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => setEditRow(r.no)} style={{ background: '#eff6ff', color: '#1e3a5f', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
+                          <button onClick={() => deleteRow(r.no)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✕</button>
+                        </div>
+                      </td>
+                    ) : <td />}
+                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                      <button onClick={() => toggle(r.no)} title={isDone ? 'Mark pending' : 'Mark done'} style={{
+                        width: 32, height: 32, borderRadius: '50%',
+                        border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
+                        background: isDone ? '#16a34a' : 'transparent',
+                        color: isDone ? 'white' : '#94a3b8',
+                        cursor: 'pointer', fontSize: 15, fontWeight: 700,
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
+                      }}>{isDone ? '✓' : ''}</button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {visible.length === 0 && (
+                <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No activities match this filter</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
+// ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  TAB 3 — Mess Duty Tracker
+// ══════════════════════════════════════════════════════════════
+const MESS_SHIFTS   = ['Breakfast', 'Lunch', 'Tea', 'Dinner', 'Full Day']
+const MESS_ROLES    = ['Mess In-Charge', 'Server', 'Cleaner', 'Cook Assistant', 'Supervisor']
+const MESS_STATUSES = ['Assigned', 'On Duty', 'Completed', 'Absent']
 
-// ══════════════════════════════════════════════════════════════
-//  TAB 3 — Night Duty
-// ══════════════════════════════════════════════════════════════
-const emptyND = {
-  date: '', shift: 'Full Night',
-  staff1_id: null, staff1: '', staff2_id: null, staff2: '',
-  post: 'Main Gate', notes: '',
+const emptyMD = {
+  date: today(), shift: 'Full Day',
+  staff1_id: null, staff1: '', staff1_role: 'Mess In-Charge',
+  staff2_id: null, staff2: '', staff2_role: 'Server',
+  staff3_id: null, staff3: '', staff3_role: 'Cleaner',
+  status: 'Assigned', notes: '',
 }
-const SHIFTS = ['Full Night', 'First Half', 'Second Half']
-const POSTS  = ['Main Gate', 'Hostel Block A', 'Hostel Block B', 'Kitchen', 'Common Area']
+
+const SHIFT_STYLE = {
+  'Breakfast':  { color: '#ca8a04', bg: '#fef9c3', icon: '🌅' },
+  'Lunch':      { color: '#16a34a', bg: '#dcfce7', icon: '☀️' },
+  'Tea':        { color: '#0891b2', bg: '#e0f2fe', icon: '☕' },
+  'Dinner':     { color: '#7c3aed', bg: '#f5f3ff', icon: '🌙' },
+  'Full Day':   { color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
+}
 
 function NightDutyTab({ staffProfiles }) {
   const [records,  setRecords]  = useState([])
@@ -2086,202 +2453,424 @@ function NightDutyTab({ staffProfiles }) {
   const [saving,   setSaving]   = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editRec,  setEditRec]  = useState(null)
-  const [form,     setForm]     = useState(emptyND)
+  const [form,     setForm]     = useState(emptyMD)
   const [month,    setMonth]    = useState(new Date().getMonth())
   const [year,     setYear]     = useState(new Date().getFullYear())
+  const [shiftFilter, setShiftFilter] = useState('All')
+  const mobile = useMobileView()
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('night_duty').select('*').order('date')
-    setRecords(data || []); setLoading(false)
+    const { data } = await supabase.from('mess_duty').select('*').order('date', { ascending: false }).order('shift')
+    setRecords(data || [])
+    setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
     const payload = {
-      date: form.date, shift: form.shift,
-      staff1_id: form.staff1_id || null, staff1: form.staff1,
-      staff2_id: form.staff2_id || null, staff2: form.staff2,
-      post: form.post, notes: form.notes,
+      date: form.date, shift: form.shift, status: form.status, notes: form.notes,
+      staff1_id: form.staff1_id || null, staff1: form.staff1, staff1_role: form.staff1_role,
+      staff2_id: form.staff2_id || null, staff2: form.staff2 || null, staff2_role: form.staff2 ? form.staff2_role : null,
+      staff3_id: form.staff3_id || null, staff3: form.staff3 || null, staff3_role: form.staff3 ? form.staff3_role : null,
     }
     const { error } = editRec
-      ? await supabase.from('night_duty').update(payload).eq('id', editRec.id)
-      : await supabase.from('night_duty').insert([payload])
+      ? await supabase.from('mess_duty').update(payload).eq('id', editRec.id)
+      : await supabase.from('mess_duty').insert([payload])
     if (error) alert('Error: ' + error.message)
-    else { setForm(emptyND); setShowForm(false); setEditRec(null); load() }
+    else { setForm(emptyMD); setShowForm(false); setEditRec(null); load() }
     setSaving(false)
   }
 
-  const handleDelete = async id => {
-    if (!window.confirm('Delete this duty assignment?')) return
-    await supabase.from('night_duty').delete().eq('id', id); load()
+  const handleStatusChange = async (id, status) => {
+    await supabase.from('mess_duty').update({ status }).eq('id', id)
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
   }
 
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this mess duty record?')) return
+    await supabase.from('mess_duty').delete().eq('id', id); load()
+  }
+
+  const openEdit = r => {
+    setEditRec(r)
+    setForm({ ...emptyMD, ...r, staff2: r.staff2 || '', staff3: r.staff3 || '' })
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Enrich staff names from profiles
   const enriched = useMemo(() => records.map(r => {
     const s1 = r.staff1_id ? staffProfiles.find(s => s.id === r.staff1_id) : null
     const s2 = r.staff2_id ? staffProfiles.find(s => s.id === r.staff2_id) : null
+    const s3 = r.staff3_id ? staffProfiles.find(s => s.id === r.staff3_id) : null
     return {
       ...r,
-      staff1: s1 ? s1.name : r.staff1, staff2: s2 ? s2.name : r.staff2,
-      staff1_designation: s1?.designation || s1?.department || '',
-      staff2_designation: s2?.designation || s2?.department || '',
+      staff1: s1?.name || r.staff1,
+      staff2: s2?.name || r.staff2,
+      staff3: s3?.name || r.staff3,
+      staff1_desig: s1?.designation || s1?.department || '',
+      staff2_desig: s2?.designation || s2?.department || '',
+      staff3_desig: s3?.designation || s3?.department || '',
     }
   }), [records, staffProfiles])
 
-  const monthRoster = enriched.filter(r => {
+  const monthRoster = useMemo(() => enriched.filter(r => {
     if (!r.date) return false
     const d = new Date(r.date)
-    return d.getMonth() === month && d.getFullYear() === year
-  })
+    return d.getMonth() === month && d.getFullYear() === year &&
+      (shiftFilter === 'All' || r.shift === shiftFilter)
+  }), [enriched, month, year, shiftFilter])
 
+  // Today's duties
+  const todayDuties = enriched.filter(r => r.date === today())
+
+  // Uncovered days (only for Full Day shift check)
   const daysInMonth  = new Date(year, month + 1, 0).getDate()
-  const coveredDates = new Set(monthRoster.map(r => r.date))
+  const coveredDates = new Set(enriched.filter(r => r.date && new Date(r.date).getMonth() === month && new Date(r.date).getFullYear() === year).map(r => r.date))
   const uncovered    = Array.from({ length: daysInMonth }, (_, i) => {
     const d   = new Date(year, month, i + 1)
     const key = d.toISOString().split('T')[0]
     return coveredDates.has(key) ? null : key
   }).filter(Boolean)
 
+  // Stats
+  const stats = {
+    total:     monthRoster.length,
+    assigned:  monthRoster.filter(r => r.status === 'Assigned').length,
+    onDuty:    monthRoster.filter(r => r.status === 'On Duty').length,
+    completed: monthRoster.filter(r => r.status === 'Completed').length,
+    absent:    monthRoster.filter(r => r.status === 'Absent').length,
+  }
+
+  // ── Staff search clear helper
+  const clearStaff = (slot) => setForm(f => ({ ...f, [`staff${slot}_id`]: null, [`staff${slot}`]: '', [`staff${slot}_role`]: slot === 1 ? 'Mess In-Charge' : slot === 2 ? 'Server' : 'Cleaner' }))
+
+  const StaffSlot = ({ slot, label, required = false }) => (
+    <div>
+      <label style={lbl}>{label}{required ? ' *' : ' '}<span style={{ color: '#94a3b8', fontWeight: 400 }}>(search staff)</span></label>
+      <StaffSearchInput
+        staff={staffProfiles}
+        onSelect={s => setForm(f => ({ ...f, [`staff${slot}_id`]: s.id, [`staff${slot}`]: s.name }))}
+        placeholder={`Search ${label.toLowerCase()}...`}
+      />
+      {form[`staff${slot}`] && (
+        <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>✅ {form[`staff${slot}`]}</span>
+          <button type="button" onClick={() => clearStaff(slot)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕ Clear</button>
+        </div>
+      )}
+      {form[`staff${slot}`] && (
+        <select value={form[`staff${slot}_role`]} onChange={e => setForm(f => ({ ...f, [`staff${slot}_role`]: e.target.value }))} style={{ ...inp, marginTop: 6, fontSize: 12, padding: '6px 10px' }}>
+          {MESS_ROLES.map(r => <option key={r}>{r}</option>)}
+        </select>
+      )}
+    </div>
+  )
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, background: 'white', padding: '14px 20px', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-        <button onClick={() => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }} style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>‹</button>
+      {/* ── Month navigator */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 16, background: 'white', padding: '14px 20px',
+        borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      }}>
+        <button onClick={() => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }}
+          style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>‹</button>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f' }}>{MONTHS[month]} {year}</div>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-            {monthRoster.length} assigned ·{' '}
+            {monthRoster.length} duties assigned ·{' '}
             {uncovered.length > 0
-              ? <span style={{ color: '#dc2626', fontWeight: 700 }}>{uncovered.length} nights uncovered</span>
-              : <span style={{ color: '#16a34a', fontWeight: 700 }}>all covered ✓</span>
+              ? <span style={{ color: '#dc2626', fontWeight: 700 }}>{uncovered.length} days uncovered</span>
+              : <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ all days covered</span>
             }
           </div>
         </div>
-        <button onClick={() => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }} style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>›</button>
+        <button onClick={() => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }}
+          style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>›</button>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyND) }} style={btn()}>
+      {/* ── Today's duties banner */}
+      {todayDuties.length > 0 && (
+        <div style={{
+          background: '#1e3a5f', borderRadius: 12, padding: '14px 18px',
+          marginBottom: 16, color: 'white',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            🍽️ Today's Mess Duties — {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {todayDuties.map(d => {
+              const ss = SHIFT_STYLE[d.shift] || SHIFT_STYLE['Full Day']
+              return (
+                <div key={d.id} style={{
+                  background: 'rgba(255,255,255,0.12)', borderRadius: 10,
+                  padding: '10px 14px', minWidth: 160, flex: '1 1 160px',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+                    {ss.icon} {d.shift}
+                    <span style={{
+                      marginLeft: 8, fontSize: 10, padding: '2px 7px', borderRadius: 99,
+                      background: d.status === 'Completed' ? '#dcfce7' : d.status === 'Absent' ? '#fee2e2' : 'rgba(255,255,255,0.2)',
+                      color: d.status === 'Completed' ? '#16a34a' : d.status === 'Absent' ? '#dc2626' : 'white',
+                      fontWeight: 700,
+                    }}>{d.status}</span>
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>
+                    {[
+                      d.staff1 && `${d.staff1} (${d.staff1_role})`,
+                      d.staff2 && `${d.staff2} (${d.staff2_role})`,
+                      d.staff3 && `${d.staff3} (${d.staff3_role})`,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Stats */}
+      <div style={mobile ? mobileStatGrid : statGrid(130)}>
+        <StatCard icon="📋" label="Total"     value={stats.total}     color="#1e3a5f" bg="#eff6ff" compact={mobile} />
+        <StatCard icon="✅" label="Completed" value={stats.completed} color="#16a34a" bg="#dcfce7" compact={mobile} />
+        <StatCard icon="🟡" label="On Duty"   value={stats.onDuty}   color="#ca8a04" bg="#fef9c3" compact={mobile} />
+        <StatCard icon="❌" label="Absent"    value={stats.absent}    color="#dc2626" bg="#fee2e2" compact={mobile} />
+      </div>
+
+      {/* ── Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {['All', ...MESS_SHIFTS].map(s => (
+            <button key={s} onClick={() => setShiftFilter(s)} style={{
+              padding: '6px 12px', borderRadius: 99, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: shiftFilter === s ? '#1e3a5f' : '#f1f5f9',
+              color: shiftFilter === s ? 'white' : '#64748b',
+            }}>{s === 'All' ? '📋 All' : `${SHIFT_STYLE[s]?.icon || ''} ${s}`}</button>
+          ))}
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyMD) }} style={btn()}>
           {showForm ? '✖ Cancel' : '➕ Assign Duty'}
         </button>
       </div>
 
+      {/* ── Form */}
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>{editRec ? '✏️ Edit Duty' : '➕ Assign Night Duty'}</h3>
-          <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Staff pulled live from Staff Profiles module</p>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
+            {editRec ? '✏️ Edit Mess Duty' : '➕ Assign Mess Duty'}
+          </h3>
+          <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Staff pulled live from Staff Profiles · Up to 3 staff per duty slot</p>
           <form onSubmit={handleSave}>
-            {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
               <div>
                 <label style={lbl}>Date *</label>
                 <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={inp} />
               </div>
               <div>
-                <label style={lbl}>Shift</label>
+                <label style={lbl}>Shift *</label>
                 <select value={form.shift} onChange={e => setForm(f => ({ ...f, shift: e.target.value }))} style={inp}>
-                  {SHIFTS.map(s => <option key={s}>{s}</option>)}
+                  {MESS_SHIFTS.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label style={lbl}>Staff 1 * <span style={{ color: '#94a3b8', fontWeight: 400 }}>(search from staff profiles)</span></label>
-                <StaffSearchInput staff={staffProfiles} onSelect={s => setForm(f => ({ ...f, staff1_id: s.id, staff1: s.name }))} placeholder="Search staff 1..." />
-                {form.staff1 && (
-                  <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
-                    ✅ {form.staff1}
-                    <button type="button" onClick={() => setForm(f => ({ ...f, staff1: '', staff1_id: null }))} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕ Clear</button>
-                  </div>
-                )}
-              </div>
-              <div>
-                <label style={lbl}>Staff 2 <span style={{ color: '#94a3b8', fontWeight: 400 }}>(optional)</span></label>
-                <StaffSearchInput staff={staffProfiles} onSelect={s => setForm(f => ({ ...f, staff2_id: s.id, staff2: s.name }))} placeholder="Search staff 2..." />
-                {form.staff2 && (
-                  <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
-                    ✅ {form.staff2}
-                    <button type="button" onClick={() => setForm(f => ({ ...f, staff2: '', staff2_id: null }))} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕ Clear</button>
-                  </div>
-                )}
-              </div>
-              <div>
-                <label style={lbl}>Post / Location</label>
-                <select value={form.post} onChange={e => setForm(f => ({ ...f, post: e.target.value }))} style={inp}>
-                  {POSTS.map(p => <option key={p}>{p}</option>)}
+                <label style={lbl}>Status</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
+                  {MESS_STATUSES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
                 <label style={lbl}>Notes</label>
-                <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes" style={inp} />
+                <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any special instructions..." style={inp} />
               </div>
+
+              {/* Divider */}
+              <div style={{ gridColumn: '1/-1', borderTop: '1px solid #f1f5f9', paddingTop: 16, marginTop: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                  👥 Staff Assignments
+                </div>
+              </div>
+
+              <StaffSlot slot={1} label="Staff 1" required />
+              <StaffSlot slot={2} label="Staff 2" />
+              <StaffSlot slot={3} label="Staff 3" />
             </div>
+
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>
+                {saving ? '⏳ Saving...' : '✅ Save Duty'}
+              </button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
         </div>
       )}
 
-      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 700 }}>
-          <thead>
-            <tr style={{ background: '#1e3a5f' }}>
-              {['#', 'Date', 'Shift', 'Staff 1', 'Staff 2', 'Post', 'Notes', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {monthRoster.length === 0 && (
-              <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No duties assigned for {MONTHS[month]} {year}</td></tr>
-            )}
-            {monthRoster.map((r, i) => (
-              <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                onMouseLeave={e => e.currentTarget.style.background = 'white'}
-              >
-                <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                <td style={{ padding: '11px 14px', fontWeight: 700, color: '#1e293b' }}>{r.date}</td>
-                <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.shift}</td>
-                <td style={{ padding: '11px 14px' }}>
-                  <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staff1}</div>
-                  {r.staff1_designation && <div style={{ fontSize: 10, color: '#94a3b8' }}>{r.staff1_designation}</div>}
-                  {r.staff1_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
-                </td>
-                <td style={{ padding: '11px 14px' }}>
-                  {r.staff2 ? <>
-                    <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staff2}</div>
-                    {r.staff2_designation && <div style={{ fontSize: 10, color: '#94a3b8' }}>{r.staff2_designation}</div>}
-                  </> : '—'}
-                </td>
-                <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.post}</td>
-                <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.notes || '—'}</td>
-                <td style={{ padding: '11px 14px' }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
-                    <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+      {/* ── Records */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+      ) : mobile ? (
+        /* Mobile cards */
+        <MobileCardList>
+          {monthRoster.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+              No mess duties for {MONTHS[month]} {year}
+            </div>
+          )}
+          {monthRoster.map(r => {
+            const ss = SHIFT_STYLE[r.shift] || SHIFT_STYLE['Full Day']
+            return (
+              <MobileRecordCard key={r.id} accentColor={ss.color}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: ss.color }}>{ss.icon} {r.shift}</span>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{r.date}</div>
                   </div>
-                </td>
+                  <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)}
+                    style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui', fontSize: 11 }}>
+                    {MESS_STATUSES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                {/* Staff list */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                  {[
+                    { name: r.staff1, role: r.staff1_role, desig: r.staff1_desig },
+                    { name: r.staff2, role: r.staff2_role, desig: r.staff2_desig },
+                    { name: r.staff3, role: r.staff3_role, desig: r.staff3_desig },
+                  ].filter(s => s.name).map((s, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                      <span style={{ padding: '1px 8px', borderRadius: 99, background: ss.bg, color: ss.color, fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{s.role}</span>
+                      <span style={{ fontWeight: 600, color: '#1e293b' }}>{s.name}</span>
+                      {s.desig && <span style={{ color: '#94a3b8', fontSize: 11 }}>· {s.desig}</span>}
+                    </div>
+                  ))}
+                </div>
+                {r.notes && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginBottom: 8 }}>📝 {r.notes}</div>}
+                <MobileActionButtons actions={[
+                  { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
+                  { label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' },
+                ]} />
+              </MobileRecordCard>
+            )
+          })}
+        </MobileCardList>
+      ) : (
+        /* Desktop table */
+        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 780 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['#', 'Date', 'Shift', 'Staff 1', 'Staff 2', 'Staff 3', 'Status', 'Notes', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {uncovered.length > 0 && (
-        <div style={{ marginTop: 16, background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '14px 18px' }}>
-          <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 13, marginBottom: 8 }}>⚠ {uncovered.length} uncovered nights in {MONTHS[month]}:</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {uncovered.map(d => (
-              <span key={d} style={{ padding: '3px 10px', borderRadius: 99, background: '#fee2e2', color: '#dc2626', fontSize: 12, fontWeight: 600 }}>{d}</span>
-            ))}
-          </div>
+            </thead>
+            <tbody>
+              {monthRoster.length === 0 && (
+                <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                  No mess duties for {MONTHS[month]} {year}
+                </td></tr>
+              )}
+              {monthRoster.map((r, i) => {
+                const ss = SHIFT_STYLE[r.shift] || SHIFT_STYLE['Full Day']
+                return (
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                  >
+                    <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                    <td style={{ padding: '11px 14px', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap' }}>{r.date}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: ss.bg, color: ss.color, whiteSpace: 'nowrap' }}>
+                        {ss.icon} {r.shift}
+                      </span>
+                    </td>
+                    {/* Staff cells */}
+                    {[
+                      { name: r.staff1, role: r.staff1_role, desig: r.staff1_desig, linked: !!r.staff1_id },
+                      { name: r.staff2, role: r.staff2_role, desig: r.staff2_desig, linked: !!r.staff2_id },
+                      { name: r.staff3, role: r.staff3_role, desig: r.staff3_desig, linked: !!r.staff3_id },
+                    ].map((s, si) => (
+                      <td key={si} style={{ padding: '11px 14px' }}>
+                        {s.name ? (
+                          <>
+                            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13 }}>{s.name}</div>
+                            <div style={{ fontSize: 10, color: ss.color, fontWeight: 700 }}>{s.role}</div>
+                            {s.desig && <div style={{ fontSize: 10, color: '#94a3b8' }}>{s.desig}</div>}
+                            {s.linked && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
+                          </>
+                        ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                      </td>
+                    ))}
+                    <td style={{ padding: '11px 14px' }}>
+                      <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)}
+                        style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui' }}>
+                        {MESS_STATUSES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12, maxWidth: 160 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.notes}>{r.notes || '—'}</div>
+                    </td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => openEdit(r)} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                        <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
+
+      {/* ── Uncovered days warning */}
+      {uncovered.length > 0 && (
+        <div style={{ marginTop: 16, background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '14px 18px' }}>
+          <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 13, marginBottom: 8 }}>
+            ⚠ {uncovered.length} days with no mess duty assigned in {MONTHS[month]}:
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {uncovered.map(d => (
+              <button key={d} onClick={() => { setForm(f => ({ ...f, date: d })); setShowForm(true) }}
+                style={{ padding: '3px 10px', borderRadius: 99, background: '#fee2e2', color: '#dc2626', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+                title="Click to assign duty for this date"
+              >{d}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Click any date to quickly assign a duty</div>
+        </div>
+      )}
+
+      {/* ── Supabase SQL */}
+      <details style={{ marginTop: 20 }}>
+        <summary style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>🛠 First time? Show Supabase table SQL</summary>
+        <pre style={{ marginTop: 8, background: '#1e293b', color: '#e2e8f0', padding: '14px', borderRadius: 10, fontSize: 11, overflow: 'auto' }}>{`create table if not exists mess_duty (
+  id          bigserial primary key,
+  date        date not null,
+  shift       text not null,
+  status      text default 'Assigned',
+  notes       text,
+  staff1_id   bigint references staff_profiles(id) on delete set null,
+  staff1      text,
+  staff1_role text,
+  staff2_id   bigint references staff_profiles(id) on delete set null,
+  staff2      text,
+  staff2_role text,
+  staff3_id   bigint references staff_profiles(id) on delete set null,
+  staff3      text,
+  staff3_role text,
+  created_at  timestamptz default now()
+);
+alter table mess_duty disable row level security;`}</pre>
+      </details>
     </div>
   )
 }
-
 // ══════════════════════════════════════════════════════════════
 //  TAB 4 — Discipline
 // ══════════════════════════════════════════════════════════════
@@ -3444,7 +4033,7 @@ function Hostel() {
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor'
 
   const tabContent = {
-    allotments:   <AllotmentsTab  students={students} />,
+    allotments:   <DayScholarTab  students={students} />,
     schedule:     <ScheduleTab />,
     nightduty:    <NightDutyTab   staffProfiles={staffProfiles} />,
     discipline:   <DisciplineTab  students={students} />,
