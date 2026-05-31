@@ -53,7 +53,7 @@ const STAFF_DEPARTMENTS    = ['Academic','Hostel','Admin','Sports','Accounts','S
 const ENQ_DEF  = { student_name:'', parent_name:'', phone:'', class_interest:'', source:'', enquiry_date:today(), follow_up_date:'', status:'New', remarks:'' }
 const VIS_DEF  = { visitor_name:'', phone:'', purpose:'', meeting_with:'', in_time:'', out_time:'', visit_date:today(), id_proof:'', remarks:'' }
 const GP_DEF   = { student_name:'', class_name:'', course:'', reason:'', exit_date:today(), exit_time:'', approved_by:'', parent_informed:'No', status:'Issued', remarks:'' }
-const PI_DEF   = { parent_name:'', student_name:'', class_name:'', course:'', hostel_type:'', house:'', item_name:'', quantity:'1', received_date:today(), received_by:'', status:'Pending', remarks:'' }
+const PI_DEF = { parent_name:'', student_name:'', class_name:'', course:'', hostel_type:'', house:'', item_names:[], quantity:'1', received_date:today(), received_by:'', status:'Pending', remarks:'' }
 const HOSTEL_LEAVE_DEF = { student_name:'', class_name:'', house:'', course:'', hostel_type:'', departure_date:today(), return_date:'', reason:'', status:'Out', remarks:'' }
 const STAFF_LEAVE_DEF  = { staff_name:'', role:'', department:'', leave_type:'', from_date:today(), to_date:'', days:'', approved_by:'', status:'Pending', remarks:'' }
 
@@ -262,23 +262,33 @@ function StudentChip({ student, onClear }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ITEM CATALOGUE PICKER
 // ─────────────────────────────────────────────────────────────────────────────
-function ItemPicker({ value, onChange, customItems, onAddCustom }) {
+function ItemPicker({ value = [], onChange, customItems, onAddCustom }) {
   const [showCustom, setShowCustom] = useState(false)
   const [customVal, setCustomVal]   = useState('')
   const allItems = [...DEFAULT_ITEMS, ...customItems]
+
+  const toggle = item => {
+    if (value.includes(item)) onChange(value.filter(i => i !== item))
+    else onChange([...value, item])
+  }
+
   const commit = () => {
     const v = customVal.trim(); if (!v) return
-    onAddCustom(v); onChange(v); setCustomVal(''); setShowCustom(false)
+    onAddCustom(v); toggle(v); setCustomVal(''); setShowCustom(false)
   }
+
   return (
     <div>
       <div style={{ display:'flex', flexWrap:'wrap', gap:7, marginBottom:10 }}>
-        {allItems.map(item => (
-          <button key={item} type="button" onClick={() => onChange(item)}
-            style={{ padding:'5px 13px', borderRadius:99, border:`1.5px solid ${value===item?'#1e3a5f':'#e2e8f0'}`, background:value===item?'#1e3a5f':'white', color:value===item?'white':'#475569', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
-            {item}
-          </button>
-        ))}
+        {allItems.map(item => {
+          const selected = value.includes(item)
+          return (
+            <button key={item} type="button" onClick={() => toggle(item)}
+              style={{ padding:'5px 13px', borderRadius:99, border:`1.5px solid ${selected?'#1e3a5f':'#e2e8f0'}`, background:selected?'#1e3a5f':'white', color:selected?'white':'#475569', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit', position:'relative' }}>
+              {selected && <span style={{ marginRight:5 }}>✓</span>}{item}
+            </button>
+          )
+        })}
         <button type="button" onClick={() => setShowCustom(v=>!v)}
           style={{ padding:'5px 13px', borderRadius:99, border:'1.5px dashed #94a3b8', background:'white', color:'#64748b', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
           + Custom
@@ -291,11 +301,20 @@ function ItemPicker({ value, onChange, customItems, onAddCustom }) {
           <button type="button" onClick={commit} style={{ padding:'8px 16px', background:'#1e3a5f', color:'white', border:'none', borderRadius:8, cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit' }}>Add</button>
         </div>
       )}
-      {value && <div style={{ fontSize:12, color:'#1e3a5f', fontWeight:700, marginTop:4 }}>✓ Selected: <span style={{ background:'#dbeafe', padding:'2px 10px', borderRadius:99 }}>{value}</span></div>}
+      {value.length > 0 && (
+        <div style={{ marginTop:6, display:'flex', flexWrap:'wrap', gap:6 }}>
+          {value.map(i => (
+            <span key={i} style={{ background:'#dbeafe', color:'#1e3a5f', padding:'3px 10px', borderRadius:99, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:5 }}>
+              {i}
+              <button type="button" onClick={()=>toggle(i)} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b', fontSize:14, lineHeight:1, padding:0 }}>×</button>
+            </span>
+          ))}
+          <span style={{ fontSize:11, color:'#64748b', alignSelf:'center' }}>{value.length} item{value.length!==1?'s':''} selected</span>
+        </div>
+      )}
     </div>
   )
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PRINT FUNCTIONS  (unchanged — keep original print markup)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1589,8 +1608,8 @@ export default function ReceptionPage() {
               e.preventDefault()
               // FIX 2 — require student selection
               if (!piForm.student_name || !piForm.student_name.trim()) { alert('Please search and select a student.'); return }
-              if (!piForm.item_name) { alert('Please select or enter an item.'); return }
-              handleInsert('reception_parent_items', { ...piForm, student_name: piStudent?.name || piForm.student_name }, ()=>{ setPiForm({...PI_DEF, received_date:today()}); setPiStudent(null); setPiResetKey(k=>k+1) })
+              if (!piForm.item_names?.length) { alert('Please select at least one item.'); return }
+handleInsert('reception_parent_items', { ...piForm, student_name: piStudent?.name || piForm.student_name, item_name: (piForm.item_names||[]).join(', ') }, ()=>{ setPiForm({...PI_DEF, received_date:today()}); setPiStudent(null); setPiResetKey(k=>k+1) })
             }}>
               <div style={grid2(mob)}>
                 <div style={span2}>
@@ -1607,12 +1626,12 @@ export default function ReceptionPage() {
                 <FormField label="House / Block"><FormSelect field="house" value={piForm.house} onChange={set_pi} options={HOUSE_OPTIONS} placeholder="Select house…" /></FormField>
                 <FormField label="Quantity"><FormInput field="quantity" value={piForm.quantity} onChange={set_pi} /></FormField>
                 <FormField label="Received Date"><FormInput field="received_date" value={piForm.received_date} onChange={set_pi} type="date" /></FormField>
-                <FormField label="Received By"><FormSelect field="received_by" value={piForm.received_by} onChange={set_pi} options={RECEIVED_BY_OPTIONS} placeholder="Select staff…" /></FormField>
+                <FormField label="Received By (Staff Name)"><FormInput field="received_by" value={piForm.received_by} onChange={set_pi} placeholder="e.g. Th. Priya, John sir…" /></FormField>
                 <FormField label="Status"><FormSelect field="status" value={piForm.status} onChange={set_pi} options={['Pending','Delivered','Returned']} /></FormField>
                 <div style={span2}><FormField label="Remarks"><FormTextarea field="remarks" value={piForm.remarks} onChange={set_pi} /></FormField></div>
                 <div style={span2}>
                   <label style={lbl}>Select Item * <span style={{ textTransform:'none', fontWeight:400, color:'#94a3b8', fontSize:11 }}>(choose or add custom)</span></label>
-                  <ItemPicker value={piForm.item_name} onChange={v=>setPiForm(f=>({...f, item_name:v}))} customItems={customItems} onAddCustom={addCustomItem} />
+                  <ItemPicker value={piForm.item_names||[]} onChange={v=>setPiForm(f=>({...f, item_names:v}))} customItems={customItems} onAddCustom={addCustomItem} />
                 </div>
               </div>
               <SaveBtn label="Record Item" saving={saving} />
