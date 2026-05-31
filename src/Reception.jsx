@@ -1609,14 +1609,19 @@ export default function ReceptionPage() {
               // FIX 2 — require student selection
               if (!piForm.student_name || !piForm.student_name.trim()) { alert('Please search and select a student.'); return }
               if (!piForm.item_names?.length) { alert('Please select at least one item.'); return }
-                handleInsert('reception_parent_items', {
-  ...piForm,
-  student_name: piStudent?.name || piForm.student_name,
-  item_name: (piForm.item_names || []).join(', '),
-  item_names: undefined,   // ← add this line
-}, ()=>{ setPiForm({...PI_DEF, received_date:today()}); setPiStudent(null); setPiResetKey(k=>k+1) })
-            }}>
-              <div style={grid2(mob)}>
+                              // Destructure out item_names so it never reaches Supabase
+              const { item_names, ...restPiForm } = piForm
+              const payload = {
+                ...restPiForm,
+                student_name: piStudent?.name || piForm.student_name,
+                item_name: (item_names || []).join(', '),
+              }
+              handleInsert('reception_parent_items', payload, ()=>{
+                setPiForm({...PI_DEF, received_date:today()})
+                setPiStudent(null)
+                setPiResetKey(k=>k+1)
+              })
+            }}><div style={grid2(mob)}>
                 <div style={span2}>
                   <FormField label="Search & select student * (required)">
                     <StudentAutocomplete students={students} resetKey={piResetKey} onSelect={onSelectPI} />
