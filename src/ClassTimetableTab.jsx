@@ -1,910 +1,730 @@
-// ══════════════════════════════════════════════════════════════
-//  TAB: CLASS TIMETABLE & DOUBT SESSIONS
-//  Drop this file next to your Hostel module and import it.
-//  Then add the two new TABS entries and wire up tabContent.
-// ══════════════════════════════════════════════════════════════
-//
-//  STEP 1 — Add to your TABS array (in the root Hostel file):
-//    { id: 'classtimetable', label: '🗓️ Classes' },
-//    { id: 'doubtsession',   label: '🙋 Doubt'   },
-//
-//  STEP 2 — Add to tabContent in Hostel():
-//    classtimetable: <ClassTimetableTab />,
-//    doubtsession:   <DoubtSessionTab  />,
-//
-//  STEP 3 — Import at top of Hostel file:
-//    import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
-// ══════════════════════════════════════════════════════════════
+// ClassTimetableTab.jsx — GNSI Portal
+// Editable timetable with Supabase persistence + version history
+// ─────────────────────────────────────────────────────────────
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { supabase } from './supabase'
 
-// ─── Shared style tokens (mirrors the Hostel module) ──────────
-const inp = {
-  width: '100%', padding: '12px 14px', borderRadius: '10px',
-  border: '1px solid #d1d5db', fontSize: '16px',
-  boxSizing: 'border-box', backgroundColor: 'white', minHeight: '44px',
+// ── Design tokens ─────────────────────────────────────────────
+const C = {
+  navy:    '#1e3a5f',
+  navyDk:  '#0f2340',
+  gold:    '#c9a84c',
+  bg:      '#f0f4f8',
+  white:   '#ffffff',
+  border:  '#e2e8f0',
+  muted:   '#94a3b8',
+  text:    '#1e293b',
+  textSm:  '#64748b',
 }
-const lbl = {
-  display: 'block', fontSize: '13px', fontWeight: '600',
-  color: '#374151', marginBottom: '6px',
-}
-const btn = (bg = '#1e3a5f', c = 'white') => ({
-  backgroundColor: bg, color: c, border: 'none', borderRadius: '10px',
-  padding: '10px 18px', fontWeight: '600', cursor: 'pointer', fontSize: '13px',
-  minHeight: '40px',
-})
 
-// ─── Colour per batch ─────────────────────────────────────────
+const card  = { background: C.white, borderRadius: 14, padding: '16px', boxShadow: '0 2px 10px rgba(0,0,0,.07)' }
+const inp   = { width: '100%', padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }
+const lbl   = { display: 'block', marginBottom: 4, fontSize: 11, fontWeight: 700, color: C.textSm, textTransform: 'uppercase', letterSpacing: '.04em' }
+
+// ── Batch palette ─────────────────────────────────────────────
 const BATCH_PALETTE = {
-  'Achiever':   { color: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' },
-  'Leader':     { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
-  'Champion':   { color: '#16a34a', bg: '#dcfce7', border: '#6ee7b7' },
-  'Lakshya':    { color: '#ca8a04', bg: '#fef9c3', border: '#fde047' },
-  'Umeed':      { color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
-  'Elite':      { color: '#0891b2', bg: '#e0f2fe', border: '#7dd3fc' },
-  'Prime':      { color: '#059669', bg: '#d1fae5', border: '#6ee7b7' },
+  Achiever:  { color: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' },
+  Leader:    { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
+  Champion:  { color: '#16a34a', bg: '#dcfce7', border: '#6ee7b7' },
+  Lakshya:   { color: '#ca8a04', bg: '#fef9c3', border: '#fde047' },
+  Umeed:     { color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
+  Elite:     { color: '#0891b2', bg: '#e0f2fe', border: '#7dd3fc' },
+  Prime:     { color: '#059669', bg: '#d1fae5', border: '#6ee7b7' },
 }
-const batchPalette = (name) => {
+const batchPalette = name => {
   for (const key of Object.keys(BATCH_PALETTE)) {
     if ((name || '').includes(key)) return BATCH_PALETTE[key]
   }
   return { color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' }
 }
 
-// ─── Subject colour map ───────────────────────────────────────
+// ── Subject colours ───────────────────────────────────────────
 const SUBJECT_COLORS = {
-  'Mathematics': '#1d4ed8', 'Maths': '#1d4ed8', 'Mental': '#1d4ed8',
-  'Science': '#16a34a',
-  'Grammar': '#dc2626', 'Vocabulary': '#b45309', 'Passage': '#b45309',
-  'GK': '#7c3aed', 'General Knowledge': '#7c3aed',
-  'Reasoning': '#0891b2',
+  Mathematics: '#1d4ed8', Maths: '#1d4ed8', Mental: '#1d4ed8',
+  Science: '#16a34a',
+  Grammar: '#dc2626', Vocabulary: '#b45309', Passage: '#b45309',
+  GK: '#7c3aed', 'General Knowledge': '#7c3aed',
+  Reasoning: '#0891b2',
   'Meitei Mayek': '#059669',
-  'Hindi': '#ca8a04',
+  Hindi: '#ca8a04',
   'Self Practice': '#94a3b8',
 }
-const subjectColor = (subject) => {
+const subjectColor = s => {
   for (const key of Object.keys(SUBJECT_COLORS)) {
-    if ((subject || '').toLowerCase().includes(key.toLowerCase())) return SUBJECT_COLORS[key]
+    if ((s || '').toLowerCase().includes(key.toLowerCase())) return SUBJECT_COLORS[key]
   }
-  return '#1e3a5f'
+  return C.navy
 }
 
-// ══════════════════════════════════════════════════════════════
-//  DATA  —  Class Timetable  (Mon–Sat)
-// ══════════════════════════════════════════════════════════════
 const CLASS_BATCHES = [
-  'Achiever (Combined)',
-  'Leader (Sainik)',
-  'Champion (Sainik)',
-  'Lakshya (Navodaya)',
-  'Umeed (Navodaya)',
-  'Elite (Foundation)',
-  'Prime (Foundation)',
+  'Achiever (Combined)', 'Leader (Sainik)', 'Champion (Sainik)',
+  'Lakshya (Navodaya)', 'Umeed (Navodaya)', 'Elite (Foundation)', 'Prime (Foundation)',
 ]
-
-// Each slot: { from, to, slots: [ { batch, subject, teacher } | null ] }
-// null = no class for that batch in that slot
-const CLASS_TIMETABLE = [
-  {
-    from: '7:20 AM', to: '8:10 AM',
-    note: 'Morning slot',
-    slots: [
-      { subject: 'Maths II',     teacher: 'Sir Himan' },
-      null, null, null, null, null, null,
-    ],
-  },
-  {
-    from: '10:20 AM', to: '11:10 AM',
-    slots: [
-      { subject: 'Mathematics I',  teacher: 'Sir Sumanta' },
-      { subject: 'Science',        teacher: 'Sir Arunkumar' },
-      { subject: 'GK',             teacher: 'Sir Deepak' },
-      { subject: 'Meitei Mayek',   teacher: 'Sir Pawan' },
-      { subject: 'Grammar',        teacher: 'Sir Lenin' },
-      { subject: 'Mathematics I',  teacher: 'Sunder' },
-      { subject: 'Reasoning',      teacher: 'Sir Roshan' },
-    ],
-  },
-  {
-    from: '11:10 AM', to: '12:00 PM',
-    slots: [
-      { subject: 'GK',             teacher: 'Sir Deepak' },
-      { subject: 'Reasoning',      teacher: 'Sir Johny' },
-      { subject: 'Grammar',        teacher: 'Sir Bidyachandra' },
-      { subject: 'Mathematics',    teacher: 'Sir Himan' },
-      { subject: 'Meitei Mayek',   teacher: 'Sir Pawan' },
-      { subject: 'Grammar',        teacher: 'Sir Chetan' },
-      { subject: 'Science',        teacher: 'Sir Arjun' },
-    ],
-  },
-  {
-    from: '12:00 PM', to: '12:50 PM',
-    slots: [
-      { subject: 'Grammar',        teacher: 'Sir Bidyachandra' },
-      { subject: 'Mathematics',    teacher: 'Sir Sumanta' },
-      { subject: 'Mathematics II', teacher: 'Sir Sunder' },
-      { subject: 'Mathematics',    teacher: 'Sir Himan' },
-      { subject: 'Mental',         teacher: 'Sir Johny' },
-      { subject: 'Reasoning',      teacher: 'Sir Lenin' },
-      { subject: 'Meitei Mayek',   teacher: 'Madam Sandhya' },
-    ],
-  },
-  {
-    from: '12:50 PM', to: '1:20 PM',
-    isBreak: true,
-    label: '☕ Tea Break',
-    slots: [],
-  },
-  {
-    from: '1:20 PM', to: '2:10 PM',
-    slots: [
-      { subject: 'Reasoning',         teacher: 'Sir Roshan' },
-      { subject: 'Grammar',           teacher: 'Miss Fedrava' },
-      { subject: 'Mathematics',       teacher: 'Sir Sumanta' },
-      { subject: 'Grammar & Vocab',   teacher: 'Sir Chetan' },
-      { subject: 'Mathematics',       teacher: 'Sir Himan' },
-      { subject: 'Meitei Mayek',      teacher: 'Madam Sandhya' },
-      { subject: 'Mathematics I',     teacher: 'Sir Sunder' },
-    ],
-  },
-  {
-    from: '2:10 PM', to: '2:55 PM',
-    slots: [
-      { subject: 'Vocabulary',     teacher: 'Sir Pawan' },
-      { subject: 'Vocabulary',     teacher: 'Sir Chetan' },
-      { subject: 'Reasoning',      teacher: 'Sir Johny' },
-      { subject: 'Mental',         teacher: 'Sir Roshan' },
-      { subject: 'Mathematics',    teacher: 'Sir Himan' },
-      { subject: 'Science',        teacher: 'Sir Arjun' },
-      { subject: 'Grammar',        teacher: 'Sir Lenin' },
-    ],
-  },
-  {
-    from: '2:55 PM', to: '3:40 PM',
-    slots: [
-      { subject: 'Science',        teacher: 'Sir Arunkumar' },
-      { subject: 'GK',             teacher: 'Sir Deepak' },
-      { subject: 'Vocabulary',     teacher: 'Sir Pawan' },
-      null, null, null, null,
-    ],
-  },
-  {
-    from: '3:40 PM', to: '5:30 PM',
-    isBreak: true,
-    label: '⚽ Recreation · 🍵 Tea Break',
-    slots: [],
-  },
-  {
-    from: '5:30 PM', to: '6:20 PM',
-    slots: [
-      null, null, null,
-      { subject: 'Mathematics',    teacher: 'Sir Bronson' },
-      { subject: 'Hindi',          teacher: 'Sir Boy' },
-      null, null,
-    ],
-  },
-  {
-    from: '6:20 PM', to: '7:10 PM',
-    slots: [
-      null,
-      { subject: 'Maths II',       teacher: 'Sir Himan' },
-      null, null,
-      { subject: 'Vocabulary',     teacher: 'Sir Arjun' },
-      null, null,
-    ],
-  },
-  {
-    from: '7:10 PM', to: '8:00 PM',
-    slots: [
-      null, null,
-      { subject: 'Science',        teacher: 'Sir Arunkumar' },
-      null, null, null, null,
-    ],
-  },
-]
-
-// ══════════════════════════════════════════════════════════════
-//  DATA  —  Doubt Sessions  (Mon–Sat)
-// ══════════════════════════════════════════════════════════════
-// All 10 sub-batches
 const DOUBT_BATCHES = [
-  'Achiever A',
-  'Achiever B',
-  'Leader A',
-  'Leader B',
-  'Champion A',
-  'Champion B',
-  'Lakshya',
-  'Umeed',
-  'Elite',
-  'Prime',
+  'Achiever A', 'Achiever B', 'Leader A', 'Leader B',
+  'Champion A', 'Champion B', 'Lakshya', 'Umeed', 'Elite', 'Prime',
 ]
 
-const DOUBT_SESSIONS = [
-  // ── Morning ──────────────────────────────────────────────
-  {
-    from: '6:30 AM', to: '7:20 AM',
-    slots: [
-      { subject: 'GK & Science',   teacher: 'Miss Geetanjali' },
-      { subject: 'GK & Science',   teacher: 'Sir Romesh' },
-      { subject: 'Reasoning',      teacher: 'Sir James' },
-      { subject: 'Grammar',        teacher: 'Sir Adison' },
-      { subject: 'Reasoning',      teacher: 'Sir Umesh' },
-      { subject: 'Passage',        teacher: 'Miss Devia' },
-      { subject: 'Grammar',        teacher: 'Miss Fedrava' },
-      { subject: 'Grammar',        teacher: 'Sir Bidyachandra' },
-      { subject: 'Passage',        teacher: 'Miss Bidyarani' },
-      { subject: 'Science',        teacher: 'Sir Shrinivash' },
-    ],
-  },
-  {
-    from: '7:20 AM', to: '8:10 AM',
-    slots: [
-      { subject: 'Maths II',       teacher: 'Sir Himan' },
-      { subject: 'Reasoning',      teacher: 'Sir James' },
-      { subject: 'GK & Science',   teacher: 'Sir Romesh' },
-      { subject: 'Reasoning',      teacher: 'Sir Umesh' },
-      { subject: 'Grammar',        teacher: 'Sir Adison' },
-      { subject: 'Grammar',        teacher: 'Miss Fedrava' },
-      { subject: 'Passage',        teacher: 'Miss Devia' },
-      { subject: 'Passage',        teacher: 'Miss Bidyarani' },
-      { subject: 'Grammar',        teacher: 'Sir Bidyachandra' },
-      { subject: 'Reasoning',      teacher: 'Miss Geetanjali' },
-    ],
-  },
-  // ── Evening ───────────────────────────────────────────────
-  {
-    from: '5:30 PM', to: '6:20 PM',
-    slots: [
-      { subject: 'Reasoning',      teacher: 'Sir Umesh' },
-      { subject: 'Vocabulary',     teacher: 'Sir James' },
-      { subject: 'Maths I',        teacher: 'Sir Himan' },
-      { subject: 'General Knowledge', teacher: 'Miss Geetanjali' },
-      { subject: 'Vocabulary',     teacher: 'Miss Bindyarani' },
-      { subject: 'Maths II',       teacher: 'Sir Bronson' },
-      { subject: 'Mental',         teacher: 'Sir Shrinivash' },
-      { subject: 'Hindi',          teacher: 'Sir Boy' },
-      null,
-      null,
-    ],
-  },
-  {
-    from: '6:20 PM', to: '7:10 PM',
-    slots: [
-      { subject: 'Grammar',        teacher: 'Sir Adison' },
-      { subject: 'Reasoning',      teacher: 'Sir Umesh' },
-      { subject: 'Vocabulary',     teacher: 'Sir Romesh' },
-      { subject: 'Grammar',        teacher: 'Miss Fedrava' },
-      { subject: 'Vocabulary',     teacher: 'Miss Bindyarani' },
-      { subject: 'General Knowledge', teacher: 'Miss Geetanjali' },
-      { subject: 'Maths II',       teacher: 'Miss Deviya' },
-      { subject: 'Maths I',        teacher: 'Sir Bidyachandra' },
-      { subject: 'Vocabulary',     teacher: 'Sir Arjun' },
-      null,
-    ],
-  },
-  {
-    from: '7:10 PM', to: '8:00 PM',
-    slots: [
-      { subject: 'Vocabulary',     teacher: 'Sir James' },
-      { subject: 'Grammar',        teacher: 'Sir Adison' },
-      { subject: 'Grammar',        teacher: 'Miss Fedrava' },
-      { subject: 'Vocabulary',     teacher: 'Sir Romesh' },
-      { subject: 'Science',        teacher: 'Sir Arunkumar' },
-      { subject: 'Mental',         teacher: 'Sir Shrinivash' },
-      null,
-      { subject: 'Mathematics',    teacher: 'Miss Deviya' },
-      null,
-      null,
-    ],
-  },
-  // ── Night ─────────────────────────────────────────────────
-  {
-    from: '9:00 PM', to: '10:00 PM',
-    slots: [
-      { subject: 'Mathematics I & II', teacher: 'Sir Bidyachandra' },
-      { subject: 'Mathematics I & II', teacher: 'Miss Geetanjali & Miss Deviya' },
-      { subject: 'Mathematics I & II', teacher: 'Sir Shrinivash & Sir Umesh' },
-      { subject: 'Self Practice',  teacher: 'Miss Bidyarani' },
-      { subject: 'Self Practice',  teacher: 'Sir Romesh' },
-      { subject: 'Grammar',        teacher: 'Miss Fredava' },
-      null, null, null, null,
-    ],
-  },
+const SUBJECTS = [
+  'Mathematics I', 'Mathematics II', 'Maths I', 'Maths II', 'Mental Maths',
+  'Science', 'Grammar', 'Vocabulary', 'Passage', 'GK', 'General Knowledge',
+  'Reasoning', 'Meitei Mayek', 'Hindi', 'Self Practice', 'Other',
 ]
 
-// ══════════════════════════════════════════════════════════════
-//  SHARED — SubjectPill
-// ══════════════════════════════════════════════════════════════
-function SubjectPill({ subject, teacher, compact = false }) {
+// ── Pill component ────────────────────────────────────────────
+function SubjectPill({ subject, teacher, compact = false, onClick, editable }) {
   if (!subject) return (
-    <div style={{ padding: compact ? '4px 6px' : '8px 10px', borderRadius: '8px', background: '#f8fafc', color: '#cbd5e1', fontSize: '11px', textAlign: 'center', minHeight: compact ? 'auto' : '54px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      —
+    <div onClick={onClick} style={{
+      padding: compact ? '4px 6px' : '8px 10px', borderRadius: 8,
+      background: editable ? '#fafafa' : '#f8fafc',
+      color: editable ? '#cbd5e1' : '#e2e8f0',
+      fontSize: 11, textAlign: 'center',
+      minHeight: compact ? 'auto' : 54,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      cursor: editable ? 'pointer' : 'default',
+      border: editable ? `1.5px dashed ${C.border}` : 'none',
+      transition: 'all .15s',
+    }}
+      onMouseEnter={e => { if (editable) e.currentTarget.style.borderColor = C.navy }}
+      onMouseLeave={e => { if (editable) e.currentTarget.style.borderColor = C.border }}
+    >
+      {editable ? '+ Add' : '—'}
     </div>
   )
   const c = subjectColor(subject)
   return (
-    <div style={{
-      borderRadius: '8px',
-      background: c + '12',
-      borderLeft: `3px solid ${c}`,
+    <div onClick={onClick} style={{
+      borderRadius: 8, background: c + '12', borderLeft: `3px solid ${c}`,
       padding: compact ? '6px 8px' : '8px 10px',
-      minHeight: compact ? 'auto' : '54px',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      gap: '2px',
-    }}>
-      <div style={{ fontSize: compact ? '10px' : '12px', fontWeight: '700', color: c, lineHeight: 1.2 }}>{subject}</div>
-      <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.2 }}>{teacher}</div>
+      minHeight: compact ? 'auto' : 54,
+      display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
+      cursor: editable ? 'pointer' : 'default',
+      transition: 'all .15s',
+      outline: editable ? `0px solid ${c}40` : 'none',
+    }}
+      onMouseEnter={e => { if (editable) { e.currentTarget.style.outline = `2px solid ${c}40`; e.currentTarget.style.transform = 'scale(1.01)' } }}
+      onMouseLeave={e => { if (editable) { e.currentTarget.style.outline = 'none'; e.currentTarget.style.transform = 'scale(1)' } }}
+    >
+      <div style={{ fontSize: compact ? 10 : 12, fontWeight: 700, color: c, lineHeight: 1.2 }}>{subject}</div>
+      <div style={{ fontSize: 11, color: C.textSm, lineHeight: 1.2 }}>{teacher}</div>
+      {editable && <div style={{ fontSize: 9, color: c + '80', marginTop: 2 }}>✏️ click to edit</div>}
     </div>
   )
 }
 
-// ══════════════════════════════════════════════════════════════
-//  SHARED — TeacherView: all classes for one teacher
-// ══════════════════════════════════════════════════════════════
-function TeacherSchedule({ teacher, timetableData, batches, title }) {
-  const slots = timetableData
-    .filter(row => !row.isBreak)
-    .flatMap(row => {
-      const matches = (row.slots || [])
-        .map((s, i) => s && s.teacher && s.teacher.toLowerCase().includes(teacher.toLowerCase())
-          ? { from: row.from, to: row.to, subject: s.subject, batch: batches[i] }
-          : null
-        )
-        .filter(Boolean)
-      return matches
-    })
-
-  if (slots.length === 0) return (
-    <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '13px' }}>
-      No classes found for "{teacher}" in {title}
-    </div>
-  )
+// ── Slot edit modal ───────────────────────────────────────────
+function SlotModal({ slot, batches, onSave, onDelete, onClose }) {
+  const [subject, setSubject]   = useState(slot?.subject || '')
+  const [teacher, setTeacher]   = useState(slot?.teacher || '')
+  const [customSub, setCustom]  = useState(false)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {slots.map((s, i) => {
-        const p = batchPalette(s.batch)
-        return (
-          <div key={i} style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            background: 'white', borderRadius: '10px', padding: '10px 14px',
-            boxShadow: '0 1px 4px rgba(0,0,0,.06)',
-            borderLeft: `4px solid ${p.color}`,
-          }}>
-            <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#1e3a5f', fontWeight: '700', whiteSpace: 'nowrap', minWidth: '120px' }}>
-              {s.from} – {s.to}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: '700', fontSize: '13px', color: subjectColor(s.subject) }}>{s.subject}</div>
-              <div style={{ fontSize: '12px', color: p.color, fontWeight: '600' }}>{s.batch}</div>
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }} onClick={onClose}>
+      <div style={{ ...card, width: '100%', maxWidth: 400, zIndex: 10000 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: C.navy }}>Edit Slot</div>
+            <div style={{ fontSize: 12, color: C.textSm, marginTop: 2 }}>
+              {slot.from} – {slot.to} · <b style={{ color: batchPalette(slot.batch).color }}>{slot.batch}</b>
             </div>
           </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ══════════════════════════════════════════════════════════════
-//  TAB: CLASS TIMETABLE
-// ══════════════════════════════════════════════════════════════
-export function ClassTimetableTab() {
-  const [view, setView] = useState('grid')          // 'grid' | 'batch' | 'teacher'
-  const [selectedBatch, setSelectedBatch] = useState(CLASS_BATCHES[0])
-  const [teacherSearch, setTeacherSearch] = useState('')
-  const [highlightSubject, setHighlightSubject] = useState('')
-
-  // Collect unique teachers from class timetable
-  const allTeachers = useMemo(() => {
-    const set = new Set()
-    CLASS_TIMETABLE.forEach(row => {
-      ;(row.slots || []).forEach(s => { if (s?.teacher) set.add(s.teacher) })
-    })
-    return [...set].sort()
-  }, [])
-
-  const teacherMatches = useMemo(() => {
-    if (!teacherSearch.trim()) return []
-    return allTeachers.filter(t => t.toLowerCase().includes(teacherSearch.toLowerCase())).slice(0, 8)
-  }, [teacherSearch, allTeachers])
-
-  const batchIndex = CLASS_BATCHES.indexOf(selectedBatch)
-  const batchSlots = CLASS_TIMETABLE.filter(r => !r.isBreak && r.slots[batchIndex])
-
-  const uniqueSubjects = useMemo(() => {
-    const set = new Set()
-    CLASS_TIMETABLE.forEach(r => (r.slots || []).forEach(s => { if (s?.subject) set.add(s.subject) }))
-    return [...set].sort()
-  }, [])
-
-  return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>🗓️ Class Timetable</h2>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0' }}>Mon–Sat · {CLASS_BATCHES.length} batches · Fixed schedule</p>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: C.muted }}>×</button>
         </div>
-        {/* View Switcher */}
-        <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', borderRadius: '12px', padding: '4px' }}>
-          {[['grid', '⊞ Full Grid'], ['batch', '👥 By Batch'], ['teacher', '👤 By Teacher']].map(([id, label]) => (
-            <button key={id} onClick={() => setView(id)} style={{
-              padding: '8px 14px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '600',
-              background: view === id ? '#1e3a5f' : 'transparent',
-              color: view === id ? 'white' : '#64748b', cursor: 'pointer',
-            }}>{label}</button>
-          ))}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={lbl}>Subject</label>
+            {!customSub ? (
+              <select style={inp} value={subject} onChange={e => {
+                if (e.target.value === 'Other') { setCustom(true); setSubject('') }
+                else setSubject(e.target.value)
+              }}>
+                <option value="">— None / Remove —</option>
+                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input style={inp} value={subject} onChange={e => setSubject(e.target.value)}
+                placeholder="Type subject name…" autoFocus />
+            )}
+            {customSub && <button onClick={() => setCustom(false)} style={{ fontSize: 11, color: C.navy, background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}>← Back to list</button>}
+          </div>
+
+          <div>
+            <label style={lbl}>Teacher</label>
+            <input style={inp} value={teacher} onChange={e => setTeacher(e.target.value)}
+              placeholder="e.g. Sir Himan, Miss Priya…" />
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button onClick={() => onSave({ subject, teacher })} style={{
+              flex: 1, padding: '10px', borderRadius: 9, border: 'none',
+              background: C.navy, color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+            }}>Save</button>
+            {slot.subject && (
+              <button onClick={onDelete} style={{
+                padding: '10px 16px', borderRadius: 9, border: 'none',
+                background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              }}>Clear</button>
+            )}
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
 
-      {/* ── FULL GRID VIEW ─────────────────────────────────── */}
-      {view === 'grid' && (
-        <>
-          {/* Subject highlight filter */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: '600', color: '#374151' }}>Highlight:</span>
-            <button onClick={() => setHighlightSubject('')} style={{
-              ...btn(highlightSubject === '' ? '#1e3a5f' : '#f1f5f9', highlightSubject === '' ? 'white' : '#374151'),
-              padding: '5px 12px', fontSize: '11px',
-            }}>All</button>
-            {uniqueSubjects.map(s => (
-              <button key={s} onClick={() => setHighlightSubject(s === highlightSubject ? '' : s)} style={{
-                padding: '5px 12px', borderRadius: '8px', border: 'none', fontSize: '11px', fontWeight: '600',
-                cursor: 'pointer',
-                background: highlightSubject === s ? subjectColor(s) : subjectColor(s) + '18',
-                color: highlightSubject === s ? 'white' : subjectColor(s),
-              }}>{s}</button>
-            ))}
+// ── Row edit modal (add/edit time row) ────────────────────────
+function RowModal({ row, isNew, onSave, onDelete, onClose }) {
+  const [fromTime,  setFrom]     = useState(row?.from_time  || '')
+  const [toTime,    setTo]       = useState(row?.to_time    || '')
+  const [isBreak,   setIsBreak]  = useState(row?.is_break   || false)
+  const [breakLabel, setBreakLbl]= useState(row?.break_label|| '')
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }} onClick={onClose}>
+      <div style={{ ...card, width: '100%', maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: C.navy }}>{isNew ? 'Add Time Row' : 'Edit Time Row'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: C.muted }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              <label style={lbl}>From Time</label>
+              <input style={inp} value={fromTime} onChange={e => setFrom(e.target.value)} placeholder="e.g. 7:20 AM" />
+            </div>
+            <div>
+              <label style={lbl}>To Time</label>
+              <input style={inp} value={toTime} onChange={e => setTo(e.target.value)} placeholder="e.g. 8:10 AM" />
+            </div>
           </div>
 
-          {/* Batch legend */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            {CLASS_BATCHES.map(b => {
-              const p = batchPalette(b)
-              return (
-                <span key={b} style={{
-                  padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '700',
-                  background: p.bg, color: p.color, border: `1px solid ${p.border}`,
-                }}>{b}</span>
-              )
-            })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" id="isBreak" checked={isBreak} onChange={e => setIsBreak(e.target.checked)} />
+            <label htmlFor="isBreak" style={{ fontSize: 13, fontWeight: 600, color: C.text, cursor: 'pointer' }}>This is a break row</label>
           </div>
 
-          {/* Full table */}
-          <div style={{ overflowX: 'auto', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '900px' }}>
-              <thead>
-                <tr style={{ background: '#1e3a5f' }}>
-                  <th style={{ padding: '12px 14px', color: 'white', fontWeight: '700', textAlign: 'left', whiteSpace: 'nowrap', minWidth: '140px' }}>Time</th>
-                  {CLASS_BATCHES.map(b => {
-                    const p = batchPalette(b)
-                    return (
-                      <th key={b} style={{ padding: '10px 8px', textAlign: 'center', minWidth: '120px' }}>
-                        <div style={{ background: p.bg, color: p.color, borderRadius: '8px', padding: '4px 8px', fontWeight: '700', fontSize: '11px' }}>{b}</div>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {CLASS_TIMETABLE.map((row, ri) => {
-                  if (row.isBreak) return (
-                    <tr key={ri} style={{ background: '#fef9c3' }}>
-                      <td colSpan={CLASS_BATCHES.length + 1} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '700', color: '#92400e', fontSize: '13px' }}>
-                        {row.label}  ·  {row.from} – {row.to}
-                      </td>
-                    </tr>
-                  )
-                  return (
-                    <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                    >
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '12px', color: '#1e3a5f', fontWeight: '700', whiteSpace: 'nowrap', background: '#f8fafc', borderRight: '2px solid #e2e8f0' }}>
-                        {row.from}<br />
-                        <span style={{ color: '#94a3b8', fontSize: '11px' }}>{row.to}</span>
-                      </td>
-                      {CLASS_BATCHES.map((b, bi) => {
-                        const s = row.slots[bi]
-                        const dimmed = highlightSubject && s?.subject !== highlightSubject
-                        return (
-                          <td key={b} style={{ padding: '6px 6px', verticalAlign: 'top', opacity: dimmed ? 0.25 : 1, transition: 'opacity .15s' }}>
-                            <SubjectPill subject={s?.subject} teacher={s?.teacher} />
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+          {isBreak && (
+            <div>
+              <label style={lbl}>Break Label</label>
+              <input style={inp} value={breakLabel} onChange={e => setBreakLbl(e.target.value)} placeholder="e.g. ☕ Tea Break" />
+            </div>
+          )}
 
-      {/* ── BY BATCH VIEW ─────────────────────────────────── */}
-      {view === 'batch' && (
-        <div>
-          {/* Batch selector */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-            {CLASS_BATCHES.map(b => {
-              const p = batchPalette(b)
-              return (
-                <button key={b} onClick={() => setSelectedBatch(b)} style={{
-                  padding: '8px 16px', borderRadius: '10px', border: `2px solid ${selectedBatch === b ? p.color : p.border}`,
-                  background: selectedBatch === b ? p.bg : 'white', color: p.color,
-                  fontWeight: '700', fontSize: '12px', cursor: 'pointer', transition: 'all .15s',
-                }}>{b}</button>
-              )
-            })}
-          </div>
-
-          {/* Batch schedule */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {CLASS_TIMETABLE.map((row, ri) => {
-              if (row.isBreak) return (
-                <div key={ri} style={{ background: '#fef9c3', borderRadius: '8px', padding: '10px 14px', textAlign: 'center', fontWeight: '700', color: '#92400e', fontSize: '13px' }}>
-                  {row.label}  ·  {row.from} – {row.to}
-                </div>
-              )
-              const s = row.slots[batchIndex]
-              if (!s) return (
-                <div key={ri} style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', opacity: 0.5 }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8', minWidth: '140px' }}>{row.from} – {row.to}</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>— No class</span>
-                </div>
-              )
-              const p = batchPalette(selectedBatch)
-              return (
-                <div key={ri} style={{
-                  display: 'flex', gap: '12px', alignItems: 'center',
-                  background: 'white', borderRadius: '10px', padding: '12px 16px',
-                  boxShadow: '0 1px 6px rgba(0,0,0,.06)',
-                  borderLeft: `4px solid ${subjectColor(s.subject)}`,
-                }}>
-                  <div style={{ minWidth: '140px', fontFamily: 'monospace', fontSize: '12px', color: '#1e3a5f', fontWeight: '700' }}>
-                    {row.from} – {row.to}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '700', fontSize: '14px', color: subjectColor(s.subject) }}>{s.subject}</div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>👨‍🏫 {s.teacher}</div>
-                  </div>
-                </div>
-              )
-            })}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button onClick={() => onSave({ from_time: fromTime, to_time: toTime, is_break: isBreak, break_label: breakLabel })}
+              style={{ flex: 1, padding: 10, borderRadius: 9, border: 'none', background: C.navy, color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              Save
+            </button>
+            {!isNew && (
+              <button onClick={onDelete}
+                style={{ padding: '10px 16px', borderRadius: 9, border: 'none', background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Delete Row
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </div>
+    </div>
+  )
+}
 
-      {/* ── BY TEACHER VIEW ────────────────────────────────── */}
-      {view === 'teacher' && (
-        <div>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={lbl}>Search Teacher</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                value={teacherSearch}
-                onChange={e => setTeacherSearch(e.target.value)}
-                placeholder="Type a teacher's name..."
-                style={inp}
-                type="search"
-              />
-              {teacherMatches.length > 0 && !allTeachers.includes(teacherSearch) && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, background: 'white',
-                  border: '1px solid #d1d5db', borderRadius: '10px', zIndex: 200,
-                  boxShadow: '0 8px 24px rgba(0,0,0,.12)', marginTop: '4px', overflow: 'hidden',
-                }}>
-                  {teacherMatches.map(t => (
-                    <div key={t} onClick={() => setTeacherSearch(t)}
-                      style={{ padding: '12px 14px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', color: '#1e293b', borderBottom: '1px solid #f1f5f9' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                    >{t}</div>
-                  ))}
+// ── Version history panel ─────────────────────────────────────
+function HistoryPanel({ type, onClose, onRestore }) {
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(null)
+
+  useEffect(() => {
+    supabase.from('timetable_history')
+      .select('*').eq('timetable_type', type)
+      .order('created_at', { ascending: false }).limit(20)
+      .then(({ data }) => { setHistory(data || []); setLoading(false) })
+  }, [type])
+
+  const fmtDate = d => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }} onClick={onClose}>
+      <div style={{ ...card, width: '100%', maxWidth: 560, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: C.navy }}>📜 Version History</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: C.muted }}>×</button>
+        </div>
+
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {loading && <div style={{ color: C.muted, padding: 20, textAlign: 'center' }}>Loading history…</div>}
+          {!loading && history.length === 0 && <div style={{ color: C.muted, padding: 20, textAlign: 'center' }}>No history yet</div>}
+          {history.map((h, i) => (
+            <div key={h.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: expanded === i ? '#f0f4f8' : 'white' }}
+                onClick={() => setExpanded(expanded === i ? null : i)}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>{h.change_summary || 'Timetable updated'}</div>
+                  <div style={{ fontSize: 11, color: C.textSm, marginTop: 2 }}>
+                    👤 {h.changed_by} · {fmtDate(h.created_at)}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {onRestore && (
+                    <button onClick={e => { e.stopPropagation(); onRestore(h.snapshot) }}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${C.navy}`, background: 'white', color: C.navy, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      Restore
+                    </button>
+                  )}
+                  <span style={{ color: C.muted, fontSize: 14 }}>{expanded === i ? '▲' : '▼'}</span>
+                </div>
+              </div>
+              {expanded === i && h.snapshot && (
+                <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, background: '#f8fafc' }}>
+                  <div style={{ fontSize: 11, color: C.textSm, fontFamily: 'monospace', maxHeight: 200, overflowY: 'auto' }}>
+                    {JSON.stringify(h.snapshot, null, 2).slice(0, 800)}…
+                  </div>
                 </div>
               )}
             </div>
-          </div>
-
-          {teacherSearch.trim() && (
-            <div style={{ background: 'white', borderRadius: '12px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a5f', margin: '0 0 12px' }}>
-                📋 {teacherSearch}'s Class Schedule
-              </h3>
-              <TeacherSchedule teacher={teacherSearch} timetableData={CLASS_TIMETABLE} batches={CLASS_BATCHES} title="Class Timetable" />
-            </div>
-          )}
-
-          {!teacherSearch.trim() && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-              {allTeachers.map(t => {
-                const classCount = CLASS_TIMETABLE.filter(r => !r.isBreak)
-                  .flatMap(r => r.slots || [])
-                  .filter(s => s?.teacher === t).length
-                return (
-                  <button key={t} onClick={() => setTeacherSearch(t)} style={{
-                    background: 'white', borderRadius: '10px', padding: '12px 14px',
-                    border: '1px solid #e2e8f0', cursor: 'pointer', textAlign: 'left',
-                    boxShadow: '0 1px 4px rgba(0,0,0,.04)', transition: 'all .15s',
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#1e3a5f' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e2e8f0' }}
-                  >
-                    <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>👤 {t}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{classCount} class slot{classCount !== 1 ? 's' : ''}</div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+          ))}
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
-// ══════════════════════════════════════════════════════════════
-//  TAB: DOUBT SESSION
-// ══════════════════════════════════════════════════════════════
-export function DoubtSessionTab() {
-  const [view, setView] = useState('grid')           // 'grid' | 'batch' | 'teacher'
-  const [selectedBatch, setSelectedBatch] = useState(DOUBT_BATCHES[0])
-  const [teacherSearch, setTeacherSearch] = useState('')
-  const [sessionFilter, setSessionFilter] = useState('All')  // All | Morning | Evening | Night
+// ── Main editable timetable grid ──────────────────────────────
+function EditableGrid({ type, batches, editable, currentUser }) {
+  const [rows,      setRows]      = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState(false)
+  const [editSlot,  setEditSlot]  = useState(null)  // { rowId, batchName, from, to, subject, teacher, slotId }
+  const [editRow,   setEditRow]   = useState(null)  // { row } | { isNew: true }
+  const [showHist,  setShowHist]  = useState(false)
+  const [view,      setView]      = useState('grid') // grid | batch | teacher
+  const [selBatch,  setSelBatch]  = useState(batches[0])
+  const [tSearch,   setTSearch]   = useState('')
+  const [toast,     setToast]     = useState(null)
+  const [sessionFilter, setSF]    = useState('All')
 
-  // Unique teachers from doubt sessions
+  const showToast = (msg, color = '#166534', bg = '#dcfce7') => {
+    setToast({ msg, color, bg })
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  // ── Load from Supabase ──────────────────────────────────────
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('timetable_slots')
+      .select('*')
+      .eq('timetable_type', type)
+      .order('sort_order')
+      .order('from_time')
+    if (error) { showToast('Load error: ' + error.message, '#dc2626', '#fee2e2'); setLoading(false); return }
+
+    // Group into time rows
+    const rowMap = {}
+    ;(data || []).forEach(slot => {
+      const key = `${slot.from_time}||${slot.to_time}`
+      if (!rowMap[key]) rowMap[key] = {
+        id: key, from_time: slot.from_time, to_time: slot.to_time,
+        is_break: slot.is_break, break_label: slot.break_label,
+        sort_order: slot.sort_order, slots: {},
+      }
+      if (slot.batch_name) rowMap[key].slots[slot.batch_name] = { id: slot.id, subject: slot.subject, teacher: slot.teacher }
+    })
+    setRows(Object.values(rowMap).sort((a, b) => a.sort_order - b.sort_order))
+    setLoading(false)
+  }, [type])
+
+  useEffect(() => { load() }, [load])
+
+  // ── Save snapshot to history ────────────────────────────────
+  const saveHistory = async (summary) => {
+    const snapshot = rows.map(r => ({ ...r }))
+    await supabase.from('timetable_history').insert([{
+      timetable_type: type,
+      changed_by: currentUser || 'Admin',
+      change_summary: summary,
+      snapshot,
+    }])
+  }
+
+  // ── Update a slot ───────────────────────────────────────────
+  const handleSlotSave = async ({ subject, teacher }) => {
+    if (!editSlot) return
+    setSaving(true)
+    const { rowId, batchName, slotId, from, to } = editSlot
+
+    if (!subject) {
+      // Clear slot — delete from DB
+      if (slotId) {
+        await supabase.from('timetable_slots').delete().eq('id', slotId)
+        await saveHistory(`Cleared ${batchName} at ${from}`)
+        showToast('Slot cleared')
+      }
+    } else if (slotId) {
+      // Update existing
+      await supabase.from('timetable_slots').update({ subject, teacher }).eq('id', slotId)
+      await saveHistory(`Updated ${batchName} at ${from}: ${subject} (${teacher})`)
+      showToast('Slot updated ✓')
+    } else {
+      // Insert new slot
+      const rowSortOrder = rows.find(r => r.id === rowId)?.sort_order || 0
+      await supabase.from('timetable_slots').insert([{
+        timetable_type: type, from_time: from, to_time: to,
+        batch_name: batchName, subject, teacher,
+        sort_order: rowSortOrder, is_break: false,
+      }])
+      await saveHistory(`Added ${batchName} at ${from}: ${subject} (${teacher})`)
+      showToast('Slot added ✓')
+    }
+
+    setEditSlot(null)
+    setSaving(false)
+    load()
+  }
+
+  // ── Add/edit time row ───────────────────────────────────────
+  const handleRowSave = async (data) => {
+    setSaving(true)
+    if (editRow?.isNew) {
+      // Insert break row or empty row — one slot per batch
+      const sortOrder = rows.length * 10
+      if (data.is_break) {
+        await supabase.from('timetable_slots').insert([{
+          timetable_type: type, from_time: data.from_time, to_time: data.to_time,
+          is_break: true, break_label: data.break_label, batch_name: null,
+          subject: null, teacher: null, sort_order: sortOrder,
+        }])
+      } else {
+        // Insert empty placeholder per batch
+        const inserts = batches.map((b, i) => ({
+          timetable_type: type, from_time: data.from_time, to_time: data.to_time,
+          is_break: false, batch_name: b, subject: null, teacher: null,
+          sort_order: sortOrder,
+        }))
+        await supabase.from('timetable_slots').insert(inserts)
+      }
+      await saveHistory(`Added time row ${data.from_time} – ${data.to_time}`)
+      showToast('Row added ✓')
+    } else {
+      // Update all slots in this row's time
+      const row = editRow.row
+      await supabase.from('timetable_slots')
+        .update({ from_time: data.from_time, to_time: data.to_time, is_break: data.is_break, break_label: data.break_label })
+        .eq('timetable_type', type)
+        .eq('from_time', row.from_time)
+        .eq('to_time', row.to_time)
+      await saveHistory(`Updated time row to ${data.from_time} – ${data.to_time}`)
+      showToast('Row updated ✓')
+    }
+    setEditRow(null)
+    setSaving(false)
+    load()
+  }
+
+  const handleRowDelete = async () => {
+    if (!editRow?.row) return
+    setSaving(true)
+    const row = editRow.row
+    await supabase.from('timetable_slots')
+      .delete()
+      .eq('timetable_type', type)
+      .eq('from_time', row.from_time)
+      .eq('to_time', row.to_time)
+    await saveHistory(`Deleted time row ${row.from_time} – ${row.to_time}`)
+    showToast('Row deleted')
+    setEditRow(null)
+    setSaving(false)
+    load()
+  }
+
+  // ── Restore snapshot ────────────────────────────────────────
+  const handleRestore = async (snapshot) => {
+    if (!window.confirm('Restore this version? Current timetable will be overwritten.')) return
+    setSaving(true)
+    await supabase.from('timetable_slots').delete().eq('timetable_type', type)
+    // Re-insert from snapshot — flatten rows back to slots
+    const inserts = []
+    snapshot.forEach(row => {
+      if (row.is_break) {
+        inserts.push({ timetable_type: type, from_time: row.from_time, to_time: row.to_time, is_break: true, break_label: row.break_label, batch_name: null, subject: null, teacher: null, sort_order: row.sort_order })
+      } else {
+        Object.entries(row.slots || {}).forEach(([batch, slot]) => {
+          inserts.push({ timetable_type: type, from_time: row.from_time, to_time: row.to_time, is_break: false, batch_name: batch, subject: slot.subject, teacher: slot.teacher, sort_order: row.sort_order })
+        })
+      }
+    })
+    if (inserts.length) await supabase.from('timetable_slots').insert(inserts)
+    await saveHistory('Restored from version history')
+    showToast('Restored ✓')
+    setShowHist(false)
+    setSaving(false)
+    load()
+  }
+
+  // ── Teacher view data ─────────────────────────────────────────
   const allTeachers = useMemo(() => {
     const set = new Set()
-    DOUBT_SESSIONS.forEach(row => (row.slots || []).forEach(s => { if (s?.teacher) set.add(s.teacher) }))
+    rows.forEach(row => Object.values(row.slots || {}).forEach(s => { if (s?.teacher) set.add(s.teacher) }))
     return [...set].sort()
-  }, [])
+  }, [rows])
 
-  const teacherMatches = useMemo(() => {
-    if (!teacherSearch.trim()) return []
-    return allTeachers.filter(t => t.toLowerCase().includes(teacherSearch.toLowerCase())).slice(0, 8)
-  }, [teacherSearch, allTeachers])
+  const teacherSlots = useMemo(() => {
+    if (!tSearch.trim()) return []
+    return rows.filter(r => !r.is_break).flatMap(row =>
+      Object.entries(row.slots || {})
+        .filter(([, s]) => s?.teacher?.toLowerCase().includes(tSearch.toLowerCase()))
+        .map(([batch, s]) => ({ from: row.from_time, to: row.to_time, subject: s.subject, batch }))
+    )
+  }, [tSearch, rows])
 
-  const sessionOf = (from) => {
-    const h = parseInt(from.split(':')[0])
+  // ── Session filter for doubt ──────────────────────────────────
+  const sessionOf = from => {
     const ampm = from.includes('PM') ? 'PM' : 'AM'
+    const h = parseInt(from.split(':')[0])
     if (ampm === 'AM') return 'Morning'
     if (h >= 9) return 'Night'
     return 'Evening'
   }
+  const visibleRows = useMemo(() => {
+    if (type !== 'doubt' || sessionFilter === 'All') return rows
+    return rows.filter(r => r.is_break || sessionOf(r.from_time) === sessionFilter)
+  }, [rows, sessionFilter, type])
 
-  const filteredRows = useMemo(() => {
-    if (sessionFilter === 'All') return DOUBT_SESSIONS
-    return DOUBT_SESSIONS.filter(r => sessionOf(r.from) === sessionFilter)
-  }, [sessionFilter])
+  const batchIndex = batches.indexOf(selBatch)
 
-  const batchIndex = DOUBT_BATCHES.indexOf(selectedBatch)
-
-  // Colour for 10 sub-batches (extend batch palette logic)
-  const batchPaletteDoubt = (name) => {
-    if (name.includes('Achiever')) return BATCH_PALETTE['Achiever']
-    if (name.includes('Leader'))   return BATCH_PALETTE['Leader']
-    if (name.includes('Champion')) return BATCH_PALETTE['Champion']
-    if (name.includes('Lakshya'))  return BATCH_PALETTE['Lakshya']
-    if (name.includes('Umeed'))    return BATCH_PALETTE['Umeed']
-    if (name.includes('Elite'))    return BATCH_PALETTE['Elite']
-    if (name.includes('Prime'))    return BATCH_PALETTE['Prime']
-    return { color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' }
-  }
-
-  const SESSION_ICONS = { Morning: '🌅', Evening: '🌆', Night: '🌙' }
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: C.muted }}>⏳ Loading timetable…</div>
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>🙋 Doubt Sessions</h2>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0' }}>Mon–Sat · Morning, Evening & Night slots · {DOUBT_BATCHES.length} sub-batches</p>
-        </div>
-        {/* View Switcher */}
-        <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', borderRadius: '12px', padding: '4px' }}>
-          {[['grid', '⊞ Full Grid'], ['batch', '👥 By Batch'], ['teacher', '👤 By Teacher']].map(([id, label]) => (
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 10000,
+          background: toast.bg, color: toast.color, padding: '10px 20px',
+          borderRadius: 10, fontWeight: 700, fontSize: 13,
+          boxShadow: '0 4px 16px rgba(0,0,0,.15)',
+          animation: 'fadeIn .2s ease',
+        }}>{toast.msg}</div>
+      )}
+
+      {/* Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        {/* View switcher */}
+        <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', borderRadius: 12, padding: 4 }}>
+          {[['grid', '⊞ Grid'], ['batch', '👥 Batch'], ['teacher', '👤 Teacher']].map(([id, label]) => (
             <button key={id} onClick={() => setView(id)} style={{
-              padding: '8px 14px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '600',
-              background: view === id ? '#1e3a5f' : 'transparent',
-              color: view === id ? 'white' : '#64748b', cursor: 'pointer',
+              padding: '7px 14px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600,
+              background: view === id ? C.navy : 'transparent',
+              color: view === id ? 'white' : C.textSm, cursor: 'pointer',
             }}>{label}</button>
           ))}
         </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {saving && <span style={{ fontSize: 12, color: C.muted }}>Saving…</span>}
+          <button onClick={() => setShowHist(true)} style={{
+            padding: '7px 14px', borderRadius: 8, border: `1.5px solid ${C.border}`,
+            background: 'white', color: C.text, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}>📜 History</button>
+          {editable && (
+            <button onClick={() => setEditRow({ isNew: true })} style={{
+              padding: '7px 14px', borderRadius: 8, border: 'none',
+              background: C.navy, color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            }}>+ Add Row</button>
+          )}
+        </div>
       </div>
 
-      {/* Session filter pills */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        {['All', 'Morning', 'Evening', 'Night'].map(s => (
-          <button key={s} onClick={() => setSessionFilter(s)} style={{
-            padding: '7px 16px', borderRadius: '99px', border: 'none', fontWeight: '600', fontSize: '12px', cursor: 'pointer',
-            background: sessionFilter === s ? '#1e3a5f' : '#f1f5f9',
-            color: sessionFilter === s ? 'white' : '#64748b',
-          }}>
-            {SESSION_ICONS[s] || '•'} {s}
-          </button>
-        ))}
-      </div>
-
-      {/* ── FULL GRID VIEW ─────────────────────────────────── */}
-      {view === 'grid' && (
-        <>
-          {/* Sub-batch legend */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            {DOUBT_BATCHES.map(b => {
-              const p = batchPaletteDoubt(b)
-              return (
-                <span key={b} style={{
-                  padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '700',
-                  background: p.bg, color: p.color, border: `1px solid ${p.border}`,
-                }}>{b}</span>
-              )
-            })}
-          </div>
-
-          <div style={{ overflowX: 'auto', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', minWidth: '1100px' }}>
-              <thead>
-                <tr style={{ background: '#1e3a5f' }}>
-                  <th style={{ padding: '12px 14px', color: 'white', fontWeight: '700', textAlign: 'left', whiteSpace: 'nowrap', minWidth: '130px' }}>Time</th>
-                  {DOUBT_BATCHES.map(b => {
-                    const p = batchPaletteDoubt(b)
-                    return (
-                      <th key={b} style={{ padding: '8px 6px', textAlign: 'center', minWidth: '105px' }}>
-                        <div style={{ background: p.bg, color: p.color, borderRadius: '8px', padding: '4px 6px', fontWeight: '700', fontSize: '10px' }}>{b}</div>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row, ri) => {
-                  const session = sessionOf(row.from)
-                  return (
-                    <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                    >
-                      <td style={{ padding: '8px 14px', background: '#f8fafc', borderRight: '2px solid #e2e8f0', verticalAlign: 'middle' }}>
-                        <div style={{ fontFamily: 'monospace', fontSize: '11px', color: '#1e3a5f', fontWeight: '700' }}>{row.from}</div>
-                        <div style={{ fontFamily: 'monospace', fontSize: '10px', color: '#94a3b8' }}>{row.to}</div>
-                        <div style={{ fontSize: '10px', marginTop: '4px' }}>{SESSION_ICONS[session]} {session}</div>
-                      </td>
-                      {DOUBT_BATCHES.map((b, bi) => {
-                        const s = row.slots[bi]
-                        return (
-                          <td key={b} style={{ padding: '5px 5px', verticalAlign: 'top' }}>
-                            <SubjectPill subject={s?.subject} teacher={s?.teacher} compact />
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
+      {/* Session filter (doubt only) */}
+      {type === 'doubt' && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          {['All', 'Morning', 'Evening', 'Night'].map(s => (
+            <button key={s} onClick={() => setSF(s)} style={{
+              padding: '6px 14px', borderRadius: 99, border: 'none', fontWeight: 600, fontSize: 12, cursor: 'pointer',
+              background: sessionFilter === s ? C.navy : '#f1f5f9',
+              color: sessionFilter === s ? 'white' : C.textSm,
+            }}>{s}</button>
+          ))}
+        </div>
       )}
 
-      {/* ── BY BATCH VIEW ─────────────────────────────────── */}
+      {/* ── GRID VIEW ──────────────────────────────────────── */}
+      {view === 'grid' && (
+        <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: batches.length * 120 + 150 }}>
+            <thead>
+              <tr style={{ background: C.navy }}>
+                <th style={{ padding: '12px 14px', color: 'white', fontWeight: 700, textAlign: 'left', minWidth: 150 }}>Time</th>
+                {batches.map(b => {
+                  const p = batchPalette(b)
+                  return (
+                    <th key={b} style={{ padding: '10px 6px', textAlign: 'center', minWidth: 120 }}>
+                      <div style={{ background: p.bg, color: p.color, borderRadius: 8, padding: '4px 8px', fontWeight: 700, fontSize: 11 }}>{b}</div>
+                    </th>
+                  )
+                })}
+                {editable && <th style={{ padding: '10px 8px', color: 'white', fontSize: 11, minWidth: 60 }}>Edit</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((row, ri) => {
+                if (row.is_break) return (
+                  <tr key={ri} style={{ background: '#fef9c3' }}>
+                    <td colSpan={batches.length + (editable ? 2 : 1)} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#92400e', fontSize: 13 }}>
+                      {row.break_label || '☕ Break'} · {row.from_time} – {row.to_time}
+                      {editable && (
+                        <button onClick={() => setEditRow({ row })} style={{ marginLeft: 10, padding: '2px 8px', borderRadius: 5, border: `1px solid #92400e`, background: 'transparent', color: '#92400e', fontSize: 11, cursor: 'pointer' }}>✏️</button>
+                      )}
+                    </td>
+                  </tr>
+                )
+                return (
+                  <tr key={ri} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontSize: 12, color: C.navy, fontWeight: 700, background: '#f8fafc', borderRight: `2px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                      {row.from_time}<br />
+                      <span style={{ color: C.muted, fontSize: 11 }}>{row.to_time}</span>
+                    </td>
+                    {batches.map(b => {
+                      const s = row.slots?.[b]
+                      return (
+                        <td key={b} style={{ padding: '5px 5px', verticalAlign: 'top' }}>
+                          <SubjectPill
+                            subject={s?.subject} teacher={s?.teacher}
+                            editable={editable}
+                            onClick={editable ? () => setEditSlot({
+                              rowId: row.id, batchName: b,
+                              from: row.from_time, to: row.to_time,
+                              subject: s?.subject, teacher: s?.teacher,
+                              slotId: s?.id,
+                            }) : undefined}
+                          />
+                        </td>
+                      )
+                    })}
+                    {editable && (
+                      <td style={{ padding: '5px 5px', verticalAlign: 'middle', textAlign: 'center' }}>
+                        <button onClick={() => setEditRow({ row })} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 11, color: C.textSm }}>✏️</button>
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── BATCH VIEW ─────────────────────────────────────── */}
       {view === 'batch' && (
         <div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-            {DOUBT_BATCHES.map(b => {
-              const p = batchPaletteDoubt(b)
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {batches.map(b => {
+              const p = batchPalette(b)
               return (
-                <button key={b} onClick={() => setSelectedBatch(b)} style={{
-                  padding: '7px 14px', borderRadius: '10px',
-                  border: `2px solid ${selectedBatch === b ? p.color : p.border}`,
-                  background: selectedBatch === b ? p.bg : 'white',
-                  color: p.color, fontWeight: '700', fontSize: '12px', cursor: 'pointer',
+                <button key={b} onClick={() => setSelBatch(b)} style={{
+                  padding: '7px 14px', borderRadius: 10,
+                  border: `2px solid ${selBatch === b ? p.color : p.border}`,
+                  background: selBatch === b ? p.bg : 'white',
+                  color: p.color, fontWeight: 700, fontSize: 12, cursor: 'pointer',
                 }}>{b}</button>
               )
             })}
           </div>
-
-          {/* Group by session */}
-          {['Morning', 'Evening', 'Night'].map(session => {
-            const rows = filteredRows.filter(r => sessionOf(r.from) === session)
-            if (rows.length === 0) return null
-            const batchRows = rows.filter(r => r.slots[batchIndex])
-            if (batchRows.length === 0 && sessionFilter !== 'All') return null
-            return (
-              <div key={session} style={{ marginBottom: '20px' }}>
-                <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e3a5f', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {SESSION_ICONS[session]} {session} Doubt
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {visibleRows.map((row, ri) => {
+              if (row.is_break) return (
+                <div key={ri} style={{ background: '#fef9c3', borderRadius: 8, padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#92400e', fontSize: 13 }}>
+                  {row.break_label || '☕ Break'} · {row.from_time} – {row.to_time}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {rows.map((row, ri) => {
-                    const s = row.slots[batchIndex]
-                    if (!s) return (
-                      <div key={ri} style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', opacity: 0.5 }}>
-                        <span style={{ fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8', minWidth: '130px' }}>{row.from} – {row.to}</span>
-                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>— No session</span>
-                      </div>
-                    )
-                    return (
-                      <div key={ri} style={{
-                        display: 'flex', gap: '12px', alignItems: 'center',
-                        background: 'white', borderRadius: '10px', padding: '12px 16px',
-                        boxShadow: '0 1px 6px rgba(0,0,0,.06)',
-                        borderLeft: `4px solid ${subjectColor(s.subject)}`,
-                      }}>
-                        <div style={{ minWidth: '130px', fontFamily: 'monospace', fontSize: '12px', color: '#1e3a5f', fontWeight: '700' }}>{row.from} – {row.to}</div>
-                        <div>
-                          <div style={{ fontWeight: '700', fontSize: '14px', color: subjectColor(s.subject) }}>{s.subject}</div>
-                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>👨‍🏫 {s.teacher}</div>
-                        </div>
-                      </div>
-                    )
-                  })}
+              )
+              const s = row.slots?.[selBatch]
+              return (
+                <div key={ri} style={{
+                  display: 'flex', gap: 12, alignItems: 'center',
+                  background: 'white', borderRadius: 10, padding: '12px 16px',
+                  boxShadow: '0 1px 6px rgba(0,0,0,.06)',
+                  borderLeft: `4px solid ${s ? subjectColor(s.subject) : C.border}`,
+                  opacity: s ? 1 : 0.5,
+                }}>
+                  <div style={{ minWidth: 130, fontFamily: 'monospace', fontSize: 12, color: C.navy, fontWeight: 700 }}>{row.from_time} – {row.to_time}</div>
+                  {s ? (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: subjectColor(s.subject) }}>{s.subject}</div>
+                      <div style={{ fontSize: 12, color: C.textSm, marginTop: 2 }}>👨‍🏫 {s.teacher}</div>
+                    </div>
+                  ) : (
+                    <div style={{ flex: 1, fontSize: 13, color: C.muted }}>— No class</div>
+                  )}
+                  {editable && (
+                    <button onClick={() => setEditSlot({
+                      rowId: row.id, batchName: selBatch,
+                      from: row.from_time, to: row.to_time,
+                      subject: s?.subject, teacher: s?.teacher, slotId: s?.id,
+                    })} style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${C.border}`, background: 'white', color: C.textSm, fontSize: 11, cursor: 'pointer' }}>✏️ Edit</button>
+                  )}
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       )}
 
-      {/* ── BY TEACHER VIEW ────────────────────────────────── */}
+      {/* ── TEACHER VIEW ───────────────────────────────────── */}
       {view === 'teacher' && (
         <div>
-          <div style={{ marginBottom: '16px' }}>
+          <div style={{ marginBottom: 16, position: 'relative' }}>
             <label style={lbl}>Search Teacher</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                value={teacherSearch}
-                onChange={e => setTeacherSearch(e.target.value)}
-                placeholder="Type a teacher's name..."
-                style={inp}
-                type="search"
-              />
-              {teacherMatches.length > 0 && !allTeachers.includes(teacherSearch) && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, background: 'white',
-                  border: '1px solid #d1d5db', borderRadius: '10px', zIndex: 200,
-                  boxShadow: '0 8px 24px rgba(0,0,0,.12)', marginTop: '4px', overflow: 'hidden',
-                }}>
-                  {teacherMatches.map(t => (
-                    <div key={t} onClick={() => setTeacherSearch(t)}
-                      style={{ padding: '12px 14px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', color: '#1e293b', borderBottom: '1px solid #f1f5f9' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                    >{t}</div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <input value={tSearch} onChange={e => setTSearch(e.target.value)}
+              placeholder="Type teacher name…" style={inp} />
           </div>
 
-          {teacherSearch.trim() && (
-            <div style={{ background: 'white', borderRadius: '12px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a5f', margin: '0 0 12px' }}>
-                📋 {teacherSearch}'s Doubt Session Schedule
-              </h3>
-              <TeacherSchedule teacher={teacherSearch} timetableData={filteredRows} batches={DOUBT_BATCHES} title="Doubt Session" />
+          {tSearch.trim() ? (
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14, color: C.navy, marginBottom: 10 }}>📋 {tSearch}'s Schedule</div>
+              {teacherSlots.length === 0
+                ? <div style={{ color: C.muted, padding: 20, textAlign: 'center' }}>No slots found for "{tSearch}"</div>
+                : teacherSlots.map((s, i) => {
+                  const p = batchPalette(s.batch)
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', gap: 12, alignItems: 'center',
+                      background: 'white', borderRadius: 10, padding: '10px 16px', marginBottom: 8,
+                      boxShadow: '0 1px 4px rgba(0,0,0,.06)', borderLeft: `4px solid ${p.color}`,
+                    }}>
+                      <div style={{ fontFamily: 'monospace', fontSize: 12, color: C.navy, fontWeight: 700, minWidth: 130 }}>{s.from} – {s.to}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: subjectColor(s.subject) }}>{s.subject}</div>
+                        <div style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{s.batch}</div>
+                      </div>
+                    </div>
+                  )
+                })
+              }
             </div>
-          )}
-
-          {!teacherSearch.trim() && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 10 }}>
               {allTeachers.map(t => {
-                const slotCount = DOUBT_SESSIONS.flatMap(r => r.slots || []).filter(s => s?.teacher === t).length
+                const count = rows.filter(r => !r.is_break).flatMap(r => Object.values(r.slots || {})).filter(s => s?.teacher === t).length
                 return (
-                  <button key={t} onClick={() => setTeacherSearch(t)} style={{
-                    background: 'white', borderRadius: '10px', padding: '12px 14px',
-                    border: '1px solid #e2e8f0', cursor: 'pointer', textAlign: 'left',
-                    boxShadow: '0 1px 4px rgba(0,0,0,.04)', transition: 'all .15s',
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#1e3a5f' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e2e8f0' }}
-                  >
-                    <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>👤 {t}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{slotCount} doubt slot{slotCount !== 1 ? 's' : ''}</div>
+                  <button key={t} onClick={() => setTSearch(t)} style={{
+                    background: 'white', borderRadius: 10, padding: '12px 14px',
+                    border: `1px solid ${C.border}`, cursor: 'pointer', textAlign: 'left',
+                    boxShadow: '0 1px 4px rgba(0,0,0,.04)',
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>👤 {t}</div>
+                    <div style={{ fontSize: 11, color: C.textSm, marginTop: 4 }}>{count} slot{count !== 1 ? 's' : ''}</div>
                   </button>
                 )
               })}
@@ -912,6 +732,52 @@ export function DoubtSessionTab() {
           )}
         </div>
       )}
+
+      {/* Modals */}
+      {editSlot && <SlotModal slot={editSlot} batches={batches} onSave={handleSlotSave} onDelete={() => handleSlotSave({ subject: '', teacher: '' })} onClose={() => setEditSlot(null)} />}
+      {editRow  && <RowModal  row={editRow.row} isNew={!!editRow.isNew} onSave={handleRowSave} onDelete={handleRowDelete} onClose={() => setEditRow(null)} />}
+      {showHist && <HistoryPanel type={type} onClose={() => setShowHist(false)} onRestore={handleRestore} />}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EXPORTED TABS
+// ══════════════════════════════════════════════════════════════
+export function ClassTimetableTab({ editable = true, currentUser = 'Admin' }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: C.navy, margin: 0 }}>🗓️ Class Timetable</h2>
+          <p style={{ fontSize: 13, color: C.textSm, margin: '4px 0 0' }}>Mon–Sat · {CLASS_BATCHES.length} batches · {editable ? 'Click any slot to edit' : 'View only'}</p>
+        </div>
+        {editable && (
+          <div style={{ background: '#dcfce7', color: '#166534', padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+            ✏️ Edit mode on
+          </div>
+        )}
+      </div>
+      <EditableGrid type="class" batches={CLASS_BATCHES} editable={editable} currentUser={currentUser} />
+    </div>
+  )
+}
+
+export function DoubtSessionTab({ editable = true, currentUser = 'Admin' }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: C.navy, margin: 0 }}>🙋 Doubt Sessions</h2>
+          <p style={{ fontSize: 13, color: C.textSm, margin: '4px 0 0' }}>Mon–Sat · Morning, Evening & Night · {DOUBT_BATCHES.length} sub-batches · {editable ? 'Click any slot to edit' : 'View only'}</p>
+        </div>
+        {editable && (
+          <div style={{ background: '#dcfce7', color: '#166534', padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+            ✏️ Edit mode on
+          </div>
+        )}
+      </div>
+      <EditableGrid type="doubt" batches={DOUBT_BATCHES} editable={editable} currentUser={currentUser} />
     </div>
   )
 }
