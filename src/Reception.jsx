@@ -844,7 +844,10 @@ function MonitorsTab({ students, gatePasses, onGPStatusChange, fetchAll }) {
         setSaving(false); return
       }
     }
-    const { error } = await supabase.from('hostel_leave_records').insert([hlForm])
+    const cleanHL = Object.fromEntries(
+  Object.entries(hlForm).map(([k, v]) => [k, v === '' ? null : v])
+)
+const { error } = await supabase.from('hostel_leave_records').insert(cleanHL)
     if (error) alert(error.message)
     else { setHLForm({...HOSTEL_LEAVE_DEF, departure_date:today()}); setHLStudent(null); setHLResetKey(k=>k+1); setShowHLForm(false); loadHL() }
     setSaving(false)
@@ -852,7 +855,10 @@ function MonitorsTab({ students, gatePasses, onGPStatusChange, fetchAll }) {
 
   const saveStaff = async e => {
     e.preventDefault(); setSaving(true)
-    const { error } = await supabase.from('staff_leave_requests').insert([staffForm])
+    const cleanStaff = Object.fromEntries(
+  Object.entries(staffForm).map(([k, v]) => [k, v === '' ? null : v])
+)
+const { error } = await supabase.from('staff_leave_requests').insert(cleanStaff)
     if (error) alert(error.message)
     else { setStaffForm({...STAFF_LEAVE_DEF, from_date:today()}); setShowStaffForm(false); loadStaff() }
     setSaving(false)
@@ -1303,7 +1309,10 @@ export default function ReceptionPage() {
       }
     }
 
-    const { error } = await supabase.from(table).insert([payload])
+    const clean = Object.fromEntries(
+  Object.entries(payload).map(([k, v]) => [k, v === '' ? null : v])
+)
+const { error } = await supabase.from(table).insert(clean)
     if (error) alert(error.message)
     else { reset(); fetchAll() }
     setSaving(false)
