@@ -1531,7 +1531,7 @@ export default function ReceptionPage() {
               if (gpForm.parent_informed==='No') {
                 if (!window.confirm('⚠ Parent has NOT been informed. Are you sure you want to issue this gate pass without informing the parent?')) return
               }
-              handleInsert('reception_gatepasses', gpForm, ()=>{ setGpForm({...GP_DEF, exit_date:today()}); setGpStudent(null); setGpResetKey(k=>k+1) })
+              handleInsert('reception_gatepasses', { ...gpForm, student_name: gpStudent?.name || gpForm.student_name }, ()=>{ setGpForm({...GP_DEF, exit_date:today()}); setGpStudent(null); setGpResetKey(k=>k+1) })
             }}>
               <div style={grid2(mob)}>
                 <div style={span2}>
@@ -1590,7 +1590,7 @@ export default function ReceptionPage() {
               // FIX 2 — require student selection
               if (!piForm.student_name || !piForm.student_name.trim()) { alert('Please search and select a student.'); return }
               if (!piForm.item_name) { alert('Please select or enter an item.'); return }
-              handleInsert('reception_parent_items', piForm, ()=>{ setPiForm({...PI_DEF, received_date:today()}); setPiStudent(null); setPiResetKey(k=>k+1) })
+              handleInsert('reception_parent_items', { ...piForm, student_name: piStudent?.name || piForm.student_name }, ()=>{ setPiForm({...PI_DEF, received_date:today()}); setPiStudent(null); setPiResetKey(k=>k+1) })
             }}>
               <div style={grid2(mob)}>
                 <div style={span2}>
