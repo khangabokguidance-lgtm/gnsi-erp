@@ -147,11 +147,10 @@ function SubstituteModal({ entry, date, staffList, allEntries, onClose, onSaved,
             ⚠️ Original teacher: <strong>{entry.teacher_name || 'Unassigned'}</strong> is absent
           </div>
         </div>
-        <div style={{ padding:24 }}>
-          {/* Free teachers */}
+        <div style={{ padding:24, maxHeight:'60vh', overflowY:'auto' }}>          {/* Free teachers */}
           <div style={{ marginBottom:16 }}>
             <label style={S.lbl}>Available Teachers ({freeTeachers.length} free at this period)</label>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12, maxHeight:220, overflowY:'auto', padding:'4px 2px' }}>
               {freeTeachers.map(s => (
                 <button key={s.id} onClick={() => setSubstituteTeacher(s.name)}
                   style={{ padding:'7px 14px', borderRadius:8, border:`2px solid ${substituteTeacher===s.name?T.green:T.border}`, background:substituteTeacher===s.name?T.greenLt:'white', color:substituteTeacher===s.name?T.green:T.ink, fontWeight:substituteTeacher===s.name?700:500, cursor:'pointer', fontSize:12, transition:'all .15s' }}>
