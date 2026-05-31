@@ -347,9 +347,9 @@ function DailyTaskChecklist({ staffProfiles, houses }) {
   const submitDayReport = async () => {
     if (!selectedHM) return
     setSaving(true)
-    const payload = {
-      date: todayKey(),
-      housemaster_id: selectedHM.id,
+   const payload = {
+  date: todayKey(),
+  housemaster_id: null,
       housemaster_name: selectedHM.name,
       house: selectedHouse,
       activity_type: 'Daily Task Summary Report',
