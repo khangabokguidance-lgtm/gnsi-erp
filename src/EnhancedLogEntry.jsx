@@ -128,7 +128,7 @@ const pct = (s, m) => m > 0 ? Math.round((s/m)*100) : 0
 
 const wc = str => str?.trim().split(/\s+/).filter(Boolean).length || 0
 // FIX 1: Updated word count minimums
-const WC_MIN = { topic_taught:15, classwork:20, homework:15, remarks:20, technique_detail:100, key_concepts:50, technique_avoid:30 }
+const WC_MIN = { topic_taught:0, classwork:0, homework:0, remarks:0, technique_detail:0, key_concepts:0, technique_avoid:0 }
 const wcOk = (field, val) => wc(val) >= WC_MIN[field]
 const wcMsg = (field, val) => { const w=wc(val); const m=WC_MIN[field]; return w>=m ? null : `${w}/${m} words` }
 
@@ -332,16 +332,16 @@ function ValidationMessage({ form, step }) {
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
     if (!form.range_to) errors.push('Range To is required')
-    if (!wcOk('topic_taught', form.topic_taught)) errors.push(`Topic Taught: ${wcMsg('topic_taught', form.topic_taught)}`)
-    if (!wcOk('classwork', form.classwork)) errors.push(`Classwork: ${wcMsg('classwork', form.classwork)}`)
-    if (!wcOk('homework', form.homework)) errors.push(`Homework: ${wcMsg('homework', form.homework)}`)
-    if (!wcOk('remarks', form.remarks)) errors.push(`Remarks: ${wcMsg('remarks', form.remarks)}`)
+    if (!form.topic_taught?.trim()) errors.push('Topic Taught is required')
+    if (!form.classwork?.trim()) errors.push('Classwork is required')
+    if (!form.homework?.trim()) errors.push('Homework is required')
+    if (!form.remarks?.trim()) errors.push('Remarks are required')
   }
   if (step === 2) {
     if (!(form.techniques || []).length) errors.push('Select at least one Teaching Technique')
-    if (!wcOk('technique_detail', form.technique_detail)) errors.push(`Technique Details: ${wcMsg('technique_detail', form.technique_detail)}`)
-    if (!wcOk('key_concepts', form.key_concepts)) errors.push(`Key Concepts: ${wcMsg('key_concepts', form.key_concepts)}`)
-    if (!wcOk('technique_avoid', form.technique_avoid)) errors.push(`Avoid Instructions: ${wcMsg('technique_avoid', form.technique_avoid)}`)
+    if (!form.technique_detail?.trim()) errors.push('Technique Details are required')
+if (!form.key_concepts?.trim()) errors.push('Key Concepts are required')
+if (!form.technique_avoid?.trim()) errors.push('Avoid Instructions are required')
   }
   // FIX 3: HM validation renumbered — was step 5, now step 4 (after removing AI Questions step)
   if (step === 4 && form.needs_doubt_session) {
@@ -999,17 +999,18 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              isPeriodUnlocked(Number(form.period_number))
     }
     if (step === 1) {
-      return form.range_from && form.range_to &&
-             wcOk('topic_taught', form.topic_taught) &&
-             wcOk('classwork', form.classwork) &&
-             wcOk('homework', form.homework) &&
-             wcOk('remarks', form.remarks)
-    }
-    if (step === 2) {
-      return (form.techniques || []).length > 0 &&
-             wcOk('technique_detail', form.technique_detail) &&
-             wcOk('key_concepts', form.key_concepts) &&
-             wcOk('technique_avoid', form.technique_avoid)
+  return form.range_from && form.range_to &&
+         form.topic_taught?.trim() &&
+         form.classwork?.trim() &&
+         form.homework?.trim() &&
+         form.remarks?.trim()
+}
+if (step === 2) {
+  return (form.techniques || []).length > 0 &&
+         form.technique_detail?.trim() &&
+         form.key_concepts?.trim() &&
+         form.technique_avoid?.trim()
+}
     }
     if (step === 3) return true  // Practice Qs — optional/skippable
     if (step === 4) {            // HM & Notify
@@ -1240,8 +1241,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       </div>
     </>
   )
-}
-
 export default EnhancedLogForm
 
 // ─── HM Doubt Session Panel ───────────────────────────────────────────────────
