@@ -52,7 +52,7 @@ const SUGGESTIONS = {
   homework: [
     'Complete Q.11 to Q.20 from textbook. Show all working steps. Bring completed work tomorrow for checking.',
     'Solve the 5 problems from worksheet distributed today. Attempt all parts. If stuck, mark the question and bring it to class.',
-    'Write a summary of today\'s topic in their own words (minimum 5 sentences). Solve 3 examples from the chapter exercise.',
+    "Write a summary of today's topic in their own words (minimum 5 sentences). Solve 3 examples from the chapter exercise.",
     'Complete the remaining questions from class exercise. Revise today\'s lesson and be prepared for a short quiz tomorrow.',
     'Practice Q.{range_from} to Q.{range_to} from textbook. Also revise definitions covered today.',
   ],
@@ -85,6 +85,72 @@ const SUGGESTIONS = {
     'Do NOT let stronger students answer all questions. Specifically call on weaker students and give them time to think before jumping to the answer.',
   ],
 }
+
+// ─── Doubt Session Map (Batch + Subject → HM + Time Slot) ─────────────────────
+
+const DOUBT_SESSION_MAP = [
+  // 6:20–7:20 AM
+  { batch:'Achiever A',  subject:'General Knowledge', hm:'Sir Bidyachandra', slot:'6:20–7:20 AM' },
+  { batch:'Achiever B',  subject:'General Knowledge', hm:'Sir Shrinivash',   slot:'6:20–7:20 AM' },
+  { batch:'Leader',      subject:'General Knowledge', hm:'Sir Romesh',       slot:'6:20–7:20 AM' },
+  { batch:'Champion',    subject:'General Knowledge', hm:'Miss Geetanjali',  slot:'6:20–7:20 AM' },
+  { batch:'Lakshya A',   subject:'General Knowledge', hm:'Miss Deviya',      slot:'6:20–7:20 AM' },
+  { batch:'Lakshya B',   subject:'Grammar',           hm:'Sir Adison',       slot:'6:20–7:20 AM' },
+  { batch:'Umeed A',     subject:'Grammar',           hm:'Miss Fedrava',     slot:'6:20–7:20 AM' },
+  { batch:'Umeed B',     subject:'General Knowledge', hm:'Miss Bindyarani',  slot:'6:20–7:20 AM' },
+  { batch:'Elite',       subject:'General Science',   hm:'Sir Mahesh',       slot:'6:20–7:20 AM' },
+  { batch:'Prime',       subject:'Reasoning',         hm:'Sir Umesh',        slot:'6:20–7:20 AM' },
+  // 7:20–8:10 AM
+  { batch:'Achiever A',  subject:'Mathematics',       hm:'Sir Himan',        slot:'7:20–8:10 AM' },
+  { batch:'Achiever B',  subject:'Reasoning',         hm:'Sir James',        slot:'7:20–8:10 AM' },
+  { batch:'Leader A',    subject:'Reasoning',         hm:'Sir Bidyachandra', slot:'7:20–8:10 AM' },
+  { batch:'Leader B',    subject:'Reasoning',         hm:'Miss Geetanjali',  slot:'7:20–8:10 AM' },
+  { batch:'Champion A',  subject:'Reasoning',         hm:'Sir Shrinivash',   slot:'7:20–8:10 AM' },
+  { batch:'Champion B',  subject:'Grammar',           hm:'Sir Adison',       slot:'7:20–8:10 AM' },
+  { batch:'Lakshya A',   subject:'General Knowledge', hm:'Miss Deviya',      slot:'7:20–8:10 AM' },
+  { batch:'Lakshya B',   subject:'General Knowledge', hm:'Miss Bidyarani',   slot:'7:20–8:10 AM' },
+  { batch:'Umeed A',     subject:'Grammar',           hm:'Miss Fedrava',     slot:'7:20–8:10 AM' },
+  { batch:'Umeed B',     subject:'Mathematics',       hm:'Sir Romesh',       slot:'7:20–8:10 AM' },
+  { batch:'Elite',       subject:'General Science',   hm:'Sir Mahesh',       slot:'7:20–8:10 AM' },
+  // 5:30–6:30 PM
+  { batch:'Achiever A',  subject:'Grammar',           hm:'Miss Fedrava',     slot:'5:30–6:30 PM' },
+  { batch:'Achiever B',  subject:'Grammar',           hm:'Sir Bidyachandra', slot:'5:30–6:30 PM' },
+  { batch:'Leader',      subject:'Mathematics',       hm:'Sir Himan',        slot:'5:30–6:30 PM' },
+  { batch:'Champion',    subject:'Mathematics',       hm:'Sir Umesh',        slot:'5:30–6:30 PM' },
+  { batch:'Lakshya',     subject:'Mathematics',       hm:'Miss Deviya',      slot:'5:30–6:30 PM' },
+  { batch:'Umeed',       subject:'Mathematics',       hm:'Sir Bronson',      slot:'5:30–6:30 PM' },
+  { batch:'Elite',       subject:'Mathematics',       hm:'Miss Geetanjali',  slot:'5:30–6:30 PM' },
+  { batch:'Prime',       subject:'Reasoning',         hm:'Sir James',        slot:'5:30–6:30 PM' },
+  { batch:'Prime',       subject:'Mathematics',       hm:'Sir Mahesh',       slot:'5:30–6:30 PM' },
+  // 6:35–7:35 PM
+  { batch:'Achiever A',  subject:'Mathematics',       hm:'Sir Romesh',       slot:'6:35–7:35 PM' },
+  { batch:'Achiever B',  subject:'Mathematics',       hm:'Miss Deviya',      slot:'6:35–7:35 PM' },
+  { batch:'Leader',      subject:'Grammar',           hm:'Sir Adison',       slot:'6:35–7:35 PM' },
+  { batch:'Champion',    subject:'Grammar',           hm:'Miss Fedrava',     slot:'6:35–7:35 PM' },
+  { batch:'Lakshya',     subject:'Mathematics',       hm:'Miss Geetanjali',  slot:'6:35–7:35 PM' },
+  { batch:'Umeed',       subject:'Mathematics',       hm:'Sir Bidyachandra', slot:'6:35–7:35 PM' },
+  { batch:'Elite',       subject:'Mathematics',       hm:'Sir Mahesh',       slot:'6:35–7:35 PM' },
+  { batch:'Elite',       subject:'Vocabulary',        hm:'Sir Arjun',        slot:'6:35–7:35 PM' },
+  { batch:'Prime',       subject:'Hindi',             hm:'Sir Boy',          slot:'6:35–7:35 PM' },
+  // 7:40–8:30 PM
+  { batch:'Achiever A',  subject:'Reasoning',         hm:'Sir Umesh',        slot:'7:40–8:30 PM' },
+  { batch:'Achiever B',  subject:'Reasoning',         hm:'Sir James',        slot:'7:40–8:30 PM' },
+  { batch:'Leader',      subject:'General Science',   hm:'Sir Arunkumar',    slot:'7:40–8:30 PM' },
+  { batch:'Champion',    subject:'General Knowledge', hm:'Miss Bidyarani',   slot:'7:40–8:30 PM' },
+  { batch:'Lakshya',     subject:'Mental Ability',    hm:'Sir Shrinivash',   slot:'7:40–8:30 PM' },
+  { batch:'Umeed',       subject:'Mental Ability',    hm:'Sir Romesh',       slot:'7:40–8:30 PM' },
+  { batch:'Elite',       subject:'Mathematics',       hm:'Sir Mahesh',       slot:'7:40–8:30 PM' },
+  { batch:'Prime',       subject:'Vocabulary',        hm:'Sir Adison',       slot:'7:40–8:30 PM' },
+]
+
+const DOUBT_TIME_SLOTS = [
+  '6:20–7:20 AM',
+  '7:20–8:10 AM',
+  '5:30–6:30 PM',
+  '6:35–7:35 PM',
+  '7:40–8:30 PM',
+  '9:30–10:15 PM (Dormitory Practice)',
+]
 
 const PERIODS = [1,2,3,4,5,6,7,8,9,10]
 
@@ -122,12 +188,10 @@ const isPeriodUnlocked = (periodNo) => {
   return nowMins >= startMins
 }
 
-const today = () => new Date().toISOString().split('T')[0]
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-'
 const pct = (s, m) => m > 0 ? Math.round((s/m)*100) : 0
 
 const wc = str => str?.trim().split(/\s+/).filter(Boolean).length || 0
-// FIX 1: Updated word count minimums
 const WC_MIN = { topic_taught:0, classwork:0, homework:0, remarks:0, technique_detail:0, key_concepts:0, technique_avoid:0 }
 const wcOk = (field, val) => wc(val) >= WC_MIN[field]
 const wcMsg = (field, val) => { const w=wc(val); const m=WC_MIN[field]; return w>=m ? null : `${w}/${m} words` }
@@ -163,6 +227,8 @@ const S = {
   stepDot: (active, done) => ({ width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, background: done?C.green:active?C.navy:'#e2e8f0', color: done||active?'white':'#94a3b8' }),
   stepLine: (done) => ({ flex:1, height:2, background:done?C.green:'#e2e8f0', marginTop:15 }),
 }
+
+// ─── Suggestion Picker ────────────────────────────────────────────────────────
 
 function SuggestionPicker({ field, value, onChange, form }) {
   const [open, setOpen] = useState(false)
@@ -295,7 +361,7 @@ function SpotCheckModal({ question, onSubmit, onSkip }) {
   )
 }
 
-// ─── Step Indicator ───────────────────────────────────────────────────────────
+// ─── Step Bar ─────────────────────────────────────────────────────────────────
 
 function StepBar({ current, steps, onChange }) {
   return (
@@ -326,9 +392,8 @@ function ValidationMessage({ form, step }) {
     if (!form.period_number) errors.push('Period is required')
     if (!form.chapter && !form.chapter_custom) errors.push('Chapter is required')
     if (!form.subtopic && !form.subtopic_custom) errors.push('Sub-topic is required')
-    if (form.period_number && !isPeriodUnlocked(Number(form.period_number))) errors.push('🔒 Selected period has not started yet — you cannot log in advance')
+    if (form.period_number && !isPeriodUnlocked(Number(form.period_number))) errors.push('🔒 Selected period has not started yet')
   }
-  // FIX 2: Removed board_photo_url check from ValidationMessage
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
     if (!form.range_to) errors.push('Range To is required')
@@ -340,10 +405,9 @@ function ValidationMessage({ form, step }) {
   if (step === 2) {
     if (!(form.techniques || []).length) errors.push('Select at least one Teaching Technique')
     if (!form.technique_detail?.trim()) errors.push('Technique Details are required')
-if (!form.key_concepts?.trim()) errors.push('Key Concepts are required')
-if (!form.technique_avoid?.trim()) errors.push('Avoid Instructions are required')
+    if (!form.key_concepts?.trim()) errors.push('Key Concepts are required')
+    if (!form.technique_avoid?.trim()) errors.push('Avoid Instructions are required')
   }
-  // FIX 3: HM validation renumbered — was step 5, now step 4 (after removing AI Questions step)
   if (step === 4 && form.needs_doubt_session) {
     if (!form.assigned_hm_id && !form.assigned_hm_name) errors.push('HM is required')
     if (!form.doubt_date) errors.push('Doubt Date is required')
@@ -465,7 +529,7 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
           </select>
           {form.period_number && !isPeriodUnlocked(Number(form.period_number)) && (
             <div style={{ color:C.red, fontSize:12, marginTop:5, fontWeight:600 }}>
-              🔒 This period hasn't started yet. You can only log a period after it begins.
+              🔒 This period hasn't started yet.
             </div>
           )}
         </div>
@@ -562,7 +626,6 @@ function Step2WhatTaught({ form, setForm }) {
         <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Student response, pace, anything notable"/>
       </div>
 
-      {/* FIX 4: Replaced board photo upload with WhatsApp info banner — no upload required */}
       <div style={{ marginTop:14, padding:'14px 16px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10 }}>
         <div style={{ fontSize:13, fontWeight:700, color:'#166534', marginBottom:4 }}>📱 WhatsApp Group Photo</div>
         <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>
@@ -602,24 +665,23 @@ function Step3Technique({ form, setForm }) {
 
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Technique Details <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/><SuggestionPicker field="technique_detail" value={form.technique_detail} onChange={v => setForm(f=>({...f,technique_detail:v}))} form={form}/></label>
-        <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Describe in detail HOW you taught this topic.\n\nExample: "Used the number line to show negative integers. Drew diagram on board. Asked 5 rapid-fire questions. Worked Q.1–Q.8 together. Weaker students were asked to repeat steps aloud."`}/>
+        <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Describe in detail HOW you taught this topic.`}/>
       </div>
 
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Key Concepts to Emphasise (for HM) <span style={S.required}>*</span><WCBadge field="key_concepts" value={form.key_concepts}/><SuggestionPicker field="key_concepts" value={form.key_concepts} onChange={v => setForm(f=>({...f,key_concepts:v}))} form={form}/></label>
-        <textarea value={form.key_concepts} onChange={e => setForm(f => ({ ...f, key_concepts:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Always draw the diagram first. Common mistake: forgetting sign rules. Focus on Q.5 and Q.9 which students found hardest."/>
+        <textarea value={form.key_concepts} onChange={e => setForm(f => ({ ...f, key_concepts:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Always draw the diagram first. Common mistake: forgetting sign rules."/>
       </div>
 
       <div>
         <label style={S.label}>Do NOT do this during doubt session <span style={S.required}>*</span><WCBadge field="technique_avoid" value={form.technique_avoid}/><SuggestionPicker field="technique_avoid" value={form.technique_avoid} onChange={v => setForm(f=>({...f,technique_avoid:v}))} form={form}/></label>
-        <textarea value={form.technique_avoid} onChange={e => setForm(f => ({ ...f, technique_avoid:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Do NOT jump to answers directly. Make students attempt first. Don't skip the diagram step."/>
+        <textarea value={form.technique_avoid} onChange={e => setForm(f => ({ ...f, technique_avoid:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Do NOT jump to answers directly. Make students attempt first."/>
       </div>
     </div>
   )
 }
 
 // ─── Step 4: Bulk Practice Questions ─────────────────────────────────────────
-// FIX 5: Was Step 5, renumbered to Step 4 after removing AI Questions step
 
 function Step4BulkQuestions({ form, setForm }) {
   const [raw, setRaw] = useState('')
@@ -657,7 +719,7 @@ function Step4BulkQuestions({ form, setForm }) {
       </div>
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Paste Questions Here (from PDF / book)</label>
-        <textarea value={raw} onChange={e => setRaw(e.target.value)} rows={8} style={{ ...S.input, fontFamily:"'JetBrains Mono',monospace", fontSize:12, resize:'vertical' }} placeholder={`Example format:\n\n1. What is the Pythagorean theorem?\nAns: a²+b²=c²\n\nQ2. If a right triangle has legs 3 and 4, find the hypotenuse.\nAns: 5\n   a) 5   b) 7   c) 6   d) 4`}/>
+        <textarea value={raw} onChange={e => setRaw(e.target.value)} rows={8} style={{ ...S.input, fontFamily:"'JetBrains Mono',monospace", fontSize:12, resize:'vertical' }} placeholder={`Example format:\n\n1. What is the Pythagorean theorem?\nAns: a²+b²=c²`}/>
         <div style={{ display:'flex', gap:8, marginTop:8 }}>
           <button type="button" onClick={handleParse} style={S.btn(C.amber)}>🔍 Parse Questions</button>
           {parseError && <span style={{ fontSize:12, color:C.red, alignSelf:'center' }}>{parseError}</span>}
@@ -700,7 +762,6 @@ function Step4BulkQuestions({ form, setForm }) {
 }
 
 // ─── Step 5: HM Assignment + Notification ────────────────────────────────────
-// FIX 6: Was Step 6, renumbered to Step 5 after removing AI Questions step
 
 function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
   const hmStaff = useMemo(() =>
@@ -711,6 +772,24 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
 
   const batchStudents = useMemo(() => students || [], [students])
   const weakStudents = useMemo(() => form.weak_students || [], [form.weak_students])
+
+  // Auto-suggest HM and time slot from DOUBT_SESSION_MAP
+  useEffect(() => {
+    if (!form.needs_doubt_session || !form.subtype || !form.subject_name) return
+    const subLower = form.subject_name.toLowerCase()
+    const batchLower = (form.subtype||'').toLowerCase()
+    const match = DOUBT_SESSION_MAP.find(d =>
+      batchLower.includes(d.batch.toLowerCase().split(' ')[0]) &&
+      (subLower.includes(d.subject.toLowerCase()) || d.subject.toLowerCase().includes(subLower.split(' ')[0]))
+    )
+    if (match) {
+      setForm(f => ({
+        ...f,
+        assigned_hm_name: f.assigned_hm_name || match.hm,
+        doubt_time_slot:  f.doubt_time_slot  || match.slot,
+      }))
+    }
+  }, [form.needs_doubt_session, form.subtype, form.subject_name])
 
   const toggleWeak = id => {
     const cur = form.focus_student_ids || []
@@ -745,7 +824,10 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
                   <option value="">Select HM/Warden</option>
                   {hmStaff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.designation||'HM'})</option>)}
                 </select>
-              : <input value={form.assigned_hm_name||''} onChange={e => setForm(f => ({ ...f, assigned_hm_name:e.target.value }))} placeholder="Type HM name..." required style={S.input}/>
+              : <select value={form.assigned_hm_name||''} onChange={e => setForm(f => ({ ...f, assigned_hm_name:e.target.value }))} required style={S.select}>
+                  <option value="">Select Staff</option>
+                  {[...new Set(DOUBT_SESSION_MAP.map(d => d.hm))].sort().map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
             }
           </div>
 
@@ -756,13 +838,16 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
             </div>
             <div>
               <label style={S.label}>Preferred Time Slot <span style={S.required}>*</span></label>
-              <input value={form.doubt_time_slot||''} onChange={e => setForm(f => ({ ...f, doubt_time_slot:e.target.value }))} required placeholder="e.g. 6:30–7:20 AM, After dinner" style={S.input}/>
+              <select value={form.doubt_time_slot||''} onChange={e => setForm(f => ({ ...f, doubt_time_slot:e.target.value }))} required style={S.select}>
+                <option value="">Select Time Slot</option>
+                {DOUBT_TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
           </div>
 
           <div style={{ marginBottom:14 }}>
             <label style={S.label}>Instruction Message to HM <span style={S.required}>*</span></label>
-            <textarea value={form.hm_instruction_message||''} onChange={e => setForm(f => ({ ...f, hm_instruction_message:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Write specific instructions for the HM:\n\n"Focus on Q.5–Q.9 where students struggled. Make them draw the diagram first before attempting. Use the number line technique I showed. Do NOT give direct answers — make them think."`}/>
+            <textarea value={form.hm_instruction_message||''} onChange={e => setForm(f => ({ ...f, hm_instruction_message:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Write specific instructions for the HM:\n\n"Focus on Q.5–Q.9 where students struggled. Make them draw the diagram first before attempting."`}/>
           </div>
 
           {batchStudents.length > 0 && (
@@ -796,7 +881,6 @@ function StepReview({ form }) {
   const chapterDisplay = form.chapter === '__other__' ? form.chapter_custom : form.chapter
   const subtopicDisplay = form.subtopic === '__other__' ? form.subtopic_custom : form.subtopic
 
-  // FIX 7: Removed 'AI Questions' row from review table
   const rows = [
     ['Course', `${form.course||'—'} / ${form.subtype||'—'} / ${form.class_name||'—'}`],
     ['Subject', form.subject_name||'—'],
@@ -840,9 +924,8 @@ function StepReview({ form }) {
   )
 }
 
-// ─── Main: Enhanced Log Form ──────────────────────────────────────────────────
+// ─── Steps Config + Empty Form ────────────────────────────────────────────────
 
-// FIX 8: Removed 'AI Questions' step from STEPS array
 const STEPS = [
   { key:'course',     label:'Course & Chapter' },
   { key:'taught',     label:'What Was Taught' },
@@ -852,7 +935,6 @@ const STEPS = [
   { key:'review',     label:'Review & Save' },
 ]
 
-// FIX 9: Removed ai_questions and board_photo_url from emptyForm
 const emptyForm = {
   course:'', subtype:'', class_name:'', batch_id:'',
   subject_name:'', chapter:'', chapter_custom:'', subtopic:'', subtopic_custom:'',
@@ -864,6 +946,8 @@ const emptyForm = {
   doubt_date:'', doubt_time_slot:'',
   hm_instruction_message:'', focus_student_ids:[], weak_students:[],
 }
+
+// ─── Main: Enhanced Log Form ──────────────────────────────────────────────────
 
 export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs }) {
   const [step, setStep] = useState(0)
@@ -900,7 +984,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   useEffect(() => {
     if (!form.batch_id) return
     setLoadingStudents(true)
-    supabase.from('students').select('id,name,roll_number').eq('course', form.course).eq('batch', form.subtype||'').eq('status','Active').order('name')
+    supabase.from('students').select('id,name,roll_number,house').eq('course', form.course).eq('batch', form.subtype||'').eq('status','Active').order('name')
       .then(async ({ data: studs }) => {
         if (!studs?.length) { setStudents([]); setLoadingStudents(false); return }
         const { data: scores } = await supabase.from('student_scores').select('student_id,score,max_score,subject_name').in('student_id', studs.map(s=>s.id))
@@ -989,7 +1073,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     onSaved?.()
   }
 
-  // FIX 10: canNext — removed board_photo_url check from step 1, fixed step numbers
   const canNext = () => {
     if (step === 0) {
       return form.course && form.subtype && form.class_name && form.subject_name &&
@@ -1011,8 +1094,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              form.key_concepts?.trim() &&
              form.technique_avoid?.trim()
     }
-    if (step === 3) return true  // Practice Qs — optional/skippable
-    if (step === 4) {            // HM & Notify
+    if (step === 3) return true
+    if (step === 4) {
       if (form.needs_doubt_session) {
         return (form.assigned_hm_id || form.assigned_hm_name) && form.doubt_date &&
                form.doubt_time_slot && form.hm_instruction_message &&
@@ -1065,12 +1148,13 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         late_submission: isLate,
         submitted_at: now.toISOString(),
       }
+
       const { data: logData, error: logError } = await supabase.from('teaching_logs').insert([logPayload]).select().single()
       if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); return }
 
       const logId = logData.id
 
-      // FIX 11: Removed duplicate similarity check block — runs only once now
+      // Similarity check
       try {
         const { data: prevLogs } = await supabase
           .from('teaching_logs')
@@ -1089,6 +1173,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         }
       } catch(e) { console.warn('Similarity check failed:', e.message) }
 
+      // Practice questions
       if ((form.practice_questions || []).length) {
         const pqs = form.practice_questions.map((q, i) => ({
           log_id: logId, batch_id: form.batch_id || null,
@@ -1101,10 +1186,20 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         await supabase.from('practice_questions').insert(pqs)
       }
 
+      // Doubt sessions — one per house, HM resolved from DOUBT_SESSION_MAP
       if (form.needs_doubt_session && (form.assigned_hm_id || form.assigned_hm_name)) {
         const focusNames = students.filter(s => (form.focus_student_ids||[]).includes(s.id)).map(s => s.name)
+        const subLower = form.subject_name.toLowerCase()
+        const batchLower = (form.subtype||'').toLowerCase()
+        const mapMatch = DOUBT_SESSION_MAP.find(d =>
+          batchLower.includes(d.batch.toLowerCase().split(' ')[0]) &&
+          (subLower.includes(d.subject.toLowerCase()) || d.subject.toLowerCase().includes(subLower.split(' ')[0]))
+        )
+        const resolvedHM   = mapMatch?.hm   || form.assigned_hm_name || null
+        const resolvedSlot = mapMatch?.slot || form.doubt_time_slot  || null
 
-        const buildDsRow = (house) => ({
+        const houses = [...new Set(students.map(s => s.house).filter(Boolean))]
+        const sessionRows = (houses.length ? houses : [null]).map(house => ({
           log_id: logId,
           course: form.course,
           subtype: form.subtype || null,
@@ -1116,7 +1211,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           teacher_staff_id: form.staff_id && /^\d+$/.test(String(form.staff_id)) ? Number(form.staff_id) : null,
           house_name: house || null,
           hm_id: form.assigned_hm_id || null,
-          hm_name: form.assigned_hm_name || null,
+          hm_name: resolvedHM,
           status: 'open',
           batch_name: form.subtype || null,
           staff_name: form.teacher_name || null,
@@ -1130,25 +1225,27 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           focus_student_ids: form.focus_student_ids?.length ? JSON.stringify(form.focus_student_ids) : null,
           focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
           doubt_date: form.doubt_date || null,
-          doubt_time_slot: form.doubt_time_slot || null,
-        })
+          doubt_time_slot: resolvedSlot,
+        }))
 
-        const houses = [...new Set(students.map(s => s.house).filter(Boolean))]
-        const dsRows = houses.length ? houses.map(house => buildDsRow(house)) : [buildDsRow(null)]
-        await supabase.from('doubt_sessions').insert(dsRows)
+        await supabase.from('doubt_sessions').insert(sessionRows)
 
-        await supabase.from('hm_notifications').insert([{
-          log_id: logId,
-          hm_staff_id: form.assigned_hm_id || null,
-          hm_name: form.assigned_hm_name || null,
-          message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course})`,
-          instructions: form.hm_instruction_message || null,
-          key_concepts: form.key_concepts || null,
-          technique_avoid: form.technique_avoid || null,
-          focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
-          status: 'unread',
-          created_at: new Date().toISOString(),
-        }])
+        // One notification per unique HM
+        const uniqueHMs = [...new Map(sessionRows.map(r => [r.hm_name, r])).values()]
+        await supabase.from('hm_notifications').insert(
+          uniqueHMs.map(r => ({
+            log_id: logId,
+            hm_staff_id: form.assigned_hm_id || null,
+            hm_name: r.hm_name,
+            message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course}) | 🕐 ${r.doubt_time_slot || ''}`,
+            instructions: form.hm_instruction_message || null,
+            key_concepts: form.key_concepts || null,
+            technique_avoid: form.technique_avoid || null,
+            focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
+            status: 'unread',
+            created_at: new Date().toISOString(),
+          }))
+        )
       }
 
       const randomQ = SPOT_CHECK_QUESTIONS[Math.floor(Math.random() * SPOT_CHECK_QUESTIONS.length)]
@@ -1156,7 +1253,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     } catch (e) {
       showToast('Unexpected error: ' + e.message, C.red)
     } finally {
-      // FIX 12: Moved to finally so these always run even if an error is thrown
       setSaving(false)
       setConfirm(false)
     }
@@ -1216,7 +1312,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         )}
         {attemptedNext && <ValidationMessage form={form} step={step}/>}
 
-        {/* FIX 13: Step renderers renumbered — step 3 = Practice Qs, step 4 = HM, step 5 = Review */}
         {step === 0 && <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters}/>}
         {step === 1 && <Step2WhatTaught form={form} setForm={setForm}/>}
         {step === 2 && <Step3Technique form={form} setForm={setForm}/>}
@@ -1227,7 +1322,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         <div style={{ display:'flex', justifyContent:'space-between', marginTop:24, paddingTop:16, borderTop:'1px solid #f1f5f9', flexWrap:'wrap', gap:10 }}>
           <button type="button" onClick={() => { setAttemptedNext(false); setStep(s => Math.max(0, s-1)) }} disabled={step === 0} style={{ ...S.btn('#94a3b8', step===0), background:'white', color: step===0?'#cbd5e1':'#374151', border:'1px solid #e2e8f0' }}>← Back</button>
           <div style={{ display:'flex', gap:8 }}>
-            {/* FIX 14: Skip button only on step 3 (Practice Qs) */}
             {step === 3 && (
               <button type="button" onClick={() => setStep(s => s+1)} style={{ ...S.btn('#64748b'), background:'white', color:'#64748b', border:'1px solid #e2e8f0' }}>Skip →</button>
             )}
@@ -1252,7 +1346,29 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const [showStudents, setShowStudents] = useState(false)
   const [students, setStudents] = useState([])
   const [loadingStudents, setLoadingStudents] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [msgText, setMsgText] = useState('')
+  const [sendingMsg, setSendingMsg] = useState(false)
+  const [logDetail, setLogDetail] = useState(null)
+  const [showLog, setShowLog] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
+
+  // Load thread + teaching log on mount
+  useEffect(() => {
+    if (!session.id) return
+    supabase.from('hm_notifications')
+      .select('*')
+      .eq('log_id', session.log_id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => setMessages(data || []))
+    if (session.log_id) {
+      supabase.from('teaching_logs')
+        .select('*')
+        .eq('id', session.log_id)
+        .single()
+        .then(({ data }) => setLogDetail(data))
+    }
+  }, [session.id, session.log_id])
 
   const fetchStudents = async () => {
     if (!session.batch_id && !session.subtype) return
@@ -1262,6 +1378,40 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     const { data } = await q.order('name')
     if (data) setStudents(data)
     setLoadingStudents(false)
+  }
+
+  const sendMessage = async () => {
+    if (!msgText.trim()) return
+    setSendingMsg(true)
+    const row = {
+      log_id: session.log_id,
+      hm_staff_id: currentUser?.id || null,
+      hm_name: currentUser?.name || 'HM',
+      message: `💬 ${currentUser?.name||'HM'}: ${msgText}`,
+      status: 'thread',
+      created_at: new Date().toISOString(),
+    }
+    await supabase.from('hm_notifications').insert([row])
+    setMessages(m => [...m, row])
+    setMsgText('')
+    setSendingMsg(false)
+    showToast('Message sent ✓', C.sky)
+  }
+
+  const notifyTeacher = async (studentName, doubtDetail) => {
+    if (!doubtDetail) return
+    const msg = `🏠 HM (${currentUser?.name||'HM'}): Student "${studentName}" — ${doubtDetail}`
+    const row = {
+      log_id: session.log_id,
+      hm_staff_id: currentUser?.id || null,
+      hm_name: currentUser?.name || 'HM',
+      message: msg,
+      status: 'teacher_alert',
+      created_at: new Date().toISOString(),
+    }
+    await supabase.from('hm_notifications').insert([row])
+    setMessages(m => [...m, row])
+    showToast('Teacher notified ✓', C.green)
   }
 
   const handleNotConducted = async () => {
@@ -1286,10 +1436,10 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   }
 
   const handleFeedback = async () => {
-    if (!note.trim()) { showToast('Enter feedback/resolution note', C.amber); return }
+    if (!note.trim()) { showToast('Enter resolution note', C.amber); return }
     setSending(true)
     const { error } = await supabase.from('doubt_sessions').update({
-      status:'resolved',
+      status: 'resolved',
       resolved_by: currentUser?.name || 'HM',
       resolved_at: new Date().toISOString(),
       resolution_note: note,
@@ -1302,28 +1452,31 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
         hm_verified_by: currentUser?.name || 'HM',
       }).eq('id', session.log_id)
     }
+    // Post resolution to thread
+    const resRow = {
+      log_id: session.log_id,
+      hm_staff_id: currentUser?.id || null,
+      hm_name: currentUser?.name || 'HM',
+      message: `✅ Resolved by ${currentUser?.name||'HM'}: ${note}`,
+      status: 'resolved',
+      created_at: new Date().toISOString(),
+    }
+    await supabase.from('hm_notifications').insert([resRow])
+    setMessages(m => [...m, resRow])
     showToast('✅ Doubt session resolved & log verified.', C.green)
     onFeedback?.()
     setSending(false)
   }
 
-  const notifyTeacher = async (studentName, doubtDetail) => {
-    const msg = `🏠 HM Update from ${currentUser?.name||'HM'}: Student "${studentName}" — ${doubtDetail}`
-    await supabase.from('hm_notifications').insert([{
-      log_id: session.log_id,
-      hm_staff_id: currentUser?.id || null,
-      hm_name: currentUser?.name || 'HM',
-      message: msg,
-      status: 'teacher_alert',
-      created_at: new Date().toISOString(),
-    }])
-    showToast('Teacher notified ✓', C.green)
-  }
+  const statusColor = { open:'#fde68a', resolved:'#bbf7d0', not_conducted:'#fecaca' }
+  const statusLabel = { open:'⏳ Open', resolved:'✅ Resolved', not_conducted:'❌ Not Conducted' }
 
   return (
     <>
       {toastEl}
-      <div style={{ border:'2px solid #fde68a', borderRadius:14, padding:20, background:'#fffbeb', marginBottom:12 }}>
+      <div style={{ border:`2px solid ${statusColor[session.status]||'#fde68a'}`, borderRadius:14, padding:20, background:'#fffbeb', marginBottom:12 }}>
+
+        {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:8 }}>
           <div>
             <div style={{ fontSize:15, fontWeight:800, color:'#1e293b' }}>
@@ -1335,10 +1488,45 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
             <div style={{ fontSize:12, color:'#94a3b8', marginTop:1 }}>
               Teacher: {session.teacher_name||'—'}
             </div>
+            {(session.doubt_date || session.doubt_time_slot) && (
+              <div style={{ fontSize:12, color:'#7c3aed', marginTop:4, fontWeight:700 }}>
+                📅 {session.doubt_date ? fmtDate(session.doubt_date) : '—'}
+                {session.doubt_time_slot && <span style={{ marginLeft:8 }}>🕐 {session.doubt_time_slot}</span>}
+              </div>
+            )}
           </div>
-          <span style={S.badge('#b45309','#fef9c3')}>⏳ Open</span>
+          <span style={S.badge(
+            session.status==='resolved'?'#166534':session.status==='not_conducted'?C.red:'#b45309',
+            statusColor[session.status]||'#fef9c3'
+          )}>{statusLabel[session.status]||'⏳ Open'}</span>
         </div>
 
+        {/* Today's Log Toggle */}
+        <button type="button" onClick={() => setShowLog(!showLog)}
+          style={{ ...S.btnSm(C.navy), marginBottom:14, width:'100%', textAlign:'left' }}>
+          📋 {showLog ? 'Hide' : 'View'} Today's Teaching Log
+        </button>
+
+        {showLog && logDetail && (
+          <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:14, marginBottom:14, fontSize:12 }}>
+            <div style={{ fontWeight:800, color:C.navy, marginBottom:8, fontSize:13 }}>📚 Teaching Log — {logDetail.subject_name}</div>
+            {[
+              ['Topic Taught', logDetail.topic_taught],
+              ['Classwork', logDetail.classwork],
+              ['Homework', logDetail.homework],
+              ['Remarks', logDetail.remarks],
+              ['Techniques', logDetail.techniques],
+              ['Range', logDetail.range_from ? `${logDetail.range_from} → ${logDetail.range_to}` : null],
+            ].filter(([,v]) => v).map(([k,v]) => (
+              <div key={k} style={{ marginBottom:6 }}>
+                <span style={{ fontWeight:700, color:'#374151' }}>{k}: </span>
+                <span style={{ color:'#1e293b' }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Teacher Instructions */}
         {session.teacher_instructions && (
           <div style={{ padding:'12px 14px', background:'#1e3a5f', borderRadius:10, marginBottom:14, color:'white' }}>
             <div style={{ fontSize:11, fontWeight:800, color:'#93c5fd', marginBottom:6, letterSpacing:'.08em' }}>📋 SUBJECT TEACHER'S INSTRUCTIONS</div>
@@ -1360,6 +1548,7 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           </div>
         )}
 
+        {/* Focus Students */}
         {session.focus_student_names && (() => {
           try {
             const names = JSON.parse(session.focus_student_names)
@@ -1368,52 +1557,101 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
               <div style={{ marginBottom:12 }}>
                 <div style={{ fontSize:12, fontWeight:700, color:'#b45309', marginBottom:6 }}>⚠️ FOCUS ON THESE STUDENTS</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {names.map((n,i) => <span key={i} style={S.badge('#b45309','#fef9c3')}>{n}</span>)}
+                  {names.map((n,i) => (
+                    <button key={i} type="button"
+                      onClick={() => { const d = window.prompt(`Doubt/issue for ${n}:`); if(d) notifyTeacher(n,d) }}
+                      style={{ ...S.badge('#b45309','#fef9c3'), cursor:'pointer' }}>
+                      {n} 📨
+                    </button>
+                  ))}
                 </div>
               </div>
             )
           } catch { return null }
         })()}
 
+        {/* Batch Students */}
         <div style={{ marginBottom:12 }}>
-          <button type="button" onClick={() => {
-            const detail = window.prompt('Enter student doubt to notify teacher:')
-            if (detail) notifyTeacher('(student)', detail)
-          }} style={{ ...S.btnSm(C.sky), marginRight:8 }}>📨 Notify Teacher of Doubt</button>
           <button type="button" onClick={() => { setShowStudents(!showStudents); if (!students.length) fetchStudents() }} style={S.btnSm('#94a3b8')}>
             👥 {showStudents ? 'Hide' : 'View'} Batch Students
           </button>
         </div>
-
         {showStudents && (
           <div style={{ marginBottom:12, padding:10, background:'white', borderRadius:8, border:'1px solid #e2e8f0' }}>
             {loadingStudents ? <div style={{ fontSize:12, color:'#94a3b8' }}>Loading...</div> :
-              students.length === 0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No students found for this batch.</div> :
+              students.length === 0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No students found.</div> :
               <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                 {students.map(s => (
-                  <button key={s.id} type="button" onClick={() => notifyTeacher(s.name, window.prompt(`Enter doubt/issue for ${s.name}:`) || '')}
-                    style={S.pill('#1e293b','#f1f5f9')}>{s.name}</button>
+                  <button key={s.id} type="button"
+                    onClick={() => { const d = window.prompt(`Doubt/issue for ${s.name}:`); if(d) notifyTeacher(s.name,d) }}
+                    style={S.pill('#1e293b','#f1f5f9')}>{s.name} 📨</button>
                 ))}
               </div>
             }
           </div>
         )}
 
-        <div style={{ borderTop:'1px solid #fde68a', paddingTop:14 }}>
-          <label style={S.label}>Resolution Note (what was done in the doubt session)</label>
-          <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
-            style={{ ...S.input, marginBottom:10, resize:'vertical' }}
-            placeholder="Describe what you covered in the doubt session, which students were helped, what methods you used..."/>
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            <button type="button" onClick={handleFeedback} disabled={sending} style={S.btn(C.green, sending)}>
-              {sending ? '⏳ Saving...' : '✅ Mark Resolved & Notify Teacher'}
-            </button>
-            <button type="button" onClick={handleNotConducted} disabled={sending}
-              style={{ backgroundColor:'#fee2e2', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:8, padding:'10px 18px', fontWeight:700, cursor:sending?'not-allowed':'pointer', fontSize:13, minHeight:44 }}>
-              ❌ Not Conducted
+        {/* Communication Thread */}
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:8, textTransform:'uppercase', letterSpacing:'.05em' }}>
+            💬 Communication Thread
+          </div>
+          <div style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:10, padding:10, maxHeight:200, overflowY:'auto', marginBottom:8 }}>
+            {messages.length === 0
+              ? <div style={{ fontSize:12, color:'#94a3b8', textAlign:'center', padding:'12px 0' }}>No messages yet.</div>
+              : messages.map((m, i) => (
+                <div key={i} style={{
+                  padding:'7px 10px', marginBottom:6, borderRadius:8, fontSize:12, lineHeight:1.6,
+                  background: m.status==='resolved'?'#f0fdf4': m.status==='teacher_alert'?'#eff6ff': m.status==='thread'?'#f8fafc':'#fffbeb',
+                  borderLeft: `3px solid ${m.status==='resolved'?C.green:m.status==='teacher_alert'?C.navy:m.status==='thread'?C.sky:C.amber}`,
+                }}>
+                  <div style={{ color:'#1e293b' }}>{m.message}</div>
+                  <div style={{ fontSize:10, color:'#94a3b8', marginTop:2 }}>
+                    {new Date(m.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <input value={msgText} onChange={e => setMsgText(e.target.value)}
+              onKeyDown={e => e.key==='Enter' && !e.shiftKey && sendMessage()}
+              placeholder="Type a message to teacher..." style={{ ...S.input, flex:1 }}/>
+            <button type="button" onClick={sendMessage} disabled={sendingMsg||!msgText.trim()} style={S.btn(C.sky, sendingMsg||!msgText.trim())}>
+              Send
             </button>
           </div>
         </div>
+
+        {/* Resolution */}
+        {session.status === 'open' && (
+          <div style={{ borderTop:'1px solid #fde68a', paddingTop:14 }}>
+            <label style={S.label}>Resolution Note</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
+              style={{ ...S.input, marginBottom:10, resize:'vertical' }}
+              placeholder="Describe what you covered, which students were helped, what methods you used..."/>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+              <button type="button" onClick={handleFeedback} disabled={sending} style={S.btn(C.green, sending)}>
+                {sending ? '⏳ Saving...' : '✅ Mark Resolved & Notify Teacher'}
+              </button>
+              <button type="button" onClick={handleNotConducted} disabled={sending}
+                style={{ backgroundColor:'#fee2e2', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:8, padding:'10px 18px', fontWeight:700, cursor:sending?'not-allowed':'pointer', fontSize:13, minHeight:44 }}>
+                ❌ Not Conducted
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Already resolved */}
+        {session.status !== 'open' && session.resolution_note && (
+          <div style={{ borderTop:'1px solid #e2e8f0', paddingTop:12, marginTop:8 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:4 }}>Resolution Note:</div>
+            <div style={{ fontSize:13, color:'#1e293b', lineHeight:1.7 }}>{session.resolution_note}</div>
+            <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>
+              By {session.resolved_by} · {session.resolved_at ? fmtDate(session.resolved_at) : ''}
+            </div>
+          </div>
+        )}
       </div>
     </>
   )
