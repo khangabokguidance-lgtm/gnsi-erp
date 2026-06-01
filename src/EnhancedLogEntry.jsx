@@ -1359,7 +1359,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           teacher_name: form.teacher_name || null,
           teacher_staff_id: form.staff_id && /^\d+$/.test(String(form.staff_id)) ? Number(form.staff_id) : null,
           house_name: house || null,
-          hm_id: form.assigned_hm_id || null,
+          hm_id: null,
           hm_name: resolvedHM,
           status: 'open',
           batch_name: form.subtype || null,
