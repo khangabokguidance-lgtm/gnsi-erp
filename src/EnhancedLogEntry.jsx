@@ -1331,7 +1331,20 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         const resolvedHM   = mapMatch?.hm   || form.assigned_hm_name || null
         const resolvedSlot = mapMatch?.slot || form.doubt_time_slot  || null
 
-        const houses = [...new Set(students.map(s => s.house).filter(Boolean))]
+        let liveHouses = [...new Set(students.map(s => s.house).filter(Boolean))]
+        if (!liveHouses.length && form.course && form.subtype) {
+          const { data: freshStudents } = await supabase
+            .from('students')
+            .select('house')
+            .eq('course', form.course)
+            .eq('batch', form.subtype)
+            .eq('status', 'Active')
+            .not('house', 'is', null)
+          if (freshStudents?.length) {
+            liveHouses = [...new Set(freshStudents.map(s => s.house).filter(Boolean))]
+          }
+        }
+        const houses = liveHouses
         const sessionRows = (houses.length ? houses : [null]).map(house => ({
           log_id: logId ? Number(logId) : null,
           course: form.course,
@@ -1512,7 +1525,8 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     if (!session.batch_id && !session.subtype) return
     setLoadingStudents(true)
     const q = supabase.from('students').select('id,name,roll_number').eq('status','Active')
-    if (session.batch_id) q.eq('batch_id', session.batch_id)
+    if (session.subtype) q.eq('batch', session.subtype)
+    if (session.course) q.eq('course', session.course)
     const { data } = await q.order('name')
     if (data) setStudents(data)
     setLoadingStudents(false)
