@@ -1471,6 +1471,16 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const statusColor = { open:'#fde68a', resolved:'#bbf7d0', not_conducted:'#fecaca' }
   const statusLabel = { open:'⏳ Open', resolved:'✅ Resolved', not_conducted:'❌ Not Conducted' }
 
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this doubt session permanently? This cannot be undone.')) return
+    setSending(true)
+    await supabase.from('hm_notifications').delete().eq('log_id', session.log_id)
+    await supabase.from('doubt_sessions').delete().eq('id', session.id)
+    showToast('Doubt session deleted.', C.red)
+    onFeedback?.()
+    setSending(false)
+  }
+
   return (
     <>
       {toastEl}
@@ -1495,10 +1505,18 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
               </div>
             )}
           </div>
-          <span style={S.badge(
-            session.status==='resolved'?'#166534':session.status==='not_conducted'?C.red:'#b45309',
-            statusColor[session.status]||'#fef9c3'
-          )}>{statusLabel[session.status]||'⏳ Open'}</span>
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+            <span style={S.badge(
+              session.status==='resolved'?'#166534':session.status==='not_conducted'?C.red:'#b45309',
+              statusColor[session.status]||'#fef9c3'
+            )}>{statusLabel[session.status]||'⏳ Open'}</span>
+            {currentUser?.role === 'admin' && (
+              <button type="button" onClick={handleDelete} disabled={sending}
+                style={{ fontSize:11, fontWeight:700, color:C.red, background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:6, padding:'3px 10px', cursor:'pointer' }}>
+                🗑 Delete
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Today's Log Toggle */}
