@@ -85,6 +85,7 @@ const SUGGESTIONS = {
     'Do NOT let stronger students answer all questions. Specifically call on weaker students and give them time to think before jumping to the answer.',
   ],
 }
+
 const PERIODS = [1,2,3,4,5,6,7,8,9,10]
 
 const PERIOD_TIMES = {
@@ -126,7 +127,8 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',m
 const pct = (s, m) => m > 0 ? Math.round((s/m)*100) : 0
 
 const wc = str => str?.trim().split(/\s+/).filter(Boolean).length || 0
-const WC_MIN = { topic_taught:50, classwork:50, homework:30, remarks:50, technique_detail:100, key_concepts:50, technique_avoid:30 }
+// FIX 1: Updated word count minimums
+const WC_MIN = { topic_taught:15, classwork:20, homework:15, remarks:20, technique_detail:100, key_concepts:50, technique_avoid:30 }
 const wcOk = (field, val) => wc(val) >= WC_MIN[field]
 const wcMsg = (field, val) => { const w=wc(val); const m=WC_MIN[field]; return w>=m ? null : `${w}/${m} words` }
 
@@ -165,7 +167,7 @@ const S = {
 function SuggestionPicker({ field, value, onChange, form }) {
   const [open, setOpen] = useState(false)
   const suggestions = SUGGESTIONS[field] || []
-  
+
   const fillSuggestion = (s) => {
     const filled = s
       .replace(/{subtopic}/g, (form?.subtopic === '__other__' ? form?.subtopic_custom : form?.subtopic) || 'this subtopic')
@@ -326,10 +328,10 @@ function ValidationMessage({ form, step }) {
     if (!form.subtopic && !form.subtopic_custom) errors.push('Sub-topic is required')
     if (form.period_number && !isPeriodUnlocked(Number(form.period_number))) errors.push('🔒 Selected period has not started yet — you cannot log in advance')
   }
+  // FIX 2: Removed board_photo_url check from ValidationMessage
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
     if (!form.range_to) errors.push('Range To is required')
-    if (!form.board_photo_url) errors.push('📸 Board photo is required — take a photo of the blackboard')
     if (!wcOk('topic_taught', form.topic_taught)) errors.push(`Topic Taught: ${wcMsg('topic_taught', form.topic_taught)}`)
     if (!wcOk('classwork', form.classwork)) errors.push(`Classwork: ${wcMsg('classwork', form.classwork)}`)
     if (!wcOk('homework', form.homework)) errors.push(`Homework: ${wcMsg('homework', form.homework)}`)
@@ -341,12 +343,12 @@ function ValidationMessage({ form, step }) {
     if (!wcOk('key_concepts', form.key_concepts)) errors.push(`Key Concepts: ${wcMsg('key_concepts', form.key_concepts)}`)
     if (!wcOk('technique_avoid', form.technique_avoid)) errors.push(`Avoid Instructions: ${wcMsg('technique_avoid', form.technique_avoid)}`)
   }
-  if (step === 5 && form.needs_doubt_session) {
+  // FIX 3: HM validation renumbered — was step 5, now step 4 (after removing AI Questions step)
+  if (step === 4 && form.needs_doubt_session) {
     if (!form.assigned_hm_id && !form.assigned_hm_name) errors.push('HM is required')
     if (!form.doubt_date) errors.push('Doubt Date is required')
     if (!form.doubt_time_slot) errors.push('Time Slot is required')
     if (!form.hm_instruction_message) errors.push('HM Instructions are required')
-    
   }
   if (!errors.length) return null
   return (
@@ -355,41 +357,6 @@ function ValidationMessage({ form, step }) {
       <ul style={{ margin:0, paddingLeft:16, fontSize:12, color:C.red, lineHeight:1.8 }}>{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
     </div>
   )
-}
-
-// ─── AI Question Generator ────────────────────────────────────────────────────
-
-async function generateAIQuestions(chapter, subtopic, subject, count=5) {
-  const prompt = `You are a teacher for Navodaya/Sainik school entrance exam preparation.
-Generate ${count} genuine, thought-provoking questions for students about:
-Subject: ${subject}
-Chapter: ${chapter}
-Subtopic: ${subtopic || chapter}
-
-Requirements:
-- Questions must test deep understanding, not just recall
-- Mix of types: conceptual, application, "why/how", comparison
-- Appropriate difficulty for classes 6-9
-- Each question on a new line starting with Q1., Q2., etc.
-- After each question, on the next line write ANS: (brief answer hint)
-
-Output ONLY the questions and answers, no preamble.`
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST', headers:{ 'Content-Type':'application/json' },
-    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, messages:[{ role:'user', content:prompt }] }),
-  })
-  const data = await res.json()
-  const text = data.content?.[0]?.text || ''
-  const lines = text.split('\n').filter(l => l.trim())
-  const questions = []
-  let cur = null
-  lines.forEach(l => {
-    if (/^Q\d+\./i.test(l.trim())) { if (cur) questions.push(cur); cur = { q: l.replace(/^Q\d+\.\s*/i,'').trim(), ans:'' } }
-    else if (/^ANS:/i.test(l.trim()) && cur) { cur.ans = l.replace(/^ANS:\s*/i,'').trim() }
-  })
-  if (cur) questions.push(cur)
-  return questions
 }
 
 // ─── Bulk Question Parser ─────────────────────────────────────────────────────
@@ -448,7 +415,6 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
   return (
     <div className="elog-fade">
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:14 }}>
-        {/* Course */}
         <div>
           <label style={S.label}>Course <span style={S.required}>*</span></label>
           <select value={form.course} onChange={e => handleCourse(e.target.value)} required style={S.select}>
@@ -456,7 +422,6 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
             {courses.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        {/* Subtype */}
         <div>
           <label style={S.label}>Batch / Subtype <span style={S.required}>*</span></label>
           <select value={form.subtype} onChange={e => handleSubtype(e.target.value)} disabled={!form.course} required style={{ ...S.select, opacity:form.course?1:.5 }}>
@@ -464,7 +429,6 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
             {subtypes.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        {/* Class */}
         <div>
           <label style={S.label}>Class <span style={S.required}>*</span> {form.batch_id && <span style={{ color:C.green, marginLeft:4, fontSize:10 }}>✓ linked</span>}</label>
           {classes.length > 0
@@ -475,7 +439,6 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
             : <input value={form.class_name} onChange={e => handleClass(e.target.value)} placeholder="e.g. Class 6" disabled={!form.subtype} required style={{ ...S.input, opacity:form.subtype?1:.5 }}/>
           }
         </div>
-        {/* Subject */}
         <div>
           <label style={S.label}>Subject <span style={S.required}>*</span></label>
           <select value={form.subject_name} onChange={e => setForm(f => ({ ...f, subject_name:e.target.value, chapter:'', subtopic:'' }))} required style={S.select}>
@@ -483,12 +446,10 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
             {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        {/* Date */}
         <div>
           <label style={S.label}>Teaching Date <span style={S.required}>*</span></label>
           <input type="date" value={form.teaching_date} onChange={e => setForm(f => ({ ...f, teaching_date:e.target.value }))} required style={S.input}/>
         </div>
-        {/* Period */}
         <div>
           <label style={S.label}>Period <span style={S.required}>*</span></label>
           <select value={form.period_number} onChange={e => setForm(f => ({ ...f, period_number:e.target.value }))} required style={S.select}>
@@ -510,7 +471,6 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
         </div>
       </div>
 
-      {/* Chapter */}
       <div style={{ marginTop:16 }}>
         <label style={S.label}>Chapter <span style={S.required}>*</span></label>
         {loadingChapters
@@ -533,7 +493,6 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
         )}
       </div>
 
-      {/* Sub-topic */}
       <div style={{ marginTop:14 }}>
         <label style={S.label}>Sub-topic / Lesson <span style={S.required}>*</span></label>
         {subtopicsOfChapter.length > 0
@@ -562,21 +521,6 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
 function Step2WhatTaught({ form, setForm }) {
   const chapterDisplay = form.chapter === '__other__' ? form.chapter_custom : form.chapter
   const subtopicDisplay = form.subtopic === '__other__' ? form.subtopic_custom : form.subtopic
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState('')
-
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) { setUploadError('Please select an image file.'); return }
-    setUploading(true); setUploadError('')
-    const path = `board-photos/${Date.now()}_${file.name.replace(/\s+/g,'_')}`
-    const { error } = await supabase.storage.from('teaching-evidence').upload(path, file, { upsert: true })
-    if (error) { setUploadError('Upload failed: ' + error.message); setUploading(false); return }
-    const { data: urlData } = supabase.storage.from('teaching-evidence').getPublicUrl(path)
-    setForm(f => ({ ...f, board_photo_url: urlData.publicUrl }))
-    setUploading(false)
-  }
 
   return (
     <div className="elog-fade">
@@ -587,7 +531,6 @@ function Step2WhatTaught({ form, setForm }) {
         </div>
       )}
 
-      {/* Topic range */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
         <div>
           <label style={S.label}>Covered From (Q.No / Page / Topic) <span style={S.required}>*</span></label>
@@ -599,56 +542,33 @@ function Step2WhatTaught({ form, setForm }) {
         </div>
       </div>
 
-      {/* Topic taught */}
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Topic Taught (summary) <span style={S.required}>*</span><WCBadge field="topic_taught" value={form.topic_taught}/><SuggestionPicker field="topic_taught" value={form.topic_taught} onChange={v => setForm(f=>({...f,topic_taught:v}))} form={form}/></label>
         <textarea value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="Brief description of what was covered today..."/>
       </div>
 
-      {/* Classwork */}
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Classwork done <span style={S.required}>*</span><WCBadge field="classwork" value={form.classwork}/><SuggestionPicker field="classwork" value={form.classwork} onChange={v => setForm(f=>({...f,classwork:v}))} form={form}/></label>
         <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="What exercises or work was done in class?"/>
       </div>
 
-      {/* Homework */}
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Homework assigned <span style={S.required}>*</span><WCBadge field="homework" value={form.homework}/><SuggestionPicker field="homework" value={form.homework} onChange={v => setForm(f=>({...f,homework:v}))} form={form}/></label>
         <textarea value={form.homework} onChange={e => setForm(f => ({ ...f, homework:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Questions/exercises assigned for home"/>
       </div>
 
-      {/* Remarks */}
-      <div>
+      <div style={{ marginBottom:14 }}>
         <label style={S.label}>Remarks / Observations <span style={S.required}>*</span><WCBadge field="remarks" value={form.remarks}/><SuggestionPicker field="remarks" value={form.remarks} onChange={v => setForm(f=>({...f,remarks:v}))} form={form}/></label>
         <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Student response, pace, anything notable"/>
       </div>
 
-      {/* Board Photo */}
-      <div style={{ marginTop:14 }}>
-        <label style={S.label}>📸 Blackboard / Whiteboard Photo <span style={S.required}>*</span></label>
-        <div style={{ padding:'14px 16px', background:'#f8fafc', border:'2px dashed #d1d5db', borderRadius:10, textAlign:'center' }}>
-          {form.board_photo_url ? (
-            <div>
-              <img src={form.board_photo_url} alt="Board" style={{ maxWidth:'100%', maxHeight:200, borderRadius:8, marginBottom:10, objectFit:'cover' }}/>
-              <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
-                <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Photo uploaded</span>
-                <button type="button" onClick={() => setForm(f => ({ ...f, board_photo_url:'' }))} style={{ fontSize:11, color:C.red, background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>✕ Remove</button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ fontSize:32, marginBottom:8 }}>📷</div>
-              <div style={{ fontSize:13, color:'#64748b', marginBottom:12 }}>Take a photo of the blackboard/whiteboard as proof of teaching</div>
-              <label style={{ cursor:'pointer' }}>
-                <span style={{ ...S.btn(C.navy), display:'inline-block', fontSize:13, padding:'8px 18px' }}>
-                  {uploading ? '⏳ Uploading...' : '📸 Upload Photo'}
-                </span>
-                <input type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} disabled={uploading} style={{ display:'none' }}/>
-              </label>
-              {uploadError && <div style={{ color:C.red, fontSize:12, marginTop:8, fontWeight:600 }}>{uploadError}</div>}
-            </div>
-          )}
+      {/* FIX 4: Replaced board photo upload with WhatsApp info banner — no upload required */}
+      <div style={{ marginTop:14, padding:'14px 16px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:'#166534', marginBottom:4 }}>📱 WhatsApp Group Photo</div>
+        <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>
+          Please upload today's class photo to the <strong>GNSI WhatsApp Group</strong> as proof of teaching.
         </div>
+        <div style={{ fontSize:12, color:'#64748b', marginTop:6 }}>This is for your information only — no upload required here.</div>
       </div>
     </div>
   )
@@ -682,9 +602,7 @@ function Step3Technique({ form, setForm }) {
 
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Technique Details <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/><SuggestionPicker field="technique_detail" value={form.technique_detail} onChange={v => setForm(f=>({...f,technique_detail:v}))} form={form}/></label>
-        <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Describe in detail HOW you taught this topic.
-
-Example: "Used the number line to show negative integers. Drew diagram on board. Asked 5 rapid-fire questions. Worked Q.1–Q.8 together. Weaker students were asked to repeat steps aloud."`}/>
+        <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Describe in detail HOW you taught this topic.\n\nExample: "Used the number line to show negative integers. Drew diagram on board. Asked 5 rapid-fire questions. Worked Q.1–Q.8 together. Weaker students were asked to repeat steps aloud."`}/>
       </div>
 
       <div style={{ marginBottom:14 }}>
@@ -700,81 +618,10 @@ Example: "Used the number line to show negative integers. Drew diagram on board.
   )
 }
 
-// ─── Step 4: AI Questions ─────────────────────────────────────────────────────
+// ─── Step 4: Bulk Practice Questions ─────────────────────────────────────────
+// FIX 5: Was Step 5, renumbered to Step 4 after removing AI Questions step
 
-function Step4AIQuestions({ form, setForm }) {
-  const [loading, setLoading] = useState(false)
-  const [questions, setQuestions] = useState(form.ai_questions || [])
-  const [error, setError] = useState('')
-  const [count, setCount] = useState(5)
-
-  const chapterDisplay = form.chapter === '__other__' ? form.chapter_custom : form.chapter
-  const subtopicDisplay = form.subtopic === '__other__' ? form.subtopic_custom : form.subtopic
-
-  const generate = async () => {
-    if (!chapterDisplay || !form.subject_name) { setError('Please fill Chapter and Subject in Step 1 first.'); return }
-    setLoading(true); setError('')
-    try {
-      const qs = await generateAIQuestions(chapterDisplay, subtopicDisplay, form.subject_name, count)
-      if (!qs.length) { setError('No questions generated. Try again.'); setLoading(false); return }
-      setQuestions(qs); setForm(f => ({ ...f, ai_questions: qs }))
-    } catch(e) { setError('Generation failed: ' + e.message) }
-    setLoading(false)
-  }
-
-  const toggleKeep = i => {
-    const updated = questions.map((q, j) => j===i ? { ...q, kept: !q.kept } : q)
-    setQuestions(updated); setForm(f => ({ ...f, ai_questions: updated }))
-  }
-
-  const editQ = (i, field, val) => {
-    const updated = questions.map((q, j) => j===i ? { ...q, [field]: val } : q)
-    setQuestions(updated); setForm(f => ({ ...f, ai_questions: updated }))
-  }
-
-  return (
-    <div className="elog-fade">
-      <div style={{ padding:'14px 16px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, marginBottom:18 }}>
-        <div style={{ fontWeight:700, color:'#166534', fontSize:13, marginBottom:4 }}>🤖 AI Question Generator</div>
-        <div style={{ fontSize:12, color:'#16a34a', lineHeight:1.6 }}>Generate genuine conceptual questions based on the chapter/subtopic taught.</div>
-      </div>
-      <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:16, flexWrap:'wrap' }}>
-        <span style={{ fontSize:13, color:'#374151' }}>Generate</span>
-        <select value={count} onChange={e => setCount(Number(e.target.value))} style={{ ...S.select, width:80 }}>
-          {[3,5,8,10].map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
-        <span style={{ fontSize:13, color:'#374151' }}>questions about</span>
-        <span style={{ fontWeight:700, color:C.navy, fontSize:13 }}>{chapterDisplay || '(no chapter)'} — {form.subject_name || '(no subject)'}</span>
-        <button type="button" onClick={generate} disabled={loading} style={S.btn(C.purple, loading)}>
-          {loading ? '⏳ Generating...' : '✨ Generate Questions'}
-        </button>
-      </div>
-      {error && <div style={{ color:C.red, fontSize:13, marginBottom:12, padding:'8px 12px', background:'#fee2e2', borderRadius:8 }}>{error}</div>}
-      {questions.length > 0 && (
-        <>
-          <div style={{ fontSize:12, color:'#64748b', marginBottom:10 }}>Click questions to keep/discard for doubt session use.</div>
-          {questions.map((q, i) => (
-            <div key={i} style={{ border:`2px solid ${q.kept ? C.green : '#e2e8f0'}`, borderRadius:10, padding:14, marginBottom:10, background: q.kept ? '#f0fdf4' : 'white' }}>
-              <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-                <button type="button" onClick={() => toggleKeep(i)} style={{ ...S.btnSm(q.kept ? C.green : '#94a3b8'), flexShrink:0, padding:'4px 10px' }}>{q.kept ? '✓ Keep' : '○ Keep'}</button>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:'#1e293b', fontSize:12, marginBottom:4 }}>Q{i+1}.</div>
-                  <textarea value={q.q} onChange={e => editQ(i,'q',e.target.value)} style={{ ...S.input, fontSize:13, padding:'8px 10px', marginBottom:8, minHeight:60 }}/>
-                  {q.ans && <div style={{ fontSize:12, color:'#64748b' }}><span style={{ fontWeight:700, color:'#374151' }}>Hint: </span><input value={q.ans} onChange={e => editQ(i,'ans',e.target.value)} style={{ ...S.input, display:'inline', width:'auto', fontSize:12, padding:'4px 8px', minHeight:32 }}/></div>}
-                </div>
-              </div>
-            </div>
-          ))}
-          <div style={{ fontSize:12, color:'#94a3b8' }}>{questions.filter(q=>q.kept).length} / {questions.length} questions marked for doubt session</div>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ─── Step 5: Bulk Practice Questions ─────────────────────────────────────────
-
-function Step5BulkQuestions({ form, setForm }) {
+function Step4BulkQuestions({ form, setForm }) {
   const [raw, setRaw] = useState('')
   const [parsed, setParsed] = useState(form.practice_questions || [])
   const [parseError, setParseError] = useState('')
@@ -810,14 +657,7 @@ function Step5BulkQuestions({ form, setForm }) {
       </div>
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Paste Questions Here (from PDF / book)</label>
-        <textarea value={raw} onChange={e => setRaw(e.target.value)} rows={8} style={{ ...S.input, fontFamily:"'JetBrains Mono',monospace", fontSize:12, resize:'vertical' }} placeholder={`Example format:
-
-1. What is the Pythagorean theorem?
-Ans: a²+b²=c²
-
-Q2. If a right triangle has legs 3 and 4, find the hypotenuse.
-Ans: 5
-   a) 5   b) 7   c) 6   d) 4`}/>
+        <textarea value={raw} onChange={e => setRaw(e.target.value)} rows={8} style={{ ...S.input, fontFamily:"'JetBrains Mono',monospace", fontSize:12, resize:'vertical' }} placeholder={`Example format:\n\n1. What is the Pythagorean theorem?\nAns: a²+b²=c²\n\nQ2. If a right triangle has legs 3 and 4, find the hypotenuse.\nAns: 5\n   a) 5   b) 7   c) 6   d) 4`}/>
         <div style={{ display:'flex', gap:8, marginTop:8 }}>
           <button type="button" onClick={handleParse} style={S.btn(C.amber)}>🔍 Parse Questions</button>
           {parseError && <span style={{ fontSize:12, color:C.red, alignSelf:'center' }}>{parseError}</span>}
@@ -859,9 +699,10 @@ Ans: 5
   )
 }
 
-// ─── Step 6: HM Assignment + Notification ────────────────────────────────────
+// ─── Step 5: HM Assignment + Notification ────────────────────────────────────
+// FIX 6: Was Step 6, renumbered to Step 5 after removing AI Questions step
 
-function Step6HMAssign({ form, setForm, staff, students, loadingStudents }) {
+function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
   const hmStaff = useMemo(() =>
     staff.filter(s => ['housemaster','hm','housemistress','warden'].some(r =>
       (s.designation||s.role||'').toLowerCase().includes(r)
@@ -921,9 +762,7 @@ function Step6HMAssign({ form, setForm, staff, students, loadingStudents }) {
 
           <div style={{ marginBottom:14 }}>
             <label style={S.label}>Instruction Message to HM <span style={S.required}>*</span></label>
-            <textarea value={form.hm_instruction_message||''} onChange={e => setForm(f => ({ ...f, hm_instruction_message:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Write specific instructions for the HM:
-
-"Focus on Q.5–Q.9 where students struggled. Make them draw the diagram first before attempting. Use the number line technique I showed. Do NOT give direct answers — make them think."`}/>
+            <textarea value={form.hm_instruction_message||''} onChange={e => setForm(f => ({ ...f, hm_instruction_message:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Write specific instructions for the HM:\n\n"Focus on Q.5–Q.9 where students struggled. Make them draw the diagram first before attempting. Use the number line technique I showed. Do NOT give direct answers — make them think."`}/>
           </div>
 
           {batchStudents.length > 0 && (
@@ -957,6 +796,7 @@ function StepReview({ form }) {
   const chapterDisplay = form.chapter === '__other__' ? form.chapter_custom : form.chapter
   const subtopicDisplay = form.subtopic === '__other__' ? form.subtopic_custom : form.subtopic
 
+  // FIX 7: Removed 'AI Questions' row from review table
   const rows = [
     ['Course', `${form.course||'—'} / ${form.subtype||'—'} / ${form.class_name||'—'}`],
     ['Subject', form.subject_name||'—'],
@@ -973,7 +813,6 @@ function StepReview({ form }) {
     ['Technique Detail', form.technique_detail||'—'],
     ['Key Concepts', form.key_concepts||'—'],
     ['Avoid', form.technique_avoid||'—'],
-    ['AI Questions', (form.ai_questions||[]).filter(q=>q.kept).length + ' kept'],
     ['Practice Qs', (form.practice_questions||[]).length + ' questions'],
     ['HM Assigned', form.needs_doubt_session ? (form.assigned_hm_name||'Not set') : 'No doubt session'],
     ['Doubt Date', form.doubt_date ? fmtDate(form.doubt_date) : '—'],
@@ -1003,27 +842,27 @@ function StepReview({ form }) {
 
 // ─── Main: Enhanced Log Form ──────────────────────────────────────────────────
 
+// FIX 8: Removed 'AI Questions' step from STEPS array
 const STEPS = [
   { key:'course',     label:'Course & Chapter' },
   { key:'taught',     label:'What Was Taught' },
   { key:'technique',  label:'Teaching Method' },
-  { key:'ai',         label:'AI Questions' },
   { key:'questions',  label:'Practice Qs' },
   { key:'hm',         label:'HM & Notify' },
   { key:'review',     label:'Review & Save' },
 ]
 
+// FIX 9: Removed ai_questions and board_photo_url from emptyForm
 const emptyForm = {
   course:'', subtype:'', class_name:'', batch_id:'',
   subject_name:'', chapter:'', chapter_custom:'', subtopic:'', subtopic_custom:'',
   teaching_date: '', period_number:'', teacher_name:'', staff_id:'',
   range_from:'', range_to:'', topic_taught:'', classwork:'', homework:'', remarks:'',
   techniques:[], technique_detail:'', key_concepts:'', technique_avoid:'',
-  ai_questions:[], practice_questions:[],
+  practice_questions:[],
   needs_doubt_session:false, assigned_hm_id:'', assigned_hm_name:'',
   doubt_date:'', doubt_time_slot:'',
   hm_instruction_message:'', focus_student_ids:[], weak_students:[],
-  board_photo_url:'',
 }
 
 export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs }) {
@@ -1037,10 +876,10 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [confirm, setConfirm] = useState(false)
   const [dupWarn, setDupWarn] = useState('')
   const [attemptedNext, setAttemptedNext] = useState(false)
-  const [gpsStatus, setGpsStatus] = useState('idle') // idle | checking | allowed | denied | error
+  const [gpsStatus, setGpsStatus] = useState('idle')
   const [gpsDistance, setGpsDistance] = useState(null)
   const [attWarn, setAttWarn] = useState(false)
-  const [spotCheck, setSpotCheck] = useState(null) // { logId, question }
+  const [spotCheck, setSpotCheck] = useState(null)
   const { show: showToast, el: toastEl } = useToast()
 
   useEffect(() => {
@@ -1150,12 +989,12 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     onSaved?.()
   }
 
-  // ALL FIELDS MANDATORY
+  // FIX 10: canNext — removed board_photo_url check from step 1, fixed step numbers
   const canNext = () => {
     if (step === 0) {
-      return form.course && form.subtype && form.class_name && form.subject_name && 
-             form.teaching_date && form.period_number && 
-             (form.chapter || form.chapter_custom) && 
+      return form.course && form.subtype && form.class_name && form.subject_name &&
+             form.teaching_date && form.period_number &&
+             (form.chapter || form.chapter_custom) &&
              (form.subtopic || form.subtopic_custom) &&
              isPeriodUnlocked(Number(form.period_number))
     }
@@ -1164,8 +1003,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              wcOk('topic_taught', form.topic_taught) &&
              wcOk('classwork', form.classwork) &&
              wcOk('homework', form.homework) &&
-             wcOk('remarks', form.remarks) &&
-             !!form.board_photo_url
+             wcOk('remarks', form.remarks)
     }
     if (step === 2) {
       return (form.techniques || []).length > 0 &&
@@ -1173,13 +1011,12 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              wcOk('key_concepts', form.key_concepts) &&
              wcOk('technique_avoid', form.technique_avoid)
     }
-    if (step === 3) return true
-    if (step === 4) return true
-    if (step === 5) {
+    if (step === 3) return true  // Practice Qs — optional/skippable
+    if (step === 4) {            // HM & Notify
       if (form.needs_doubt_session) {
-        return (form.assigned_hm_id || form.assigned_hm_name) && form.doubt_date && 
-               form.doubt_time_slot && form.hm_instruction_message && 
-             (students.length === 0 || (form.focus_student_ids || []).length > 0)
+        return (form.assigned_hm_id || form.assigned_hm_name) && form.doubt_date &&
+               form.doubt_time_slot && form.hm_instruction_message &&
+               (students.length === 0 || (form.focus_student_ids || []).length > 0)
       }
       return true
     }
@@ -1227,33 +1064,13 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         technique_avoid: form.technique_avoid || null,
         late_submission: isLate,
         submitted_at: now.toISOString(),
-        board_photo_url: form.board_photo_url || null,
       }
       const { data: logData, error: logError } = await supabase.from('teaching_logs').insert([logPayload]).select().single()
       if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); return }
 
       const logId = logData.id
 
-      // ── Similarity check against last 10 logs ──
-      try {
-        const { data: prevLogs } = await supabase
-          .from('teaching_logs')
-          .select('topic_taught,classwork,remarks')
-          .eq('teacher_name', form.teacher_name)
-          .eq('subject_name', form.subject_name)
-          .neq('id', logId)
-          .order('teaching_date', { ascending: false })
-          .limit(10)
-        if (prevLogs?.length) {
-          const suspicious = prevLogs.some(old => isSuspiciouslySimilar(logPayload, old))
-          if (suspicious) {
-            await supabase.from('teaching_logs').update({ copy_paste: true }).eq('id', logId)
-            showToast('⚠️ Log flagged: content too similar to previous logs.', C.amber)
-          }
-        }
-      } catch(e) { console.warn('Similarity check failed:', e.message) }
-
-      // ── Similarity check against last 10 logs ──
+      // FIX 11: Removed duplicate similarity check block — runs only once now
       try {
         const { data: prevLogs } = await supabase
           .from('teaching_logs')
@@ -1285,7 +1102,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }
 
       if (form.needs_doubt_session && (form.assigned_hm_id || form.assigned_hm_name)) {
-        const aiQsForHm = (form.ai_questions || []).filter(q => q.kept)
         const focusNames = students.filter(s => (form.focus_student_ids||[]).includes(s.id)).map(s => s.name)
 
         const buildDsRow = (house) => ({
@@ -1310,7 +1126,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           teacher_instructions: form.hm_instruction_message || null,
           key_concepts: form.key_concepts || null,
           technique_avoid: form.technique_avoid || null,
-          ai_questions_for_hm: aiQsForHm.length ? JSON.stringify(aiQsForHm) : null,
+          ai_questions_for_hm: null,
           focus_student_ids: form.focus_student_ids?.length ? JSON.stringify(form.focus_student_ids) : null,
           focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
           doubt_date: form.doubt_date || null,
@@ -1339,9 +1155,11 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       setSpotCheck({ logId, question: randomQ })
     } catch (e) {
       showToast('Unexpected error: ' + e.message, C.red)
+    } finally {
+      // FIX 12: Moved to finally so these always run even if an error is thrown
+      setSaving(false)
+      setConfirm(false)
     }
-    setSaving(false)
-    setConfirm(false)
   }
 
   return (
@@ -1356,7 +1174,13 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         />
       )}
       {confirm && (
-        <ConfirmModal title="Save Teaching Log" msg={`Save log for ${form.subject_name} on ${form.teaching_date}?${form.needs_doubt_session ? ' HM will be notified instantly.' : ''}${new Date().getHours() >= 21 ? ' ⚠️ This log will be flagged as LATE SUBMISSION (after 9 PM).' : ''}`} confirmLabel="Save Log" onConfirm={handleSave} onCancel={() => setConfirm(false)}/>
+        <ConfirmModal
+          title="Save Teaching Log"
+          msg={`Save log for ${form.subject_name} on ${form.teaching_date}?${form.needs_doubt_session ? ' HM will be notified instantly.' : ''}${new Date().getHours() >= 21 ? ' ⚠️ This log will be flagged as LATE SUBMISSION (after 9 PM).' : ''}`}
+          confirmLabel="Save Log"
+          onConfirm={handleSave}
+          onCancel={() => setConfirm(false)}
+        />
       )}
 
       <div style={S.card}>
@@ -1365,7 +1189,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         {dupWarn && (
           <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, color:C.red, fontSize:13, marginBottom:14, fontWeight:600 }}>{dupWarn}</div>
         )}
-
         {attWarn && (
           <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
             ⚠️ Attendance not marked for <strong>{form.subtype} ({form.course})</strong> on <strong>{form.teaching_date}</strong>. Please mark attendance first before logging.
@@ -1393,18 +1216,19 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         )}
         {attemptedNext && <ValidationMessage form={form} step={step}/>}
 
+        {/* FIX 13: Step renderers renumbered — step 3 = Practice Qs, step 4 = HM, step 5 = Review */}
         {step === 0 && <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters}/>}
         {step === 1 && <Step2WhatTaught form={form} setForm={setForm}/>}
         {step === 2 && <Step3Technique form={form} setForm={setForm}/>}
-        {step === 3 && <Step4AIQuestions form={form} setForm={setForm}/>}
-        {step === 4 && <Step5BulkQuestions form={form} setForm={setForm}/>}
-        {step === 5 && <Step6HMAssign form={form} setForm={setForm} staff={staff} students={students} loadingStudents={loadingStudents}/>}
-        {step === 6 && <StepReview form={form}/>}
+        {step === 3 && <Step4BulkQuestions form={form} setForm={setForm}/>}
+        {step === 4 && <Step5HMAssign form={form} setForm={setForm} staff={staff} students={students} loadingStudents={loadingStudents}/>}
+        {step === 5 && <StepReview form={form}/>}
 
         <div style={{ display:'flex', justifyContent:'space-between', marginTop:24, paddingTop:16, borderTop:'1px solid #f1f5f9', flexWrap:'wrap', gap:10 }}>
           <button type="button" onClick={() => { setAttemptedNext(false); setStep(s => Math.max(0, s-1)) }} disabled={step === 0} style={{ ...S.btn('#94a3b8', step===0), background:'white', color: step===0?'#cbd5e1':'#374151', border:'1px solid #e2e8f0' }}>← Back</button>
           <div style={{ display:'flex', gap:8 }}>
-            {(step === 3 || step === 4) && (
+            {/* FIX 14: Skip button only on step 3 (Practice Qs) */}
+            {step === 3 && (
               <button type="button" onClick={() => setStep(s => s+1)} style={{ ...S.btn('#64748b'), background:'white', color:'#64748b', border:'1px solid #e2e8f0' }}>Skip →</button>
             )}
             {step < STEPS.length - 1
@@ -1535,24 +1359,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
             <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>{session.technique_avoid}</div>
           </div>
         )}
-
-        {session.ai_questions_for_hm && (() => {
-          try {
-            const qs = JSON.parse(session.ai_questions_for_hm).filter(q => q.kept)
-            if (!qs.length) return null
-            return (
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:6 }}>❓ QUESTIONS TO ASK STUDENTS</div>
-                {qs.map((q,i) => (
-                  <div key={i} style={{ padding:'8px 12px', background:'white', border:'1px solid #e2e8f0', borderRadius:6, marginBottom:5 }}>
-                    <div style={{ fontSize:13, color:'#1e293b' }}>Q{i+1}. {q.q}</div>
-                    {q.ans && <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>Hint: {q.ans}</div>}
-                  </div>
-                ))}
-              </div>
-            )
-          } catch { return null }
-        })()}
 
         {session.focus_student_names && (() => {
           try {
