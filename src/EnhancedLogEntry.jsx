@@ -1332,18 +1332,21 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         const resolvedSlot = mapMatch?.slot || form.doubt_time_slot  || null
 
         let liveHouses = [...new Set(students.map(s => s.house).filter(Boolean))]
+        console.log('houses from state:', liveHouses, 'students count:', students.length)
         if (!liveHouses.length && form.course && form.subtype) {
-          const { data: freshStudents } = await supabase
+          const { data: freshStudents, error: fetchErr } = await supabase
             .from('students')
             .select('house')
             .eq('course', form.course)
             .eq('batch', form.subtype)
             .eq('status', 'Active')
             .not('house', 'is', null)
+          console.log('fresh fetch:', freshStudents, 'error:', fetchErr)
           if (freshStudents?.length) {
             liveHouses = [...new Set(freshStudents.map(s => s.house).filter(Boolean))]
           }
         }
+        console.log('final houses:', liveHouses)
         const houses = liveHouses
         const sessionRows = (houses.length ? houses : [null]).map(house => ({
           log_id: logId ? Number(logId) : null,
@@ -1374,7 +1377,11 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           doubt_time_slot: resolvedSlot,
         }))
 
-        await supabase.from('doubt_sessions').insert(sessionRows)
+        const { error: dsError } = await supabase.from('doubt_sessions').insert(sessionRows)
+        if (dsError) {
+          showToast('Doubt session error: ' + dsError.message, C.red)
+          console.error('doubt_sessions insert error:', dsError)
+        }
 
         // One notification per unique HM
         const uniqueHMs = [...new Map(sessionRows.map(r => [r.hm_name, r])).values()]
