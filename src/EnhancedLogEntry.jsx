@@ -1332,21 +1332,18 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         const resolvedSlot = mapMatch?.slot || form.doubt_time_slot  || null
 
         let liveHouses = [...new Set(students.map(s => s.house).filter(Boolean))]
-        console.log('houses from state:', liveHouses, 'students count:', students.length)
         if (!liveHouses.length && form.course && form.subtype) {
-          const { data: freshStudents, error: fetchErr } = await supabase
+          const { data: freshStudents } = await supabase
             .from('students')
             .select('house')
             .eq('course', form.course)
             .eq('batch', form.subtype)
             .eq('status', 'Active')
             .not('house', 'is', null)
-          console.log('fresh fetch:', freshStudents, 'error:', fetchErr)
           if (freshStudents?.length) {
             liveHouses = [...new Set(freshStudents.map(s => s.house).filter(Boolean))]
           }
         }
-        console.log('final houses:', liveHouses)
         const houses = liveHouses
         const sessionRows = (houses.length ? houses : [null]).map(house => ({
           log_id: logId ? Number(logId) : null,
