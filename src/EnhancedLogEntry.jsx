@@ -162,9 +162,9 @@ const PERIOD_TIMES = {
   5:  { label:'Period 5 (1:20–2:10 PM)',   start:[13,20], end:[14,10] },
   6:  { label:'Period 6 (2:10–2:55 PM)',   start:[14,10], end:[14,55] },
   7:  { label:'Period 7 (2:55–3:40 PM)',   start:[14,55], end:[15,40] },
-  8:  { label:'Period 8 (5:30–6:20 PM)',   start:[17,30], end:[18,20] },
-  9:  { label:'Period 9 (6:20–7:10 PM)',   start:[18,20], end:[19,10] },
-  10: { label:'Period 10 (7:10–8:00 PM)',  start:[19,10], end:[20,0]  },
+  8:  { label:'Period 8 (5:30–6:30 PM)',  start:[17,30], end:[18,30] },
+  9:  { label:'Period 9 (6:35–7:35 PM)',  start:[18,35], end:[19,35] },
+  10: { label:'Period 10 (7:40–8:30 PM)', start:[19,40], end:[20,30] },
 }
 
 const SCHOOL_LAT = 24.62181
@@ -179,12 +179,33 @@ const getDistanceMeters = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-const isPeriodUnlocked = (periodNo) => {
+const EVENING_TEACHERS = [
+  'Sir Himan','Sir Arunkumar','Sir Bronson','Sir Basanta',
+]
+
+const DAYTIME_ONLY_TEACHERS = [
+  'Sir Sumanta','Sir Deepak','Sir Pawan','Sir Lenin','Sir Roshan',
+  'Sir Johny','Sir Bidyachandra','Sir Chetan','Sir Arjun',
+  'Madam Sandhya','Sir Sunder','Miss Fedrava',
+]
+
+const isPeriodUnlocked = (periodNo, teacherName) => {
   const pt = PERIOD_TIMES[periodNo]
   if (!pt) return true
   const now = new Date()
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const startMins = pt.start[0] * 60 + pt.start[1]
+  // Periods 8–10 (evening): only available to evening teachers
+  if (periodNo >= 8) {
+    if (teacherName && DAYTIME_ONLY_TEACHERS.includes(teacherName)) return false
+  }
+  // Daytime-only teachers: lock after 3:30 PM (period 7 end)
+  if (teacherName && DAYTIME_ONLY_TEACHERS.includes(teacherName)) {
+    const lockMins = 15 * 60 + 30 // 3:30 PM
+    if (nowMins < startMins) return false
+    if (startMins >= lockMins) return false
+    return true
+  }
   return nowMins >= startMins
 }
 
@@ -209,6 +230,37 @@ const isSuspiciouslySimilar = (newLog, oldLog) => {
   const scores = fields.map(f => jaccardSimilarity(newLog[f], oldLog[f]))
   const avg = scores.reduce((a,b) => a+b, 0) / scores.length
   return avg >= 0.8
+}
+
+const getSimilarityScore = (newLog, prevLogs) => {
+  if (!prevLogs?.length) return 0
+  const fields = ['topic_taught', 'classwork', 'remarks']
+  const scores = prevLogs.map(old => {
+    const s = fields.map(f => jaccardSimilarity(newLog[f], old[f]))
+    return s.reduce((a,b) => a+b, 0) / s.length
+  })
+  return Math.max(...scores)
+}
+
+const isExcellentLog = (log) => {
+  const topicWc  = wc(log.topic_taught)
+  const cwWc     = wc(log.classwork)
+  const hwWc     = wc(log.homework)
+  const remWc    = wc(log.remarks)
+  const techWc   = wc(log.technique_detail)
+  const keyWc    = wc(log.key_concepts)
+  const hasDoubt = log.needs_doubt_session
+  const hasPqs   = (log.practice_questions?.length || 0) > 0
+  const score =
+    (topicWc >= 30 ? 2 : topicWc >= 15 ? 1 : 0) +
+    (cwWc    >= 40 ? 2 : cwWc    >= 20 ? 1 : 0) +
+    (hwWc    >= 20 ? 1 : 0) +
+    (remWc   >= 30 ? 2 : remWc   >= 20 ? 1 : 0) +
+    (techWc  >= 80 ? 2 : techWc  >= 40 ? 1 : 0) +
+    (keyWc   >= 30 ? 1 : 0) +
+    (hasDoubt ? 1 : 0) +
+    (hasPqs   ? 1 : 0)
+  return score >= 8
 }
 
 const C = { navy:'#1e3a5f', green:'#16a34a', amber:'#d97706', purple:'#7c3aed', red:'#dc2626', sky:'#0891b2' }
@@ -392,7 +444,7 @@ function ValidationMessage({ form, step }) {
     if (!form.period_number) errors.push('Period is required')
     if (!form.chapter && !form.chapter_custom) errors.push('Chapter is required')
     if (!form.subtopic && !form.subtopic_custom) errors.push('Sub-topic is required')
-    if (form.period_number && !isPeriodUnlocked(Number(form.period_number))) errors.push('🔒 Selected period has not started yet')
+    if (form.period_number && !isPeriodUnlocked(Number(form.period_number), form.teacher_name)) errors.push('🔒 Selected period has not started yet')
   }
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
@@ -519,7 +571,7 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
           <select value={form.period_number} onChange={e => setForm(f => ({ ...f, period_number:e.target.value }))} required style={S.select}>
             <option value="">Select Period</option>
             {PERIODS.map(p => {
-              const unlocked = isPeriodUnlocked(p)
+              const unlocked = isPeriodUnlocked(p, form.teacher_name)
               return (
                 <option key={p} value={p} disabled={!unlocked}>
                   {PERIOD_TIMES[p]?.label || `Period ${p}`}{!unlocked ? ' 🔒' : ''}
@@ -527,7 +579,7 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
               )
             })}
           </select>
-          {form.period_number && !isPeriodUnlocked(Number(form.period_number)) && (
+          {form.period_number && !isPeriodUnlocked(Number(form.period_number), form.teacher_name) && (
             <div style={{ color:C.red, fontSize:12, marginTop:5, fontWeight:600 }}>
               🔒 This period hasn't started yet.
             </div>
@@ -1079,7 +1131,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              form.teaching_date && form.period_number &&
              (form.chapter || form.chapter_custom) &&
              (form.subtopic || form.subtopic_custom) &&
-             isPeriodUnlocked(Number(form.period_number))
+             isPeriodUnlocked(Number(form.period_number), form.teacher_name)
     }
     if (step === 1) {
       return form.range_from && form.range_to &&
@@ -1158,17 +1210,87 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       try {
         const { data: prevLogs } = await supabase
           .from('teaching_logs')
-          .select('topic_taught,classwork,remarks')
+          .select('topic_taught,classwork,remarks,technique_detail,key_concepts')
           .eq('teacher_name', form.teacher_name)
-          .eq('subject_name', form.subject_name)
           .neq('id', logId)
           .order('teaching_date', { ascending: false })
           .limit(10)
+
         if (prevLogs?.length) {
-          const suspicious = prevLogs.some(old => isSuspiciouslySimilar(logPayload, old))
+          const maxSim = getSimilarityScore(logPayload, prevLogs)
+          const suspicious = maxSim >= 0.8
+          const warned     = maxSim >= 0.6 && maxSim < 0.8
+
+          // Count how many of last 10 logs were already flagged copy_paste
+          const { data: flaggedCount } = await supabase
+            .from('teaching_logs')
+            .select('id', { count:'exact', head:true })
+            .eq('teacher_name', form.teacher_name)
+            .eq('copy_paste', true)
+            .neq('id', logId)
+            .order('teaching_date', { ascending:false })
+            .limit(10)
+
+          const repeatCount = flaggedCount?.count || 0
+
           if (suspicious) {
-            await supabase.from('teaching_logs').update({ copy_paste: true }).eq('id', logId)
-            showToast('⚠️ Log flagged: content too similar to previous logs.', C.amber)
+            await supabase.from('teaching_logs').update({
+              copy_paste: true,
+              lazy_score: Math.round(maxSim * 100),
+            }).eq('id', logId)
+
+            if (repeatCount >= 5) {
+              // Block — insert a block record
+              await supabase.from('teacher_warnings').insert([{
+                teacher_name: form.teacher_name,
+                staff_id: form.staff_id || null,
+                warning_type: 'blocked',
+                message: `🚫 Blocked: ${repeatCount}+ repeated logs detected. Immediate review required.`,
+                similarity_score: Math.round(maxSim * 100),
+                log_id: logId,
+                created_at: new Date().toISOString(),
+              }])
+              showToast('🚫 You are BLOCKED: too many repeated logs. Admin has been notified.', C.red)
+            } else if (repeatCount >= 3) {
+              await supabase.from('teacher_warnings').insert([{
+                teacher_name: form.teacher_name,
+                staff_id: form.staff_id || null,
+                warning_type: 'final_warning',
+                message: `⛔ Final Warning: ${repeatCount} repeated logs in a row. Next repeat = block.`,
+                similarity_score: Math.round(maxSim * 100),
+                log_id: logId,
+                created_at: new Date().toISOString(),
+              }])
+              showToast('⛔ FINAL WARNING: repeated content detected. One more = blocked.', C.red)
+            } else {
+              await supabase.from('teacher_warnings').insert([{
+                teacher_name: form.teacher_name,
+                staff_id: form.staff_id || null,
+                warning_type: 'warning',
+                message: `⚠️ Warning ${repeatCount+1}: Log content too similar to previous logs.`,
+                similarity_score: Math.round(maxSim * 100),
+                log_id: logId,
+                created_at: new Date().toISOString(),
+              }])
+              showToast(`⚠️ Warning ${repeatCount+1}/3: Log content looks copied. Write original content.`, C.amber)
+            }
+          } else if (warned) {
+            await supabase.from('teaching_logs').update({
+              lazy_score: Math.round(maxSim * 100),
+            }).eq('id', logId)
+            showToast('💡 Tip: Your log looks similar to recent ones. Try to be more specific.', C.amber)
+          } else {
+            // Check if excellent
+            const excellent = isExcellentLog({ ...logPayload, ...form })
+            if (excellent) {
+              await supabase.from('teaching_logs').update({ excellence_flag: true }).eq('id', logId)
+            }
+          }
+        } else {
+          // First log — check excellence
+          const excellent = isExcellentLog({ ...logPayload, ...form })
+          if (excellent) {
+            await supabase.from('teaching_logs').update({ excellence_flag: true }).eq('id', logId)
           }
         }
       } catch(e) { console.warn('Similarity check failed:', e.message) }
@@ -1248,6 +1370,10 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         )
       }
 
+      const excellent = isExcellentLog({ ...logPayload, ...form })
+      if (excellent) {
+        showToast('🌟 Excellent log! Your preparation and detail are outstanding. Keep it up!', C.green)
+      }
       const randomQ = SPOT_CHECK_QUESTIONS[Math.floor(Math.random() * SPOT_CHECK_QUESTIONS.length)]
       setSpotCheck({ logId, question: randomQ })
     } catch (e) {

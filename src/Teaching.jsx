@@ -1828,6 +1828,8 @@ function TabHMDashboard({ currentUser }) {
   const [allScores, setAllScores]     = useState([])
   const [houses, setHouses]           = useState([])
   const [teachingLogs, setTeachingLogs] = useState([])
+  const [warnings, setWarnings]         = useState([])
+  const [excellentLogs, setExcellentLogs] = useState([])
   const [confirmDel, setConfirmDel]   = useState(null)
   const [photoView, setPhotoView]     = useState(null)
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin'
@@ -1857,18 +1859,22 @@ function TabHMDashboard({ currentUser }) {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [d,s,h,tl] = await Promise.all([
+    const [d,s,h,tl,w,el] = await Promise.all([
       supabase.from('doubt_sessions').select('*').order('created_at',{ascending:false}),
       supabase.from('student_scores').select('*').order('test_date',{ascending:false}),
       supabase.from('students').select('house').eq('status','Active').not('house','is',null),
-      supabase.from('teaching_logs').select('id,teacher_name,teaching_date,late_submission,copy_paste,spot_check_skipped,spot_check_done,hm_verified,board_photo_url,topic_taught,subject_name,course,subtype').order('teaching_date',{ascending:false}).limit(200),
+      supabase.from('teaching_logs').select('id,teacher_name,teaching_date,late_submission,copy_paste,spot_check_skipped,spot_check_done,hm_verified,board_photo_url,topic_taught,subject_name,course,subtype,lazy_score,excellence_flag').order('teaching_date',{ascending:false}).limit(200),
+      supabase.from('teacher_warnings').select('*').order('created_at',{ascending:false}).limit(100),
+      supabase.from('teaching_logs').select('id,teacher_name,teaching_date,subject_name,topic_taught,course,subtype,excellence_flag').eq('excellence_flag',true).order('teaching_date',{ascending:false}).limit(50),
     ])
     if (d.error) showToast('Doubts load failed: '+d.error.message, '#dc2626')
     if (s.error) showToast('Scores load failed: '+s.error.message, '#dc2626')
     if (d.data) setAllDoubt(d.data)
     if (s.data) setAllScores(s.data)
-   if (h.data) setHouses([...new Set(h.data.map(x => x.house).filter(Boolean))])
+    if (h.data) setHouses([...new Set(h.data.map(x => x.house).filter(Boolean))])
     if (tl.data) setTeachingLogs(tl.data)
+    if (w.data)  setWarnings(w.data)
+    if (el.data) setExcellentLogs(el.data)
     if (currentUser?.id) {
       await supabase
         .from('hm_notifications')
@@ -1992,6 +1998,95 @@ function TabHMDashboard({ currentUser }) {
 }
       </div>
       {/* ── Accountability Flags ── */}
+      {/* ── Excellent Logs Today ── */}
+      {excellentLogs.filter(l => l.teaching_date === today()).length > 0 && (
+        <div style={{ ...S.card, border:'2px solid #16a34a', background:'#f0fdf4' }}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#16a34a', marginTop:0 }}>
+            🌟 Excellent Logs Today ({excellentLogs.filter(l => l.teaching_date === today()).length})
+          </h3>
+          <p style={{ fontSize:12, color:'#166534', marginBottom:12 }}>
+            These teachers submitted detailed, well-prepared logs today. Outstanding work!
+          </p>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+            {excellentLogs.filter(l => l.teaching_date === today()).map(l => (
+              <div key={l.id} style={{ padding:'10px 14px', background:'white', border:'1px solid #bbf7d0', borderRadius:10, fontSize:13 }}>
+                <div style={{ fontWeight:800, color:'#166534' }}>🌟 {l.teacher_name}</div>
+                <div style={{ fontSize:12, color:'#16a34a', marginTop:2 }}>{l.subject_name} — {l.topic_taught?.slice(0,40)}...</div>
+                <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{l.subtype || l.course}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Lazy Teacher Warnings ── */}
+      {warnings.length > 0 && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>
+            🚨 Teacher Warnings & Blocks ({warnings.length})
+          </h3>
+          {/* Summary by teacher */}
+          {(() => {
+            const byTeacher = {}
+            warnings.forEach(w => {
+              if (!byTeacher[w.teacher_name]) byTeacher[w.teacher_name] = { warnings:0, finalWarnings:0, blocked:0, latest:w }
+              if (w.warning_type==='blocked')       byTeacher[w.teacher_name].blocked++
+              else if (w.warning_type==='final_warning') byTeacher[w.teacher_name].finalWarnings++
+              else byTeacher[w.teacher_name].warnings++
+            })
+            return Object.entries(byTeacher).sort((a,b) => (b[1].blocked - a[1].blocked) || (b[1].finalWarnings - a[1].finalWarnings)).map(([name, data]) => (
+              <div key={name} style={{
+                padding:'12px 14px', borderRadius:10, marginBottom:8,
+                border: data.blocked>0 ? '2px solid #dc2626' : data.finalWarnings>0 ? '2px solid #d97706' : '1px solid #fecaca',
+                background: data.blocked>0 ? '#fff1f2' : data.finalWarnings>0 ? '#fffbeb' : '#fff8f8',
+              }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+                  <div>
+                    <span style={{ fontWeight:800, fontSize:14, color:'#1e293b' }}>👨‍🏫 {name}</span>
+                    <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{data.latest.message}</div>
+                  </div>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    {data.blocked>0      && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:12, fontWeight:800, background:'#dc2626', color:'white' }}>🚫 BLOCKED ×{data.blocked}</span>}
+                    {data.finalWarnings>0 && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:12, fontWeight:800, background:'#d97706', color:'white' }}>⛔ Final ×{data.finalWarnings}</span>}
+                    {data.warnings>0      && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:12, fontWeight:700, background:'#fef9c3', color:'#b45309' }}>⚠️ Warned ×{data.warnings}</span>}
+                    {data.latest.similarity_score && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:600, background:'#f1f5f9', color:'#64748b' }}>Similarity: {data.latest.similarity_score}%</span>}
+                  </div>
+                </div>
+              </div>
+            ))
+          })()}
+
+          {/* Detail table */}
+          <div className="table-wrap" style={{ marginTop:12 }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, minWidth:500 }}>
+              <thead>
+                <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                  {['Date','Teacher','Type','Similarity','Message'].map(h => (
+                    <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {warnings.slice(0,20).map(w => (
+                  <tr key={w.id} style={{ borderBottom:'1px solid #f1f5f9', background: w.warning_type==='blocked'?'#fff1f2':w.warning_type==='final_warning'?'#fffbeb':'white' }}>
+                    <td style={{ padding:'8px 10px', color:'#94a3b8', whiteSpace:'nowrap' }}>{fmtDate(w.created_at?.split('T')[0])}</td>
+                    <td style={{ padding:'8px 10px', fontWeight:600, color:'#1e293b' }}>{w.teacher_name}</td>
+                    <td style={{ padding:'8px 10px' }}>
+                      {w.warning_type==='blocked'       && <span style={{ padding:'3px 8px', borderRadius:999, fontSize:11, fontWeight:800, background:'#dc2626', color:'white' }}>🚫 Blocked</span>}
+                      {w.warning_type==='final_warning'  && <span style={{ padding:'3px 8px', borderRadius:999, fontSize:11, fontWeight:800, background:'#d97706', color:'white' }}>⛔ Final</span>}
+                      {w.warning_type==='warning'        && <span style={{ padding:'3px 8px', borderRadius:999, fontSize:11, fontWeight:700, background:'#fef9c3', color:'#b45309' }}>⚠️ Warning</span>}
+                    </td>
+                    <td style={{ padding:'8px 10px', fontWeight:700, color:'#dc2626', fontFamily:"'JetBrains Mono',monospace" }}>
+                      {w.similarity_score ? `${w.similarity_score}%` : '—'}
+                    </td>
+                    <td style={{ padding:'8px 10px', color:'#64748b', fontSize:11 }}>{w.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {flaggedLogs.length > 0 && (
         <div style={S.card}>
           <h3 style={{ fontSize:15, fontWeight:800, color:'#dc2626', marginTop:0 }}>🚨 Flagged Teaching Logs ({flaggedLogs.length})</h3>
