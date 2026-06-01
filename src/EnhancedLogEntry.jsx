@@ -1017,6 +1017,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [attWarn, setAttWarn] = useState(false)
   const [spotCheck, setSpotCheck] = useState(null)
   const { show: showToast, el: toastEl } = useToast()
+  const savingRef = useRef(false)
 
   useEffect(() => {
     if (currentUser?.name && !form.teacher_name) {
@@ -1176,6 +1177,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   }
 
   const handleSave = async () => {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     try {
       const chapterFinal = form.chapter === '__other__' ? form.chapter_custom : form.chapter
@@ -1216,24 +1219,32 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           .order('teaching_date', { ascending: false })
           .limit(10)
 
-        if (prevLogs?.length) {
+        if (prevLogs?.length >= 2) {
           const maxSim = getSimilarityScore(logPayload, prevLogs)
           const suspicious = maxSim >= 0.8
           const warned     = maxSim >= 0.6 && maxSim < 0.8
 
           // Count how many of last 10 logs were already flagged copy_paste
-          const { data: flaggedCount } = await supabase
+          const { data: flaggedLogs } = await supabase
             .from('teaching_logs')
-            .select('id', { count:'exact', head:true })
+            .select('id')
             .eq('teacher_name', form.teacher_name)
             .eq('copy_paste', true)
             .neq('id', logId)
             .order('teaching_date', { ascending:false })
             .limit(10)
 
-          const repeatCount = flaggedCount?.count || 0
+          const repeatCount = flaggedLogs?.length || 0
 
-          if (suspicious) {
+          // Dedup: check if warning already exists for this log
+          const { data: existingWarn } = await supabase
+            .from('teacher_warnings')
+            .select('id')
+            .eq('log_id', logId)
+            .limit(1)
+          const alreadyWarned = existingWarn?.length > 0
+
+          if (suspicious && !alreadyWarned) {
             await supabase.from('teaching_logs').update({
               copy_paste: true,
               lazy_score: Math.round(maxSim * 100),
@@ -1247,7 +1258,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
                 warning_type: 'blocked',
                 message: `🚫 Blocked: ${repeatCount}+ repeated logs detected. Immediate review required.`,
                 similarity_score: Math.round(maxSim * 100),
-                log_id: logId,
+                log_id: logId ? Number(logId) : null,
                 created_at: new Date().toISOString(),
               }])
               showToast('🚫 You are BLOCKED: too many repeated logs. Admin has been notified.', C.red)
@@ -1258,7 +1269,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
                 warning_type: 'final_warning',
                 message: `⛔ Final Warning: ${repeatCount} repeated logs in a row. Next repeat = block.`,
                 similarity_score: Math.round(maxSim * 100),
-                log_id: logId,
+                log_id: logId ? Number(logId) : null,
                 created_at: new Date().toISOString(),
               }])
               showToast('⛔ FINAL WARNING: repeated content detected. One more = blocked.', C.red)
@@ -1269,7 +1280,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
                 warning_type: 'warning',
                 message: `⚠️ Warning ${repeatCount+1}: Log content too similar to previous logs.`,
                 similarity_score: Math.round(maxSim * 100),
-                log_id: logId,
+                log_id: logId ? Number(logId) : null,
                 created_at: new Date().toISOString(),
               }])
               showToast(`⚠️ Warning ${repeatCount+1}/3: Log content looks copied. Write original content.`, C.amber)
@@ -1298,7 +1309,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       // Practice questions
       if ((form.practice_questions || []).length) {
         const pqs = form.practice_questions.map((q, i) => ({
-          log_id: logId, batch_id: form.batch_id || null,
+          log_id: logId ? Number(logId) : null, batch_id: form.batch_id || null,
           course: form.course, subject_name: form.subject_name,
           chapter: chapterFinal || null, subtopic: subtopicFinal || null,
           question_text: q.question_text, answer: q.answer || null,
@@ -1322,7 +1333,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
 
         const houses = [...new Set(students.map(s => s.house).filter(Boolean))]
         const sessionRows = (houses.length ? houses : [null]).map(house => ({
-          log_id: logId,
+          log_id: logId ? Number(logId) : null,
           course: form.course,
           subtype: form.subtype || null,
           class_name: form.class_name || null,
@@ -1356,7 +1367,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         const uniqueHMs = [...new Map(sessionRows.map(r => [r.hm_name, r])).values()]
         await supabase.from('hm_notifications').insert(
           uniqueHMs.map(r => ({
-            log_id: logId,
+            log_id: logId ? Number(logId) : null,
             hm_staff_id: form.assigned_hm_id || null,
             hm_name: r.hm_name,
             message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course}) | 🕐 ${r.doubt_time_slot || ''}`,
@@ -1381,6 +1392,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     } finally {
       setSaving(false)
       setConfirm(false)
+      savingRef.current = false
     }
   }
 
