@@ -1361,7 +1361,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           house_name: house || null,
           hm_id: null,
           hm_name: resolvedHM,
-          status: 'open',
+          status: 'Open',
           batch_name: form.subtype || null,
           staff_name: form.teacher_name || null,
           student_name: null,
@@ -1388,7 +1388,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         await supabase.from('hm_notifications').insert(
           uniqueHMs.map(r => ({
             log_id: logId ? Number(logId) : null,
-            hm_staff_id: form.assigned_hm_id || null,
+            hm_staff_id: null,
             hm_name: r.hm_name,
             message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course}) | 🕐 ${r.doubt_time_slot || ''}`,
             instructions: form.hm_instruction_message || null,
