@@ -1881,7 +1881,7 @@ function TabHMDashboard({ currentUser }) {
 
   useEffect(() => { fetchAll() }, [])
 
-  const filteredDoubt = selectedHouse==='All' ? allDoubt : allDoubt.filter(d => d.house_name===selectedHouse)
+  const filteredDoubt = selectedHouse==='All' ? allDoubt : allDoubt.filter(d => d.hm_name===selectedHouse)
   const openSessions  = filteredDoubt.filter(d => d.status==='open')
   const doneSessions  = filteredDoubt.filter(d => d.status==='resolved')
 
@@ -1895,12 +1895,13 @@ function TabHMDashboard({ currentUser }) {
     return Object.values(map).map(m => ({ ...m, avg:Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length) })).filter(m => m.avg<60).sort((a,b) => a.avg-b.avg)
   }, [allScores])
 
-  const houseSummary = useMemo(() => {
+  const hmSummary = useMemo(() => {
     const map = {}
     allDoubt.forEach(d => {
-      if (!d.house_name) return
-      if (!map[d.house_name]) map[d.house_name] = { open:0, resolved:0, hm:d.hm_name }
-      d.status==='open' ? map[d.house_name].open++ : map[d.house_name].resolved++
+      const key = d.hm_name || 'Unassigned'
+      if (!map[key]) map[key] = { open:0, resolved:0, houses:new Set() }
+      d.status==='open' ? map[key].open++ : map[key].resolved++
+      if (d.house_name) map[key].houses.add(d.house_name)
     })
     return map
   }, [allDoubt])
@@ -1949,17 +1950,21 @@ function TabHMDashboard({ currentUser }) {
           </div>
         </div>
       )}
-      {Object.keys(houseSummary).length > 0 && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:10, marginBottom:20 }}>
-          {Object.entries(houseSummary).map(([house,data]) => (
-            <div key={house} onClick={() => setSelectedHouse(selectedHouse===house?'All':house)}
-              style={{ ...S.card, padding:14, cursor:'pointer', border: selectedHouse===house?'2px solid #1e3a5f':'1px solid #e2e8f0', marginBottom:0 }}>
-              <div style={{ fontSize:14, fontWeight:800, color:'#1e293b', marginBottom:6 }}>🏠 {house}</div>
-              {data.hm && <div style={{ fontSize:12, color:'#64748b', marginBottom:6 }}>HM: {data.hm}</div>}
+      {Object.keys(hmSummary).length > 0 && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:10, marginBottom:20 }}>
+          {Object.entries(hmSummary).sort((a,b) => b[1].open - a[1].open).map(([hmName, data]) => (
+            <div key={hmName}
+              style={{ ...S.card, padding:14, border: '1px solid #e2e8f0', marginBottom:0 }}>
+              <div style={{ fontSize:14, fontWeight:800, color:'#1e3a5f', marginBottom:4 }}>👤 {hmName}</div>
+              {data.houses.size > 0 && (
+                <div style={{ fontSize:11, color:'#64748b', marginBottom:6 }}>
+                  🏠 {[...data.houses].join(', ')}
+                </div>
+              )}
               <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
-                {data.open>0  && <span style={S.badge('#b45309','#fef9c3')}>⏳ {data.open}</span>}
-                {data.resolved>0 && <span style={S.badge('#16a34a','#dcfce7')}>✅ {data.resolved}</span>}
-                {data.open===0&&data.resolved===0 && <span style={S.badge('#94a3b8','#f1f5f9')}>None</span>}
+                {data.open > 0    && <span style={S.badge('#b45309','#fef9c3')}>⏳ {data.open} open</span>}
+                {data.resolved > 0 && <span style={S.badge('#16a34a','#dcfce7')}>✅ {data.resolved} done</span>}
+                {data.open===0 && data.resolved===0 && <span style={S.badge('#94a3b8','#f1f5f9')}>None</span>}
               </div>
             </div>
           ))}
@@ -1967,8 +1972,8 @@ function TabHMDashboard({ currentUser }) {
       )}
       <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
         <select value={selectedHouse} onChange={e => setSelectedHouse(e.target.value)} style={{ ...S.select, width:'auto' }}>
-          <option value="All">All Houses</option>
-          {houses.map(h => <option key={h} value={h}>{h}</option>)}
+          <option value="All">All HMs</option>
+          {[...new Set(allDoubt.map(d => d.hm_name).filter(Boolean))].sort().map(h => <option key={h} value={h}>{h}</option>)}
         </select>
         <span style={{ fontSize:13, color:'#64748b' }}>{openSessions.length} open · {doneSessions.length} resolved</span>
       </div>
