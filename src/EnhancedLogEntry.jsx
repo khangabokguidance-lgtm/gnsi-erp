@@ -1,7 +1,7 @@
 // EnhancedLogEntry.jsx — ALL FIELDS MANDATORY VERSION
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
