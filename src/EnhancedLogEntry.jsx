@@ -999,18 +999,17 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              isPeriodUnlocked(Number(form.period_number))
     }
     if (step === 1) {
-  return form.range_from && form.range_to &&
-         form.topic_taught?.trim() &&
-         form.classwork?.trim() &&
-         form.homework?.trim() &&
-         form.remarks?.trim()
-}
-if (step === 2) {
-  return (form.techniques || []).length > 0 &&
-         form.technique_detail?.trim() &&
-         form.key_concepts?.trim() &&
-         form.technique_avoid?.trim()
-}
+      return form.range_from && form.range_to &&
+             form.topic_taught?.trim() &&
+             form.classwork?.trim() &&
+             form.homework?.trim() &&
+             form.remarks?.trim()
+    }
+    if (step === 2) {
+      return (form.techniques || []).length > 0 &&
+             form.technique_detail?.trim() &&
+             form.key_concepts?.trim() &&
+             form.technique_avoid?.trim()
     }
     if (step === 3) return true  // Practice Qs — optional/skippable
     if (step === 4) {            // HM & Notify
@@ -1241,6 +1240,8 @@ if (step === 2) {
       </div>
     </>
   )
+}
+
 export default EnhancedLogForm
 
 // ─── HM Doubt Session Panel ───────────────────────────────────────────────────
