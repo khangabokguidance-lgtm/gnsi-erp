@@ -162,14 +162,15 @@ const PERIOD_TIMES = {
   5:  { label:'Period 5 (1:20–2:10 PM)',   start:[13,20], end:[14,10] },
   6:  { label:'Period 6 (2:10–2:55 PM)',   start:[14,10], end:[14,55] },
   7:  { label:'Period 7 (2:55–3:40 PM)',   start:[14,55], end:[15,40] },
-  8:  { label:'Period 8 (5:30–6:30 PM)',  start:[17,30], end:[18,30] },
-  9:  { label:'Period 9 (6:35–7:35 PM)',  start:[18,35], end:[19,35] },
-  10: { label:'Period 10 (7:40–8:30 PM)', start:[19,40], end:[20,30] },
+  8:  { label:'Period 8 (5:30–6:30 PM)',   start:[17,30], end:[18,30] },
+  9:  { label:'Period 9 (6:35–7:35 PM)',   start:[18,35], end:[19,35] },
+  10: { label:'Period 10 (7:40–8:30 PM)',  start:[19,40], end:[20,30] },
 }
 
+// ─── FIX 1: GPS radius increased from 50m → 150m to handle indoor GPS drift ──
 const SCHOOL_LAT = 24.62181
 const SCHOOL_LNG = 94.0193087
-const SCHOOL_RADIUS_M = 50
+const SCHOOL_RADIUS_M = 150
 
 const getDistanceMeters = (lat1, lng1, lat2, lng2) => {
   const R = 6371000
@@ -179,34 +180,48 @@ const getDistanceMeters = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-const EVENING_TEACHERS = [
+// ─── FIX 3: Schedule type now read from staff data, not hardcoded lists ───────
+// Falls back to legacy hardcoded lists if staff record has no schedule_type field.
+const LEGACY_EVENING_TEACHERS = [
   'Sir Himan','Sir Arunkumar','Sir Bronson','Sir Basanta',
 ]
-
-const DAYTIME_ONLY_TEACHERS = [
+const LEGACY_DAYTIME_ONLY_TEACHERS = [
   'Sir Sumanta','Sir Deepak','Sir Pawan','Sir Lenin','Sir Roshan',
   'Sir Johny','Sir Bidyachandra','Sir Chetan','Sir Arjun',
   'Madam Sandhya','Sir Sunder','Miss Fedrava',
 ]
 
-const isPeriodUnlocked = (periodNo, teacherName) => {
+// Resolve schedule type: prefer DB value, fallback to legacy hardcoded lists
+const getScheduleType = (teacherName, staffList) => {
+  const staffRecord = staffList?.find(s => s.name === teacherName)
+  if (staffRecord?.schedule_type) return staffRecord.schedule_type // 'daytime' | 'evening' | 'both'
+  if (LEGACY_EVENING_TEACHERS.includes(teacherName)) return 'evening'
+  if (LEGACY_DAYTIME_ONLY_TEACHERS.includes(teacherName)) return 'daytime'
+  return 'both'
+}
+
+// ─── FIX 2: Period unlock with 5-minute early tolerance + schedule-type fix ──
+const isPeriodUnlocked = (periodNo, teacherName, staffList = []) => {
   const pt = PERIOD_TIMES[periodNo]
   if (!pt) return true
   const now = new Date()
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const startMins = pt.start[0] * 60 + pt.start[1]
-  // Periods 8–10 (evening): only available to evening teachers
-  if (periodNo >= 8) {
-    if (teacherName && DAYTIME_ONLY_TEACHERS.includes(teacherName)) return false
-  }
-  // Daytime-only teachers: lock after 3:30 PM (period 7 end)
-  if (teacherName && DAYTIME_ONLY_TEACHERS.includes(teacherName)) {
+  const scheduleType = getScheduleType(teacherName, staffList)
+
+  // Evening periods (8–10): only evening/both teachers
+  if (periodNo >= 8 && scheduleType === 'daytime') return false
+
+  // Daytime-only teachers: lock evening periods
+  if (scheduleType === 'daytime') {
     const lockMins = 15 * 60 + 30 // 3:30 PM
-    if (nowMins < startMins) return false
     if (startMins >= lockMins) return false
-    return true
+    // FIX 2: allow 5 minutes early
+    return nowMins >= startMins - 5
   }
-  return nowMins >= startMins
+
+  // FIX 2: allow 5 minutes early for all teachers
+  return nowMins >= startMins - 5
 }
 
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-'
@@ -278,6 +293,21 @@ const S = {
   tag: (active) => ({ padding:'7px 13px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', border:'none', background: active?C.navy:'#f1f5f9', color: active?'white':'#374151' }),
   stepDot: (active, done) => ({ width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, background: done?C.green:active?C.navy:'#e2e8f0', color: done||active?'white':'#94a3b8' }),
   stepLine: (done) => ({ flex:1, height:2, background:done?C.green:'#e2e8f0', marginTop:15 }),
+}
+
+// ─── FIX 4: Draft persistence helpers ────────────────────────────────────────
+const DRAFT_KEY = 'gnsi_teaching_log_draft'
+const saveDraft = (form) => {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(form)) } catch(e) {}
+}
+const loadDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch(e) { return null }
+}
+const clearDraft = () => {
+  try { localStorage.removeItem(DRAFT_KEY) } catch(e) {}
 }
 
 // ─── Suggestion Picker ────────────────────────────────────────────────────────
@@ -433,7 +463,7 @@ function StepBar({ current, steps, onChange }) {
 
 // ─── Validation Message ───────────────────────────────────────────────────────
 
-function ValidationMessage({ form, step }) {
+function ValidationMessage({ form, step, staff }) {
   const errors = []
   if (step === 0) {
     if (!form.course) errors.push('Course is required')
@@ -444,7 +474,7 @@ function ValidationMessage({ form, step }) {
     if (!form.period_number) errors.push('Period is required')
     if (!form.chapter && !form.chapter_custom) errors.push('Chapter is required')
     if (!form.subtopic && !form.subtopic_custom) errors.push('Sub-topic is required')
-    if (form.period_number && !isPeriodUnlocked(Number(form.period_number), form.teacher_name)) errors.push('🔒 Selected period has not started yet')
+    if (form.period_number && !isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff)) errors.push('🔒 Selected period has not started yet')
   }
   if (step === 1) {
     if (!form.range_from) errors.push('Range From is required')
@@ -475,25 +505,55 @@ function ValidationMessage({ form, step }) {
   )
 }
 
-// ─── Bulk Question Parser ─────────────────────────────────────────────────────
-
+// ─── FIX 5: Robust bulk question parser ──────────────────────────────────────
 function parseBulkQuestions(raw) {
   if (!raw.trim()) return []
   const lines = raw.split('\n')
   const qs = []
   let cur = null
+  let orderCounter = 1
+
   lines.forEach(line => {
     const l = line.trim()
     if (!l) return
-    const qMatch = l.match(/^(?:Q\.?\s*)?(\d+)[.)]\s+(.+)/i) || l.match(/^\((\d+)\)\s+(.+)/)
+
+    // Formats: "1.", "1)", "Q1.", "Q.1", "(1)", "Q1:" — all handled
+    const qMatch =
+      l.match(/^(?:Q\.?\s*)?(\d+)[.):\]]\s+(.+)/i) ||
+      l.match(/^\((\d+)\)\s+(.+)/) ||
+      l.match(/^(\d+)\s{2,}(.+)/)  // double-space separated (some PDF exports)
+
     if (qMatch) {
       if (cur) qs.push(cur)
-      cur = { order_no: parseInt(qMatch[1]), question_text: qMatch[2], answer:'', difficulty:'Medium', options:[] }
+      cur = {
+        order_no: parseInt(qMatch[1]),
+        question_text: qMatch[2].trim(),
+        answer: '',
+        difficulty: 'Medium',
+        options: [],
+      }
+      orderCounter = parseInt(qMatch[1]) + 1
+    } else if (!cur && l.length > 10) {
+      // FIX 5: fallback — treat any substantial line without a number as a question
+      if (cur) qs.push(cur)
+      cur = {
+        order_no: orderCounter++,
+        question_text: l,
+        answer: '',
+        difficulty: 'Medium',
+        options: [],
+      }
     } else if (cur) {
       const optMatch = l.match(/^[([\[]?([A-Da-d])[.):\]]\s+(.+)/)
-      if (optMatch) { cur.options.push({ key: optMatch[1].toUpperCase(), text: optMatch[2] }) }
-      else if (/^Ans(?:wer)?[:.]?\s*/i.test(l)) { cur.answer = l.replace(/^Ans(?:wer)?[:.]?\s*/i,'').trim() }
-      else if (cur.question_text) { cur.question_text += ' ' + l }
+      if (optMatch) {
+        cur.options.push({ key: optMatch[1].toUpperCase(), text: optMatch[2] })
+      } else if (/^Ans(?:wer)?[:.]?\s*/i.test(l)) {
+        cur.answer = l.replace(/^Ans(?:wer)?[:.]?\s*/i, '').trim()
+      } else if (/^Key[:.]?\s*/i.test(l)) {
+        cur.answer = l.replace(/^Key[:.]?\s*/i, '').trim()
+      } else if (cur.question_text) {
+        cur.question_text += ' ' + l
+      }
     }
   })
   if (cur) qs.push(cur)
@@ -502,7 +562,7 @@ function parseBulkQuestions(raw) {
 
 // ─── Step 1: Course + Chapter ─────────────────────────────────────────────────
 
-function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapters }) {
+function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapters, staff }) {
   const { courses, subtypesFor, classesFor, batchIdFor } = courseData
 
   const subtypes = form.course ? subtypesFor(form.course) : []
@@ -571,7 +631,7 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
           <select value={form.period_number} onChange={e => setForm(f => ({ ...f, period_number:e.target.value }))} required style={S.select}>
             <option value="">Select Period</option>
             {PERIODS.map(p => {
-              const unlocked = isPeriodUnlocked(p, form.teacher_name)
+              const unlocked = isPeriodUnlocked(p, form.teacher_name, staff)
               return (
                 <option key={p} value={p} disabled={!unlocked}>
                   {PERIOD_TIMES[p]?.label || `Period ${p}`}{!unlocked ? ' 🔒' : ''}
@@ -579,7 +639,7 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
               )
             })}
           </select>
-          {form.period_number && !isPeriodUnlocked(Number(form.period_number), form.teacher_name) && (
+          {form.period_number && !isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff) && (
             <div style={{ color:C.red, fontSize:12, marginTop:5, fontWeight:600 }}>
               🔒 This period hasn't started yet.
             </div>
@@ -771,7 +831,7 @@ function Step4BulkQuestions({ form, setForm }) {
       </div>
       <div style={{ marginBottom:14 }}>
         <label style={S.label}>Paste Questions Here (from PDF / book)</label>
-        <textarea value={raw} onChange={e => setRaw(e.target.value)} rows={8} style={{ ...S.input, fontFamily:"'JetBrains Mono',monospace", fontSize:12, resize:'vertical' }} placeholder={`Example format:\n\n1. What is the Pythagorean theorem?\nAns: a²+b²=c²`}/>
+        <textarea value={raw} onChange={e => setRaw(e.target.value)} rows={8} style={{ ...S.input, fontFamily:"'JetBrains Mono',monospace", fontSize:12, resize:'vertical' }} placeholder={`Supports multiple formats:\n\n1. What is the Pythagorean theorem?\nAns: a²+b²=c²\n\nQ2) What is an isosceles triangle?\nA) 2 equal sides  B) 3 equal sides\nKey: A`}/>
         <div style={{ display:'flex', gap:8, marginTop:8 }}>
           <button type="button" onClick={handleParse} style={S.btn(C.amber)}>🔍 Parse Questions</button>
           {parseError && <span style={{ fontSize:12, color:C.red, alignSelf:'center' }}>{parseError}</span>}
@@ -1003,7 +1063,11 @@ const emptyForm = {
 
 export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs }) {
   const [step, setStep] = useState(0)
-  const [form, setForm] = useState({ ...emptyForm })
+  const [form, setForm] = useState(() => {
+    // FIX 4: restore draft on mount if exists
+    const draft = loadDraft()
+    return draft ? { ...emptyForm, ...draft } : { ...emptyForm }
+  })
   const [saving, setSaving] = useState(false)
   const [chapters, setChapters] = useState([])
   const [loadingChapters, setLoadingChapters] = useState(false)
@@ -1016,8 +1080,18 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [gpsDistance, setGpsDistance] = useState(null)
   const [attWarn, setAttWarn] = useState(false)
   const [spotCheck, setSpotCheck] = useState(null)
+  const [hasDraft, setHasDraft] = useState(() => !!loadDraft())
   const { show: showToast, el: toastEl } = useToast()
   const savingRef = useRef(false)
+
+  // FIX 4: auto-save draft on every form change
+  useEffect(() => {
+    // don't save empty form
+    if (form.course || form.subject_name || form.topic_taught) {
+      saveDraft(form)
+      setHasDraft(true)
+    }
+  }, [form])
 
   useEffect(() => {
     if (currentUser?.name && !form.teacher_name) {
@@ -1085,16 +1159,23 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     )
   }), [])
 
+  // FIX: attendance check — only block if students query actually loaded (not network fail)
   const checkAttendance = useCallback(async () => {
     if (!form.course || !form.subtype || !form.teaching_date) return true
-    const { data } = await supabase
-      .from('attendance_sessions')
-      .select('id')
-      .eq('course', form.course)
-      .eq('subtype', form.subtype)
-      .eq('session_date', form.teaching_date)
-      .limit(1)
-    return (data?.length || 0) > 0
+    try {
+      const { data, error } = await supabase
+        .from('attendance_sessions')
+        .select('id')
+        .eq('course', form.course)
+        .eq('subtype', form.subtype)
+        .eq('session_date', form.teaching_date)
+        .limit(1)
+      // If network error, don't block teacher
+      if (error) return true
+      return (data?.length || 0) > 0
+    } catch {
+      return true
+    }
   }, [form.course, form.subtype, form.teaching_date])
 
   const handleSpotSubmit = async (answer) => {
@@ -1106,6 +1187,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }).eq('id', spotCheck.logId)
     }
     setSpotCheck(null)
+    clearDraft()
+    setHasDraft(false)
     showToast('Log saved successfully ✓', C.green)
     setForm({ ...emptyForm })
     setStep(0)
@@ -1120,6 +1203,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }).eq('id', spotCheck.logId)
     }
     setSpotCheck(null)
+    clearDraft()
+    setHasDraft(false)
     showToast('⚠️ Spot-check skipped — log flagged for review.', C.amber)
     setForm({ ...emptyForm })
     setStep(0)
@@ -1132,7 +1217,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
              form.teaching_date && form.period_number &&
              (form.chapter || form.chapter_custom) &&
              (form.subtopic || form.subtopic_custom) &&
-             isPeriodUnlocked(Number(form.period_number), form.teacher_name)
+             isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff)
     }
     if (step === 1) {
       return form.range_from && form.range_to &&
@@ -1205,7 +1290,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }
 
       const { data: logData, error: logError } = await supabase.from('teaching_logs').insert([logPayload]).select().single()
-      if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); return }
+      if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); savingRef.current = false; return }
 
       const logId = logData.id
 
@@ -1224,7 +1309,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           const suspicious = maxSim >= 0.8
           const warned     = maxSim >= 0.6 && maxSim < 0.8
 
-          // Count how many of last 10 logs were already flagged copy_paste
           const { data: flaggedLogs } = await supabase
             .from('teaching_logs')
             .select('id')
@@ -1236,7 +1320,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
 
           const repeatCount = flaggedLogs?.length || 0
 
-          // Dedup: check if warning already exists for this log
           const { data: existingWarn } = await supabase
             .from('teacher_warnings')
             .select('id')
@@ -1251,7 +1334,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
             }).eq('id', logId)
 
             if (repeatCount >= 5) {
-              // Block — insert a block record
               await supabase.from('teacher_warnings').insert([{
                 teacher_name: form.teacher_name,
                 staff_id: form.staff_id || null,
@@ -1291,14 +1373,12 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
             }).eq('id', logId)
             showToast('💡 Tip: Your log looks similar to recent ones. Try to be more specific.', C.amber)
           } else {
-            // Check if excellent
             const excellent = isExcellentLog({ ...logPayload, ...form })
             if (excellent) {
               await supabase.from('teaching_logs').update({ excellence_flag: true }).eq('id', logId)
             }
           }
         } else {
-          // First log — check excellence
           const excellent = isExcellentLog({ ...logPayload, ...form })
           if (excellent) {
             await supabase.from('teaching_logs').update({ excellence_flag: true }).eq('id', logId)
@@ -1319,7 +1399,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         await supabase.from('practice_questions').insert(pqs)
       }
 
-      // Doubt sessions — one per house, HM resolved from DOUBT_SESSION_MAP
+      // Doubt session — single row per log
       if (form.needs_doubt_session && (form.assigned_hm_id || form.assigned_hm_name)) {
         const focusNames = students.filter(s => (form.focus_student_ids||[]).includes(s.id)).map(s => s.name)
         const subLower = form.subject_name.toLowerCase()
@@ -1366,21 +1446,19 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           console.error('doubt_sessions insert error:', dsError)
         }
 
-        // One notification per unique HM
-        await supabase.from('hm_notifications').insert(
-          [sessionRow].map(r => ({
-            log_id: logId ? Number(logId) : null,
-            hm_staff_id: null,
-            hm_name: r.hm_name,
-            message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course}) | 🕐 ${r.doubt_time_slot || ''}`,
-            instructions: form.hm_instruction_message || null,
-            key_concepts: form.key_concepts || null,
-            technique_avoid: form.technique_avoid || null,
-            focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
-            status: 'unread',
-            created_at: new Date().toISOString(),
-          }))
-        )
+        // One notification
+        await supabase.from('hm_notifications').insert([{
+          log_id: logId ? Number(logId) : null,
+          hm_staff_id: null,
+          hm_name: resolvedHM,
+          message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course}) | 🕐 ${resolvedSlot || ''}`,
+          instructions: form.hm_instruction_message || null,
+          key_concepts: form.key_concepts || null,
+          technique_avoid: form.technique_avoid || null,
+          focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
+          status: 'unread',
+          created_at: new Date().toISOString(),
+        }])
       }
 
       const excellent = isExcellentLog({ ...logPayload, ...form })
@@ -1396,6 +1474,13 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       setConfirm(false)
       savingRef.current = false
     }
+  }
+
+  const discardDraft = () => {
+    clearDraft()
+    setHasDraft(false)
+    setForm({ ...emptyForm })
+    setStep(0)
   }
 
   return (
@@ -1420,6 +1505,14 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       )}
 
       <div style={S.card}>
+        {/* FIX 4: Draft banner */}
+        {hasDraft && step === 0 && (
+          <div style={{ padding:'10px 14px', background:'#fef9c3', border:'1px solid #fde68a', borderRadius:8, marginBottom:14, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+            <span style={{ fontSize:13, fontWeight:600, color:'#92400e' }}>📝 Draft restored — continue where you left off.</span>
+            <button type="button" onClick={discardDraft} style={{ fontSize:12, color:'#dc2626', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>✕ Discard Draft</button>
+          </div>
+        )}
+
         <StepBar current={step} steps={STEPS} onChange={setStep}/>
 
         {dupWarn && (
@@ -1450,9 +1543,9 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
             ✅ On campus ({gpsDistance}m from centre) — location verified.
           </div>
         )}
-        {attemptedNext && <ValidationMessage form={form} step={step}/>}
+        {attemptedNext && <ValidationMessage form={form} step={step} staff={staff}/>}
 
-        {step === 0 && <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters}/>}
+        {step === 0 && <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters} staff={staff}/>}
         {step === 1 && <Step2WhatTaught form={form} setForm={setForm}/>}
         {step === 2 && <Step3Technique form={form} setForm={setForm}/>}
         {step === 3 && <Step4BulkQuestions form={form} setForm={setForm}/>}
@@ -1493,7 +1586,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const [showLog, setShowLog] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
 
-  // Load thread + teaching log on mount
   useEffect(() => {
     if (!session.id) return
     supabase.from('hm_notifications')
@@ -1593,7 +1685,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
         hm_verified_by: currentUser?.name || 'HM',
       }).eq('id', session.log_id)
     }
-    // Post resolution to thread
     const resRow = {
       log_id: session.log_id,
       hm_staff_id: currentUser?.id || null,
@@ -1627,7 +1718,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
       {toastEl}
       <div style={{ border:`2px solid ${statusColor[session.status]||'#fde68a'}`, borderRadius:14, padding:20, background:'#fffbeb', marginBottom:12 }}>
 
-        {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:8 }}>
           <div>
             <div style={{ fontSize:15, fontWeight:800, color:'#1e293b' }}>
@@ -1660,7 +1750,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           </div>
         </div>
 
-        {/* Today's Log Toggle */}
         <button type="button" onClick={() => setShowLog(!showLog)}
           style={{ ...S.btnSm(C.navy), marginBottom:14, width:'100%', textAlign:'left' }}>
           📋 {showLog ? 'Hide' : 'View'} Today's Teaching Log
@@ -1685,7 +1774,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           </div>
         )}
 
-        {/* Teacher Instructions */}
         {session.teacher_instructions && (
           <div style={{ padding:'12px 14px', background:'#1e3a5f', borderRadius:10, marginBottom:14, color:'white' }}>
             <div style={{ fontSize:11, fontWeight:800, color:'#93c5fd', marginBottom:6, letterSpacing:'.08em' }}>📋 SUBJECT TEACHER'S INSTRUCTIONS</div>
@@ -1707,7 +1795,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           </div>
         )}
 
-        {/* Focus Students */}
         {session.focus_student_names && (() => {
           try {
             const names = JSON.parse(session.focus_student_names)
@@ -1729,7 +1816,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           } catch { return null }
         })()}
 
-        {/* Batch Students */}
         <div style={{ marginBottom:12 }}>
           <button type="button" onClick={() => { setShowStudents(!showStudents); if (!students.length) fetchStudents() }} style={S.btnSm('#94a3b8')}>
             👥 {showStudents ? 'Hide' : 'View'} Batch Students
@@ -1750,7 +1836,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           </div>
         )}
 
-        {/* Communication Thread */}
         <div style={{ marginBottom:14 }}>
           <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:8, textTransform:'uppercase', letterSpacing:'.05em' }}>
             💬 Communication Thread
@@ -1782,7 +1867,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           </div>
         </div>
 
-        {/* Resolution */}
         {session.status === 'open' && (
           <div style={{ borderTop:'1px solid #fde68a', paddingTop:14 }}>
             <label style={S.label}>Resolution Note</label>
@@ -1801,7 +1885,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           </div>
         )}
 
-        {/* Already resolved */}
         {session.status !== 'open' && session.resolution_note && (
           <div style={{ borderTop:'1px solid #e2e8f0', paddingTop:12, marginTop:8 }}>
             <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:4 }}>Resolution Note:</div>
