@@ -520,28 +520,7 @@ useEffect(() => {
     setDupWarn(''); setDupBlocked(false); setSaving(true)
     const { data: logData, error } = await supabase.from('teaching_logs').insert([buildPayload(form)]).select().single()
     if (error) { showToast('Error: '+error.message, '#dc2626'); setSaving(false); return }
-
-    if (form.needs_doubt_session && logData) {
-      try {
-        // PATCH-4: use batch_id instead of 'batch' column for students query
-        const { data: students } = await supabase.from('students').select('house').eq('course',form.course).eq('batch_id',form.batch_id||'').eq('status','Active').not('house','is',null)
-        const houses = [...new Set((students||[]).map(s => s.house).filter(Boolean))]
-        // PATCH-7: if 'housemasters' table does not exist in your schema, change to:
-        // supabase.from('staff_profiles').select('id,name,house').eq('role','housemaster').eq('status','Active').in('house',houses.length?houses:['__none__'])
-        const { data: hms } = await supabase.from('housemasters').select('id,name,house').eq('status','Active').in('house',houses.length?houses:['__none__'])
-        const hmMap = {}; (hms||[]).forEach(hm => { hmMap[hm.house]=hm })
-        const ds = houses.map(house => ({
-          log_id:logData.id, course:form.course, subtype:form.subtype||null, class_name:form.class_name||null,
-          subject_name:form.subject_name, topic:form.topic_taught, teaching_date:form.teaching_date,
-          teacher_name:form.teacher_name||null, teacher_staff_id:form.staff_id||null,
-          house_name:house, hm_id:hmMap[house]?.id||null, hm_name:hmMap[house]?.name||null, status:'open',
-          // PATCH-3: added batch_name and staff_name so DoubtSessionSubRow renders them correctly
-          batch_name:form.subtype||null, staff_name:form.teacher_name||null,
-        }))
-        if (ds.length) await supabase.from('doubt_sessions').insert(ds)
-      } catch (err) { showToast('Doubt session create failed: '+err.message, '#d97706') }
-    }
-
+    
     setForm({ ...emptyLog, teaching_date:today() }); setShowForm(false); fetchLogs(); setSaving(false)
     showToast('Log saved', '#16a34a')
   }
