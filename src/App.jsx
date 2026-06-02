@@ -702,7 +702,7 @@ if (!currentUser) {
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
     salary:             <Salary currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
     staff:              <Staff  currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-    hr:                <HR                currentUser={currentUser} perms={perms('hr')}               />,
+    hr: <HR currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} />,
     leave:             <Leave             currentUser={currentUser} perms={perms('leave')}            />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}           />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}        />,

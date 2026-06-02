@@ -1710,8 +1710,8 @@ function BulkOperations({ staff }) {
  * Main Daily Attendance Tracker Component
  * Orchestrates all 10 features with tabbed navigation
  */
-function DailyAttendanceTracker({ currentUser: appUser, perms }) {
-  const [staff, setStaff] = useState([])
+function DailyAttendanceTracker({ currentUser: appUser, perms, staff: staffProp }) {
+  const [staff, setStaff] = useState(staffProp || [])
   const [logs, setLogs] = useState([])
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1761,50 +1761,81 @@ function DailyAttendanceTracker({ currentUser: appUser, perms }) {
 
   return (
     <div style={{ padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>
-          📊 Daily Attendance Tracker
-        </h1>
-        <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0' }}>
-          Advanced features for Admin & Vice Principal | {staff.length} staff | {logs.length} records
-        </p>
+       {/* Header */}
+      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: 0, letterSpacing: '-0.02em' }}>
+            📊 Attendance Tracker
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0' }}>
+            {staff.length} staff · {logs.length} records
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <span style={{ padding: '5px 12px', borderRadius: '999px', fontSize: '11px', fontWeight: '700', backgroundColor: '#dcfce7', color: '#15803d' }}>
+            ● Live
+          </span>
+        </div>
       </div>
 
-      {/* Section Navigation */}
-      <div style={{ overflowX: 'auto', marginBottom: '16px', WebkitOverflowScrolling: 'touch' }}>
-        <div
-          style={{
-            display: 'flex',
-            gap: '4px',
-            padding: '4px',
-            backgroundColor: '#f1f5f9',
-            borderRadius: '12px',
-            width: 'max-content',
-            minWidth: '100%',
-          }}
-        >
-          {sections.map(sec => (
+      {/* Section Navigation — responsive grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: '8px',
+        marginBottom: '20px',
+      }}>
+        {sections.map(sec => {
+          const isActive = activeSection === sec.key
+          const colorMap = {
+            dashboard:   { bg: '#eff6ff', active: '#1e3a5f', icon: '#2563eb' },
+            daily:       { bg: '#f0fdf4', active: '#15803d', icon: '#16a34a' },
+            absent:      { bg: '#fff7ed', active: '#c2410c', icon: '#ea580c' },
+            leave:       { bg: '#fdf4ff', active: '#7e22ce', icon: '#9333ea' },
+            risk:        { bg: '#fef2f2', active: '#b91c1c', icon: '#dc2626' },
+            performance: { bg: '#f0fdfa', active: '#0f766e', icon: '#0d9488' },
+            compliance:  { bg: '#fefce8', active: '#a16207', icon: '#ca8a04' },
+            shift:       { bg: '#f0f9ff', active: '#0369a1', icon: '#0284c7' },
+            geo:         { bg: '#fdf4ff', active: '#6d28d9', icon: '#7c3aed' },
+            bulk:        { bg: '#f8fafc', active: '#334155', icon: '#475569' },
+          }
+          const c = colorMap[sec.key] || colorMap.dashboard
+          return (
             <button
               key={sec.key}
               onClick={() => setActiveSection(sec.key)}
               style={{
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '12px 6px',
+                borderRadius: '12px',
+                border: isActive ? `2px solid ${c.active}` : '2px solid transparent',
                 cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: '600',
-                whiteSpace: 'nowrap',
-                backgroundColor: activeSection === sec.key ? 'white' : 'transparent',
-                color: activeSection === sec.key ? '#1e3a5f' : '#64748b',
-                boxShadow: activeSection === sec.key ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+                backgroundColor: isActive ? c.active : 'white',
+                boxShadow: isActive
+                  ? `0 4px 14px ${c.active}33`
+                  : '0 1px 4px rgba(0,0,0,0.07)',
+                transition: 'all 0.18s ease',
+                minHeight: '72px',
               }}
             >
-              {sec.label} {sec.full}
+              <span style={{ fontSize: '22px', lineHeight: 1 }}>{sec.label}</span>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: '700',
+                letterSpacing: '0.02em',
+                color: isActive ? 'white' : '#64748b',
+                textAlign: 'center',
+                lineHeight: 1.2,
+              }}>
+                {sec.full}
+              </span>
             </button>
-          ))}
-        </div>
+          )
+        })}
       </div>
 
       {/* Sections */}
