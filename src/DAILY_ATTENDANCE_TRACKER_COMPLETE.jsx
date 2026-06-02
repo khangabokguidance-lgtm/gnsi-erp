@@ -1417,115 +1417,382 @@ function ComplianceEngine({ staff, logs, leaves }) {
 // SECTION 13: FEATURE 8 - SHIFT MANAGEMENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ShiftManagement({ staff, logs }) {
-  const [selectedDate, setSelectedDate] = useState(getToday().toISOString().slice(0, 10))
-  const [coverage, setCoverage] = useState([])
-  const [assignments, setAssignments] = useState([])
+const SHIFT_SLOTS = [
+  { id: 'morning_1',   label: 'Morning 1',   time: '7:20 AM – 8:10 AM' },
+  { id: 'morning_2',   label: 'Morning 2',   time: '6:30 AM – 7:30 AM' },
+  { id: 'morning_3',   label: 'Morning 3',   time: '7:30 AM – 8:20 AM' },
+  { id: 'slot_1',      label: 'Slot 1',      time: '10:20 AM – 11:10 AM' },
+  { id: 'slot_2',      label: 'Slot 2',      time: '11:10 AM – 12:00 PM' },
+  { id: 'slot_3',      label: 'Slot 3',      time: '12:00 PM – 12:50 PM' },
+  { id: 'slot_4',      label: 'Slot 4',      time: '1:20 PM – 2:10 PM' },
+  { id: 'slot_5',      label: 'Slot 5',      time: '2:10 PM – 2:55 PM' },
+  { id: 'slot_6',      label: 'Slot 6',      time: '2:55 PM – 3:40 PM' },
+  { id: 'evening_1',   label: 'Evening 1',   time: '5:30 PM – 6:30 PM' },
+  { id: 'evening_2',   label: 'Evening 2',   time: '6:35 PM – 7:35 PM' },
+  { id: 'evening_3',   label: 'Evening 3',   time: '7:40 PM – 8:30 PM' },
+  { id: 'self_study',  label: 'Self Study',  time: '9:30 PM – 10:15 PM' },
+]
 
-  useEffect(() => {
-    const fetch = async () => {
-      // Simulate getting shift assignments (would be from DB)
-      const simulated = staff.map((s, i) => ({
-        staff_id: s.id,
-        staff_profiles: { name: s.name, department: s.department },
-        shift_id: i % 2 === 0 ? 1 : 2,
-        primary_class: `${11 + (i % 3)}-${String.fromCharCode(65 + (i % 3))}`,
-      }))
+const BATCHES = [
+  'Achiever A', 'Achiever B', 'Leader A', 'Leader B',
+  'Champion A', 'Champion B', 'Lakshya A', 'Lakshya B',
+  'Umeed A', 'Umeed B', 'Elite', 'Prime',
+]
 
-      const todayLogs = logs.filter(l => l.date === selectedDate)
+const SUBJECTS = [
+  'Mathematics I', 'Mathematics II', 'Mathematics Drill',
+  'Science', 'GK', 'Grammar', 'Vocabulary', 'Reasoning',
+  'Mental Ability', 'Meitei Mayek', 'Hindi', 'Passage', 'Self Studies',
+]
 
-      const withStatus = simulated.map(a => ({
-        ...a,
-        actualStatus: todayLogs.find(l => l.staff_id === a.staff_id)?.status || 'unknown',
-      }))
+function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
+  const [form, setForm] = useState({
+    staff_id: '',
+    shift_slot: '',
+    batch: '',
+    subject: '',
+    date_from: getToday().toISOString().slice(0, 10),
+    date_to: '',
+    repeat: 'daily',
+    notes: '',
+  })
+  const [saving, setSaving] = useState(false)
 
-      setAssignments(withStatus)
+  const selectedStaff = staff.find(s => String(s.id) === String(form.staff_id))
+  const selectedSlot  = SHIFT_SLOTS.find(s => s.id === form.shift_slot)
 
-      // Calculate coverage
-      const byClass = {}
-      simulated.forEach(a => {
-        if (!byClass[a.primary_class]) byClass[a.primary_class] = []
-        byClass[a.primary_class].push(a)
-      })
-
-      const coverageData = Object.entries(byClass).map(([cls, teachers]) => ({
-        className: cls,
-        totalAssigned: teachers.length,
-        present: teachers.filter(t => todayLogs.find(l => l.staff_id === t.staff_id && l.status === 'Present')).length,
-        absent: teachers.filter(t => todayLogs.find(l => l.staff_id === t.staff_id && l.status === 'Absent')).length,
-        covered: teachers.filter(t => todayLogs.find(l => l.staff_id === t.staff_id && l.status === 'Present')).length > 0,
-      }))
-
-      setCoverage(coverageData)
+  const handleSave = async () => {
+    if (!form.staff_id || !form.shift_slot || !form.batch || !form.subject) {
+      showToast('Please fill all required fields.')
+      return
     }
+    setSaving(true)
+    const { error } = await supabase.from('staff_shift_assignments').insert([{
+      staff_id:    Number(form.staff_id),
+      shift_id:    form.shift_slot,
+      date:        form.date_from,
+      primary_class: form.batch,
+      subject:     form.subject,
+      time_slot:   selectedSlot?.time || '',
+      repeat_type: form.repeat,
+      date_to:     form.date_to || null,
+      notes:       form.notes || null,
+      created_at:  new Date().toISOString(),
+    }])
+    setSaving(false)
+    if (error) { showToast('Save failed: ' + error.message); return }
+    showToast('Shift assigned!', 'success')
+    onSaved()
+    onClose()
+  }
 
-    fetch()
-  }, [selectedDate, staff, logs])
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      zIndex: 9999, padding: '0',
+    }}>
+      <div style={{
+        backgroundColor: 'white', borderRadius: '20px 20px 0 0',
+        width: '100%', maxWidth: '600px', maxHeight: '92vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
+      }}>
+        {/* Header */}
+        <div style={{
+          background: 'linear-gradient(135deg,#1e3a5f,#2563eb)',
+          padding: '18px 20px', flexShrink: 0,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '11px', color: '#93c5fd', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Shift Management</p>
+            <h2 style={{ margin: '3px 0 0', fontSize: '17px', fontWeight: '800', color: 'white' }}>Assign Shift to Staff</h2>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', width: '34px', height: '34px', borderRadius: '8px', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+        </div>
+
+        {/* Form */}
+        <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          {/* Staff picker */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Staff Member *</label>
+            <select value={form.staff_id} onChange={e => setForm({ ...form, staff_id: e.target.value })} style={{ ...styles.select }}>
+              <option value="">Select staff...</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.designation || s.department}</option>)}
+            </select>
+            {selectedStaff && (
+              <div style={{ marginTop: '6px', padding: '8px 12px', backgroundColor: '#eff6ff', borderRadius: '8px', fontSize: '12px', color: '#1e3a5f', fontWeight: '600' }}>
+                👤 {selectedStaff.name} · {selectedStaff.department}
+              </div>
+            )}
+          </div>
+
+          {/* Shift slot */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Time Slot *</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '6px' }}>
+              {SHIFT_SLOTS.map(slot => (
+                <button key={slot.id} onClick={() => setForm({ ...form, shift_slot: slot.id })}
+                  style={{
+                    padding: '8px 10px', borderRadius: '8px', border: `2px solid ${form.shift_slot === slot.id ? '#1e3a5f' : '#e2e8f0'}`,
+                    backgroundColor: form.shift_slot === slot.id ? '#1e3a5f' : 'white',
+                    color: form.shift_slot === slot.id ? 'white' : '#374151',
+                    cursor: 'pointer', textAlign: 'left', fontSize: '11px', fontWeight: '600',
+                  }}>
+                  <div>{slot.label}</div>
+                  <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '2px' }}>{slot.time}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Batch & Subject */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Batch *</label>
+              <select value={form.batch} onChange={e => setForm({ ...form, batch: e.target.value })} style={{ ...styles.select }}>
+                <option value="">Select batch...</option>
+                {BATCHES.map(b => <option key={b}>{b}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subject *</label>
+              <select value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} style={{ ...styles.select }}>
+                <option value="">Select subject...</option>
+                {SUBJECTS.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Date range */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>From Date *</label>
+              <input type="date" value={form.date_from} onChange={e => setForm({ ...form, date_from: e.target.value })} style={{ ...styles.input }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>To Date (optional)</label>
+              <input type="date" value={form.date_to} onChange={e => setForm({ ...form, date_to: e.target.value })} style={{ ...styles.input }} />
+            </div>
+          </div>
+
+          {/* Repeat */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Repeat</label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {['daily', 'mon-sat', 'weekly', 'once'].map(r => (
+                <button key={r} onClick={() => setForm({ ...form, repeat: r })}
+                  style={{
+                    padding: '7px 14px', borderRadius: '999px', border: `1.5px solid ${form.repeat === r ? '#1e3a5f' : '#e2e8f0'}`,
+                    backgroundColor: form.repeat === r ? '#1e3a5f' : 'white',
+                    color: form.repeat === r ? 'white' : '#374151',
+                    fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                  }}>
+                  {r === 'mon-sat' ? 'Mon–Sat' : r.charAt(0).toUpperCase() + r.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Notes</label>
+            <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Optional note..." style={{ ...styles.input }} />
+          </div>
+
+          {/* Preview */}
+          {form.staff_id && form.shift_slot && form.batch && form.subject && (
+            <div style={{ padding: '12px 14px', backgroundColor: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+              <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: '#15803d' }}>✅ Shift Preview</p>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#374151' }}>
+                <strong>{selectedStaff?.name}</strong> · {selectedSlot?.time} · {form.batch} · {form.subject}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 20px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '10px', flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '12px', borderRadius: '10px', border: 'none', backgroundColor: saving ? '#94a3b8' : '#1e3a5f', color: 'white', fontWeight: '700', fontSize: '14px', cursor: saving ? 'not-allowed' : 'pointer' }}>
+            {saving ? '⏳ Saving...' : '💾 Assign Shift'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ShiftManagement({ staff, logs, canOperate = true }) {
+  const [selectedDate, setSelectedDate]   = useState(getToday().toISOString().slice(0, 10))
+  const [assignments, setAssignments]     = useState([])
+  const [loading, setLoading]             = useState(false)
+  const [showModal, setShowModal]         = useState(false)
+  const [filterStaff, setFilterStaff]     = useState('')
+  const [filterSlot, setFilterSlot]       = useState('')
+  const [confirmDel, setConfirmDel]       = useState(null)
+  const { show: showToast, ToastEl }      = useToast()
+
+  const fetchAssignments = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('staff_shift_assignments')
+      .select('*, staff_profiles(name, department, designation)')
+      .order('created_at', { ascending: false })
+    setAssignments(data || [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchAssignments() }, [fetchAssignments])
+
+  const handleDelete = async (id) => {
+    const { error } = await supabase.from('staff_shift_assignments').delete().eq('id', id)
+    if (error) showToast('Delete failed: ' + error.message)
+    else { showToast('Shift removed.', 'success'); fetchAssignments() }
+    setConfirmDel(null)
+  }
+
+  const filtered = useMemo(() => assignments.filter(a => {
+    const ms = !filterStaff || String(a.staff_id) === filterStaff
+    const msl = !filterSlot  || a.shift_id === filterSlot
+    return ms && msl
+  }), [assignments, filterStaff, filterSlot])
+
+  const todayLogs = useMemo(() => logs.filter(l => l.date === selectedDate), [logs, selectedDate])
+
+  const coverage = useMemo(() => {
+    const map = {}
+    filtered.forEach(a => {
+      const key = a.shift_id
+      if (!map[key]) map[key] = { slot: SHIFT_SLOTS.find(s => s.id === key), total: 0, present: 0 }
+      map[key].total++
+      if (todayLogs.find(l => l.staff_id === a.staff_id && l.status === 'Present')) map[key].present++
+    })
+    return Object.values(map)
+  }, [filtered, todayLogs])
 
   return (
     <div style={styles.card}>
+      {ToastEl}
+      {showModal && (
+        <AssignShiftModal
+          staff={staff}
+          onClose={() => setShowModal(false)}
+          onSaved={fetchAssignments}
+          showToast={showToast}
+        />
+      )}
+      {confirmDel && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998, padding: '16px' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '24px', maxWidth: '320px', width: '100%' }}>
+            <p style={{ margin: '0 0 20px', fontSize: '15px', color: '#1e293b' }}>Remove this shift assignment?</p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setConfirmDel(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontWeight: '600' }}>Cancel</button>
+              <button onClick={() => handleDelete(confirmDel)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer', fontWeight: '700' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <SectionHeader
         icon="🔄"
         title="Shift Management"
-        action={<input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={{ ...styles.input, width: '140px', padding: '7px 10px', fontSize: '12px' }} />}
+        subtitle={`${assignments.length} shift assignments`}
+        action={
+          canOperate ? (
+            <button onClick={() => setShowModal(true)} style={{ ...styles.btn(true), padding: '8px 14px', fontSize: '12px', background: 'linear-gradient(135deg,#1e3a5f,#2563eb)' }}>
+              ＋ Assign Shift
+            </button>
+          ) : null
+        }
       />
 
-      {/* Coverage Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-        {coverage.map(c => (
-          <div
-            key={c.className}
-            style={{
-              padding: '10px 12px',
-              borderRadius: '8px',
-              backgroundColor: c.covered ? '#f0fdf4' : '#fee2e2',
-              border: `1px solid ${c.covered ? '#bbf7d0' : '#fecaca'}`,
-            }}
-          >
-            <p style={{ margin: 0, fontWeight: '600', fontSize: '13px' }}>{c.className}</p>
-            <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>
-              {c.present}/{c.totalAssigned} present {c.covered ? '✓' : '⚠'}
-            </p>
-          </div>
-        ))}
+      {/* Coverage summary */}
+      {coverage.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px,1fr))', gap: '8px', marginBottom: '16px' }}>
+          {coverage.map((c, i) => (
+            <div key={i} style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: c.present > 0 ? '#f0fdf4' : '#fff7ed', border: `1px solid ${c.present > 0 ? '#bbf7d0' : '#fed7aa'}` }}>
+              <p style={{ margin: 0, fontWeight: '700', fontSize: '12px', color: '#1e293b' }}>{c.slot?.label || c.slot}</p>
+              <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.slot?.time}</p>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', fontWeight: '700', color: c.present > 0 ? '#16a34a' : '#ea580c' }}>
+                {c.present}/{c.total} present
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+        <select value={filterStaff} onChange={e => setFilterStaff(e.target.value)} style={{ ...styles.select, fontSize: '12px', padding: '8px 10px' }}>
+          <option value="">All Staff</option>
+          {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={filterSlot} onChange={e => setFilterSlot(e.target.value)} style={{ ...styles.select, fontSize: '12px', padding: '8px 10px' }}>
+          <option value="">All Slots</option>
+          {SHIFT_SLOTS.map(s => <option key={s.id} value={s.id}>{s.label} · {s.time}</option>)}
+        </select>
       </div>
 
-      {/* Shift Assignments Table */}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Teacher</th>
-              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Class</th>
-              <th style={{ padding: '6px 8px', textAlign: 'center' }}>Shift</th>
-              <th style={{ padding: '6px 8px', textAlign: 'center' }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {assignments.map((a, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                <td style={{ padding: '6px 8px' }}>{a.staff_profiles?.name}</td>
-                <td style={{ padding: '6px 8px' }}>{a.primary_class}</td>
-                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{a.shift_id === 1 ? 'Morning' : 'Afternoon'}</td>
-                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                  <span
-                    style={{
-                      fontSize: '10px',
-                      fontWeight: '600',
-                      color: a.actualStatus === 'Present' ? '#16a34a' : a.actualStatus === 'Absent' ? '#dc2626' : '#94a3b8',
-                      backgroundColor: a.actualStatus === 'Present' ? '#f0fdf4' : a.actualStatus === 'Absent' ? '#fee2e2' : '#f1f5f9',
-                      padding: '3px 6px',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {a.actualStatus === 'unknown' ? 'Not marked' : a.actualStatus}
+      {/* Assignments list */}
+      {loading ? (
+        <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px' }}>Loading...</p>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '36px 16px', color: '#94a3b8' }}>
+          <div style={{ fontSize: '36px', marginBottom: '8px' }}>🗓</div>
+          <p style={{ margin: 0, fontSize: '13px' }}>No shift assignments yet.</p>
+          {canOperate && <p style={{ margin: '6px 0 0', fontSize: '12px' }}>Click <strong>＋ Assign Shift</strong> to get started.</p>}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {filtered.map(a => {
+            const slot    = SHIFT_SLOTS.find(s => s.id === a.shift_id)
+            const log     = todayLogs.find(l => l.staff_id === a.staff_id)
+            const status  = log?.status || 'Not Marked'
+            const statusColor = status === 'Present' ? '#16a34a' : status === 'Absent' ? '#dc2626' : '#94a3b8'
+            const statusBg    = status === 'Present' ? '#f0fdf4' : status === 'Absent' ? '#fee2e2' : '#f8fafc'
+            return (
+              <div key={a.id} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: 'white', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>🧑‍🏫</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{a.staff_profiles?.name || '—'}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{a.staff_profiles?.designation} · {a.staff_profiles?.department}</p>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: statusColor, backgroundColor: statusBg, padding: '4px 10px', borderRadius: '999px', flexShrink: 0 }}>
+                    {status}
                   </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  {canOperate && (
+                    <button onClick={() => setConfirmDel(a.id)} style={{ border: 'none', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>🗑</button>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', borderTop: '1px solid #f1f5f9', fontSize: '11px' }}>
+                  <div style={{ padding: '7px 12px', borderRight: '1px solid #f1f5f9' }}>
+                    <p style={{ margin: 0, color: '#94a3b8' }}>Time Slot</p>
+                    <p style={{ margin: '2px 0 0', fontWeight: '600', color: '#1e293b' }}>{slot?.label || a.shift_id}</p>
+                    <p style={{ margin: '1px 0 0', fontSize: '10px', color: '#64748b' }}>{slot?.time}</p>
+                  </div>
+                  <div style={{ padding: '7px 12px', borderRight: '1px solid #f1f5f9' }}>
+                    <p style={{ margin: 0, color: '#94a3b8' }}>Batch</p>
+                    <p style={{ margin: '2px 0 0', fontWeight: '600', color: '#1e293b' }}>{a.primary_class || '—'}</p>
+                  </div>
+                  <div style={{ padding: '7px 12px' }}>
+                    <p style={{ margin: 0, color: '#94a3b8' }}>Subject</p>
+                    <p style={{ margin: '2px 0 0', fontWeight: '600', color: '#1e293b' }}>{a.subject || '—'}</p>
+                  </div>
+                </div>
+                {(a.repeat_type || a.notes) && (
+                  <div style={{ padding: '6px 12px', backgroundColor: '#f8fafc', borderTop: '1px solid #f1f5f9', fontSize: '11px', color: '#64748b', display: 'flex', gap: '12px' }}>
+                    {a.repeat_type && <span>🔁 {a.repeat_type === 'mon-sat' ? 'Mon–Sat' : a.repeat_type}</span>}
+                    {a.notes && <span>📝 {a.notes}</span>}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -1872,7 +2139,7 @@ function DailyAttendanceTracker({ currentUser: appUser, perms, staff: staffProp 
       {show('risk') && <PredictiveAnalytics staff={staff} logs={logs} />}
       {show('performance') && <PerformanceScorecards staff={staff} logs={logs} />}
       {show('compliance') && <ComplianceEngine staff={staff} logs={logs} leaves={[]} />}
-      {show('shift') && <ShiftManagement staff={staff} logs={logs} />}
+      {show('shift') && <ShiftManagement staff={staff} logs={logs} canOperate={canOperate} />}
       {show('geo') && <GeolocationTracker staff={staff} />}
       {show('bulk') && <BulkOperations staff={staff} canOperate={canOperate} />}
     </div>
