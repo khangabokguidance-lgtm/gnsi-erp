@@ -852,7 +852,9 @@ const emptyHMA = {
   freq: HM_ACTIVITY_TYPES[0].freq, description: '', outcome: '', status: 'Completed',
 }
 
-export function HousemasterActivitiesTab({ staffProfiles }) {
+export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
   const [activeView, setActiveView] = useState('checklist') // 'checklist' | 'log' | 'doubt'
   const [records,    setRecords]    = useState([])
   const [houses,     setHouses]     = useState([])
@@ -921,7 +923,6 @@ export function HousemasterActivitiesTab({ staffProfiles }) {
 
   const VIEW_TABS = [
     { id: 'checklist', label: '✅ Daily Checklist' },
-    { id: 'doubt',     label: '📖 Doubt Session' },
     { id: 'log',       label: '📋 Activity Log' },
   ]
 
@@ -947,9 +948,6 @@ export function HousemasterActivitiesTab({ staffProfiles }) {
       )}
 
       {/* ── Doubt Session View ── */}
-      {activeView === 'doubt' && (
-        <DoubtSessionPanel houses={houses} />
-      )}
 
       {/* ── Activity Log View ── */}
       {activeView === 'log' && (
@@ -1081,7 +1079,7 @@ export function HousemasterActivitiesTab({ staffProfiles }) {
                           <td style={{ padding: '10px 14px' }}>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
-                              <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                              {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                             </div>
                           </td>
                         </tr>

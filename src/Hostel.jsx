@@ -1181,7 +1181,10 @@ const MAINTENANCE_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const MAINTENANCE_STATUSES = ['Raised', 'Assigned', 'In Progress', 'Resolved', 'Closed']
 const MAINTENANCE_CATEGORIES = ['Plumbing', 'Electrical', 'Furniture', 'Civil', 'Cleaning', 'IT', 'Other']
 
-function MaintenanceTab({ currentHousemaster }) {
+function MaintenanceTab({ currentHousemaster, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
+
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -1202,7 +1205,12 @@ function MaintenanceTab({ currentHousemaster }) {
 
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
-    const payload = { ...form, reported_by: currentHousemaster?.name || form.reported_by, raised_at: new Date().toISOString() }
+    const payload = {
+  ...form,
+  reported_by: currentHousemaster?.name || form.reported_by,
+  raised_at: new Date().toISOString(),
+  cost: form.cost !== '' && form.cost !== null ? Number(form.cost) : null,
+}
     const { error } = await supabase.from('maintenance_records').insert([payload])
     if (error) alert('Error: ' + error.message)
     else { setForm({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }); setShowForm(false); load() }
@@ -1355,7 +1363,7 @@ function MaintenanceTab({ currentHousemaster }) {
                       {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#ca8a04'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
                       {r.status === 'In Progress' && <button onClick={() => handleStatusChange(r.id, 'Resolved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>Resolve</button>}
                       {r.status === 'Resolved' && <button onClick={() => handleStatusChange(r.id, 'Closed')} style={{ ...btn('#374151'), fontSize: '11px', padding: '4px 8px' }}>Close</button>}
-                      <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>
+                      {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>}
                     </div>
                   </td>
                 </tr>
@@ -4002,6 +4010,10 @@ function Hostel() {
   const [dataLoading,   setDataLoading]   = useState(true)
   const [mobile,        setMobile]        = useState(isMobile())
   const [currentHousemaster, setCurrentHousemaster] = useState(null)
+  const currentUser = JSON.parse(localStorage.getItem('gnsi_user') || sessionStorage.getItem('gnsi_user') || '{}')
+const userRole = (currentUser?.role || '').toLowerCase()
+const isAdmin = userRole === 'admin'
+const isHM = userRole === 'house master'
 
   // Track mobile state
   useEffect(() => {
@@ -4041,13 +4053,13 @@ function Hostel() {
     house:        <HouseTab       students={students} />,
     housemaster:  <HousemasterTab />,
     kitchen:      <KitchenTab />,
-    hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} />,
+    hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
     attendance:   <AttendanceTab  students={students} currentHousemaster={currentHousemaster} />,
-    leave:        <LeaveTab       students={students} currentHousemaster={currentHousemaster} />,
+    leave:        <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     hmdashboard:  <HMDashboard    students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} />,
-    maintenance:  <MaintenanceTab currentHousemaster={currentHousemaster} />,
+    maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     journal:      <JournalTab     currentHousemaster={currentHousemaster} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession:   <DoubtSessionTab  />,
