@@ -3673,7 +3673,8 @@ function DeleteModal({ record, onConfirm, onCancel }) {
 // ══════════════════════════════════════════════════════════════
 //  MAIN LEAVE TAB
 // ══════════════════════════════════════════════════════════════
-function LeaveTab({ students, currentHousemaster }) {
+function LeaveTab({ students, currentHousemaster, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -4203,7 +4204,7 @@ function LeaveTab({ students, currentHousemaster }) {
     if (record.status === 'Rejected' || record.status === 'Returned' || record.status === 'Overdue') return false
     if (record.status === 'Approved' && level >= 2) return false
     if (level === 0) return userRole === 'hm' || userRole === 'admin'
-    if (level === 1) return userRole === 'superintendent' || userRole === 'admin'
+    if (level === 1) return userRole === 'admin'  // ← superintendent CANNOT approve
     return false
   }
 
@@ -4659,7 +4660,7 @@ function LeaveTab({ students, currentHousemaster }) {
                   ...((r.status === 'Approved' && (r.approval_level ?? 0) >= 2) || r.status === 'Overdue'
                     ? [{ label: '🏠 Mark Returned', onClick: () => handleMarkReturned(r), bg: '#dbeafe', color: '#1d4ed8', fullWidth: true }]
                     : []),
-                  { label: '🗑 Delete', onClick: () => setDeleteTarget(r), bg: '#fee2e2', color: '#dc2626' },
+                  ...(isAdmin ? [{ label: '🗑 Delete', onClick: () => setDeleteTarget(r), bg: '#fee2e2', color: '#dc2626' }] : []),
                 ]} />
               </MobileRecordCard>
             ))}
@@ -4981,8 +4982,10 @@ function LeaveTab({ students, currentHousemaster }) {
                       )}
                       {/* Gate Pass — compact button */}
                       <GatePassButton record={r} compact={true} />
-                      {/* Delete */}
-                      <button onClick={() => setDeleteTarget(r)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '5px 9px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }} title="Delete">🗑</button>
+                      {/* Delete — admin only */}
+                      {isAdmin && (
+                        <button onClick={() => setDeleteTarget(r)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '5px 9px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }} title="Delete">🗑</button>
+                      )}
                     </div>
                     {/* Approval trail inline */}
                     {expandedHistory === r.id && (
