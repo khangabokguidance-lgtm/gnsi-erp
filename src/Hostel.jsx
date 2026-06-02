@@ -3651,7 +3651,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 </thead>
                 <tbody>
                   {filteredStudents.map((s, i) => {
-                    const h  = houses.find(h => h.name === s.house)
+                    const h  = houses.find(h => normalizeHouse(h.name) === normalizeHouse(s.house))
                     const hs = h ? getHouseStyle(h) : null
                     return (
                       <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}
@@ -3739,7 +3739,7 @@ function HousemasterTab() {
   }
 
   const getHouseStyle = houseName => {
-    const h = houses.find(h => h.name === houseName)
+    const h = houses.find(h => normalizeHouse(h.name) === normalizeHouse(houseName))
     if (!h) return HOUSE_COLORS[0]
     return HOUSE_COLORS[(Number(h.color_index) || 0) % HOUSE_COLORS.length]
   }
