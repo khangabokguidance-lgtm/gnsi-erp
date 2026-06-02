@@ -588,6 +588,66 @@ useEffect(() => {
     Subject:l.subject_name||'', Teacher:l.teacher_name||'', Topic:l.topic_taught||'',
     Classwork:l.classwork||'', Homework:l.homework||'', Remarks:l.remarks||'',
   })), `teaching_logs_${today()}.csv`)
+  const printLog = (item) => {
+    const w = window.open('', '_blank')
+    const d = (label, value) => `<tr><td class="lbl">${label}</td><td>${value || '—'}</td></tr>`
+    w.document.write(`
+      <html><head><title>Teaching Log — ${item.subject_name} ${item.teaching_date}</title>
+      <style>
+        body { font-family: Georgia, serif; font-size: 13px; color: #000; padding: 32px; }
+        h1 { font-size: 18px; margin: 0; }
+        .sub { font-size: 12px; color: #555; margin-top: 4px; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px; }
+        .stamp { display: inline-block; border: 2px solid #1e3a5f; border-radius: 6px; padding: 4px 14px; font-size: 11px; font-weight: bold; color: #1e3a5f; margin-top: 8px; letter-spacing: .08em; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+        td { padding: 8px 10px; border: 1px solid #ccc; vertical-align: top; }
+        .lbl { font-weight: bold; background: #f0f0f0; width: 30%; }
+        .section { font-weight: bold; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: #555; margin: 16px 0 6px; }
+        .signatures { display: flex; justify-content: space-between; margin-top: 48px; }
+        .sign { border-top: 1px solid #000; width: 160px; padding-top: 6px; text-align: center; font-size: 12px; }
+        @media print { body { padding: 24px; } }
+      </style></head><body>
+      <div class="header">
+        <h1>GNSI — Daily Teaching Log</h1>
+        <div class="sub">${item.course || ''} · ${item.subtype || ''} · ${item.class_name || ''} &nbsp;|&nbsp; ${item.subject_name} &nbsp;|&nbsp; Period ${item.period_number || '—'}</div>
+        <div class="stamp">DATE: ${new Date(item.teaching_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</div>
+      </div>
+      <div class="section">Class Details</div>
+      <table><tbody>
+        ${d('Teacher', item.teacher_name)}
+        ${d('Course / Batch', (item.course||'—')+' / '+(item.subtype||'—'))}
+        ${d('Class', item.class_name)}
+        ${d('Subject', item.subject_name)}
+        ${d('Period', item.period_number ? 'Period '+item.period_number : null)}
+        ${d('Chapter', item.chapter)}
+        ${d('Sub-topic', item.subtopic)}
+        ${d('Range Covered', item.range_from ? item.range_from+' → '+item.range_to : null)}
+      </tbody></table>
+      <div class="section">What Was Taught</div>
+      <table><tbody>
+        ${d('Topic Taught', item.topic_taught)}
+        ${d('Classwork Done', item.classwork)}
+        ${d('Homework Assigned', item.homework)}
+        ${d('Remarks', item.remarks)}
+      </tbody></table>
+      ${item.techniques||item.technique_detail ? `
+      <div class="section">Teaching Method</div>
+      <table><tbody>
+        ${d('Techniques Used', item.techniques)}
+        ${d('Technique Details', item.technique_detail)}
+        ${d('Key Concepts (for HM)', item.key_concepts)}
+        ${d('Avoid During Doubt Session', item.technique_avoid)}
+      </tbody></table>` : ''}
+      <div class="signatures">
+        <div class="sign">Subject Teacher<br/>${item.teacher_name||''}</div>
+        <div class="sign">Housemaster</div>
+        <div class="sign">Principal / Admin</div>
+      </div>
+      <script>window.onload=()=>{window.print();window.close()}</script>
+      </body></html>
+    `)
+    w.document.close()
+  }
 
   const todayCount = logs.filter(l => l.teaching_date===today()).length
 
@@ -696,6 +756,7 @@ useEffect(() => {
                         <td style={{ padding:'10px 12px' }}>
                           <div style={{ display:'flex', gap:5 }}>
                             <button onClick={() => editId===item.id?(setEditId(null),setEditForm(null)):startEdit(item)} style={S.btnSm('#7c3aed')}>{editId===item.id?'✖':'✏️'}</button>
+                            <button onClick={() => printLog(item)} style={S.btnSm('#0891b2')} title="Print log">🖨️</button>
                             {(currentUser?.role||'').toLowerCase()==='admin' && <button onClick={() => setConfirmDel(item.id)} style={S.btnSm('#dc2626')}>🗑</button>}
                           </div>
                         </td>
