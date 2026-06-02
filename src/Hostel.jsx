@@ -3285,7 +3285,8 @@ const emptyHouse = {
   established_year: new Date().getFullYear(), remarks: '',
 }
 
-function HouseTab({ students: propStudents }) {
+function HouseTab({ students: propStudents, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [houses,       setHouses]       = useState([])
   const [students,     setStudents]     = useState(propStudents || [])
   const [masters,      setMasters]      = useState([])
@@ -3333,6 +3334,7 @@ function HouseTab({ students: propStudents }) {
   }
 
   const handleDeleteHouse = async id => {
+    if (!isAdmin) { alert('Only admins can delete houses.'); return }
     const count = students.filter(s => s.house === houses.find(h => h.id === id)?.name).length
     if (!window.confirm(`Delete this house?${count > 0 ? ` ${count} students will be unassigned.` : ''}`)) return
     await supabase.from('houses').delete().eq('id', id)
@@ -3340,6 +3342,7 @@ function HouseTab({ students: propStudents }) {
   }
 
   const handleAssign = async (studentId, houseName) => {
+    if (!isAdmin) { alert('Only admins can change house assignments.'); return }
     await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, house: houseName || null } : s))
     showToast(houseName ? `✅ Assigned to ${houseName}` : '✅ Removed from house')
@@ -3408,7 +3411,7 @@ function HouseTab({ students: propStudents }) {
               {/* FIXED: added flexWrap:'wrap' */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>
-                <button onClick={() => handleBulkAssign(activeHouseObj.name)} style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}>+ Assign Unassigned ({unassignedCount})</button>
+                {isAdmin && <button onClick={() => handleBulkAssign(activeHouseObj.name)} style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}>+ Assign Unassigned ({unassignedCount})</button>}
               </div>
             </div>
 
@@ -3449,7 +3452,7 @@ function HouseTab({ students: propStudents }) {
                           <strong>{s.name}</strong>
                           <span style={{ color: '#64748b', marginLeft: 8 }}>GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}</span>
                         </div>
-                        <button onClick={() => { handleAssign(s.id, activeHouseObj.name); setAssignSearch('') }} style={{ ...btn(hs.color), fontSize: 11, padding: '4px 12px' }}>Assign</button>
+                        {isAdmin && <button onClick={() => { handleAssign(s.id, activeHouseObj.name); setAssignSearch('') }} style={{ ...btn(hs.color), fontSize: 11, padding: '4px 12px' }}>Assign</button>}
                       </div>
                     ))}
                   </div>
@@ -3485,7 +3488,7 @@ function HouseTab({ students: propStudents }) {
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.hostel_type || '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
-                            <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Remove</button>
+                            {isAdmin && <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Remove</button>}
                           </td>
                         </tr>
                       ))}
@@ -3592,7 +3595,7 @@ function HouseTab({ students: propStudents }) {
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }} style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
-                            <button onClick={e => { e.stopPropagation(); handleDeleteHouse(h.id) }} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                            {isAdmin && <button onClick={e => { e.stopPropagation(); handleDeleteHouse(h.id) }} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                           </div>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
@@ -3659,10 +3662,14 @@ function HouseTab({ students: propStudents }) {
                           }
                         </td>
                         <td style={{ padding: '9px 14px' }}>
-                          <select value={s.house || ''} onChange={e => handleAssign(s.id, e.target.value)} style={{ ...inp, width: 150, padding: '6px 10px', fontSize: 12 }}>
-                            <option value="">— Remove / None —</option>
-                            {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
-                          </select>
+                          {isAdmin ? (
+                            <select value={s.house || ''} onChange={e => handleAssign(s.id, e.target.value)} style={{ ...inp, width: 150, padding: '6px 10px', fontSize: 12 }}>
+                              <option value="">— Remove / None —</option>
+                              {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+                            </select>
+                          ) : (
+                            <span style={{ fontSize: 12, color: '#94a3b8' }}>{s.house || '—'}</span>
+                          )}
                         </td>
                       </tr>
                     )
@@ -4050,7 +4057,7 @@ const isHM = userRole === 'house master'
     nightduty:    <NightDutyTab   staffProfiles={staffProfiles} />,
     discipline:   <DisciplineTab  students={students} />,
     sickbay:      <SickbayTab     students={students} />,
-    house:        <HouseTab       students={students} />,
+    house:        <HouseTab       students={students} currentUser={currentUser} />,
     housemaster:  <HousemasterTab />,
     kitchen:      <KitchenTab />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
