@@ -758,7 +758,7 @@ function AttendanceTab({ students, currentHousemaster }) {
 
             {/* Unassigned students warning */}
             {(() => {
-              const unassigned = activeStudents.filter(s => !s.house)
+              const unassigned = activeStudents.filter(s => !isAssigned(s))
               if (unassigned.length === 0) return null
               return (
                 <div style={{ marginTop: '8px', padding: '12px 16px', background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: '12px', fontSize: '13px', color: '#9a3412', fontWeight: '600' }}>
@@ -3358,7 +3358,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     if (!unassigned.length) { showToast('No unassigned students', '#ca8a04'); return }
     if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
     await supabase.from('students').update({ house: houseName }).in('id', unassigned.map(s => s.id))
-    setStudents(prev => prev.map(s => !s.house ? { ...s, house: houseName } : s))
+    setStudents(prev => prev.map(s => !isAssigned(s) ? { ...s, house: houseName } : s))
     showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
   }
 
@@ -3374,7 +3374,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
   const assignHits = assignSearch.length > 0
     ? students.filter(s =>
-        !s.house && (
+        !isAssigned(s) && (
           (s.name || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
           String(s.gcc_no || '').includes(assignSearch) ||
           (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase())
@@ -3386,7 +3386,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     const q = search.toLowerCase()
     return students.filter(s => {
       const matchesSearch = [s.name, s.gcc_no, s.batch, s.course].some(v => (v || '').toString().toLowerCase().includes(q))
-      const matchesFilter = assignFilter === 'All' ? true : assignFilter === 'Unassigned' ? !s.house : (s.house || '').toLowerCase() === assignFilter.toLowerCase()
+      const matchesFilter = assignFilter === 'All' ? true : assignFilter === 'Unassigned' ? !isAssigned(s) : normalizeHouse(s.house) === normalizeHouse(assignFilter).toLowerCase()
       return matchesSearch && matchesFilter
     })
   }, [students, search, assignFilter])
