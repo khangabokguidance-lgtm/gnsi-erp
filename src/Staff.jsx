@@ -1132,131 +1132,225 @@ const fetchSalaryData = useCallback(async () => {
           </div>
           <div style={{ fontSize:12,color:'#64748b',marginBottom:10 }}>Showing {filteredStaff.length} of {staff.length} staff · Page {page}/{totalPages}</div>
 
-          {isMobile ? (
-            // Mobile card layout
-            <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
-              {paginated.map((item,i)=>{
-                const sc      = scores[item.id]
-                const computed= sc?calcScores(sc):null
-                const gross   = (Number(item.basic_salary)||0)+(Number(item.seniority_allowance)||0)+(Number(item.loyalty_bonus)||0)+(Number(item.role_bonus)||0)
-                const tm      = staffTaskMap[item.name]||{total:0,done:0,overdue:0}
-                return (
-                  <div key={item.id} style={{ background:'white',borderRadius:12,padding:16,boxShadow:'0 2px 8px rgba(0,0,0,.07)',border:'1px solid #f1f5f9' }}>
-                    <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10 }}>
-                      <div>
-                        <div style={{ fontWeight:800,color:'#1e293b',fontSize:15 }}>{item.name}</div>
-                        <div style={{ fontSize:12,color:'#94a3b8',marginTop:2 }}>{item.designation} · {item.department||'—'}</div>
-                        <div style={{ marginTop:5,display:'flex',gap:5,flexWrap:'wrap' }}>
-                          <RoleBadge role={item.role}/>
-                          <span style={{ padding:'3px 9px',borderRadius:99,fontSize:11,fontWeight:600,backgroundColor:item.status==='Active'?'#dcfce7':'#fee2e2',color:item.status==='Active'?'#16a34a':'#dc2626' }}>{item.status}</span>
-                        </div>
+          {/* ══ STAFF GRID (All Devices) ══ */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))',
+            gap: 20
+          }}>
+            {paginated.map(item => {
+              const sc       = scores[item.id]
+              const computed = sc ? calcScores(sc) : null
+              const totalScore = computed ? computed.total : null
+              const gross    = (Number(item.basic_salary)||0)+(Number(item.seniority_allowance)||0)+(Number(item.loyalty_bonus)||0)+(Number(item.role_bonus)||0)
+              const tm       = staffTaskMap[item.name]||{total:0,done:0,overdue:0}
+              const initials = item.name?.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()||'??'
+              const hue      = (item.name?.charCodeAt(0)||0)%360
+              return (
+                <div key={item.id} style={{
+                  background:'white', borderRadius:16, padding:20,
+                  boxShadow:'0 2px 12px rgba(0,0,0,.06)',
+                  border:'1px solid #f1f5f9',
+                  transition:'all 0.25s cubic-bezier(0.4,0,0.2,1)',
+                  position:'relative', overflow:'hidden',
+                  display:'flex', flexDirection:'column', gap:14,
+                  cursor:'pointer'
+                }}
+                onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 12px 40px rgba(0,0,0,.12)'; e.currentTarget.style.transform='translateY(-2px)' }}
+                onMouseLeave={e=>{ e.currentTarget.style.boxShadow='0 2px 12px rgba(0,0,0,.06)'; e.currentTarget.style.transform='translateY(0)' }}
+                >
+                  {/* Status accent bar */}
+                  <div style={{
+                    position:'absolute', top:0, left:0, right:0, height:4,
+                    background: item.status==='Active'
+                      ? 'linear-gradient(90deg,#16a34a,#22c55e)'
+                      : 'linear-gradient(90deg,#dc2626,#f87171)',
+                    borderRadius:'16px 16px 0 0'
+                  }}/>
+
+                  {/* Header: Avatar + Info + Score */}
+                  <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginTop:2 }}>
+                    {/* Avatar */}
+                    <div style={{
+                      width:52, height:52, borderRadius:'50%',
+                      background:`linear-gradient(135deg, hsl(${hue},70%,55%), hsl(${hue+40},70%,45%))`,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      color:'white', fontWeight:700, fontSize:16, flexShrink:0,
+                      boxShadow:'0 2px 8px rgba(0,0,0,.12)'
+                    }}>{initials}</div>
+
+                    {/* Name & Meta */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{
+                        fontWeight:800, fontSize:15, color:'#1e293b',
+                        whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'
+                      }}>{item.name}</div>
+                      <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{item.designation}</div>
+                      <div style={{ marginTop:6, display:'flex', gap:6, flexWrap:'wrap' }}>
+                        <RoleBadge role={item.role}/>
+                        <span style={{
+                          display:'inline-flex', alignItems:'center', gap:3,
+                          padding:'3px 9px', borderRadius:99, fontSize:11, fontWeight:600,
+                          backgroundColor: item.status==='Active'?'#dcfce7':'#fee2e2',
+                          color: item.status==='Active'?'#16a34a':'#dc2626'
+                        }}>{item.status==='Active'?'●':'○'} {item.status}</span>
                       </div>
-                      {computed && <LevelBadge score={computed.total}/>}
                     </div>
-                    <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12,fontSize:12 }}>
-                      <div style={{ background:'#f8fafc',borderRadius:8,padding:'8px 10px' }}>
-                        <div style={{ color:'#94a3b8',fontSize:10,fontWeight:600,textTransform:'uppercase' }}>Phone</div>
-                        <div style={{ color:'#1e293b',fontWeight:600,marginTop:2 }}>{item.phone||'—'}</div>
+
+                    {/* Score Ring */}
+                    {totalScore !== null ? (()=>{
+                      const lvl = getLevel(totalScore)
+                      const size=56; const pct=Math.min(100,totalScore)
+                      const circumference=2*Math.PI*((size-8)/2)
+                      const dashOffset=circumference-(pct/100)*circumference
+                      return (
+                        <div style={{ width:size, height:size, position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          <svg width={size} height={size} style={{ position:'absolute', transform:'rotate(-90deg)' }}>
+                            <circle cx={size/2} cy={size/2} r={(size-8)/2} fill="none" stroke="#e2e8f0" strokeWidth="4"/>
+                            <circle cx={size/2} cy={size/2} r={(size-8)/2} fill="none" stroke={lvl.color} strokeWidth="4"
+                              strokeDasharray={circumference} strokeDashoffset={dashOffset} strokeLinecap="round"
+                              style={{ transition:'stroke-dashoffset 0.6s ease' }}/>
+                          </svg>
+                          <div style={{ textAlign:'center', zIndex:1 }}>
+                            <div style={{ fontSize:14, fontWeight:800, color:'#1e293b', fontFamily:"'JetBrains Mono',monospace", lineHeight:1 }}>{totalScore}</div>
+                            <div style={{ fontSize:9, color:'#94a3b8', fontWeight:600 }}>{lvl.emoji}</div>
+                          </div>
+                        </div>
+                      )
+                    })() : (
+                      <div style={{
+                        width:56, height:56, borderRadius:'50%', border:'3px dashed #e2e8f0',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        color:'#94a3b8', fontSize:10, fontWeight:600
+                      }}>N/A</div>
+                    )}
+                  </div>
+
+                  {/* Info Grid */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, fontSize:12 }}>
+                    <div>
+                      <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, textTransform:'uppercase', letterSpacing:0.5, marginBottom:2 }}>Department</div>
+                      <div style={{ fontSize:12, color:'#374151', fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.department||'—'}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, textTransform:'uppercase', letterSpacing:0.5, marginBottom:2 }}>Phone</div>
+                      <div style={{ fontSize:12, color:'#374151', fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.phone||'—'}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, textTransform:'uppercase', letterSpacing:0.5, marginBottom:2 }}>Joining</div>
+                      <div style={{ fontSize:12, color:'#374151', fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.joining_date||'—'}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, textTransform:'uppercase', letterSpacing:0.5, marginBottom:2 }}>Qualification</div>
+                      <div style={{ fontSize:12, color:'#374151', fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.qualification||'—'}</div>
+                    </div>
+                  </div>
+
+                  {/* Salary & Tasks */}
+                  <div style={{ display:'flex', gap:10, alignItems:'stretch', flexWrap:'wrap' }}>
+                    {/* Salary Box - admin only */}
+                    {canEdit && (
+                      <div style={{
+                        flex:1, minWidth:120,
+                        background: gross>0?'#eff6ff':'#fef2f2',
+                        borderRadius:10, padding:'10px 12px',
+                        border:`1.5px solid ${gross>0?'#bfdbfe':'#fecaca'}`
+                      }}>
+                        <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, textTransform:'uppercase', letterSpacing:0.5 }}>Gross Salary</div>
+                        {gross>0 ? (
+                          <div style={{ fontSize:16, fontWeight:800, color:'#0C447C', fontFamily:"'JetBrains Mono',monospace", marginTop:2 }}>{fmt(gross)}</div>
+                        ) : (
+                          <div style={{ fontSize:12, fontWeight:600, color:'#dc2626', marginTop:2 }}>⚠ Not Set</div>
+                        )}
                       </div>
-                      {/* ROLE-2: salary visible only to admin */}
-                      {canEdit && (
-                        <div style={{ background:'#f8fafc',borderRadius:8,padding:'8px 10px' }}>
-                          <div style={{ color:'#94a3b8',fontSize:10,fontWeight:600,textTransform:'uppercase' }}>Gross Salary</div>
-                          {gross>0
-                            ? <div style={{ color:'#0C447C',fontWeight:700,marginTop:2,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div>
-                            : <div style={{ color:'#dc2626',fontWeight:600,marginTop:2,fontSize:11 }}>⚠ Not Set</div>}
+                    )}
+
+                    {/* Tasks Box */}
+                    <div style={{ flex:1, minWidth:120, background:'#f8fafc', borderRadius:10, padding:'10px 12px', border:'1.5px solid #e2e8f0' }}>
+                      {tm.total>0 ? (
+                        <>
+                          <MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/>
+                          <button onClick={()=>{ setTaskStaffFilter(item.name); setActiveTab('tasks') }}
+                            style={{ marginTop:6, padding:'4px 10px', borderRadius:6, border:'none',
+                              background:'#6366f1', color:'white', fontSize:10, fontWeight:600,
+                              cursor:'pointer', fontFamily:'inherit' }}>View Tasks</button>
+                        </>
+                      ) : (
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span style={{ fontSize:11, color:'#94a3b8' }}>No tasks</span>
+                          {canEdit && (
+                            <button onClick={()=>{ setAssignPreselected(item); setShowAssignModal(true) }}
+                              style={{ padding:'4px 10px', borderRadius:6, border:'none',
+                                background:'#0ea5e9', color:'white', fontSize:10, fontWeight:600,
+                                cursor:'pointer', fontFamily:'inherit' }}>+ Assign</button>
+                          )}
                         </div>
                       )}
                     </div>
-                    {tm.total>0 && <div style={{ marginBottom:10 }}><MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/></div>}
-                    {/* ROLE-2: action buttons only for admin */}
+                  </div>
+
+                  {/* Level Badge */}
+                  {totalScore !== null && (
+                    <div style={{ display:'flex', justifyContent:'center' }}>
+                      <LevelBadge score={totalScore}/>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', borderTop:'1px solid #f1f5f9', paddingTop:12 }}>
                     {canEdit && (
-                      <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-                        <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️ Edit</button>
-                        <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐 Salary</button>
-                        {computed && <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
-                        <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
-                      </div>
+                      <>
+                        <button onClick={()=>setEditingStaff(item)} style={{
+                          flex:1, minWidth:60, padding:'8px 10px', borderRadius:8, border:'none',
+                          background:'#0891b211', color:'#0891b2', fontSize:11, fontWeight:700,
+                          cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center',
+                          justifyContent:'center', gap:4, minHeight:36
+                        }} onMouseEnter={e=>{e.currentTarget.style.background='#0891b2';e.currentTarget.style.color='white'}}
+                        onMouseLeave={e=>{e.currentTarget.style.background='#0891b211';e.currentTarget.style.color='#0891b2'}}>✏️ Edit</button>
+
+                        <button onClick={()=>handleOpenSalarySetup(item)} style={{
+                          flex:1, minWidth:60, padding:'8px 10px', borderRadius:8, border:'none',
+                          background:`${gross>0?'#0C447C':'#dc2626'}11`, color:gross>0?'#0C447C':'#dc2626',
+                          fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
+                          display:'flex', alignItems:'center', justifyContent:'center', gap:4, minHeight:36
+                        }} onMouseEnter={e=>{e.currentTarget.style.background=gross>0?'#0C447C':'#dc2626';e.currentTarget.style.color='white'}}
+                        onMouseLeave={e=>{e.currentTarget.style.background=`${gross>0?'#0C447C':'#dc2626'}11`;e.currentTarget.style.color=gross>0?'#0C447C':'#dc2626'}}>🔐 Salary</button>
+
+                        <button onClick={()=>handleDelete(item.id)} style={{
+                          flex:1, minWidth:60, padding:'8px 10px', borderRadius:8, border:'none',
+                          background:'#dc262611', color:'#dc2626', fontSize:11, fontWeight:700,
+                          cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center',
+                          justifyContent:'center', gap:4, minHeight:36
+                        }} onMouseEnter={e=>{e.currentTarget.style.background='#dc2626';e.currentTarget.style.color='white'}}
+                        onMouseLeave={e=>{e.currentTarget.style.background='#dc262611';e.currentTarget.style.color='#dc2626'}}>🗑 Delete</button>
+                      </>
                     )}
-                    {/* Non-admin: scorecard view only */}
-                    {!canEdit && computed && (
-                      <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊 View Score</button>
+                    {totalScore !== null && (
+                      <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={{
+                        flex:1, minWidth:60, padding:'8px 10px', borderRadius:8, border:'none',
+                        background:'#7c3aed11', color:'#7c3aed', fontSize:11, fontWeight:700,
+                        cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center',
+                        justifyContent:'center', gap:4, minHeight:36
+                      }} onMouseEnter={e=>{e.currentTarget.style.background='#7c3aed';e.currentTarget.style.color='white'}}
+                      onMouseLeave={e=>{e.currentTarget.style.background='#7c3aed11';e.currentTarget.style.color='#7c3aed'}}>📊 Score</button>
                     )}
                   </div>
-                )
-              })}
-              {paginated.length===0 && <div style={{ textAlign:'center',padding:48,color:'#94a3b8' }}>No staff records found</div>}
-            </div>
-          ) : (
-            // Desktop table
-            <div style={{ ...S.card,padding:0,overflow:'hidden' }}>
-              <div className="table-wrap">
-                <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-                  <thead>
-                    <tr style={{ backgroundColor:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
-                      {['#','Name','Dept','Designation','Role','Phone','Joining','Status',
-                        ...(canEdit?['Gross Salary']:[]),
-                        'Tasks','Level','Actions'].map(h=>(
-                        <th key={h} style={{ ...TH,fontSize:12 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginated.map((item,i)=>{
-                      const sc      = scores[item.id]
-                      const computed= sc?calcScores(sc):null
-                      const gross   = (Number(item.basic_salary)||0)+(Number(item.seniority_allowance)||0)+(Number(item.loyalty_bonus)||0)+(Number(item.role_bonus)||0)
-                      const tm      = staffTaskMap[item.name]||{total:0,done:0,overdue:0}
-                      return (
-                        <tr key={item.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                          <td style={{ ...TD,color:'#94a3b8',fontSize:12 }}>{(page-1)*PAGE_SIZE+i+1}</td>
-                          <td style={TD}><div style={{ fontWeight:600,color:'#1e293b' }}>{item.name}</div><div style={{ fontSize:11,color:'#94a3b8' }}>{item.email||'—'}</div></td>
-                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.department||'—'}</td>
-                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.designation||'—'}</td>
-                          <td style={TD}><RoleBadge role={item.role}/></td>
-                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.phone||'—'}</td>
-                          <td style={{ ...TD,color:'#64748b',fontSize:12 }}>{item.joining_date||'—'}</td>
-                          <td style={TD}><span style={{ padding:'4px 10px',borderRadius:99,fontSize:12,fontWeight:600,backgroundColor:item.status==='Active'?'#dcfce7':'#fee2e2',color:item.status==='Active'?'#16a34a':'#dc2626' }}>{item.status}</span></td>
-                          {/* ROLE-2: salary column only for admin */}
-                          {canEdit && (
-                            <td style={TD}>
-                              {gross>0
-                                ? <div><div style={{ fontWeight:700,color:'#0C447C',fontSize:13,fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div><div style={{ fontSize:10,color:'#94a3b8' }}>Base {fmt(item.basic_salary)}</div></div>
-                                : <span style={{ fontSize:11,fontWeight:600,color:'#dc2626',background:'#fee2e2',padding:'3px 8px',borderRadius:6 }}>⚠ Not Set</span>}
-                            </td>
-                          )}
-                          <td style={{ ...TD,minWidth:120 }}>
-                            {tm.total>0
-                              ? <div><MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/><button onClick={()=>{ setTaskStaffFilter(item.name); setActiveTab('tasks') }} style={{ ...S.btnSm('#6366f1'),marginTop:5,fontSize:10,padding:'3px 8px' }}>View Tasks</button></div>
-                              : <div>
-                                  <span style={{ fontSize:11,color:'#94a3b8' }}>No tasks</span>
-                                  {canEdit && <><br/><button onClick={()=>{ setAssignPreselected(item); setShowAssignModal(true) }} style={{ ...S.btnSm('#0ea5e9'),marginTop:4,fontSize:10,padding:'3px 8px' }}>+ Assign</button></>}
-                                </div>}
-                          </td>
-                          <td style={TD}><LevelBadge score={computed?.total}/></td>
-                          <td style={TD}>
-                            <div style={{ display:'flex',gap:5,flexWrap:'wrap' }}>
-                              {/* ROLE-2: edit/delete/salary buttons only for admin */}
-                              {canEdit && <>
-                                <button onClick={()=>setEditingStaff(item)} style={S.btnSm('#0891b2')}>✏️</button>
-                                <button onClick={()=>handleOpenSalarySetup(item)} style={S.btnSm(gross>0?'#0C447C':'#dc2626')}>🔐</button>
-                                <button onClick={()=>handleDelete(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
-                              </>}
-                              {/* Scorecard visible to everyone */}
-                              {computed && <button onClick={()=>setSelectedScorecard({ record:sc, staffName:item.name })} style={S.btnSm('#7c3aed')}>📊</button>}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {paginated.length===0 && <tr><td colSpan={canEdit?12:11} style={{ padding:32,textAlign:'center',color:'#94a3b8' }}>No staff records found</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                </div>
+              )
+            })}
 
-          {/* Pagination */}
+            {/* Empty state */}
+            {paginated.length===0 && (
+              <div style={{
+                gridColumn:'1 / -1', textAlign:'center', padding:64, color:'#94a3b8',
+                background:'white', borderRadius:16, boxShadow:'0 2px 12px rgba(0,0,0,.06)'
+              }}>
+                <div style={{ fontSize:48, marginBottom:12 }}>👥</div>
+                <div style={{ fontSize:16, fontWeight:700, color:'#64748b' }}>No staff records found</div>
+                <div style={{ fontSize:13, marginTop:4 }}>Try adjusting your search or filters</div>
+              </div>
+            )}
+          </div>
           {totalPages>1 && (
             <div style={{ display:'flex',justifyContent:'center',gap:6,marginTop:14,flexWrap:'wrap' }}>
               <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'),opacity:page===1?.4:1 }}>←</button>
