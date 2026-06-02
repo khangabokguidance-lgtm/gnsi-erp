@@ -616,7 +616,7 @@ function AttendanceTab({ students, currentHousemaster }) {
                 </div>
               )}
               {houses.map((houseName, idx) => {
-                const pal = getPalette(idx)
+                const pal = HOUSE_PALETTE[idx % HOUSE_PALETTE.length]
                 const stats = getHouseStats(houseName)
                 const allDone = stats.unmarked === 0
                 return (
@@ -766,7 +766,8 @@ function AttendanceTab({ students, currentHousemaster }) {
   // ══════════════════════════════════════════════════
   if (view === 'dashboard' && selectedHouse) {
     const houseIdx = houses.indexOf(selectedHouse)
-    const pal = getPalette(selectedHouse)
+    const houseIdx = houses.indexOf(selectedHouse)
+const pal = HOUSE_PALETTE[houseIdx % HOUSE_PALETTE.length]
     const hStudents = activeStudents.filter(s => s.house === selectedHouse)
       .sort((a, b) => {
         const aStatus = getStatus(a.id)
@@ -946,7 +947,8 @@ function AttendanceTab({ students, currentHousemaster }) {
   // ══════════════════════════════════════════════════
   if (view === 'rollcall' && selectedHouse) {
     const houseIdx = houses.indexOf(selectedHouse)
-    const pal = getPalette(selectedHouse)
+    const houseIdx = houses.indexOf(selectedHouse)
+const pal = HOUSE_PALETTE[houseIdx % HOUSE_PALETTE.length]
     const total = rollCallStudents.length
     const marked = rollCallStudents.filter(s => getStatus(s.id) !== 'Unmarked').length
     const pct = total ? Math.round(marked / total * 100) : 0
