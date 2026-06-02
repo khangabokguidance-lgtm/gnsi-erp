@@ -4018,7 +4018,7 @@ function Hostel() {
   const [dataLoading,   setDataLoading]   = useState(true)
   const [mobile,        setMobile]        = useState(isMobile())
   const [currentHousemaster, setCurrentHousemaster] = useState(null)
-  const [houseColorMap, setHouseColorMap] = useState({})
+  const [houseColorMap, setHouseColorMap] = useState({})  // ← ADD THIS
   const currentUser = JSON.parse(localStorage.getItem('gnsi_user') || sessionStorage.getItem('gnsi_user') || '{}')
 const userRole = (currentUser?.role || '').toLowerCase()
 const isAdmin = userRole === 'admin'
@@ -4034,18 +4034,31 @@ const isHM = userRole === 'house master'
   useEffect(() => {
     const fetchShared = async () => {
       setDataLoading(true)
-      const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }] = await Promise.all([
+      const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
         supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob').order('name'),
         supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
         supabase.from('housemasters').select('*').eq('status', 'Active').single(),
+        supabase.from('houses').select('name, color_index'),
       ])
       if (e1) console.error('Students fetch error:', e1)
       if (e2) console.error('Staff fetch error:', e2)
       if (e3) console.error('Housemaster fetch error:', e3)
+      if (e4) console.error('Houses fetch error:', e4)
       console.log('Loaded:', s?.length, 'students,', st?.length, 'staff | sample:', s?.[0])
       setStudents(s || [])
       setStaffProfiles(st || [])
       setCurrentHousemaster(hm || null)
+      
+      // Load house colors
+      if (houses?.length) {
+        const colorMap = {}
+        const palette = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#0891b2', '#be185d', '#047857']
+        houses.forEach(h => {
+          colorMap[h.name] = palette[Number(h.color_index) % palette.length]
+        })
+        setHouseColorMap(colorMap)
+      }
+      
       setDataLoading(false)
     }
     fetchShared()
