@@ -1444,3 +1444,4 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
     </div>
   )
 }
+export default DailyAttendanceTracker
