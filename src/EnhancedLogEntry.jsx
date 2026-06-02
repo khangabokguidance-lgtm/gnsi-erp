@@ -1331,21 +1331,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         const resolvedHM   = mapMatch?.hm   || form.assigned_hm_name || null
         const resolvedSlot = mapMatch?.slot || form.doubt_time_slot  || null
 
-        let liveHouses = [...new Set(students.map(s => s.house).filter(Boolean))]
-        if (!liveHouses.length && form.course && form.subtype) {
-          const { data: freshStudents } = await supabase
-            .from('students')
-            .select('house')
-            .eq('course', form.course)
-            .eq('batch', form.subtype)
-            .eq('status', 'Active')
-            .not('house', 'is', null)
-          if (freshStudents?.length) {
-            liveHouses = [...new Set(freshStudents.map(s => s.house).filter(Boolean))]
-          }
-        }
-        const houses = liveHouses
-        const sessionRows = (houses.length ? houses : [null]).map(house => ({
+        const sessionRow = {
           log_id: logId ? Number(logId) : null,
           course: form.course,
           subtype: form.subtype || null,
@@ -1355,7 +1341,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           teaching_date: form.teaching_date,
           teacher_name: form.teacher_name || null,
           teacher_staff_id: form.staff_id && /^\d+$/.test(String(form.staff_id)) ? Number(form.staff_id) : null,
-          house_name: house || null,
+          house_name: null,
           hm_id: null,
           hm_name: resolvedHM,
           status: 'Open',
@@ -1372,18 +1358,17 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
           doubt_date: form.doubt_date || null,
           doubt_time_slot: resolvedSlot,
-        }))
+        }
 
-        const { error: dsError } = await supabase.from('doubt_sessions').insert(sessionRows)
+        const { error: dsError } = await supabase.from('doubt_sessions').insert([sessionRow])
         if (dsError) {
           showToast('Doubt session error: ' + dsError.message, C.red)
           console.error('doubt_sessions insert error:', dsError)
         }
 
         // One notification per unique HM
-        const uniqueHMs = [...new Map(sessionRows.map(r => [r.hm_name, r])).values()]
         await supabase.from('hm_notifications').insert(
-          uniqueHMs.map(r => ({
+          [sessionRow].map(r => ({
             log_id: logId ? Number(logId) : null,
             hm_staff_id: null,
             hm_name: r.hm_name,
