@@ -39,6 +39,7 @@ import { useCourseData, CoursePicker } from './Courses'
 import GeoAttendance from './GeoAttendance'
 import { staffDB } from './staffDB'
 import { useCurrentUser } from './useCurrentUser'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -862,6 +863,12 @@ const fetchSalaryData = useCallback(async () => {
     if (error) { showToast('❌ Update failed','#dc2626'); return }
     setTasks(prev=>prev.map(t=>t.id===task.id?(data?.[0]||t):t))
     showToast(`✅ Marked as ${newStatus}`,'#16a34a')
+    if (newStatus === 'Done') {
+      EventBus.emit(GNSI_EVENTS.TASK_COMPLETED, { 
+        staffId: staff.find(s => s.name === task.assigned_to)?.id, 
+        taskId: task.id 
+      })
+    }
   }
 
   const handleTaskDelete = id => {
@@ -897,6 +904,11 @@ const fetchSalaryData = useCallback(async () => {
       await staffDB.insert({ ...form, email:sanitizeEmail(form.email), joining_date:form.joining_date||null })
       setForm(emptyForm); setFormErrors({}); setShowForm(false); fetchStaff()
       showToast('✅ Staff added','#16a34a')
+      EventBus.emit(GNSI_EVENTS.STAFF_CREATED, { 
+        staffId: staff.find(s => s.name === form.name)?.id, 
+        name: form.name, 
+        department: form.department 
+      })
     } catch (err) { showToast('❌ Error: '+err.message,'#dc2626') }
     finally { setSaving(false) }
   }
@@ -905,7 +917,12 @@ const fetchSalaryData = useCallback(async () => {
     setConfirmModal({ title:'Delete Staff', message:'Delete this staff record permanently? This cannot be undone.', confirmLabel:'Delete', danger:true,
       onConfirm: async ()=>{
         setConfirmModal(null)
-        try { await staffDB.delete(id); fetchStaff(); showToast('🗑️ Staff deleted','#dc2626') }
+        try { 
+          await staffDB.delete(id); 
+          fetchStaff(); 
+          showToast('🗑️ Staff deleted','#dc2626');
+          EventBus.emit(GNSI_EVENTS.STAFF_DELETED, { staffId: id })
+        }
         catch (err) { showToast('❌ Error: '+err.message,'#dc2626') }
       }
     })
@@ -928,7 +945,15 @@ const fetchSalaryData = useCallback(async () => {
     }).filter(Boolean)
     const { error } = await supabase.from('staff_monthly_scores').upsert(rows,{ onConflict:'staff_id,month' })
     if (error) showToast('❌ Error: '+error.message,'#dc2626')
-    else { showToast(`✅ Saved ${rows.length} score records`,'#16a34a'); setDirtyIds(new Set()); fetchScoresForMonth(scoreMonth) }
+    else { 
+      showToast(`✅ Saved ${rows.length} score records`,'#16a34a'); 
+      setDirtyIds(new Set()); 
+      fetchScoresForMonth(scoreMonth);
+      EventBus.emit(GNSI_EVENTS.SCORE_UPDATED, { 
+        month: scoreMonth, 
+        staffCount: rows.length 
+      })
+    }
     setScoreSaving(false)
   }
 
@@ -938,7 +963,14 @@ const fetchSalaryData = useCallback(async () => {
         setConfirmModal(null)
         const { error } = await supabase.from('staff_monthly_scores').update({ is_confirmed:true, confirmed_by:'Authority', confirmed_at:new Date().toISOString() }).eq('month',scoreMonth)
         if (error) showToast('❌ Error: '+error.message,'#dc2626')
-        else { showToast('✅ Scores confirmed & locked','#16a34a'); fetchScoresForMonth(scoreMonth) }
+        else { 
+          showToast('✅ Scores confirmed & locked','#16a34a'); 
+          fetchScoresForMonth(scoreMonth);
+          EventBus.emit(GNSI_EVENTS.SCORE_CONFIRMED, { 
+            month: scoreMonth, 
+            confirmedBy: currentUser?.name || 'Authority' 
+          })
+        }
       }
     })
   }

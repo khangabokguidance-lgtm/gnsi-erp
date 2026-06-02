@@ -34,6 +34,8 @@ import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import Entrance from './Entrance'
 import { LOGO_BASE64 } from './logo'
+import { EventBus, GNSI_EVENTS } from './EventBus'
+import { crossModuleSync } from './CrossModuleSync'
 import LandingPage from './LandingPage'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff from './AdminLinkStaff'
@@ -666,6 +668,13 @@ useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
 }
 useEffect(() => {
   if (currentUser) loadPermissions(currentUser.role)
+}, [currentUser])
+
+useEffect(() => {
+  if (currentUser) {
+    crossModuleSync.init()
+    return () => crossModuleSync.destroy()
+  }
 }, [currentUser])
 useEffect(() => {
   window.history.pushState({ page: active }, '', window.location.href)

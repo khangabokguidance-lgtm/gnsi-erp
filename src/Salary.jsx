@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -657,7 +658,17 @@ export default function Salary() {
           }
         }
       }
-      alert(`✅ Register saved for ${fmtMonth(regMonth)}`); fetchAll()
+      alert(`✅ Register saved for ${fmtMonth(regMonth)}`); 
+      fetchAll();
+      for (const s of filteredStaff) {
+        const d = dedMap[s.id] || {};
+        EventBus.emit(GNSI_EVENTS.SALARY_SAVED, { 
+          staffId: s.id, 
+          month: regMonth,
+          netSalary: gross(s) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)),
+          status: d.status || 'Unpaid'
+        });
+      }
     } catch(err) { alert('Error: '+err.message) }
     finally { setSaving(false) }
   }, [filteredStaff, dedMap, regMonth, advances, fetchAll])
@@ -665,7 +676,18 @@ export default function Salary() {
   const handleMarkPaid = useCallback(async (id, mode) => {
     try {
       const { error } = await supabase.from('salary').update({status:'Paid',payment_mode:mode||'Cash',paid_at:new Date().toISOString()}).eq('id',id)
-      if (error) throw error; fetchAll()
+      if (error) throw error; 
+      fetchAll();
+      // Need to find the row to get staff_id and month
+      const paidRow = salaryRows.find(r => r.id === id);
+      if (paidRow) {
+        EventBus.emit(GNSI_EVENTS.SALARY_PAID, { 
+          staffId: paidRow.staff_id, 
+          month: paidRow.month,
+          amount: paidRow.net_salary,
+          mode: mode || 'Cash'
+        });
+      }
     } catch(err) { alert('Error: '+err.message) }
   }, [fetchAll])
 
@@ -675,13 +697,28 @@ export default function Salary() {
     if (!monthRows.length) { alert('Save register first before marking paid.'); return }
     for (const row of monthRows) {
       await supabase.from('salary').update({status:'Paid',payment_mode:bulkPayMode,paid_at:new Date().toISOString()}).eq('id',row.id)
+      EventBus.emit(GNSI_EVENTS.SALARY_PAID, { 
+        staffId: row.staff_id, 
+        month: row.month,
+        amount: row.net_salary,
+        mode: bulkPayMode
+      });
     }
     clearSelect(); fetchAll()
   }, [selected, salaryRows, regMonth, bulkPayMode, fetchAll])
 
   const handleDeleteSalary = useCallback(async (id) => {
     if (!window.confirm('Delete this salary record?')) return
-    await supabase.from('salary').delete().eq('id',id); fetchAll()
+    const deletedRow = salaryRows.find(r => r.id === id);
+    await supabase.from('salary').delete().eq('id',id); 
+    fetchAll();
+    if (deletedRow) {
+      EventBus.emit(GNSI_EVENTS.SALARY_SAVED, { 
+        staffId: deletedRow.staff_id, 
+        month: deletedRow.month,
+        action: 'deleted'
+      });
+    }
   }, [fetchAll])
 
   const handleAddAdvance = useCallback(async (e) => {
@@ -689,14 +726,32 @@ export default function Salary() {
     try {
       const { error } = await supabase.from('staff_advances').insert([{ staff_id:Number(advForm.staff_id), amount:Number(advForm.amount), reason:advForm.reason, issued_month:advForm.issued_month, repay_months:Number(advForm.repay_months)||1, repaid_amount:0, status:'Active' }])
       if (error) throw error
-      setAdvForm({staff_id:'',amount:'',reason:'',issued_month:cm(),repay_months:1}); setShowAdvForm(false); fetchAll()
+      setAdvForm({staff_id:'',amount:'',reason:'',issued_month:cm(),repay_months:1}); 
+      setShowAdvForm(false); 
+      fetchAll();
+      EventBus.emit(GNSI_EVENTS.ADVANCE_ISSUED, { 
+        staffId: Number(advForm.staff_id), 
+        amount: Number(advForm.amount),
+        reason: advForm.reason,
+        issuedMonth: advForm.issued_month
+      });
     } catch(err) { alert('Error: '+err.message) }
     finally { setAdvSaving(false) }
   }, [advForm, fetchAll])
 
   const handleDeleteAdvance = useCallback(async (id) => {
     if (!window.confirm('Delete this advance?')) return
-    await supabase.from('staff_advances').delete().eq('id',id); fetchAll()
+    const deletedAdv = advances.find(a => a.id === id);
+    await supabase.from('staff_advances').delete().eq('id',id); 
+    fetchAll();
+    if (deletedAdv) {
+      EventBus.emit(GNSI_EVENTS.ADVANCE_REPAID, { 
+        staffId: deletedAdv.staff_id, 
+        amount: 0,
+        remaining: Number(deletedAdv.amount) - Number(deletedAdv.repaid_amount),
+        action: 'deleted'
+      });
+    }
   }, [fetchAll])
 
   const TH = ({ children, style={} }) => (

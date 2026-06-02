@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -398,6 +399,11 @@ function FileAttachments({ staff, onUploadComplete }) {
       fetchAttachments()
       onUploadComplete?.()
       showToast('Document uploaded successfully!', 'success')
+      EventBus.emit(GNSI_EVENTS.STAFF_UPDATED, { 
+        staffId: Number(selectedStaff), 
+        change: 'document_uploaded',
+        docType 
+      })
     }
     setUploading(false)
   }
@@ -423,7 +429,15 @@ function FileAttachments({ staff, onUploadComplete }) {
     }
     const { error: dbErr } = await supabase.from('hr_documents').delete().eq('id', doc.id)
     if (dbErr) showToast('DB delete failed: ' + dbErr.message)
-    else { fetchAttachments(); showToast('Document deleted.', 'success') }
+    else { 
+    fetchAttachments(); 
+    showToast('Document deleted.', 'success');
+    EventBus.emit(GNSI_EVENTS.STAFF_UPDATED, { 
+      staffId: doc.staff_id, 
+      change: 'document_deleted',
+      docType: doc.document_type 
+    });
+  }
   }
 
   return (

@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -374,14 +375,14 @@ function DailyAttendance({ staff, canOperate = true, onAttendanceChange }) {
 
   useEffect(() => { fetchAttendance() }, [fetchAttendance])
 
-  const markAttendance = async (staffId, status) => {
+      const markAttendance = async (staffId, status) => {
     const { error } = await supabase.from('attendance_logs').upsert(
       [{ staff_id: staffId, date: selectedDate, status, marked_by: 'Admin',
         check_in_time: status === 'Present' ? new Date().toISOString() : null, updated_at: new Date() }],
       { onConflict: 'staff_id,date' }
     )
     if (error) showToast(error.message)
-    else { fetchAttendance(); onAttendanceChange?.(); showToast(`Marked ${status}`, 'success') }
+    else { fetchAttendance(); onAttendanceChange?.(); showToast(`Marked ${status}`, 'success'); EventBus.emit(GNSI_EVENTS.ATTENDANCE_MARKED, { staffId, date: selectedDate, status }); }
   }
 
   const filteredStaff = useMemo(() => {
@@ -532,13 +533,28 @@ function LeaveManagement({ staff, currentUser }) {
     if (roleKey) { updateFields[`${roleKey}_approved_at`] = ts; updateFields[`${roleKey}_id`] = currentUser?.id }
     const { error } = await supabase.from('leaves').update(updateFields).eq('id', id)
     if (error) showToast(error.message)
-    else { fetchLeaves(); showToast('Leave approved', 'success') }
+    else { 
+      fetchLeaves(); 
+      showToast('Leave approved', 'success');
+      EventBus.emit(GNSI_EVENTS.LEAVE_APPROVED, { 
+        leaveId: id, 
+        approvedBy: currentUser?.id,
+        status: newStatus
+      });
+    }
   }
 
   const reject = async (id) => {
     const { error } = await supabase.from('leaves').update({ status: 'rejected', updated_at: new Date() }).eq('id', id)
     if (error) showToast(error.message)
-    else { fetchLeaves(); showToast('Leave rejected', 'success') }
+    else { 
+      fetchLeaves(); 
+      showToast('Leave rejected', 'success');
+      EventBus.emit(GNSI_EVENTS.LEAVE_APPROVED, { 
+        leaveId: id, 
+        status: 'rejected'
+      });
+    }
   }
 
   const statusBg = { submitted: '#fef9c3', hod_approved: '#dbeafe', principal_approved: '#ede9fe', approved: '#f0fdf4', rejected: '#fee2e2' }
@@ -607,7 +623,17 @@ function ApplyLeaveModal({ staff, currentUser, onClose, onSaved, showToast }) {
     }])
     setSaving(false)
     if (error) showToast(error.message)
-    else { showToast('Leave applied!', 'success'); onSaved(); onClose() }
+    else { 
+      showToast('Leave applied!', 'success'); 
+      onSaved(); 
+      onClose();
+      EventBus.emit(GNSI_EVENTS.LEAVE_APPLIED, { 
+        staffId: Number(form.staff_id), 
+        startDate: form.start_date, 
+        endDate: form.end_date,
+        days: days
+      });
+    }
   }
 
   return (
@@ -830,7 +856,16 @@ function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
     }])
     setSaving(false)
     if (error) showToast('Save failed: ' + error.message)
-    else { showToast('Shift assigned!', 'success'); onSaved(); onClose() }
+    else { 
+      showToast('Shift assigned!', 'success'); 
+      onSaved(); 
+      onClose();
+      EventBus.emit(GNSI_EVENTS.STAFF_UPDATED, { 
+        staffId: Number(form.staff_id), 
+        change: 'shift_assigned',
+        shiftId: form.shift_slot
+      });
+    }
   }
 
   return (
@@ -942,7 +977,14 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
   const handleDelete = async (id) => {
     const { error } = await supabase.from('staff_shift_assignments').delete().eq('id', id)
     if (error) showToast('Delete failed: ' + error.message)
-    else { showToast('Shift removed', 'success'); fetchAssignments() }
+    else { 
+      showToast('Shift removed', 'success'); 
+      fetchAssignments();
+      EventBus.emit(GNSI_EVENTS.STAFF_UPDATED, { 
+        staffId: confirmDelete?.staff_id, 
+        change: 'shift_removed'
+      });
+    }
     setConfirmDel(null)
   }
 
@@ -1117,7 +1159,18 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
       { onConflict: 'staff_id,date' }
     )
     if (e2) showToast('Attendance sync failed: ' + e2.message)
-    else { showToast('Override approved & attendance marked Present', 'success'); fetchCheckins(); onAttendanceChange?.() }
+    else { 
+      showToast('Override approved & attendance marked Present', 'success'); 
+      fetchCheckins(); 
+      onAttendanceChange?.();
+      EventBus.emit(GNSI_EVENTS.ATTENDANCE_MARKED, { 
+        staffId: checkin.staff_id, 
+        date: checkin.date, 
+        status: 'Present',
+        markedBy: 'Geo',
+        geoVerified: true
+      });
+    }
   }
 
   // FIX-D4: Only sync verified rows; call onAttendanceChange only once after all upserts
@@ -1138,7 +1191,19 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
         if (!error) anyWritten = true
       }
       // Only call onAttendanceChange once, and only if writes succeeded
-      if (anyWritten) onAttendanceChange?.()
+      if (anyWritten) {
+        onAttendanceChange?.();
+        // Emit for each verified checkin
+        for (const c of verified) {
+          EventBus.emit(GNSI_EVENTS.ATTENDANCE_MARKED, { 
+            staffId: c.staff_id, 
+            date: c.date, 
+            status: 'Present',
+            markedBy: 'Geo',
+            geoVerified: true
+          });
+        }
+      }
     }
     sync()
   }, [checkins]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1256,7 +1321,17 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
     const records = activeStaff.map(s => ({ staff_id: s.id, date: selectedDate, status, marked_by: 'Bulk', updated_at: new Date() }))
     const { error } = await supabase.from('attendance_logs').upsert(records, { onConflict: 'staff_id,date' })
     if (error) showToast(error.message)
-    else { showToast(`${activeStaff.length} active staff marked ${status}`, 'success'); onAttendanceChange?.() }
+    else { 
+      showToast(`${activeStaff.length} active staff marked ${status}`, 'success'); 
+      onAttendanceChange?.();
+      for (const s of activeStaff) {
+        EventBus.emit(GNSI_EVENTS.ATTENDANCE_MARKED, { 
+          staffId: s.id, 
+          date: selectedDate, 
+          status 
+        });
+      }
+    }
   }
 
   const handleImportCSV = async (e) => {
@@ -1274,7 +1349,18 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
   const confirmImport = async () => {
     const { error } = await supabase.from('attendance_logs').upsert(importPreview, { onConflict: 'staff_id,date' })
     if (error) showToast(error.message)
-    else { showToast(`${importPreview.length} records imported!`, 'success'); setImportPreview([]); onAttendanceChange?.() }
+    else { 
+      showToast(`${importPreview.length} records imported!`, 'success'); 
+      setImportPreview([]); 
+      onAttendanceChange?.();
+      for (const r of importPreview) {
+        EventBus.emit(GNSI_EVENTS.ATTENDANCE_MARKED, { 
+          staffId: r.staff_id, 
+          date: selectedDate, 
+          status: r.status 
+        });
+      }
+    }
   }
 
   return (

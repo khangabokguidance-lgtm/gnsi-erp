@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import CreateAuthUser from './CreateAuthUser'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 export default function AdminLinkStaff() {
   const [staff, setStaff] = useState([])
@@ -54,6 +55,13 @@ export default function AdminLinkStaff() {
     } else {
       setToast(`✅ Linked successfully`)
       setStaff(prev => prev.map(s => s.id === staffId ? { ...s, user_id: userId } : s))
+      const linkedStaff = staff.find(s => s.id === staffId)
+      EventBus.emit(GNSI_EVENTS.STAFF_UPDATED, { 
+        staffId, 
+        change: 'auth_linked',
+        userId,
+        name: linkedStaff?.name 
+      })
     }
     
     setTimeout(() => setToast(''), 3000)
@@ -64,6 +72,7 @@ export default function AdminLinkStaff() {
     if (!window.confirm('Unlink this staff?')) return
     setSaving(staffId)
     
+    const unlinkedStaff = staff.find(s => s.id === staffId)
     await supabase
       .from('staff_profiles')
       .update({ user_id: null })
@@ -71,6 +80,11 @@ export default function AdminLinkStaff() {
 
     setStaff(prev => prev.map(s => s.id === staffId ? { ...s, user_id: null } : s))
     setToast('🗑️ Unlinked')
+    EventBus.emit(GNSI_EVENTS.STAFF_UPDATED, { 
+      staffId, 
+      change: 'auth_unlinked',
+      name: unlinkedStaff?.name 
+    })
     setTimeout(() => setToast(''), 3000)
     setSaving(null)
   }
@@ -106,6 +120,13 @@ export default function AdminLinkStaff() {
           .eq('id', s.id)
         
         results.push({ name: s.name, status: 'created', email, password })
+        EventBus.emit(GNSI_EVENTS.STAFF_CREATED, { 
+          staffId: s.id, 
+          name: s.name,
+          email,
+          userId: data.user.id,
+          action: 'auth_created'
+        })
       } catch (e) {
         results.push({ name: s.name, status: 'error', error: e.message })
       }
