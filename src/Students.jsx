@@ -350,9 +350,9 @@ function CoursePill({ course }) {
   )
 }
 
-function HousePill({ house }) {
+function HousePill({ house, colorMap = {} }) {
   if (!house) return null
-  const c = houseColorMap[house] || HOUSE_COLORS[house] || T.text3
+  const c = colorMap[house] || HOUSE_COLORS[house] || T.text3
   return (
     <span style={{
       display:'inline-flex', alignItems:'center', gap:4,
@@ -2383,7 +2383,7 @@ const effectiveCols = visibleCols.filter(col => {
                     </div>
                     <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>
                       {s.course&&<CoursePill course={s.course}/>}
-                      {s.house&&<HousePill house={s.house}/>}
+                      {s.house&&<HousePill house={s.house} colorMap={houseColorMap}/>}
                     </div>
                     {att!=null&&<AttBar pct={att}/>}
                     {dues>0&&<div style={{fontSize:12,fontWeight:700,color:T.red,marginTop:8}}>⚠ ₹{fmt(dues)} due</div>}
