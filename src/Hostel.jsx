@@ -394,8 +394,6 @@ const HOUSE_PALETTE = [
   { color: '#047857', bg: '#d1fae5', light: '#ecfdf5', border: '#6ee7b7', dark: '#065f46' },
 ]
 
-const getPalette = (index) => HOUSE_PALETTE[index % HOUSE_PALETTE.length]
-
 const statusConfig = {
   Present:    { bg: '#dcfce7', color: '#16a34a', icon: '✓' },
   Absent:     { bg: '#fee2e2', color: '#dc2626', icon: '✕' },
@@ -768,7 +766,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   // ══════════════════════════════════════════════════
   if (view === 'dashboard' && selectedHouse) {
     const houseIdx = houses.indexOf(selectedHouse)
-    const pal = getPalette(houseIdx)
+    const pal = getPalette(selectedHouse)
     const hStudents = activeStudents.filter(s => s.house === selectedHouse)
       .sort((a, b) => {
         const aStatus = getStatus(a.id)
@@ -948,7 +946,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   // ══════════════════════════════════════════════════
   if (view === 'rollcall' && selectedHouse) {
     const houseIdx = houses.indexOf(selectedHouse)
-    const pal = getPalette(houseIdx)
+    const pal = getPalette(selectedHouse)
     const total = rollCallStudents.length
     const marked = rollCallStudents.filter(s => getStatus(s.id) !== 'Unmarked').length
     const pct = total ? Math.round(marked / total * 100) : 0
@@ -3357,7 +3355,10 @@ function HouseTab({ students: propStudents, currentUser }) {
     showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
   }
 
-  const getHouseStyle = h => HOUSE_COLORS[(Number(h.color_index) || 0) % HOUSE_COLORS.length]
+  const getHouseStyle = h => {
+    const c = houseColorMap[h.name] || HOUSE_PALETTE[(Number(h.color_index) || 0) % HOUSE_PALETTE.length]
+    return typeof c === 'string' ? {color: c, bg: `${c}10`, border: `${c}40`} : c
+  }
 
   const activeHouseObj  = houses.find(h => h.id === activeHouse)
   const houseStudents   = activeHouseObj ? students.filter(s => s.house === activeHouseObj.name) : []
@@ -4017,6 +4018,7 @@ function Hostel() {
   const [dataLoading,   setDataLoading]   = useState(true)
   const [mobile,        setMobile]        = useState(isMobile())
   const [currentHousemaster, setCurrentHousemaster] = useState(null)
+  const [houseColorMap, setHouseColorMap] = useState({})
   const currentUser = JSON.parse(localStorage.getItem('gnsi_user') || sessionStorage.getItem('gnsi_user') || '{}')
 const userRole = (currentUser?.role || '').toLowerCase()
 const isAdmin = userRole === 'admin'

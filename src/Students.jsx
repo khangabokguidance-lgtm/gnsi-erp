@@ -129,10 +129,11 @@ const COURSE_STRUCTURE = {
 
 const PROMOTION_MAP = { 'Lakshya':'Umeed','Achiever':'Leader','Leader':'Champion','Elite':'Prime' }
 const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime']
-const HOUSES_LIST  = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
 
-const HOUSE_COLORS = {
+// Houses will be loaded dynamically from DB
+let HOUSES_LIST  = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
+let HOUSE_COLORS = {
   Kombirei:'#2563EB', Kangla:'#DC2626',  Sangai:'#059669',   Singgarei:'#D97706',
   Loktak:'#7C3AED',   Koubru:'#0284C7',  Shiroi:'#DB2777',   Takhelei:'#EA580C',
   'Block-B':'#64748B','Day Scholar':'#94A3B8',
@@ -351,7 +352,7 @@ function CoursePill({ course }) {
 
 function HousePill({ house }) {
   if (!house) return null
-  const c=HOUSE_COLORS[house]||T.text3
+  const c = houseColorMap[house] || HOUSE_COLORS[house] || T.text3
   return (
     <span style={{
       display:'inline-flex', alignItems:'center', gap:4,
@@ -359,7 +360,7 @@ function HousePill({ house }) {
       background:`${c}10`, color:c, border:`1px solid ${c}20`,
       whiteSpace:'nowrap', flexShrink:0,
     }}>
-      <span style={{width:5,height:5,borderRadius:'50%',background:c}}/>
+      <span style={{width:5,height:5,borderRadius:'50%',background:c,flexShrink:0}}/>
       {house}
     </span>
   )
@@ -1749,7 +1750,8 @@ export default function Students() {
   const isMobile=useIsMobile()
 
   const [students,setStudents]=useState([])
-  const [houseOptions,setHouseOptions]=useState(HOUSES_LIST)
+  const [houseOptions,setHouseOptions]=useState([])
+  const [houseColorMap,setHouseColorMap]=useState({})
   const [loading,setLoading]=useState(true)
   const [feeData,setFeeData]=useState({})
   const [feeHistory,setFeeHistory]=useState({})
