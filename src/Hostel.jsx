@@ -429,6 +429,10 @@ function AttendanceTab({ students, currentHousemaster }) {
     [activeStudents]
   )
 
+  // ── House palette (computed once, used in all views) ──
+  const houseIdx = selectedHouse ? houses.indexOf(selectedHouse) : -1
+  const pal = houseIdx >= 0 ? HOUSE_PALETTE[houseIdx % HOUSE_PALETTE.length] : HOUSE_PALETTE[0]
+
   // Load ALL attendance records for the day
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -765,9 +769,6 @@ function AttendanceTab({ students, currentHousemaster }) {
   //  VIEW 2: HOUSE DASHBOARD
   // ══════════════════════════════════════════════════
   if (view === 'dashboard' && selectedHouse) {
-    const houseIdx = houses.indexOf(selectedHouse)
-    const houseIdx = houses.indexOf(selectedHouse)
-const pal = HOUSE_PALETTE[houseIdx % HOUSE_PALETTE.length]
     const hStudents = activeStudents.filter(s => s.house === selectedHouse)
       .sort((a, b) => {
         const aStatus = getStatus(a.id)
@@ -946,9 +947,6 @@ const pal = HOUSE_PALETTE[houseIdx % HOUSE_PALETTE.length]
   //  VIEW 3: QUICK ROLL CALL (Card-by-card)
   // ══════════════════════════════════════════════════
   if (view === 'rollcall' && selectedHouse) {
-    const houseIdx = houses.indexOf(selectedHouse)
-    const houseIdx = houses.indexOf(selectedHouse)
-const pal = HOUSE_PALETTE[houseIdx % HOUSE_PALETTE.length]
     const total = rollCallStudents.length
     const marked = rollCallStudents.filter(s => getStatus(s.id) !== 'Unmarked').length
     const pct = total ? Math.round(marked / total * 100) : 0
