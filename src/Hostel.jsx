@@ -337,6 +337,13 @@ function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name
 // ══════════════════════════════════════════════════════════════
 //  MOBILE TABLE / CARD SWITCHER
 // ══════════════════════════════════════════════════════════════
+// ── Helpers ──
+const normalizeHouse = (h) => (h || '').toString().trim().toLowerCase()
+const isAssigned = (s) => {
+  const h = s.house
+  return h !== null && h !== undefined && String(h).trim() !== ''
+}
+
 function useMobileView() {
   const [mobile, setMobile] = useState(isMobile())
   useEffect(() => {
@@ -425,7 +432,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   )
 
   const houses = useMemo(() =>
-    [...new Set(activeStudents.map(s => s.house).filter(Boolean))].sort(),
+    [...new Set(activeStudents.map(s => normalizeHouse(s.house)).filter(h => h))].sort(),
     [activeStudents]
   )
 
@@ -450,7 +457,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   // Filter records for selected house
   useEffect(() => {
     if (selectedHouse) {
-      setRecords(allRecords.filter(r => r.house === selectedHouse))
+      setRecords(allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(selectedHouse)))
     }
   }, [allRecords, selectedHouse])
 
@@ -512,7 +519,7 @@ function AttendanceTab({ students, currentHousemaster }) {
 
   // ── Per-house stats
   const getHouseStats = (houseName) => {
-    const hStudents = activeStudents.filter(s => s.house === houseName)
+    const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
     const hRecords = allRecords.filter(r => r.house === houseName)
     const present = hRecords.filter(r => r.status === 'Present').length
     const absent = hRecords.filter(r => r.status === 'Absent').length
@@ -529,7 +536,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   // ── Start roll call for a house
   const startRollCall = (houseName) => {
     const hStudents = activeStudents
-      .filter(s => s.house === houseName)
+      .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
       .sort((a, b) => {
         // Unmarked first
         const aMarked = allRecords.some(r => r.student_id === a.id)
@@ -769,7 +776,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   //  VIEW 2: HOUSE DASHBOARD
   // ══════════════════════════════════════════════════
   if (view === 'dashboard' && selectedHouse) {
-    const hStudents = activeStudents.filter(s => s.house === selectedHouse)
+    const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(selectedHouse))
       .sort((a, b) => {
         const aStatus = getStatus(a.id)
         const bStatus = getStatus(b.id)
@@ -3333,7 +3340,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
   const handleDeleteHouse = async id => {
     if (!isAdmin) { alert('Only admins can delete houses.'); return }
-    const count = students.filter(s => s.house === houses.find(h => h.id === id)?.name).length
+    const count = students.filter(s => normalizeHouse(s.house) === normalizeHouse(houses.find(h => h.id === id)?.name)).length
     if (!window.confirm(`Delete this house?${count > 0 ? ` ${count} students will be unassigned.` : ''}`)) return
     await supabase.from('houses').delete().eq('id', id)
     showToast('🗑 House deleted', '#dc2626'); load()
@@ -3347,7 +3354,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   }
 
   const handleBulkAssign = async houseName => {
-    const unassigned = students.filter(s => !s.house)
+    const unassigned = students.filter(s => !isAssigned(s))
     if (!unassigned.length) { showToast('No unassigned students', '#ca8a04'); return }
     if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
     await supabase.from('students').update({ house: houseName }).in('id', unassigned.map(s => s.id))
@@ -3361,9 +3368,9 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   }
 
   const activeHouseObj  = houses.find(h => h.id === activeHouse)
-  const houseStudents   = activeHouseObj ? students.filter(s => s.house === activeHouseObj.name) : []
-  const houseMasters    = activeHouseObj ? masters.filter(m => m.house === activeHouseObj.name) : []
-  const unassignedCount = students.filter(s => !s.house).length
+  const houseStudents   = activeHouseObj ? students.filter(s => normalizeHouse(s.house) === normalizeHouse(activeHouseObj.name)) : []
+  const houseMasters    = activeHouseObj ? masters.filter(m => normalizeHouse(m.house) === normalizeHouse(activeHouseObj.name)) : []
+  const unassignedCount = students.filter(s => !isAssigned(s)).length
 
   const assignHits = assignSearch.length > 0
     ? students.filter(s =>
@@ -3578,8 +3585,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, marginBottom: 24 }}>
                 {houses.map(h => {
                   const hs  = getHouseStyle(h)
-                  const cnt = students.filter(s => s.house === h.name).length
-                  const hms = masters.filter(m => m.house === h.name)
+                  const cnt = students.filter(s => normalizeHouse(s.house) === normalizeHouse(h.name)).length
+                  const hms = masters.filter(m => normalizeHouse(m.house) === normalizeHouse(h.name))
                   return (
                     <div key={h.id}
                       style={{ background: 'white', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,.08)', border: `1px solid ${hs.border}`, cursor: 'pointer', transition: 'transform .15s, box-shadow .15s' }}
