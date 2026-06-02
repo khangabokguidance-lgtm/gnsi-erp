@@ -3283,7 +3283,7 @@ const emptyHouse = {
   established_year: new Date().getFullYear(), remarks: '',
 }
 
-function HouseTab({ students: propStudents, currentUser }) {
+function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [houses,       setHouses]       = useState([])
   const [students,     setStudents]     = useState(propStudents || [])
@@ -4037,7 +4037,7 @@ const isHM = userRole === 'house master'
       const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
         supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob').order('name'),
         supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
-        supabase.from('housemasters').select('*').eq('status', 'Active').single(),
+        supabase.from('housemasters').select('*').eq('status', 'Active').limit(1).maybeSingle(),
         supabase.from('houses').select('name, color_index'),
       ])
       if (e1) console.error('Students fetch error:', e1)
@@ -4072,7 +4072,7 @@ const isHM = userRole === 'house master'
     nightduty:    <NightDutyTab   staffProfiles={staffProfiles} />,
     discipline:   <DisciplineTab  students={students} />,
     sickbay:      <SickbayTab     students={students} />,
-    house:        <HouseTab       students={students} currentUser={currentUser} />,
+    house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
     housemaster:  <HousemasterTab />,
     kitchen:      <KitchenTab />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
