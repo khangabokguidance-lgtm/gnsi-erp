@@ -36,6 +36,7 @@ import Entrance from './Entrance'
 import { LOGO_BASE64 } from './logo'
 import LandingPage from './LandingPage'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
+import AdminLinkStaff from './AdminLinkStaff'
 
 
 const ALL_GROUPS = [
@@ -95,6 +96,7 @@ const ALL_GROUPS = [
       { id: 'checklist', label: 'Checklist', icon: '✅' },
       { id: 'admin',     label: 'Admin',     icon: '🔐' },
       { id: 'system',    label: 'System',    icon: '⚙️' },
+      { id: 'adminlink', label: 'Link Staff', icon: '🔗' },
     ],
   },
 ]
@@ -724,11 +726,16 @@ if (!currentUser) {
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
     entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}         />,
+     admin:     isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
+  adminlink: isAdmin ? <AdminLinkStaff /> : <AccessDenied />,  // ← ADD THIS
+  system:    <SystemSettings currentUser={currentUser} perms={perms('system')} />,
+}
   }
 
   const renderContent = () => {
      if (active === 'student-leave') return <StudentSelfService />
   if (active === 'verify')        return <GatePassVerifyPage />
+  if (active === 'adminlink')     return isAdmin ? <AdminLinkStaff /> : <AccessDenied />
     if (active === 'dashboard') return isAdmin
       ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
       : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
