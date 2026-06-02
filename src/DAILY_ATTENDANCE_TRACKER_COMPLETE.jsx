@@ -791,7 +791,7 @@ function VPDashboard({ staff, logs, records }) {
 // SECTION 7: FEATURE 2 - DAILY ATTENDANCE TRACKER
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DailyAttendance({ staff }) {
+function DailyAttendance({ staff, canOperate = true }) {
   const [selectedDate, setSelectedDate] = useState(getToday().toISOString().slice(0, 10))
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(true)
@@ -900,8 +900,8 @@ function DailyAttendance({ staff }) {
                   <p style={{ margin: 0, fontWeight: '600', fontSize: '13px' }}>{s.name}</p>
                   <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>{s.department}</p>
                 </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {[
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  {canOperate ? [
                     { label: '✓', status: 'Present', color: '#16a34a' },
                     { label: '✗', status: 'Absent', color: '#dc2626' },
                     { label: '⏰', status: 'Late', color: '#ca8a04' },
@@ -923,7 +923,14 @@ function DailyAttendance({ staff }) {
                     >
                       {btn.label}
                     </button>
-                  ))}
+                  )) : (
+                    <span style={{
+                      fontSize: '11px', fontWeight: '600', padding: '4px 10px',
+                      borderRadius: '999px', backgroundColor: '#f1f5f9', color: '#94a3b8',
+                    }}>
+                      {status === 'Not Marked' ? '—' : status}
+                    </span>
+                  )}
                 </div>
               </div>
             )
@@ -1604,7 +1611,7 @@ function GeolocationTracker({ staff }) {
 // SECTION 15: FEATURE 10 - BULK OPERATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BulkOperations({ staff }) {
+function BulkOperations({ staff, canOperate = true }) {
   const [selectedDate, setSelectedDate] = useState(getToday().toISOString().slice(0, 10))
   const { show: showToast, ToastEl } = useToast()
 
@@ -1664,18 +1671,20 @@ function BulkOperations({ staff }) {
     <div style={styles.card}>
       <SectionHeader icon="⚙️" title="Bulk Operations" />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-        <button onClick={markAllPresent} style={styles.btn(true)}>
-          ✓ Mark All Present
-        </button>
-        <button onClick={markAllAbsent} style={styles.btn(true)}>
-          ✗ Mark All Absent
-        </button>
-        <label style={{ ...styles.btn(true), display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          📥 Import CSV
-          <input type="file" accept=".csv" onChange={handleImportCSV} style={{ display: 'none' }} />
-        </label>
-      </div>
+      {canOperate ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+          <button onClick={markAllPresent} style={styles.btn(true)}>✓ Mark All Present</button>
+          <button onClick={markAllAbsent} style={styles.btn(true)}>✗ Mark All Absent</button>
+          <label style={{ ...styles.btn(true), display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            📥 Import CSV
+            <input type="file" accept=".csv" onChange={handleImportCSV} style={{ display: 'none' }} />
+          </label>
+        </div>
+      ) : (
+        <div style={{ padding: '16px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', textAlign: 'center', color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
+          🔒 Bulk operations restricted to Admin & Vice Principal
+        </div>
+      )}
 
       <div
         style={{
@@ -1717,6 +1726,8 @@ function DailyAttendanceTracker({ currentUser: appUser, perms, staff: staffProp 
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState('dashboard')
   const currentUser = appUser || { id: 1, role: 'admin' }
+
+  const canOperate = ['Admin', 'Vice Principal', 'Principal'].includes(currentUser?.role)
 
   useEffect(() => {
     const load = async () => {
@@ -1778,10 +1789,25 @@ function DailyAttendanceTracker({ currentUser: appUser, perms, staff: staffProp 
         </div>
       </div>
 
+      {/* Viewer banner */}
+      {!canOperate && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '10px 14px', borderRadius: '10px', marginBottom: '16px',
+          backgroundColor: '#fef9c3', border: '1px solid #fde68a',
+        }}>
+          <span style={{ fontSize: '18px' }}>👁</span>
+          <div>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#92400e' }}>View Only Mode</p>
+            <p style={{ margin: 0, fontSize: '11px', color: '#a16207' }}>Only Admin & Vice Principal can mark attendance or make changes.</p>
+          </div>
+        </div>
+      )}
+
       {/* Section Navigation — responsive grid */}
-      <div style={{
+     <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(5, 1fr)',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
         gap: '8px',
         marginBottom: '20px',
       }}>
@@ -1840,7 +1866,7 @@ function DailyAttendanceTracker({ currentUser: appUser, perms, staff: staffProp 
 
       {/* Sections */}
       {show('dashboard') && <VPDashboard staff={staff} logs={logs} records={records} />}
-      {show('daily') && <DailyAttendance staff={staff} />}
+      {show('daily') && <DailyAttendance staff={staff} canOperate={canOperate} />}
       {show('absent') && <AbsentTracker staff={staff} logs={logs} />}
       {show('leave') && <LeaveManagement staff={staff} currentUser={currentUser} />}
       {show('risk') && <PredictiveAnalytics staff={staff} logs={logs} />}
@@ -1848,7 +1874,7 @@ function DailyAttendanceTracker({ currentUser: appUser, perms, staff: staffProp 
       {show('compliance') && <ComplianceEngine staff={staff} logs={logs} leaves={[]} />}
       {show('shift') && <ShiftManagement staff={staff} logs={logs} />}
       {show('geo') && <GeolocationTracker staff={staff} />}
-      {show('bulk') && <BulkOperations staff={staff} />}
+      {show('bulk') && <BulkOperations staff={staff} canOperate={canOperate} />}
     </div>
   )
 }
