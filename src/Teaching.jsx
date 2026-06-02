@@ -651,6 +651,7 @@ useEffect(() => {
         <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} style={{ ...S.input, width:'auto', flex:'0 1 140px' }} placeholder="From"/>
         <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} style={{ ...S.input, width:'auto', flex:'0 1 140px' }} placeholder="To"/>
         <button onClick={exportCSV} style={S.btnSm('#16a34a')}>📥 CSV</button>
+        <button onClick={() => window.print()} style={S.btnSm('#7c3aed')}>🖨️ Print</button>
         {(search||courseFilter!=='All'||subjectFilter!=='All'||dateFrom||dateTo) &&
           <button onClick={() => { setSearch(''); setCourseFilter('All'); setSubjectFilter('All'); setDateFrom(''); setDateTo(''); setPage(1) }} style={S.btnSm('#dc2626')}>✕ Clear</button>}
       </div>
@@ -695,7 +696,7 @@ useEffect(() => {
                         <td style={{ padding:'10px 12px' }}>
                           <div style={{ display:'flex', gap:5 }}>
                             <button onClick={() => editId===item.id?(setEditId(null),setEditForm(null)):startEdit(item)} style={S.btnSm('#7c3aed')}>{editId===item.id?'✖':'✏️'}</button>
-                            {(currentUser?.role || '').toLowerCase() === 'admin' && <button onClick={() => setConfirmDel(item.id)} style={S.btnSm('#dc2626')}>🗑</button>}
+                            {(currentUser?.role||'').toLowerCase()==='admin' && <button onClick={() => setConfirmDel(item.id)} style={S.btnSm('#dc2626')}>🗑</button>}
                           </div>
                         </td>
                       </tr>
@@ -1888,7 +1889,9 @@ function TabHMDashboard({ currentUser }) {
 
   useEffect(() => { fetchAll() }, [])
 
-  const filteredDoubt = selectedHouse==='All' ? allDoubt : allDoubt.filter(d => d.hm_name===selectedHouse)
+  const filteredDoubt = selectedHouse==='All' 
+  ? allDoubt 
+  : allDoubt.filter(d => d.hm_name===selectedHouse || d.resolved_by===selectedHouse)
   const openSessions  = filteredDoubt.filter(d => d.status==='open')
   const doneSessions  = filteredDoubt.filter(d => d.status==='resolved')
 
@@ -1980,9 +1983,10 @@ function TabHMDashboard({ currentUser }) {
       <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
         <select value={selectedHouse} onChange={e => setSelectedHouse(e.target.value)} style={{ ...S.select, width:'auto' }}>
           <option value="All">All HMs</option>
-          {[...new Set(allDoubt.map(d => d.hm_name).filter(Boolean))].sort().map(h => <option key={h} value={h}>{h}</option>)}
+          {[...new Set(allDoubt.flatMap(d => [d.hm_name, d.resolved_by]).filter(Boolean))].sort().map(h => <option key={h} value={h}>{h}</option>)}
         </select>
         <span style={{ fontSize:13, color:'#64748b' }}>{openSessions.length} open · {doneSessions.length} resolved</span>
+        <button onClick={() => window.print()} style={{ ...S.btnSm('#7c3aed'), marginLeft:'auto' }}>🖨️ Print</button>
       </div>
       <div style={S.card}>
         <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
