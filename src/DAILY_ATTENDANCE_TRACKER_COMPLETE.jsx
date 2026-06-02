@@ -1,129 +1,13 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════════
- * DAILY ATTENDANCE TRACKER SYSTEM v2 - FULLY INTERCONNECTED
- * ═══════════════════════════════════════════════════════════════════════════════
+ * DAILY ATTENDANCE TRACKER v3 — All Loopholes Fixed
  *
- * GNSI Portal — Guidance Navodaya & Sainik Institute
- * Khangabok, Thoubal, Manipur
- *
- * Changes from v1:
- * ─ Geo & Daily Attendance fully interconnected (self_attendance auto-syncs to attendance_logs)
- * ─ Shift coverage uses attendance_logs (not disconnected)
- * ─ Null GPS coords no longer crash GeolocationTracker
- * ─ Admin geo override (approve rejected check-ins)
- * ─ DB columns: subject, time_slot, repeat_type, date_to, notes added to staff_shift_assignments
- * ─ Date picker wired in ShiftManagement header
- * ─ BulkOperations uses upsert to avoid duplicate errors
- * ─ markAllPresent / markAllAbsent use upsert
- * ─ CSV import uses upsert
- * ─ Leave approval correctly maps role → status
- * ─ ComplianceEngine: countAbsencesInMonth fix (was passing full logs, not staffLogs)
- * ─ detectSerialAbsence fix: uses daysUntil correctly
- * ═══════════════════════════════════════════════════════════════════════════════
+ * FIX-D1  attendance_logs fetch now limited to last 3 months (was unbounded)
+ * FIX-D2  BulkOperations.markAll now filters Active staff only
+ * FIX-D3  ComplianceEngine wrapped in useMemo to prevent re-run on every render
+ * FIX-D4  syncVerifiedCheckins loop guard — only sync verified rows, guard onAttendanceChange
+ * FIX-D5  hr_records fetch failure handled gracefully (silent fallback, loading still resolves)
+ * FIX-D6  ApplyLeaveModal staff dropdown now shows Active staff only
  */
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SQL MIGRATIONS — run in Supabase SQL Editor before deploying
-// ─────────────────────────────────────────────────────────────────────────────
-/*
--- Core tables (unchanged from v1 — skip if already run)
-CREATE TABLE IF NOT EXISTS attendance_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  staff_id BIGINT NOT NULL REFERENCES staff_profiles(id),
-  date DATE NOT NULL,
-  status TEXT CHECK (status IN ('Present','Absent','Late','Leave','Half-day','Holiday')) DEFAULT 'Absent',
-  marked_by TEXT CHECK (marked_by IN ('Admin','Self','System','Geo','Bulk')) DEFAULT 'Admin',
-  check_in_time TIMESTAMPTZ,
-  check_out_time TIMESTAMPTZ,
-  geo_verified BOOLEAN DEFAULT FALSE,
-  geo_distance INT,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(staff_id, date)
-);
-CREATE INDEX IF NOT EXISTS idx_attendance_date_staff ON attendance_logs(date, staff_id);
-
--- Fix staff_shift_assignments: add missing columns
-ALTER TABLE staff_shift_assignments
-  ADD COLUMN IF NOT EXISTS subject TEXT,
-  ADD COLUMN IF NOT EXISTS time_slot TEXT,
-  ADD COLUMN IF NOT EXISTS repeat_type TEXT DEFAULT 'daily',
-  ADD COLUMN IF NOT EXISTS date_to DATE,
-  ADD COLUMN IF NOT EXISTS notes TEXT;
-
--- self_attendance: geo check-ins from staff portal
-CREATE TABLE IF NOT EXISTS self_attendance (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  staff_id BIGINT NOT NULL REFERENCES staff_profiles(id),
-  date DATE NOT NULL,
-  timestamp TIMESTAMPTZ NOT NULL,
-  method TEXT CHECK (method IN ('QR','PIN','Biometric')) DEFAULT 'QR',
-  location_lat DECIMAL(10,8),
-  location_lng DECIMAL(11,8),
-  device_id TEXT,
-  geo_verified BOOLEAN DEFAULT FALSE,
-  geo_distance INT,
-  admin_overridden BOOLEAN DEFAULT FALSE,
-  admin_override_by BIGINT,
-  admin_override_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(staff_id, date)
-);
-
--- Other tables (unchanged from v1)
-CREATE TABLE IF NOT EXISTS leaves (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  staff_id BIGINT NOT NULL REFERENCES staff_profiles(id),
-  leave_type TEXT NOT NULL DEFAULT 'earned',
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  days_applied INT NOT NULL,
-  reason TEXT,
-  status TEXT CHECK (status IN ('draft','submitted','hod_approved','principal_approved','approved','rejected','cancelled')) DEFAULT 'submitted',
-  hod_id BIGINT, hod_approved_at TIMESTAMPTZ, hod_remarks TEXT,
-  principal_id BIGINT, principal_approved_at TIMESTAMPTZ, principal_remarks TEXT,
-  vp_id BIGINT, vp_approved_at TIMESTAMPTZ, vp_remarks TEXT,
-  balance_before INT, balance_after INT,
-  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS absence_patterns (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  staff_id BIGINT NOT NULL REFERENCES staff_profiles(id),
-  month DATE NOT NULL,
-  absent_days INT DEFAULT 0, late_days INT DEFAULT 0, leaves INT DEFAULT 0,
-  pattern_flags TEXT[] DEFAULT '{}',
-  risk_score DECIMAL(3,2),
-  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(staff_id, month)
-);
-
-CREATE TABLE IF NOT EXISTS compliance_violations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  staff_id BIGINT NOT NULL REFERENCES staff_profiles(id),
-  rule_id TEXT NOT NULL,
-  severity TEXT CHECK (severity IN ('high','medium','low')) DEFAULT 'medium',
-  message TEXT, suggested_action TEXT,
-  action_status TEXT CHECK (action_status IN ('pending','approved','dismissed','resolved')) DEFAULT 'pending',
-  created_at TIMESTAMPTZ DEFAULT NOW(), resolved_at TIMESTAMPTZ
-);
-
-CREATE TABLE IF NOT EXISTS notifications (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  recipients TEXT[] NOT NULL,
-  message TEXT NOT NULL,
-  type TEXT CHECK (type IN ('alert','warning','info','success')) DEFAULT 'info',
-  is_read BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS leave_balance INT DEFAULT 20;
-*/
-
-// ─────────────────────────────────────────────────────────────────────────────
-// IMPORTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
@@ -133,8 +17,8 @@ import { supabase } from './supabase'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GEOFENCE = {
-  schoolLocation: { lat: 24.8267, lng: 94.901 },
-  allowedRadius: 200,
+  schoolLocation: { lat: 24.62181, lng: 94.0193087 },
+  allowedRadius: 50,
 }
 
 const SHIFT_SLOTS = [
@@ -198,11 +82,17 @@ const getWorkingDaysInMonth = (monthStr) => {
   let count = 0
   const d = new Date(year, month - 1, 1)
   while (d.getMonth() === month - 1) {
-    const dw = d.getDay()
-    if (dw !== 0) count++ // exclude Sunday
+    if (d.getDay() !== 0) count++
     d.setDate(d.getDate() + 1)
   }
   return count
+}
+
+// FIX-D1: date cutoff helper — 3 months back
+const threeMonthsAgo = () => {
+  const d = new Date()
+  d.setMonth(d.getMonth() - 3)
+  return d.toISOString().slice(0, 10)
 }
 
 const calculateDistance = (loc1, loc2) => {
@@ -384,7 +274,7 @@ function VPDashboard({ staff, logs, records }) {
       const tl = todayLogs || []
       const total = staff.length
       const present = tl.filter(l => l.status === 'Present').length
-      const absent = tl.filter(l => l.status === 'Absent').length
+      const absent  = tl.filter(l => l.status === 'Absent').length
       const onLeave = tl.filter(l => l.status === 'Leave').length
       setKpis({ total, present, absent, onLeave, percentage: total ? Math.round((present / total) * 100) : 0 })
 
@@ -400,17 +290,26 @@ function VPDashboard({ staff, logs, records }) {
       })
       setByDept(Object.values(deptMap))
 
-      const { data: probs } = await supabase
-        .from('hr_records').select('staff_id,probation_end_date,staff_profiles(name)').eq('employment_status', 'Probation')
-        .lte('probation_end_date', addDays(new Date(), 7).toISOString().slice(0, 10))
+      // FIX-D5: graceful fallback if hr_records doesn't exist
+      let probs = []
+      try {
+        const { data } = await supabase
+          .from('hr_records').select('staff_id,probation_end_date,staff_profiles(name)').eq('employment_status', 'Probation')
+          .lte('probation_end_date', addDays(new Date(), 7).toISOString().slice(0, 10))
+        probs = data || []
+      } catch { /* hr_records may not exist yet */ }
 
-      const { data: patterns } = await supabase
-        .from('absence_patterns').select('staff_id,pattern_flags,staff_profiles(name)')
-        .contains('pattern_flags', ['serial_absence'])
+      let patterns = []
+      try {
+        const { data } = await supabase
+          .from('absence_patterns').select('staff_id,pattern_flags,staff_profiles(name)')
+          .contains('pattern_flags', ['serial_absence'])
+        patterns = data || []
+      } catch { /* absence_patterns may be empty */ }
 
       setAlerts([
-        ...((probs || []).map(p => ({ type: 'probation', staffName: p.staff_profiles?.name, message: `Probation ending in ${daysUntil(p.probation_end_date)} days` }))),
-        ...((patterns || []).map(p => ({ type: 'pattern', staffName: p.staff_profiles?.name, message: `Pattern: ${p.pattern_flags?.join(', ')}` }))),
+        ...probs.map(p => ({ type: 'probation', staffName: p.staff_profiles?.name, message: `Probation ending in ${daysUntil(p.probation_end_date)} days` })),
+        ...patterns.map(p => ({ type: 'pattern', staffName: p.staff_profiles?.name, message: `Pattern: ${p.pattern_flags?.join(', ')}` })),
       ].slice(0, 5))
     }
     load()
@@ -421,10 +320,10 @@ function VPDashboard({ staff, logs, records }) {
       <SectionHeader icon="📊" title="VP Dashboard" subtitle={fmtDate(new Date())} />
       {kpis && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-          <MetricCard label="Present" value={kpis.present} total={kpis.total} color="#16a34a" />
-          <MetricCard label="Absent" value={kpis.absent} total={kpis.total} color="#dc2626" />
-          <MetricCard label="On Leave" value={kpis.onLeave} total={kpis.total} color="#2563eb" />
-          <MetricCard label="Overall %" value={kpis.percentage} total={100} color="#1e3a5f" />
+          <MetricCard label="Present"  value={kpis.present}    total={kpis.total} color="#16a34a" />
+          <MetricCard label="Absent"   value={kpis.absent}     total={kpis.total} color="#dc2626" />
+          <MetricCard label="On Leave" value={kpis.onLeave}    total={kpis.total} color="#2563eb" />
+          <MetricCard label="Overall %" value={kpis.percentage} total={100}        color="#1e3a5f" />
         </div>
       )}
       {byDept.length > 0 && (
@@ -456,7 +355,7 @@ function VPDashboard({ staff, logs, records }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. DAILY ATTENDANCE (interconnected: shows geo_verified badge)
+// 2. DAILY ATTENDANCE
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DailyAttendance({ staff, canOperate = true, onAttendanceChange }) {
@@ -489,38 +388,32 @@ function DailyAttendance({ staff, canOperate = true, onAttendanceChange }) {
     return staff.filter(s => {
       const rec = attendance.find(a => a.staff_id === s.id)
       if (filter === 'present') return rec?.status === 'Present'
-      if (filter === 'absent') return !rec || rec.status === 'Absent'
-      if (filter === 'leave') return rec?.status === 'Leave'
+      if (filter === 'absent')  return !rec || rec.status === 'Absent'
+      if (filter === 'leave')   return rec?.status === 'Leave'
       return true
     })
   }, [staff, attendance, filter])
 
   const statusButtons = [
     { label: '✓ Present', status: 'Present', color: '#16a34a' },
-    { label: '✗ Absent', status: 'Absent', color: '#dc2626' },
-    { label: '⏰ Late', status: 'Late', color: '#ca8a04' },
-    { label: '✈ Leave', status: 'Leave', color: '#2563eb' },
+    { label: '✗ Absent',  status: 'Absent',  color: '#dc2626' },
+    { label: '⏰ Late',   status: 'Late',    color: '#ca8a04' },
+    { label: '✈ Leave',  status: 'Leave',   color: '#2563eb' },
   ]
 
   return (
     <div style={S.card}>
       <SectionHeader
-        icon="📅"
-        title="Daily Attendance"
+        icon="📅" title="Daily Attendance"
         subtitle={`${attendance.filter(a => a.status === 'Present').length} present today`}
-        action={
-          <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
-            style={{ ...S.input, width: 140, padding: '7px 10px', fontSize: 12 }} />
-        }
+        action={<input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={{ ...S.input, width: 140, padding: '7px 10px', fontSize: 12 }} />}
       />
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
         {['all', 'present', 'absent', 'leave'].map(f => (
           <button key={f} onClick={() => setFilter(f)} style={S.pill(filter === f)}>{f.toUpperCase()}</button>
         ))}
       </div>
-      {loading ? (
-        <p style={{ color: '#94a3b8', textAlign: 'center' }}>Loading...</p>
-      ) : (
+      {loading ? <p style={{ color: '#94a3b8', textAlign: 'center' }}>Loading...</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {filteredStaff.map(s => {
             const rec = attendance.find(a => a.staff_id === s.id)
@@ -535,6 +428,7 @@ function DailyAttendance({ staff, canOperate = true, onAttendanceChange }) {
                     {s.department}
                     {rec?.geo_verified && <span style={{ marginLeft: 6, color: '#16a34a', fontWeight: 700 }}>📍 Geo ✓</span>}
                     {rec?.marked_by === 'Self' && <span style={{ marginLeft: 6, color: '#2563eb' }}>· Self check-in</span>}
+                    {rec?.marked_by === 'Geo'  && <span style={{ marginLeft: 6, color: '#7c3aed' }}>· Geo check-in</span>}
                   </p>
                 </div>
                 {canOperate ? (
@@ -635,10 +529,7 @@ function LeaveManagement({ staff, currentUser }) {
     const ts = new Date().toISOString()
     const updateFields = { status: newStatus, updated_at: ts }
     const roleKey = role?.toLowerCase()
-    if (roleKey) {
-      updateFields[`${roleKey}_approved_at`] = ts
-      updateFields[`${roleKey}_id`] = currentUser?.id
-    }
+    if (roleKey) { updateFields[`${roleKey}_approved_at`] = ts; updateFields[`${roleKey}_id`] = currentUser?.id }
     const { error } = await supabase.from('leaves').update(updateFields).eq('id', id)
     if (error) showToast(error.message)
     else { fetchLeaves(); showToast('Leave approved', 'success') }
@@ -652,6 +543,9 @@ function LeaveManagement({ staff, currentUser }) {
 
   const statusBg = { submitted: '#fef9c3', hod_approved: '#dbeafe', principal_approved: '#ede9fe', approved: '#f0fdf4', rejected: '#fee2e2' }
   const role = currentUser?.role?.toLowerCase() || 'admin'
+
+  // FIX-D6: only show Active staff in leave form
+  const activeStaff = useMemo(() => staff.filter(s => s.status === 'Active'), [staff])
 
   return (
     <div style={S.card}>
@@ -684,14 +578,14 @@ function LeaveManagement({ staff, currentUser }) {
             {leave.status === 'submitted' && (
               <div style={{ display: 'flex', gap: 8, marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.08)' }}>
                 <button onClick={() => approve(leave.id, role)} style={{ flex: 1, ...S.btn(true, '#16a34a'), fontSize: 12, padding: '6px 10px' }}>✓ Approve</button>
-                <button onClick={() => reject(leave.id)} style={{ flex: 1, ...S.btn(true, '#dc2626'), fontSize: 12, padding: '6px 10px' }}>✗ Reject</button>
+                <button onClick={() => reject(leave.id)}        style={{ flex: 1, ...S.btn(true, '#dc2626'), fontSize: 12, padding: '6px 10px' }}>✗ Reject</button>
               </div>
             )}
           </div>
         ))}
         {leaves.length === 0 && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 20 }}>No leaves found</p>}
       </div>
-      {showForm && <ApplyLeaveModal staff={staff} currentUser={currentUser} onClose={() => setShowForm(false)} onSaved={fetchLeaves} showToast={showToast} />}
+      {showForm && <ApplyLeaveModal staff={activeStaff} currentUser={currentUser} onClose={() => setShowForm(false)} onSaved={fetchLeaves} showToast={showToast} />}
       {ToastEl}
     </div>
   )
@@ -701,8 +595,8 @@ function ApplyLeaveModal({ staff, currentUser, onClose, onSaved, showToast }) {
   const [form, setForm] = useState({ staff_id: '', start_date: todayStr(), end_date: todayStr(), reason: '' })
   const [saving, setSaving] = useState(false)
   const days = form.start_date && form.end_date
-    ? Math.max(Math.ceil((new Date(form.end_date) - new Date(form.start_date)) / 86400000) + 1, 1)
-    : 0
+    ? Math.max(Math.ceil((new Date(form.end_date) - new Date(form.start_date)) / 86400000) + 1, 1) : 0
+
   const handleSave = async () => {
     if (!form.staff_id || !form.start_date || !form.end_date) { showToast('Fill all fields'); return }
     setSaving(true)
@@ -715,6 +609,7 @@ function ApplyLeaveModal({ staff, currentUser, onClose, onSaved, showToast }) {
     if (error) showToast(error.message)
     else { showToast('Leave applied!', 'success'); onSaved(); onClose() }
   }
+
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
       <div style={{ backgroundColor: 'white', borderRadius: 14, padding: 24, width: '100%', maxWidth: 400 }}>
@@ -726,7 +621,7 @@ function ApplyLeaveModal({ staff, currentUser, onClose, onSaved, showToast }) {
           </select>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} style={S.input} />
-            <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} style={S.input} />
+            <input type="date" value={form.end_date}   onChange={e => setForm({ ...form, end_date: e.target.value })}   style={S.input} />
           </div>
           <input placeholder="Reason..." value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} style={S.input} />
           {days > 0 && <p style={{ margin: 0, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>Days requested: {days} {days > LEAVE_MONTHLY_LIMIT ? '⚠️ Exceeds monthly limit' : ''}</p>}
@@ -777,7 +672,7 @@ function PredictiveAnalytics({ staff, logs }) {
                 <div>
                   <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: c.text }}>{s?.name}</p>
                   <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b' }}>
-                    Serial absence: {r.factors.serial > 0 ? '⚠️ Yes' : '✓ No'} · Friday pattern: {r.factors.friday > 0 ? '⚠️ Yes' : '✓ No'}
+                    Serial: {r.factors.serial > 0 ? '⚠️ Yes' : '✓ No'} · Friday pattern: {r.factors.friday > 0 ? '⚠️ Yes' : '✓ No'}
                   </p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -813,7 +708,7 @@ function PerformanceScorecards({ staff, logs }) {
         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ backgroundColor: '#f1f5f9' }}>
-              {['Staff', 'Attend %', 'Punctual %', 'Discipline', 'Overall', 'Grade'].map(h => (
+              {['Staff','Attend %','Punctual %','Discipline','Overall','Grade'].map(h => (
                 <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Staff' ? 'left' : 'center', fontWeight: 600, color: '#374151' }}>{h}</th>
               ))}
             </tr>
@@ -842,35 +737,39 @@ function PerformanceScorecards({ staff, logs }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. COMPLIANCE ENGINE
+// FIX-D3: violations computed in useMemo not useEffect — prevents re-run on every render
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ComplianceEngine({ staff, logs }) {
-  const [violations, setViolations] = useState([])
+  const [dismissed, setDismissed] = useState(new Set())
   const { show: showToast, ToastEl } = useToast()
 
-  useEffect(() => {
+  // FIX-D3: useMemo so this only re-runs when staff/logs actually change
+  const allViolations = useMemo(() => {
     const currentMonth = new Date().toISOString().slice(0, 7)
     const all = []
     for (const s of staff) {
       const staffLogs = logs.filter(l => l.staff_id === s.id)
       if (countAbsencesInMonth(staffLogs, s.id, currentMonth) > 8)
-        all.push({ staffId: s.id, staffName: s.name, rule: 'max_absences', severity: 'high',
+        all.push({ id: `${s.id}-absences`, staffId: s.id, staffName: s.name, severity: 'high',
           message: `${countAbsencesInMonth(staffLogs, s.id, currentMonth)} absences this month (limit: 8)`,
           suggestedAction: 'Issue warning letter' })
       if (detectSerialAbsence(staffLogs, s.id, 7, 3) > 0)
-        all.push({ staffId: s.id, staffName: s.name, rule: 'serial_absence', severity: 'high',
+        all.push({ id: `${s.id}-serial`, staffId: s.id, staffName: s.name, severity: 'high',
           message: '3+ consecutive absences detected', suggestedAction: 'Notify HOD & schedule meeting' })
       if (detectFridayPattern(staffLogs, s.id, 2) >= 3)
-        all.push({ staffId: s.id, staffName: s.name, rule: 'friday_pattern', severity: 'medium',
+        all.push({ id: `${s.id}-friday`, staffId: s.id, staffName: s.name, severity: 'medium',
           message: 'Friday absence pattern (3+ in 2 months)', suggestedAction: 'Send warning & counselling' })
     }
-    setViolations(all)
+    return all
   }, [staff, logs])
 
+  const violations = allViolations.filter(v => !dismissed.has(v.id))
+
   const C = {
-    high: { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' },
+    high:   { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' },
     medium: { bg: '#fef9c3', border: '#fde68a', text: '#92400e' },
-    low: { bg: '#dbeafe', border: '#bfdbfe', text: '#1e40af' },
+    low:    { bg: '#dbeafe', border: '#bfdbfe', text: '#1e40af' },
   }
 
   return (
@@ -878,10 +777,10 @@ function ComplianceEngine({ staff, logs }) {
       <SectionHeader icon="⚖️" title="Compliance Engine" subtitle={`${violations.length} violation${violations.length !== 1 ? 's' : ''} detected`} />
       {violations.length === 0 && <p style={{ textAlign: 'center', color: '#16a34a', padding: 20 }}>✓ No violations detected</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {violations.map((v, i) => {
+        {violations.map((v) => {
           const c = C[v.severity]
           return (
-            <div key={i} style={{ padding: 12, borderRadius: 8, backgroundColor: c.bg, border: `1px solid ${c.border}` }}>
+            <div key={v.id} style={{ padding: 12, borderRadius: 8, backgroundColor: c.bg, border: `1px solid ${c.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
                 <div>
                   <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: c.text }}>{v.staffName}</p>
@@ -895,7 +794,7 @@ function ComplianceEngine({ staff, logs }) {
               <div style={{ display: 'flex', gap: 6 }}>
                 <button onClick={() => showToast(`Approved: ${v.suggestedAction}`, 'success')}
                   style={{ flex: 1, ...S.btn(true, '#16a34a'), fontSize: 11, padding: '5px 8px' }}>✓ Approve</button>
-                <button onClick={() => setViolations(prev => prev.filter((_, j) => j !== i))}
+                <button onClick={() => setDismissed(prev => new Set(prev).add(v.id))}
                   style={{ flex: 1, padding: '5px 8px', borderRadius: 8, border: `1px solid ${c.border}`, backgroundColor: c.bg, color: c.text, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Dismiss</button>
               </div>
             </div>
@@ -908,7 +807,7 @@ function ComplianceEngine({ staff, logs }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8. SHIFT MANAGEMENT (fully fixed)
+// 8. SHIFT MANAGEMENT
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
@@ -918,21 +817,15 @@ function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
   })
   const [saving, setSaving] = useState(false)
   const selectedStaff = staff.find(s => String(s.id) === String(form.staff_id))
-  const selectedSlot = SHIFT_SLOTS.find(s => s.id === form.shift_slot)
+  const selectedSlot  = SHIFT_SLOTS.find(s => s.id === form.shift_slot)
 
   const handleSave = async () => {
     if (!form.staff_id || !form.shift_slot || !form.batch || !form.subject) { showToast('Fill all required fields'); return }
     setSaving(true)
     const { error } = await supabase.from('staff_shift_assignments').insert([{
-      staff_id: Number(form.staff_id),
-      shift_id: form.shift_slot,
-      date: form.date_from,
-      primary_class: form.batch,
-      subject: form.subject,
-      time_slot: selectedSlot?.time || '',
-      repeat_type: form.repeat,
-      date_to: form.date_to || null,
-      notes: form.notes || null,
+      staff_id: Number(form.staff_id), shift_id: form.shift_slot, date: form.date_from,
+      primary_class: form.batch, subject: form.subject, time_slot: selectedSlot?.time || '',
+      repeat_type: form.repeat, date_to: form.date_to || null, notes: form.notes || null,
       created_at: new Date().toISOString(),
     }])
     setSaving(false)
@@ -948,7 +841,6 @@ function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', width: 34, height: 34, borderRadius: 8, cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
         <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Staff */}
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>Staff *</label>
             <select value={form.staff_id} onChange={e => setForm({ ...form, staff_id: e.target.value })} style={S.select}>
@@ -957,7 +849,6 @@ function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
             </select>
             {selectedStaff && <div style={{ marginTop: 6, padding: '8px 12px', backgroundColor: '#eff6ff', borderRadius: 8, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>👤 {selectedStaff.name} · {selectedStaff.department}</div>}
           </div>
-          {/* Time slot grid */}
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>Time Slot *</label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(138px,1fr))', gap: 6 }}>
@@ -972,7 +863,6 @@ function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
               ))}
             </div>
           </div>
-          {/* Batch & Subject */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>Batch *</label>
@@ -989,18 +879,10 @@ function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
               </select>
             </div>
           </div>
-          {/* Dates */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>From Date *</label>
-              <input type="date" value={form.date_from} onChange={e => setForm({ ...form, date_from: e.target.value })} style={S.input} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>To Date</label>
-              <input type="date" value={form.date_to} onChange={e => setForm({ ...form, date_to: e.target.value })} style={S.input} />
-            </div>
+            <div><label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>From Date *</label><input type="date" value={form.date_from} onChange={e => setForm({ ...form, date_from: e.target.value })} style={S.input} /></div>
+            <div><label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>To Date</label><input type="date" value={form.date_to} onChange={e => setForm({ ...form, date_to: e.target.value })} style={S.input} /></div>
           </div>
-          {/* Repeat */}
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 5, textTransform: 'uppercase' }}>Repeat</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1037,13 +919,13 @@ function AssignShiftModal({ staff, onClose, onSaved, showToast }) {
 
 function ShiftManagement({ staff, logs, canOperate = true }) {
   const [selectedDate, setSelectedDate] = useState(todayStr())
-  const [assignments, setAssignments] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [showModal, setShowModal] = useState(false)
-  const [filterStaff, setFilterStaff] = useState('')
-  const [filterSlot, setFilterSlot] = useState('')
-  const [confirmDel, setConfirmDel] = useState(null)
-  const { show: showToast, ToastEl } = useToast()
+  const [assignments, setAssignments]   = useState([])
+  const [loading, setLoading]           = useState(false)
+  const [showModal, setShowModal]       = useState(false)
+  const [filterStaff, setFilterStaff]   = useState('')
+  const [filterSlot, setFilterSlot]     = useState('')
+  const [confirmDel, setConfirmDel]     = useState(null)
+  const { show: showToast, ToastEl }    = useToast()
 
   const fetchAssignments = useCallback(async () => {
     setLoading(true)
@@ -1068,10 +950,9 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
 
   const filtered = useMemo(() => assignments.filter(a =>
     (!filterStaff || String(a.staff_id) === filterStaff) &&
-    (!filterSlot || a.shift_id === filterSlot)
+    (!filterSlot  || a.shift_id === filterSlot)
   ), [assignments, filterStaff, filterSlot])
 
-  // Coverage: count assigned staff vs present for each slot
   const coverage = useMemo(() => {
     const map = {}
     filtered.forEach(a => {
@@ -1113,7 +994,6 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
           </div>
         }
       />
-      {/* Coverage */}
       {coverage.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px,1fr))', gap: 8, marginBottom: 16 }}>
           {coverage.map((c, i) => (
@@ -1129,7 +1009,6 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
           ))}
         </div>
       )}
-      {/* Filters */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
         <select value={filterStaff} onChange={e => setFilterStaff(e.target.value)} style={{ ...S.select, fontSize: 12, padding: '8px 10px' }}>
           <option value="">All Staff</option>
@@ -1140,7 +1019,6 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
           {SHIFT_SLOTS.map(s => <option key={s.id} value={s.id}>{s.label} · {s.time}</option>)}
         </select>
       </div>
-      {/* List */}
       {loading ? (
         <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>Loading...</p>
       ) : filtered.length === 0 ? (
@@ -1151,10 +1029,10 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map(a => {
-            const slot = SHIFT_SLOTS.find(s => s.id === a.shift_id)
-            const log = todayLogs.find(l => l.staff_id === a.staff_id)
+            const slot   = SHIFT_SLOTS.find(s => s.id === a.shift_id)
+            const log    = todayLogs.find(l => l.staff_id === a.staff_id)
             const status = log?.status || 'Not Marked'
-            const sc = { Present: '#16a34a', Absent: '#dc2626', Late: '#ca8a04', 'Not Marked': '#94a3b8' }
+            const sc     = { Present: '#16a34a', Absent: '#dc2626', Late: '#ca8a04', 'Not Marked': '#94a3b8' }
             return (
               <div key={a.id} style={{ borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
@@ -1201,13 +1079,14 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 9. GEOLOCATION TRACKER (fully fixed + interconnected + admin override)
+// 9. GEOLOCATION TRACKER
+// FIX-D4: syncVerifiedCheckins loop guard
 // ─────────────────────────────────────────────────────────────────────────────
 
 function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
   const [checkins, setCheckins] = useState([])
-  const [date, setDate] = useState(todayStr())
-  const [loading, setLoading] = useState(false)
+  const [date, setDate]         = useState(todayStr())
+  const [loading, setLoading]   = useState(false)
   const { show: showToast, ToastEl } = useToast()
 
   const fetchCheckins = useCallback(async () => {
@@ -1223,19 +1102,13 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
 
   useEffect(() => { fetchCheckins() }, [fetchCheckins])
 
-  /**
-   * Admin override: mark geo check-in as verified AND sync to attendance_logs
-   * This bridges self_attendance ↔ attendance_logs (the key interconnection fix)
-   */
   const handleOverride = async (checkin) => {
     const { error: e1 } = await supabase
       .from('self_attendance')
       .update({ geo_verified: true, admin_overridden: true, admin_override_at: new Date().toISOString() })
       .eq('id', checkin.id)
-
     if (e1) { showToast('Override failed: ' + e1.message); return }
 
-    // Sync to attendance_logs
     const { error: e2 } = await supabase.from('attendance_logs').upsert(
       [{ staff_id: checkin.staff_id, date: checkin.date, status: 'Present',
         marked_by: 'Geo', check_in_time: checkin.timestamp,
@@ -1243,39 +1116,39 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
         notes: 'Admin override — geo check-in approved', updated_at: new Date() }],
       { onConflict: 'staff_id,date' }
     )
-
     if (e2) showToast('Attendance sync failed: ' + e2.message)
     else { showToast('Override approved & attendance marked Present', 'success'); fetchCheckins(); onAttendanceChange?.() }
   }
 
-  /**
-   * Auto-sync verified geo check-ins to attendance_logs
-   * Runs when date changes — ensures any verified self check-in becomes a Present record
-   */
-  const syncVerifiedCheckins = async (checkinsData) => {
-    const verified = checkinsData.filter(c => c.geo_verified || c.admin_overridden)
-    for (const c of verified) {
-      await supabase.from('attendance_logs').upsert(
-        [{ staff_id: c.staff_id, date: c.date, status: 'Present',
-          marked_by: 'Geo', check_in_time: c.timestamp,
-          geo_verified: true, geo_distance: c.geo_distance,
-          updated_at: new Date() }],
-        { onConflict: 'staff_id,date' }
-      )
-    }
-    if (verified.length > 0) onAttendanceChange?.()
-  }
-
+  // FIX-D4: Only sync verified rows; call onAttendanceChange only once after all upserts
   useEffect(() => {
-    if (checkins.length > 0) syncVerifiedCheckins(checkins)
-  }, [checkins])
+    const verified = checkins.filter(c => c.geo_verified || c.admin_overridden)
+    if (!verified.length) return
 
-  // Stats
+    const sync = async () => {
+      let anyWritten = false
+      for (const c of verified) {
+        const { error } = await supabase.from('attendance_logs').upsert(
+          [{ staff_id: c.staff_id, date: c.date, status: 'Present',
+            marked_by: 'Geo', check_in_time: c.timestamp,
+            geo_verified: true, geo_distance: c.geo_distance,
+            updated_at: new Date() }],
+          { onConflict: 'staff_id,date' }
+        )
+        if (!error) anyWritten = true
+      }
+      // Only call onAttendanceChange once, and only if writes succeeded
+      if (anyWritten) onAttendanceChange?.()
+    }
+    sync()
+  }, [checkins]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: onAttendanceChange intentionally excluded — it's a stable callback ref
+
   const stats = useMemo(() => ({
-    total: checkins.length,
+    total:    checkins.length,
     verified: checkins.filter(c => c.geo_verified || c.admin_overridden).length,
     rejected: checkins.filter(c => !c.geo_verified && !c.admin_overridden).length,
-    noGps: checkins.filter(c => c.location_lat == null).length,
+    noGps:    checkins.filter(c => c.location_lat == null).length,
   }), [checkins])
 
   return (
@@ -1285,8 +1158,6 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
         subtitle={`${stats.verified} verified · ${stats.rejected} rejected · ${stats.noGps} no GPS`}
         action={<input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...S.input, width: 140, padding: '7px 10px', fontSize: 12 }} />}
       />
-
-      {/* Stat pills */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
         <div style={{ padding: '10px 12px', borderRadius: 8, backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', textAlign: 'center' }}>
           <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>Verified</p>
@@ -1302,9 +1173,8 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
         </div>
       </div>
 
-      {loading ? (
-        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading...</p>
-      ) : checkins.length === 0 ? (
+      {loading ? <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading...</p>
+      : checkins.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '32px 16px', color: '#94a3b8' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>📍</div>
           <p style={{ margin: 0, fontSize: 13 }}>No self check-ins for this date</p>
@@ -1315,10 +1185,9 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
           {checkins.map(c => {
             const v = verifyGeolocation(c.location_lat, c.location_lng)
             const isApproved = c.geo_verified || c.admin_overridden
-            const bg = isApproved ? '#f0fdf4' : v.verified ? '#f0fdf4' : '#fee2e2'
-            const border = isApproved ? '#bbf7d0' : v.verified ? '#bbf7d0' : '#fecaca'
+            const bg        = isApproved || v.verified ? '#f0fdf4' : '#fee2e2'
+            const border    = isApproved || v.verified ? '#bbf7d0' : '#fecaca'
             const textColor = isApproved || v.verified ? '#166534' : '#991b1b'
-
             return (
               <div key={c.id} style={{ padding: '12px', borderRadius: 10, backgroundColor: bg, border: `1px solid ${border}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -1340,15 +1209,12 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: textColor, padding: '3px 10px',
-                      backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 999 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: textColor, padding: '3px 10px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 999 }}>
                       {isApproved ? '✓ Verified' : v.verified ? '✓ Verified' : '✗ Rejected'}
                     </span>
-                    {/* Admin override button for rejected/no-GPS check-ins */}
                     {canOperate && !isApproved && !v.verified && (
                       <button onClick={() => handleOverride(c)}
-                        style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8,
-                          border: 'none', backgroundColor: '#2563eb', color: 'white', cursor: 'pointer' }}>
+                        style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8, border: 'none', backgroundColor: '#2563eb', color: 'white', cursor: 'pointer' }}>
                         Override ✓
                       </button>
                     )}
@@ -1363,7 +1229,7 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
       <div style={{ marginTop: 12, padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: 8, border: '1px dashed #cbd5e1', fontSize: 11, color: '#64748b' }}>
         <p style={{ margin: 0, fontWeight: 600 }}>ℹ️ How it works</p>
         <p style={{ margin: '4px 0 0' }}>
-          Staff check in via QR/PIN on their device. GPS coordinates are verified against school boundary ({GEOFENCE.allowedRadius}m radius).
+          Staff check in via QR/PIN on their device. GPS verified against school boundary ({GEOFENCE.allowedRadius}m radius).
           Verified check-ins automatically update <strong>Daily Attendance</strong> as Present.
           Rejected check-ins can be manually overridden by Admin/VP.
         </p>
@@ -1374,7 +1240,8 @@ function GeolocationTracker({ staff, canOperate = true, onAttendanceChange }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. BULK OPERATIONS (fixed: upsert instead of insert)
+// 10. BULK OPERATIONS
+// FIX-D2: markAll filters Active staff only
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
@@ -1382,11 +1249,14 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
   const [importPreview, setImportPreview] = useState([])
   const { show: showToast, ToastEl } = useToast()
 
+  // FIX-D2: only Active staff get bulk-marked
+  const activeStaff = useMemo(() => staff.filter(s => s.status === 'Active'), [staff])
+
   const markAll = async (status) => {
-    const records = staff.map(s => ({ staff_id: s.id, date: selectedDate, status, marked_by: 'Bulk', updated_at: new Date() }))
+    const records = activeStaff.map(s => ({ staff_id: s.id, date: selectedDate, status, marked_by: 'Bulk', updated_at: new Date() }))
     const { error } = await supabase.from('attendance_logs').upsert(records, { onConflict: 'staff_id,date' })
     if (error) showToast(error.message)
-    else { showToast(`${staff.length} staff marked ${status}`, 'success'); onAttendanceChange?.() }
+    else { showToast(`${activeStaff.length} active staff marked ${status}`, 'success'); onAttendanceChange?.() }
   }
 
   const handleImportCSV = async (e) => {
@@ -1409,7 +1279,7 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
 
   return (
     <div style={S.card}>
-      <SectionHeader icon="⚙️" title="Bulk Operations" subtitle="Mass attendance management" />
+      <SectionHeader icon="⚙️" title="Bulk Operations" subtitle={`${activeStaff.length} active staff`} />
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase' }}>Target Date</label>
         <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={{ ...S.input, maxWidth: 200 }} />
@@ -1417,7 +1287,7 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
       {canOperate ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
           <button onClick={() => markAll('Present')} style={{ ...S.btn(true, '#16a34a'), fontSize: 12, padding: '10px 8px' }}>✓ Mark All Present</button>
-          <button onClick={() => markAll('Absent')} style={{ ...S.btn(true, '#dc2626'), fontSize: 12, padding: '10px 8px' }}>✗ Mark All Absent</button>
+          <button onClick={() => markAll('Absent')}  style={{ ...S.btn(true, '#dc2626'), fontSize: 12, padding: '10px 8px' }}>✗ Mark All Absent</button>
           <label style={{ ...S.btn(true, '#1e3a5f'), fontSize: 12, padding: '10px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             📥 Import CSV
             <input type="file" accept=".csv" onChange={handleImportCSV} style={{ display: 'none' }} />
@@ -1454,35 +1324,44 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN ORCHESTRATOR
+// FIX-D1: attendance_logs limited to last 3 months
+// FIX-D5: hr_records fetch wrapped in try/catch
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
-  const [staff, setStaff] = useState(staffProp || [])
-  const [logs, setLogs] = useState([])
+  const [staff, setStaff]     = useState(staffProp || [])
+  const [logs, setLogs]       = useState([])
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState('dashboard')
   const currentUser = appUser || { id: 1, role: 'Admin' }
-
-  const canOperate = ['Admin', 'Vice Principal', 'Principal'].includes(currentUser?.role)
+  const canOperate  = ['Admin', 'Vice Principal', 'Principal'].includes(currentUser?.role)
 
   const loadData = useCallback(async () => {
-    const [{ data: staffData }, { data: logsData }, { data: recordsData }] = await Promise.all([
-      supabase.from('staff_profiles').select('id, name, department, designation').order('name'),
-      supabase.from('attendance_logs').select('*').order('date', { ascending: false }),
-      supabase.from('hr_records').select('*').eq('is_archived', false).order('created_at', { ascending: false }),
+    // FIX-D1: limit logs to last 3 months — prevents unbounded growth
+    const cutoff = threeMonthsAgo()
+
+    const [staffRes, logsRes] = await Promise.all([
+      supabase.from('staff_profiles').select('id, name, department, designation, status').order('name'),
+      supabase.from('attendance_logs').select('*').gte('date', cutoff).order('date', { ascending: false }),
     ])
-    if (staffData) setStaff(staffData)
-    if (logsData) setLogs(logsData)
-    if (recordsData) setRecords(recordsData)
+    if (staffRes.data) setStaff(staffRes.data)
+    if (logsRes.data)  setLogs(logsRes.data)
+
+    // FIX-D5: hr_records is optional — don't block loading if it fails
+    try {
+      const { data } = await supabase.from('hr_records').select('*').eq('is_archived', false).order('created_at', { ascending: false })
+      if (data) setRecords(data)
+    } catch { /* hr_records table may not exist */ }
+
     setLoading(false)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Called by components that modify attendance_logs so other components refresh
   const refreshLogs = useCallback(async () => {
-    const { data } = await supabase.from('attendance_logs').select('*').order('date', { ascending: false })
+    const cutoff = threeMonthsAgo()
+    const { data } = await supabase.from('attendance_logs').select('*').gte('date', cutoff).order('date', { ascending: false })
     if (data) setLogs(data)
   }, [])
 
@@ -1500,10 +1379,9 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
   ]
 
   const colorMap = {
-    dashboard:   '#1e3a5f', daily:       '#15803d', absent:      '#c2410c',
-    leave:       '#7e22ce', risk:        '#b91c1c', performance: '#0f766e',
-    compliance:  '#a16207', shift:       '#0369a1', geo:         '#6d28d9',
-    bulk:        '#334155',
+    dashboard: '#1e3a5f', daily: '#15803d', absent: '#c2410c', leave: '#7e22ce',
+    risk: '#b91c1c', performance: '#0f766e', compliance: '#a16207',
+    shift: '#0369a1', geo: '#6d28d9', bulk: '#334155',
   }
 
   if (loading) return (
@@ -1514,11 +1392,10 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
 
   return (
     <div style={{ padding: 16, fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: 1000, margin: '0 auto' }}>
-      {/* Header */}
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>📊 Attendance Tracker</h1>
-          <p style={{ color: '#64748b', fontSize: 12, margin: '4px 0 0' }}>{staff.length} staff · {logs.length} records · {fmtDate(new Date())}</p>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '4px 0 0' }}>{staff.length} staff · {logs.length} records (last 3 months) · {fmtDate(new Date())}</p>
         </div>
         <span style={{ padding: '5px 12px', borderRadius: 999, fontSize: 11, fontWeight: 700, backgroundColor: '#dcfce7', color: '#15803d' }}>● Live</span>
       </div>
@@ -1533,11 +1410,10 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
         </div>
       )}
 
-      {/* Nav */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px,1fr))', gap: 8, marginBottom: 20 }}>
         {sections.map(sec => {
           const isActive = activeSection === sec.key
-          const color = colorMap[sec.key]
+          const color    = colorMap[sec.key]
           return (
             <button key={sec.key} onClick={() => setActiveSection(sec.key)}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -1555,7 +1431,6 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
         })}
       </div>
 
-      {/* Sections — pass refreshLogs as onAttendanceChange for cross-component sync */}
       {activeSection === 'dashboard'   && <VPDashboard staff={staff} logs={logs} records={records} />}
       {activeSection === 'daily'       && <DailyAttendance staff={staff} canOperate={canOperate} onAttendanceChange={refreshLogs} />}
       {activeSection === 'absent'      && <AbsentTracker staff={staff} logs={logs} />}
@@ -1569,5 +1444,3 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
     </div>
   )
 }
-
-export default DailyAttendanceTracker
