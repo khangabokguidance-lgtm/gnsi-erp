@@ -886,131 +886,182 @@ export default function Salary() {
 
           {loading
             ? <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading...</div>
-            : isMobile
-              ? (
-                /* Mobile card layout */
-                <div>
-                  {filteredStaff.map((s,i) => {
-                    const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}
-                    const isPaid = d.status==='Paid'
-                    return (
-                      <MobileStaffCard
-                        key={s.id} s={s} i={i} d={d} dedMap={dedMap} setDed={setDed}
-                        setSlipStaff={setSlipStaff} bulkMode={bulkMode}
-                        isSelected={selected.has(s.id)} toggleSelect={toggleSelect}
-                        isPaid={isPaid} regMonth={regMonth}
-                      />
-                    )
-                  })}
-                </div>
-              )
-              : (
-                /* Desktop table layout */
-                <div style={{ background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', overflow:'hidden' }}>
-                  <div style={{ overflowX:'auto' }}>
-                    <table ref={tableRef} style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
-                      <thead style={{ position:'sticky', top:0, zIndex:10 }}>
-                        <tr style={{ background:'#1e3a5f', color:'white' }}>
-                          {bulkMode && <TH><input type="checkbox" onChange={e=>e.target.checked?selectAll():clearSelect()} checked={selected.size===filteredStaff.length&&filteredStaff.length>0}/></TH>}
-                          <TH style={{ textAlign:'left', paddingLeft:'12px' }}>S.N.</TH>
-                          <TH style={{ textAlign:'left', minWidth:'150px' }}>Staff Name</TH>
-                          <TH style={{ textAlign:'left', minWidth:'110px' }}>Designation</TH>
-                          <TH>Basic</TH>
-                          <TH>Seniority</TH>
-                          <TH>Loyalty</TH>
-                          <TH>Role</TH>
-                          <TH style={{ background:'#254e91', minWidth:'80px' }}>Gross</TH>
-                          <TH>Advance</TH>
-                          <TH>Late</TH>
-                          <TH style={{ background:'#7B3A00' }}>Admin</TH>
-                          <TH style={{ background:'#4a1d96' }}>PF</TH>
-                          <TH style={{ background:'#6B1111' }}>Total Ded.</TH>
-                          <TH style={{ background:'#1A5C1A' }}>Net</TH>
-                          <TH>Pay Mode</TH>
-                          <TH>Status</TH>
-                          <TH>Slip</TH>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredStaff.map((s,i) => {
-                          const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}
-                          const g=gross(s), td=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0), net=g-td
-                          const isPaid=d.status==='Paid'
-                          const rowBg=isPaid?'#f0fdf4':i%2===1?'#fafbfc':'white'
-                          const isSelected=selected.has(s.id)
-                          return (
-                            <tr key={s.id} style={{ borderBottom:'.5px solid #f1f5f9', background:isSelected?'#eff6ff':rowBg, borderLeft:isPaid?'3px solid #16a34a':'3px solid transparent' }}>
-                              {bulkMode && <td style={{ padding:'6px', textAlign:'center' }}><input type="checkbox" checked={isSelected} onChange={()=>toggleSelect(s.id)}/></td>}
-                              <td style={{ padding:'6px 12px', color:'#64748b', textAlign:'center' }}>{i+1}</td>
-                              <td style={{ padding:'6px 8px', fontWeight:'600', color:'#1e293b' }}>{s.name}</td>
-                              <td style={{ padding:'6px 8px' }}>
-                                <span style={{ display:'inline-block', fontSize:'10px', padding:'1px 7px', borderRadius:'8px', background:'#E6F1FB', color:'#0C447C', whiteSpace:'nowrap' }}>
-                                  {s.designation||s.department||'—'}
-                                </span>
-                              </td>
-                              <td style={{ padding:'6px 8px', textAlign:'right' }}>{fmt(s.basic_salary)}</td>
-                              <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.seniority_allowance?fmt(s.seniority_allowance):'—'}</td>
-                              <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.loyalty_bonus?fmt(s.loyalty_bonus):'—'}</td>
-                              <td style={{ padding:'6px 8px', textAlign:'right', color:'#64748b' }}>{s.role_bonus?fmt(s.role_bonus):'—'}</td>
-                              <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'600', background:'#E6F1FB', color:'#0C447C' }}>{fmt(g)}</td>
-                              {[
-                                { field:'advance_deduction', style:{} },
-                                { field:'late_deduction', style:{} },
-                                { field:'admin_deduction', style:{ background:'#FFFBEB' } },
-                                { field:'pf_deduction', style:{ background:'#f5f3ff' } },
-                              ].map(({ field, style:iStyle }) => (
-                                <td key={`${s.id}-${field}`} style={{ padding:'4px 6px', textAlign:'center' }}>
-                                  <input type="number" min="0" value={d[field]||0} onChange={e=>setDed(s.id,field,e.target.value)}
-                                    style={{ width:'68px', padding:'3px 5px', borderRadius:'4px', border:'.5px solid #d1d5db', fontSize:'11px', textAlign:'right', ...iStyle }} />
-                                </td>
-                              ))}
-                              <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'600', background:'#FCEBEB', color:'#791F1F' }}>{td?fmt(td):'—'}</td>
-                              <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:'700', background:'#EAF3DE', color:'#27500A', fontSize:'13px' }}>{fmt(net)}</td>
-                              <td style={{ padding:'4px 6px' }}>
-                                <select value={d.payment_mode||'Cash'} onChange={e=>setDed(s.id,'payment_mode',e.target.value)}
-                                  style={{ padding:'3px 5px', borderRadius:'4px', border:'.5px solid #d1d5db', fontSize:'11px', background:'white', width:'80px' }}>
-                                  {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
-                                </select>
-                              </td>
-                              <td style={{ padding:'4px 8px', textAlign:'center' }}>
-                                {isPaid
-                                  ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Paid</span>
-                                  : <span style={S.badge('#dc2626','#fee2e2')}>⏳ Unpaid</span>
-                                }
-                              </td>
-                              <td style={{ padding:'4px 6px', textAlign:'center' }}>
-                                <button onClick={()=>setSlipStaff(s)} style={{ ...S.btnSm('#1e3a5f'), padding:'3px 8px', fontSize:'11px' }}>Slip</button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ background:'#1e3a5f', color:'white' }}>
-                          {bulkMode && <td/>}
-                          <td colSpan={3} style={{ padding:'8px 12px', fontWeight:'600', fontSize:'12px', textAlign:'left' }}>Total — {filteredStaff.length} staff</td>
-                          <td colSpan={4}/>
-                          <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'600' }}>{fmt(regTotals.tG)}</td>
-                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tA)}</td>
-                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tL)}</td>
-                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tAd)}</td>
-                          <td style={{ padding:'8px 6px', textAlign:'right' }}>{fmt(regTotals.tPf)}</td>
-                          <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'700' }}>{fmt(regTotals.tD)}</td>
-                          <td style={{ padding:'8px 6px', textAlign:'right', fontWeight:'700' }}>{fmt(regTotals.tN)}</td>
-                          <td colSpan={3}/>
-                        </tr>
-                      </tfoot>
-                    </table>
+            : (
+              /* ══ UNIFIED STAFF GRID (All Devices) ══ */
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))',
+                gap: 20
+              }}>
+                {filteredStaff.map((s, i) => {
+                  const d = dedMap[s.id] || { advance_deduction: 0, late_deduction: 0, admin_deduction: 0, pf_deduction: 0, payment_mode: 'Cash', status: 'Unpaid' }
+                  const g = gross(s)
+                  const td = (d.advance_deduction || 0) + (d.late_deduction || 0) + (d.admin_deduction || 0) + (d.pf_deduction || 0)
+                  const net = g - td
+                  const isPaid = d.status === 'Paid'
+                  const initials = (s.name || '').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+                  const hue = (s.name?.charCodeAt(0) || 0) % 360
+                  const row = salaryRows.find(r => r.month === regMonth && String(r.staff_id) === String(s.id))
+
+                  return (
+                    <div key={s.id} style={{
+                      background: 'white',
+                      borderRadius: 16,
+                      padding: 20,
+                      boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                      border: `1px solid ${isPaid ? '#bbf7d0' : '#f1f5f9'}`,
+                      borderLeft: `4px solid ${isPaid ? '#16a34a' : '#1e3a5f'}`,
+                      transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 14,
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,.12)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+                    onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,.06)'; e.currentTarget.style.transform = 'translateY(0)' }}
+                    >
+                      {/* Status accent bar */}
+                      <div style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, height: 4,
+                        background: isPaid
+                          ? 'linear-gradient(90deg,#16a34a,#22c55e)'
+                          : 'linear-gradient(90deg,#1e3a5f,#6366f1)',
+                        borderRadius: '16px 16px 0 0'
+                      }} />
+
+                      {/* Header: Avatar + Name + Role */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 2 }}>
+                        {/* Avatar */}
+                        <div style={{
+                          width: 52, height: 52, borderRadius: '50%',
+                          background: `linear-gradient(135deg, hsl(${hue},70%,55%), hsl(${hue + 40},70%,45%))`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', fontWeight: 700, fontSize: 16, flexShrink: 0,
+                          boxShadow: '0 2px 8px rgba(0,0,0,.12)'
+                        }}>{initials}</div>
+
+                        {/* Name & Meta */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontWeight: 800, fontSize: 15, color: '#1e293b',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                          }}>{s.name}</div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                            {s.designation || s.department || '—'}
+                          </div>
+                          <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+                              backgroundColor: isPaid ? '#dcfce7' : '#fee2e2',
+                              color: isPaid ? '#16a34a' : '#dc2626'
+                            }}>{isPaid ? '✅ Paid' : '⏳ Unpaid'}</span>
+                            {row && (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+                                backgroundColor: '#eff6ff', color: '#1e3a5f'
+                              }}>📋 Saved</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Net Amount */}
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: isPaid ? '#16a34a' : '#1e3a5f', fontFamily: "'JetBrains Mono',monospace" }}>
+                            {fmt(net)}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Net Salary</div>
+                        </div>
+                      </div>
+
+                      {/* Earnings Info Grid */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Basic Pay</div>
+                          <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 700 }}>{fmt(s.basic_salary || 0)}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Gross</div>
+                          <div style={{ fontSize: 13, color: '#0C447C', fontWeight: 700 }}>{fmt(g)}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Seniority</div>
+                          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.seniority_allowance ? fmt(s.seniority_allowance) : '—'}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Loyalty</div>
+                          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.loyalty_bonus ? fmt(s.loyalty_bonus) : '—'}</div>
+                        </div>
+                      </div>
+
+                      {/* Deductions Section */}
+                      <div style={{ background: '#fafbfc', borderRadius: 10, padding: '12px 14px', border: '1px solid #f1f5f9' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#7B1F1F', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Deductions</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                          {[
+                            { field: 'advance_deduction', label: 'Advance', bg: '#fff' },
+                            { field: 'late_deduction', label: 'Late / Absent', bg: '#fff' },
+                            { field: 'admin_deduction', label: 'Admin', bg: '#FFFBEB' },
+                            { field: 'pf_deduction', label: 'PF', bg: '#f5f3ff' },
+                          ].map(({ field, label, bg }) => (
+                            <div key={field}>
+                              <label style={{ ...S.lbl, fontSize: 11, marginBottom: 3 }}>{label}</label>
+                              <input
+                                type="number" min="0" value={d[field] || 0}
+                                onChange={e => setDed(s.id, field, e.target.value)}
+                                style={{ ...S.inpSm, background: bg, textAlign: 'right' }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Net Summary */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                          <div style={{ background: '#FCEBEB', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
+                            <div style={{ fontSize: 10, color: '#A32D2D' }}>Total Ded.</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#A32D2D' }}>{td ? fmt(td) : '—'}</div>
+                          </div>
+                          <div style={{ background: '#EAF3DE', borderRadius: 6, padding: '6px 8px', textAlign: 'center', gridColumn: 'span 2' }}>
+                            <div style={{ fontSize: 10, color: '#27500A' }}>Net Salary</div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: '#27500A' }}>{fmt(net)}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pay Mode + Actions */}
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+                        <select
+                          value={d.payment_mode || 'Cash'}
+                          onChange={e => setDed(s.id, 'payment_mode', e.target.value)}
+                          style={{ ...S.inpSm, flex: 1, minWidth: 100 }}
+                        >
+                          {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                        <button onClick={() => setSlipStaff(s)} style={{ ...S.btnSm('#1e3a5f'), padding: '7px 12px' }}>🧾 Slip</button>
+                        {row && row.status !== 'Paid' && (
+                          <button onClick={() => handleMarkPaid(row.id, d.payment_mode)} style={{ ...S.btnSm('#16a34a'), padding: '7px 12px' }}>✅ Pay</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Empty state */}
+                {filteredStaff.length === 0 && (
+                  <div style={{
+                    gridColumn: '1 / -1', textAlign: 'center', padding: 64, color: '#94a3b8',
+                    background: 'white', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,.06)'
+                  }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>👥</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#64748b' }}>No staff records found</div>
+                    <div style={{ fontSize: 13, marginTop: 4 }}>Try adjusting your search or filters</div>
                   </div>
-                  {/* Legend */}
-                  <div style={{ display:'flex', gap:'14px', flexWrap:'wrap', fontSize:'11px', color:'#64748b', padding:'8px 14px', borderTop:'.5px solid #e2e8f0' }}>
-                    {[['#E6F1FB','#185FA5','Gross'],['#FFFBEB','#C8960C','Admin ded'],['#f5f3ff','#7c3aed','PF'],['#FCEBEB','#A32D2D','Total ded'],['#EAF3DE','#3B6D11','Net salary'],['#f0fdf4','#16a34a','Paid row']].map(l=>(
-                      <span key={l[2]}><span style={{ width:'10px', height:'10px', borderRadius:'2px', display:'inline-block', marginRight:'4px', verticalAlign:'middle', background:l[0], border:`.5px solid ${l[1]}` }}/>{l[2]}</span>
-                    ))}
-                  </div>
-                </div>
-              )
-          }
+                )}
+              </div>
+            )}
         </>
       )}
 
