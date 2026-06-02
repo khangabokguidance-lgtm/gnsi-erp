@@ -695,7 +695,7 @@ useEffect(() => {
                         <td style={{ padding:'10px 12px' }}>
                           <div style={{ display:'flex', gap:5 }}>
                             <button onClick={() => editId===item.id?(setEditId(null),setEditForm(null)):startEdit(item)} style={S.btnSm('#7c3aed')}>{editId===item.id?'✖':'✏️'}</button>
-                            <button onClick={() => setConfirmDel(item.id)} style={S.btnSm('#dc2626')}>🗑</button>
+                            {(currentUser?.role || '').toLowerCase() === 'admin' && <button onClick={() => setConfirmDel(item.id)} style={S.btnSm('#dc2626')}>🗑</button>}
                           </div>
                         </td>
                       </tr>
@@ -1399,7 +1399,8 @@ function TabSearch({ logs, monthlySyllabus=[], onNavigateTab }) {
 
 // ─── Tab: Student Performance ─────────────────────────────────────────────────
 
-function TabStudentPerformance({ courseData, logs }) {
+function TabStudentPerformance({ courseData, logs, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [scores, setScores]           = useState([])
   const [students, setStudents]       = useState([])
   const [studentsErr, setStudentsErr] = useState('')
@@ -1764,7 +1765,7 @@ function TabStudentPerformance({ courseData, logs }) {
                   <td style={{ padding:'9px 12px', fontWeight:700, color:'#1e293b', fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score}</td>
                   <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', alignItems:'center', gap:6 }}><div style={{ width:44, height:5, background:'#e2e8f0', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${p}%`, height:'100%', background:scoreColor(p), borderRadius:3 }}/></div><span style={{ fontWeight:700, color:scoreColor(p), fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span></div></td>
                   <td style={{ padding:'9px 12px' }}><span style={{ ...S.badge(scoreColor(p), scoreBg(p)) }}>{p>=75?'Good':p>=50?'Avg':'Weak'}</span></td>
-                  <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', gap:5 }}><button onClick={() => startEdit(s)} style={S.btnSm('#7c3aed')}>✏️</button><button onClick={() => setConfirmDel(s.id)} style={S.btnSm('#dc2626')}>🗑</button></div></td>
+                  <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', gap:5 }}><button onClick={() => startEdit(s)} style={S.btnSm('#7c3aed')}>✏️</button>{isAdmin && <button onClick={() => setConfirmDel(s.id)} style={S.btnSm('#dc2626')}>🗑</button>}</div></td>
                 </tr>
               )})}
               {filtered.length===0 && <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No score data.</td></tr>}
@@ -2757,7 +2758,7 @@ useEffect(() => {
       {activeTab==='reports'     && <TabReports logs={logs} missed={missed} staff={staff} courseData={courseData}/>}
       {activeTab==='search'      && <TabSearch logs={logs} monthlySyllabus={monthlySyllabus} onNavigateTab={handleTabChange}/>}
       {activeTab==='monthly'     && <TabMonthlySyllabus logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser} onNavigateTab={key=>handleTabChange(key)}/>}
-      {activeTab==='performance' && <TabStudentPerformance courseData={courseData} logs={logs}/>}
+      {activeTab==='performance' && <TabStudentPerformance courseData={courseData} logs={logs} currentUser={currentUser}/>}
       {activeTab==='hmdash'      && <TabHMDashboard currentUser={currentUser}/>}
       {activeTab==='admin'       && <TabAdminMonitor logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData}/>}
       {activeTab==='remediation' && <TabRemediation logs={logs} courseData={courseData}/>}
