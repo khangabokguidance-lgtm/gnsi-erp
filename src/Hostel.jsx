@@ -3324,8 +3324,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
   const handleSaveHouse = async e => {
     e.preventDefault(); setSaving(true)
+    const HOUSE_COLOR_HEX = ['#1d4ed8','#dc2626','#16a34a','#ca8a04','#7c3aed','#0891b2']
     const payload = {
       name: form.name.trim(), motto: form.motto, color_index: Number(form.color_index),
+      color: HOUSE_COLOR_HEX[Number(form.color_index) % HOUSE_COLOR_HEX.length],
       captain: form.captain, vice_captain: form.vice_captain,
       established_year: Number(form.established_year) || new Date().getFullYear(), remarks: form.remarks,
     }
