@@ -986,7 +986,220 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
     </div>
   )
 }
+// ─── Printable Log ────────────────────────────────────────────────────────────
 
+function PrintableLog({ form }) {
+  const chapterDisplay = form.chapter === '__other__' ? form.chapter_custom : form.chapter
+  const subtopicDisplay = form.subtopic === '__other__' ? form.subtopic_custom : form.subtopic
+
+  return (
+    <div id="printable-log" style={{ display:'none' }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #printable-log, #printable-log * { visibility: visible; }
+          #printable-log { 
+            position: fixed; top: 0; left: 0; 
+            width: 100%; padding: 24px;
+            font-family: 'Georgia', serif;
+            font-size: 13px;
+            color: #000;
+          }
+          .print-section { margin-bottom: 14px; }
+          .print-table { width: 100%; border-collapse: collapse; }
+          .print-table td { 
+            padding: 7px 10px; 
+            border: 1px solid #ccc; 
+            vertical-align: top;
+          }
+          .print-label { 
+            font-weight: bold; 
+            background: #f0f0f0; 
+            width: 35%;
+          }
+          .print-header { 
+            text-align: center; 
+            border-bottom: 2px solid #000; 
+            padding-bottom: 10px; 
+            margin-bottom: 18px;
+          }
+          .print-title { font-size: 18px; font-weight: bold; }
+          .print-subtitle { font-size: 12px; color: #444; margin-top: 4px; }
+          .print-footer { 
+            margin-top: 30px; 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 12px;
+          }
+          .print-sign { 
+            border-top: 1px solid #000; 
+            padding-top: 6px; 
+            width: 160px; 
+            text-align: center;
+          }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="print-header">
+        <div className="print-title">GNSI — Daily Teaching Log</div>
+        <div className="print-subtitle">
+          {form.course} · {form.subtype} · {form.class_name} &nbsp;|&nbsp;
+          {form.subject_name} &nbsp;|&nbsp;
+          {form.teaching_date ? new Date(form.teaching_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '—'}
+          &nbsp;|&nbsp; Period {form.period_number}
+        </div>
+      </div>
+
+      {/* Main Fields */}
+      <div className="print-section">
+        <table className="print-table">
+          <tbody>
+            <tr>
+              <td className="print-label">Teacher</td>
+              <td>{form.teacher_name || '—'}</td>
+              <td className="print-label">Date</td>
+              <td>{form.teaching_date ? new Date(form.teaching_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Course / Batch</td>
+              <td>{form.course} / {form.subtype}</td>
+              <td className="print-label">Period</td>
+              <td>{form.period_number ? `Period ${form.period_number} — ${PERIOD_TIMES[form.period_number]?.label || ''}` : '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Subject</td>
+              <td>{form.subject_name || '—'}</td>
+              <td className="print-label">Class</td>
+              <td>{form.class_name || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Chapter</td>
+              <td>{chapterDisplay || '—'}</td>
+              <td className="print-label">Sub-topic</td>
+              <td>{subtopicDisplay || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Range Covered</td>
+              <td colSpan={3}>{form.range_from ? `${form.range_from} → ${form.range_to}` : '—'}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Topic / Classwork / Homework / Remarks */}
+      <div className="print-section">
+        <table className="print-table">
+          <tbody>
+            <tr>
+              <td className="print-label">Topic Taught</td>
+              <td colSpan={3}>{form.topic_taught || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Classwork Done</td>
+              <td colSpan={3}>{form.classwork || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Homework Assigned</td>
+              <td colSpan={3}>{form.homework || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Remarks / Observations</td>
+              <td colSpan={3}>{form.remarks || '—'}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Teaching Technique */}
+      <div className="print-section">
+        <table className="print-table">
+          <tbody>
+            <tr>
+              <td className="print-label">Techniques Used</td>
+              <td colSpan={3}>{(form.techniques || []).join(', ') || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Technique Details</td>
+              <td colSpan={3}>{form.technique_detail || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Key Concepts (for HM)</td>
+              <td colSpan={3}>{form.key_concepts || '—'}</td>
+            </tr>
+            <tr>
+              <td className="print-label">Avoid During Doubt Session</td>
+              <td colSpan={3}>{form.technique_avoid || '—'}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Doubt Session */}
+      {form.needs_doubt_session && (
+        <div className="print-section">
+          <table className="print-table">
+            <tbody>
+              <tr>
+                <td className="print-label">HM Assigned</td>
+                <td>{form.assigned_hm_name || '—'}</td>
+                <td className="print-label">Doubt Date</td>
+                <td>{form.doubt_date ? new Date(form.doubt_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '—'}</td>
+              </tr>
+              <tr>
+                <td className="print-label">Time Slot</td>
+                <td>{form.doubt_time_slot || '—'}</td>
+                <td className="print-label">Focus Students</td>
+                <td>{(form.focus_student_ids || []).length} marked</td>
+              </tr>
+              <tr>
+                <td className="print-label">HM Instructions</td>
+                <td colSpan={3}>{form.hm_instruction_message || '—'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Practice Questions */}
+      {(form.practice_questions || []).length > 0 && (
+        <div className="print-section">
+          <div style={{ fontWeight:'bold', marginBottom:6, fontSize:13 }}>
+            Practice Questions ({form.practice_questions.length})
+          </div>
+          <table className="print-table">
+            <thead>
+              <tr>
+                <td className="print-label" style={{ width:'6%' }}>No.</td>
+                <td className="print-label" style={{ width:'60%' }}>Question</td>
+                <td className="print-label" style={{ width:'20%' }}>Answer</td>
+                <td className="print-label" style={{ width:'14%' }}>Difficulty</td>
+              </tr>
+            </thead>
+            <tbody>
+              {form.practice_questions.map((q, i) => (
+                <tr key={i}>
+                  <td style={{ textAlign:'center' }}>{q.order_no || i+1}</td>
+                  <td>{q.question_text}</td>
+                  <td>{q.answer || '—'}</td>
+                  <td style={{ textAlign:'center' }}>{q.difficulty}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Signatures */}
+      <div className="print-footer">
+        <div className="print-sign">Subject Teacher<br/>{form.teacher_name || ''}</div>
+        <div className="print-sign">Housemaster<br/>{form.assigned_hm_name || ''}</div>
+        <div className="print-sign">Principal / Admin</div>
+      </div>
+
+    </div>
+  )
+}
 // ─── Review Step ──────────────────────────────────────────────────────────────
 
 function StepReview({ form }) {
@@ -1016,11 +1229,26 @@ function StepReview({ form }) {
     ['Focus Students', (form.focus_student_ids||[]).length + ' marked'],
   ]
 
+  const handlePrint = () => {
+    const el = document.getElementById('printable-log')
+    if (el) {
+      el.style.display = 'block'
+      window.print()
+      el.style.display = 'none'
+    }
+  }
+
   return (
     <div className="elog-fade">
-      <div style={{ padding:'12px 16px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, marginBottom:18 }}>
-        <div style={{ fontWeight:700, color:'#166534', fontSize:13 }}>✅ Review & Save</div>
-        <div style={{ fontSize:12, color:'#16a34a' }}>Check everything below, then click Save Log.</div>
+      <div style={{ padding:'12px 16px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, marginBottom:18, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+        <div>
+          <div style={{ fontWeight:700, color:'#166534', fontSize:13 }}>✅ Review & Save</div>
+          <div style={{ fontSize:12, color:'#16a34a' }}>Check everything below, then click Save Log.</div>
+        </div>
+        <button type="button" onClick={handlePrint}
+          style={{ backgroundColor:C.navy, color:'white', border:'none', borderRadius:8, padding:'8px 16px', fontWeight:700, cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
+          🖨️ Print Log
+        </button>
       </div>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
         <tbody>
@@ -1032,6 +1260,7 @@ function StepReview({ form }) {
           ))}
         </tbody>
       </table>
+      <PrintableLog form={form} />
     </div>
   )
 }
@@ -1424,7 +1653,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           house_name: null,
           hm_id: null,
           hm_name: resolvedHM,
-          status: 'Open',
+          status: 'open',
           batch_name: form.subtype || null,
           staff_name: form.teacher_name || null,
           student_name: null,
@@ -1572,6 +1801,10 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
 export default EnhancedLogForm
 
 // ─── HM Doubt Session Panel ───────────────────────────────────────────────────
+// Drop-in replacement for HMDoubtSessionPanel in EnhancedLogEntry.jsx
+// Includes full printable teaching log view integrated into the panel.
+// All helpers (fmtDate, S, C, useToast, Toast, supabase) are assumed to be
+// defined in the parent file exactly as they are in EnhancedLogEntry.jsx.
 
 export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const [note, setNote] = useState('')
@@ -1586,15 +1819,20 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const [showLog, setShowLog] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
 
+  // ─── Data loading ──────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!session.id) return
-    supabase.from('hm_notifications')
+    supabase
+      .from('hm_notifications')
       .select('*')
       .eq('log_id', session.log_id)
       .order('created_at', { ascending: true })
       .then(({ data }) => setMessages(data || []))
+
     if (session.log_id) {
-      supabase.from('teaching_logs')
+      supabase
+        .from('teaching_logs')
         .select('*')
         .eq('id', session.log_id)
         .single()
@@ -1605,13 +1843,15 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const fetchStudents = async () => {
     if (!session.batch_id && !session.subtype) return
     setLoadingStudents(true)
-    const q = supabase.from('students').select('id,name,roll_number').eq('status','Active')
+    const q = supabase.from('students').select('id,name,roll_number').eq('status', 'Active')
     if (session.subtype) q.eq('batch', session.subtype)
-    if (session.course) q.eq('course', session.course)
+    if (session.course)  q.eq('course', session.course)
     const { data } = await q.order('name')
     if (data) setStudents(data)
     setLoadingStudents(false)
   }
+
+  // ─── Actions ───────────────────────────────────────────────────────────────
 
   const sendMessage = async () => {
     if (!msgText.trim()) return
@@ -1620,7 +1860,7 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
       log_id: session.log_id,
       hm_staff_id: currentUser?.id || null,
       hm_name: currentUser?.name || 'HM',
-      message: `💬 ${currentUser?.name||'HM'}: ${msgText}`,
+      message: `💬 ${currentUser?.name || 'HM'}: ${msgText}`,
       status: 'thread',
       created_at: new Date().toISOString(),
     }
@@ -1633,7 +1873,7 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
 
   const notifyTeacher = async (studentName, doubtDetail) => {
     if (!doubtDetail) return
-    const msg = `🏠 HM (${currentUser?.name||'HM'}): Student "${studentName}" — ${doubtDetail}`
+    const msg = `🏠 HM (${currentUser?.name || 'HM'}): Student "${studentName}" — ${doubtDetail}`
     const row = {
       log_id: session.log_id,
       hm_staff_id: currentUser?.id || null,
@@ -1649,19 +1889,25 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
 
   const handleNotConducted = async () => {
     setSending(true)
-    const { error: e1 } = await supabase.from('doubt_sessions').update({
-      status: 'not_conducted',
-      resolved_by: currentUser?.name || 'HM',
-      resolved_at: new Date().toISOString(),
-      resolution_note: 'Doubt session was not conducted.',
-    }).eq('id', session.id)
+    const { error: e1 } = await supabase
+      .from('doubt_sessions')
+      .update({
+        status: 'not_conducted',
+        resolved_by: currentUser?.name || 'HM',
+        resolved_at: new Date().toISOString(),
+        resolution_note: 'Doubt session was not conducted.',
+      })
+      .eq('id', session.id)
     if (e1) { showToast('Error: ' + e1.message, C.red); setSending(false); return }
     if (session.log_id) {
-      await supabase.from('teaching_logs').update({
-        hm_verified: false,
-        hm_verified_at: new Date().toISOString(),
-        hm_verified_by: currentUser?.name || 'HM',
-      }).eq('id', session.log_id)
+      await supabase
+        .from('teaching_logs')
+        .update({
+          hm_verified: false,
+          hm_verified_at: new Date().toISOString(),
+          hm_verified_by: currentUser?.name || 'HM',
+        })
+        .eq('id', session.log_id)
     }
     showToast('⚠️ Marked as not conducted — teaching log flagged.', C.amber)
     onFeedback?.()
@@ -1671,25 +1917,31 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const handleFeedback = async () => {
     if (!note.trim()) { showToast('Enter resolution note', C.amber); return }
     setSending(true)
-    const { error } = await supabase.from('doubt_sessions').update({
-      status: 'resolved',
-      resolved_by: currentUser?.name || 'HM',
-      resolved_at: new Date().toISOString(),
-      resolution_note: note,
-    }).eq('id', session.id)
+    const { error } = await supabase
+      .from('doubt_sessions')
+      .update({
+        status: 'resolved',
+        resolved_by: currentUser?.name || 'HM',
+        resolved_at: new Date().toISOString(),
+        resolution_note: note,
+      })
+      .eq('id', session.id)
     if (error) { showToast('Error: ' + error.message, C.red); setSending(false); return }
     if (session.log_id) {
-      await supabase.from('teaching_logs').update({
-        hm_verified: true,
-        hm_verified_at: new Date().toISOString(),
-        hm_verified_by: currentUser?.name || 'HM',
-      }).eq('id', session.log_id)
+      await supabase
+        .from('teaching_logs')
+        .update({
+          hm_verified: true,
+          hm_verified_at: new Date().toISOString(),
+          hm_verified_by: currentUser?.name || 'HM',
+        })
+        .eq('id', session.log_id)
     }
     const resRow = {
       log_id: session.log_id,
       hm_staff_id: currentUser?.id || null,
       hm_name: currentUser?.name || 'HM',
-      message: `✅ Resolved by ${currentUser?.name||'HM'}: ${note}`,
+      message: `✅ Resolved by ${currentUser?.name || 'HM'}: ${note}`,
       status: 'resolved',
       created_at: new Date().toISOString(),
     }
@@ -1699,9 +1951,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     onFeedback?.()
     setSending(false)
   }
-
-  const statusColor = { open:'#fde68a', resolved:'#bbf7d0', not_conducted:'#fecaca' }
-  const statusLabel = { open:'⏳ Open', resolved:'✅ Resolved', not_conducted:'❌ Not Conducted' }
 
   const handleDelete = async () => {
     if (!window.confirm('Delete this doubt session permanently? This cannot be undone.')) return
@@ -1713,187 +1962,403 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     setSending(false)
   }
 
+  // ─── Print handler ─────────────────────────────────────────────────────────
+  // Shows the hidden print header + signature row, triggers window.print(),
+  // then hides them again so the screen layout is unaffected.
+
+  const handlePrint = () => {
+    const printArea  = document.getElementById(`hm-print-area-${session.id}`)
+    const printHead  = document.getElementById(`hm-print-head-${session.id}`)
+    const signRow    = document.getElementById(`hm-sign-row-${session.id}`)
+    const noprints   = printArea?.querySelectorAll('.hm-no-print')
+
+    if (printHead)  printHead.style.display  = 'block'
+    if (signRow)    signRow.style.display    = 'flex'
+    if (noprints)   noprints.forEach(el => el.setAttribute('data-hidden', '1'))
+
+    window.print()
+
+    setTimeout(() => {
+      if (printHead) printHead.style.display = 'none'
+      if (signRow)   signRow.style.display   = 'none'
+      if (noprints)  noprints.forEach(el => el.removeAttribute('data-hidden'))
+    }, 600)
+  }
+
+  // ─── Derived display values ────────────────────────────────────────────────
+
+  const statusColor = { open: '#fde68a', resolved: '#bbf7d0', not_conducted: '#fecaca' }
+  const statusLabel = { open: '⏳ Open', resolved: '✅ Resolved', not_conducted: '❌ Not Conducted' }
+
+  const focusNames = (() => {
+    try { return JSON.parse(session.focus_student_names || '[]') } catch { return [] }
+  })()
+
+  const log = logDetail  // shorthand
+
+  // ─── Inline print styles injected once ────────────────────────────────────
+  const printCss = `
+    .hm-print-only-tables { display: none; }
+
+    @media print {
+      body * { visibility: hidden !important; }
+      #hm-print-area-${session.id},
+      #hm-print-area-${session.id} * { visibility: visible !important; }
+      #hm-print-area-${session.id} {
+        position: fixed; top: 0; left: 0;
+        width: 100%; padding: 28px 32px;
+        font-family: Georgia, serif;
+        font-size: 13px; color: #000 !important;
+        background: white !important;
+      }
+      [data-hidden] { display: none !important; }
+      .hm-print-only-tables { display: block !important; }
+      .hm-print-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+      .hm-print-table td { padding: 7px 10px; border: 1px solid #ccc; vertical-align: top; }
+      .hm-print-label { font-weight: bold; background: #f0f0f0; width: 32%; }
+      .hm-instr-navy  { background: #e8edf4 !important; border-left: 3px solid #1e3a5f; padding: 10px 14px; margin-bottom: 10px; }
+      .hm-instr-green { background: #f0fdf4 !important; border-left: 3px solid #16a34a; padding: 10px 14px; margin-bottom: 10px; }
+      .hm-instr-red   { background: #fee2e2 !important; border-left: 3px solid #dc2626; padding: 10px 14px; margin-bottom: 10px; }
+      .hm-section-title { font-weight: bold; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+    }
+  `
+
+  // ─── Shared style helpers (screen only) ───────────────────────────────────
+  const field = (label, value) => (
+    <div style={{ flex: '1 1 160px', background: '#f8fafc', borderRadius: 8, padding: '10px 14px', border: '1px solid #e2e8f0' }}>
+      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{value || '—'}</div>
+    </div>
+  )
+
+  const textBlock = (label, value) => value ? (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.7, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>{value}</div>
+    </div>
+  ) : null
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
   return (
     <>
+      <style>{printCss}</style>
       {toastEl}
-      <div style={{ border:`2px solid ${statusColor[session.status]||'#fde68a'}`, borderRadius:14, padding:20, background:'#fffbeb', marginBottom:12 }}>
 
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:8 }}>
+      <div style={{ border: `2px solid ${statusColor[session.status] || '#fde68a'}`, borderRadius: 14, padding: 20, background: '#fffbeb', marginBottom: 12 }}>
+
+        {/* ── Card header ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontSize:15, fontWeight:800, color:'#1e293b' }}>
-              🏠 {session.house_name||session.batch_name||'—'} · {session.subject_name}
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>
+              🏠 {session.house_name || session.batch_name || '—'} · {session.subject_name}
             </div>
-            <div style={{ fontSize:13, color:'#64748b', marginTop:2 }}>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
               📖 {session.topic} · {fmtDate(session.teaching_date)}
             </div>
-            <div style={{ fontSize:12, color:'#94a3b8', marginTop:1 }}>
-              Teacher: {session.teacher_name||'—'}
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>
+              Teacher: {session.teacher_name || '—'}
             </div>
             {(session.doubt_date || session.doubt_time_slot) && (
-              <div style={{ fontSize:12, color:'#7c3aed', marginTop:4, fontWeight:700 }}>
+              <div style={{ fontSize: 12, color: '#7c3aed', marginTop: 4, fontWeight: 700 }}>
                 📅 {session.doubt_date ? fmtDate(session.doubt_date) : '—'}
-                {session.doubt_time_slot && <span style={{ marginLeft:8 }}>🕐 {session.doubt_time_slot}</span>}
+                {session.doubt_time_slot && <span style={{ marginLeft: 8 }}>🕐 {session.doubt_time_slot}</span>}
               </div>
             )}
           </div>
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <span style={S.badge(
-              session.status==='resolved'?'#166534':session.status==='not_conducted'?C.red:'#b45309',
-              statusColor[session.status]||'#fef9c3'
-            )}>{statusLabel[session.status]||'⏳ Open'}</span>
+              session.status === 'resolved' ? '#166534' : session.status === 'not_conducted' ? C.red : '#b45309',
+              statusColor[session.status] || '#fef9c3'
+            )}>
+              {statusLabel[session.status] || '⏳ Open'}
+            </span>
             {currentUser?.role === 'admin' && (
               <button type="button" onClick={handleDelete} disabled={sending}
-                style={{ fontSize:11, fontWeight:700, color:C.red, background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:6, padding:'3px 10px', cursor:'pointer' }}>
+                style={{ fontSize: 11, fontWeight: 700, color: C.red, background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
                 🗑 Delete
               </button>
             )}
           </div>
         </div>
 
-        <button type="button" onClick={() => setShowLog(!showLog)}
-          style={{ ...S.btnSm(C.navy), marginBottom:14, width:'100%', textAlign:'left' }}>
-          📋 {showLog ? 'Hide' : 'View'} Today's Teaching Log
-        </button>
+        {/* ── Toggle + Print buttons ── */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setShowLog(v => !v)}
+            style={{ ...S.btnSm(C.navy), flex: 1, textAlign: 'left' }}>
+            📋 {showLog ? 'Hide' : 'View'} today's teaching log
+          </button>
+          {log && (
+            <button type="button" onClick={handlePrint}
+              style={{ ...S.btnSm('#7c3aed'), display: 'flex', alignItems: 'center', gap: 5 }}>
+              🖨️ Print log
+            </button>
+          )}
+        </div>
 
-        {showLog && logDetail && (
-          <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:14, marginBottom:14, fontSize:12 }}>
-            <div style={{ fontWeight:800, color:C.navy, marginBottom:8, fontSize:13 }}>📚 Teaching Log — {logDetail.subject_name}</div>
+        {/* ══════════════════════════════════════════════════════════════════
+            PRINTABLE AREA — everything inside here is printed.
+            Screen: shows only when showLog === true (except print-only elements).
+            Print:  always visible, styled via @media print above.
+        ══════════════════════════════════════════════════════════════════ */}
+        <div id={`hm-print-area-${session.id}`}>
+
+          {/* Print-only header (hidden on screen) */}
+          <div id={`hm-print-head-${session.id}`} style={{ display: 'none' }}>
+            <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: 12, marginBottom: 20 }}>
+              <div style={{ fontSize: 19, fontWeight: 'bold' }}>GNSI — Teaching log (HM copy)</div>
+              <div style={{ fontSize: 12, color: '#444', marginTop: 4 }}>
+                {session.subject_name} · {session.batch_name || session.course} · {fmtDate(session.teaching_date)}
+                {session.doubt_time_slot && ` · Doubt session: ${session.doubt_time_slot}`}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Log body — shown on screen only when expanded ── */}
+          {(showLog && log) && (
+            <div className="hm-no-print" style={{ marginBottom: 16 }}>
+
+              {/* Class details */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Class details</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {field('Teacher', log.teacher_name)}
+                {field('Subject', log.subject_name)}
+                {field('Batch', `${log.course} / ${log.subtype}`)}
+                {field('Date', fmtDate(log.teaching_date))}
+                {field('Period', log.period_number ? `Period ${log.period_number}` : null)}
+                {field('Range covered', log.range_from ? `${log.range_from} → ${log.range_to}` : null)}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                {field('Chapter', log.chapter)}
+                {field('Sub-topic', log.subtopic)}
+              </div>
+
+              <div style={{ height: 1, background: '#e2e8f0', marginBottom: 14 }}/>
+
+              {/* What was taught */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>What was taught</div>
+              {textBlock('Topic taught', log.topic_taught)}
+              {textBlock('Classwork done', log.classwork)}
+              {textBlock('Homework assigned', log.homework)}
+              {textBlock('Remarks / observations', log.remarks)}
+
+              {/* Techniques */}
+              {log.techniques && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Teaching methods used</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {log.techniques.split(',').map((t, i) => (
+                      <span key={i} style={{ padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, background: '#eff6ff', color: '#1e3a5f' }}>
+                        {t.trim()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Instruction boxes — always in print area, screen shows when expanded ── */}
+          <div className={!showLog ? 'hm-no-print' : ''}>
+            {session.teacher_instructions && (
+              <div className="hm-instr-navy" style={{ padding: '12px 14px', background: '#1e3a5f', borderRadius: 10, marginBottom: 10, color: 'white' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#93c5fd', marginBottom: 6, letterSpacing: '.08em' }}>📋 SUBJECT TEACHER'S INSTRUCTIONS</div>
+                <div style={{ fontSize: 13, lineHeight: 1.8, color: '#e2e8f0' }}>{session.teacher_instructions}</div>
+              </div>
+            )}
+            {session.key_concepts && (
+              <div className="hm-instr-green" style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', marginBottom: 4 }}>✅ KEY CONCEPTS TO EMPHASISE</div>
+                <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>{session.key_concepts}</div>
+              </div>
+            )}
+            {session.technique_avoid && (
+              <div className="hm-instr-red" style={{ padding: '10px 14px', background: '#fff1f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', marginBottom: 4 }}>🚫 DO NOT DO THIS</div>
+                <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>{session.technique_avoid}</div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Doubt session details — always in print area ── */}
+          <div className={!showLog ? 'hm-no-print' : ''}>
+            {(session.doubt_date || session.doubt_time_slot || session.hm_name) && (
+              <>
+                <div style={{ height: 1, background: '#e2e8f0', marginBottom: 14, marginTop: 4 }}/>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Doubt session</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {field('Assigned HM', session.hm_name)}
+                  {field('Date', session.doubt_date ? fmtDate(session.doubt_date) : null)}
+                  {field('Time slot', session.doubt_time_slot)}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── Focus students — always in print area ── */}
+          {focusNames.length > 0 && (
+            <div className={!showLog ? 'hm-no-print' : ''} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>⚠️ FOCUS ON THESE STUDENTS</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {focusNames.map((n, i) => (
+                  <button key={i} type="button"
+                    onClick={() => { const d = window.prompt(`Doubt/issue for ${n}:`); if (d) notifyTeacher(n, d) }}
+                    style={{ ...S.badge('#b45309', '#fef9c3'), cursor: 'pointer' }}>
+                    {n} 📨
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Print-only full detail table (visible only in @media print) */}
+          {log && (
+            <div className="hm-print-only-tables">
+              <table className="hm-print-table">
+                <tbody>
+                  <tr><td className="hm-print-label">Teacher</td><td>{log.teacher_name || '—'}</td><td className="hm-print-label">Date</td><td>{fmtDate(log.teaching_date)}</td></tr>
+                  <tr><td className="hm-print-label">Subject</td><td>{log.subject_name}</td><td className="hm-print-label">Batch</td><td>{log.course} / {log.subtype}</td></tr>
+                  <tr><td className="hm-print-label">Chapter</td><td>{log.chapter || '—'}</td><td className="hm-print-label">Sub-topic</td><td>{log.subtopic || '—'}</td></tr>
+                  <tr><td className="hm-print-label">Range covered</td><td colSpan={3}>{log.range_from ? `${log.range_from} → ${log.range_to}` : '—'}</td></tr>
+                </tbody>
+              </table>
+              <table className="hm-print-table">
+                <tbody>
+                  <tr><td className="hm-print-label">Topic taught</td><td>{log.topic_taught || '—'}</td></tr>
+                  <tr><td className="hm-print-label">Classwork done</td><td>{log.classwork || '—'}</td></tr>
+                  <tr><td className="hm-print-label">Homework assigned</td><td>{log.homework || '—'}</td></tr>
+                  <tr><td className="hm-print-label">Remarks / observations</td><td>{log.remarks || '—'}</td></tr>
+                  <tr><td className="hm-print-label">Techniques used</td><td>{log.techniques || '—'}</td></tr>
+                </tbody>
+              </table>
+              {focusNames.length > 0 && (
+                <table className="hm-print-table">
+                  <tbody>
+                    <tr><td className="hm-print-label">Focus students</td><td>{focusNames.join(', ')}</td></tr>
+                    {session.doubt_date && <tr><td className="hm-print-label">Doubt date</td><td>{fmtDate(session.doubt_date)}</td></tr>}
+                    {session.doubt_time_slot && <tr><td className="hm-print-label">Time slot</td><td>{session.doubt_time_slot}</td></tr>}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* Print-only signature row */}
+          <div id={`hm-sign-row-${session.id}`} style={{ display: 'none', justifyContent: 'space-between', marginTop: 40 }}>
             {[
-              ['Topic Taught', logDetail.topic_taught],
-              ['Classwork', logDetail.classwork],
-              ['Homework', logDetail.homework],
-              ['Remarks', logDetail.remarks],
-              ['Techniques', logDetail.techniques],
-              ['Range', logDetail.range_from ? `${logDetail.range_from} → ${logDetail.range_to}` : null],
-            ].filter(([,v]) => v).map(([k,v]) => (
-              <div key={k} style={{ marginBottom:6 }}>
-                <span style={{ fontWeight:700, color:'#374151' }}>{k}: </span>
-                <span style={{ color:'#1e293b' }}>{v}</span>
+              ['Subject teacher', log?.teacher_name || ''],
+              ['Housemaster', session.hm_name || ''],
+              ['Principal / Admin', ''],
+            ].map(([role, name]) => (
+              <div key={role} style={{ borderTop: '1px solid #000', paddingTop: 6, width: 160, textAlign: 'center', fontSize: 12 }}>
+                {role}{name ? <><br />{name}</> : null}
               </div>
             ))}
           </div>
-        )}
 
-        {session.teacher_instructions && (
-          <div style={{ padding:'12px 14px', background:'#1e3a5f', borderRadius:10, marginBottom:14, color:'white' }}>
-            <div style={{ fontSize:11, fontWeight:800, color:'#93c5fd', marginBottom:6, letterSpacing:'.08em' }}>📋 SUBJECT TEACHER'S INSTRUCTIONS</div>
-            <div style={{ fontSize:13, lineHeight:1.8, color:'#e2e8f0' }}>{session.teacher_instructions}</div>
-          </div>
-        )}
+        </div>
+        {/* end #hm-print-area */}
 
-        {session.key_concepts && (
-          <div style={{ padding:'10px 14px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#166534', marginBottom:4 }}>✅ KEY CONCEPTS TO EMPHASISE</div>
-            <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>{session.key_concepts}</div>
-          </div>
-        )}
-
-        {session.technique_avoid && (
-          <div style={{ padding:'10px 14px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:8, marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#dc2626', marginBottom:4 }}>🚫 DO NOT DO THIS</div>
-            <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>{session.technique_avoid}</div>
-          </div>
-        )}
-
-        {session.focus_student_names && (() => {
-          try {
-            const names = JSON.parse(session.focus_student_names)
-            if (!names.length) return null
-            return (
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'#b45309', marginBottom:6 }}>⚠️ FOCUS ON THESE STUDENTS</div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {names.map((n,i) => (
-                    <button key={i} type="button"
-                      onClick={() => { const d = window.prompt(`Doubt/issue for ${n}:`); if(d) notifyTeacher(n,d) }}
-                      style={{ ...S.badge('#b45309','#fef9c3'), cursor:'pointer' }}>
-                      {n} 📨
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )
-          } catch { return null }
-        })()}
-
-        <div style={{ marginBottom:12 }}>
-          <button type="button" onClick={() => { setShowStudents(!showStudents); if (!students.length) fetchStudents() }} style={S.btnSm('#94a3b8')}>
-            👥 {showStudents ? 'Hide' : 'View'} Batch Students
+        {/* ── Batch students toggle ── */}
+        <div style={{ marginBottom: 12 }}>
+          <button type="button"
+            onClick={() => { setShowStudents(!showStudents); if (!students.length) fetchStudents() }}
+            style={S.btnSm('#94a3b8')}>
+            👥 {showStudents ? 'Hide' : 'View'} batch students
           </button>
         </div>
         {showStudents && (
-          <div style={{ marginBottom:12, padding:10, background:'white', borderRadius:8, border:'1px solid #e2e8f0' }}>
-            {loadingStudents ? <div style={{ fontSize:12, color:'#94a3b8' }}>Loading...</div> :
-              students.length === 0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No students found.</div> :
-              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                {students.map(s => (
-                  <button key={s.id} type="button"
-                    onClick={() => { const d = window.prompt(`Doubt/issue for ${s.name}:`); if(d) notifyTeacher(s.name,d) }}
-                    style={S.pill('#1e293b','#f1f5f9')}>{s.name} 📨</button>
-                ))}
-              </div>
+          <div style={{ marginBottom: 12, padding: 10, background: 'white', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+            {loadingStudents
+              ? <div style={{ fontSize: 12, color: '#94a3b8' }}>Loading...</div>
+              : students.length === 0
+                ? <div style={{ fontSize: 12, color: '#94a3b8' }}>No students found.</div>
+                : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {students.map(s => (
+                      <button key={s.id} type="button"
+                        onClick={() => { const d = window.prompt(`Doubt/issue for ${s.name}:`); if (d) notifyTeacher(s.name, d) }}
+                        style={S.pill('#1e293b', '#f1f5f9')}>
+                        {s.name} 📨
+                      </button>
+                    ))}
+                  </div>
+                )
             }
           </div>
         )}
 
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:8, textTransform:'uppercase', letterSpacing:'.05em' }}>
-            💬 Communication Thread
+        {/* ── Communication thread ── */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            💬 Communication thread
           </div>
-          <div style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:10, padding:10, maxHeight:200, overflowY:'auto', marginBottom:8 }}>
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, maxHeight: 200, overflowY: 'auto', marginBottom: 8 }}>
             {messages.length === 0
-              ? <div style={{ fontSize:12, color:'#94a3b8', textAlign:'center', padding:'12px 0' }}>No messages yet.</div>
+              ? <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '12px 0' }}>No messages yet.</div>
               : messages.map((m, i) => (
                 <div key={i} style={{
-                  padding:'7px 10px', marginBottom:6, borderRadius:8, fontSize:12, lineHeight:1.6,
-                  background: m.status==='resolved'?'#f0fdf4': m.status==='teacher_alert'?'#eff6ff': m.status==='thread'?'#f8fafc':'#fffbeb',
-                  borderLeft: `3px solid ${m.status==='resolved'?C.green:m.status==='teacher_alert'?C.navy:m.status==='thread'?C.sky:C.amber}`,
+                  padding: '7px 10px', marginBottom: 6, borderRadius: 8, fontSize: 12, lineHeight: 1.6,
+                  background: m.status === 'resolved' ? '#f0fdf4' : m.status === 'teacher_alert' ? '#eff6ff' : m.status === 'thread' ? '#f8fafc' : '#fffbeb',
+                  borderLeft: `3px solid ${m.status === 'resolved' ? C.green : m.status === 'teacher_alert' ? C.navy : m.status === 'thread' ? C.sky : C.amber}`,
                 }}>
-                  <div style={{ color:'#1e293b' }}>{m.message}</div>
-                  <div style={{ fontSize:10, color:'#94a3b8', marginTop:2 }}>
-                    {new Date(m.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
+                  <div style={{ color: '#1e293b' }}>{m.message}</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                    {new Date(m.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               ))
             }
           </div>
-          <div style={{ display:'flex', gap:8 }}>
-            <input value={msgText} onChange={e => setMsgText(e.target.value)}
-              onKeyDown={e => e.key==='Enter' && !e.shiftKey && sendMessage()}
-              placeholder="Type a message to teacher..." style={{ ...S.input, flex:1 }}/>
-            <button type="button" onClick={sendMessage} disabled={sendingMsg||!msgText.trim()} style={S.btn(C.sky, sendingMsg||!msgText.trim())}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={msgText}
+              onChange={e => setMsgText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+              placeholder="Type a message to teacher..."
+              style={{ ...S.input, flex: 1 }}
+            />
+            <button type="button" onClick={sendMessage} disabled={sendingMsg || !msgText.trim()}
+              style={S.btn(C.sky, sendingMsg || !msgText.trim())}>
               Send
             </button>
           </div>
         </div>
 
+        {/* ── Resolution controls ── */}
         {session.status === 'open' && (
-          <div style={{ borderTop:'1px solid #fde68a', paddingTop:14 }}>
-            <label style={S.label}>Resolution Note</label>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
-              style={{ ...S.input, marginBottom:10, resize:'vertical' }}
-              placeholder="Describe what you covered, which students were helped, what methods you used..."/>
-            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <div style={{ borderTop: '1px solid #fde68a', paddingTop: 14 }}>
+            <label style={S.label}>Resolution note</label>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              rows={3}
+              style={{ ...S.input, marginBottom: 10, resize: 'vertical' }}
+              placeholder="Describe what you covered, which students were helped, what methods you used..."
+            />
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button type="button" onClick={handleFeedback} disabled={sending} style={S.btn(C.green, sending)}>
-                {sending ? '⏳ Saving...' : '✅ Mark Resolved & Notify Teacher'}
+                {sending ? '⏳ Saving...' : '✅ Mark resolved & notify teacher'}
               </button>
               <button type="button" onClick={handleNotConducted} disabled={sending}
-                style={{ backgroundColor:'#fee2e2', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:8, padding:'10px 18px', fontWeight:700, cursor:sending?'not-allowed':'pointer', fontSize:13, minHeight:44 }}>
-                ❌ Not Conducted
+                style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: sending ? 'not-allowed' : 'pointer', fontSize: 13, minHeight: 44 }}>
+                ❌ Not conducted
               </button>
             </div>
           </div>
         )}
 
+        {/* ── Resolution note (read-only after resolved) ── */}
         {session.status !== 'open' && session.resolution_note && (
-          <div style={{ borderTop:'1px solid #e2e8f0', paddingTop:12, marginTop:8 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:4 }}>Resolution Note:</div>
-            <div style={{ fontSize:13, color:'#1e293b', lineHeight:1.7 }}>{session.resolution_note}</div>
-            <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>
+          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, marginTop: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Resolution note:</div>
+            <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.7 }}>{session.resolution_note}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
               By {session.resolved_by} · {session.resolved_at ? fmtDate(session.resolved_at) : ''}
             </div>
           </div>
         )}
+
       </div>
     </>
   )
