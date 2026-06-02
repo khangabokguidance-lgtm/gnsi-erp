@@ -16,13 +16,11 @@ export default function CreateAuthUser({ onCreated }) {
     setLoading(true)
     
     // Create auth user
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: form.email,
-      phone: form.phone || undefined,
-      password: form.password,
-      email_confirm: true,
-      user_metadata: { name: form.name }
-    })
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+  email: form.email,
+  password: form.password,
+  options: { data: { name: form.name } }
+})
 
     if (authError) {
       setToast(`❌ ${authError.message}`)
