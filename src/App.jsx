@@ -695,58 +695,57 @@ if (!currentUser) {
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
   const moduleMap = {
-    students:          <Students          currentUser={currentUser} perms={perms('students')}         />,
-    admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}       />,
-    sessions:          <Sessions          currentUser={currentUser} perms={perms('sessions')}         />,
-    admissionsessions: <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')}/>,
-    bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}    />,
-    fees:              <Fees              currentUser={currentUser} perms={perms('fees')}             />,
-    accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
-    salary:             <Salary currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-    staff:              <Staff  currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-    hr: <HR currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} />,
-    leave:             <Leave             currentUser={currentUser} perms={perms('leave')}            />,
-    hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}           />,
-    reception:         <Reception         currentUser={currentUser} perms={perms('reception')}        />,
-    notice:            <Notice            currentUser={currentUser} perms={perms('notice')}           />,
-    social:            <Social            currentUser={currentUser} perms={perms('social')}           />,
-    questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')}     />,
-    connect:           <Connect           currentUser={currentUser} perms={perms('connect')}          />,
-    reports:           <Reports           currentUser={currentUser} perms={perms('reports')}          />,
-    checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}        />,
-    system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}           />,
-    studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')} />,
-    feeledger:         <StudentFeeLedger  currentUser={currentUser} perms={perms('feeledger')}        />,
-    courses:           <Courses           currentUser={currentUser} perms={perms('courses')}          />,
-    teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}         />,
-    attendance:         <Attendance       currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} />,
-    exams:             <Exams             currentUser={currentUser} perms={perms('exams')}            />,
-    timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}        />,
-    feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,
-    kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
-    admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
-    entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}         />,
-     admin:     isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
-  adminlink: isAdmin ? <AdminLinkStaff /> : <AccessDenied />,  // ← ADD THIS
-  system:    <SystemSettings currentUser={currentUser} perms={perms('system')} />,
+  students:          <Students          currentUser={currentUser} perms={perms('students')}         />,
+  admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}       />,
+  sessions:          <Sessions          currentUser={currentUser} perms={perms('sessions')}         />,
+  admissionsessions: <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')}/>,
+  bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}    />,
+  fees:              <Fees              currentUser={currentUser} perms={perms('fees')}             />,
+  accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
+  salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+  staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+  hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} />,
+  leave:             <Leave             currentUser={currentUser} perms={perms('leave')}            />,
+  hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}           />,
+  reception:         <Reception         currentUser={currentUser} perms={perms('reception')}        />,
+  notice:            <Notice            currentUser={currentUser} perms={perms('notice')}           />,
+  social:            <Social            currentUser={currentUser} perms={perms('social')}           />,
+  questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')}     />,
+  connect:           <Connect           currentUser={currentUser} perms={perms('connect')}          />,
+  reports:           <Reports           currentUser={currentUser} perms={perms('reports')}          />,
+  checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}        />,
+  system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}           />,
+  studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')} />,
+  feeledger:         <StudentFeeLedger  currentUser={currentUser} perms={perms('feeledger')}        />,
+  courses:           <Courses           currentUser={currentUser} perms={perms('courses')}          />,
+  teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}         />,
+  attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} />,
+  exams:             <Exams             currentUser={currentUser} perms={perms('exams')}            />,
+  timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}        />,
+  feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,
+  kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
+  admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
+  adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
+  entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}         />,
 }
-  }
 
   const renderContent = () => {
-     if (active === 'student-leave') return <StudentSelfService />
+  if (active === 'student-leave') return <StudentSelfService />
   if (active === 'verify')        return <GatePassVerifyPage />
-  if (active === 'adminlink')     return isAdmin ? <AdminLinkStaff /> : <AccessDenied />
-    if (active === 'dashboard') return isAdmin
-      ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
-      : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
-    if (!canAccess(active)) return <AccessDenied />
-    return moduleMap[active] || (
-      <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
-        <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>
-      </div>
-    )
-  }
+  
+  if (active === 'dashboard') return isAdmin
+    ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
+    : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
+  
+  if (!canAccess(active)) return <AccessDenied />
+  
+  return moduleMap[active] || (
+    <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
+      <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>
+    </div>
+  )
+}
 
   return (
     <div style={{ display: 'flex', fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: '100vh', background: '#f8fafc' }}>
