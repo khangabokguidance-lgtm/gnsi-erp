@@ -643,7 +643,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         const dist = haversineClient(latitude, longitude, campus.lat, campus.lng)
         setGpsDistance(dist)
         setGpsStatus(
-          accuracy > 150 ? 'weak'
+          accuracy > (campus.radius / 2) ? 'weak'
           : dist <= campus.radius
             ? (trackingRef.current.length ? 'tracking' : 'oncampus')
             : 'outside'
@@ -713,6 +713,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     if (!campus)            { showToast('❌ Campus zone not configured', 'err'); return }
     if (!gpsCoords)         { showToast('❌ GPS not ready — click Detect Location first', 'err'); return }
     if (!navigator.onLine)  { showToast('❌ No internet connection — please try when online', 'err'); return }
+if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too weak (±${Math.round(gpsAccuracy)}m) — move to open area`, 'err'); return }
 
     setCheckingIn(true)
     try {
@@ -755,13 +756,15 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         setGpsStatus('tracking')
 
         // Sync bridge — self_attendance (geo_verified + geo_distance added by migration)
-        await supabase.from('self_attendance').upsert(
-          [{ staff_id: currentStaff.id, date: today(), timestamp: new Date().toISOString(),
-             method: 'Geo', location_lat: gpsCoords.lat, location_lng: gpsCoords.lng,
-             geo_verified: (gpsDistance || 999) <= campus.radius,
-             geo_distance: Math.round(gpsDistance || 0), device_id: getDeviceFingerprint() }],
-          { onConflict: 'staff_id,date' }
-        )
+        await supabase.rpc('sync_self_attendance', {
+  p_staff_id:    currentStaff.id,
+  p_date:        today(),
+  p_lat:         gpsCoords.lat,
+  p_lng:         gpsCoords.lng,
+  p_geo_verified: (gpsDistance || 999) <= campus.radius,
+  p_geo_distance: Math.round(gpsDistance || 0),
+  p_device_fp:   getDeviceFingerprint(),
+})
       }
 
       await fetchMyLogs()

@@ -17,10 +17,14 @@ let _lastFetched = null
 const CACHE_TTL  = 5 * 60 * 1000  // 5 minutes
 
 // ─── Core fetch ──────────────────────────────────────────────────────────────
-async function _fetchFresh() {
+async function _fetchFresh(isAdmin = false) {
+  const columns = isAdmin
+    ? '*'
+    : 'id, name, designation, department, role, phone, joining_date, status'
+
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('*')
+    .select(columns)
     .order('name', { ascending: true })
   if (error) throw new Error('staffDB: fetch failed — ' + error.message)
   _cache       = data || []
@@ -28,11 +32,11 @@ async function _fetchFresh() {
   return _cache
 }
 
-async function _get(force = false) {
+async function _get(force = false, isAdmin = false) {
   if (!force && _cache && _lastFetched && (Date.now() - _lastFetched < CACHE_TTL)) {
     return _cache
   }
-  return _fetchFresh()
+  return _fetchFresh(isAdmin)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -48,7 +52,7 @@ export const staffDB = {
   // ── Raw access ─────────────────────────────────────────────────────────────
 
   /** All staff (cached) */
-  getAll: (force = false) => _get(force),
+  getAll: (force = false, isAdmin = false) => _get(force, isAdmin),
 
   /** Force refresh — call after insert/update/delete */
   refresh: () => _get(true),
@@ -108,9 +112,9 @@ export const staffDB = {
    * Staff.jsx — full list with salary & role info
    * Returns all staff regardless of status (admin needs to see inactive too)
    */
-  async forStaffPage() {
-    return _get()
-  },
+  async forStaffPage(isAdmin = false) {
+  return _get(false, isAdmin)
+},
 
   /**
    * Checklist / Task Monitor — active staff with name + designation + role

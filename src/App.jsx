@@ -644,10 +644,17 @@ export default function App() {
   const [permLoading, setPermLoading] = useState(false)
   const isMobile = useIsMobile()
   const [sharedStaff, setSharedStaff] = useState([])
+const isAdmin = currentUser?.role === 'Admin'
 const fetchSharedStaff = useCallback(async () => {
-  const { data } = await supabase.from('staff_profiles').select('*').order('name')
+  const columns = isAdmin
+    ? '*'
+    : 'id, name, designation, department, role, phone, joining_date, status'
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select(columns)
+    .order('name')
   if (data) setSharedStaff(data)
-}, [])
+}, [currentUser?.role])
 useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
 
   const loadPermissions = async (role) => {
@@ -706,7 +713,6 @@ if (!currentUser) {
 }
   if (permLoading)  return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
 
-  const isAdmin = currentUser.role === 'Admin'
   const canAccess = (key) => { if (key === 'dashboard') return true; if (isAdmin) return true; return permMap[key]?.read === true }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 

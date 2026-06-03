@@ -511,7 +511,8 @@ export default function Login({ onLogin }) {
 
       if (!ok) { showError('Invalid username or password.'); setLoading(false); return }
 
-      onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin' })
+      await supabase.rpc('set_staff_context', { p_staff_id: 0, p_is_admin: true })
+onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin' })
       setLoading(false); return
     }
 
@@ -536,13 +537,17 @@ export default function Login({ onLogin }) {
       .eq('name', data.name)
       .maybeSingle()
 
-    onLogin({
-      ...data,
-      staff_profile_id: profile?.id         ?? null,
-      department:       profile?.department  ?? null,
-      designation:      profile?.designation ?? null,
-      email:            profile?.email       ?? null,
-    })
+    await supabase.rpc('set_staff_context', {
+  p_staff_id: profile?.id ?? 0,
+  p_is_admin: data.role === 'Admin' || data.role === 'HM',
+})
+onLogin({
+  ...data,
+  staff_profile_id: profile?.id         ?? null,
+  department:       profile?.department  ?? null,
+  designation:      profile?.designation ?? null,
+  email:            profile?.email       ?? null,
+})
 
     setLoading(false)
   }
