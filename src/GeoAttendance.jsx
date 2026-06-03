@@ -446,8 +446,8 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   // ── Verify admin role from server ────────────────────────────────────────
 
   useEffect(() => {
-    if (!currentStaff?.id) return
-    const verify = async () => {
+  if (!currentStaff?.id && !isAdminProp) return
+  const verify = async () => {
       const { data } = await supabase.rpc('auth_is_admin')
       setServerIsAdmin(!!data)
       setAdminVerified(true)
