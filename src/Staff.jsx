@@ -678,11 +678,19 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
   const taskStatusInFlight = useRef(new Set())
 
   const loggedInStaff = useMemo(() => {
-    if (currentUser?.role === 'Admin') return null
-    if (currentUser?.staff_profile_id)
-      return staff.find(s => s.id === currentUser.staff_profile_id) || null
-    return staff.find(s => s.name === currentUser?.name) || null
-  }, [staff, currentUser])
+  if (currentUser?.role === 'Admin') return null
+  if (currentUser?.staff_profile_id)
+    return staff.find(s => s.id === currentUser.staff_profile_id) || null
+  // fallback: match by name (trim both sides for safety)
+  const byName = staff.find(s => s.name.trim() === (currentUser?.name || '').trim())
+  if (byName) return byName
+  // fallback: match by phone or email
+  if (currentUser?.phone)
+    return staff.find(s => s.phone === currentUser.phone) || null
+  if (currentUser?.email)
+    return staff.find(s => s.email === currentUser.email) || null
+  return null
+}, [staff, currentUser])
 
   // ── Data Loaders ──────────────────────────────────────────────────────────
 

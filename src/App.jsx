@@ -658,9 +658,16 @@ useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
     setPermLoading(false)
   }
 
-  const handleLogin = (user) => {
-  localStorage.setItem('gnsi_session', JSON.stringify({ user, expiry: Date.now() + 8*60*60*1000 }))
-  setCurrentUser(user); setActive('dashboard'); loadPermissions(user.role)
+  const handleLogin = async (user) => {
+  // fetch fresh staff_profile_id from DB
+  const { data } = await supabase
+    .from('portal_users')
+    .select('staff_profile_id')
+    .eq('id', user.id)
+    .maybeSingle()
+  const enriched = { ...user, staff_profile_id: data?.staff_profile_id ?? null }
+  localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + 8*60*60*1000 }))
+  setCurrentUser(enriched); setActive('dashboard'); loadPermissions(user.role)
 }
   const handleLogout = () => {
   localStorage.removeItem('gnsi_session')
