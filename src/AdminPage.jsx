@@ -1438,7 +1438,7 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
     )
   }
 
-  const ADMIN_ROLES = ['admin', 'Administrator']
+  const ADMIN_ROLES = ['admin', 'Admin', 'Administrator']
   if (!ADMIN_ROLES.includes(currentUser.role)) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif", padding: 16 }}>
