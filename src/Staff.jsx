@@ -1,7 +1,3 @@
-// Staff.jsx — Part 1 of 4
-// Paste this at the TOP of Staff.jsx — replaces everything from line 1 to the ScoreEntryRow component
-// ─────────────────────────────────────────────────────────────────────────────
-
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { useCourseData, CoursePicker } from './Courses'
@@ -626,12 +622,6 @@ const ScoreEntryRow = React.memo(function ScoreEntryRow({ staff, score, onChange
   )
 })
 
-// ─── END OF PART 1 ────────────────────────────────────────────────────────────
-// Continue with Part 2 → Staff() component state + data loaders + handleAutoMark
-// Staff.jsx — Part 2 of 4
-// Paste this AFTER Part 1 — Staff() component opening + all state + data loaders + handleAutoMark
-// ─────────────────────────────────────────────────────────────────────────────
-
 function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffChange }) {
   const isMobile = useIsMobile()
   const { show: showToast, el: toastEl } = useToast()
@@ -1141,12 +1131,6 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
     { label:'Salary Set',   value:staff.filter(s => Number(s.basic_salary) > 0).length, color:'#7c3aed', bg:'#f3e8ff', icon:'💰' },
   ]
 
-// ─── END OF PART 2 ────────────────────────────────────────────────────────────
-// Continue with Part 3 → return ( ... ) Staff list + Tasks tabs
-// Staff.jsx — Part 3 of 4
-// Paste this AFTER Part 2 — return() opening + Staff List tab + Tasks tab
-// ─────────────────────────────────────────────────────────────────────────────
-
   return (
     <div style={S.page}>
       <style>{globalCSS}</style>
@@ -1601,12 +1585,6 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
           </div>
         </>
       )}
-
-// ─── END OF PART 3 ────────────────────────────────────────────────────────────
-// Continue with Part 4 → Scoring + Leaderboard + History + Geo tabs + modals + closing
-// Staff.jsx — Part 4 of 4
-// Paste this AFTER Part 3 — Scoring + Leaderboard + History + Geo tabs + modals + closing
-// ─────────────────────────────────────────────────────────────────────────────
 
       {/* ══ SCORING — FULL AUTO-MARK ══ */}
       {activeTab === 'scoring' && (
@@ -2120,5 +2098,4 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
     </div>
   )
 }
-
 export default Staff
