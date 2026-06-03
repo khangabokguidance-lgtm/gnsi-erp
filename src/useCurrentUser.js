@@ -6,7 +6,7 @@ export function useCurrentUser(currentUserProp) {
   const currentUser   = currentUserProp || null
   const userLoading   = false
 
-  const isAdmin       = currentUser?.role === 'Admin' || currentUser?.role === 'Teaching + Admin'
+  const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'Administrator' || currentUser?.role === 'Teaching + Admin'
   const isTeaching    = currentUser?.role === 'Teaching' || currentUser?.role === 'Teaching + Admin'
   const isNonTeaching = currentUser?.role === 'Non-Teaching'
   const canManage     = isAdmin
