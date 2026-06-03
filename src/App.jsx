@@ -733,7 +733,7 @@ if (!currentUser) {
   timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}        />,
   feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,
   kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
-  admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} /> : <AccessDenied />,
+  admin: isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
   adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
   entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}         />,
 }

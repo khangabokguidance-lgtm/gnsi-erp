@@ -329,9 +329,9 @@ function ChangePasswordSection({ currentUser }) {
 // ─────────────────────────────────────────────
 //  USER MODAL
 // ─────────────────────────────────────────────
-function UserModal({ existing, onClose, onSaved, currentUser }) {
+function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [] }) {
   const isEdit = !!existing
-  const [form,   setForm]   = useState({ name: existing?.name ?? '', username: existing?.username ?? '', password: '', role: existing?.role ?? 'Teacher' })
+  const [form, setForm] = useState({ name: existing?.name ?? '', username: existing?.username ?? '', password: '', role: existing?.role ?? 'Teacher', staff_profile_id: existing?.staff_profile_id ?? '' })
   const [saving, setSaving] = useState(false)
   const [err,    setErr]    = useState(null)
 
@@ -342,7 +342,7 @@ function UserModal({ existing, onClose, onSaved, currentUser }) {
     if (!isEdit && form.password.length < 8) { setErr('Password must be at least 8 characters.'); return }
     setSaving(true); setErr(null)
     if (isEdit) {
-      const update = { name: form.name.trim(), role: form.role, updated_at: new Date().toISOString() }
+      const update = { name: form.name.trim(), role: form.role, updated_at: new Date().toISOString(), staff_profile_id: form.staff_profile_id ? parseInt(form.staff_profile_id) : null }
       if (form.password) update.password_hash = await hashPassword(form.password)
       const { error } = await supabase.from('portal_users').update(update).eq('id', existing.id)
       if (error) { setErr(error.message); setSaving(false); return }
@@ -353,9 +353,10 @@ function UserModal({ existing, onClose, onSaved, currentUser }) {
       if (dup) { setErr('Username already taken.'); setSaving(false); return }
       const hashedPw = await hashPassword(form.password)
       const { error } = await supabase.from('portal_users').insert({
-        name: form.name.trim(), username: cleanUsername,
-        password_hash: hashedPw, role: form.role, active: true,
-      })
+  name: form.name.trim(), username: cleanUsername,
+  password_hash: hashedPw, role: form.role, active: true,
+  staff_profile_id: form.staff_profile_id ? parseInt(form.staff_profile_id) : null,
+})
       if (error) { setErr(error.message); setSaving(false); return }
       await logAudit(`Added user: ${form.name} (${form.role})`, currentUser)
     }
@@ -380,8 +381,13 @@ function UserModal({ existing, onClose, onSaved, currentUser }) {
           </div>
         ))}
         <label style={{ fontSize:12, fontWeight:600, color:'#475569', display:'block', marginBottom:4 }}>Role</label>
-        <select style={{ ...inp, marginBottom:22 }} value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}>
+        <select style={{ ...inp, marginBottom:14 }} value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}>
           {ALL_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <label style={{ fontSize:12, fontWeight:600, color:'#475569', display:'block', marginBottom:4 }}>Link Staff Profile <span style={{ color:'#94A3B8', fontWeight:400 }}>(for Geo-Attendance)</span></label>
+        <select style={{ ...inp, marginBottom:22 }} value={form.staff_profile_id} onChange={e => setForm(p => ({ ...p, staff_profile_id: e.target.value }))}>
+          <option value="">— Not linked —</option>
+          {allStaff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.designation}</option>)}
         </select>
         <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
           <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:8, border:'1px solid #E2E8F0', background:'white', cursor:'pointer', fontSize:13, fontFamily:'inherit' }}>Cancel</button>
@@ -397,7 +403,7 @@ function UserModal({ existing, onClose, onSaved, currentUser }) {
 // ─────────────────────────────────────────────
 //  USERS SECTION
 // ─────────────────────────────────────────────
-function UsersSection({ currentUser }) {
+function UsersSection({ currentUser, allStaff = [] }) {
   const [users,    setUsers]    = useState([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState(null)
@@ -441,7 +447,7 @@ function UsersSection({ currentUser }) {
 
   return (
     <div>
-      {modal && <UserModal existing={modal === 'add' ? null : modal} onClose={() => setModal(null)} onSaved={fetchUsers} currentUser={currentUser} />}
+      {modal && <UserModal existing={modal === 'add' ? null : modal} onClose={() => setModal(null)} onSaved={fetchUsers} currentUser={currentUser} allStaff={allStaff} />}
       {confirm && <ConfirmModal title={`Delete ${confirm.user.name}?`} message="This will permanently remove the user. This cannot be undone." danger onConfirm={() => deleteUser(confirm.user)} onCancel={() => setConfirm(null)} />}
 
       <div className="adm-role-filter" style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
@@ -1198,7 +1204,7 @@ function AuditSection() {
 // ─────────────────────────────────────────────
 //  ROOT
 // ─────────────────────────────────────────────
-export default function AdminPage({ currentUser, onLogout }) {
+export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
   const [activeTab,     setActiveTab]     = useState('users')
   const [logoutConfirm, setLogoutConfirm] = useState(false)
   const isMobile = useIsMobile()
@@ -1274,7 +1280,7 @@ export default function AdminPage({ currentUser, onLogout }) {
           <h2 style={{ margin:0, fontSize:18, fontWeight:800, color:'#0F172A', letterSpacing:'-.02em' }}>{activeNav?.label}</h2>
         </div>
         <div style={{ animation:'adm-fadein .18s ease' }} key={activeTab}>
-          {activeTab==='users'       && <UsersSection         currentUser={currentUser} />}
+          {activeTab==='users' && <UsersSection currentUser={currentUser} allStaff={allStaff} />}
           {activeTab==='permissions' && <PermissionsSection    currentUser={currentUser} />}
           {activeTab==='overrides'   && <OverridesSection      currentUser={currentUser} />}
           {activeTab==='analytics'   && <AnalyticsSection />}
