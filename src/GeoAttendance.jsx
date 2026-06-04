@@ -22,6 +22,7 @@ const TRACK_INTERVAL_MS = 2 * 60 * 1000
 const DEAD_SESSION_MS   = 5 * 60 * 1000
 
 const AUTO_CHECKOUT_THRESHOLD = 10
+const RAILWAY_URL = ''
 
 const FRAUD_TYPES = {
   outside_campus: { label: 'Outside Campus',     color: '#ef4444', icon: '📍' },
@@ -363,7 +364,115 @@ function OfflineBanner({ offline }) {
     </div>
   )
 }
+function usePushSubscription(currentStaff, isAdmin) {
+  const subscriptionRef = useRef(null)
+  const subscribe = useCallback(async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    if (!currentStaff?.id && !isAdmin) return
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      if (existing) { subscriptionRef.current = existing; return }
+      const res = await fetch('/api/vapid-key')
+      const { publicKey } = await res.json()
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') return
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      })
+      subscriptionRef.current = sub
+      await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscription: sub.toJSON(),
+          staff_id: currentStaff?.id || null,
+          role: isAdmin ? 'admin' : 'staff',
+        }),
+      })
+    } catch (err) { console.warn('Push subscription failed:', err.message) }
+  }, [currentStaff?.id, isAdmin])
+  const unsubscribe = useCallback(async () => {
+    if (!subscriptionRef.current) return
+    try {
+      await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: subscriptionRef.current.endpoint }),
+      })
+      await subscriptionRef.current.unsubscribe()
+      subscriptionRef.current = null
+    } catch (err) { console.warn('Push unsubscribe failed:', err.message) }
+  }, [])
+  return { subscribe, unsubscribe }
+}
 
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw     = window.atob(base64)
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+}
+function AttendanceChart({ rows, monthFilter }) {
+  const canvasRef = useRef(null)
+  const chartRef  = useRef(null)
+
+  useEffect(() => {
+    if (!rows.length) return
+    const load = () => {
+      if (!window.Chart) return
+      if (chartRef.current) chartRef.current.destroy()
+      const labels   = rows.map(r => r.name.split(' ')[0])
+      chartRef.current = new window.Chart(canvasRef.current, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Present',   data: rows.map(r => r.present),  backgroundColor: '#16a34a', borderRadius: 4 },
+            { label: 'Late',      data: rows.map(r => r.late),      backgroundColor: '#b45309', borderRadius: 4 },
+            { label: 'Early Out', data: rows.map(r => r.earlyOut),  backgroundColor: '#dc2626', borderRadius: 4 },
+            { label: 'Absent',    data: rows.map(r => r.absent),    backgroundColor: '#94a3b8', borderRadius: 4 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+            y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: '#f1f5f9' } },
+          },
+        },
+      })
+    }
+    if (window.Chart) { load() } else {
+      const s = document.createElement('script')
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js'
+      s.onload = load
+      document.head.appendChild(s)
+    }
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null } }
+  }, [rows])
+
+  return (
+    <div style={{ ...S.card, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontWeight: 700, color: '#1e3a5f', fontSize: 14 }}>📊 Attendance Overview — {monthFilter}</div>
+        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#64748b', flexWrap: 'wrap' }}>
+          {[['Present','#16a34a'],['Late','#b45309'],['Early Out','#dc2626'],['Absent','#94a3b8']].map(([l,c]) => (
+            <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: c, display: 'inline-block' }} />{l}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ position: 'relative', height: Math.max(200, rows.length * 40 + 60) + 'px' }}>
+        <canvas ref={canvasRef} role="img" aria-label={`Attendance chart for ${monthFilter}`}>Attendance data for {monthFilter}</canvas>
+      </div>
+    </div>
+  )
+}
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -414,6 +523,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const [expandedTrail, setExpandedTrail] = useState(null)
   const [loadingMonth,  setLoadingMonth]  = useState(false)
 
+  const { subscribe, unsubscribe } = usePushSubscription(currentStaff, isAdmin)
   const watchRef       = useRef(null)
   const trackRef       = useRef(null)
   const coordsRef      = useRef(null)
@@ -444,6 +554,15 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const handler = (e) => {
+      if (e.data?.type === 'NAVIGATE_TAB' && e.data.tab) setActiveTab(e.data.tab)
+    }
+    navigator.serviceWorker.addEventListener('message', handler)
+    return () => navigator.serviceWorker.removeEventListener('message', handler)
+  }, [])
+
   // ── Verify admin role from server ────────────────────────────────────────
 
   useEffect(() => {
@@ -453,6 +572,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       setServerIsAdmin(!!data)
       setAdminVerified(true)
       if (!!data) setActiveTab('monitor')
+      subscribe()
     }
     verify()
   }, [currentStaff?.id])
@@ -580,7 +700,19 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
   useEffect(() => { if (isAdmin && activeTab === 'monitor') fetchTodayLogs() },  [activeTab, isAdmin])
   useEffect(() => { if (isAdmin && activeTab === 'fraud')   fetchFraudLogs() },  [activeTab, isAdmin])
-  useEffect(() => { if (isAdmin && activeTab === 'report')  fetchMonthLogs() },  [activeTab, isAdmin, monthFilter, selectedStaff])
+  useEffect(() => {
+  if (!isAdmin || activeTab !== 'report') return
+  fetchMonthLogs().then(() => {
+    if (!selectedStaff) {
+      supabase.rpc('sync_attendance_salary_feed', { p_month: monthFilter })
+        .then(({ data, error }) => {
+          if (!error && data?.rows_synced > 0)
+            console.log(`[salary feed] synced ${data.rows_synced} staff for ${monthFilter}`)
+        })
+        .catch(() => {})
+    }
+  })
+}, [activeTab, isAdmin, monthFilter, selectedStaff])
 
   useEffect(() => {
     setShiftForms([])
@@ -1089,7 +1221,17 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
               </div>
             )}
 
-            <div style={S.card}>
+            {'Notification' in window && Notification.permission === 'default' && (
+  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10,
+    padding: '10px 16px', marginBottom: 14, display: 'flex',
+    justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ fontSize: 13, color: '#1d4ed8', fontWeight: 600 }}>
+      🔔 Enable push notifications to get shift alerts
+    </div>
+    <button onClick={subscribe} style={S.btnSm('#1d4ed8')}>Enable</button>
+  </div>
+)}
+<div style={S.card}>
               <GPSRing
                 status={gpsStatus} distance={gpsDistance} accuracy={gpsAccuracy} campus={campus}
                 tracking={activeTracking.length > 0}
@@ -1473,8 +1615,10 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
               })
               const rows = Object.values(staffMap)
               return rows.length > 0 ? (
-                <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-                  <div style={{ padding: '14px 16px', fontWeight: 700, color: '#1e3a5f', borderBottom: '1px solid #f1f5f9' }}>Staff Summary — {monthFilter}</div>
+  <>
+    <AttendanceChart rows={rows} monthFilter={monthFilter} />
+    <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+      <div style={{ padding: '14px 16px', fontWeight: 700, color: '#1e3a5f', borderBottom: '1px solid #f1f5f9' }}>Staff Summary — {monthFilter}</div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead><tr>{['Staff','Total','Present','Late','Late Min','Early Out','Absent','Flagged','Rate'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
@@ -1499,8 +1643,9 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
                     </table>
                   </div>
                 </div>
-              ) : null
-            })()}
+          </>
+        ) : null
+        })()}
 
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
               <div style={{ overflowX: 'auto' }}>
