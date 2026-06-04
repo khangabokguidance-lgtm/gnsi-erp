@@ -1,3 +1,4 @@
+
 // Admissions.jsx — GNSI Portal v2.0
 // ─────────────────────────────────────────────────────────────────────────────
 // 100-FEATURE COMPLETE REWRITE
@@ -66,7 +67,6 @@ const HOSTEL_STYLES = {
 }
 const HOUSES_LIST        = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
-// Feature 79: House capacities
 const HOUSE_CAPACITIES = {
   'Kombirei':40,'Shiroi':40,'Loktak':40,'Singgarei':40,'Koubru':40,
   'Kangla':40,'Sangai':40,'Takhelei':40,'Block-B':30,'Day Scholar':999,
@@ -99,7 +99,6 @@ function deriveHostelType(house, hostelType) {
   return 'Day Scholar'
 }
 
-// Feature 95: auto-save draft key
 const DRAFT_KEY = 'gnsi_adm_draft'
 
 // ─── CSV / Export Helpers ──────────────────────────────────────────────────────
@@ -124,7 +123,6 @@ function downloadCSV(content, filename) {
   URL.revokeObjectURL(url)
 }
 
-// Feature 41: WhatsApp message builder
 function buildWAMsg(a, template='admission') {
   const templates = {
     admission: `Dear Parent of *${a.name}*,\n\nWe are pleased to inform you that your ward has been *Admitted* to GNSI for session *${a.session||''}*.\n\nGCC No: *${a.gcc}*\nAdm No: *${a.admNo||'Pending'}*\nCourse: *${a.course||''}${a.subtype?' – '+a.subtype:''}*\nHouse: *${a.house||'TBD'}*\nHostel Type: *${a.hostel_type}*\n\nPlease report to the office at the earliest to complete formalities.\n\n– GNSI, Khangabok`,
@@ -230,7 +228,6 @@ function mapFromDB(row) {
     docs:             [],
     created_at:       row.created_at,
     updated_at:       row.updated_at,
-    // audit log, notes, house_log stored in parallel tables, loaded separately
     notes:            [],
     auditLog:         [],
     houseLog:         [],
@@ -264,7 +261,7 @@ const styles = {
   },
 }
 
-// ─── FEATURE 93: Keyboard Shortcuts Hook ──────────────────────────────────────
+// ─── Keyboard Shortcuts Hook ───────────────────────────────────────────────────
 function useKeyboardShortcuts({ onNew, onSearch, onEscape, onToggleView, onToggleDark }) {
   useEffect(() => {
     const handler = e => {
@@ -280,31 +277,6 @@ function useKeyboardShortcuts({ onNew, onSearch, onEscape, onToggleView, onToggl
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onNew, onSearch, onEscape, onToggleView, onToggleDark])
-}
-
-// ─── FEATURE 97: Virtual Scroll (simple windowing) ────────────────────────────
-function useVirtualList(items, rowHeight = 110, overscan = 5) {
-  const containerRef = useRef(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [containerH, setContainerH] = useState(600)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setContainerH(e.contentRect.height))
-    ro.observe(el)
-    const onScroll = () => setScrollTop(el.scrollTop)
-    el.addEventListener('scroll', onScroll, { passive:true })
-    return () => { ro.disconnect(); el.removeEventListener('scroll', onScroll) }
-  }, [])
-
-  const totalH  = items.length * rowHeight
-  const startIdx= Math.max(0, Math.floor(scrollTop / rowHeight) - overscan)
-  const endIdx  = Math.min(items.length - 1, Math.ceil((scrollTop + containerH) / rowHeight) + overscan)
-  const visible  = items.slice(startIdx, endIdx + 1)
-  const offsetY  = startIdx * rowHeight
-
-  return { containerRef, visible, totalH, offsetY, startIdx }
 }
 
 // ─── Shared UI ─────────────────────────────────────────────────────────────────
@@ -399,7 +371,7 @@ function PillStrip({ label, options, value, onChange, colorFn, countFn }) {
   )
 }
 
-// ─── FEATURE 23-34: Mini Analytics Dashboard ──────────────────────────────────
+// ─── Analytics Dashboard ───────────────────────────────────────────────────────
 function MiniChart({ data, max, color, height=32 }) {
   if (!data.length) return null
   return (
@@ -431,39 +403,31 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
   const bd = darkMode ? T.slate[700] : T.slate[200]
   const tx = darkMode ? T.slate[100] : T.slate[800]
 
-  // Feature 23: Funnel
   const total   = apps.length
   const byStatus = {}
   ADM_STATUSES.forEach(s => byStatus[s] = apps.filter(a=>a.status===s).length)
 
-  // Feature 24: Course bar
   const byCourse = {}
   Object.keys(COURSE_STRUCTURE).forEach(c => byCourse[c] = apps.filter(a=>a.course===c).length)
 
-  // Feature 26: Hostel pie (simplified bar)
   const byHostel = {}
   HOSTEL_TYPES.forEach(h => byHostel[h] = apps.filter(a=>a.hostel_type===h).length)
 
-  // Feature 27: Gender
   const byGender = { Male:0, Female:0, Other:0 }
   apps.forEach(a => { if (a.gender && byGender[a.gender] !== undefined) byGender[a.gender]++ })
 
-  // Feature 28: Category
   const byCat = {}
   CATEGORIES.filter(c=>c!=='--').forEach(c => byCat[c] = apps.filter(a=>a.category===c).length)
 
-  // Feature 30: Conversion rates
   const admittedRate = byStatus['Applied'] > 0
     ? Math.round((byStatus['Admitted']+byStatus['Enrolled']) / total * 100) : 0
   const enrollRate = (byStatus['Admitted']+byStatus['Enrolled']) > 0
     ? Math.round(byStatus['Enrolled'] / (byStatus['Admitted']+byStatus['Enrolled']) * 100) : 0
 
-  // Feature 31: Revenue forecast
   const monthsLeft = 8
   const revenueMonthly = apps.filter(a=>a.status==='Enrolled').reduce((s,a) => s + getFlatFeeAmt(a.hostel_type), 0)
   const revForecast = revenueMonthly * monthsLeft
 
-  // Feature 29: Daily intake (last 7 days)
   const dailyCounts = Array.from({length:7},(_,i) => {
     const d = new Date(); d.setDate(d.getDate()-6+i)
     const ds = d.toISOString().slice(0,10)
@@ -478,7 +442,8 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
   )
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(300px,100%),1fr))', gap:14, marginBottom:16 }}>     {card('Admission Funnel', <>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(300px,100%),1fr))', gap:14, marginBottom:16 }}>
+      {card('Admission Funnel', <>
         <FunnelBar label="Applied"      value={byStatus['Applied']}      total={total} color={T.indigo[500]} />
         <FunnelBar label="Under Review" value={byStatus['Under Review']} total={total} color={T.amber[500]} />
         <FunnelBar label="Admitted"     value={byStatus['Admitted']}     total={total} color={T.violet[500]} />
@@ -553,7 +518,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
   )
 }
 
-// ─── FEATURE 71: Expandable Detail Panel ──────────────────────────────────────
+// ─── Detail Panel ──────────────────────────────────────────────────────────────
 function DetailPanel({ a, onClose, onAddNote, darkMode }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
@@ -574,7 +539,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16 }}>
-        {/* Personal */}
         <div>
           <div style={{ fontSize:10, fontWeight:700, color:T.slate[400], textTransform:'uppercase', marginBottom:8 }}>Personal</div>
           {[['Religion', a.religion],['Mother Tongue',a.motherTongue],['DOB',dateFmt(a.dob)],['Blood',a.blood],['Gender',a.gender],['Category',a.category],['Quota',a.quota],['Disability',a.disabilityFlag?'Yes':'No']].map(([k,v])=>v&&v!=='--'&&(
@@ -582,7 +546,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
           ))}
         </div>
 
-        {/* Academic */}
         <div>
           <div style={{ fontSize:10, fontWeight:700, color:T.slate[400], textTransform:'uppercase', marginBottom:8 }}>Academic & Hostel</div>
           {[['Entrance Score',a.entranceScore],['Interview Score',a.interviewScore],['Interview Date',dateFmt(a.interviewDate)],['House',a.house],['Bed No.',a.bedNumber],['Hostel Type',a.hostel_type],['Instalment',a.instalmentPlan],['Sibling GCC',a.siblingGcc]].map(([k,v])=>v&&(
@@ -590,7 +553,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
           ))}
         </div>
 
-        {/* Financial */}
         <div>
           <div style={{ fontSize:10, fontWeight:700, color:T.slate[400], textTransform:'uppercase', marginBottom:8 }}>Financial</div>
           {[['Scholarship',a.scholarshipPct?`${a.scholarshipPct}%`:'—'],['Concession',a.concessionAmt?`₹${fmt(a.concessionAmt)}`:'—'],['Security Dep.',a.securityDeposit?`₹${fmt(a.securityDeposit)}`:'—'],['Transport Fee',a.transportFee?`₹${fmt(a.transportFee)}/mo`:'—'],['Base Fee',`₹${fmt(getFlatFeeAmt(a.hostel_type))}/mo`]].map(([k,v])=>(
@@ -604,7 +566,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
         </div>
       </div>
 
-      {/* Feature 73: Activity Timeline */}
       <SectionDivider label="Activity Timeline" />
       <div style={{ display:'flex', gap:0, overflowX:'auto', paddingBottom:4 }}>
         {timelineItems.map((item, i) => (
@@ -621,7 +582,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
         ))}
       </div>
 
-      {/* Feature 74: Document status dots */}
       <SectionDivider label="Document Checklist" />
       <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
         {ADM_DOCS.map(d => {
@@ -634,7 +594,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
         })}
       </div>
 
-      {/* Feature 51: Notes log */}
       <SectionDivider label={`Staff Notes (${a.notes?.length||0})`} />
       <div style={{ marginBottom:8 }}>
         {(a.notes||[]).map((n,i) => (
@@ -649,7 +608,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
           style={{ padding:'9px 16px', borderRadius:8, background:T.slate[800], color:'#fff', border:'none', fontSize:12, fontWeight:700, cursor:'pointer' }}>Add</button>
       </div>
 
-      {/* Feature 82: Warden contact */}
       {a.house && WARDEN_CONTACTS[a.house] && (
         <>
           <SectionDivider label="Warden Contact" />
@@ -664,7 +622,6 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
         </>
       )}
 
-      {/* Feature 50: Emergency contact */}
       {a.emergencyName && (
         <>
           <SectionDivider label="Emergency Contact" />
@@ -677,7 +634,7 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
   )
 }
 
-// ─── FEATURE 72: Quick-Edit Inline ────────────────────────────────────────────
+// ─── Quick-Edit Row ────────────────────────────────────────────────────────────
 function QuickEditRow({ a, onSave, onCancel }) {
   const [status,    setStatus]    = useState(a.status)
   const [house,     setHouse]     = useState(a.house||'')
@@ -701,7 +658,7 @@ function QuickEditRow({ a, onSave, onCancel }) {
   )
 }
 
-// ─── FEATURE 63: Advanced Search Drawer ───────────────────────────────────────
+// ─── Advanced Search ───────────────────────────────────────────────────────────
 function AdvancedSearch({ filters, onChange, onClose, apps }) {
   const [f, setF] = useState(filters)
   const set = (k,v) => setF(p=>({...p,[k]:v}))
@@ -791,11 +748,9 @@ function AdvancedSearch({ filters, onChange, onClose, apps }) {
   )
 }
 
-// ─── FEATURE 45: WhatsApp Blast Modal ─────────────────────────────────────────
+// ─── WhatsApp Blast Modal ──────────────────────────────────────────────────────
 function WABlastModal({ apps, onClose }) {
   const [template, setTemplate] = useState('admission')
-  const [preview,  setPreview]  = useState(null)
-
   const previewApp = apps[0]
   const previewMsg = previewApp ? buildWAMsg(previewApp, template) : ''
 
@@ -839,7 +794,7 @@ function WABlastModal({ apps, onClose }) {
   )
 }
 
-// ─── FEATURE 38-40: Print/PDF helpers (browser print) ─────────────────────────
+// ─── Print helpers ─────────────────────────────────────────────────────────────
 function printAdmitCard(a) {
   const win = window.open('','_blank','width=600,height=700')
   const fee = getFlatFeeAmt(a.hostel_type)
@@ -948,7 +903,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
   const set = (k,v) => {
     setForm(f => {
       const nf = { ...f, [k]:v }
-      // Feature 94: auto-save draft
       try { localStorage.setItem(DRAFT_KEY, JSON.stringify(nf)) } catch(_) {}
       return nf
     })
@@ -962,7 +916,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
     else if (form.hostel_type === 'Day Scholar') set('hostel_type','Boarder')
   }, [form.house])
 
-  // Feature 3: duplicate GCC check
   const [gccDup, setGccDup] = useState(false)
   useEffect(() => {
     if (!form.gcc || editing) { setGccDup(false); return }
@@ -979,7 +932,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
   const discRate = form.scholarshipPct > 0 ? Math.round(baseRate*(1-form.scholarshipPct/100)) : baseRate
   const warden   = WARDEN_CONTACTS[form.house]
 
-  // Feature 93: unsaved warning
   const [dirty, setDirty] = useState(false)
   useEffect(() => setDirty(true), [form])
 
@@ -1004,7 +956,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
       </div>
 
       <div style={{ padding:'20px' }}>
-        {/* Feature 1: Photo upload */}
         <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:16, padding:'12px 14px', background:T.slate[50], borderRadius:10, border:`1px solid ${T.slate[200]}` }}>
           <Avatar name={form.name} size={56} photoUrl={form.photoUrl} />
           <div>
@@ -1042,31 +993,26 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
               {CATEGORIES.map(c=><option key={c}>{c}</option>)}
             </select>
           </FieldRow>
-          {/* Feature 5: Religion */}
           <FieldRow label="Religion">
             <select style={styles.inp} value={form.religion} onChange={e=>set('religion',e.target.value)}>
               {RELIGIONS.map(r=><option key={r}>{r}</option>)}
             </select>
           </FieldRow>
-          {/* Feature 6: Mother tongue */}
           <FieldRow label="Mother Tongue">
             <select style={styles.inp} value={form.motherTongue} onChange={e=>set('motherTongue',e.target.value)}>
               {MOTHER_TONGUES.map(m=><option key={m}>{m}</option>)}
             </select>
           </FieldRow>
-          {/* Feature 11: Quota */}
           <FieldRow label="Quota Type">
             <select style={styles.inp} value={form.quota} onChange={e=>set('quota',e.target.value)}>
               {QUOTA_TYPES.map(q=><option key={q}>{q}</option>)}
             </select>
           </FieldRow>
-          {/* Feature 10: Referral */}
           <FieldRow label="Referral Source">
             <select style={styles.inp} value={form.referral} onChange={e=>set('referral',e.target.value)}>
               {REFERRAL_SOURCES.map(r=><option key={r}>{r}</option>)}
             </select>
           </FieldRow>
-          {/* Feature 7: Disability */}
           <FieldRow label="Disability / Special Needs">
             <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:4 }}>
               <input type="checkbox" checked={form.disabilityFlag} onChange={e=>set('disabilityFlag',e.target.checked)} id="disCheck" style={{ width:16, height:16, cursor:'pointer' }} />
@@ -1074,7 +1020,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
               {form.disabilityFlag && <input style={{ ...styles.inp, flex:1 }} value={form.disabilityNotes} onChange={e=>set('disabilityNotes',e.target.value)} placeholder="Describe…" />}
             </div>
           </FieldRow>
-          {/* Feature 2: Sibling GCC */}
           <FieldRow label="Sibling GCC No.">
             <input style={styles.inp} value={form.siblingGcc} onChange={e=>set('siblingGcc',e.target.value)} placeholder="If sibling enrolled at GNSI" type="number" />
           </FieldRow>
@@ -1112,13 +1057,12 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
               {HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
             </select>
           </FieldRow>
-          <FieldRow label={`Hostel Type${form.house?'':''}`}>
+          <FieldRow label="Hostel Type">
             <select style={{ ...styles.inp, background:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?T.slate[50]:'#fff', color:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?T.slate[400]:T.slate[800] }}
               value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>
               {HOSTEL_TYPES.map(h=><option key={h} value={h}>{h}</option>)}
             </select>
           </FieldRow>
-          {/* Feature 84: Bed number */}
           <FieldRow label="Bed / Room No.">
             <input style={styles.inp} value={form.bedNumber} onChange={e=>set('bedNumber',e.target.value)} placeholder="e.g. K-12" />
           </FieldRow>
@@ -1127,7 +1071,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
               {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
             </select>
           </FieldRow>
-          {/* Feature 52: Follow-up date */}
           <FieldRow label="Follow-up Date">
             <input type="date" style={styles.inp} value={form.followupDate} onChange={e=>set('followupDate',e.target.value)} />
           </FieldRow>
@@ -1148,11 +1091,9 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
 
         <SectionDivider label="Entrance & Interview" />
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
-          {/* Feature 8: Entrance score */}
           <FieldRow label="Entrance Score">
             <input style={styles.inp} type="number" value={form.entranceScore} onChange={e=>set('entranceScore',e.target.value)} placeholder="Out of 100" />
           </FieldRow>
-          {/* Feature 9: Interview */}
           <FieldRow label="Interview Score">
             <input style={styles.inp} type="number" value={form.interviewScore} onChange={e=>set('interviewScore',e.target.value)} placeholder="Out of 50" />
           </FieldRow>
@@ -1163,23 +1104,18 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
 
         <SectionDivider label="Financial" />
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
-          {/* Feature 13: Scholarship */}
           <FieldRow label="Scholarship %">
             <input style={styles.inp} type="number" min="0" max="100" value={form.scholarshipPct} onChange={e=>set('scholarshipPct',e.target.value)} placeholder="e.g. 25" />
           </FieldRow>
-          {/* Feature 16: Concession */}
           <FieldRow label="Concession Amount ₹">
             <input style={styles.inp} type="number" value={form.concessionAmt} onChange={e=>set('concessionAmt',e.target.value)} placeholder="Fixed ₹ off/mo" />
           </FieldRow>
-          {/* Feature 17: Security deposit */}
           <FieldRow label="Security Deposit ₹">
             <input style={styles.inp} type="number" value={form.securityDeposit} onChange={e=>set('securityDeposit',e.target.value)} placeholder="Refundable" />
           </FieldRow>
-          {/* Feature 18: Transport fee */}
           <FieldRow label="Transport Fee ₹/mo">
             <input style={styles.inp} type="number" value={form.transportFee} onChange={e=>set('transportFee',e.target.value)} placeholder="Day scholars" />
           </FieldRow>
-          {/* Feature 15: Instalment plan */}
           <FieldRow label="Instalment Plan">
             <select style={styles.inp} value={form.instalmentPlan} onChange={e=>set('instalmentPlan',e.target.value)}>
               <option value="monthly">Monthly</option>
@@ -1204,7 +1140,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
           </div>
         </div>
 
-        {/* Feature 12: Emergency contact */}
         <SectionDivider label="Emergency Contact" />
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
           <FieldRow label="Name"><input style={styles.inp} value={form.emergencyName} onChange={e=>set('emergencyName',e.target.value)} placeholder="Contact name" /></FieldRow>
@@ -1248,11 +1183,9 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
   const followupOverdue = a.followupDate && a.followupDate < today
   const followupToday   = a.followupDate && a.followupDate === today
 
-  // Feature 78: duplicate check (same name shown as warning in parent)
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[700] : T.slate[200]
 
-  // Feature 77: Waitlist position handled by parent
   let actionBtn = null
   if (a.status === 'Applied' || a.status === 'Under Review') {
     actionBtn = <button onClick={e=>{e.stopPropagation();onAdmit(a.id)}} style={{ padding:'6px 14px', borderRadius:7, background:T.violet[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Admit</button>
@@ -1274,6 +1207,7 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
     )
   }
 
+  // ── Table row mode ──────────────────────────────────────────────────────────
   if (tableMode) {
     return (
       <tr style={{ background:selected?T.indigo[50]:bg, borderBottom:`1px solid ${bd}`, fontSize:12 }}>
@@ -1298,58 +1232,93 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
     )
   }
 
+  // ── Grid card mode ──────────────────────────────────────────────────────────
   return (
-    <div style={{ background:bg, border:`1px solid ${selected?T.indigo[400]:bd}`, borderRadius:12, padding:'14px 16px', display:'flex', alignItems:'center', gap:14, transition:'box-shadow .15s', position:'relative', outline:selected?`2px solid ${T.indigo[300]}`:'none' }}
-      onMouseEnter={e => e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'}
-      onMouseLeave={e => e.currentTarget.style.boxShadow='none'}
+    <div style={{
+      background: bg,
+      border: `1px solid ${selected ? T.indigo[400] : bd}`,
+      borderRadius: 14,
+      overflow: 'hidden',
+      outline: selected ? `2px solid ${T.indigo[300]}` : 'none',
+      boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+      transition: 'box-shadow .15s, transform .15s',
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'relative',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,.10)'; e.currentTarget.style.transform='translateY(-2px)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.06)'; e.currentTarget.style.transform='translateY(0)' }}
     >
-      <div style={{ position:'absolute', left:0, top:8, bottom:8, width:3, borderRadius:99, background:STAT_META[a.status]?.color||T.slate[300] }} />
-      {/* Feature 53: checkbox */}
-      <input type="checkbox" checked={!!selected} onChange={()=>onSelect(a.id)} style={{ cursor:'pointer', flexShrink:0 }} onClick={e=>e.stopPropagation()} />
-      <Avatar name={a.name} size={40} photoUrl={a.photoUrl} />
-      <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => onDetail(a)}>
-        <div style={{ fontWeight:800, fontSize:14, color:T.slate[900] }}>
-          {a.name}
-          {a.scholarshipPct>0 && <span style={{ marginLeft:6, fontSize:10, padding:'1px 6px', borderRadius:4, background:T.emerald[50], color:T.emerald[700], fontWeight:700 }}>🎓 {a.scholarshipPct}% schol.</span>}
-          {a.disabilityFlag && <span style={{ marginLeft:6, fontSize:10, padding:'1px 6px', borderRadius:4, background:T.amber[50], color:T.amber[700], fontWeight:700 }}>♿ Special</span>}
-          {a.siblingGcc && <span style={{ marginLeft:6, fontSize:10, padding:'1px 6px', borderRadius:4, background:T.violet[50], color:T.violet[700], fontWeight:700 }}>👫 Sibling</span>}
+      {/* Status accent bar */}
+      <div style={{ height: 4, background: STAT_META[a.status]?.color || T.slate[300], borderRadius: '14px 14px 0 0' }} />
+
+      {/* Card body */}
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+
+        {/* Row 1: checkbox + avatar + name + status */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <input type="checkbox" checked={!!selected} onChange={() => onSelect(a.id)}
+            style={{ cursor: 'pointer', flexShrink: 0, marginTop: 4 }} onClick={e => e.stopPropagation()} />
+          <Avatar name={a.name} size={42} photoUrl={a.photoUrl} />
+          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onDetail(a)}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: T.slate[900], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {a.name}
+            </div>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
+              {a.gcc   && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.indigo[500], fontWeight: 700 }}>#{a.gcc}</span>}
+              {a.admNo && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
+              {a.scholarshipPct > 0 && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.emerald[50], color: T.emerald[700], fontWeight: 700 }}>🎓 {a.scholarshipPct}%</span>}
+              {a.disabilityFlag   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50],   color: T.amber[700],   fontWeight: 700 }}>♿</span>}
+              {a.siblingGcc       && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.violet[50],  color: T.violet[700],  fontWeight: 700 }}>👫</span>}
+            </div>
+          </div>
+          <StatusBadge status={a.status} />
         </div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:3, fontSize:11.5, color:T.slate[500], alignItems:'center' }}>
-          {a.gcc    && <span style={{ fontFamily:'monospace' }}>#{a.gcc}</span>}
-          {a.admNo  && <span style={{ fontFamily:'monospace', color:T.indigo[500] }}>{a.admNo}</span>}
-          {a.session && <span style={{ padding:'1px 6px', borderRadius:4, background:T.slate[100], color:T.slate[500], fontSize:11, fontWeight:600 }}>{a.session}</span>}
-          {a.cls    && <span>{a.cls}</span>}
-          {a.house  && <span style={{ color:T.slate[400] }}>{a.house}{a.bedNumber?` · ${a.bedNumber}`:''}</span>}
-          {a.course && (
-            <span style={{ color:cs?.color??T.slate[600], fontWeight:600, background:cs?.bg??T.slate[100], borderRadius:4, padding:'1px 6px', fontSize:11 }}>
-              {a.course}{a.subtype?` · ${a.subtype}`:''}
-            </span>
+
+        {/* Row 2: info grid 2×2 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12, color: T.slate[600] }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Course</div>
+            <div style={{ fontWeight: 600, color: COURSE_STRUCTURE[a.course]?.color || T.slate[700], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {a.course || '—'}{a.subtype ? ` · ${a.subtype}` : ''}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Class</div>
+            <div style={{ fontWeight: 600 }}>{a.cls || '—'}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>House</div>
+            <div style={{ fontWeight: 600 }}>{a.house || '—'}{a.bedNumber ? ` · ${a.bedNumber}` : ''}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Session</div>
+            <div style={{ fontWeight: 600 }}>{a.session || '—'}</div>
+          </div>
+        </div>
+
+        {/* Row 3: hostel + fee badges */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <HostelTypeBadge type={a.hostel_type} />
+          {(a.status === 'Admitted' || a.status === 'Enrolled') && (
+            admPaid
+              ? <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: T.emerald[50], color: T.emerald[700], border: `1px solid ${T.emerald[300]}`, fontWeight: 700 }}>✓ Fee Paid</span>
+              : <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: T.amber[50],   color: T.amber[700],   border: `1px solid ${T.amber[300]}`,   fontWeight: 700 }}>⚠ Fee Due</span>
           )}
-          {a.hostel_type && <HostelTypeBadge type={a.hostel_type} />}
-          {a.entranceScore && <span style={{ fontSize:10, color:T.sky[600], fontWeight:700 }}>📝 {a.entranceScore}</span>}
-          {a.phone && <span>{a.phone}</span>}
-          {/* Feature 52: follow-up badge */}
-          {followupOverdue && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:T.rose[50], color:T.rose[600], fontWeight:700, border:`1px solid ${T.rose[200]}` }}>⚠ Follow-up overdue</span>}
-          {followupToday   && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:T.amber[50], color:T.amber[600], fontWeight:700, border:`1px solid ${T.amber[200]}` }}>📅 Follow-up today</span>}
+          {a.docs?.length > 0 && <span style={{ fontSize: 10, color: T.slate[400] }}>{a.docs.length}/{ADM_DOCS.length} docs</span>}
+          {followupOverdue && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.rose[50], color: T.rose[600], fontWeight: 700, border: `1px solid ${T.rose[200]}` }}>⚠ Follow-up overdue</span>}
+          {followupToday   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50], color: T.amber[600], fontWeight: 700, border: `1px solid ${T.amber[200]}` }}>📅 Today</span>}
+          {a.phone && <span style={{ fontSize: 11, color: T.slate[400], marginLeft: 'auto' }}>{a.phone}</span>}
         </div>
-      </div>
-      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5, flexShrink:0 }}>
-        <StatusBadge status={a.status} />
-        {(a.status==='Admitted'||a.status==='Enrolled') && (
-          admPaid
-            ? <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontWeight:700 }}>✓ Fee Paid</span>
-            : <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:T.amber[50], color:T.amber[700], border:`1px solid ${T.amber[300]}`, fontWeight:700 }}>⚠ Fee Due</span>
-        )}
-        {a.docs?.length > 0 && <span style={{ fontSize:10, color:T.slate[400] }}>{a.docs.length}/{ADM_DOCS.length} docs</span>}
-      </div>
-      <div style={{ flexShrink:0, display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end' }}>
-        {actionBtn}
-        <div style={{ display:'flex', gap:4, marginTop:2, flexWrap:'wrap', justifyContent:'flex-end' }}>
-          <button onClick={e=>{e.stopPropagation();onDetail(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.sky[50], color:T.sky[600], border:`1px solid ${T.sky[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
-          <button onClick={e=>{e.stopPropagation();onQuickEdit(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.amber[50], color:T.amber[700], border:`1px solid ${T.amber[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>QEdit</button>
-          <button onClick={e=>{e.stopPropagation();onEdit(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.slate[50], color:T.slate[600], border:`1px solid ${T.slate[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
-          <button onClick={e=>{e.stopPropagation();onWAMsg(a)}} title="WhatsApp" style={{ padding:'4px 8px', borderRadius:6, background:'#E7FBE9', color:'#128C7E', border:'1px solid #A7F0BA', fontSize:11, fontWeight:700, cursor:'pointer' }}>WA</button>
-          <button onClick={e=>{e.stopPropagation();onDelete(a.id)}} style={{ padding:'4px 10px', borderRadius:6, background:'#FFF1F2', color:T.rose[600], border:'1px solid #FFE4E6', fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
+
+        {/* Row 4: action row */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: `1px solid ${T.slate[100]}`, paddingTop: 10 }}>
+          {actionBtn && <div style={{ marginRight: 'auto' }}>{actionBtn}</div>}
+          <button onClick={e=>{e.stopPropagation();onDetail(a)}}    style={{ padding:'5px 10px', borderRadius:6, background:T.sky[50],    color:T.sky[600],    border:`1px solid ${T.sky[200]}`,    fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
+          <button onClick={e=>{e.stopPropagation();onQuickEdit(a)}} style={{ padding:'5px 10px', borderRadius:6, background:T.amber[50],  color:T.amber[700],  border:`1px solid ${T.amber[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>QEdit</button>
+          <button onClick={e=>{e.stopPropagation();onEdit(a)}}      style={{ padding:'5px 10px', borderRadius:6, background:T.slate[50],  color:T.slate[600],  border:`1px solid ${T.slate[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
+          <button onClick={e=>{e.stopPropagation();onWAMsg(a)}}     style={{ padding:'5px 10px', borderRadius:6, background:'#E7FBE9',    color:'#128C7E',     border:'1px solid #A7F0BA',         fontSize:11, fontWeight:700, cursor:'pointer' }}>WA</button>
+          <button onClick={e=>{e.stopPropagation();onDelete(a.id)}} style={{ padding:'5px 10px', borderRadius:6, background:T.rose[50],   color:T.rose[600],   border:`1px solid ${T.rose[200]}`,   fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
         </div>
       </div>
     </div>
@@ -1363,95 +1332,27 @@ function BulkBar({ selected, total, onClear, onBulkStatus, onBulkHouse, onBulkDe
 
   if (selected.length === 0) return null
   return (
-  <div style={{
-    background: bg,
-    border: `1px solid ${selected ? T.indigo[400] : bd}`,
-    borderRadius: 14,
-    overflow: 'hidden',
-    outline: selected ? `2px solid ${T.indigo[300]}` : 'none',
-    boxShadow: '0 1px 4px rgba(0,0,0,.06)',
-    transition: 'box-shadow .15s, transform .15s',
-    display: 'flex',
-    flexDirection: 'column',
-    position: 'relative',
-  }}
-    onMouseEnter={e => { e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,.10)'; e.currentTarget.style.transform='translateY(-2px)' }}
-    onMouseLeave={e => { e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.06)'; e.currentTarget.style.transform='translateY(0)' }}
-  >
-    {/* Status accent bar */}
-    <div style={{ height: 4, background: STAT_META[a.status]?.color || T.slate[300], borderRadius: '14px 14px 0 0' }} />
-
-    {/* Card body */}
-    <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
-
-      {/* Row 1: checkbox + avatar + name + status */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <input type="checkbox" checked={!!selected} onChange={() => onSelect(a.id)}
-          style={{ cursor: 'pointer', flexShrink: 0, marginTop: 4 }} onClick={e => e.stopPropagation()} />
-        <Avatar name={a.name} size={42} photoUrl={a.photoUrl} />
-        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onDetail(a)}>
-          <div style={{ fontWeight: 800, fontSize: 14, color: T.slate[900], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {a.name}
-          </div>
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
-            {a.gcc   && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.indigo[500], fontWeight: 700 }}>#{a.gcc}</span>}
-            {a.admNo && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
-            {a.scholarshipPct > 0 && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.emerald[50], color: T.emerald[700], fontWeight: 700 }}>🎓 {a.scholarshipPct}%</span>}
-            {a.disabilityFlag   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50],   color: T.amber[700],   fontWeight: 700 }}>♿</span>}
-            {a.siblingGcc       && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.violet[50],  color: T.violet[700],  fontWeight: 700 }}>👫</span>}
-          </div>
-        </div>
-        <StatusBadge status={a.status} />
-      </div>
-
-      {/* Row 2: info grid 2x2 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12, color: T.slate[600] }}>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Course</div>
-          <div style={{ fontWeight: 600, color: COURSE_STRUCTURE[a.course]?.color || T.slate[700], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {a.course || '—'}{a.subtype ? ` · ${a.subtype}` : ''}
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Class</div>
-          <div style={{ fontWeight: 600 }}>{a.cls || '—'}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>House</div>
-          <div style={{ fontWeight: 600 }}>{a.house || '—'}{a.bedNumber ? ` · ${a.bedNumber}` : ''}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Session</div>
-          <div style={{ fontWeight: 600 }}>{a.session || '—'}</div>
-        </div>
-      </div>
-
-      {/* Row 3: hostel + fee badges */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        <HostelTypeBadge type={a.hostel_type} />
-        {(a.status === 'Admitted' || a.status === 'Enrolled') && (
-          admPaid
-            ? <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: T.emerald[50], color: T.emerald[700], border: `1px solid ${T.emerald[300]}`, fontWeight: 700 }}>✓ Fee Paid</span>
-            : <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: T.amber[50],   color: T.amber[700],   border: `1px solid ${T.amber[300]}`,   fontWeight: 700 }}>⚠ Fee Due</span>
-        )}
-        {a.docs?.length > 0 && <span style={{ fontSize: 10, color: T.slate[400] }}>{a.docs.length}/{ADM_DOCS.length} docs</span>}
-        {followupOverdue && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.rose[50], color: T.rose[600], fontWeight: 700, border: `1px solid ${T.rose[200]}` }}>⚠ Follow-up overdue</span>}
-        {followupToday   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50], color: T.amber[600], fontWeight: 700, border: `1px solid ${T.amber[200]}` }}>📅 Today</span>}
-        {a.phone && <span style={{ fontSize: 11, color: T.slate[400], marginLeft: 'auto' }}>{a.phone}</span>}
-      </div>
-
-      {/* Row 4: action row */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: `1px solid ${T.slate[100]}`, paddingTop: 10 }}>
-        {actionBtn && <div style={{ marginRight: 'auto' }}>{actionBtn}</div>}
-        <button onClick={e=>{e.stopPropagation();onDetail(a)}}    style={{ padding:'5px 10px', borderRadius:6, background:T.sky[50],    color:T.sky[600],    border:`1px solid ${T.sky[200]}`,    fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
-        <button onClick={e=>{e.stopPropagation();onQuickEdit(a)}} style={{ padding:'5px 10px', borderRadius:6, background:T.amber[50],  color:T.amber[700],  border:`1px solid ${T.amber[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>QEdit</button>
-        <button onClick={e=>{e.stopPropagation();onEdit(a)}}      style={{ padding:'5px 10px', borderRadius:6, background:T.slate[50],  color:T.slate[600],  border:`1px solid ${T.slate[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
-        <button onClick={e=>{e.stopPropagation();onWAMsg(a)}}     style={{ padding:'5px 10px', borderRadius:6, background:'#E7FBE9',    color:'#128C7E',     border:'1px solid #A7F0BA',         fontSize:11, fontWeight:700, cursor:'pointer' }}>WA</button>
-        <button onClick={e=>{e.stopPropagation();onDelete(a.id)}} style={{ padding:'5px 10px', borderRadius:6, background:T.rose[50],   color:T.rose[600],   border:`1px solid ${T.rose[200]}`,   fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
-      </div>
+    <div style={{ position:'sticky', bottom:16, zIndex:100, background:T.slate[900], color:'#fff', borderRadius:12, padding:'10px 16px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', boxShadow:'0 8px 32px rgba(0,0,0,.3)', margin:'12px 0' }}>
+      <span style={{ fontSize:12, fontWeight:700 }}>{selected.length} selected</span>
+      <button onClick={onClear} style={{ padding:'4px 10px', borderRadius:6, background:'transparent', color:T.slate[300], border:`1px solid ${T.slate[600]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>✕ Clear</button>
+      <div style={{ width:1, height:24, background:T.slate[600] }} />
+      <select value={statusVal} onChange={e=>setStatusVal(e.target.value)} style={{ ...styles.inp, width:'auto', fontSize:11, padding:'4px 8px', background:T.slate[800], color:'#fff', border:`1px solid ${T.slate[600]}` }}>
+        {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
+      </select>
+      <button onClick={()=>onBulkStatus(statusVal)} style={{ padding:'5px 12px', borderRadius:7, background:T.violet[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Set Status</button>
+      <select value={houseVal} onChange={e=>setHouseVal(e.target.value)} style={{ ...styles.inp, width:'auto', fontSize:11, padding:'4px 8px', background:T.slate[800], color:'#fff', border:`1px solid ${T.slate[600]}` }}>
+        <option value="">— House —</option>{HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
+      </select>
+      <button onClick={()=>houseVal&&onBulkHouse(houseVal)} style={{ padding:'5px 12px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Set House</button>
+      <div style={{ width:1, height:24, background:T.slate[600] }} />
+      <button onClick={onBulkExport} style={{ padding:'5px 12px', borderRadius:7, background:T.sky[600],    color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>📥 CSV</button>
+      <button onClick={onBulkPrint}  style={{ padding:'5px 12px', borderRadius:7, background:T.indigo[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>🖨 Print</button>
+      <button onClick={onBulkWA}     style={{ padding:'5px 12px', borderRadius:7, background:'#25D366',     color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>📲 WA Blast</button>
+      <button onClick={onBulkDelete} style={{ padding:'5px 12px', borderRadius:7, background:T.rose[600],   color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗑 Delete</button>
     </div>
-  </div>
-)
+  )
+}
+
 // ─── CSV Import Modal ──────────────────────────────────────────────────────────
 function CSVImportModal({ onClose, onImport }) {
   const [raw,     setRaw]     = useState('')
@@ -1519,7 +1420,7 @@ function CSVImportModal({ onClose, onImport }) {
   )
 }
 
-// ─── FEATURE 64: Saved Filter Presets ─────────────────────────────────────────
+// ─── Saved Filter Presets ──────────────────────────────────────────────────────
 const PRESET_KEY = 'gnsi_adm_presets'
 function useFilterPresets() {
   const [presets, setPresets] = useState(() => {
@@ -1538,7 +1439,7 @@ function useFilterPresets() {
   return { presets, save, remove }
 }
 
-// ─── FEATURE 70: Sort Control ─────────────────────────────────────────────────
+// ─── Sort Control ──────────────────────────────────────────────────────────────
 function SortControl({ sortBy, sortDir, onChange }) {
   const options = [
     { label:'GCC No.',  key:'gcc'        },
@@ -1571,25 +1472,24 @@ export default function Admissions() {
   const [filterCourse,   setCourse]        = useState('All')
   const [filterSubtype,  setSubtype]       = useState('All')
   const [filterHostel,   setHostel]        = useState('All')
-  const [filterHouse,    setFilterHouse]   = useState('All')  // Feature 67
-  const [advFilters,     setAdvFilters]    = useState({})     // Feature 63
+  const [filterHouse,    setFilterHouse]   = useState('All')
+  const [advFilters,     setAdvFilters]    = useState({})
   const [sortBy,         setSortBy]        = useState('gcc')
   const [sortDir,        setSortDir]       = useState('desc')
   const [formOpen,       setFormOpen]      = useState(false)
   const [editing,        setEditing]       = useState(null)
   const [feePanel,       setFeePanel]      = useState(null)
   const [toast,          setToast]         = useState(null)
-  const [selectedIds,    setSelectedIds]   = useState(new Set()) // Feature 53
-  const [showAnalytics,  setShowAnalytics] = useState(false)    // Feature 23
-  const [showAdvSearch,  setShowAdvSearch] = useState(false)    // Feature 63
-  const [detailApp,      setDetailApp]     = useState(null)     // Feature 71
-  const [quickEditApp,   setQuickEditApp]  = useState(null)     // Feature 72
-  const [waBlastApps,    setWABlastApps]   = useState(null)     // Feature 45
-  const [showCSVImport,  setShowCSVImport] = useState(false)    // Feature 58
-  const [tableMode,      setTableMode]     = useState(false)    // Feature 98
-  const [darkMode,       setDarkMode]      = useState(false)    // Feature 99
-  const [undoQueue,      setUndoQueue]     = useState([])       // Feature 96
-  const [showPresets,    setShowPresets]   = useState(false)    // Feature 64
+  const [selectedIds,    setSelectedIds]   = useState(new Set())
+  const [showAnalytics,  setShowAnalytics] = useState(false)
+  const [showAdvSearch,  setShowAdvSearch] = useState(false)
+  const [detailApp,      setDetailApp]     = useState(null)
+  const [quickEditApp,   setQuickEditApp]  = useState(null)
+  const [waBlastApps,    setWABlastApps]   = useState(null)
+  const [showCSVImport,  setShowCSVImport] = useState(false)
+  const [tableMode,      setTableMode]     = useState(false)
+  const [darkMode,       setDarkMode]      = useState(false)
+  const [showPresets,    setShowPresets]   = useState(false)
   const searchRef = useRef(null)
 
   const { session: activeSession } = useActiveSession()
@@ -1600,13 +1500,11 @@ export default function Admissions() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  // Feature 99: Dark mode body sync
   useEffect(() => {
     document.body.style.background = darkMode ? T.slate[900] : T.slate[50]
     return () => { document.body.style.background = '' }
   }, [darkMode])
 
-  // Feature 93: Keyboard shortcuts
   useKeyboardShortcuts({
     onNew:        () => { setEditing(null); setFormOpen(true) },
     onSearch:     () => searchRef.current?.focus(),
@@ -1628,7 +1526,6 @@ export default function Admissions() {
 
   useEffect(() => { loadAll() }, [loadAll])
 
-  // Feature 95: restore draft
   useEffect(() => {
     try {
       const draft = localStorage.getItem(DRAFT_KEY)
@@ -1648,7 +1545,6 @@ export default function Admissions() {
 
   useEffect(() => { setSubtype('All') }, [filterCourse])
 
-  // Feature 78: find duplicates by name+DOB+phone
   const duplicateGCCs = useMemo(() => {
     const seen = {}; const dups = new Set()
     apps.forEach(a => {
@@ -1661,14 +1557,12 @@ export default function Admissions() {
     return dups
   }, [apps])
 
-  // Feature 77: waitlist positions
   const waitlistPositions = useMemo(() => {
     const wl = apps.filter(a=>a.status==='Waitlisted')
     const pos = {}; wl.forEach((a,i) => pos[a.gcc] = i+1)
     return pos
   }, [apps])
 
-  // Feature 85: house counts
   const houseCounts = useMemo(() => {
     const c = {}; HOUSES_LIST.forEach(h => c[h] = 0)
     apps.forEach(a => { if (a.house) c[a.house] = (c[a.house]||0)+1 })
@@ -1689,7 +1583,6 @@ export default function Admissions() {
       const matchSearch  = !q || [a.name,a.phone,a.admNo,a.gcc,a.cls,a.house,a.father,a.course,a.subtype,a.session,a.hostel_type,a.whatsapp,a.mother,a.prevSchool]
         .some(f => f?.toString().toLowerCase().includes(q))
 
-      // Advanced filters (Feature 63)
       const af = advFilters
       const matchGender   = !af.gender  || a.gender   === af.gender
       const matchCategory = !af.category|| a.category === af.category
@@ -1721,7 +1614,6 @@ export default function Admissions() {
       return matchStatus&&matchSession&&matchCourse&&matchSubtype&&matchHostel&&matchHouse&&matchSearch&&matchGender&&matchCategory&&matchReligion&&matchQuota&&matchHouseAdv&&matchDobFrom&&matchDobTo&&matchDis&&matchSchol&&matchFollowup&&matchDocStatus&&matchFeeStatus
     })
 
-    // Feature 70: sort
     list = [...list].sort((a,b) => {
       let va = a[sortBy], vb = b[sortBy]
       if (sortBy==='gcc') { va=parseInt(va)||0; vb=parseInt(vb)||0 }
@@ -1735,7 +1627,6 @@ export default function Admissions() {
   const activeFilters = [filterStatus,filterSession,filterCourse,filterSubtype,filterHostel,filterHouse].filter(f=>f!=='All').length + Object.keys(advFilters).filter(k=>advFilters[k]).length
   const clearAll = () => { setFilter('All');setSession('All');setCourse('All');setSubtype('All');setHostel('All');setFilterHouse('All');setAdvFilters({});setSearch('') }
 
-  // Selection helpers (Feature 53-62)
   const toggleSelect = id => setSelectedIds(prev => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id)
@@ -1750,7 +1641,7 @@ export default function Admissions() {
   const selectedApps = filtered.filter(a=>selectedIds.has(a.id))
 
   const handleSave = async (eid, obj) => {
-    if (!obj.name?.trim())          { showToast('Name is required', T.rose[600]); return }
+    if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return }
     if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return }
     if (!eid && activeSession?.is_locked) { showToast('🔒 Session locked. No new applications.', T.rose[600]); return }
 
@@ -1760,14 +1651,11 @@ export default function Admissions() {
     if (eid) {
       const { error } = await supabase.from('admissions').update(dbRow).eq('gcc_no', parseInt(eid))
       if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
-
-      // Feature 89: audit log (localStorage-based fallback)
       try {
         const log = JSON.parse(localStorage.getItem('gnsi_audit_'+eid)||'[]')
         log.unshift({ ts:now(), action:'edit', by:'Staff', changes: JSON.stringify(dbRow).slice(0,200) })
         localStorage.setItem('gnsi_audit_'+eid, JSON.stringify(log.slice(0,50)))
       } catch(_) {}
-
       setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...obj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
       showToast('Application updated', T.amber[600])
     } else {
@@ -1787,7 +1675,6 @@ export default function Admissions() {
 
   const handleAdmit = async id => {
     if (!confirm('Mark as Admitted?')) return
-    // Feature 92: manager role check (placeholder — wire to your role system)
     const { error } = await supabase.from('admissions').update({ status:'Admitted' }).eq('gcc_no', parseInt(id))
     if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
     setApps(prev => prev.map(a => String(a.id)===String(id) ? { ...a, status:'Admitted' } : a))
@@ -1809,28 +1696,25 @@ export default function Admissions() {
     } catch(err) { showToast('Enroll failed: '+err.message, T.rose[600]) }
   }
 
-  // Feature 96: Undo delete
   const handleDelete = async id => {
     const a = apps.find(x => String(x.id)===String(id))
     if (!confirm(`Delete admission for ${a?.name}?`)) return
     const snapshot = { ...a }
     setApps(prev => prev.filter(x => String(x.id)!==String(id)))
 
-    const doDelete = async () => {
-      const { error } = await supabase.from('admissions').delete().eq('gcc_no', parseInt(id))
-      if (error) { setApps(prev => [snapshot, ...prev]); showToast('Delete failed: '+error.message, T.rose[600]) }
-    }
-
-    // Feature 90: soft delete — move to trash in 5s
     let deleted = false
     showToast(`Deleted ${a?.name}`, T.rose[600], () => {
       deleted = true
       setApps(prev => [snapshot, ...prev])
     })
-    setTimeout(() => { if (!deleted) doDelete() }, 5000)
+    setTimeout(async () => {
+      if (!deleted) {
+        const { error } = await supabase.from('admissions').delete().eq('gcc_no', parseInt(id))
+        if (error) { setApps(prev => [snapshot, ...prev]); showToast('Delete failed: '+error.message, T.rose[600]) }
+      }
+    }, 5000)
   }
 
-  // Feature 72: Quick edit save
   const handleQuickEdit = async (id, changes) => {
     const hostelType = deriveHostelType(changes.house, changes.hostel_type)
     const { error } = await supabase.from('admissions').update({
@@ -1846,7 +1730,6 @@ export default function Admissions() {
     showToast('Updated', T.emerald[600])
   }
 
-  // Feature 51: Add note (localStorage-based)
   const handleAddNote = (id, text) => {
     const key = 'gnsi_notes_'+id
     try {
@@ -1858,7 +1741,6 @@ export default function Admissions() {
     } catch(_) {}
   }
 
-  // Bulk operations (Feature 54-61)
   const handleBulkStatus = async status => {
     if (!confirm(`Set ${selectedIds.size} applicants to "${status}"?`)) return
     const ids = [...selectedIds]
@@ -1889,7 +1771,6 @@ export default function Admissions() {
     clearSelection()
   }
 
-  // Feature 58: CSV import
   const handleCSVImport = async rows => {
     setShowCSVImport(false)
     let ok=0, fail=0
@@ -1902,7 +1783,6 @@ export default function Admissions() {
     showToast(`Imported ${ok} rows${fail>0?`, ${fail} failed`:''}`, ok>0?T.emerald[600]:T.rose[600])
   }
 
-  // Feature 80: Auto-assign house
   const handleAutoAssignHouse = () => {
     const unassigned = filtered.filter(a=>!a.house||a.house==='Day Scholar')
     if (!unassigned.length) { showToast('No unassigned boarder records', T.amber[600]); return }
@@ -1919,7 +1799,6 @@ export default function Admissions() {
   ADM_STATUSES.forEach(s => byStatus[s]=0)
   apps.forEach(a => byStatus[a.status] = (byStatus[a.status]||0)+1)
 
-  // Feature 31: Revenue forecast
   const monthlyRevenue = apps.filter(a=>a.status==='Enrolled').reduce((s,a)=>s+getFlatFeeAmt(a.hostel_type),0)
 
   const bg   = darkMode ? T.slate[900] : T.slate[50]
@@ -1968,7 +1847,6 @@ export default function Admissions() {
               <span>🏫 Day Scholar: <strong style={{ color:T.slate[500] }}>₹2,000/mo</strong></span>
               {monthlyRevenue > 0 && <span style={{ color:T.emerald[600] }}>💰 Enrolled revenue: <strong>₹{fmt(monthlyRevenue)}/mo</strong></span>}
             </div>
-            {/* Feature 93: Shortcut hints */}
             <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
               Shortcuts: <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>N</kbd> New &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>/</kbd> Search &nbsp;
@@ -1978,17 +1856,11 @@ export default function Admissions() {
             </div>
           </div>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'flex-start' }}>
-            {/* Feature 99: Dark mode */}
             <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)" style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, fontSize:14, cursor:'pointer' }}>{darkMode?'☀️':'🌙'}</button>
-            {/* Feature 98: View toggle */}
             <button onClick={()=>setTableMode(v=>!v)} title="Toggle view (V)" style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, fontSize:14, cursor:'pointer' }}>{tableMode?'🃏':'📋'}</button>
-            {/* Feature 23: Analytics */}
             <button onClick={()=>setShowAnalytics(v=>!v)} style={{ padding:'9px 14px', borderRadius:9, border:`1.5px solid ${showAnalytics?T.indigo[400]:T.slate[200]}`, background:showAnalytics?T.indigo[50]:card, color:showAnalytics?T.indigo[700]:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }}>📊 Analytics</button>
-            {/* Feature 58: CSV import */}
             <button onClick={()=>setShowCSVImport(true)} style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, color:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }}>📥 Import</button>
-            {/* Feature 35: CSV export all */}
             <button onClick={()=>downloadCSV(toCSV(filtered), `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)} style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, color:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }}>📤 Export CSV</button>
-            {/* Feature 80: Auto-assign house */}
             <button onClick={handleAutoAssignHouse} style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, color:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }} title="Auto-assign houses to unassigned boarders">🏠 Auto-Assign</button>
             <button onClick={()=>{ setEditing(null); setFormOpen(true) }}
               style={{ padding:'10px 20px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:'0 4px 12px rgba(79,70,229,.3)' }}>
@@ -2010,39 +1882,33 @@ export default function Admissions() {
           </div>
         )}
 
-        {/* Analytics Dashboard (Feature 23-34) */}
+        {/* Analytics Dashboard */}
         {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
 
         {/* KPI Strip */}
-        {/* KPI Strip */}
-<div style={{
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-  gap: 10,
-  marginBottom: 16,
-}}>
-  <KpiCard label="Total" value={apps.length} active={filterStatus==='All'} accent={T.indigo[600]} onClick={()=>setFilter('All')} subtitle={`₹${fmt(monthlyRevenue)}/mo`} />
-  {ADM_STATUSES.map(s => (
-    <KpiCard key={s} label={s} value={byStatus[s]||0} active={filterStatus===s} accent={STAT_META[s]?.color} onClick={()=>setFilter(filterStatus===s?'All':s)} />
-  ))}
-</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(110px, 1fr))', gap:10, marginBottom:16 }}>
+          <KpiCard label="Total" value={apps.length} active={filterStatus==='All'} accent={T.indigo[600]} onClick={()=>setFilter('All')} subtitle={`₹${fmt(monthlyRevenue)}/mo`} />
+          {ADM_STATUSES.map(s => (
+            <KpiCard key={s} label={s} value={byStatus[s]||0} active={filterStatus===s} accent={STAT_META[s]?.color} onClick={()=>setFilter(filterStatus===s?'All':s)} />
+          ))}
+        </div>
 
         {/* Form */}
         {formOpen && (
           <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} />
         )}
 
-        {/* Detail panel (Feature 71) */}
+        {/* Detail panel */}
         {detailApp && (
           <DetailPanel a={detailApp} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} />
         )}
 
-        {/* Quick-edit row (Feature 72) */}
+        {/* Quick-edit row */}
         {quickEditApp && (
           <QuickEditRow a={quickEditApp} onSave={handleQuickEdit} onCancel={()=>setQuickEditApp(null)} />
         )}
 
-        {/* Advanced Search (Feature 63) */}
+        {/* Advanced Search */}
         {showAdvSearch && (
           <AdvancedSearch filters={advFilters} onChange={f=>{setAdvFilters(f);setShowAdvSearch(false)}} onClose={()=>setShowAdvSearch(false)} apps={apps} />
         )}
@@ -2059,7 +1925,6 @@ export default function Admissions() {
             <PillStrip label="Batch" options={subtypeOptions} value={filterSubtype} onChange={setSubtype} colorFn={()=>T.violet[600]} />
           )}
           <PillStrip label="Hostel" options={HOSTEL_TYPES} value={filterHostel} onChange={setHostel} colorFn={h=>HOSTEL_STYLES[h]?.color||T.slate[500]} />
-          {/* Feature 67: House filter */}
           <PillStrip label="House" options={HOUSES_LIST} value={filterHouse} onChange={setFilterHouse} colorFn={()=>T.sky[600]}
             countFn={h => houseCounts[h]||0} />
 
@@ -2070,15 +1935,12 @@ export default function Admissions() {
                 placeholder="Search name, phone, GCC, house… (/ to focus)"
                 style={{ ...styles.inp, paddingLeft:36 }} />
             </div>
-            {/* Feature 63: Advanced search */}
             <button onClick={()=>setShowAdvSearch(v=>!v)}
               style={{ padding:'8px 14px', borderRadius:8, border:`1.5px solid ${Object.keys(advFilters).filter(k=>advFilters[k]).length>0?T.violet[400]:T.slate[200]}`, background:Object.keys(advFilters).filter(k=>advFilters[k]).length>0?T.violet[50]:card, color:T.violet[600], fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>
               🔎 Advanced{Object.keys(advFilters).filter(k=>advFilters[k]).length>0?` (${Object.keys(advFilters).filter(k=>advFilters[k]).length})`:''}</button>
 
-            {/* Feature 70: Sort */}
             <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(k,d)=>{setSortBy(k);setSortDir(d)}} />
 
-            {/* Feature 64: Presets */}
             <div style={{ position:'relative' }}>
               <button onClick={()=>setShowPresets(v=>!v)}
                 style={{ padding:'8px 14px', borderRadius:8, border:`1px solid ${T.slate[200]}`, background:card, color:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }}>
@@ -2134,7 +1996,7 @@ export default function Admissions() {
           </div>
         )}
 
-        {/* Bulk Action Bar (Feature 53-62) */}
+        {/* Bulk Action Bar */}
         <BulkBar
           selected={[...selectedIds]} total={filtered.length}
           onClear={clearSelection}
@@ -2150,7 +2012,6 @@ export default function Admissions() {
         {/* List / Table */}
         {filtered.length > 0 ? (
           tableMode ? (
-            /* Feature 98: Table view */
             <div style={{ background:card, border:`1px solid ${darkMode?T.slate[700]:T.slate[200]}`, borderRadius:12, overflow:'hidden' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead>
@@ -2174,22 +2035,14 @@ export default function Admissions() {
               </table>
             </div>
           ) : (
-            /* Card view */
-<div style={{
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(min(380px, 100%), 1fr))',
-  gap: 16,
-  alignItems: 'start',
-}}>
-  {filtered.map(a => (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(380px, 100%), 1fr))', gap:16, alignItems:'start' }}>
+              {filtered.map(a => (
                 <div key={a.id}>
-                  {/* Feature 78: duplicate warning */}
                   {duplicateGCCs.has(a.gcc) && (
                     <div style={{ fontSize:11, color:T.rose[600], fontWeight:700, padding:'3px 10px', background:T.rose[50], borderRadius:6, marginBottom:3, display:'inline-block' }}>
                       ⚠ Possible duplicate detected
                     </div>
                   )}
-                  {/* Feature 77: waitlist position */}
                   {a.status==='Waitlisted' && waitlistPositions[a.gcc] && (
                     <div style={{ fontSize:11, color:T.slate[500], fontWeight:700, marginBottom:2 }}>Waitlist #{waitlistPositions[a.gcc]}</div>
                   )}
@@ -2213,7 +2066,6 @@ export default function Admissions() {
           </div>
         )}
 
-        {/* Feature 97: Pagination note for large lists */}
         {filtered.length > 200 && (
           <div style={{ marginTop:12, textAlign:'center', fontSize:12, color:T.slate[400] }}>
             Showing all {filtered.length} records · Switch to Table View for better performance with large lists
