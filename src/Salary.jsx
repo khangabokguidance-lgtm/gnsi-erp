@@ -545,25 +545,68 @@ export default function Salary() {
   const [showAdvForm, setShowAdvForm] = useState(false)
 
   // History
-  const [histStaffId, setHistStaffId] = useState('')
-  const [compareMonth, setCompareMonth] = useState('')
+  // History
+const [histStaffId, setHistStaffId] = useState('')
+const [compareMonth, setCompareMonth] = useState('')
+
+// Performance scores
+const [scoreMap, setScoreMap] = useState({})
+// Deduction rules
+const [dedRules, setDedRules]         = useState({ late_rate:10, absent_rate:100, early_out_rate:50 })
+const [rulesForm, setRulesForm]       = useState({ late_rate:10, absent_rate:100, early_out_rate:50 })
+const [rulesSaving, setRulesSaving]   = useState(false)
+const [rulesHistory, setRulesHistory] = useState([])
 
   // ── Fetch ──
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [{ data:sd },{ data:sald },{ data:advd }] = await Promise.all([
-        supabase.from('staff_profiles').select('*').order('name'),
-        supabase.from('salary').select('*').order('created_at',{ascending:false}),
-        supabase.from('staff_advances').select('*').order('created_at',{ascending:false}),
-      ])
-      setStaff(sd||[]); setSalaryRows(sald||[]); setAdvances(advd||[])
-    } catch(err) { alert('Failed to load data. '+err.message) }
-    finally { setLoading(false) }
-  }, [])
+  const fetchScores = useCallback(async (month) => {
+  const { data } = await supabase
+    .from('staff_monthly_scores')
+    .select('staff_id, total_score, level, p1_attendance, p2_punctuality, p3_tasks')
+    .eq('month', month)
+  if (data) {
+    const map = {}
+    data.forEach(r => { map[r.staff_id] = r })
+    setScoreMap(map)
+  } else {
+    setScoreMap({})
+  }
+}, [])
+const fetchDeductionRules = useCallback(async () => {
+  const { data } = await supabase
+    .from('salary_deduction_rules')
+    .select('*')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (data) {
+    setDedRules({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate })
+    setRulesForm({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate })
+  }
+  const { data: hist } = await supabase
+    .from('salary_deduction_rules')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(10)
+  setRulesHistory(hist || [])
+}, [])
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+const fetchAll = useCallback(async () => {
+  setLoading(true)
+  try {
+    const [{ data:sd },{ data:sald },{ data:advd }] = await Promise.all([
+      supabase.from('staff_profiles').select('*').order('name'),
+      supabase.from('salary').select('*').order('created_at',{ascending:false}),
+      supabase.from('staff_advances').select('*').order('created_at',{ascending:false}),
+    ])
+    setStaff(sd||[]); setSalaryRows(sald||[]); setAdvances(advd||[])
+  } catch(err) { alert('Failed to load data. '+err.message) }
+  finally { setLoading(false) }
+}, [])
+
+  useEffect(() => { fetchAll(); fetchDeductionRules() }, [fetchAll, fetchDeductionRules])
+useEffect(() => { fetchScores(regMonth) }, [regMonth, fetchScores])
 
   // ── Derived ──
 
@@ -607,18 +650,74 @@ export default function Salary() {
     return total
   }, [advances])
 
-  // Load deductions for month
-  useEffect(() => {
-    if (!staff.length) return
-    const map={}
-    salaryRows.filter(r=>r.month===regMonth).forEach(r=>{
-      map[r.staff_id]={ advance_deduction:r.advance_deduction||0, late_deduction:r.late_deduction||0, admin_deduction:r.admin_deduction||0, pf_deduction:r.pf_deduction||0, payment_mode:r.payment_mode||'Cash', status:r.status||'Unpaid' }
+  // Load deductions for month — with GeoAttendance auto late_deduction
+useEffect(() => {
+  if (!staff.length) return
+
+  const load = async () => {
+    // 1. Build base map from saved salary rows
+    const map = {}
+    salaryRows.filter(r => r.month === regMonth).forEach(r => {
+      map[r.staff_id] = {
+        advance_deduction: r.advance_deduction || 0,
+        late_deduction:    r.late_deduction    || 0,
+        admin_deduction:   r.admin_deduction   || 0,
+        pf_deduction:      r.pf_deduction      || 0,
+        payment_mode:      r.payment_mode      || 'Cash',
+        status:            r.status            || 'Unpaid',
+      }
     })
-    staff.forEach(s=>{
-      if (!map[s.id]) map[s.id]={ advance_deduction:pendingAdvance(s.id), late_deduction:0, admin_deduction:0, pf_deduction:0, payment_mode:'Cash', status:'Unpaid' }
+
+    // 2. Fetch geo attendance for the month
+    const from = regMonth + '-01'
+    const [y, m] = regMonth.split('-').map(Number)
+    const to = new Date(y, m, 0).toISOString().split('T')[0]
+
+    const { data: geoData } = await supabase
+      .from('staff_geo_attendance')
+      .select('staff_id, late_minutes, status, date')
+      .gte('date', from)
+      .lte('date', to)
+
+    // 3. Build late/absent map from geo data
+    const lateMap = {}
+    ;(geoData || []).forEach(log => {
+      if (!lateMap[log.staff_id]) lateMap[log.staff_id] = { lateMin: 0, absent: 0, earlyOut: 0 }
+      lateMap[log.staff_id].lateMin  += log.late_minutes || 0
+      if (log.status === 'Absent')   lateMap[log.staff_id].absent++
+      if (log.status === 'EarlyOut') lateMap[log.staff_id].earlyOut++
     })
+
+    // 4. Fill unsaved staff — auto-calculate late_deduction from geo
+    // ₹10 per late minute · ₹100 per absent day · ₹50 per early-out
+    // Adjust these rates as needed
+    const LATE_RATE   = Number(dedRules.late_rate)
+const ABSENT_RATE = Number(dedRules.absent_rate)
+const EARLY_RATE  = Number(dedRules.early_out_rate)
+
+    staff.forEach(s => {
+      if (!map[s.id]) {
+        const geo = lateMap[s.id]
+        const autoLateDed = geo
+          ? (geo.lateMin * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
+          : 0
+        map[s.id] = {
+          advance_deduction: pendingAdvance(s.id),
+          late_deduction:    autoLateDed,
+          admin_deduction:   0,
+          pf_deduction:      0,
+          payment_mode:      'Cash',
+          status:            'Unpaid',
+          _geo:              geo || null, // store for display
+        }
+      }
+    })
+
     setDedMap(map)
-  }, [regMonth, salaryRows, staff, pendingAdvance]) // eslint-disable-line
+  }
+
+  load()
+}, [regMonth, salaryRows, staff, pendingAdvance, dedRules]) // eslint-disable-line
 
   // ── Handlers ──
 
@@ -739,7 +838,36 @@ export default function Salary() {
     finally { setAdvSaving(false) }
   }, [advForm, fetchAll])
 
-  const handleDeleteAdvance = useCallback(async (id) => {
+  const handleSaveRules = useCallback(async () => {
+  if (!rulesForm.late_rate && rulesForm.late_rate !== 0) {
+    alert('Enter valid rates'); return
+  }
+  setRulesSaving(true)
+  try {
+    // Deactivate existing rules
+    await supabase
+      .from('salary_deduction_rules')
+      .update({ is_active: false })
+      .eq('is_active', true)
+
+    // Insert new active rule
+    const { error } = await supabase
+      .from('salary_deduction_rules')
+      .insert([{
+        late_rate:      Number(rulesForm.late_rate),
+        absent_rate:    Number(rulesForm.absent_rate),
+        early_out_rate: Number(rulesForm.early_out_rate),
+        effective_from: new Date().toISOString().split('T')[0],
+        created_by:     'Admin',
+        is_active:      true,
+      }])
+    if (error) throw error
+    await fetchDeductionRules()
+    alert('✅ Deduction rules saved')
+  } catch(err) { alert('Error: ' + err.message) }
+  finally { setRulesSaving(false) }
+}, [rulesForm, fetchDeductionRules])
+const handleDeleteAdvance = useCallback(async (id) => {
     if (!window.confirm('Delete this advance?')) return
     const deletedAdv = advances.find(a => a.id === id);
     await supabase.from('staff_advances').delete().eq('id',id); 
@@ -761,12 +889,13 @@ export default function Salary() {
   // ── Tabs config ──
 
   const TABS = [
-    { key:'register',  label:'📋 Register',  labelFull:'📋 Salary Register' },
-    { key:'pending',   label:'⏳ Pending',   labelFull:'⏳ Pending Payments' },
-    { key:'advances',  label:'💳 Advances',  labelFull:'💳 Advances' },
-    { key:'history',   label:'📅 History',   labelFull:'📅 History' },
-    { key:'annual',    label:'📆 Annual',    labelFull:'📆 Annual Summary' },
-  ]
+  { key:'register',  label:'📋 Register',  labelFull:'📋 Salary Register' },
+  { key:'pending',   label:'⏳ Pending',   labelFull:'⏳ Pending Payments' },
+  { key:'advances',  label:'💳 Advances',  labelFull:'💳 Advances' },
+  { key:'history',   label:'📅 History',   labelFull:'📅 History' },
+  { key:'annual',    label:'📆 Annual',    labelFull:'📆 Annual Summary' },
+  { key:'rules',     label:'⚙️ Rules',    labelFull:'⚙️ Deduction Rules' },
+]
 
   // ── JSX ──
 
@@ -959,12 +1088,25 @@ export default function Salary() {
                               color: isPaid ? '#16a34a' : '#dc2626'
                             }}>{isPaid ? '✅ Paid' : '⏳ Unpaid'}</span>
                             {row && (
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 3,
-                                padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-                                backgroundColor: '#eff6ff', color: '#1e3a5f'
-                              }}>📋 Saved</span>
-                            )}
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+    backgroundColor: '#eff6ff', color: '#1e3a5f'
+  }}>📋 Saved</span>
+)}
+{scoreMap[s.id] && (() => {
+  const sc = scoreMap[s.id]
+  const color = sc.total_score >= 75 ? '#16a34a' : sc.total_score >= 45 ? '#b45309' : '#dc2626'
+  const bg    = sc.total_score >= 75 ? '#dcfce7' : sc.total_score >= 45 ? '#fef3c7' : '#fee2e2'
+  const emoji = sc.total_score >= 90 ? '💎' : sc.total_score >= 75 ? '🥇' : sc.total_score >= 60 ? '🥈' : sc.total_score >= 45 ? '🥉' : '🔰'
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+      backgroundColor: bg, color
+    }}>{emoji} {sc.total_score} · {sc.level}</span>
+  )
+})()}
                           </div>
                         </div>
 
@@ -978,24 +1120,54 @@ export default function Salary() {
                       </div>
 
                       {/* Earnings Info Grid */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Basic Pay</div>
-                          <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 700 }}>{fmt(s.basic_salary || 0)}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Gross</div>
-                          <div style={{ fontSize: 13, color: '#0C447C', fontWeight: 700 }}>{fmt(g)}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Seniority</div>
-                          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.seniority_allowance ? fmt(s.seniority_allowance) : '—'}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Loyalty</div>
-                          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.loyalty_bonus ? fmt(s.loyalty_bonus) : '—'}</div>
-                        </div>
-                      </div>
+<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12 }}>
+  <div>
+    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Basic Pay</div>
+    <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 700 }}>{fmt(s.basic_salary || 0)}</div>
+  </div>
+  <div>
+    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Gross</div>
+    <div style={{ fontSize: 13, color: '#0C447C', fontWeight: 700 }}>{fmt(g)}</div>
+  </div>
+  <div>
+    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Seniority</div>
+    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.seniority_allowance ? fmt(s.seniority_allowance) : '—'}</div>
+  </div>
+  <div>
+    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Loyalty</div>
+    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.loyalty_bonus ? fmt(s.loyalty_bonus) : '—'}</div>
+  </div>
+</div>
+
+{/* Performance Score Mini Panel */}
+{scoreMap[s.id] && (() => {
+  const sc = scoreMap[s.id]
+  const color = sc.total_score >= 75 ? '#16a34a' : sc.total_score >= 45 ? '#b45309' : '#dc2626'
+  const bars = [
+    { label:'Att',   value: sc.p1_attendance,  max: 30, color:'#0ea5e9' },
+    { label:'Punct', value: sc.p2_punctuality, max: 20, color:'#10b981' },
+    { label:'Tasks', value: sc.p3_tasks,       max: 20, color:'#f59e0b' },
+  ]
+  return (
+    <div style={{ background:'#f8fafc', borderRadius: 8, padding:'10px 12px', border:'1px solid #e2e8f0' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color:'#64748b', textTransform:'uppercase', letterSpacing: 0.5 }}>📊 Performance Score</span>
+        <span style={{ fontSize: 13, fontWeight: 800, color, fontFamily:"'JetBrains Mono',monospace" }}>{sc.total_score}/100</span>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap: 4 }}>
+        {bars.map(b => (
+          <div key={b.label} style={{ display:'flex', alignItems:'center', gap: 6 }}>
+            <span style={{ fontSize: 9, color:'#94a3b8', width: 32, flexShrink: 0 }}>{b.label}</span>
+            <div style={{ flex: 1, height: 5, background:'#e2e8f0', borderRadius: 3, overflow:'hidden' }}>
+              <div style={{ width:`${Math.min(100, Math.round((b.value/b.max)*100))}%`, height:'100%', background: b.color, borderRadius: 3 }}/>
+            </div>
+            <span style={{ fontSize: 9, fontWeight: 700, color: b.color, width: 28, textAlign:'right', fontFamily:"'JetBrains Mono',monospace" }}>{b.value}/{b.max}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+})()}
 
                       {/* Deductions Section */}
                       <div style={{ background: '#fafbfc', borderRadius: 10, padding: '12px 14px', border: '1px solid #f1f5f9' }}>
@@ -1425,7 +1597,134 @@ export default function Salary() {
         </>
       )}
 
-      {/* Slip Modal */}
+      {/* ══ TAB: DEDUCTION RULES ══ */}
+{activeTab === 'rules' && (
+  <div style={{ maxWidth: 600 }}>
+
+    {/* Active rules banner */}
+    <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:12, padding:'14px 18px', marginBottom:20, display:'flex', gap:16, alignItems:'center', flexWrap:'wrap' }}>
+      <div style={{ fontSize:24 }}>⚙️</div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontWeight:700, color:'#1e3a5f', fontSize:14 }}>Currently Active Rates</div>
+        <div style={{ fontSize:12, color:'#64748b', marginTop:4, display:'flex', gap:16, flexWrap:'wrap' }}>
+          <span>🕐 Late: <strong style={{ color:'#dc2626' }}>₹{dedRules.late_rate}/min</strong></span>
+          <span>⭕ Absent: <strong style={{ color:'#dc2626' }}>₹{dedRules.absent_rate}/day</strong></span>
+          <span>🏃 Early Out: <strong style={{ color:'#dc2626' }}>₹{dedRules.early_out_rate}/day</strong></span>
+        </div>
+      </div>
+    </div>
+
+    {/* Edit form */}
+    <div style={{ ...S.card }}>
+      <h2 style={{ fontSize:15, fontWeight:700, color:'#1e3a5f', marginTop:0, marginBottom:4 }}>
+        Set New Deduction Rates
+      </h2>
+      <p style={{ fontSize:12, color:'#64748b', marginBottom:20 }}>
+        Rates apply when auto-calculating from GeoAttendance data. Previous rates are saved as history.
+      </p>
+
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap:16, marginBottom:20 }}>
+        {[
+          {
+            key:   'late_rate',
+            label: '🕐 Late Per Minute',
+            desc:  'Deducted for each minute staff checks in late',
+            color: '#b45309',
+            bg:    '#fef3c7',
+            unit:  '₹ / minute',
+          },
+          {
+            key:   'absent_rate',
+            label: '⭕ Absent Per Day',
+            desc:  'Deducted for each absent day this month',
+            color: '#dc2626',
+            bg:    '#fee2e2',
+            unit:  '₹ / day',
+          },
+          {
+            key:   'early_out_rate',
+            label: '🏃 Early Out Per Day',
+            desc:  'Deducted for each early departure day',
+            color: '#7c3aed',
+            bg:    '#f3e8ff',
+            unit:  '₹ / day',
+          },
+        ].map(field => (
+          <div key={field.key} style={{ background:field.bg, borderRadius:10, padding:16, border:`1.5px solid ${field.color}33` }}>
+            <div style={{ fontSize:13, fontWeight:700, color:field.color, marginBottom:4 }}>{field.label}</div>
+            <div style={{ fontSize:11, color:'#64748b', marginBottom:10 }}>{field.desc}</div>
+            <div style={{ position:'relative' }}>
+              <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:14, fontWeight:700, color:field.color }}>₹</span>
+              <input
+                type="number" min="0" step="1"
+                value={rulesForm[field.key]}
+                onChange={e => setRulesForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                style={{ ...S.inp, paddingLeft:28, fontWeight:700, fontSize:16, color:field.color, border:`1.5px solid ${field.color}44` }}
+              />
+            </div>
+            <div style={{ fontSize:11, color:field.color, marginTop:6, fontWeight:600 }}>{field.unit}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Example calculation */}
+      <div style={{ background:'#f8fafc', borderRadius:10, padding:'12px 14px', marginBottom:20, border:'1px solid #e2e8f0' }}>
+        <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:8 }}>📊 Example Calculation</div>
+        <div style={{ fontSize:12, color:'#64748b', display:'flex', flexDirection:'column', gap:4 }}>
+          <span>Staff late by <strong>30 min</strong> → ₹{Number(rulesForm.late_rate||0) * 30} deducted</span>
+          <span>Staff absent <strong>2 days</strong> → ₹{Number(rulesForm.absent_rate||0) * 2} deducted</span>
+          <span>Staff early out <strong>3 days</strong> → ₹{Number(rulesForm.early_out_rate||0) * 3} deducted</span>
+          <div style={{ borderTop:'1px solid #e2e8f0', marginTop:6, paddingTop:6, fontWeight:700, color:'#dc2626' }}>
+            Total deduction example: ₹{(Number(rulesForm.late_rate||0)*30) + (Number(rulesForm.absent_rate||0)*2) + (Number(rulesForm.early_out_rate||0)*3)}
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={handleSaveRules}
+        disabled={rulesSaving}
+        style={{ ...S.btn('#1e3a5f', rulesSaving), width:'100%', padding:14, fontSize:14 }}
+      >
+        {rulesSaving ? '⏳ Saving...' : '💾 Save New Rates'}
+      </button>
+    </div>
+
+    {/* Rules history */}
+    {rulesHistory.length > 0 && (
+      <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
+        <div style={{ padding:'12px 16px', fontWeight:700, color:'#1e3a5f', borderBottom:'1px solid #f1f5f9', fontSize:14 }}>
+          📅 Rate History
+        </div>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <thead>
+            <tr style={{ background:'#f8fafc' }}>
+              {['Effective From','Late/min','Absent/day','Early Out/day','Status','Set By'].map(h => (
+                <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:600, color:'#374151', fontSize:11 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rulesHistory.map(r => (
+              <tr key={r.id} style={{ borderBottom:'1px solid #f1f5f9', background:r.is_active?'#f0fdf4':'white' }}>
+                <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{r.effective_from}</td>
+                <td style={{ padding:'9px 12px', color:'#b45309', fontWeight:700 }}>₹{r.late_rate}</td>
+                <td style={{ padding:'9px 12px', color:'#dc2626', fontWeight:700 }}>₹{r.absent_rate}</td>
+                <td style={{ padding:'9px 12px', color:'#7c3aed', fontWeight:700 }}>₹{r.early_out_rate}</td>
+                <td style={{ padding:'9px 12px' }}>
+                  <span style={{ padding:'2px 8px', borderRadius:99, fontSize:10, fontWeight:700, background:r.is_active?'#dcfce7':'#f1f5f9', color:r.is_active?'#16a34a':'#94a3b8' }}>
+                    {r.is_active ? '✅ Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td style={{ padding:'9px 12px', color:'#64748b' }}>{r.created_by}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+)}
+{/* Slip Modal */}
       {slipStaff && (
         <SlipModal s={slipStaff} ded={slipStaff._dedOverride||dedMap[slipStaff.id]} month={slipStaff._monthOverride||regMonth} onClose={()=>setSlipStaff(null)} />
       )}
