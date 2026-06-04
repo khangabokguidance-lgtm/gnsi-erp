@@ -20,7 +20,8 @@ import { supabase } from './supabase'
 const DEFAULT_CAMPUS    = { lat: 24.62181, lng: 94.0193087, radius: 50, name: 'Main Campus' }
 const TRACK_INTERVAL_MS = 2 * 60 * 1000
 const DEAD_SESSION_MS   = 5 * 60 * 1000
-const MAX_PING_RETRIES  = 3
+
+const AUTO_CHECKOUT_THRESHOLD = 10
 
 const FRAUD_TYPES = {
   outside_campus: { label: 'Outside Campus',     color: '#ef4444', icon: '📍' },
@@ -678,27 +679,58 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       setLastPingTime(new Date().toISOString())
       for (const t of tracking) {
         const payload = {
-          p_attendance_id: t.logId,
-          p_staff_id:      currentStaff?.id,
-          p_lat:           coords.lat,
-          p_lng:           coords.lng,
-          p_accuracy:      accuracy || 20,
-          p_campus_lat:    campus.lat,
-          p_campus_lng:    campus.lng,
-          p_campus_radius: campus.radius,
-          p_shift_end:     t.shift.shift_end,
-        }
+        p_attendance_id:        t.logId,
+        p_staff_id:             currentStaff?.id,
+        p_lat:                  coords.lat,
+        p_lng:                  coords.lng,
+        p_accuracy:             accuracy || 20,
+        p_campus_lat:           campus.lat,
+        p_campus_lng:           campus.lng,
+        p_campus_radius:        campus.radius,
+        p_shift_end:            t.shift.shift_end,
+        p_absent_threshold_min: AUTO_CHECKOUT_THRESHOLD,
+      }
         try {
           if (!navigator.onLine) { enqueuePing(payload); continue }
-          const { data, error } = await supabase.rpc('server_ping', payload)
-          if (error) { enqueuePing(payload); continue }
-          if (data?.off_since) setOffCampusSince(data.off_since)
-          else setOffCampusSince(null)
-          if (data?.event_type === 'left_campus') showToast('⚠️ You left campus early. Admin has been notified.', 'warn')
-          if (data?.event_type === 'shift_end' || (data?.mins_left !== null && data?.mins_left <= 0)) {
-            setActiveTracking(prev => prev.filter(x => x.logId !== t.logId))
-            showToast(`🏁 Shift ${t.shiftLabel} ended — auto checked-out`, 'ok')
-          }
+           const { data, error } = await supabase.rpc('server_ping', {
+    ...payload,
+    p_absent_threshold_min: AUTO_CHECKOUT_THRESHOLD,
+  })
+  if (error) { enqueuePing(payload); continue }
+ 
+  if (data?.off_since) setOffCampusSince(data.off_since)
+  else setOffCampusSince(null)
+ 
+  // ── auto-checkout: staff left campus too long ──────────────────────────
+  if (data?.event_type === 'auto_checkout') {
+    setActiveTracking(prev => prev.filter(x => x.logId !== t.logId))
+    if (!activeTracking.filter(x => x.logId !== t.logId).length) setGpsStatus('oncampus')
+    showToast(
+      `🏃 Auto checked-out — Shift ${t.shiftLabel}: off campus for ${data.off_minutes} min`,
+      'warn'
+    )
+    await fetchMyLogs()
+    continue
+  }
+ 
+  // ── shift ended (server time past shift_end) ───────────────────────────
+  if (data?.event_type === 'shift_end' || (data?.mins_left !== null && data?.mins_left <= 0)) {
+    setActiveTracking(prev => prev.filter(x => x.logId !== t.logId))
+    showToast(`🏁 Shift ${t.shiftLabel} ended — auto checked-out`, 'ok')
+    await fetchMyLogs()
+    continue
+  }
+ 
+  // ── left campus warning ────────────────────────────────────────────────
+  if (data?.event_type === 'left_campus') {
+    showToast('⚠️ You left campus. Will auto check-out in 10 min if not returned.', 'warn')
+  }
+ 
+  // ── returned to campus ─────────────────────────────────────────────────
+  if (data?.event_type === 'returned') {
+    showToast('✅ Back on campus — tracking continues', 'ok')
+    setOffCampusSince(null)
+  }
         } catch { enqueuePing(payload) }
       }
       await fetchMyLogs()
@@ -962,7 +994,7 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
         <div style={{ fontSize: 22 }}>{wasOff ? '⚠️' : '🛰️'}</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, color: wasOff ? '#dc2626' : '#0369a1', fontSize: 13 }}>
-            {wasOff ? 'OFF CAMPUS — Early departure detected!' : 'Location Tracking Active'}
+            {wasOff ? `OFF CAMPUS — auto checkout in ${AUTO_CHECKOUT_THRESHOLD} min if not returned` : 'Location Tracking Active'}
           </div>
           <div style={{ fontSize: 12, color: wasOff ? '#7f1d1d' : '#0c4a6e', marginTop: 2 }}>
             {activeTracking.map(t => `Shift ${t.shiftLabel} (ends ${fmt12(t.shift.shift_end)})`).join(' · ')}
