@@ -478,8 +478,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
   )
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:12, marginBottom:16 }}>
-      {card('Admission Funnel', <>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(300px,100%),1fr))', gap:14, marginBottom:16 }}>     {card('Admission Funnel', <>
         <FunnelBar label="Applied"      value={byStatus['Applied']}      total={total} color={T.indigo[500]} />
         <FunnelBar label="Under Review" value={byStatus['Under Review']} total={total} color={T.amber[500]} />
         <FunnelBar label="Admitted"     value={byStatus['Admitted']}     total={total} color={T.violet[500]} />
@@ -1364,32 +1363,95 @@ function BulkBar({ selected, total, onClear, onBulkStatus, onBulkHouse, onBulkDe
 
   if (selected.length === 0) return null
   return (
-    <div style={{ position:'sticky', bottom:16, zIndex:100, background:T.slate[900], color:'#fff', borderRadius:12, padding:'10px 16px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', boxShadow:'0 8px 32px rgba(0,0,0,.3)', margin:'12px 0' }}>
-      <span style={{ fontSize:12, fontWeight:700 }}>{selected.length} selected</span>
-      <button onClick={onClear} style={{ padding:'4px 10px', borderRadius:6, background:'transparent', color:T.slate[300], border:`1px solid ${T.slate[600]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>✕ Clear</button>
-      <div style={{ width:1, height:24, background:T.slate[600] }} />
+  <div style={{
+    background: bg,
+    border: `1px solid ${selected ? T.indigo[400] : bd}`,
+    borderRadius: 14,
+    overflow: 'hidden',
+    outline: selected ? `2px solid ${T.indigo[300]}` : 'none',
+    boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+    transition: 'box-shadow .15s, transform .15s',
+    display: 'flex',
+    flexDirection: 'column',
+    position: 'relative',
+  }}
+    onMouseEnter={e => { e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,.10)'; e.currentTarget.style.transform='translateY(-2px)' }}
+    onMouseLeave={e => { e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.06)'; e.currentTarget.style.transform='translateY(0)' }}
+  >
+    {/* Status accent bar */}
+    <div style={{ height: 4, background: STAT_META[a.status]?.color || T.slate[300], borderRadius: '14px 14px 0 0' }} />
 
-      {/* Feature 54: bulk status */}
-      <select value={statusVal} onChange={e=>setStatusVal(e.target.value)} style={{ ...styles.inp, width:'auto', fontSize:11, padding:'4px 8px', background:T.slate[800], color:'#fff', border:`1px solid ${T.slate[600]}` }}>
-        {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
-      </select>
-      <button onClick={()=>onBulkStatus(statusVal)} style={{ padding:'5px 12px', borderRadius:7, background:T.violet[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Set Status</button>
+    {/* Card body */}
+    <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
 
-      {/* Feature 55: bulk house */}
-      <select value={houseVal} onChange={e=>setHouseVal(e.target.value)} style={{ ...styles.inp, width:'auto', fontSize:11, padding:'4px 8px', background:T.slate[800], color:'#fff', border:`1px solid ${T.slate[600]}` }}>
-        <option value="">— House —</option>{HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
-      </select>
-      <button onClick={()=>houseVal&&onBulkHouse(houseVal)} style={{ padding:'5px 12px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Set House</button>
+      {/* Row 1: checkbox + avatar + name + status */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <input type="checkbox" checked={!!selected} onChange={() => onSelect(a.id)}
+          style={{ cursor: 'pointer', flexShrink: 0, marginTop: 4 }} onClick={e => e.stopPropagation()} />
+        <Avatar name={a.name} size={42} photoUrl={a.photoUrl} />
+        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onDetail(a)}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: T.slate[900], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {a.name}
+          </div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
+            {a.gcc   && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.indigo[500], fontWeight: 700 }}>#{a.gcc}</span>}
+            {a.admNo && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
+            {a.scholarshipPct > 0 && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.emerald[50], color: T.emerald[700], fontWeight: 700 }}>🎓 {a.scholarshipPct}%</span>}
+            {a.disabilityFlag   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50],   color: T.amber[700],   fontWeight: 700 }}>♿</span>}
+            {a.siblingGcc       && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.violet[50],  color: T.violet[700],  fontWeight: 700 }}>👫</span>}
+          </div>
+        </div>
+        <StatusBadge status={a.status} />
+      </div>
 
-      <div style={{ width:1, height:24, background:T.slate[600] }} />
-      <button onClick={onBulkExport} style={{ padding:'5px 12px', borderRadius:7, background:T.sky[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>📥 CSV</button>
-      <button onClick={onBulkPrint}  style={{ padding:'5px 12px', borderRadius:7, background:T.indigo[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>🖨 Print</button>
-      <button onClick={onBulkWA}     style={{ padding:'5px 12px', borderRadius:7, background:'#25D366', color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>📲 WA Blast</button>
-      <button onClick={onBulkDelete} style={{ padding:'5px 12px', borderRadius:7, background:T.rose[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>🗑 Delete</button>
+      {/* Row 2: info grid 2x2 */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12, color: T.slate[600] }}>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Course</div>
+          <div style={{ fontWeight: 600, color: COURSE_STRUCTURE[a.course]?.color || T.slate[700], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {a.course || '—'}{a.subtype ? ` · ${a.subtype}` : ''}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Class</div>
+          <div style={{ fontWeight: 600 }}>{a.cls || '—'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>House</div>
+          <div style={{ fontWeight: 600 }}>{a.house || '—'}{a.bedNumber ? ` · ${a.bedNumber}` : ''}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Session</div>
+          <div style={{ fontWeight: 600 }}>{a.session || '—'}</div>
+        </div>
+      </div>
+
+      {/* Row 3: hostel + fee badges */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <HostelTypeBadge type={a.hostel_type} />
+        {(a.status === 'Admitted' || a.status === 'Enrolled') && (
+          admPaid
+            ? <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: T.emerald[50], color: T.emerald[700], border: `1px solid ${T.emerald[300]}`, fontWeight: 700 }}>✓ Fee Paid</span>
+            : <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: T.amber[50],   color: T.amber[700],   border: `1px solid ${T.amber[300]}`,   fontWeight: 700 }}>⚠ Fee Due</span>
+        )}
+        {a.docs?.length > 0 && <span style={{ fontSize: 10, color: T.slate[400] }}>{a.docs.length}/{ADM_DOCS.length} docs</span>}
+        {followupOverdue && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.rose[50], color: T.rose[600], fontWeight: 700, border: `1px solid ${T.rose[200]}` }}>⚠ Follow-up overdue</span>}
+        {followupToday   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50], color: T.amber[600], fontWeight: 700, border: `1px solid ${T.amber[200]}` }}>📅 Today</span>}
+        {a.phone && <span style={{ fontSize: 11, color: T.slate[400], marginLeft: 'auto' }}>{a.phone}</span>}
+      </div>
+
+      {/* Row 4: action row */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: `1px solid ${T.slate[100]}`, paddingTop: 10 }}>
+        {actionBtn && <div style={{ marginRight: 'auto' }}>{actionBtn}</div>}
+        <button onClick={e=>{e.stopPropagation();onDetail(a)}}    style={{ padding:'5px 10px', borderRadius:6, background:T.sky[50],    color:T.sky[600],    border:`1px solid ${T.sky[200]}`,    fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
+        <button onClick={e=>{e.stopPropagation();onQuickEdit(a)}} style={{ padding:'5px 10px', borderRadius:6, background:T.amber[50],  color:T.amber[700],  border:`1px solid ${T.amber[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>QEdit</button>
+        <button onClick={e=>{e.stopPropagation();onEdit(a)}}      style={{ padding:'5px 10px', borderRadius:6, background:T.slate[50],  color:T.slate[600],  border:`1px solid ${T.slate[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
+        <button onClick={e=>{e.stopPropagation();onWAMsg(a)}}     style={{ padding:'5px 10px', borderRadius:6, background:'#E7FBE9',    color:'#128C7E',     border:'1px solid #A7F0BA',         fontSize:11, fontWeight:700, cursor:'pointer' }}>WA</button>
+        <button onClick={e=>{e.stopPropagation();onDelete(a.id)}} style={{ padding:'5px 10px', borderRadius:6, background:T.rose[50],   color:T.rose[600],   border:`1px solid ${T.rose[200]}`,   fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
+      </div>
     </div>
-  )
-}
-
+  </div>
+)
 // ─── CSV Import Modal ──────────────────────────────────────────────────────────
 function CSVImportModal({ onClose, onImport }) {
   const [raw,     setRaw]     = useState('')
@@ -1952,12 +2014,18 @@ export default function Admissions() {
         {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
 
         {/* KPI Strip */}
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
-          <KpiCard label="Total"    value={apps.length}    active={filterStatus==='All'} accent={T.indigo[600]} onClick={()=>setFilter('All')} subtitle={`₹${fmt(monthlyRevenue)}/mo`} />
-          {ADM_STATUSES.map(s => (
-            <KpiCard key={s} label={s} value={byStatus[s]||0} active={filterStatus===s} accent={STAT_META[s]?.color} onClick={()=>setFilter(filterStatus===s?'All':s)} />
-          ))}
-        </div>
+        {/* KPI Strip */}
+<div style={{
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+  gap: 10,
+  marginBottom: 16,
+}}>
+  <KpiCard label="Total" value={apps.length} active={filterStatus==='All'} accent={T.indigo[600]} onClick={()=>setFilter('All')} subtitle={`₹${fmt(monthlyRevenue)}/mo`} />
+  {ADM_STATUSES.map(s => (
+    <KpiCard key={s} label={s} value={byStatus[s]||0} active={filterStatus===s} accent={STAT_META[s]?.color} onClick={()=>setFilter(filterStatus===s?'All':s)} />
+  ))}
+</div>
 
         {/* Form */}
         {formOpen && (
@@ -2107,8 +2175,13 @@ export default function Admissions() {
             </div>
           ) : (
             /* Card view */
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {filtered.map(a => (
+<div style={{
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(min(380px, 100%), 1fr))',
+  gap: 16,
+  alignItems: 'start',
+}}>
+  {filtered.map(a => (
                 <div key={a.id}>
                   {/* Feature 78: duplicate warning */}
                   {duplicateGCCs.has(a.gcc) && (
