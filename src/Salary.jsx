@@ -689,28 +689,24 @@ useEffect(() => {
       }
     })
 
-    // 2. Fetch geo attendance for the month
-    const from = regMonth + '-01'
-    const [y, m] = regMonth.split('-').map(Number)
-    const to = new Date(y, m, 0).toISOString().split('T')[0]
+    // 2. Read from pre-aggregated salary feed (written by GeoAttendance report tab)
+const { data: feedData } = await supabase
+  .from('attendance_salary_feed')
+  .select('staff_id, total_late_min, absent_days, early_out_days')
+  .eq('month', regMonth)
 
-    const { data: geoData } = await supabase
-      .from('staff_geo_attendance')
-      .select('staff_id, late_minutes, status, date')
-      .gte('date', from)
-      .lte('date', to)
-
-    // 3. Build late/absent map from geo data
-    const lateMap = {}
-    ;(geoData || []).forEach(log => {
-      if (!lateMap[log.staff_id]) lateMap[log.staff_id] = { lateMin: 0, absent: 0, earlyOut: 0 }
-      lateMap[log.staff_id].lateMin  += log.late_minutes || 0
-      if (log.status === 'Absent')   lateMap[log.staff_id].absent++
-      if (log.status === 'EarlyOut') lateMap[log.staff_id].earlyOut++
-    })
+// 3. Build late/absent map from feed
+const lateMap = {}
+;(feedData || []).forEach(row => {
+  lateMap[row.staff_id] = {
+    lateMin:  row.total_late_min  || 0,
+    absent:   row.absent_days     || 0,
+    earlyOut: row.early_out_days  || 0,
+  }
+})
 
     // 4. Fill unsaved staff — auto-calculate late_deduction from geo
-    // ₹10 per late minute · ₹100 per absent day · ₹50 per early-out
+    // ₹10 per late minute · ₹300 per absent day · ₹150 per early-out
     // Adjust these rates as needed
     const LATE_RATE   = Number(dedRules.late_rate)
 const ABSENT_RATE = Number(dedRules.absent_rate)
