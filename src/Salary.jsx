@@ -551,6 +551,8 @@ const [compareMonth, setCompareMonth] = useState('')
 
 // Performance scores
 const [scoreMap, setScoreMap] = useState({})
+const [probationMap, setProbationMap] = useState({})
+
 // Deduction rules
 const [dedRules, setDedRules]         = useState({ late_rate:10, absent_rate:100, early_out_rate:50 })
 const [rulesForm, setRulesForm]       = useState({ late_rate:10, absent_rate:100, early_out_rate:50 })
@@ -559,7 +561,26 @@ const [rulesHistory, setRulesHistory] = useState([])
 
   // ── Fetch ──
 
-  const fetchScores = useCallback(async (month) => {
+  const fetchProbation = useCallback(async () => {
+  const { data } = await supabase
+    .from('hr_records')
+    .select('staff_id, employment_status, probation_end_date')
+    .eq('is_archived', false)
+  if (data) {
+    const map = {}
+    data.forEach(r => {
+      map[r.staff_id] = {
+        onProbation: r.employment_status === 'Probation',
+        probationEndDate: r.probation_end_date,
+        daysLeft: r.probation_end_date
+          ? Math.ceil((new Date(r.probation_end_date) - new Date()) / 86400000)
+          : null,
+      }
+    })
+    setProbationMap(map)
+  }
+}, [])
+const fetchScores = useCallback(async (month) => {
   const { data } = await supabase
     .from('staff_monthly_scores')
     .select('staff_id, total_score, level, p1_attendance, p2_punctuality, p3_tasks')
@@ -605,7 +626,7 @@ const fetchAll = useCallback(async () => {
   finally { setLoading(false) }
 }, [])
 
-  useEffect(() => { fetchAll(); fetchDeductionRules() }, [fetchAll, fetchDeductionRules])
+  useEffect(() => { fetchAll(); fetchDeductionRules(); fetchProbation() }, [fetchAll, fetchDeductionRules, fetchProbation])
 useEffect(() => { fetchScores(regMonth) }, [regMonth, fetchScores])
 
   // ── Derived ──
@@ -1013,10 +1034,51 @@ const handleDeleteAdvance = useCallback(async (id) => {
             ))}
           </div>
 
-          {loading
-            ? <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading...</div>
-            : (
-              /* ══ UNIFIED STAFF GRID (All Devices) ══ */
+          {/* Probation warning banner */}
+{(() => {
+  const onProbation = filteredStaff.filter(s => probationMap[s.id]?.onProbation)
+  if (!onProbation.length) return null
+  return (
+    <div style={{ background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:10, padding:'12px 16px', marginBottom:14, display:'flex', gap:10, alignItems:'flex-start' }}>
+      <div style={{ fontSize:20 }}>⚠️</div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontWeight:700, color:'#b45309', fontSize:13, marginBottom:6 }}>
+          {onProbation.length} staff on probation this month
+        </div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+          {onProbation.map(s => {
+            const p = probationMap[s.id]
+            const expired = p.daysLeft !== null && p.daysLeft < 0
+            const critical = p.daysLeft !== null && p.daysLeft >= 0 && p.daysLeft <= 7
+            return (
+              <span key={s.id} style={{
+                padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:600,
+                background: expired ? '#fee2e2' : critical ? '#fef3c7' : '#fef9c3',
+                color: expired ? '#dc2626' : critical ? '#b45309' : '#92400e',
+                border: `1px solid ${expired ? '#fca5a5' : '#fcd34d'}`,
+              }}>
+                {s.name}
+                {p.daysLeft !== null && (
+                  <span style={{ marginLeft:4, opacity:0.8 }}>
+                    {expired ? `(expired ${Math.abs(p.daysLeft)}d ago)` : `(${p.daysLeft}d left)`}
+                  </span>
+                )}
+              </span>
+            )
+          })}
+        </div>
+        <div style={{ fontSize:11, color:'#92400e', marginTop:6 }}>
+          ℹ️ Verify employment status before processing salary for probation staff
+        </div>
+      </div>
+    </div>
+  )
+})()}
+
+{loading
+  ? <div style={{ textAlign:'center', padding:'48px', color:'#64748b' }}>⏳ Loading...</div>
+  : (
+    /* ══ UNIFIED STAFF GRID (All Devices) ══ */
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))',
@@ -1038,8 +1100,8 @@ const handleDeleteAdvance = useCallback(async (id) => {
                       borderRadius: 16,
                       padding: 20,
                       boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-                      border: `1px solid ${isPaid ? '#bbf7d0' : '#f1f5f9'}`,
-                      borderLeft: `4px solid ${isPaid ? '#16a34a' : '#1e3a5f'}`,
+                      border: `1px solid ${isPaid ? '#bbf7d0' : probationMap[s.id]?.onProbation ? '#fcd34d' : '#f1f5f9'}`,
+borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? '#f59e0b' : '#1e3a5f'}`,
                       transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
                       position: 'relative',
                       overflow: 'hidden',
@@ -1087,6 +1149,23 @@ const handleDeleteAdvance = useCallback(async (id) => {
                               backgroundColor: isPaid ? '#dcfce7' : '#fee2e2',
                               color: isPaid ? '#16a34a' : '#dc2626'
                             }}>{isPaid ? '✅ Paid' : '⏳ Unpaid'}</span>
+                            {probationMap[s.id]?.onProbation && (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+    backgroundColor: '#fef9c3', color: '#b45309',
+    border: '1px solid #fcd34d'
+  }}>
+    ⏳ Probation
+    {probationMap[s.id].daysLeft !== null && (
+      <span style={{ fontWeight:400, fontSize:10 }}>
+        {probationMap[s.id].daysLeft < 0
+          ? ` — expired`
+          : ` — ${probationMap[s.id].daysLeft}d left`}
+      </span>
+    )}
+  </span>
+)}
                             {row && (
   <span style={{
     display: 'inline-flex', alignItems: 'center', gap: 3,
