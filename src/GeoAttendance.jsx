@@ -392,7 +392,10 @@ function usePushSubscription(currentStaff, isAdmin) {
           role: isAdmin ? 'admin' : 'staff',
         }),
       })
-    } catch (err) { console.warn('Push subscription failed:', err.message) }
+    } catch (err) { 
+  console.warn('Push subscription failed:', err.message)
+  alert('Push error: ' + err.message) 
+}
   }, [currentStaff?.id, isAdmin])
   const unsubscribe = useCallback(async () => {
     if (!subscriptionRef.current) return
