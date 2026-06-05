@@ -129,7 +129,7 @@ async function flushPingQueue() {
 
 // IST-aware "today" date string
 const today    = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-const fmtTime  = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'
+const fmtTime  = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—'
 const fmtDate  = (d)   => d   ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const fmt12    = (t)   => { if (!t) return '—'; const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}` }
 const fmtRupee = (n)   => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
