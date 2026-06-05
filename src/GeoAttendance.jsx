@@ -950,7 +950,7 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
 
     const { data, error } = await supabase.rpc('server_checkout', {
       p_attendance_id: logId,
-      p_staff_id:      currentStaff?.id,
+      p_staff_id:      currentStaff?.id ? parseInt(currentStaff.id) : null,
       p_lat:           gpsCoords?.lat ?? null,
       p_lng:           gpsCoords?.lng ?? null,
       p_accuracy:      gpsAccuracy   ?? null,
