@@ -39,6 +39,7 @@ import { crossModuleSync } from './CrossModuleSync'
 import LandingPage from './LandingPage'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff from './AdminLinkStaff'
+import StudyMaterial from './StudyMaterial'
 
 
 const ALL_GROUPS = [
@@ -70,6 +71,7 @@ const ALL_GROUPS = [
       { id: 'courses',      label: 'Courses',       icon: '🎓' },
       { id: 'questionbank', label: 'Question Bank', icon: '❓' },
       { id: 'entrance',     label: 'Entrance Exam', icon: '🏆' },
+      { id: 'studymaterial', label: 'Study Materials',  icon: '📖' },
     ],
   },
   {
@@ -733,6 +735,7 @@ if (!currentUser) {
   notice:            <Notice            currentUser={currentUser} perms={perms('notice')}           />,
   social:            <Social            currentUser={currentUser} perms={perms('social')}           />,
   questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')}     />,
+  studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')}    />,
   connect:           <Connect           currentUser={currentUser} perms={perms('connect')}          />,
   reports:           <Reports           currentUser={currentUser} perms={perms('reports')}          />,
   checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}        />,
