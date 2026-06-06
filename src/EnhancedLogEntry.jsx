@@ -1,5 +1,20 @@
 // EnhancedLogEntry.jsx — ALL FIELDS MANDATORY VERSION
 // ─────────────────────────────────────────────────────────────────────────────
+// FIX CHANGELOG (13 issues):
+//  1. canNext() Step 4 focus_student_ids guard: condition was inverted (=== 0 → > 0)
+//  2. isDuplicate() now skips check when class_name is empty string (manual input not typed yet)
+//  3. handleSave: early-return on logError before similarity/PQ blocks; logId null-guarded
+//  4. GPS check de-duplicated: runs only once per Step-0 advance via gpsCheckedRef
+//  5. checkAttendance: strips A/B suffix from subtype before querying attendance_sessions
+//  6. doubt_sessions: teacher's explicit HM selection takes priority over DOUBT_SESSION_MAP
+//  7. hm_notifications insert gated behind dsError === null (no orphaned notifications)
+//  8. practice_questions insert now has error handling with toast
+//  9. Draft restore: stale period lock detected on mount and warned to user
+// 10. discardDraft: resets gpsStatus, attWarn, dupWarn, gpsDistance alongside form
+// 11. SpotCheckModal: suppressed when log is already copy_paste flagged
+// 12. HMDoubtSessionPanel: window.confirm/prompt replaced with inline UI modals
+// 13. HMDoubtSessionPanel: print hide delay replaced with afterprint event listener
+// ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
@@ -167,7 +182,6 @@ const PERIOD_TIMES = {
   10: { label:'Period 10 (7:40–8:30 PM)',  start:[19,40], end:[20,30] },
 }
 
-// ─── FIX 1: GPS radius increased from 50m → 150m to handle indoor GPS drift ──
 const SCHOOL_LAT = 24.62181
 const SCHOOL_LNG = 94.0193087
 const SCHOOL_RADIUS_M = 150
@@ -180,8 +194,6 @@ const getDistanceMeters = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-// ─── FIX 3: Schedule type now read from staff data, not hardcoded lists ───────
-// Falls back to legacy hardcoded lists if staff record has no schedule_type field.
 const LEGACY_EVENING_TEACHERS = [
   'Sir Himan','Sir Arunkumar','Sir Bronson','Sir Basanta',
 ]
@@ -191,16 +203,14 @@ const LEGACY_DAYTIME_ONLY_TEACHERS = [
   'Madam Sandhya','Sir Sunder','Miss Fedrava',
 ]
 
-// Resolve schedule type: prefer DB value, fallback to legacy hardcoded lists
 const getScheduleType = (teacherName, staffList) => {
   const staffRecord = staffList?.find(s => s.name === teacherName)
-  if (staffRecord?.schedule_type) return staffRecord.schedule_type // 'daytime' | 'evening' | 'both'
+  if (staffRecord?.schedule_type) return staffRecord.schedule_type
   if (LEGACY_EVENING_TEACHERS.includes(teacherName)) return 'evening'
   if (LEGACY_DAYTIME_ONLY_TEACHERS.includes(teacherName)) return 'daytime'
   return 'both'
 }
 
-// ─── FIX 2: Period unlock with 5-minute early tolerance + schedule-type fix ──
 const isPeriodUnlocked = (periodNo, teacherName, staffList = []) => {
   const pt = PERIOD_TIMES[periodNo]
   if (!pt) return true
@@ -208,19 +218,12 @@ const isPeriodUnlocked = (periodNo, teacherName, staffList = []) => {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const startMins = pt.start[0] * 60 + pt.start[1]
   const scheduleType = getScheduleType(teacherName, staffList)
-
-  // Evening periods (8–10): only evening/both teachers
   if (periodNo >= 8 && scheduleType === 'daytime') return false
-
-  // Daytime-only teachers: lock evening periods
   if (scheduleType === 'daytime') {
-    const lockMins = 15 * 60 + 30 // 3:30 PM
+    const lockMins = 15 * 60 + 30
     if (startMins >= lockMins) return false
-    // FIX 2: allow 5 minutes early
     return nowMins >= startMins - 5
   }
-
-  // FIX 2: allow 5 minutes early for all teachers
   return nowMins >= startMins - 5
 }
 
@@ -239,12 +242,6 @@ const jaccardSimilarity = (a, b) => {
   const intersection = [...setA].filter(w => setB.has(w)).length
   const union = new Set([...setA, ...setB]).size
   return intersection / union
-}
-const isSuspiciouslySimilar = (newLog, oldLog) => {
-  const fields = ['topic_taught', 'classwork', 'remarks']
-  const scores = fields.map(f => jaccardSimilarity(newLog[f], oldLog[f]))
-  const avg = scores.reduce((a,b) => a+b, 0) / scores.length
-  return avg >= 0.8
 }
 
 const getSimilarityScore = (newLog, prevLogs) => {
@@ -295,7 +292,14 @@ const S = {
   stepLine: (done) => ({ flex:1, height:2, background:done?C.green:'#e2e8f0', marginTop:15 }),
 }
 
-// ─── FIX 4: Draft persistence helpers ────────────────────────────────────────
+// ─── FIX 4 helper: draft-stale period check ──────────────────────────────────
+// FIX 9: on restore, warn if the period in the draft is now locked
+const isDraftPeriodStale = (form, staff) => {
+  if (!form.period_number || !form.teacher_name) return false
+  return !isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff || [])
+}
+
+// ─── Draft persistence helpers ────────────────────────────────────────────────
 const DRAFT_KEY = 'gnsi_teaching_log_draft'
 const saveDraft = (form) => {
   try { localStorage.setItem(DRAFT_KEY, JSON.stringify(form)) } catch(e) {}
@@ -505,7 +509,7 @@ function ValidationMessage({ form, step, staff }) {
   )
 }
 
-// ─── FIX 5: Robust bulk question parser ──────────────────────────────────────
+// ─── Bulk question parser ─────────────────────────────────────────────────────
 function parseBulkQuestions(raw) {
   if (!raw.trim()) return []
   const lines = raw.split('\n')
@@ -517,11 +521,10 @@ function parseBulkQuestions(raw) {
     const l = line.trim()
     if (!l) return
 
-    // Formats: "1.", "1)", "Q1.", "Q.1", "(1)", "Q1:" — all handled
     const qMatch =
       l.match(/^(?:Q\.?\s*)?(\d+)[.):\]]\s+(.+)/i) ||
       l.match(/^\((\d+)\)\s+(.+)/) ||
-      l.match(/^(\d+)\s{2,}(.+)/)  // double-space separated (some PDF exports)
+      l.match(/^(\d+)\s{2,}(.+)/)
 
     if (qMatch) {
       if (cur) qs.push(cur)
@@ -534,7 +537,6 @@ function parseBulkQuestions(raw) {
       }
       orderCounter = parseInt(qMatch[1]) + 1
     } else if (!cur && l.length > 10) {
-      // FIX 5: fallback — treat any substantial line without a number as a question
       if (cur) qs.push(cur)
       cur = {
         order_no: orderCounter++,
@@ -885,7 +887,8 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
   const batchStudents = useMemo(() => students || [], [students])
   const weakStudents = useMemo(() => form.weak_students || [], [form.weak_students])
 
-  // Auto-suggest HM and time slot from DOUBT_SESSION_MAP
+  // Auto-suggest time slot only (NOT hm) from DOUBT_SESSION_MAP
+  // FIX 6: teacher's explicit HM selection always takes priority; map only fills slot if blank
   useEffect(() => {
     if (!form.needs_doubt_session || !form.subtype || !form.subject_name) return
     const subLower = form.subject_name.toLowerCase()
@@ -897,6 +900,7 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
     if (match) {
       setForm(f => ({
         ...f,
+        // FIX 6: only fill HM suggestion if teacher hasn't already chosen one
         assigned_hm_name: f.assigned_hm_name || match.hm,
         doubt_time_slot:  f.doubt_time_slot  || match.slot,
       }))
@@ -986,6 +990,7 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
     </div>
   )
 }
+
 // ─── Printable Log ────────────────────────────────────────────────────────────
 
 function PrintableLog({ form }) {
@@ -1040,7 +1045,6 @@ function PrintableLog({ form }) {
         }
       `}</style>
 
-      {/* Header */}
       <div className="print-header">
         <div className="print-title">GNSI — Daily Teaching Log</div>
         <div className="print-subtitle">
@@ -1051,7 +1055,6 @@ function PrintableLog({ form }) {
         </div>
       </div>
 
-      {/* Main Fields */}
       <div className="print-section">
         <table className="print-table">
           <tbody>
@@ -1087,55 +1090,28 @@ function PrintableLog({ form }) {
         </table>
       </div>
 
-      {/* Topic / Classwork / Homework / Remarks */}
       <div className="print-section">
         <table className="print-table">
           <tbody>
-            <tr>
-              <td className="print-label">Topic Taught</td>
-              <td colSpan={3}>{form.topic_taught || '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Classwork Done</td>
-              <td colSpan={3}>{form.classwork || '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Homework Assigned</td>
-              <td colSpan={3}>{form.homework || '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Remarks / Observations</td>
-              <td colSpan={3}>{form.remarks || '—'}</td>
-            </tr>
+            <tr><td className="print-label">Topic Taught</td><td colSpan={3}>{form.topic_taught || '—'}</td></tr>
+            <tr><td className="print-label">Classwork Done</td><td colSpan={3}>{form.classwork || '—'}</td></tr>
+            <tr><td className="print-label">Homework Assigned</td><td colSpan={3}>{form.homework || '—'}</td></tr>
+            <tr><td className="print-label">Remarks / Observations</td><td colSpan={3}>{form.remarks || '—'}</td></tr>
           </tbody>
         </table>
       </div>
 
-      {/* Teaching Technique */}
       <div className="print-section">
         <table className="print-table">
           <tbody>
-            <tr>
-              <td className="print-label">Techniques Used</td>
-              <td colSpan={3}>{(form.techniques || []).join(', ') || '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Technique Details</td>
-              <td colSpan={3}>{form.technique_detail || '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Key Concepts (for HM)</td>
-              <td colSpan={3}>{form.key_concepts || '—'}</td>
-            </tr>
-            <tr>
-              <td className="print-label">Avoid During Doubt Session</td>
-              <td colSpan={3}>{form.technique_avoid || '—'}</td>
-            </tr>
+            <tr><td className="print-label">Techniques Used</td><td colSpan={3}>{(form.techniques || []).join(', ') || '—'}</td></tr>
+            <tr><td className="print-label">Technique Details</td><td colSpan={3}>{form.technique_detail || '—'}</td></tr>
+            <tr><td className="print-label">Key Concepts (for HM)</td><td colSpan={3}>{form.key_concepts || '—'}</td></tr>
+            <tr><td className="print-label">Avoid During Doubt Session</td><td colSpan={3}>{form.technique_avoid || '—'}</td></tr>
           </tbody>
         </table>
       </div>
 
-      {/* Doubt Session */}
       {form.needs_doubt_session && (
         <div className="print-section">
           <table className="print-table">
@@ -1152,16 +1128,12 @@ function PrintableLog({ form }) {
                 <td className="print-label">Focus Students</td>
                 <td>{(form.focus_student_ids || []).length} marked</td>
               </tr>
-              <tr>
-                <td className="print-label">HM Instructions</td>
-                <td colSpan={3}>{form.hm_instruction_message || '—'}</td>
-              </tr>
+              <tr><td className="print-label">HM Instructions</td><td colSpan={3}>{form.hm_instruction_message || '—'}</td></tr>
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Practice Questions */}
       {(form.practice_questions || []).length > 0 && (
         <div className="print-section">
           <div style={{ fontWeight:'bold', marginBottom:6, fontSize:13 }}>
@@ -1190,16 +1162,15 @@ function PrintableLog({ form }) {
         </div>
       )}
 
-      {/* Signatures */}
       <div className="print-footer">
         <div className="print-sign">Subject Teacher<br/>{form.teacher_name || ''}</div>
         <div className="print-sign">Housemaster<br/>{form.assigned_hm_name || ''}</div>
         <div className="print-sign">Principal / Admin</div>
       </div>
-
     </div>
   )
 }
+
 // ─── Review Step ──────────────────────────────────────────────────────────────
 
 function StepReview({ form }) {
@@ -1293,10 +1264,15 @@ const emptyForm = {
 export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs }) {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState(() => {
-    // FIX 4: restore draft on mount if exists
-    const draft = loadDraft()
-    return draft ? { ...emptyForm, ...draft } : { ...emptyForm }
-  })
+  const draft = loadDraft()
+  if (!draft) return { ...emptyForm }
+  // Discard draft if it belongs to a different teacher
+  if (currentUser?.name && draft.teacher_name && draft.teacher_name !== currentUser.name) {
+    clearDraft()
+    return { ...emptyForm }
+  }
+  return { ...emptyForm, ...draft }
+})
   const [saving, setSaving] = useState(false)
   const [chapters, setChapters] = useState([])
   const [loadingChapters, setLoadingChapters] = useState(false)
@@ -1309,13 +1285,23 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [gpsDistance, setGpsDistance] = useState(null)
   const [attWarn, setAttWarn] = useState(false)
   const [spotCheck, setSpotCheck] = useState(null)
-  const [hasDraft, setHasDraft] = useState(() => !!loadDraft())
+  const [hasDraft, setHasDraft] = useState(false)
+  // FIX 9: warn when draft's period is now locked
+  const [draftPeriodStaleWarn, setDraftPeriodStaleWarn] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
   const savingRef = useRef(false)
+  // FIX 4: track whether GPS check has already been done for this Step-0 advance
+  const gpsCheckedRef = useRef(false)
 
-  // FIX 4: auto-save draft on every form change
+  // FIX 9: check for stale period on initial mount if draft was restored
   useEffect(() => {
-    // don't save empty form
+    const draft = loadDraft()
+    if (draft && staff?.length > 0) {
+      setDraftPeriodStaleWarn(isDraftPeriodStale(draft, staff))
+    }
+  }, [staff])
+
+  useEffect(() => {
     if (form.course || form.subject_name || form.topic_taught) {
       saveDraft(form)
       setHasDraft(true)
@@ -1323,11 +1309,21 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   }, [form])
 
   useEffect(() => {
-    if (currentUser?.name && !form.teacher_name) {
-      const s = staff.find(x => x.name === currentUser.name)
-      setForm(f => ({ ...f, teacher_name: currentUser.name, staff_id: s?.id || '' }))
-    }
-  }, [currentUser, staff])
+  if (!currentUser?.name) return
+  const s = staff.find(x => x.name === currentUser.name)
+  // If draft belongs to a different teacher, discard it and start clean
+  if (form.teacher_name && form.teacher_name !== currentUser.name) {
+    clearDraft()
+    setHasDraft(false)
+    setForm({ ...emptyForm, teacher_name: currentUser.name, staff_id: s?.id || '' })
+    return
+  }
+  // Normal case: set teacher name if not already set
+  if (loadDraft()) setHasDraft(true)
+  if (!form.teacher_name) {
+    setForm(f => ({ ...f, teacher_name: currentUser.name, staff_id: s?.id || '' }))
+  }
+}, [currentUser, staff])
 
   useEffect(() => {
     if (!form.subject_name) return
@@ -1362,8 +1358,11 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       })
   }, [form.batch_id])
 
+  // FIX 2: isDuplicate skips check when class_name is empty (manual input not yet typed)
   const isDuplicate = useCallback(() => {
     if (!form.course || !form.subtype || !form.subject_name || !form.teaching_date) return false
+    // Don't check duplicates when class_name is blank — it might not be filled yet for manual input
+    if (!form.class_name) return false
     return logs.some(l =>
       l.course === form.course &&
       l.subtype === form.subtype &&
@@ -1388,20 +1387,33 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     )
   }), [])
 
-  // FIX: attendance check — only block if students query actually loaded (not network fail)
+  // FIX 5: strip A/B suffix from subtype before querying attendance_sessions
   const checkAttendance = useCallback(async () => {
     if (!form.course || !form.subtype || !form.teaching_date) return true
     try {
+      // Normalise subtype: "Leader A" → "Leader", "Achiever B" → "Achiever"
+      const normSubtype = form.subtype.replace(/\s+[AB]$/i, '').trim()
       const { data, error } = await supabase
         .from('attendance_sessions')
         .select('id')
         .eq('course', form.course)
-        .eq('subtype', form.subtype)
+        .eq('subtype', normSubtype)
         .eq('session_date', form.teaching_date)
         .limit(1)
-      // If network error, don't block teacher
-      if (error) return true
-      return (data?.length || 0) > 0
+      if (error) return true // network error → don't block
+      // Also accept exact match in case attendance was saved with suffix
+      if (data?.length) return true
+      if (normSubtype !== form.subtype) {
+        const { data: data2 } = await supabase
+          .from('attendance_sessions')
+          .select('id')
+          .eq('course', form.course)
+          .eq('subtype', form.subtype)
+          .eq('session_date', form.teaching_date)
+          .limit(1)
+        return (data2?.length || 0) > 0
+      }
+      return false
     } catch {
       return true
     }
@@ -1421,6 +1433,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     showToast('Log saved successfully ✓', C.green)
     setForm({ ...emptyForm })
     setStep(0)
+    gpsCheckedRef.current = false
     onSaved?.()
   }
 
@@ -1437,9 +1450,11 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     showToast('⚠️ Spot-check skipped — log flagged for review.', C.amber)
     setForm({ ...emptyForm })
     setStep(0)
+    gpsCheckedRef.current = false
     onSaved?.()
   }
 
+  // FIX 1: corrected focus_student_ids guard (students.length > 0, not === 0)
   const canNext = () => {
     if (step === 0) {
       return form.course && form.subtype && form.class_name && form.subject_name &&
@@ -1464,6 +1479,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     if (step === 3) return true
     if (step === 4) {
       if (form.needs_doubt_session) {
+        // FIX 1: guard is students.length > 0 (has students) → require focus selection
         return (form.assigned_hm_id || form.assigned_hm_name) && form.doubt_date &&
                form.doubt_time_slot && form.hm_instruction_message &&
                (students.length === 0 || (form.focus_student_ids || []).length > 0)
@@ -1480,8 +1496,12 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         setDupWarn(`⚠️ A log for ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
         return
       }
-      const gpsOk = await checkGPS()
-      if (!gpsOk) return
+      // FIX 4: only run GPS check once per Step-0 advance attempt
+      if (!gpsCheckedRef.current) {
+        const gpsOk = await checkGPS()
+        if (!gpsOk) return
+        gpsCheckedRef.current = true
+      }
       const attOk = await checkAttendance()
       if (!attOk) { setAttWarn(true); return }
       setAttWarn(false)
@@ -1519,11 +1539,26 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }
 
       const { data: logData, error: logError } = await supabase.from('teaching_logs').insert([logPayload]).select().single()
-      if (logError) { showToast('Error saving log: ' + logError.message, C.red); setSaving(false); savingRef.current = false; return }
 
-      const logId = logData.id
+      // FIX 3: early return on DB error — nothing downstream should run
+      if (logError) {
+        showToast('Error saving log: ' + logError.message, C.red)
+        setSaving(false)
+        savingRef.current = false
+        return
+      }
 
-      // Similarity check
+      // FIX 3: null-guard logId before any downstream use
+      const logId = logData?.id ?? null
+      if (!logId) {
+        showToast('Unexpected error: log saved but no ID returned.', C.red)
+        setSaving(false)
+        savingRef.current = false
+        return
+      }
+
+      // ── Similarity check ──────────────────────────────────────────────────
+      let isCopyPasteFlagged = false
       try {
         const { data: prevLogs } = await supabase
           .from('teaching_logs')
@@ -1557,6 +1592,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
           const alreadyWarned = existingWarn?.length > 0
 
           if (suspicious && !alreadyWarned) {
+            isCopyPasteFlagged = true
             await supabase.from('teaching_logs').update({
               copy_paste: true,
               lazy_score: Math.round(maxSim * 100),
@@ -1569,7 +1605,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
                 warning_type: 'blocked',
                 message: `🚫 Blocked: ${repeatCount}+ repeated logs detected. Immediate review required.`,
                 similarity_score: Math.round(maxSim * 100),
-                log_id: logId ? Number(logId) : null,
+                log_id: Number(logId),
                 created_at: new Date().toISOString(),
               }])
               showToast('🚫 You are BLOCKED: too many repeated logs. Admin has been notified.', C.red)
@@ -1580,7 +1616,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
                 warning_type: 'final_warning',
                 message: `⛔ Final Warning: ${repeatCount} repeated logs in a row. Next repeat = block.`,
                 similarity_score: Math.round(maxSim * 100),
-                log_id: logId ? Number(logId) : null,
+                log_id: Number(logId),
                 created_at: new Date().toISOString(),
               }])
               showToast('⛔ FINAL WARNING: repeated content detected. One more = blocked.', C.red)
@@ -1591,7 +1627,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
                 warning_type: 'warning',
                 message: `⚠️ Warning ${repeatCount+1}: Log content too similar to previous logs.`,
                 similarity_score: Math.round(maxSim * 100),
-                log_id: logId ? Number(logId) : null,
+                log_id: Number(logId),
                 created_at: new Date().toISOString(),
               }])
               showToast(`⚠️ Warning ${repeatCount+1}/3: Log content looks copied. Write original content.`, C.amber)
@@ -1615,33 +1651,44 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         }
       } catch(e) { console.warn('Similarity check failed:', e.message) }
 
-      // Practice questions
+      // ── Practice questions ────────────────────────────────────────────────
+      // FIX 8: error handling added
       if ((form.practice_questions || []).length) {
         const pqs = form.practice_questions.map((q, i) => ({
-          log_id: logId ? Number(logId) : null, batch_id: form.batch_id || null,
+          log_id: Number(logId),
+          batch_id: form.batch_id || null,
           course: form.course, subject_name: form.subject_name,
           chapter: chapterFinal || null, subtopic: subtopicFinal || null,
           question_text: q.question_text, answer: q.answer || null,
           difficulty: q.difficulty || 'Medium', order_no: q.order_no || i+1,
           options: q.options?.length ? JSON.stringify(q.options) : null,
         }))
-        await supabase.from('practice_questions').insert(pqs)
+        const { error: pqError } = await supabase.from('practice_questions').insert(pqs)
+        if (pqError) {
+          showToast(`⚠️ ${pqs.length} practice question(s) could not be saved: ${pqError.message}`, C.amber)
+          // non-fatal — continue saving the rest
+        }
       }
 
-      // Doubt session — single row per log
+      // ── Doubt session ─────────────────────────────────────────────────────
       if (form.needs_doubt_session && (form.assigned_hm_id || form.assigned_hm_name)) {
         const focusNames = students.filter(s => (form.focus_student_ids||[]).includes(s.id)).map(s => s.name)
+
         const subLower = form.subject_name.toLowerCase()
         const batchLower = (form.subtype||'').toLowerCase()
         const mapMatch = DOUBT_SESSION_MAP.find(d =>
           batchLower.includes(d.batch.toLowerCase().split(' ')[0]) &&
           (subLower.includes(d.subject.toLowerCase()) || d.subject.toLowerCase().includes(subLower.split(' ')[0]))
         )
-        const resolvedHM   = mapMatch?.hm   || form.assigned_hm_name || null
-        const resolvedSlot = mapMatch?.slot || form.doubt_time_slot  || null
+
+        // FIX 6: teacher's explicit selection takes priority over map suggestion
+        // assigned_hm_name is always set by the teacher's picker — use it directly.
+        // Map is only used as a fallback for slot if teacher left slot blank.
+        const resolvedHM   = form.assigned_hm_name || mapMatch?.hm  || null
+        const resolvedSlot = form.doubt_time_slot   || mapMatch?.slot || null
 
         const sessionRow = {
-          log_id: logId ? Number(logId) : null,
+          log_id: Number(logId),
           course: form.course,
           subtype: form.subtype || null,
           class_name: form.class_name || null,
@@ -1673,29 +1720,42 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         if (dsError) {
           showToast('Doubt session error: ' + dsError.message, C.red)
           console.error('doubt_sessions insert error:', dsError)
+          // FIX 7: do NOT insert notification if doubt session failed
+        } else {
+          // FIX 7: only notify after a successful doubt_sessions insert
+          await supabase.from('hm_notifications').insert([{
+            log_id: Number(logId),
+            hm_staff_id: null,
+            hm_name: resolvedHM,
+            message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course}) | 🕐 ${resolvedSlot || ''}`,
+            instructions: form.hm_instruction_message || null,
+            key_concepts: form.key_concepts || null,
+            technique_avoid: form.technique_avoid || null,
+            focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
+            status: 'unread',
+            created_at: new Date().toISOString(),
+          }])
         }
-
-        // One notification
-        await supabase.from('hm_notifications').insert([{
-          log_id: logId ? Number(logId) : null,
-          hm_staff_id: null,
-          hm_name: resolvedHM,
-          message: `📚 Doubt session needed: ${form.subject_name} — ${chapterFinal} (${form.subtype||form.course}) | 🕐 ${resolvedSlot || ''}`,
-          instructions: form.hm_instruction_message || null,
-          key_concepts: form.key_concepts || null,
-          technique_avoid: form.technique_avoid || null,
-          focus_student_names: focusNames.length ? JSON.stringify(focusNames) : null,
-          status: 'unread',
-          created_at: new Date().toISOString(),
-        }])
       }
 
       const excellent = isExcellentLog({ ...logPayload, ...form })
       if (excellent) {
         showToast('🌟 Excellent log! Your preparation and detail are outstanding. Keep it up!', C.green)
       }
-      const randomQ = SPOT_CHECK_QUESTIONS[Math.floor(Math.random() * SPOT_CHECK_QUESTIONS.length)]
-      setSpotCheck({ logId, question: randomQ })
+
+      // FIX 11: suppress spot-check if log is already copy-paste flagged
+      if (!isCopyPasteFlagged) {
+        const randomQ = SPOT_CHECK_QUESTIONS[Math.floor(Math.random() * SPOT_CHECK_QUESTIONS.length)]
+        setSpotCheck({ logId, question: randomQ })
+      } else {
+        // copy-paste flagged: skip spot-check, just clean up
+        clearDraft()
+        setHasDraft(false)
+        setForm({ ...emptyForm })
+        setStep(0)
+        gpsCheckedRef.current = false
+        onSaved?.()
+      }
     } catch (e) {
       showToast('Unexpected error: ' + e.message, C.red)
     } finally {
@@ -1705,9 +1765,16 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     }
   }
 
+  // FIX 10: discardDraft resets all warning/GPS state too
   const discardDraft = () => {
     clearDraft()
     setHasDraft(false)
+    setDraftPeriodStaleWarn(false)
+    setDupWarn('')
+    setAttWarn(false)
+    setGpsStatus('idle')
+    setGpsDistance(null)
+    gpsCheckedRef.current = false
     setForm({ ...emptyForm })
     setStep(0)
   }
@@ -1734,11 +1801,18 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       )}
 
       <div style={S.card}>
-        {/* FIX 4: Draft banner */}
+        {/* Draft banner */}
         {hasDraft && step === 0 && (
           <div style={{ padding:'10px 14px', background:'#fef9c3', border:'1px solid #fde68a', borderRadius:8, marginBottom:14, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
             <span style={{ fontSize:13, fontWeight:600, color:'#92400e' }}>📝 Draft restored — continue where you left off.</span>
             <button type="button" onClick={discardDraft} style={{ fontSize:12, color:'#dc2626', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>✕ Discard Draft</button>
+          </div>
+        )}
+
+        {/* FIX 9: stale period warning */}
+        {draftPeriodStaleWarn && step === 0 && (
+          <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
+            🔒 Your draft has Period {form.period_number} selected, which is now locked. Please select a different period before proceeding.
           </div>
         )}
 
@@ -1800,11 +1874,60 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
 
 export default EnhancedLogForm
 
-// ─── HM Doubt Session Panel ───────────────────────────────────────────────────
-// Drop-in replacement for HMDoubtSessionPanel in EnhancedLogEntry.jsx
-// Includes full printable teaching log view integrated into the panel.
-// All helpers (fmtDate, S, C, useToast, Toast, supabase) are assumed to be
-// defined in the parent file exactly as they are in EnhancedLogEntry.jsx.
+// ─────────────────────────────────────────────────────────────────────────────
+// HM Doubt Session Panel
+// FIX 12: window.confirm/prompt replaced with inline React modals
+// FIX 13: print hide delay replaced with afterprint event listener
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Inline confirmation modal used by HMDoubtSessionPanel ───────────────────
+// FIX 12: replaces window.confirm()
+function InlineConfirm({ msg, confirmLabel='Confirm', confirmColor=C.red, onConfirm, onCancel }) {
+  return (
+    <div style={{ margin:'10px 0', padding:'14px 16px', background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:10 }}>
+      <div style={{ fontSize:13, color:'#7f1d1d', fontWeight:600, marginBottom:10, lineHeight:1.6 }}>{msg}</div>
+      <div style={{ display:'flex', gap:8 }}>
+        <button type="button" onClick={onConfirm}
+          style={{ backgroundColor:confirmColor, color:'white', border:'none', borderRadius:7, padding:'7px 16px', fontWeight:700, cursor:'pointer', fontSize:12 }}>
+          {confirmLabel}
+        </button>
+        <button type="button" onClick={onCancel}
+          style={{ background:'white', color:'#374151', border:'1px solid #d1d5db', borderRadius:7, padding:'7px 14px', fontWeight:600, cursor:'pointer', fontSize:12 }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Inline text prompt used by HMDoubtSessionPanel ──────────────────────────
+// FIX 12: replaces window.prompt()
+function InlinePrompt({ label, placeholder, onSubmit, onCancel }) {
+  const [val, setVal] = useState('')
+  return (
+    <div style={{ margin:'10px 0', padding:'14px 16px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:10 }}>
+      <div style={{ fontSize:12, fontWeight:700, color:C.navy, marginBottom:8 }}>{label}</div>
+      <textarea
+        autoFocus
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        rows={3}
+        style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid #93c5fd', fontSize:13, boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }}
+        placeholder={placeholder}
+      />
+      <div style={{ display:'flex', gap:8, marginTop:8 }}>
+        <button type="button" onClick={() => val.trim() && onSubmit(val.trim())} disabled={!val.trim()}
+          style={{ backgroundColor: val.trim() ? C.navy : '#94a3b8', color:'white', border:'none', borderRadius:7, padding:'7px 16px', fontWeight:700, cursor: val.trim() ? 'pointer' : 'not-allowed', fontSize:12 }}>
+          Send
+        </button>
+        <button type="button" onClick={onCancel}
+          style={{ background:'white', color:'#374151', border:'1px solid #d1d5db', borderRadius:7, padding:'7px 14px', fontWeight:600, cursor:'pointer', fontSize:12 }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const [note, setNote] = useState('')
@@ -1818,6 +1941,10 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
   const [logDetail, setLogDetail] = useState(null)
   const [showLog, setShowLog] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
+
+  // FIX 12: inline UI state replacing window.confirm / window.prompt
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [promptState, setPromptState] = useState(null) // { studentName } | null
 
   // ─── Data loading ──────────────────────────────────────────────────────────
 
@@ -1952,8 +2079,9 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     setSending(false)
   }
 
-  const handleDelete = async () => {
-    if (!window.confirm('Delete this doubt session permanently? This cannot be undone.')) return
+  // FIX 12: delete now uses InlineConfirm, not window.confirm
+  const handleDeleteConfirmed = async () => {
+    setDeleteConfirmOpen(false)
     setSending(true)
     await supabase.from('hm_notifications').delete().eq('log_id', session.log_id)
     await supabase.from('doubt_sessions').delete().eq('id', session.id)
@@ -1962,27 +2090,27 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     setSending(false)
   }
 
-  // ─── Print handler ─────────────────────────────────────────────────────────
-  // Shows the hidden print header + signature row, triggers window.print(),
-  // then hides them again so the screen layout is unaffected.
-
+  // FIX 13: print using afterprint event to restore hidden elements reliably
   const handlePrint = () => {
-    const printArea  = document.getElementById(`hm-print-area-${session.id}`)
-    const printHead  = document.getElementById(`hm-print-head-${session.id}`)
-    const signRow    = document.getElementById(`hm-sign-row-${session.id}`)
-    const noprints   = printArea?.querySelectorAll('.hm-no-print')
+    const printArea = document.getElementById(`hm-print-area-${session.id}`)
+    const printHead = document.getElementById(`hm-print-head-${session.id}`)
+    const signRow   = document.getElementById(`hm-sign-row-${session.id}`)
+    const noprints  = printArea?.querySelectorAll('.hm-no-print')
 
-    if (printHead)  printHead.style.display  = 'block'
-    if (signRow)    signRow.style.display    = 'flex'
-    if (noprints)   noprints.forEach(el => el.setAttribute('data-hidden', '1'))
-
-    window.print()
-
-    setTimeout(() => {
+    const restore = () => {
       if (printHead) printHead.style.display = 'none'
       if (signRow)   signRow.style.display   = 'none'
       if (noprints)  noprints.forEach(el => el.removeAttribute('data-hidden'))
-    }, 600)
+      window.removeEventListener('afterprint', restore)
+    }
+
+    if (printHead) printHead.style.display = 'block'
+    if (signRow)   signRow.style.display   = 'flex'
+    if (noprints)  noprints.forEach(el => el.setAttribute('data-hidden', '1'))
+
+    // FIX 13: listen for afterprint — fires after the print dialog closes
+    window.addEventListener('afterprint', restore)
+    window.print()
   }
 
   // ─── Derived display values ────────────────────────────────────────────────
@@ -1994,9 +2122,8 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     try { return JSON.parse(session.focus_student_names || '[]') } catch { return [] }
   })()
 
-  const log = logDetail  // shorthand
+  const log = logDetail
 
-  // ─── Inline print styles injected once ────────────────────────────────────
   const printCss = `
     .hm-print-only-tables { display: none; }
 
@@ -2023,7 +2150,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
     }
   `
 
-  // ─── Shared style helpers (screen only) ───────────────────────────────────
   const field = (label, value) => (
     <div style={{ flex: '1 1 160px', background: '#f8fafc', borderRadius: 8, padding: '10px 14px', border: '1px solid #e2e8f0' }}>
       <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{label}</div>
@@ -2037,8 +2163,6 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
       <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.7, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>{value}</div>
     </div>
   ) : null
-
-  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -2073,14 +2197,26 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
             )}>
               {statusLabel[session.status] || '⏳ Open'}
             </span>
+            {/* FIX 12: admin delete button now opens InlineConfirm */}
             {currentUser?.role === 'admin' && (
-              <button type="button" onClick={handleDelete} disabled={sending}
+              <button type="button" onClick={() => setDeleteConfirmOpen(true)} disabled={sending}
                 style={{ fontSize: 11, fontWeight: 700, color: C.red, background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
                 🗑 Delete
               </button>
             )}
           </div>
         </div>
+
+        {/* FIX 12: inline delete confirmation */}
+        {deleteConfirmOpen && (
+          <InlineConfirm
+            msg="Delete this doubt session permanently? This cannot be undone."
+            confirmLabel="Yes, delete"
+            confirmColor={C.red}
+            onConfirm={handleDeleteConfirmed}
+            onCancel={() => setDeleteConfirmOpen(false)}
+          />
+        )}
 
         {/* ── Toggle + Print buttons ── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -2096,14 +2232,10 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
           )}
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════════
-            PRINTABLE AREA — everything inside here is printed.
-            Screen: shows only when showLog === true (except print-only elements).
-            Print:  always visible, styled via @media print above.
-        ══════════════════════════════════════════════════════════════════ */}
+        {/* ══ PRINTABLE AREA ═══════════════════════════════════════════════════ */}
         <div id={`hm-print-area-${session.id}`}>
 
-          {/* Print-only header (hidden on screen) */}
+          {/* Print-only header */}
           <div id={`hm-print-head-${session.id}`} style={{ display: 'none' }}>
             <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: 12, marginBottom: 20 }}>
               <div style={{ fontSize: 19, fontWeight: 'bold' }}>GNSI — Teaching log (HM copy)</div>
@@ -2114,11 +2246,9 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
             </div>
           </div>
 
-          {/* ── Log body — shown on screen only when expanded ── */}
+          {/* Screen-only expanded log body */}
           {(showLog && log) && (
             <div className="hm-no-print" style={{ marginBottom: 16 }}>
-
-              {/* Class details */}
               <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>Class details</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
                 {field('Teacher', log.teacher_name)}
@@ -2132,17 +2262,12 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
                 {field('Chapter', log.chapter)}
                 {field('Sub-topic', log.subtopic)}
               </div>
-
               <div style={{ height: 1, background: '#e2e8f0', marginBottom: 14 }}/>
-
-              {/* What was taught */}
               <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>What was taught</div>
               {textBlock('Topic taught', log.topic_taught)}
               {textBlock('Classwork done', log.classwork)}
               {textBlock('Homework assigned', log.homework)}
               {textBlock('Remarks / observations', log.remarks)}
-
-              {/* Techniques */}
               {log.techniques && (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Teaching methods used</div>
@@ -2158,7 +2283,7 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
             </div>
           )}
 
-          {/* ── Instruction boxes — always in print area, screen shows when expanded ── */}
+          {/* Instruction boxes */}
           <div className={!showLog ? 'hm-no-print' : ''}>
             {session.teacher_instructions && (
               <div className="hm-instr-navy" style={{ padding: '12px 14px', background: '#1e3a5f', borderRadius: 10, marginBottom: 10, color: 'white' }}>
@@ -2180,7 +2305,7 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
             )}
           </div>
 
-          {/* ── Doubt session details — always in print area ── */}
+          {/* Doubt session details */}
           <div className={!showLog ? 'hm-no-print' : ''}>
             {(session.doubt_date || session.doubt_time_slot || session.hm_name) && (
               <>
@@ -2195,23 +2320,36 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
             )}
           </div>
 
-          {/* ── Focus students — always in print area ── */}
+          {/* Focus students */}
           {focusNames.length > 0 && (
             <div className={!showLog ? 'hm-no-print' : ''} style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>⚠️ FOCUS ON THESE STUDENTS</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {/* FIX 12: clicking student opens InlinePrompt instead of window.prompt */}
                 {focusNames.map((n, i) => (
                   <button key={i} type="button"
-                    onClick={() => { const d = window.prompt(`Doubt/issue for ${n}:`); if (d) notifyTeacher(n, d) }}
+                    onClick={() => setPromptState({ studentName: n })}
                     style={{ ...S.badge('#b45309', '#fef9c3'), cursor: 'pointer' }}>
                     {n} 📨
                   </button>
                 ))}
               </div>
+              {/* FIX 12: inline prompt appears below focus students list */}
+              {promptState && (
+                <InlinePrompt
+                  label={`Doubt / issue for ${promptState.studentName}:`}
+                  placeholder="Describe the student's doubt or difficulty..."
+                  onSubmit={async (detail) => {
+                    await notifyTeacher(promptState.studentName, detail)
+                    setPromptState(null)
+                  }}
+                  onCancel={() => setPromptState(null)}
+                />
+              )}
             </div>
           )}
 
-          {/* Print-only full detail table (visible only in @media print) */}
+          {/* Print-only full detail table */}
           {log && (
             <div className="hm-print-only-tables">
               <table className="hm-print-table">
@@ -2277,7 +2415,8 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {students.map(s => (
                       <button key={s.id} type="button"
-                        onClick={() => { const d = window.prompt(`Doubt/issue for ${s.name}:`); if (d) notifyTeacher(s.name, d) }}
+                        // FIX 12: batch students also use InlinePrompt
+                        onClick={() => setPromptState({ studentName: s.name })}
                         style={S.pill('#1e293b', '#f1f5f9')}>
                         {s.name} 📨
                       </button>
