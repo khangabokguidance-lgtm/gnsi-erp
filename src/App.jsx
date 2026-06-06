@@ -40,6 +40,7 @@ import LandingPage from './LandingPage'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff from './AdminLinkStaff'
 import StudyMaterial from './StudyMaterial'
+import StudyLockers from './StudyLockers'
 
 
 const ALL_GROUPS = [
@@ -72,6 +73,7 @@ const ALL_GROUPS = [
       { id: 'questionbank', label: 'Question Bank', icon: '❓' },
       { id: 'entrance',     label: 'Entrance Exam', icon: '🏆' },
       { id: 'studymaterial', label: 'Study Materials',  icon: '📖' },
+      { id: 'studylockers',  label: 'Study Lockers',    icon: '🗃️' },
     ],
   },
   {
@@ -736,6 +738,7 @@ if (!currentUser) {
   social:            <Social            currentUser={currentUser} perms={perms('social')}           />,
   questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')}     />,
   studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')}    />,
+  studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}     />,
   connect:           <Connect           currentUser={currentUser} perms={perms('connect')}          />,
   reports:           <Reports           currentUser={currentUser} perms={perms('reports')}          />,
   checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}        />,
