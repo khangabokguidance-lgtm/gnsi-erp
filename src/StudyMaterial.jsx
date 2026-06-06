@@ -199,16 +199,14 @@ const COURSES = {
 }
 
 const MATERIAL_TYPES = [
-  { key: 'notes',    label: 'Notes PDF',      icon: '📄', color: '#1d4ed8', bg: '#dbeafe' },
-  { key: 'formula',  label: 'Formula Sheet',   icon: '🔣', color: '#7c3aed', bg: '#ede9fe' },
-  { key: 'practice', label: 'Practice Set',    icon: '✏️', color: '#15803d', bg: '#dcfce7' },
-  { key: 'solved',   label: 'Solved Paper',    icon: '✅', color: '#0f766e', bg: '#ccfbf1' },
-  { key: 'mindmap',  label: 'Mind Map',        icon: '🗂️', color: '#b45309', bg: '#fef9c3' },
-  { key: 'video',    label: 'Video Link',      icon: '🎥', color: '#dc2626', bg: '#fee2e2' },
-  { key: 'currentaffairs', label: 'Current Affairs', icon: '📰', color: '#64748b', bg: '#f1f5f9' },
+  { key: 'notes',         label: 'Notes PDF',       icon: '📄', color: '#1d4ed8', bg: '#dbeafe' },
+  { key: 'formula',       label: 'Formula Sheet',   icon: '🔣', color: '#7c3aed', bg: '#ede9fe' },
+  { key: 'practice',      label: 'Practice Set',    icon: '✏️', color: '#15803d', bg: '#dcfce7' },
+  { key: 'solved',        label: 'Solved Paper',    icon: '✅', color: '#0f766e', bg: '#ccfbf1' },
+  { key: 'mindmap',       label: 'Mind Map',        icon: '🗂️', color: '#b45309', bg: '#fef9c3' },
+  { key: 'video',         label: 'Video Link',      icon: '🎥', color: '#dc2626', bg: '#fee2e2' },
+  { key: 'currentaffairs',label: 'Current Affairs', icon: '📰', color: '#64748b', bg: '#f1f5f9' },
 ]
-
-const FILE_BUCKET = 'study-materials'
 
 // ── COLORS ────────────────────────────────────────────────────────────────────
 const C = {
@@ -216,6 +214,8 @@ const C = {
   white: '#ffffff', bg: '#f8fafc', green: '#16a34a',
   rose: '#dc2626', amber: '#d97706', indigo: '#4f46e5',
 }
+
+// ── SHARED STYLES ─────────────────────────────────────────────────────────────
 const iS = {
   width: '100%', padding: '8px 11px', borderRadius: 7,
   border: `1px solid ${C.border}`, fontSize: 13,
@@ -247,7 +247,10 @@ function Toast({ msg, color }) {
       background: '#fff', border: `1px solid ${C.border}`,
       borderLeft: `3px solid ${color}`, borderRadius: 10,
       padding: '11px 18px', fontSize: 13, fontWeight: 600,
-      boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 360,
+      boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 320,
+      left: 'auto',
+      // Mobile: center at top
+      '@media (max-width: 480px)': { left: 16, right: 16 },
     }}>
       {msg}
     </div>
@@ -277,6 +280,17 @@ function MaterialTypeBadge({ typeKey }) {
   )
 }
 
+// ── useIsMobile hook ──────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.innerWidth < 768)
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return mobile
+}
+
 // ── UPLOAD MODAL ──────────────────────────────────────────────────────────────
 function UploadModal({ course, subject, chapter, onClose, onSaved, showToast }) {
   const [form, setForm] = useState({
@@ -291,41 +305,48 @@ function UploadModal({ course, subject, chapter, onClose, onSaved, showToast }) 
   const fileRef = useRef()
   const courseData = COURSES[course]
   const chapters = courseData?.subjects[subject]?.chapters || []
+  // FIX: use the correct per-course bucket
+  const bucket = courseData.FILE_BUCKET
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = async () => {
-    if (!form.title.trim()) { showToast('Enter a title', C.amber); return }
-    if (!form.chapter) { showToast('Select a chapter', C.amber); return }
+    if (!form.title.trim())        { showToast('Enter a title', C.amber);               return }
+    if (!form.chapter)             { showToast('Select a chapter', C.amber);            return }
     if (!file && !form.link_url.trim()) { showToast('Upload a file or add a link', C.amber); return }
     setSaving(true)
 
-    let file_url = form.link_url.trim()
+    let file_url  = form.link_url.trim()
     let file_name = ''
     let file_size = 0
+    // FIX: store timestamp-prefixed path so delete can reconstruct it
+    let stored_path = ''
 
     if (file) {
-      const ext = file.name.split('.').pop()
-      const path = `${course}/${subject.replace(/\s+/g, '_')}/${Date.now()}_${file.name}`
+      const safeSub = subject.replace(/\s+/g, '_')
+      const ts      = Date.now()
+      stored_path   = `${course}/${safeSub}/${ts}_${file.name}`
+
       const { error: upErr } = await supabase.storage
-        .from(FILE_BUCKET)
-        .upload(path, file, { upsert: true })
+        .from(bucket)
+        .upload(stored_path, file, { upsert: true })
       if (upErr) { showToast('Upload failed: ' + upErr.message, C.rose); setSaving(false); return }
-      const { data } = supabase.storage.from(FILE_BUCKET).getPublicUrl(path)
-      file_url = data.publicUrl
-      file_name = file.name
-      file_size = file.size
+
+      const { data } = supabase.storage.from(bucket).getPublicUrl(stored_path)
+      file_url   = data.publicUrl
+      file_name  = stored_path   // store full path for reliable delete
+      file_size  = file.size
     }
 
     const payload = {
       course,
       subject,
-      chapter: form.chapter,
-      title: form.title.trim(),
+      chapter:       form.chapter,
+      title:         form.title.trim(),
       material_type: form.material_type,
-      description: form.description.trim(),
+      description:   form.description.trim(),
       file_url,
-      file_name,
+      file_name,   // now stores the full storage path
       file_size,
     }
 
@@ -341,17 +362,33 @@ function UploadModal({ course, subject, chapter, onClose, onSaved, showToast }) 
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
       background: 'rgba(0,0,0,.45)', display: 'flex',
-      alignItems: 'center', justifyContent: 'center', padding: 16,
+      alignItems: 'flex-end', justifyContent: 'center', padding: 0,
     }}>
+      {/* Sheet slides up on mobile, centered modal on desktop */}
       <div style={{
-        background: C.white, borderRadius: 14, padding: '24px 26px',
-        width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,.2)',
+        background: C.white,
+        borderRadius: '14px 14px 0 0',
+        padding: '24px 20px 32px',
+        width: '100%',
+        maxWidth: 520,
+        boxShadow: '0 -8px 40px rgba(0,0,0,.18)',
+        maxHeight: '92vh',
+        overflowY: 'auto',
+        // On larger screens, act as a centered modal
+        '@media (min-width: 600px)': {
+          borderRadius: 14,
+          margin: 'auto',
+          maxHeight: '90vh',
+        },
       }}>
+        {/* Drag handle hint for mobile */}
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: C.border, margin: '0 auto 18px' }} />
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>
             📤 Upload Study Material
           </div>
-          <button onClick={onClose} style={btnSm('#f1f5f9', C.slate)}>✕ Close</button>
+          <button onClick={onClose} style={btnSm('#f1f5f9', C.slate)}>✕</button>
         </div>
 
         <div style={{ display: 'grid', gap: 12 }}>
@@ -419,7 +456,8 @@ function UploadModal({ course, subject, chapter, onClose, onSaved, showToast }) 
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-          <button onClick={handleSave} disabled={saving} style={btn(C.green, saving)}>
+          <button onClick={handleSave} disabled={saving}
+            style={{ ...btn(C.green, saving), flex: 1 }}>
             {saving ? '⏳ Saving…' : '✅ Save Material'}
           </button>
           <button onClick={onClose} style={btn(C.slate)}>Cancel</button>
@@ -432,13 +470,16 @@ function UploadModal({ course, subject, chapter, onClose, onSaved, showToast }) 
 // ── MATERIAL CARD ─────────────────────────────────────────────────────────────
 function MaterialCard({ mat, onDelete, showToast }) {
   const [deleting, setDeleting] = useState(false)
+  const courseData = COURSES[mat.course]
+  // FIX: use per-course bucket
+  const bucket = courseData?.FILE_BUCKET || 'study-materials'
 
   const handleDelete = async () => {
     if (!confirm('Delete this material?')) return
     setDeleting(true)
+    // FIX: file_name now stores the full path (course/subject/timestamp_filename)
     if (mat.file_name) {
-      const path = `${mat.course}/${mat.subject.replace(/\s+/g, '_')}/${mat.file_name}`
-      await supabase.storage.from(FILE_BUCKET).remove([path])
+      await supabase.storage.from(bucket).remove([mat.file_name])
     }
     const { error } = await supabase.from('study_materials').delete().eq('id', mat.id)
     if (error) { showToast('Delete failed', C.rose); setDeleting(false); return }
@@ -446,8 +487,9 @@ function MaterialCard({ mat, onDelete, showToast }) {
     onDelete()
   }
 
-  const isLink = !mat.file_name && mat.file_url
-  const isVideo = mat.material_type === 'video' || mat.file_url?.includes('youtube') || mat.file_url?.includes('youtu.be')
+  const isLink  = !mat.file_name && mat.file_url
+  const isVideo = mat.material_type === 'video' ||
+    mat.file_url?.includes('youtube') || mat.file_url?.includes('youtu.be')
 
   return (
     <div style={{
@@ -476,7 +518,7 @@ function MaterialCard({ mat, onDelete, showToast }) {
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
           {mat.file_url && (
             <a href={mat.file_url} target="_blank" rel="noreferrer"
               style={btnSm(isVideo ? '#fee2e2' : '#eff6ff', isVideo ? C.rose : C.navy)}>
@@ -496,12 +538,13 @@ function MaterialCard({ mat, onDelete, showToast }) {
 // ── SUBJECT PANEL ─────────────────────────────────────────────────────────────
 function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, showToast }) {
   const [expandedChapter, setExpandedChapter] = useState(null)
-  const [showUpload, setShowUpload] = useState(false)
-  const [uploadChapter, setUploadChapter] = useState('')
-  const [filterType, setFilterType] = useState('all')
+  const [showUpload,      setShowUpload]      = useState(false)
+  const [uploadChapter,   setUploadChapter]   = useState('')
+  const [filterType,      setFilterType]      = useState('all')
 
   const courseData = COURSES[course]
 
+  // FIX: filter from materials prop (which may already be filtered by search)
   const subjectMats = useMemo(() =>
     materials.filter(m => m.subject === subjectName),
     [materials, subjectName]
@@ -509,6 +552,7 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
 
   const countByChapter = useMemo(() => {
     const map = {}
+    // Always count against full subject materials (not filtered by type) for the badge
     subjectMats.forEach(m => { map[m.chapter] = (map[m.chapter] || 0) + 1 })
     return map
   }, [subjectMats])
@@ -542,7 +586,7 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>
-              {subjectData.icon} {subjectName}
+              {subjectData?.icon} {subjectName}
             </div>
             <div style={{ fontSize: 12, color: C.slate, marginTop: 2 }}>
               {subjectData.chapters.length} chapters · {subjectMats.length} materials uploaded
@@ -550,7 +594,7 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
           </div>
           <button onClick={() => { setUploadChapter(''); setShowUpload(true) }}
             style={btn(courseData.color)}>
-            📤 Upload Material
+            📤 Upload
           </button>
         </div>
 
@@ -582,7 +626,7 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
       </div>
 
       {/* Chapters */}
-      {subjectData.chapters.map(ch => {
+      {(subjectData?.chapters || []).map((ch) => {
         const chMats = subjectMats.filter(m =>
           m.chapter === ch && (filterType === 'all' || m.material_type === filterType)
         )
@@ -594,12 +638,11 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
             background: C.white, borderRadius: 10, border: `1px solid ${C.border}`,
             marginBottom: 6, overflow: 'hidden',
           }}>
-            {/* Chapter row */}
             <div
               onClick={() => setExpandedChapter(isExpanded ? null : ch)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '11px 16px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '11px 14px', cursor: 'pointer',
                 background: isExpanded ? courseData.bg : C.white,
                 transition: 'background .12s',
               }}>
@@ -607,10 +650,9 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
                 {ch}
               </span>
               {total > 0 ? (
-                <Badge text={`${total} file${total > 1 ? 's' : ''}`}
-                  color={courseData.text} bg={courseData.bg} />
+                <Badge text={`${total}`} color={courseData.text} bg={courseData.bg} />
               ) : (
-                <Badge text="No files" color="#94a3b8" bg="#f1f5f9" />
+                <Badge text="—" color="#94a3b8" bg="#f1f5f9" />
               )}
               <button
                 onClick={e => { e.stopPropagation(); handleUploadForChapter(ch) }}
@@ -620,12 +662,11 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
               <span style={{ fontSize: 11, color: C.slate }}>{isExpanded ? '▲' : '▼'}</span>
             </div>
 
-            {/* Expanded: files */}
             {isExpanded && (
               <div style={{ padding: '10px 14px 14px', borderTop: `1px solid ${C.border}` }}>
                 {chMats.length === 0 ? (
                   <div style={{ fontSize: 13, color: '#94a3b8', padding: '12px 0', textAlign: 'center' }}>
-                    No materials yet for this chapter.
+                    No materials yet.
                     <button onClick={() => handleUploadForChapter(ch)}
                       style={{ ...btnSm(courseData.bg, courseData.text), marginLeft: 10 }}>
                       📤 Upload now
@@ -649,8 +690,9 @@ function SubjectPanel({ course, subjectName, subjectData, materials, onRefetch, 
 
 // ── STATS OVERVIEW ────────────────────────────────────────────────────────────
 function CourseStats({ course, materials }) {
-  const courseData = COURSES[course]
-  const courseMats = materials.filter(m => m.course === course)
+  const courseData  = COURSES[course]
+  const courseMats  = materials.filter(m => m.course === course)
+  const isMobile    = useIsMobile()
 
   const bySubject = useMemo(() => {
     const map = {}
@@ -665,7 +707,7 @@ function CourseStats({ course, materials }) {
     return map
   }, [courseMats])
 
-  const totalChapters = Object.values(courseData.subjects).reduce((a, s) => a + s.chapters.length, 0)
+  const totalChapters   = Object.values(courseData.subjects).reduce((a, s) => a + s.chapters.length, 0)
   const coveredChapters = useMemo(() => {
     const covered = new Set(courseMats.map(m => `${m.subject}::${m.chapter}`))
     return covered.size
@@ -680,12 +722,16 @@ function CourseStats({ course, materials }) {
       </div>
 
       {/* Summary stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+        gap: 10, marginBottom: 18,
+      }}>
         {[
-          { label: 'Materials', val: courseMats.length, color: courseData.color },
-          { label: 'Subjects', val: Object.keys(courseData.subjects).length, color: C.navy },
-          { label: 'Chapters covered', val: `${coveredChapters}/${totalChapters}`, color: pct >= 70 ? C.green : pct >= 40 ? C.amber : C.rose },
-          { label: 'Coverage', val: `${pct}%`, color: pct >= 70 ? C.green : pct >= 40 ? C.amber : C.rose },
+          { label: 'Materials',         val: courseMats.length,                           color: courseData.color },
+          { label: 'Subjects',          val: Object.keys(courseData.subjects).length,      color: C.navy },
+          { label: 'Chapters covered',  val: `${coveredChapters}/${totalChapters}`,        color: pct >= 70 ? C.green : pct >= 40 ? C.amber : C.rose },
+          { label: 'Coverage',          val: `${pct}%`,                                   color: pct >= 70 ? C.green : pct >= 40 ? C.amber : C.rose },
         ].map(s => (
           <div key={s.label} style={{
             padding: '12px 14px', borderRadius: 9, background: '#f8fafc', border: `1px solid ${C.border}`,
@@ -703,8 +749,7 @@ function CourseStats({ course, materials }) {
         </div>
         <div style={{ height: 8, borderRadius: 99, background: C.border, overflow: 'hidden' }}>
           <div style={{
-            height: '100%', borderRadius: 99,
-            width: `${pct}%`,
+            height: '100%', borderRadius: 99, width: `${pct}%`,
             background: pct >= 70 ? C.green : pct >= 40 ? C.amber : C.rose,
             transition: 'width .4s',
           }} />
@@ -712,7 +757,11 @@ function CourseStats({ course, materials }) {
       </div>
 
       {/* Per-subject count */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 14 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+        gap: 8, marginBottom: 14,
+      }}>
         {Object.entries(bySubject).map(([sub, cnt]) => {
           const subData = courseData.subjects[sub]
           return (
@@ -751,6 +800,62 @@ function CourseStats({ course, materials }) {
   )
 }
 
+// ── MOBILE SUBJECT DRAWER ─────────────────────────────────────────────────────
+// On mobile the sidebar becomes a bottom sheet
+function SubjectDrawer({ open, onClose, course, subjects, courseMaterials, activeSubject, onSelect }) {
+  const courseData = COURSES[course]
+  if (!open) return null
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 8000,
+      background: 'rgba(0,0,0,.40)',
+      display: 'flex', alignItems: 'flex-end',
+    }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', background: C.white,
+          borderRadius: '16px 16px 0 0',
+          padding: '12px 16px 32px',
+          maxHeight: '70vh', overflowY: 'auto',
+        }}
+      >
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border, margin: '0 auto 14px' }} />
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 12 }}>
+          Select Subject
+        </div>
+        {Object.keys(subjects).map(s => {
+          const cnt      = courseMaterials.filter(m => m.subject === s).length
+          const isActive = activeSubject === s
+          return (
+            <div key={s} onClick={() => { onSelect(s); onClose() }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 10px', borderRadius: 9, cursor: 'pointer',
+                background: isActive ? courseData.bg : 'transparent',
+                marginBottom: 3,
+              }}>
+              <span style={{ fontSize: 20 }}>{subjects[s].icon}</span>
+              <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? courseData.text : '#374151', flex: 1 }}>
+                {s}
+              </span>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
+                background: cnt > 0 ? courseData.bg : '#f1f5f9',
+                color: cnt > 0 ? courseData.text : '#94a3b8',
+              }}>
+                {cnt}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
@@ -762,6 +867,8 @@ export default function StudyMaterial() {
   const [loading,       setLoading]       = useState(true)
   const [search,        setSearch]        = useState('')
   const [toast,         setToast]         = useState(null)
+  const [drawerOpen,    setDrawerOpen]    = useState(false)
+  const isMobile = useIsMobile()
 
   const showToast = (msg, color = C.navy) => {
     setToast({ msg, color })
@@ -786,17 +893,27 @@ export default function StudyMaterial() {
     const firstSubject = Object.keys(COURSES[activeCourse].subjects)[0]
     setActiveSubject(firstSubject)
     setActiveView('subjects')
+    setSearch('')
   }, [activeCourse])
 
   const courseData  = COURSES[activeCourse]
   const subjects    = courseData.subjects
   const subjectList = Object.keys(subjects)
 
+  // FIX: each course tab now counts its own materials independently
+  const materialCountByCourse = useMemo(() => {
+    const map = {}
+    Object.keys(COURSES).forEach(k => { map[k] = 0 })
+    materials.forEach(m => { if (map[m.course] !== undefined) map[m.course]++ })
+    return map
+  }, [materials])
+
   const courseMaterials = useMemo(() =>
     materials.filter(m => m.course === activeCourse),
     [materials, activeCourse]
   )
 
+  // FIX: search filters within the course, passed down to SubjectPanel
   const filteredMaterials = useMemo(() => {
     if (!search.trim()) return courseMaterials
     const q = search.toLowerCase()
@@ -808,45 +925,54 @@ export default function StudyMaterial() {
   }, [courseMaterials, search])
 
   return (
-    <div style={{ padding: 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
       {/* Page header */}
-      <div style={{ marginBottom: 22 }}>
+      <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>
           GNSI Portal
         </div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>
+        <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>
           Study Materials
         </div>
-        <div style={{ fontSize: 13, color: C.slate, marginTop: 3 }}>
-          Navodaya · Sainik · Foundation — upload notes, practice sets, solved papers & more
+        <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>
+          Navodaya · Sainik · Foundation
         </div>
       </div>
 
-      {/* Course tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
+      {/* Course tabs — horizontal scroll on mobile */}
+      <div style={{
+        display: 'flex', gap: 8,
+        marginBottom: 18,
+        overflowX: isMobile ? 'auto' : 'visible',
+        flexWrap: isMobile ? 'nowrap' : 'wrap',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
+        paddingBottom: 2,
+      }}>
         {Object.entries(COURSES).map(([key, c]) => (
           <button key={key} onClick={() => setActiveCourse(key)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: isMobile ? '8px 14px' : '10px 20px',
+              borderRadius: 10, fontSize: 12, fontWeight: 700,
               border: activeCourse === key ? `2px solid ${c.color}` : `2px solid ${C.border}`,
               background: activeCourse === key ? c.bg : C.white,
               color: activeCourse === key ? c.text : C.slate,
               cursor: 'pointer', transition: 'all .12s',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
             }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, display: 'inline-block' }} />
+            {isMobile ? c.short : c.label}
+            {/* FIX: show correct per-course count */}
             <span style={{
-              width: 9, height: 9, borderRadius: '50%',
-              background: c.color, display: 'inline-block',
-            }} />
-            {c.label}
-            <span style={{
-              padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 700,
+              padding: '1px 6px', borderRadius: 99, fontSize: 10, fontWeight: 700,
               background: activeCourse === key ? 'rgba(0,0,0,.08)' : '#f1f5f9',
               color: activeCourse === key ? c.text : C.slate,
             }}>
-              {courseMaterials.length}
+              {materialCountByCourse[key] ?? 0}
             </span>
           </button>
         ))}
@@ -854,30 +980,95 @@ export default function StudyMaterial() {
 
       {/* Course info banner */}
       <div style={{
-        ...cardS, marginBottom: 18,
+        ...cardS, marginBottom: 16,
         display: 'flex', gap: 14, alignItems: 'center',
         borderLeft: `4px solid ${courseData.color}`, borderRadius: '0 12px 12px 0',
-        padding: '14px 18px',
+        padding: '12px 16px',
       }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{courseData.label}</div>
-          <div style={{ fontSize: 12, color: C.slate, marginTop: 2 }}>
-            {courseData.exam} · {subjectList.length} subjects ·{' '}
-            {Object.values(subjects).reduce((a, s) => a + s.chapters.length, 0)} chapters
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>{courseData.label}</div>
+          <div style={{ fontSize: 11, color: C.slate, marginTop: 2 }}>
+            {courseData.exam} · {subjectList.length} subjects
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => setActiveView(activeView === 'stats' ? 'subjects' : 'stats')}
-            style={btn(activeView === 'stats' ? courseData.color : C.slate)}>
-            {activeView === 'stats' ? '📚 Back to Subjects' : '📊 Coverage Stats'}
-          </button>
-        </div>
+        <button
+          onClick={() => setActiveView(activeView === 'stats' ? 'subjects' : 'stats')}
+          style={btn(activeView === 'stats' ? courseData.color : C.slate)}>
+          {activeView === 'stats' ? '📚 Subjects' : '📊 Stats'}
+        </button>
       </div>
 
       {activeView === 'stats' ? (
         <CourseStats course={activeCourse} materials={materials} />
+      ) : isMobile ? (
+        /* ── MOBILE LAYOUT ───────────────────────────────────── */
+        <div>
+          {/* Subject selector bar */}
+          <div style={{
+            ...cardS, padding: '10px 14px', marginBottom: 12,
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <button
+              onClick={() => setDrawerOpen(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 9,
+                border: `1.5px solid ${courseData.color}`,
+                background: courseData.bg, color: courseData.text,
+                fontWeight: 700, fontSize: 13, cursor: 'pointer', flex: 1,
+              }}>
+              <span style={{ fontSize: 18 }}>{subjects[activeSubject]?.icon}</span>
+              <span style={{ flex: 1, textAlign: 'left' }}>{activeSubject}</span>
+              <span>▾</span>
+            </button>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <input
+                style={{ ...iS, fontSize: 12, padding: '8px 10px' }}
+                placeholder="🔍 Search…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  style={{
+                    position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: C.slate,
+                  }}>✕</button>
+              )}
+            </div>
+          </div>
+
+          <SubjectDrawer
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            course={activeCourse}
+            subjects={subjects}
+            courseMaterials={courseMaterials}
+            activeSubject={activeSubject}
+            onSelect={s => { setActiveSubject(s); setSearch('') }}
+          />
+
+          {loading ? (
+            <div style={{ ...cardS, textAlign: 'center', padding: 40, color: C.slate }}>⏳ Loading…</div>
+          ) : activeSubject ? (
+            <SubjectPanel
+              key={`${activeCourse}-${activeSubject}`}
+              course={activeCourse}
+              subjectName={activeSubject}
+              subjectData={subjects[activeSubject] || { icon: '📁', chapters: [] }}
+              materials={search.trim() ? filteredMaterials : courseMaterials}
+              onRefetch={refetch}
+              showToast={showToast}
+            />
+          ) : (
+            <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+              Select a subject above
+            </div>
+          )}
+        </div>
       ) : (
+        /* ── DESKTOP LAYOUT ──────────────────────────────────── */
         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 18, alignItems: 'start' }}>
 
           {/* Subject sidebar */}
@@ -885,11 +1076,24 @@ export default function StudyMaterial() {
             <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10, padding: '0 4px' }}>
               Subjects
             </div>
-            <input style={{ ...iS, marginBottom: 10, fontSize: 12, padding: '7px 10px' }}
-              placeholder="🔍 Search…" value={search}
-              onChange={e => setSearch(e.target.value)} />
+            <div style={{ position: 'relative', marginBottom: 10 }}>
+              <input
+                style={{ ...iS, fontSize: 12, padding: '7px 10px 7px 28px' }}
+                placeholder="Search…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: C.slate }}>🔍</span>
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: C.slate }}>
+                  ✕
+                </button>
+              )}
+            </div>
             {subjectList.map(s => {
-              const cnt = courseMaterials.filter(m => m.subject === s).length
+              const cnt      = courseMaterials.filter(m => m.subject === s).length
               const isActive = activeSubject === s
               return (
                 <div key={s} onClick={() => { setActiveSubject(s); setSearch('') }}
@@ -926,7 +1130,7 @@ export default function StudyMaterial() {
                 key={`${activeCourse}-${activeSubject}`}
                 course={activeCourse}
                 subjectName={activeSubject}
-                subjectData={subjects[activeSubject]}
+                subjectData={subjects[activeSubject] || { icon: '📁', chapters: [] }}
                 materials={search.trim() ? filteredMaterials : courseMaterials}
                 onRefetch={refetch}
                 showToast={showToast}
