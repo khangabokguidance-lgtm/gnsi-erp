@@ -704,67 +704,169 @@ useEffect(() => {
         ? <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading...</div>
         : (
           <>
-            <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:700 }}>
-                <thead>
-                  <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                    {['#','Date','Course','Batch','Subject','Teacher','Topic','HW','Doubt','Actions'].map(h => (
-                      <th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12, whiteSpace:'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginated.map((item, i) => (
-                    <React.Fragment key={item.id}>
-                      <tr style={{ borderBottom: editId===item.id?'none':'1px solid #f1f5f9', background: editId===item.id?'#f8f4ff':'white' }}>
-                        <td style={{ padding:'10px 12px', color:'#94a3b8', fontSize:11 }}>{(page-1)*PAGE_SIZE+i+1}</td>
-                        <td style={{ padding:'10px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(item.teaching_date)}</td>
-                        <td style={{ padding:'10px 12px' }}><span style={S.badge('#1e3a5f','#eff6ff')}>{item.course||'-'}</span></td>
-                        <td style={{ padding:'10px 12px', color:'#64748b', fontSize:12 }}>{item.subtype||'-'}</td>
-                        <td style={{ padding:'10px 12px', fontWeight:700, color:'#1e3a5f' }}>{item.subject_name}</td>
-                        <td style={{ padding:'10px 12px', color:'#64748b' }}>{item.teacher_name||'-'}</td>
-                        <td style={{ padding:'10px 12px', color:'#374151', maxWidth:160 }}>{item.topic_taught}</td>
-                        <td style={{ padding:'10px 12px', color:'#64748b', maxWidth:120, fontSize:12 }}>{item.homework||'-'}</td>
-                        <td style={{ padding:'10px 12px' }}>
-                          {sessions[item.id]?.length > 0 && (
-                            <span style={{ ...S.badge(sessions[item.id].some(s=>s.status==='open')?'#b45309':'#16a34a', sessions[item.id].some(s=>s.status==='open')?'#fef9c3':'#dcfce7'), fontSize:10 }}>
-                              🔁 {sessions[item.id].some(s=>s.status==='open')?'open':'done'}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding:'10px 12px' }}>
-                          <div style={{ display:'flex', gap:5 }}>
-                            <button onClick={() => editId===item.id?(setEditId(null),setEditForm(null)):startEdit(item)} style={S.btnSm('#7c3aed')}>{editId===item.id?'✖':'✏️'}</button>
-                            <button onClick={() => printLog(item)} style={S.btnSm('#0891b2')} title="Print log">🖨️</button>
-                            {(currentUser?.role||'').toLowerCase()==='admin' && <button onClick={() => setConfirmDel(item.id)} style={S.btnSm('#dc2626')}>🗑</button>}
-                          </div>
-                        </td>
-                      </tr>
-                      <DoubtSessionSubRow logId={item.id} sessions={sessions} onRefetch={refetchSessions} currentUser={currentUser}/>
-{hmFeedback[item.id]?.map((fb, i) => (
-  <tr key={`fb-${i}`}>
-    <td colSpan={11} style={{ padding:'6px 12px 6px 40px', background:'#f0f9ff', borderBottom:'1px solid #e0f2fe' }}>
-      <span style={{ fontSize:11, color:'#0891b2', fontWeight:700 }}>📨 HM Feedback: </span>
-      <span style={{ fontSize:12, color:'#374151' }}>{fb.message}</span>
-      <span style={{ fontSize:11, color:'#94a3b8', marginLeft:8 }}>— {fb.hm_name}</span>
-    </td>
-  </tr>
-))}
-                      {editId===item.id && (
-                        <tr style={{ borderBottom:'1px solid #f1f5f9' }}>
-                          <td colSpan={10} style={{ padding:'16px 20px', background:'#f8f4ff' }}>
-                            <div style={{ fontSize:13, fontWeight:700, color:'#7c3aed', marginBottom:12 }}>✏️ Edit Log</div>
-                            <LogForm form={editForm} setForm={setEditForm} onSubmit={handleEdit} saving={editSaving} timetable={timetable} staff={staff} onCancel={() => { setEditId(null); setEditForm(null) }} courseData={courseData} editMode/>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                  {filtered.length===0 && <tr><td colSpan={10} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No teaching logs found</td></tr>}
-                </tbody>
-              </table>
+           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))', gap:16 }}>
+  {paginated.map((item, i) => {
+    const hasDoubt = sessions[item.id]?.length > 0
+    const doubtOpen = sessions[item.id]?.some(s => s.status==='open')
+    const feedback = hmFeedback[item.id] || []
+    return (
+      <div key={item.id} style={{
+        background:'white', borderRadius:16,
+        boxShadow:'0 4px 24px rgba(30,58,95,0.10)',
+        border: doubtOpen ? '1.5px solid #f59e0b' : editId===item.id ? '2px solid #7c3aed' : '1.5px solid #e2e8f0',
+        overflow:'hidden', transition:'box-shadow .2s',
+        position:'relative',
+      }}>
+        {/* ── Top color strip ── */}
+        <div style={{
+          height:5,
+          background: doubtOpen
+            ? 'linear-gradient(90deg,#f59e0b,#fbbf24)'
+            : editId===item.id
+            ? 'linear-gradient(90deg,#7c3aed,#a78bfa)'
+            : 'linear-gradient(90deg,#1e3a5f,#0891b2)',
+        }}/>
+
+        <div style={{ padding:'16px 18px' }}>
+          {/* ── Header row ── */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
+                <span style={{ fontSize:15, fontWeight:800, color:'#1e293b' }}>{item.subject_name}</span>
+                {hasDoubt && (
+                  <span style={{ ...S.badge(doubtOpen?'#b45309':'#16a34a', doubtOpen?'#fef9c3':'#dcfce7'), fontSize:10 }}>
+                    🔁 {doubtOpen?'doubt open':'doubt done'}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize:12, color:'#64748b' }}>
+                <span style={S.badge('#1e3a5f','#eff6ff')}>{item.course||'-'}</span>
+                <span style={{ margin:'0 5px', color:'#cbd5e1' }}>·</span>
+                <span style={{ fontWeight:600 }}>{item.subtype||'-'}</span>
+                {item.class_name && <><span style={{ margin:'0 5px', color:'#cbd5e1' }}>·</span><span>{item.class_name}</span></>}
+              </div>
             </div>
-            {totalPages > 1 && (
+            <div style={{ textAlign:'right', flexShrink:0, marginLeft:8 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#1e3a5f', background:'#eff6ff', padding:'3px 10px', borderRadius:999 }}>
+                {fmtDate(item.teaching_date)}
+              </div>
+              {item.period_number && (
+                <div style={{ fontSize:10, color:'#94a3b8', marginTop:3 }}>P{item.period_number}</div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Teacher ── */}
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, padding:'8px 12px', background:'#f8fafc', borderRadius:8 }}>
+            <div style={{ width:30, height:30, borderRadius:'50%', background:'linear-gradient(135deg,#1e3a5f,#0891b2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, color:'white', fontWeight:800, flexShrink:0 }}>
+              {(item.teacher_name||'?')[0].toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'#1e293b' }}>{item.teacher_name||'—'}</div>
+              <div style={{ fontSize:10, color:'#94a3b8' }}>Subject Teacher</div>
+            </div>
+          </div>
+
+          {/* ── Topic ── */}
+          {item.topic_taught && (
+            <div style={{ marginBottom:8 }}>
+              <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:3 }}>Topic Taught</div>
+              <div style={{ fontSize:13, color:'#374151', lineHeight:1.5, fontWeight:500 }}>{item.topic_taught}</div>
+            </div>
+          )}
+
+          {/* ── HW ── */}
+          {item.homework && (
+            <div style={{ marginBottom:8, padding:'7px 10px', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:7 }}>
+              <span style={{ fontSize:10, fontWeight:700, color:'#b45309', textTransform:'uppercase', letterSpacing:'.06em' }}>📚 HW: </span>
+              <span style={{ fontSize:12, color:'#78350f' }}>{item.homework}</span>
+            </div>
+          )}
+
+          {/* ── Remarks ── */}
+          {item.remarks && (
+            <div style={{ marginBottom:8, padding:'7px 10px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:7 }}>
+              <span style={{ fontSize:10, fontWeight:700, color:'#166534', textTransform:'uppercase', letterSpacing:'.06em' }}>💬 Remarks: </span>
+              <span style={{ fontSize:12, color:'#166534' }}>{item.remarks}</span>
+            </div>
+          )}
+
+          {/* ── HM Feedback ── */}
+          {feedback.map((fb, fi) => (
+            <div key={fi} style={{ marginBottom:6, padding:'7px 10px', background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:7 }}>
+              <span style={{ fontSize:10, fontWeight:700, color:'#0369a1', textTransform:'uppercase', letterSpacing:'.06em' }}>📨 HM: </span>
+              <span style={{ fontSize:12, color:'#0369a1' }}>{fb.message}</span>
+              <span style={{ fontSize:10, color:'#94a3b8', marginLeft:6 }}>— {fb.hm_name}</span>
+            </div>
+          ))}
+
+          {/* ── Doubt sessions ── */}
+          {sessions[item.id]?.map(s => (
+            <div key={s.id} style={{ marginBottom:6, padding:'8px 10px', background:s.status==='resolved'?'#f0fdf4':'#fffbeb', border:`1px solid ${s.status==='resolved'?'#bbf7d0':'#fde68a'}`, borderRadius:7 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:4 }}>
+                <div>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#1e293b' }}>🏠 {s.house_name||s.batch_name||'—'}</span>
+                  <span style={{ fontSize:10, color:'#64748b', marginLeft:6 }}>HM: {s.hm_name||s.staff_name||'—'}</span>
+                </div>
+                <span style={S.badge(s.status==='resolved'?'#16a34a':'#b45309', s.status==='resolved'?'#dcfce7':'#fef9c3')}>
+                  {s.status==='resolved'?'✅ Resolved':'⏳ Open'}
+                </span>
+              </div>
+              {s.status==='open' && (
+                <div style={{ display:'flex', gap:6, marginTop:6, alignItems:'center' }}>
+                  <input
+                    placeholder="Resolution note..."
+                    style={{ flex:1, padding:'5px 8px', borderRadius:6, border:'1px solid #d1d5db', fontSize:11, minHeight:32 }}
+                    onChange={e => e.currentTarget._note = e.target.value}
+                  />
+                  <button onClick={async () => {
+                    const noteEl = document.querySelector(`[data-resolve="${s.id}"]`)
+                    const note = noteEl?.value || ''
+                    if (!note.trim()) return
+                    await supabase.from('doubt_sessions').update({
+                      status:'resolved', resolved_by: currentUser?.name||'Staff',
+                      resolved_at: new Date().toISOString(), resolution_note: note,
+                    }).eq('id', s.id)
+                    refetchSessions()
+                  }} style={S.btnSm('#16a34a')}>✓</button>
+                </div>
+              )}
+              {s.resolution_note && <div style={{ fontSize:11, color:'#64748b', marginTop:4 }}>📝 {s.resolution_note}</div>}
+            </div>
+          ))}
+
+          {/* ── Edit form ── */}
+          {editId===item.id && (
+            <div style={{ marginTop:12, borderTop:'1px solid #e2e8f0', paddingTop:12 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#7c3aed', marginBottom:10 }}>✏️ Edit Log</div>
+              <LogForm form={editForm} setForm={setEditForm} onSubmit={handleEdit} saving={editSaving}
+                timetable={timetable} staff={staff} onCancel={() => { setEditId(null); setEditForm(null) }}
+                courseData={courseData} editMode/>
+            </div>
+          )}
+
+          {/* ── Actions ── */}
+          <div style={{ display:'flex', gap:6, marginTop:12, borderTop:'1px solid #f1f5f9', paddingTop:10 }}>
+            <button onClick={() => editId===item.id ? (setEditId(null), setEditForm(null)) : startEdit(item)}
+              style={{ ...S.btnSm(editId===item.id?'#64748b':'#7c3aed'), flex:1 }}>
+              {editId===item.id ? '✖ Cancel' : '✏️ Edit'}
+            </button>
+            <button onClick={() => printLog(item)} style={{ ...S.btnSm('#0891b2'), flex:1 }}>🖨️ Print</button>
+            {(currentUser?.role||'').toLowerCase()==='admin' && (
+              <button onClick={() => setConfirmDel(item.id)} style={{ ...S.btnSm('#dc2626'), flex:1 }}>🗑 Delete</button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  })}
+  {filtered.length===0 && (
+    <div style={{ gridColumn:'1/-1', textAlign:'center', padding:48, color:'#94a3b8', background:'white', borderRadius:16 }}>
+      No teaching logs found
+    </div>
+  )}
+</div>
+                        {totalPages > 1 && (
               <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:14, flexWrap:'wrap' }}>
                 <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'), opacity:page===1?.4:1 }}>←</button>
                 {Array.from({ length:Math.min(5,totalPages) }, (_,i) => {
@@ -2026,7 +2128,38 @@ function TabHMDashboard({ currentUser }) {
           {[...new Set(allDoubt.flatMap(d => [d.hm_name, d.resolved_by]).filter(Boolean))].sort().map(h => <option key={h} value={h}>{h}</option>)}
         </select>
         <span style={{ fontSize:13, color:'#64748b' }}>{openSessions.length} open · {doneSessions.length} resolved</span>
-        <button onClick={() => window.print()} style={{ ...S.btnSm('#7c3aed'), marginLeft:'auto' }}>🖨️ Print</button>
+        <button onClick={() => {
+          const w = window.open('', '_blank')
+          const rows = openSessions.map((s, i) => `
+            <tr>
+              <td>${i+1}</td>
+              <td>${s.batch_name || s.subtype || '—'}</td>
+              <td>${s.subject_name || '—'}</td>
+              <td>${s.topic || '—'}</td>
+              <td>${s.hm_name || s.staff_name || '—'}</td>
+              <td>${s.teaching_date || '—'}</td>
+            </tr>
+          `).join('')
+          w.document.write(`<html><head><title>Open Doubt Sessions</title>
+          <style>
+            body{font-family:sans-serif;font-size:12px;padding:24px}
+            h2{font-size:16px;margin-bottom:4px;color:#1e3a5f}
+            p{font-size:11px;color:#555;margin-bottom:12px}
+            table{width:100%;border-collapse:collapse}
+            th{background:#1e3a5f;color:white;padding:7px 10px;text-align:left;font-size:11px}
+            td{padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:12px}
+            tr:nth-child(even) td{background:#f8fafc}
+          </style></head><body>
+          <h2>⏳ Open Doubt Sessions (${openSessions.length})</h2>
+          <p>Printed: ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</p>
+          <table>
+            <thead><tr><th>#</th><th>Batch</th><th>Subject</th><th>Topic</th><th>HM</th><th>Date</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <script>window.onload=()=>{window.print();window.close()}</script>
+          </body></html>`)
+          w.document.close()
+        }} style={{ ...S.btnSm('#7c3aed'), marginLeft:'auto' }}>🖨️ Print Summary</button>
       </div>
       <div style={S.card}>
         <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
