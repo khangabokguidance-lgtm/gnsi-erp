@@ -1819,18 +1819,12 @@ export default function Kitchen({ currentUser }) {
     return sum>best.sum?{d,sum}:best
   },{ d:null,sum:0 })
 
-  if (loading) return (
-    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',gap:14,color:C.ink[400],fontFamily:"system-ui,sans-serif" }}>
-      <div style={{ width:22,height:22,border:`2.5px solid ${C.ink[100]}`,borderTopColor:C.terra[600],borderRadius:'50%',animation:'spin .7s linear infinite' }} />
-      <span style={{ fontWeight:600 }}>Loading kitchen data…</span>
-    </div>
-  )
-
   return (
     <div style={{ padding:'0 24px 40px',fontFamily:"system-ui,'Segoe UI',sans-serif",background:'#faf7f4',minHeight:'100vh' }}>
       <style>{`
         @keyframes spin { to { transform:rotate(360deg) } }
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+        @keyframes shimmer { from{width:20%} to{width:80%} }
         select:focus, input:focus, textarea:focus {
           border-color:${C.terra[400]}!important;
           box-shadow:0 0 0 3px ${C.terra[100]}!important;
@@ -1887,6 +1881,13 @@ export default function Kitchen({ currentUser }) {
         </div>
       </div>
 
+      {/* ── Loading Bar ── */}
+      {loading && (
+        <div style={{ height:3, borderRadius:99, background:C.ink[100], overflow:'hidden', marginBottom:16 }}>
+          <div style={{ height:'100%', width:'60%', borderRadius:99, background:C.terra[400],
+            animation:'shimmer 1s ease-in-out infinite alternate' }} />
+        </div>
+      )}
       {/* ── KPI Strip ── */}
       <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:16 }}>
         <KpiCard label="Today"     value={moneyFmt(todayTotal)} accent={C.terra[600]} icon="🌅" subtitle={today()} pulse />
