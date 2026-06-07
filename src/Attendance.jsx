@@ -1,5 +1,5 @@
 // ============================================================
-//  GNSI Portal — Attendance Module (Advanced v2 · Mobile-First)
+//  GNSI Portal — Attendance Module (Premium v3 · Mobile-First)
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -88,14 +88,16 @@ function useIsMobile() {
 const font = "'Outfit', system-ui, sans-serif"
 
 const inp = (extra={}) => ({
-  padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.slate[200]}`,
-  fontSize: 13, fontFamily: font, outline: 'none', background: 'white',
-  color: C.slate[800], boxSizing: 'border-box', width: '100%', ...extra,
+  padding: '9px 12px', borderRadius: 10, border: `0.5px solid ${C.slate[200]}`,
+  fontSize: 13, fontFamily: font, outline: 'none', background: C.slate[50],
+  color: C.slate[800], boxSizing: 'border-box', width: '100%',
+  transition: 'border-color .15s',
+  ...extra,
 })
 
 function Label({ children, badge }) {
   return (
-    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: C.slate[400], marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: C.slate[400], marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
       {children}
       {badge && <span style={{ fontSize: 9, fontWeight: 800, background: '#dcfce7', color: '#16a34a', padding: '1px 6px', borderRadius: 4, letterSpacing: '.04em' }}>{badge}</span>}
     </div>
@@ -113,7 +115,7 @@ function Select({ value, onChange, disabled, children, style={} }) {
 
 function Chip({ label, color, bg, border }) {
   return (
-    <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', padding: '2px 9px', borderRadius: 5, background: bg, color, border: `1px solid ${border}` }}>
+    <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', padding: '2px 8px', borderRadius: 6, background: bg, color, border: `0.5px solid ${border}` }}>
       {label}
     </span>
   )
@@ -121,10 +123,51 @@ function Chip({ label, color, bg, border }) {
 
 function CoursePill({ course }) {
   const cc = COURSE_COLORS[course] || COURSE_COLORS.Sainik
-  return <Chip label={course} color={cc.badge} bg={cc.light} border={`${cc.accent}30`} />
+  return <Chip label={course} color={cc.badge} bg={cc.light} border={`${cc.accent}40`} />
 }
 
-// FIX 1: StatusCycle — removed minWidth so it doesn't overflow on mobile
+// ─── Premium Status Cycle (swift tap grid cell) ───────────────
+
+function StatusCycleCell({ student, status, onChange, index, isMobile }) {
+  const sm  = STATUS_META[status] || STATUS_META.Present
+  const initials = student.student_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  return (
+    <button
+      onClick={() => {
+        const idx = STATUSES.indexOf(status)
+        onChange(STATUSES[(idx + 1) % STATUSES.length])
+      }}
+      style={{
+        borderRadius: 14,
+        padding: isMobile ? '10px 4px' : '12px 6px',
+        textAlign: 'center',
+        cursor: 'pointer',
+        border: `1.5px solid ${sm.border}`,
+        background: sm.bg,
+        transition: 'all .14s',
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 4,
+        fontFamily: font,
+        WebkitTapHighlightColor: 'transparent',
+        width: '100%',
+      }}
+    >
+      <span style={{ fontSize: isMobile ? 16 : 18, fontWeight: 900, color: sm.color, lineHeight: 1 }}>{sm.icon}</span>
+      <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, color: C.slate[800], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', paddingInline: 2 }}>
+        {student.student_name.split(' ').slice(-1)[0]}
+      </div>
+      {student.gcc_no && (
+        <div style={{ fontSize: 8, color: C.slate[400] }}>GCC-{student.gcc_no}</div>
+      )}
+    </button>
+  )
+}
+
+// ─── Legacy row-style StatusCycle (used in view expanded records) ──
+
 function StatusCycle({ status, onChange }) {
   const sm  = STATUS_META[status] || STATUS_META.Present
   const idx = STATUSES.indexOf(status)
@@ -143,6 +186,25 @@ function StatusCycle({ status, onChange }) {
   )
 }
 
+// ─── Attendance progress bar ──────────────────────────────────
+
+function AttendProgressBar({ records }) {
+  const counts = useMemo(() => {
+    const c = { Present:0, Absent:0, Late:0, Leave:0 }
+    Object.values(records).forEach(s => { if (c[s] !== undefined) c[s]++ })
+    return c
+  }, [records])
+  const total = Object.values(counts).reduce((a,b)=>a+b,0)
+  if (total === 0) return null
+  return (
+    <div style={{ height: 6, borderRadius: 999, overflow: 'hidden', display: 'flex', background: C.slate[100] }}>
+      {STATUSES.map(s => counts[s] > 0 && (
+        <div key={s} style={{ width: `${(counts[s]/total)*100}%`, height: '100%', background: STATUS_META[s].color, transition: 'width .35s' }} />
+      ))}
+    </div>
+  )
+}
+
 function StatBar({ records }) {
   const counts = useMemo(() => {
     const c = { Present:0, Absent:0, Late:0, Leave:0 }
@@ -153,7 +215,7 @@ function StatBar({ records }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       {total > 0 && (
-        <div style={{ flex: 1, minWidth: 120, height: 8, borderRadius: 999, overflow: 'hidden', display: 'flex', background: C.slate[100] }}>
+        <div style={{ flex: 1, minWidth: 120, height: 6, borderRadius: 999, overflow: 'hidden', display: 'flex', background: C.slate[100] }}>
           {STATUSES.map(s => counts[s] > 0 && (
             <div key={s} style={{ width: `${(counts[s]/total)*100}%`, height: '100%', background: STATUS_META[s].color, transition: 'width .3s' }} />
           ))}
@@ -161,7 +223,7 @@ function StatBar({ records }) {
       )}
       {STATUSES.map(s => (
         <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_META[s].color }} />
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_META[s].color }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: STATUS_META[s].color }}>{counts[s]}</span>
           <span style={{ fontSize: 11, color: C.slate[400] }}>{s}</span>
         </div>
@@ -174,40 +236,41 @@ function MiniBar({ pct }) {
   const color = pct >= 75 ? C.emerald : pct >= 50 ? C.amber : C.red
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, height: 7, background: C.slate[100], borderRadius: 999, overflow: 'hidden', minWidth: 48 }}>
+      <div style={{ flex: 1, height: 5, background: C.slate[100], borderRadius: 999, overflow: 'hidden', minWidth: 48 }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width .4s' }} />
       </div>
-      <span style={{ fontSize: 12, fontWeight: 800, color, minWidth: 34 }}>{pct}%</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 34 }}>{pct}%</span>
     </div>
   )
 }
 
+// ─── Premium Card components ──────────────────────────────────
+
 function Card({ children, style={} }) {
   return (
     <div style={{
-      background: 'white', borderRadius: 14, border: `1px solid ${C.slate[200]}`,
-      boxShadow: '0 2px 12px rgba(0,0,0,.06)', overflow: 'hidden', ...style,
+      background: 'white', borderRadius: 20, border: `0.5px solid ${C.slate[200]}`,
+      boxShadow: '0 2px 16px rgba(0,0,0,.04)', overflow: 'hidden', ...style,
     }}>
       {children}
     </div>
   )
 }
 
-// FIX 2: CardHead — title side gets minWidth:0 + overflow guard; right side doesn't crowd it
-function CardHead({ icon, title, sub, right }) {
+function CardHead({ icon, title, sub, right, accentColor }) {
   const isMobile = useIsMobile()
   return (
     <div style={{
-      padding: isMobile ? '12px 14px' : '16px 22px',
-      borderBottom: `1px solid ${C.slate[100]}`,
+      padding: isMobile ? '14px 16px' : '16px 22px',
+      borderBottom: `0.5px solid ${C.slate[100]}`,
       display: 'flex', alignItems: 'flex-start',
       justifyContent: 'space-between', gap: 8,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
-        <div style={{ width: 4, height: 24, background: `linear-gradient(180deg,${C.navy},${C.indigo})`, borderRadius: 2, flexShrink: 0 }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+        <div style={{ width: 3, height: 22, background: accentColor || C.navy, borderRadius: 2, flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>
           <div style={{
-            fontSize: isMobile ? 13 : 15, fontWeight: 800, color: C.navy, lineHeight: 1.3,
+            fontSize: isMobile ? 13 : 14, fontWeight: 500, color: C.navy, lineHeight: 1.3,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {icon && <span style={{ marginRight: 5 }}>{icon}</span>}{title}
@@ -233,31 +296,44 @@ function Alert({ type='info', children, onClose }) {
   }
   const s = styles[type]
   return (
-    <div style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 10, padding: '11px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+    <div style={{ background: s.bg, border: `0.5px solid ${s.border}`, borderRadius: 12, padding: '11px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
       <span style={{ fontSize: 13, fontWeight: 600, color: s.color, flex: 1 }}>{children}</span>
       {onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.color, fontSize: 18, lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>}
     </div>
   )
 }
 
-// FIX 3: Btn — style prop now spread correctly so width:'100%' works on mobile
+// ─── Inline Confirm (replaces window.confirm) ─────────────────
+
+function InlineConfirm({ message, onConfirm, onCancel }) {
+  return (
+    <div style={{ background: '#fef2f2', border: `0.5px solid #fca5a5`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 13, color: C.red, fontWeight: 600, flex: 1 }}>{message}</span>
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <Btn small variant="ghost" onClick={onCancel}>Cancel</Btn>
+        <Btn small variant="danger" onClick={onConfirm}>Delete</Btn>
+      </div>
+    </div>
+  )
+}
+
 function Btn({ children, onClick, disabled, variant='primary', small, style={} }) {
   const base = {
-    borderRadius: small ? 7 : 9, border: 'none', fontFamily: font,
+    borderRadius: small ? 9 : 12, border: 'none', fontFamily: font,
     fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer',
-    fontSize: small ? 12 : 13, padding: small ? '6px 12px' : '9px 20px',
-    transition: 'all .12s', display: 'inline-flex', alignItems: 'center',
+    fontSize: small ? 11 : 13, padding: small ? '6px 12px' : '9px 20px',
+    transition: 'all .14s', display: 'inline-flex', alignItems: 'center',
     justifyContent: 'center', gap: 6,
     WebkitTapHighlightColor: 'transparent', flexShrink: 0,
-    minHeight: 40,
+    minHeight: 36,
   }
   const vars = {
-    primary:  { background: disabled ? C.slate[200] : `linear-gradient(135deg,${C.navy},${C.indigo})`, color: disabled ? C.slate[400] : 'white' },
-    success:  { background: disabled ? C.slate[200] : `linear-gradient(135deg,${C.emerald},#16a34a)`, color: 'white' },
-    danger:   { background: '#fee2e2', color: C.red, border: `1px solid #fca5a5` },
-    ghost:    { background: C.slate[50], color: C.slate[600], border: `1px solid ${C.slate[200]}` },
-    amber:    { background: '#fef3c7', color: '#92400e', border: `1px solid #fde68a` },
-    whatsapp: { background: '#dcfce7', color: '#15803d', border: `1px solid #86efac` },
+    primary:  { background: disabled ? C.slate[200] : C.navy, color: disabled ? C.slate[400] : 'white' },
+    success:  { background: disabled ? C.slate[200] : C.emerald, color: 'white' },
+    danger:   { background: '#fee2e2', color: C.red, border: `0.5px solid #fca5a5` },
+    ghost:    { background: C.slate[50], color: C.slate[600], border: `0.5px solid ${C.slate[200]}` },
+    amber:    { background: '#fef3c7', color: '#92400e', border: `0.5px solid #fde68a` },
+    whatsapp: { background: '#dcfce7', color: '#15803d', border: `0.5px solid #86efac` },
   }
   return (
     <button onClick={disabled ? undefined : onClick} disabled={disabled}
@@ -320,22 +396,36 @@ function TabHome({ onNavigate }) {
 
   if (loading) return <div style={{ padding: 48, textAlign: 'center', color: C.slate[400] }}>⏳ Loading dashboard…</div>
 
+  // Premium stat cards with top accent stripe
   const statItems = [
-    { label: 'Today pending',    value: stats.pending, color: C.sky,    bg: '#eff6ff' },
-    { label: 'At-risk students', value: stats.risk,    color: C.red,    bg: '#fef2f2' },
-    { label: 'Tracked',          value: stats.total,   color: C.navy,   bg: '#eff6ff' },
-    { label: 'Avg attendance',   value: `${stats.avgPct}%`, color: stats.avgPct>=75?C.emerald:C.amber, bg: stats.avgPct>=75?'#f0fdf4':'#fffbeb' },
+    { label: 'Present today',    value: stats.avgPct > 0 ? `${stats.total - stats.risk}` : '—', color: C.emerald, bg: '#f0fdf4', stripe: C.emerald },
+    { label: 'At-risk students', value: stats.risk,    color: C.red,    bg: '#fef2f2', stripe: C.red    },
+    { label: 'Tracked students', value: stats.total,   color: C.sky,    bg: '#eff6ff', stripe: C.sky    },
+    { label: 'Avg attendance',   value: `${stats.avgPct}%`, color: stats.avgPct>=75?C.emerald:C.amber, bg: stats.avgPct>=75?'#f0fdf4':'#fffbeb', stripe: stats.avgPct>=75?C.emerald:C.amber },
   ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* Stats grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+      {/* Premium stat grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
         {statItems.map(s => (
-          <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: isMobile ? '12px 14px' : '14px 16px', borderLeft: `4px solid ${s.color}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: s.color, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: s.color, fontFamily: font }}>{s.value}</div>
+          <div key={s.label} style={{
+            background: 'white', borderRadius: 16, border: `0.5px solid ${C.slate[200]}`,
+            overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,.04)',
+          }}>
+            <div style={{ height: 3, background: s.stripe, borderRadius: '16px 16px 0 0' }} />
+            <div style={{ padding: isMobile ? '12px 14px' : '14px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: C.slate[400], marginBottom: 8 }}>{s.label}</div>
+              <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 500, color: s.color, lineHeight: 1, fontFamily: font }}>{s.value}</div>
+              {s.label === 'Avg attendance' && stats.total > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ height: 4, background: C.slate[100], borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{ width: `${stats.avgPct}%`, height: '100%', background: s.stripe, borderRadius: 999 }} />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -353,13 +443,14 @@ function TabHome({ onNavigate }) {
           )}
           {sessions.map((s, i) => (
             <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 12px' : '11px 16px',
-              borderRadius: 10, border: `1px solid ${s.done ? C.slate[100] : '#bfdbfe'}`,
+              display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '11px 14px' : '12px 16px',
+              borderRadius: 14, border: `0.5px solid ${s.done ? C.slate[200] : '#bfdbfe'}`,
               background: s.done ? C.slate[50] : '#eff6ff', opacity: s.done ? .65 : 1,
+              transition: 'all .15s',
             }}>
-              <div style={{ width: 9, height: 9, borderRadius: '50%', background: s.done ? C.emerald : C.sky, flexShrink: 0 }} />
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.done ? C.emerald : C.sky, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontWeight: 500, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   P{s.period_name} — {s.subject_name || 'No subject'}
                 </div>
                 <div style={{ fontSize: 11, color: C.slate[400], marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -367,7 +458,7 @@ function TabHome({ onNavigate }) {
                 </div>
               </div>
               {s.done
-                ? <span style={{ fontSize: 11, fontWeight: 800, color: C.emerald, flexShrink: 0 }}>✓ Done</span>
+                ? <span style={{ fontSize: 11, fontWeight: 700, color: C.emerald, flexShrink: 0 }}>✓ Done</span>
                 : <Btn small variant="primary" onClick={() => onNavigate('mark', s)}>Mark</Btn>
               }
             </div>
@@ -375,9 +466,10 @@ function TabHome({ onNavigate }) {
         </div>
       </Card>
 
-      {/* Defaulter Alerts */}
+      {/* Defaulter Alerts — 2-column card grid */}
       <Card>
         <CardHead icon="🚨" title="Defaulter Alerts"
+          accentColor={C.red}
           sub={`Below ${threshold}% this month`}
           right={
             <select value={threshold} onChange={e => setThreshold(Number(e.target.value))}
@@ -388,39 +480,35 @@ function TabHome({ onNavigate }) {
         />
         <div style={{ padding: isMobile ? '12px 14px' : '14px 22px' }}>
           {defaulters.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: C.emerald, fontWeight: 700, fontSize: 13 }}>
+            <div style={{ textAlign: 'center', padding: '24px 0', color: C.emerald, fontWeight: 500, fontSize: 13 }}>
               ✅ No defaulters — all students above {threshold}%
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 8 }}>
               {defaulters.slice(0, 10).map(d => (
                 <div key={d.name} style={{
-                  display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, padding: isMobile ? '10px 12px' : '10px 14px',
-                  borderRadius: 10, border: `1px solid ${d.pct < 50 ? '#fca5a5' : '#fde68a'}`,
+                  borderRadius: 14, padding: '12px 14px',
+                  border: `1.5px solid ${d.pct < 50 ? '#fca5a5' : '#fde68a'}`,
                   background: d.pct < 50 ? '#fff5f5' : '#fffbeb',
                 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: d.pct < 50 ? '#fee2e2' : '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: d.pct < 50 ? C.red : C.amber, flexShrink: 0 }}>
-                    {d.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: d.pct < 50 ? '#fee2e2' : '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 500, color: d.pct < 50 ? C.red : C.amber, flexShrink: 0 }}>
+                      {d.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+                      {d.gcc && <div style={{ fontSize: 11, color: C.slate[400] }}>GCC-{d.gcc}</div>}
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 500, color: d.pct < 50 ? C.red : C.amber, flexShrink: 0 }}>{d.pct}%</div>
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
-                    {d.gcc && <div style={{ fontSize: 11, color: C.slate[400] }}>GCC-{d.gcc}</div>}
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 900, color: d.pct < 50 ? C.red : C.amber }}>{d.pct}%</div>
-                    <div style={{ fontSize: 10, color: C.slate[400] }}>{d.total} sess.</div>
-                  </div>
-                  {!isMobile && <div style={{ minWidth: 80 }}><MiniBar pct={d.pct} /></div>}
-                  <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 999, background: d.pct<50?'#fee2e2':'#fef3c7', color: d.pct<50?C.red:C.amber, flexShrink: 0 }}>
-                    {d.pct < 50 ? '🚨' : '⚠️'}
-                  </span>
+                  <MiniBar pct={d.pct} />
                 </div>
               ))}
-              {defaulters.length > 10 && (
-                <div style={{ textAlign: 'center', fontSize: 12, color: C.slate[400], padding: '8px 0' }}>
-                  +{defaulters.length - 10} more
-                </div>
-              )}
+            </div>
+          )}
+          {defaulters.length > 10 && (
+            <div style={{ textAlign: 'center', fontSize: 12, color: C.slate[400], padding: '10px 0 0' }}>
+              +{defaulters.length - 10} more students below threshold
             </div>
           )}
         </div>
@@ -577,23 +665,23 @@ function TabMark({ staff, prefill }) {
     students.filter(s => { const k = s.student_id || s.student_name; return records[k] === 'Absent' || records[k] === 'Late' })
   , [students, records])
 
-  const pad = isMobile ? '12px 14px' : '20px 22px'
+  const pad = isMobile ? '12px 16px' : '18px 22px'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* Session Details */}
       <Card>
-        <CardHead icon="📋" title="Session Details" sub="Configure course and period" />
+        <CardHead icon="📋" title="Session details" sub="Configure course and period" />
         <div style={{ padding: pad }}>
           {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
-          {/* FIX 4: Row 1 — always 1 col on mobile */}
+          {/* Row 1 */}
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: 10 }}>
             <div>
               <Label>Course *</Label>
               <Select value={form.course} onChange={e => setForm(prev => ({ ...prev, course: e.target.value, subtype:'', class_name:'' }))}>
-                <option value="">Select Course</option>
+                <option value="">Select course</option>
                 {COURSES.map(c => <option key={c}>{c}</option>)}
               </Select>
             </div>
@@ -601,18 +689,18 @@ function TabMark({ staff, prefill }) {
               <Label>Batch / Subtype</Label>
               <Select value={form.subtype} disabled={!form.course}
                 onChange={e => setForm(prev => ({ ...prev, subtype: e.target.value, class_name:'' }))}>
-                <option value="">Select Batch</option>
+                <option value="">Select batch</option>
                 {subtypes.map(s => <option key={s}>{s}</option>)}
               </Select>
             </div>
             <div>
-              <Label>Class {batchId && <span style={{ fontSize:10, color:C.emerald, fontWeight:800 }}>✓ linked</span>}</Label>
+              <Label>Class {batchId && <span style={{ fontSize:10, color:C.emerald, fontWeight:700 }}>✓ linked</span>}</Label>
               <input value={form.class_name} onChange={e => setForm(prev => ({ ...prev, class_name: e.target.value }))}
                 placeholder="e.g. 9A (optional)" style={inp()} />
             </div>
           </div>
 
-          {/* FIX 4: Row 2 — date full-width, period+subject side-by-side on mobile */}
+          {/* Row 2 */}
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: 10 }}>
             <div>
               <Label>Date</Label>
@@ -631,7 +719,7 @@ function TabMark({ staff, prefill }) {
                   <div>
                     <Label badge={form.period_number && form.subject_name && timetable.length ? '✓ TT' : ''}>Subject</Label>
                     <Select value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
-                      <option value="">Select Subject</option>
+                      <option value="">Select subject</option>
                       {batchSubjects.map(s => <option key={s}>{s}</option>)}
                     </Select>
                   </div>
@@ -640,7 +728,7 @@ function TabMark({ staff, prefill }) {
                 <div>
                   <Label badge={form.period_number && timetable.length ? 'AUTO' : ''}>Period</Label>
                   <Select value={form.period_number} onChange={e => handlePeriod(e.target.value)}>
-                    <option value="">— No Period —</option>
+                    <option value="">— No period —</option>
                     {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
                   </Select>
                 </div>
@@ -650,24 +738,24 @@ function TabMark({ staff, prefill }) {
               <div>
                 <Label badge={form.period_number && form.subject_name && timetable.length ? '✓ TT' : ''}>Subject</Label>
                 <Select value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
-                  <option value="">Select Subject</option>
+                  <option value="">Select subject</option>
                   {batchSubjects.map(s => <option key={s}>{s}</option>)}
                 </Select>
               </div>
             )}
           </div>
 
-          {/* Row 3: Teacher / Type / Remarks */}
+          {/* Row 3 */}
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10 }}>
             <div>
               <Label badge={form.period_number && form.teacher_name && timetable.length ? '✓ TT' : ''}>Teacher</Label>
               <Select value={form.teacher_name} onChange={e => handleTeacher(e.target.value)}>
-                <option value="">Select Teacher</option>
+                <option value="">Select teacher</option>
                 {batchStaff.map(s => <option key={s.id} value={s.name}>{s.name}{s.designation ? ` — ${s.designation}` : ''}</option>)}
               </Select>
             </div>
             <div>
-              <Label>Session Type</Label>
+              <Label>Session type</Label>
               <Select value={form.session_type} onChange={e => setForm(prev => ({ ...prev, session_type: e.target.value }))}>
                 {SESSION_TYPES.map(t => <option key={t}>{t}</option>)}
               </Select>
@@ -680,11 +768,11 @@ function TabMark({ staff, prefill }) {
           </div>
 
           {form.course && (
-            <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 9,
+            <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 12,
               background: students.length ? '#f0fdf4' : '#fffbeb',
-              border: `1px solid ${students.length ? '#86efac' : '#fde68a'}`,
+              border: `0.5px solid ${students.length ? '#86efac' : '#fde68a'}`,
               display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: students.length ? C.emerald : C.amber }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: students.length ? C.emerald : C.amber }}>
                 {students.length ? `${students.length} students enrolled` : '⚠️ No students found'}
               </span>
               {timetable.length > 0 && <span style={{ fontSize: 11, color: C.sky, fontWeight: 700 }}>📅 {timetable.length} timetable slots</span>}
@@ -694,11 +782,11 @@ function TabMark({ staff, prefill }) {
         </div>
       </Card>
 
-      {/* Mark Attendance */}
+      {/* Mark Attendance — Swift Grid */}
       {students.length > 0 && (
         <Card>
-          <CardHead icon="✏️" title="Mark Attendance"
-            sub={`${form.course}${form.subtype ? ' / '+form.subtype : ''}`}
+          <CardHead icon="✏️" title="Swift attendance"
+            sub={`${form.course}${form.subtype ? ' / '+form.subtype : ''} · tap cell to cycle status`}
             right={
               isMobile ? (
                 <Btn small variant="amber" onClick={copyLastSession} disabled={copying}>
@@ -710,111 +798,78 @@ function TabMark({ staff, prefill }) {
                     {copying ? '⏳' : '📋'} Copy last
                   </Btn>
                   <Btn small variant="ghost" onClick={invertSelection}>⇄ Invert</Btn>
-                  {STATUSES.map(s => {
-                    const sm = STATUS_META[s]
-                    return (
-                      <button key={s} onClick={() => markAll(s)}
-                        style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 7, border: `1.5px solid ${sm.border}`, background: sm.bg, color: sm.color, cursor: 'pointer', fontFamily: font }}>
-                        All {sm.icon}
-                      </button>
-                    )
-                  })}
                 </>
               )
             }
           />
 
-          {/* Mobile: quick action row */}
-          {isMobile && (
-            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', gap: 6 }}>
-              {STATUSES.map(s => {
-                const sm = STATUS_META[s]
-                return (
-                  <button key={s} onClick={() => markAll(s)}
-                    style={{ flex: 1, fontSize: 11, fontWeight: 700, padding: '8px 4px', borderRadius: 7, border: `1.5px solid ${sm.border}`, background: sm.bg, color: sm.color, cursor: 'pointer', fontFamily: font, WebkitTapHighlightColor: 'transparent' }}>
-                    All {sm.icon}
-                  </button>
-                )
-              })}
-              <button onClick={invertSelection}
-                style={{ flex: 1, fontSize: 11, fontWeight: 700, padding: '8px 4px', borderRadius: 7, border: `1px solid ${C.slate[200]}`, background: C.slate[50], color: C.slate[600], cursor: 'pointer', fontFamily: font, WebkitTapHighlightColor: 'transparent' }}>
-                ⇄
-              </button>
-            </div>
-          )}
-
-          {/* Status summary */}
-          <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 10 }}>
-              {STATUSES.map(s => {
-                const sm = STATUS_META[s]
-                const pct = students.length ? Math.round((counts[s]/students.length)*100) : 0
-                return (
-                  <div key={s} style={{ background: sm.bg, border: `1px solid ${sm.border}`, borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: sm.color, lineHeight: 1, fontFamily: font }}>{counts[s]}</div>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: sm.color }}>{sm.icon} {sm.label}</div>
-                      <div style={{ fontSize: 10, color: sm.color, opacity: .7 }}>{pct}%</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <StatBar records={records} />
-          </div>
-
-          {/* Search */}
-          <div style={{ padding: isMobile ? '10px 14px' : '10px 22px', borderBottom: `1px solid ${C.slate[100]}` }}>
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="🔍 Search name or GCC…" style={inp()} />
-          </div>
-
-          {/* Student list */}
-          <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {filteredStudents.map((s, i) => {
-              const key    = s.student_id || s.student_name
-              const status = records[key] || 'Present'
-              const sm     = STATUS_META[status]
-              const hc     = HOSTEL_COLORS[s.hostel_type] || HOSTEL_COLORS['Day Scholar']
+          {/* Status pills as quick-mark buttons */}
+          <div style={{ padding: isMobile ? '10px 14px' : '12px 22px', borderBottom: `0.5px solid ${C.slate[100]}`, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {STATUSES.map(s => {
+              const sm = STATUS_META[s]
               return (
-                <div key={key} style={{
-                  display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12,
-                  padding: isMobile ? '9px 10px' : '10px 16px',
-                  borderRadius: 10, border: `1px solid ${status==='Absent'?'#fca5a5':C.slate[100]}`,
-                  background: status==='Absent'?'#fff5f5':status==='Late'?'#fffbeb':status==='Leave'?'#faf5ff':'white',
-                  transition: 'all .15s', minWidth: 0,
-                }}>
-                  {/* Index badge — hidden on mobile to save space */}
-                  {!isMobile && (
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: sm.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: sm.color, flexShrink: 0 }}>
-                      {i + 1}
-                    </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: C.slate[800], fontSize: isMobile ? 13 : 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.student_name}</div>
-                    <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', gap: 6, marginTop: 2, alignItems: 'center' }}>
-                      {s.gcc_no && <span style={{ fontWeight: 800, color: C.navy }}>GCC-{s.gcc_no}</span>}
-                      {s.hostel_type && !isMobile && <Chip label={s.hostel_type} color={hc.color} bg={hc.bg} border={hc.border} />}
-                    </div>
-                  </div>
-                  <StatusCycle status={status} onChange={next => setRecords(prev => ({ ...prev, [key]: next }))} />
-                </div>
+                <button key={s} onClick={() => markAll(s)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 999, border: `1.5px solid ${sm.border}`, background: sm.bg, color: sm.color, fontWeight: 700, fontSize: 11, cursor: 'pointer', fontFamily: font, WebkitTapHighlightColor: 'transparent', transition: 'all .12s' }}>
+                  <span style={{ fontWeight: 900 }}>{sm.icon}</span>
+                  <span style={{ fontWeight: 500 }}>{counts[s]}</span>
+                  <span>{sm.label}</span>
+                </button>
               )
             })}
-            {filteredStudents.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '32px 0', color: C.slate[400], fontSize: 13 }}>No students match your search.</div>
+            {!isMobile && (
+              <button onClick={invertSelection} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 999, border: `0.5px solid ${C.slate[200]}`, background: C.slate[50], color: C.slate[500], fontWeight: 700, fontSize: 11, cursor: 'pointer', fontFamily: font }}>
+                ⇄ Invert
+              </button>
             )}
           </div>
 
-          {/* FIX 3: Save button — full width on mobile via style prop (now works) */}
-          <div style={{ padding: isMobile ? '12px 14px' : '14px 22px', borderTop: `1px solid ${C.slate[100]}` }}>
+          {/* Progress bar */}
+          <div style={{ padding: '0 22px 12px', paddingTop: 10 }}>
+            <AttendProgressBar records={records} />
+          </div>
+
+          {/* Search */}
+          <div style={{ padding: isMobile ? '0 14px 12px' : '0 22px 12px' }}>
+            <div style={{ position: 'relative' }}>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="🔍 Search name or GCC…" style={{ ...inp(), paddingLeft: 36 }} />
+            </div>
+          </div>
+
+          {/* ── SWIFT GRID ── */}
+          <div style={{
+            padding: isMobile ? '4px 12px 16px' : '4px 20px 20px',
+            display: 'grid',
+            gridTemplateColumns: isMobile ? 'repeat(4,1fr)' : 'repeat(6,1fr)',
+            gap: isMobile ? 7 : 9,
+          }}>
+            {filteredStudents.map(s => {
+              const key = s.student_id || s.student_name
+              const status = records[key] || 'Present'
+              return (
+                <StatusCycleCell
+                  key={key}
+                  student={s}
+                  status={status}
+                  isMobile={isMobile}
+                  onChange={next => setRecords(prev => ({ ...prev, [key]: next }))}
+                />
+              )
+            })}
+            {filteredStudents.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '32px 0', color: C.slate[400], fontSize: 13 }}>No students match your search.</div>
+            )}
+          </div>
+
+          {/* Save button */}
+          <div style={{ padding: isMobile ? '12px 14px' : '14px 22px', borderTop: `0.5px solid ${C.slate[100]}` }}>
             <Btn
               variant="success"
               disabled={saving}
               onClick={handleSave}
-              style={{ width: '100%', justifyContent: 'center' }}
+              style={{ width: '100%', justifyContent: 'center', minHeight: 44 }}
             >
-              {saving ? '⏳ Saving…' : `✅ Save (${students.length} students)`}
+              {saving ? '⏳ Saving…' : `✅ Save attendance (${students.length} students)`}
             </Btn>
           </div>
         </Card>
@@ -856,8 +911,8 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
   }
 
   return (
-    <Card style={{ border: `1.5px solid #93c5fd` }}>
-      <CardHead icon="📲" title="Notify Parents"
+    <Card style={{ border: `0.5px solid #93c5fd` }}>
+      <CardHead icon="📲" title="Notify parents"
         sub={`${students.length} absent/late`}
         right={
           <>
@@ -871,7 +926,7 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
         }
       />
       <div style={{ padding: isMobile ? '12px 14px' : '14px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ background: C.slate[50], border: `1px solid ${C.slate[200]}`, borderRadius: 10, padding: '12px 14px' }}>
+        <div style={{ background: C.slate[50], border: `0.5px solid ${C.slate[200]}`, borderRadius: 12, padding: '12px 14px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Message preview</div>
           <div style={{ fontSize: 12, color: C.slate[700], lineHeight: 1.6 }}>{students[0] ? msgFor(students[0]) : '—'}</div>
         </div>
@@ -882,13 +937,13 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
             const sm = STATUS_META[status] || STATUS_META.Absent
             const isSent = sent[key]
             return (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 9, background: isSent ? '#f0fdf4' : sm.bg, border: `1px solid ${isSent ? '#86efac' : sm.border}` }}>
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, background: isSent ? '#f0fdf4' : sm.bg, border: `0.5px solid ${isSent ? '#86efac' : sm.border}` }}>
                 <span style={{ fontSize: 14, color: sm.color }}>{sm.icon}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.student_name}</div>
+                  <div style={{ fontWeight: 500, fontSize: 13, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.student_name}</div>
                   <div style={{ fontSize: 11, color: C.slate[400] }}>{s.students?.phone ? `📞 ${s.students.phone}` : 'No phone on record'}</div>
                 </div>
-                {isSent && <span style={{ fontSize: 11, fontWeight: 800, color: C.emerald, flexShrink: 0 }}>✓ Sent</span>}
+                {isSent && <span style={{ fontSize: 11, fontWeight: 700, color: C.emerald, flexShrink: 0 }}>✓ Sent</span>}
               </div>
             )
           })}
@@ -920,6 +975,7 @@ function TabView() {
   const [records,      setRecords]     = useState({})
   const [dateFilter,   setDateFilter]  = useState('')
   const [courseFilter, setCourseFilter]= useState('All')
+  const [confirmDelete, setConfirmDelete] = useState(null)
 
   const fetchSessions = useCallback(async () => {
     setLoading(true)
@@ -942,21 +998,21 @@ function TabView() {
     setExpanded(id)
   }
 
-  const deleteSession = async (id) => {
-    if (!window.confirm('Delete this session and all its records?')) return
+  const doDelete = async (id) => {
     await supabase.from('attendance_sessions').delete().eq('id', id)
     if (expanded === id) setExpanded(null)
+    setConfirmDelete(null)
     fetchSessions()
   }
 
   return (
     <Card>
       <CardHead icon="📁" title="Sessions" sub="All recorded attendance sessions"
-        right={<span style={{ fontSize: 12, color: C.slate[400], fontWeight: 600 }}>{sessions.length} total</span>} />
-      <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', borderBottom: `1px solid ${C.slate[100]}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        right={<span style={{ fontSize: 12, color: C.slate[400], fontWeight: 500 }}>{sessions.length} total</span>} />
+      <div style={{ padding: isMobile ? '10px 14px' : '14px 22px', borderBottom: `0.5px solid ${C.slate[100]}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={inp({ width: 'auto', fontSize: 13, padding: '7px 10px' })} />
         <Select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto' }}>
-          <option value="All">All Courses</option>
+          <option value="All">All courses</option>
           {COURSES.map(c => <option key={c}>{c}</option>)}
         </Select>
         {(dateFilter || courseFilter !== 'All') && (
@@ -977,12 +1033,12 @@ function TabView() {
           const pct   = total > 0 ? Math.round((counts.Present / total)*100) : null
 
           return (
-            <div key={sess.id} style={{ border: `1px solid ${C.slate[200]}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div key={sess.id} style={{ border: `0.5px solid ${C.slate[200]}`, borderRadius: 16, overflow: 'hidden' }}>
               <div onClick={() => expand(sess.id)}
-                style={{ display:'flex', alignItems:'center', gap:10, padding: isMobile ? '12px 14px' : '13px 18px', cursor:'pointer', background: isOpen ? C.slate[50] : 'white' }}>
+                style={{ display:'flex', alignItems:'center', gap:10, padding: isMobile ? '12px 14px' : '13px 18px', cursor:'pointer', background: isOpen ? C.slate[50] : 'white', transition: 'background .15s' }}>
                 <div style={{ flex:1, minWidth: 0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:3 }}>
-                    <span style={{ fontWeight:800, color:C.navy, fontSize: isMobile ? 13 : 14 }}>{fmtDate(sess.session_date)}</span>
+                    <span style={{ fontWeight:500, color:C.navy, fontSize: isMobile ? 13 : 14 }}>{fmtDate(sess.session_date)}</span>
                     <CoursePill course={sess.course} />
                     {sess.subject_name && <span style={{ fontSize:11, fontWeight:700, color:C.violet }}>{sess.subject_name}</span>}
                   </div>
@@ -992,14 +1048,29 @@ function TabView() {
                     {sess.period_number && ` · P${sess.period_number}`}
                   </div>
                 </div>
-                <Btn small variant="danger" onClick={e => { e.stopPropagation(); deleteSession(sess.id) }}>🗑</Btn>
+                <button onClick={e => { e.stopPropagation(); setConfirmDelete(sess.id) }}
+                  style={{ fontSize: 12, padding: '5px 10px', borderRadius: 8, border: `0.5px solid #fca5a5`, background: '#fee2e2', color: C.red, cursor: 'pointer', fontFamily: font, flexShrink: 0 }}>
+                  🗑
+                </button>
                 <span style={{ color:C.slate[300], fontSize:16, transform: isOpen?'rotate(180deg)':'none', transition:'transform .2s', flexShrink: 0 }}>▾</span>
               </div>
+
+              {/* Inline confirm delete */}
+              {confirmDelete === sess.id && (
+                <div style={{ padding: '10px 14px', borderTop: `0.5px solid ${C.slate[100]}` }}>
+                  <InlineConfirm
+                    message="Delete this session and all its records?"
+                    onConfirm={() => doDelete(sess.id)}
+                    onCancel={() => setConfirmDelete(null)}
+                  />
+                </div>
+              )}
+
               {isOpen && (
-                <div style={{ borderTop:`1px solid ${C.slate[100]}`, padding: isMobile ? '12px 14px' : '16px 18px', background: C.slate[50] }}>
+                <div style={{ borderTop:`0.5px solid ${C.slate[100]}`, padding: isMobile ? '12px 14px' : '16px 18px', background: C.slate[50] }}>
                   <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
                     {STATUSES.map(s => counts[s] > 0 && (
-                      <span key={s} style={{ padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:700, background:STATUS_META[s].bg, color:STATUS_META[s].color, border:`1px solid ${STATUS_META[s].border}` }}>
+                      <span key={s} style={{ padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:700, background:STATUS_META[s].bg, color:STATUS_META[s].color, border:`0.5px solid ${STATUS_META[s].border}` }}>
                         {STATUS_META[s].icon} {counts[s]} {s}
                       </span>
                     ))}
@@ -1013,13 +1084,13 @@ function TabView() {
                     {recs.map(r => {
                       const sm = STATUS_META[r.status] || STATUS_META.Present
                       return (
-                        <div key={r.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', borderRadius:8, background:sm.bg, border:`1px solid ${sm.border}` }}>
+                        <div key={r.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', borderRadius:10, background:sm.bg, border:`0.5px solid ${sm.border}` }}>
                           <span style={{ fontSize:14, fontWeight:900, color:sm.color }}>{sm.icon}</span>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:12, fontWeight:700, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.student_name}</div>
+                            <div style={{ fontSize:12, fontWeight:500, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.student_name}</div>
                             {r.gcc_no && <div style={{ fontSize:10, color:C.slate[400] }}>GCC-{r.gcc_no}</div>}
                           </div>
-                          <span style={{ fontSize:10, fontWeight:800, color:sm.color, flexShrink:0 }}>{r.status}</span>
+                          <span style={{ fontSize:10, fontWeight:700, color:sm.color, flexShrink:0 }}>{r.status}</span>
                         </div>
                       )
                     })}
@@ -1097,7 +1168,7 @@ function TabReport() {
 
   const REPORT_TABS = [
     { key:'monthly', label:'Monthly'    },
-    { key:'heatmap', label:'📅 Map'     },
+    { key:'heatmap', label:'📅 Heatmap' },
     { key:'subject', label:'📚 Subject' },
     { key:'teacher', label:'👨‍🏫 Staff'  },
   ]
@@ -1105,6 +1176,7 @@ function TabReport() {
   return (
     <Card>
       <CardHead icon="📊" title="Reports" sub={fmtMonth(month)}
+        accentColor={C.violet}
         right={
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={inp({width:'auto', fontSize:12, padding:'6px 8px'})} />
@@ -1118,12 +1190,12 @@ function TabReport() {
       />
 
       {/* Sub-tabs */}
-      <div style={{ display:'flex', borderBottom:`1px solid ${C.slate[200]}`, overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
+      <div style={{ display:'flex', borderBottom:`0.5px solid ${C.slate[200]}`, overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
         {REPORT_TABS.map(t => (
           <button key={t.key} onClick={() => setReportTab(t.key)}
             style={{ padding: isMobile ? '10px 12px' : '10px 18px', fontWeight:700, fontSize:12, cursor:'pointer', background:'none', border:'none',
               fontFamily:font, color: reportTab===t.key ? C.navy : C.slate[400],
-              borderBottom: reportTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent',
+              borderBottom: reportTab===t.key ? `2.5px solid ${C.navy}` : '2.5px solid transparent',
               whiteSpace:'nowrap', transition:'color .12s', flexShrink: 0 }}>
             {t.label}
           </button>
@@ -1136,30 +1208,32 @@ function TabReport() {
         <div style={{ textAlign:'center', padding:'60px', color:C.slate[400], fontSize:13 }}>No attendance data for this period.</div>
       ) : (
         <>
-          {/* Summary cards */}
-          <div style={{ padding: isMobile ? '12px 14px' : '18px 22px', borderBottom:`1px solid ${C.slate[100]}`, display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10 }}>
+          {/* Summary stat grid — 4 columns with top stripe */}
+          <div style={{ padding: isMobile ? '12px 14px' : '16px 22px', borderBottom:`0.5px solid ${C.slate[100]}`, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
             {[
-              { label:'Students',    value:stats.total, color:C.navy,    bg:'#eff6ff' },
-              { label:'≥75% Good',   value:stats.good,  color:C.emerald, bg:'#f0fdf4' },
-              { label:'50-74% Low',  value:stats.mid,   color:C.amber,   bg:'#fffbeb' },
-              { label:'<50% Risk',   value:stats.risk,  color:C.red,     bg:'#fef2f2' },
+              { label:'Students',    value:stats.total, color:C.navy,    stripe:C.navy,    bg:'#eff6ff' },
+              { label:'≥75% Good',   value:stats.good,  color:C.emerald, stripe:C.emerald, bg:'#f0fdf4' },
+              { label:'50–74% Low',  value:stats.mid,   color:C.amber,   stripe:C.amber,   bg:'#fffbeb' },
+              { label:'<50% Risk',   value:stats.risk,  color:C.red,     stripe:C.red,     bg:'#fef2f2' },
             ].map(s => (
-              <div key={s.label} style={{ background:s.bg, borderRadius:10, padding: isMobile ? '10px 12px' : '14px 18px', borderLeft:`4px solid ${s.color}` }}>
-                <div style={{ fontSize:10, fontWeight:700, color:s.color, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>{s.label}</div>
-                <div style={{ fontSize: isMobile ? 22 : 28, fontWeight:900, color:s.color, fontFamily:font }}>{s.value}</div>
+              <div key={s.label} style={{ background:'white', borderRadius:14, border:`0.5px solid ${C.slate[200]}`, overflow:'hidden' }}>
+                <div style={{ height:3, background:s.stripe }} />
+                <div style={{ padding: isMobile ? '8px 10px' : '10px 14px' }}>
+                  <div style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:s.color, marginBottom:6 }}>{s.label}</div>
+                  <div style={{ fontSize: isMobile ? 20 : 24, fontWeight:500, color:s.color, fontFamily:font }}>{s.value}</div>
+                </div>
               </div>
             ))}
           </div>
 
-          {/* FIX 5: Monthly table — outer wrapper gets WebkitOverflowScrolling */}
           {reportTab === 'monthly' && (
             <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'thin' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 500 : 'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 480 : 'auto' }}>
                 <thead>
-                  <tr style={{ background:C.slate[50], borderBottom:`1px solid ${C.slate[200]}` }}>
+                  <tr style={{ background:C.slate[50], borderBottom:`0.5px solid ${C.slate[200]}` }}>
                     {['#','Student','GCC','P','A','L','Lv','Tot','Att%',''].map((h,i) => (
                       <th key={h+i} onClick={i > 2 && i < 8 ? () => toggleSort(['','name','','Present','Absent','Late','Leave','total','pct',''][i]) : undefined}
-                        style={{ padding: isMobile ? '8px 6px' : '10px 12px', textAlign:'left', fontWeight:700, fontSize:10, textTransform:'uppercase', letterSpacing:'.05em', color: C.slate[400], whiteSpace:'nowrap', cursor: i>2&&i<9?'pointer':'default' }}>
+                        style={{ padding: isMobile ? '8px 6px' : '10px 14px', textAlign:'left', fontWeight:700, fontSize:10, textTransform:'uppercase', letterSpacing:'.05em', color: C.slate[400], whiteSpace:'nowrap', cursor: i>2&&i<9?'pointer':'default' }}>
                         {h}
                       </th>
                     ))}
@@ -1169,18 +1243,18 @@ function TabReport() {
                   {sorted.map((row,i) => {
                     const color = row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red
                     return (
-                      <tr key={row.name} style={{ borderBottom:`1px solid ${C.slate[100]}`, background: row.pct<50?'#fff5f5':row.pct<75?'#fffbeb':'white' }}>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', color:C.slate[400], fontSize:11 }}>{i+1}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.slate[800], maxWidth: isMobile ? 80 : 160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.name}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontFamily:'monospace', fontSize:11, fontWeight:700, color:C.navy }}>{row.gcc || '—'}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.emerald }}>{row.Present}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.red     }}>{row.Absent}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.amber   }}>{row.Late}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', fontWeight:700, color:C.violet  }}>{row.Leave}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', color:C.slate[500] }}>{row.total}</td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px', minWidth: isMobile ? 70 : 120 }}><MiniBar pct={row.pct} /></td>
-                        <td style={{ padding: isMobile ? '8px 6px' : '10px 12px' }}>
-                          <span style={{ fontSize:10, fontWeight:800, padding:'2px 6px', borderRadius:999, background:row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', color, whiteSpace:'nowrap' }}>
+                      <tr key={row.name} style={{ borderBottom:`0.5px solid ${C.slate[100]}`, background: row.pct<50?'#fff5f5':row.pct<75?'#fffbeb':'white' }}>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', color:C.slate[400], fontSize:11 }}>{i+1}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', fontWeight:500, color:C.slate[800], maxWidth: isMobile ? 80 : 160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.name}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', fontFamily:'monospace', fontSize:11, fontWeight:700, color:C.navy }}>{row.gcc || '—'}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', fontWeight:700, color:C.emerald }}>{row.Present}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', fontWeight:700, color:C.red     }}>{row.Absent}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', fontWeight:700, color:C.amber   }}>{row.Late}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', fontWeight:700, color:C.violet  }}>{row.Leave}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', color:C.slate[500] }}>{row.total}</td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px', minWidth: isMobile ? 70 : 110 }}><MiniBar pct={row.pct} /></td>
+                        <td style={{ padding: isMobile ? '8px 6px' : '10px 14px' }}>
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:999, background:row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', color, whiteSpace:'nowrap' }}>
                             {row.pct>=75?'✅':row.pct>=50?'⚠️':'🚨'}
                           </span>
                         </td>
@@ -1237,18 +1311,18 @@ function HeatmapRow({ row, month }) {
   })()
 
   return (
-    <div style={{ background: C.slate[50], borderRadius: 12, padding: isMobile ? '12px 12px' : '14px 16px', border: `1px solid ${C.slate[200]}` }}>
+    <div style={{ background: C.slate[50], borderRadius: 14, padding: isMobile ? '12px 12px' : '14px 16px', border: `0.5px solid ${C.slate[200]}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <div style={{ width: 34, height: 34, borderRadius: '50%', background: row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:900, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red, flexShrink: 0 }}>
+        <div style={{ width: 34, height: 34, borderRadius: '50%', background: row.pct>=75?'#dcfce7':row.pct>=50?'#fef9c3':'#fee2e2', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:500, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red, flexShrink: 0 }}>
           {row.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
         </div>
         <div style={{ flex:1, minWidth: 0 }}>
-          <div style={{ fontWeight:800, fontSize:13, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.name}</div>
+          <div style={{ fontWeight:500, fontSize:13, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.name}</div>
           {row.gcc && <div style={{ fontSize:11, color:C.slate[400] }}>GCC-{row.gcc}</div>}
         </div>
-        <div style={{ fontSize:16, fontWeight:900, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red, flexShrink:0 }}>{row.pct}%</div>
+        <div style={{ fontSize:16, fontWeight:500, color: row.pct>=75?C.emerald:row.pct>=50?C.amber:C.red, flexShrink:0 }}>{row.pct}%</div>
         {streak > 0 && !isMobile && (
-          <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:8, padding:'3px 8px', fontSize:11, fontWeight:800, color:'#c2410c' }}>
+          <div style={{ background:'#fff7ed', border:'0.5px solid #fed7aa', borderRadius:8, padding:'3px 8px', fontSize:11, fontWeight:700, color:'#c2410c' }}>
             🔥 {streak}d
           </div>
         )}
@@ -1298,11 +1372,11 @@ function SubjectBreakdown({ data }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {subjectMap.map(subj => (
-          <div key={subj.name} style={{ background: subj.pct<50?'#fff5f5':subj.pct<75?'#fffbeb':'white', border:`1px solid ${subj.pct<50?'#fca5a5':subj.pct<75?'#fde68a':C.slate[200]}`, borderRadius: 10, padding: isMobile ? '10px 12px' : '12px 16px' }}>
+          <div key={subj.name} style={{ background: subj.pct<50?'#fff5f5':subj.pct<75?'#fffbeb':'white', border:`0.5px solid ${subj.pct<50?'#fca5a5':subj.pct<75?'#fde68a':C.slate[200]}`, borderRadius: 12, padding: isMobile ? '10px 12px' : '12px 16px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-              <div style={{ fontWeight:800, fontSize:13, color:C.slate[800], flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{subj.name}</div>
+              <div style={{ fontWeight:500, fontSize:13, color:C.slate[800], flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{subj.name}</div>
               <span style={{ fontSize:11, color:C.slate[400], flexShrink:0 }}>{subj.students} stu.</span>
-              <span style={{ fontSize:15, fontWeight:900, color: subj.pct>=75?C.emerald:subj.pct>=50?C.amber:C.red, flexShrink:0 }}>{subj.pct}%</span>
+              <span style={{ fontSize:15, fontWeight:500, color: subj.pct>=75?C.emerald:subj.pct>=50?C.amber:C.red, flexShrink:0 }}>{subj.pct}%</span>
             </div>
             <MiniBar pct={subj.pct} />
           </div>
@@ -1363,19 +1437,19 @@ function TeacherLog({ month, course }) {
   return (
     <div style={{ padding: isMobile ? '12px 14px' : '18px 22px', display:'flex', flexDirection:'column', gap:10 }}>
       {teacherData.map((t, i) => (
-        <div key={t.name} style={{ display:'flex', alignItems:'flex-start', gap:12, padding: isMobile ? '12px 14px' : '14px 18px', borderRadius:12, border:`1px solid ${C.slate[200]}`, background:'white' }}>
-          <div style={{ width:40, height:40, borderRadius:'50%', background:'#eff6ff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:900, color:C.navy, flexShrink:0 }}>
+        <div key={t.name} style={{ display:'flex', alignItems:'flex-start', gap:12, padding: isMobile ? '12px 14px' : '14px 18px', borderRadius:14, border:`0.5px solid ${C.slate[200]}`, background:'white' }}>
+          <div style={{ width:40, height:40, borderRadius:'50%', background:'#eff6ff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:500, color:C.navy, flexShrink:0 }}>
             {t.name.split(' ').map(w=>w[0]).join('').slice(0,2)}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontWeight:800, fontSize: isMobile ? 13 : 14, color:C.slate[800], marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</div>
+            <div style={{ fontWeight:500, fontSize: isMobile ? 13 : 14, color:C.slate[800], marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</div>
             <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
               {t.courses.map(c => <CoursePill key={c} course={c} />)}
             </div>
             <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
               <div>
                 <div style={{ fontSize:10, color:C.slate[400], fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em' }}>Sessions</div>
-                <div style={{ fontSize:20, fontWeight:900, color:C.navy }}>{t.sessions}</div>
+                <div style={{ fontSize:20, fontWeight:500, color:C.navy }}>{t.sessions}</div>
               </div>
               <div style={{ flex:1, minWidth:80 }}>
                 <div style={{ fontSize:10, color:C.slate[400], fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>On-time</div>
@@ -1385,7 +1459,7 @@ function TeacherLog({ month, course }) {
           </div>
           <div style={{ textAlign:'right', flexShrink:0 }}>
             <div style={{ fontSize:10, color:C.slate[400], fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Rank</div>
-            <div style={{ fontSize:20, fontWeight:900, color:C.slate[300] }}>#{i+1}</div>
+            <div style={{ fontSize:20, fontWeight:500, color:C.slate[300] }}>#{i+1}</div>
           </div>
         </div>
       ))}
@@ -1407,7 +1481,7 @@ function TabLeave({ staff, currentUser, isAdmin }) {
   const fetchLeaves = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('leave_requests').select('*').order('created_at', { ascending: false })
-if (!isAdmin && currentUser?.id) q = q.eq('staff_id', currentUser.id)
+    if (!isAdmin && currentUser?.id) q = q.eq('staff_id', currentUser.id)
     if (leaveTab === 'pending')  q = q.eq('status', 'Pending')
     if (leaveTab === 'approved') q = q.eq('status', 'Approved')
     if (leaveTab === 'rejected') q = q.eq('status', 'Rejected')
@@ -1455,14 +1529,14 @@ if (!isAdmin && currentUser?.id) q = q.eq('staff_id', currentUser.id)
 
   return (
     <Card>
-      <CardHead icon="📅" title="Leave Management" sub="Review and submit leave requests" />
-      <div style={{ display:'flex', borderBottom:`1px solid ${C.slate[200]}`, overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
+      <CardHead icon="📅" title="Leave management" sub="Review and submit leave requests" accentColor={C.violet} />
+      <div style={{ display:'flex', borderBottom:`0.5px solid ${C.slate[200]}`, overflowX:'auto', WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
         {LEAVE_TABS.map(t => (
           <button key={t.key} onClick={() => setLeaveTab(t.key)}
             style={{ padding: isMobile ? '10px 12px' : '10px 18px', fontWeight:700, fontSize:12, cursor:'pointer', background:'none', border:'none',
               fontFamily:font, color: leaveTab===t.key ? C.navy : C.slate[400],
-              borderBottom: leaveTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent',
-              whiteSpace:'nowrap', flexShrink:0 }}>
+              borderBottom: leaveTab===t.key ? `2.5px solid ${C.navy}` : '2.5px solid transparent',
+              whiteSpace:'nowrap', flexShrink:0, transition:'color .12s' }}>
             {t.label}
           </button>
         ))}
@@ -1482,28 +1556,28 @@ if (!isAdmin && currentUser?.id) q = q.eq('staff_id', currentUser.id)
                 const sc = statusColors[lv.status] || statusColors.Pending
                 const days = Math.ceil((new Date(lv.to_date) - new Date(lv.from_date)) / 86400000) + 1
                 return (
-                  <div key={lv.id} style={{ border:`1px solid ${sc.border}`, borderRadius:12, padding: isMobile ? '12px 14px' : '14px 18px', background: sc.bg }}>
+                  <div key={lv.id} style={{ border:`0.5px solid ${sc.border}`, borderRadius:14, padding: isMobile ? '12px 14px' : '14px 18px', background: sc.bg }}>
                     <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8, gap:8 }}>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontWeight:800, fontSize:14, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{lv.student_name}</div>
+                        <div style={{ fontWeight:500, fontSize:14, color:C.slate[800], overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{lv.student_name}</div>
                         <div style={{ fontSize:11, color:C.slate[500], marginTop:2 }}>
                           {fmtDate(lv.from_date)} → {fmtDate(lv.to_date)} · <strong>{days}d</strong>
                           {lv.course && ` · ${lv.course}`}
                         </div>
                       </div>
-                      <span style={{ fontSize:10, fontWeight:800, padding:'3px 8px', borderRadius:999, background:sc.bg, color:sc.color, border:`1px solid ${sc.border}`, flexShrink:0 }}>
+                      <span style={{ fontSize:9, fontWeight:700, padding:'3px 8px', borderRadius:6, background:sc.bg, color:sc.color, border:`0.5px solid ${sc.border}`, flexShrink:0, textTransform:'uppercase', letterSpacing:'.04em' }}>
                         {lv.status}
                       </span>
                     </div>
-                    <div style={{ fontSize:12, color:C.slate[700], background:'rgba(255,255,255,.5)', padding:'8px 12px', borderRadius:8, marginBottom: lv.status==='Pending'?10:0 }}>
+                    <div style={{ fontSize:12, color:C.slate[700], background:'rgba(255,255,255,.5)', padding:'8px 12px', borderRadius:10, marginBottom: lv.status==='Pending'?10:0 }}>
                       <em>"{lv.reason}"</em>
                     </div>
                     {lv.status === 'Pending' && isAdmin && (
-  <div style={{ display:'flex', gap:8 }}>
-    <Btn small variant="success" onClick={() => updateLeave(lv.id, 'Approved')}>✅ Approve</Btn>
-    <Btn small variant="danger"  onClick={() => updateLeave(lv.id, 'Rejected')}>✗ Reject</Btn>
-  </div>
-)}
+                      <div style={{ display:'flex', gap:8 }}>
+                        <Btn small variant="success" onClick={() => updateLeave(lv.id, 'Approved')}>✅ Approve</Btn>
+                        <Btn small variant="danger"  onClick={() => updateLeave(lv.id, 'Rejected')}>✗ Reject</Btn>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1517,30 +1591,30 @@ if (!isAdmin && currentUser?.id) q = q.eq('staff_id', currentUser.id)
               <div>
                 <Label>Course</Label>
                 <Select value={form.course} onChange={e => setForm(p => ({ ...p, course: e.target.value, subtype:'' }))}>
-                  <option value="">Select Course</option>
+                  <option value="">Select course</option>
                   {COURSES.map(c => <option key={c}>{c}</option>)}
                 </Select>
               </div>
               <div>
                 <Label>Batch</Label>
                 <Select value={form.subtype} disabled={!form.course} onChange={e => setForm(p => ({ ...p, subtype: e.target.value }))}>
-                  <option value="">Select Batch</option>
+                  <option value="">Select batch</option>
                   {(form.course ? COURSE_STRUCTURE[form.course]||[] : []).map(s => <option key={s}>{s}</option>)}
                 </Select>
               </div>
             </div>
             <div>
-              <Label>Student Name *</Label>
+              <Label>Student name *</Label>
               <input value={form.student_name} onChange={e => setForm(p => ({ ...p, student_name: e.target.value }))}
                 placeholder="Full name" style={inp()} />
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12 }}>
               <div>
-                <Label>From Date *</Label>
+                <Label>From date *</Label>
                 <input type="date" value={form.from_date} onChange={e => setForm(p => ({ ...p, from_date: e.target.value }))} style={inp()} />
               </div>
               <div>
-                <Label>To Date *</Label>
+                <Label>To date *</Label>
                 <input type="date" value={form.to_date} onChange={e => setForm(p => ({ ...p, to_date: e.target.value }))} style={inp()} />
               </div>
             </div>
@@ -1549,8 +1623,8 @@ if (!isAdmin && currentUser?.id) q = q.eq('staff_id', currentUser.id)
               <textarea value={form.reason} onChange={e => setForm(p => ({ ...p, reason: e.target.value }))}
                 placeholder="Enter reason…" rows={3} style={{ ...inp(), resize:'vertical' }} />
             </div>
-            <Btn variant="primary" disabled={submitting} onClick={submitLeave} style={{ width: '100%', justifyContent: 'center' }}>
-              {submitting ? '⏳ Submitting…' : '📤 Submit Leave Request'}
+            <Btn variant="primary" disabled={submitting} onClick={submitLeave} style={{ width: '100%', justifyContent: 'center', minHeight: 44 }}>
+              {submitting ? '⏳ Submitting…' : '📤 Submit leave request'}
             </Btn>
           </div>
         )}
@@ -1589,30 +1663,38 @@ export default function Attendance({ currentUser, isAdmin }) {
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: isMobile ? '14px 10px' : '24px 20px', fontFamily: font }}>
 
       {/* Page header */}
-      <div style={{ marginBottom: isMobile ? 14 : 24 }}>
+      <div style={{ marginBottom: isMobile ? 16 : 22 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: C.slate[400], marginBottom: 3 }}>GNSI Portal</div>
-        <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: C.navy }}>Attendance</div>
+        <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 500, color: C.navy }}>Attendance</div>
         {!isMobile && <div style={{ fontSize: 13, color: C.slate[400], marginTop: 3 }}>Mark, view, analyse and manage attendance across all batches</div>}
       </div>
 
-      {/* Tabs — FIX 6: scrollbar hidden on mobile, touch-friendly */}
+      {/* Premium nav — pill container */}
       <div style={{
-        display: 'flex', marginBottom: 16,
-        borderBottom: `2px solid ${C.slate[200]}`,
+        display: 'flex',
+        marginBottom: 18,
+        background: C.slate[100],
+        borderRadius: 14,
+        padding: 4,
+        gap: 2,
         overflowX: 'auto', WebkitOverflowScrolling: 'touch',
         scrollbarWidth: 'none', msOverflowStyle: 'none',
       }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{
-              padding: isMobile ? '10px 12px' : '10px 20px',
-              fontWeight: 700, fontSize: isMobile ? 11 : 13, cursor: 'pointer',
-              background: 'none', border: 'none', fontFamily: font, whiteSpace: 'nowrap',
-              borderBottom: activeTab===t.key ? `3px solid ${C.navy}` : '3px solid transparent',
-              color: activeTab===t.key ? C.navy : C.slate[400], marginBottom: -2,
-              transition: 'color .12s', flexShrink: 0,
+              flex: 1,
+              padding: isMobile ? '8px 6px' : '9px 12px',
+              fontWeight: 700, fontSize: isMobile ? 10 : 12, cursor: 'pointer',
+              background: activeTab===t.key ? 'white' : 'none',
+              border: activeTab===t.key ? `0.5px solid ${C.slate[200]}` : 'none',
+              borderRadius: 11,
+              fontFamily: font, whiteSpace: 'nowrap',
+              color: activeTab===t.key ? C.navy : C.slate[400],
+              transition: 'all .15s', flexShrink: 0,
               WebkitTapHighlightColor: 'transparent',
-              minHeight: 44,
+              minHeight: 40,
+              boxShadow: activeTab===t.key ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
             }}>
             {t.label}
           </button>
