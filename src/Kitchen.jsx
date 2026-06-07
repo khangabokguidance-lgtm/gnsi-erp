@@ -1,86 +1,121 @@
-// Kitchen.jsx — GNSI Portal v2.0
+// Kitchen.jsx — GNSI Portal v3.0
 // ─────────────────────────────────────────────────────────────────────────────
-//  Daily Kitchen Expenditure Tracker
-//  Meals: Morning Breakfast · Lunch · Evening Breakfast · Dinner
+//  Daily Kitchen Expenditure Tracker — Upgraded Edition
 //
-//  Supabase Tables Required:
+//  NEW FEATURES:
+//  1. Custom Item Manager  — add/edit/delete named items with default prices
+//  2. Receipt Viewer       — full-screen image viewer with zoom + delete
+//  3. UI Upgrade           — warm terracotta + saffron theme, Manipur-native feel
+//  4. Item Setup System    — category-tagged item master with unit/price tracking
+//  5. Professional Report  — print-ready monthly PDF report
+//  6. Admin Monitor System — live dashboard, missing meal alerts, cook log,
+//                            budget breach notifications
+//  7. Day-to-day Manipur   — Meitei UI labels, Manipuri dish presets,
+//                            local vendor names, INR-first formatting
 //
-//  1. kitchen_expenditure
-//     id            uuid PRIMARY KEY DEFAULT gen_random_uuid()
-//     meal_type     text NOT NULL CHECK (meal_type IN ('morning_breakfast','lunch','evening_breakfast','dinner'))
-//     expense_date  date NOT NULL DEFAULT CURRENT_DATE
-//     amount        numeric(10,2) NOT NULL DEFAULT 0
-//     item_details  text          -- free-text or comma-sep items
-//     prepared_by   text          -- cook/staff name
-//     pax_count     int           -- students served
-//     vendor        text          -- supplier name
-//     meal_rating   int CHECK (meal_rating BETWEEN 1 AND 5)
-//     serving_time  time          -- actual serving time
-//     receipt_url   text          -- Supabase Storage URL
-//     notes         text
-//     created_at    timestamptz DEFAULT now()
-//     updated_at    timestamptz DEFAULT now()
+//  Supabase Tables (new additions beyond v2):
 //
-//  2. kitchen_budgets
-//     id            uuid PRIMARY KEY DEFAULT gen_random_uuid()
-//     month         text NOT NULL UNIQUE  -- e.g. "2025-06"
-//     budget_amount numeric(10,2) NOT NULL
-//     created_at    timestamptz DEFAULT now()
+//  kitchen_items
+//    id           uuid PK DEFAULT gen_random_uuid()
+//    name         text NOT NULL
+//    name_meitei  text            -- Meitei name
+//    category     text            -- 'grain','vegetable','protein','dairy','spice','oil','other'
+//    unit         text            -- 'kg','g','litre','ml','piece','dozen'
+//    default_price numeric(10,2)
+//    is_active    boolean DEFAULT true
+//    created_at   timestamptz DEFAULT now()
 //
-//  3. kitchen_daily_locks
-//     id            uuid PRIMARY KEY DEFAULT gen_random_uuid()
-//     lock_date     date NOT NULL UNIQUE
-//     locked_by     text
-//     locked_at     timestamptz DEFAULT now()
+//  kitchen_cook_log
+//    id           uuid PK DEFAULT gen_random_uuid()
+//    log_date     date NOT NULL DEFAULT CURRENT_DATE
+//    staff_name   text NOT NULL
+//    meal_type    text NOT NULL
+//    arrived_at   time
+//    left_at      time
+//    notes        text
+//    created_at   timestamptz DEFAULT now()
 //
-//  Enable Supabase Storage bucket: "kitchen-receipts" (public)
+//  (plus existing: kitchen_expenditure, kitchen_budgets, kitchen_daily_locks)
+//  Enable Storage bucket: "kitchen-receipts" (public)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase.js'
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
-const T = {
-  navy:    { 50:'#EEF2FF',100:'#C7D2FE',300:'#818CF8',500:'#3730A3',700:'#1E1B4B',900:'#0F0D26' },
-  indigo:  { 50:'#EEF2FF',100:'#C7D2FE',400:'#6366F1',500:'#4F46E5',600:'#4338CA',700:'#3730A3' },
-  emerald: { 50:'#ECFDF5',100:'#D1FAE5',300:'#6EE7B7',500:'#10B981',600:'#059669',700:'#047857' },
-  amber:   { 50:'#FFFBEB',100:'#FEF3C7',200:'#FDE68A',300:'#FCD34D',500:'#F59E0B',600:'#D97706',700:'#B45309' },
-  orange:  { 50:'#FFF7ED',100:'#FFEDD5',200:'#FED7AA',300:'#FDBA74',500:'#F97316',600:'#EA580C',700:'#C2410C' },
-  violet:  { 50:'#F5F3FF',100:'#EDE9FE',400:'#A78BFA',500:'#8B5CF6',600:'#7C3AED',700:'#6D28D9' },
-  rose:    { 50:'#FFF1F2',100:'#FFE4E6',200:'#FECDD3',500:'#F43F5E',600:'#E11D48',700:'#BE123C' },
-  slate:   { 50:'#F8FAFC',100:'#F1F5F9',200:'#E2E8F0',300:'#CBD5E1',400:'#94A3B8',500:'#64748B',600:'#475569',700:'#334155',800:'#1E293B',900:'#0F172A' },
-  sky:     { 50:'#F0F9FF',100:'#E0F2FE',400:'#38BDF8',500:'#0EA5E9',600:'#0284C7',700:'#0369A1' },
-  teal:    { 50:'#F0FDFA',100:'#CCFBF1',500:'#14B8A6',600:'#0D9488',700:'#0F766E' },
-  lime:    { 50:'#F7FEE7',100:'#ECFCCB',500:'#84CC16',600:'#65A30D',700:'#4D7C0F' },
+// ─── Design Tokens — Warm Terracotta × Saffron (Manipur palette) ─────────────
+const C = {
+  terra:  { 50:'#FFF5F0',100:'#FFE8DC',200:'#FFD0BA',300:'#FFAD8A',400:'#FF8A5C',500:'#E8622A',600:'#C44E1C',700:'#A03A12',800:'#7A2A0A',900:'#521A04' },
+  saffron:{ 50:'#FFFBEB',100:'#FEF3C7',200:'#FDE68A',300:'#FCD34D',400:'#FBBF24',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#78350F' },
+  forest: { 50:'#F0FDF4',100:'#DCFCE7',200:'#BBF7D0',300:'#86EFAC',400:'#4ADE80',500:'#22C55E',600:'#16A34A',700:'#15803D',800:'#166534',900:'#14532D' },
+  teal:   { 50:'#F0FDFA',100:'#CCFBF1',200:'#99F6E4',300:'#5EEAD4',400:'#2DD4BF',500:'#14B8A6',600:'#0D9488',700:'#0F766E',800:'#115E59',900:'#134E4A' },
+  ink:    { 50:'#F8F4F0',100:'#EDE5DC',200:'#D9CCBE',300:'#C2AA96',400:'#A88870',500:'#8C6A50',600:'#6E5038',700:'#523A26',800:'#382618',900:'#20140A' },
+  slate:  { 50:'#F8FAFC',100:'#F1F5F9',200:'#E2E8F0',300:'#CBD5E1',400:'#94A3B8',500:'#64748B',600:'#475569',700:'#334155',800:'#1E293B',900:'#0F172A' },
+  rose:   { 50:'#FFF1F2',100:'#FFE4E6',200:'#FECDD3',500:'#F43F5E',600:'#E11D48',700:'#BE123C' },
+  sky:    { 50:'#F0F9FF',100:'#E0F2FE',400:'#38BDF8',500:'#0EA5E9',600:'#0284C7',700:'#0369A1' },
+  violet: { 50:'#F5F3FF',100:'#EDE9FE',400:'#A78BFA',500:'#8B5CF6',600:'#7C3AED',700:'#6D28D9' },
 }
 
 // ─── Meal Config ──────────────────────────────────────────────────────────────
 const MEALS = {
-  morning_breakfast: { label:'Morning Breakfast', short:'M.Bfast', emoji:'🌅', time:'07:00', color: T.amber,   gradient:`linear-gradient(135deg,${T.amber[600]},${T.amber[400]})` },
-  lunch:             { label:'Lunch',             short:'Lunch',   emoji:'🍱', time:'12:30', color: T.emerald, gradient:`linear-gradient(135deg,${T.emerald[600]},${T.emerald[400]})` },
-  evening_breakfast: { label:'Evening Breakfast', short:'E.Bfast', emoji:'🌇', time:'16:30', color: T.orange,  gradient:`linear-gradient(135deg,${T.orange[600]},${T.orange[400]})` },
-  dinner:            { label:'Dinner',            short:'Dinner',  emoji:'🌙', time:'19:30', color: T.indigo,  gradient:`linear-gradient(135deg,${T.indigo[600]},${T.indigo[400]})` },
+  morning_breakfast: { label:'Morning Breakfast', meitei:'ꯁꯟꯗꯥ ꯂꯥꯎꯈꯨꯝ', short:'M.Bfast', emoji:'🌅', time:'07:00', bg:C.saffron[500], soft:C.saffron[50], border:C.saffron[200], text:C.saffron[800] },
+  lunch:             { label:'Lunch',             meitei:'ꯅꯨꯄꯥ ꯂꯥꯎꯈꯨꯝ',  short:'Lunch',   emoji:'🍱', time:'12:30', bg:C.forest[600],  soft:C.forest[50],  border:C.forest[200],  text:C.forest[800]  },
+  evening_breakfast: { label:'Evening Breakfast', meitei:'ꯑꯋꯥ ꯂꯥꯎꯈꯨꯝ',  short:'E.Bfast', emoji:'🌇', time:'16:30', bg:C.terra[500],   soft:C.terra[50],   border:C.terra[200],   text:C.terra[800]   },
+  dinner:            { label:'Dinner',            meitei:'ꯍꯧꯔꯛ ꯂꯥꯎꯈꯨꯝ', short:'Dinner',  emoji:'🌙', time:'19:30', bg:C.teal[700],    soft:C.teal[50],    border:C.teal[200],    text:C.teal[800]    },
 }
 const MEAL_KEYS = ['morning_breakfast','lunch','evening_breakfast','dinner']
 
-// ─── Common Item Presets ──────────────────────────────────────────────────────
-const PRESET_ITEMS = ['Rice','Dal','Oil','Sugar','Salt','Vegetables','Eggs','Milk','Bread','Flour','Potato','Onion','Tomato','Chicken','Fish','Paneer','Ghee','Tea Leaves','Coffee','Spices']
+// ─── Manipuri Dish Presets by meal ───────────────────────────────────────────
+const MANIPURI_PRESETS = {
+  morning_breakfast: ['Chak (Rice)','Eromba','Singju','Bread','Egg','Chai','Milk','Banana','Chak-hao (Black Rice)','Momo'],
+  lunch:             ['Chak (Rice)','Kangsoi','Eromba','Nga Thongba (Fish Curry)','Dal','Alu Kangmec','Khichdi','Papad','Pickle','Sabzi'],
+  evening_breakfast: ['Singju','Pakora','Chak-hao Kheer','Samosa','Bread Pakora','Chow Chow','Tea','Biscuit','Fruits'],
+  dinner:            ['Chak (Rice)','Dal','Sabzi','Nga Thongba','Paneer','Chapati','Khichdi','Soup','Papad'],
+}
+
+// ─── Local Vendor Presets ─────────────────────────────────────────────────────
+const LOCAL_VENDORS = ['Khangabok Market','Thoubal Bazaar','Ima Keithel','Lilong Market','Wangkhei Market','Singjamei Market','Thangal Bazaar','Lamlong Bazaar','Local Farmer','Daily Supplier']
+
+// ─── Item Categories ──────────────────────────────────────────────────────────
+const ITEM_CATEGORIES = {
+  grain:     { label:'Grain / Cereal',  meitei:'ꯆꯥꯛ', emoji:'🌾', color:C.saffron },
+  vegetable: { label:'Vegetable',        meitei:'ꯐꯨꯟ',  emoji:'🥦', color:C.forest  },
+  protein:   { label:'Protein',          meitei:'ꯉꯥ/ꯃꯤ',emoji:'🍗', color:C.terra   },
+  dairy:     { label:'Dairy',            meitei:'ꯁꯥ',   emoji:'🥛', color:C.sky     },
+  spice:     { label:'Spice / Masala',   meitei:'ꯂꯥꯏ',  emoji:'🌶️', color:C.rose    },
+  oil:       { label:'Oil / Fat',        meitei:'ꯆꯦꯡ',  emoji:'🫙', color:C.ink     },
+  other:     { label:'Other',            meitei:'ꯑꯔꯤꯕ', emoji:'📦', color:C.slate   },
+}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const inp = {
   width:'100%', padding:'9px 12px', borderRadius:8,
-  border:`1.5px solid ${T.slate[200]}`, fontSize:13,
-  outline:'none', boxSizing:'border-box', backgroundColor:'#fff',
-  color:T.slate[800], fontFamily:'system-ui,sans-serif',
-  transition:'border-color .15s',
+  border:`1.5px solid ${C.ink[200]}`, fontSize:13,
+  outline:'none', boxSizing:'border-box', backgroundColor:'#fffaf7',
+  color:C.ink[900], fontFamily:"'Georgia', 'Times New Roman', serif",
+  transition:'border-color .15s, box-shadow .15s',
 }
 const labelSt = {
-  display:'block', fontSize:11, fontWeight:700, color:T.slate[500],
+  display:'block', fontSize:11, fontWeight:700, color:C.ink[500],
   marginBottom:5, textTransform:'uppercase', letterSpacing:'.07em',
+  fontFamily:"system-ui, sans-serif",
 }
-const btnBase = (bg, color, border='none') => ({
-  padding:'8px 16px', borderRadius:8, background:bg, color, border,
-  fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap',
+const card = {
+  background:'#fff', border:`1.5px solid ${C.ink[100]}`,
+  borderRadius:12, padding:'16px 20px', marginBottom:16,
+  boxShadow:'0 1px 4px rgba(164,100,50,.07)',
+}
+const btnPrimary = {
+  padding:'10px 20px', borderRadius:9,
+  background:`linear-gradient(135deg, ${C.terra[600]}, ${C.terra[400]})`,
+  color:'#fff', border:'none', fontSize:13, fontWeight:700,
+  cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6,
+  boxShadow:`0 3px 10px rgba(196,78,28,.25)`,
+}
+const btnSecondary = (color=C.ink) => ({
+  padding:'8px 16px', borderRadius:8,
+  background:color[50], color:color[700],
+  border:`1.5px solid ${color[200]}`, fontSize:12,
+  fontWeight:700, cursor:'pointer',
   display:'inline-flex', alignItems:'center', gap:5,
 })
 
@@ -88,78 +123,101 @@ const btnBase = (bg, color, border='none') => ({
 const today    = () => new Date().toISOString().split('T')[0]
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
 const dateFmt  = iso => iso ? new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'
-const timeFmt  = iso => iso ? new Date(iso).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'
-const moneyFmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+const moneyFmt = n  => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const weekStart= () => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().split('T')[0] }
+const nowHHMM  = () => { const n=new Date(); return n.getHours()*100+n.getMinutes() }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-function Toast({ msg, color=T.indigo[600] }) {
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function Toast({ msg, color=C.forest[600] }) {
   return (
-    <div style={{ position:'fixed',top:20,right:20,zIndex:999999,background:'#fff',border:`1px solid ${T.slate[200]}`,borderLeft:`3px solid ${color}`,borderRadius:10,padding:'11px 16px',fontSize:13,fontWeight:600,boxShadow:'0 8px 32px rgba(0,0,0,.12)',maxWidth:360,color:T.slate[800] }}>
+    <div style={{ position:'fixed',top:20,right:20,zIndex:999999,background:'#fff',
+      border:`1px solid ${C.ink[100]}`,borderLeft:`4px solid ${color}`,
+      borderRadius:10,padding:'12px 18px',fontSize:13,fontWeight:600,
+      boxShadow:'0 8px 32px rgba(0,0,0,.14)',maxWidth:380,color:C.ink[800],
+      fontFamily:"system-ui,sans-serif" }}>
       {msg}
     </div>
   )
 }
 
-function FieldRow({ label: lbl, children }) {
-  return <div><label style={labelSt}>{lbl}</label>{children}</div>
-}
-
-function SectionDivider({ label: lbl }) {
+// ─── Field Row ────────────────────────────────────────────────────────────────
+function FieldRow({ label: lbl, sub, children }) {
   return (
-    <div style={{ display:'flex',alignItems:'center',gap:10,margin:'20px 0 12px',color:T.slate[400] }}>
-      <div style={{ flex:1,height:1,background:T.slate[200] }} />
-      <span style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em' }}>{lbl}</span>
-      <div style={{ flex:1,height:1,background:T.slate[200] }} />
+    <div>
+      <label style={labelSt}>{lbl}{sub && <span style={{ fontWeight:400,color:C.ink[400],marginLeft:4 }}>{sub}</span>}</label>
+      {children}
     </div>
   )
 }
 
-function MealBadge({ type }) {
+// ─── Section Divider ─────────────────────────────────────────────────────────
+function SectionDivider({ label: lbl }) {
+  return (
+    <div style={{ display:'flex',alignItems:'center',gap:10,margin:'20px 0 14px',color:C.ink[300] }}>
+      <div style={{ flex:1,height:1,background:`linear-gradient(to right,${C.terra[200]},transparent)` }} />
+      <span style={{ fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',color:C.terra[500] }}>{lbl}</span>
+      <div style={{ flex:1,height:1,background:`linear-gradient(to left,${C.terra[200]},transparent)` }} />
+    </div>
+  )
+}
+
+// ─── Meal Badge ───────────────────────────────────────────────────────────────
+function MealBadge({ type, showMeitei=false }) {
   const m = MEALS[type]
   if (!m) return null
   return (
-    <span style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:m.color[50],color:m.color[700],border:`1px solid ${m.color[200]}` }}>
-      {m.emoji} {m.short}
+    <span style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'3px 10px',
+      borderRadius:99,fontSize:11,fontWeight:700,
+      background:m.soft,color:m.text,border:`1px solid ${m.border}` }}>
+      {m.emoji} {showMeitei ? m.meitei : m.short}
     </span>
   )
 }
 
+// ─── Star Rating ──────────────────────────────────────────────────────────────
 function StarRating({ value, onChange }) {
   return (
     <div style={{ display:'flex',gap:3 }}>
       {[1,2,3,4,5].map(n => (
         <span key={n} onClick={() => onChange && onChange(n===value?0:n)}
-          style={{ fontSize:18,cursor:onChange?'pointer':'default',color:n<=value?T.amber[400]:T.slate[200],transition:'color .1s' }}>★</span>
+          style={{ fontSize:20,cursor:onChange?'pointer':'default',
+            color:n<=value?C.saffron[500]:C.ink[200],transition:'color .1s' }}>★</span>
       ))}
     </div>
   )
 }
 
-function KpiCard({ label: lbl, value, accent, subtitle, icon }) {
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+function KpiCard({ label: lbl, value, accent, subtitle, icon, pulse }) {
   return (
-    <div style={{ flex:1,minWidth:110,padding:'14px 16px',borderRadius:12,background:'#fff',border:`1.5px solid ${T.slate[200]}`,position:'relative',overflow:'hidden' }}>
-      {icon && <div style={{ position:'absolute',right:12,top:12,fontSize:22,opacity:.15 }}>{icon}</div>}
-      <div style={{ fontSize:22,fontWeight:800,color:accent||T.slate[800],lineHeight:1 }}>{value}</div>
-      <div style={{ fontSize:10,fontWeight:700,color:T.slate[500],marginTop:4,textTransform:'uppercase',letterSpacing:'.05em' }}>{lbl}</div>
-      {subtitle && <div style={{ fontSize:11,color:T.slate[400],marginTop:2 }}>{subtitle}</div>}
+    <div style={{ flex:1,minWidth:130,padding:'16px 18px',borderRadius:12,
+      background:'#fff',border:`1.5px solid ${C.ink[100]}`,
+      position:'relative',overflow:'hidden',
+      boxShadow:'0 2px 8px rgba(164,100,50,.06)' }}>
+      {pulse && <div style={{ position:'absolute',top:10,right:10,width:8,height:8,borderRadius:'50%',background:C.terra[500],animation:'blink 1.4s ease-in-out infinite' }} />}
+      {icon && <div style={{ position:'absolute',right:14,top:12,fontSize:24,opacity:.1 }}>{icon}</div>}
+      <div style={{ fontSize:22,fontWeight:800,color:accent||C.ink[800],lineHeight:1,fontFamily:"'Georgia',serif" }}>{value}</div>
+      <div style={{ fontSize:10,fontWeight:700,color:C.ink[400],marginTop:5,textTransform:'uppercase',letterSpacing:'.06em',fontFamily:"system-ui,sans-serif" }}>{lbl}</div>
+      {subtitle && <div style={{ fontSize:11,color:C.ink[300],marginTop:2 }}>{subtitle}</div>}
     </div>
   )
 }
 
-// ─── Meal KPI Strip (4 meals) ─────────────────────────────────────────────────
+// ─── Meal KPI Strip ───────────────────────────────────────────────────────────
 function MealKpiStrip({ entries, dateFilter }) {
   const dayEntries = entries.filter(e => e.expense_date === dateFilter)
   return (
-    <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
+    <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:14 }}>
       {MEAL_KEYS.map(mk => {
         const m   = MEALS[mk]
         const amt = dayEntries.filter(e=>e.meal_type===mk).reduce((s,e)=>s+Number(e.amount),0)
         return (
-          <div key={mk} style={{ flex:1,minWidth:110,padding:'12px 14px',borderRadius:10,background:'#fff',border:`1.5px solid ${m.color[200]}`,position:'relative',overflow:'hidden' }}>
-            <div style={{ position:'absolute',right:10,top:8,fontSize:20,opacity:.2 }}>{m.emoji}</div>
-            <div style={{ fontSize:16,fontWeight:800,color:m.color[700],lineHeight:1 }}>{moneyFmt(amt)}</div>
-            <div style={{ fontSize:10,fontWeight:700,color:m.color[600],marginTop:3,textTransform:'uppercase',letterSpacing:'.05em' }}>{m.short}</div>
+          <div key={mk} style={{ flex:1,minWidth:110,padding:'12px 14px',borderRadius:10,
+            background:m.soft,border:`1.5px solid ${m.border}`,position:'relative',overflow:'hidden' }}>
+            <div style={{ position:'absolute',right:8,top:8,fontSize:20,opacity:.15 }}>{m.emoji}</div>
+            <div style={{ fontSize:10,fontWeight:700,color:m.text,textTransform:'uppercase',letterSpacing:'.05em',marginBottom:2 }}>{m.meitei}</div>
+            <div style={{ fontSize:16,fontWeight:800,color:m.text,lineHeight:1 }}>{moneyFmt(amt)}</div>
+            <div style={{ fontSize:9,color:m.text,opacity:.7,marginTop:2 }}>{m.short}</div>
           </div>
         )
       })}
@@ -170,71 +228,63 @@ function MealKpiStrip({ entries, dateFilter }) {
 // ─── Budget Progress Bar ──────────────────────────────────────────────────────
 function BudgetBar({ spent, budget }) {
   if (!budget) return null
-  const pct = Math.min((spent/budget)*100, 100)
+  const pct  = Math.min((spent/budget)*100, 100)
   const over = spent > budget
-  const color = pct > 90 ? T.rose[500] : pct > 70 ? T.amber[500] : T.emerald[500]
+  const color= pct > 90 ? C.rose[500] : pct > 70 ? C.saffron[500] : C.forest[500]
   return (
-    <div style={{ marginBottom:16,padding:'14px 18px',borderRadius:10,background:'#fff',border:`1.5px solid ${T.slate[200]}` }}>
+    <div style={{ ...card, marginBottom:14 }}>
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8 }}>
-        <span style={{ fontSize:12,fontWeight:700,color:T.slate[600] }}>📊 Monthly Budget</span>
-        <span style={{ fontSize:12,fontWeight:700,color:over?T.rose[600]:T.slate[700] }}>
-          {moneyFmt(spent)} / {moneyFmt(budget)} {over && '⚠ OVER'}
+        <span style={{ fontSize:12,fontWeight:700,color:C.ink[600],fontFamily:"system-ui,sans-serif" }}>📊 ꯃꯁꯤꯡ ꯕꯖꯦꯇ (Monthly Budget)</span>
+        <span style={{ fontSize:12,fontWeight:700,color:over?C.rose[600]:C.ink[700] }}>
+          {moneyFmt(spent)} / {moneyFmt(budget)} {over && '⚠ ꯑꯣꯚꯔ'}
         </span>
       </div>
-      <div style={{ height:8,borderRadius:99,background:T.slate[100],overflow:'hidden' }}>
-        <div style={{ height:'100%',width:`${pct}%`,borderRadius:99,background:color,transition:'width .4s' }} />
+      <div style={{ height:10,borderRadius:99,background:C.ink[100],overflow:'hidden' }}>
+        <div style={{ height:'100%',width:`${pct}%`,borderRadius:99,background:color,transition:'width .5s' }} />
       </div>
-      <div style={{ fontSize:11,color:T.slate[400],marginTop:5 }}>
-        {over ? `Over budget by ${moneyFmt(spent-budget)}` : `${moneyFmt(budget-spent)} remaining (${(100-pct).toFixed(1)}%)`}
+      <div style={{ fontSize:11,color:C.ink[400],marginTop:5,fontFamily:"system-ui,sans-serif" }}>
+        {over ? `Over budget by ${moneyFmt(spent-budget)}` : `${moneyFmt(budget-spent)} ꯂꯩꯔꯤ (${(100-pct).toFixed(1)}% remaining)`}
       </div>
     </div>
   )
 }
 
-// ─── Bar Chart (monthly trend) ────────────────────────────────────────────────
+// ─── Bar Chart ────────────────────────────────────────────────────────────────
 function MonthlyChart({ entries }) {
   const byDay = useMemo(() => {
     const map = {}
-    entries.forEach(e => {
-      map[e.expense_date] = (map[e.expense_date]||0) + Number(e.amount)
-    })
+    entries.forEach(e => { map[e.expense_date] = (map[e.expense_date]||0) + Number(e.amount) })
     return map
   }, [entries])
 
-  const days  = Object.keys(byDay).sort()
+  const days = Object.keys(byDay).sort()
   if (days.length === 0) return null
-
   const max = Math.max(...Object.values(byDay), 1)
   const avg = Object.values(byDay).reduce((a,b)=>a+b,0) / days.length
 
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${T.slate[200]}`,borderRadius:12,padding:'16px 20px',marginBottom:16 }}>
-      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12 }}>
-        <span style={{ fontSize:12,fontWeight:700,color:T.slate[600] }}>📈 Daily Spend — This Month</span>
-        <span style={{ fontSize:11,color:T.slate[400] }}>Avg: {moneyFmt(avg)}/day</span>
+    <div style={{ ...card }}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14 }}>
+        <span style={{ fontSize:13,fontWeight:700,color:C.ink[700] }}>📈 Daily Spend — This Month</span>
+        <span style={{ fontSize:11,color:C.ink[400] }}>Avg: {moneyFmt(avg)}/day</span>
       </div>
-      <div style={{ display:'flex',alignItems:'flex-end',gap:3,height:80,overflowX:'auto' }}>
+      <div style={{ display:'flex',alignItems:'flex-end',gap:3,height:90,overflowX:'auto' }}>
         {days.map(d => {
           const v = byDay[d]
-          const h = Math.max((v/max)*70, 4)
+          const h = Math.max((v/max)*78, 4)
           const isToday = d === today()
           const isHigh  = v === max
           return (
             <div key={d} style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:2,flexShrink:0 }} title={`${dateFmt(d)}: ${moneyFmt(v)}`}>
-              <div style={{ width:18,height:h,borderRadius:'3px 3px 0 0',
-                background: isHigh ? T.rose[500] : isToday ? T.indigo[500] : T.indigo[300],
+              <div style={{ width:20,height:h,borderRadius:'4px 4px 0 0',
+                background: isHigh ? C.rose[500] : isToday ? C.terra[500] : C.terra[300],
                 transition:'height .3s' }} />
-              <span style={{ fontSize:8,color:T.slate[400],transform:'rotate(-45deg)',transformOrigin:'center',display:'block',width:16,textAlign:'center' }}>
+              <span style={{ fontSize:8,color:C.ink[400],transform:'rotate(-45deg)',transformOrigin:'center',display:'block',width:16,textAlign:'center' }}>
                 {new Date(d+'T00:00:00').getDate()}
               </span>
             </div>
           )
         })}
-      </div>
-      <div style={{ display:'flex',gap:10,marginTop:8,fontSize:10,color:T.slate[400] }}>
-        <span><span style={{ color:T.rose[500] }}>■</span> Highest</span>
-        <span><span style={{ color:T.indigo[500] }}>■</span> Today</span>
-        <span><span style={{ color:T.indigo[300] }}>■</span> Other</span>
       </div>
     </div>
   )
@@ -248,26 +298,24 @@ function MealPieBreakdown({ entries }) {
     entries.forEach(e => { map[e.meal_type] = (map[e.meal_type]||0) + Number(e.amount) })
     return map
   }, [entries])
-
   const grand = Object.values(totals).reduce((a,b)=>a+b,0)
   if (grand === 0) return null
-
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${T.slate[200]}`,borderRadius:12,padding:'16px 20px',marginBottom:16 }}>
-      <div style={{ fontSize:12,fontWeight:700,color:T.slate[600],marginBottom:12 }}>🥧 Meal-wise Breakdown</div>
-      <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
+    <div style={{ ...card }}>
+      <div style={{ fontSize:13,fontWeight:700,color:C.ink[700],marginBottom:12 }}>🥧 Meal-wise Breakdown</div>
+      <div style={{ display:'flex',flexDirection:'column',gap:9 }}>
         {MEAL_KEYS.map(mk => {
           const m   = MEALS[mk]
           const amt = totals[mk]
           const pct = grand ? ((amt/grand)*100).toFixed(1) : 0
           return (
             <div key={mk}>
-              <div style={{ display:'flex',justifyContent:'space-between',fontSize:12,color:T.slate[600],marginBottom:3 }}>
-                <span>{m.emoji} {m.short}</span>
+              <div style={{ display:'flex',justifyContent:'space-between',fontSize:12,color:C.ink[600],marginBottom:3 }}>
+                <span>{m.emoji} {m.meitei} <span style={{ opacity:.6 }}>({m.short})</span></span>
                 <span style={{ fontWeight:700 }}>{moneyFmt(amt)} ({pct}%)</span>
               </div>
-              <div style={{ height:6,borderRadius:99,background:T.slate[100],overflow:'hidden' }}>
-                <div style={{ height:'100%',width:`${pct}%`,borderRadius:99,background:m.gradient,transition:'width .4s' }} />
+              <div style={{ height:7,borderRadius:99,background:C.ink[100],overflow:'hidden' }}>
+                <div style={{ height:'100%',width:`${pct}%`,borderRadius:99,background:m.bg,transition:'width .5s' }} />
               </div>
             </div>
           )
@@ -284,54 +332,52 @@ function CalendarHeatmap({ entries, onDayClick }) {
     entries.forEach(e => { map[e.expense_date]=(map[e.expense_date]||0)+Number(e.amount) })
     return map
   }, [entries])
-
-  const values  = Object.values(byDay)
-  const max     = Math.max(...values, 1)
-  const now     = new Date()
-  const year    = now.getFullYear()
-  const month   = now.getMonth()
-  const daysInM = new Date(year, month+1, 0).getDate()
-  const firstDOW= new Date(year, month, 1).getDay()
-
+  const values   = Object.values(byDay)
+  const max      = Math.max(...values, 1)
+  const now      = new Date()
+  const year     = now.getFullYear()
+  const month    = now.getMonth()
+  const daysInM  = new Date(year, month+1, 0).getDate()
+  const firstDOW = new Date(year, month, 1).getDay()
   const getColor = amt => {
-    if (!amt) return T.slate[100]
+    if (!amt) return C.ink[100]
     const i = amt/max
-    if (i > .75) return T.rose[500]
-    if (i > .5)  return T.amber[400]
-    if (i > .25) return T.emerald[400]
-    return T.emerald[200]
+    if (i > .75) return C.rose[500]
+    if (i > .5)  return C.terra[400]
+    if (i > .25) return C.saffron[400]
+    return C.saffron[200]
   }
-
   const cells = []
   for (let i=0;i<firstDOW;i++) cells.push(null)
   for (let d=1;d<=daysInM;d++) {
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
     cells.push({ d, iso, amt: byDay[iso]||0 })
   }
-
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${T.slate[200]}`,borderRadius:12,padding:'16px 20px',marginBottom:16 }}>
-      <div style={{ fontSize:12,fontWeight:700,color:T.slate[600],marginBottom:10 }}>
+    <div style={{ ...card }}>
+      <div style={{ fontSize:13,fontWeight:700,color:C.ink[700],marginBottom:10 }}>
         🗓 Spend Heatmap — {now.toLocaleString('en-IN',{month:'long',year:'numeric'})}
       </div>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3 }}>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4 }}>
         {['S','M','T','W','T','F','S'].map((d,i)=>(
-          <div key={i} style={{ textAlign:'center',fontSize:9,fontWeight:700,color:T.slate[400],paddingBottom:2 }}>{d}</div>
+          <div key={i} style={{ textAlign:'center',fontSize:9,fontWeight:700,color:C.ink[400],paddingBottom:2 }}>{d}</div>
         ))}
         {cells.map((c,i) => c===null
           ? <div key={`e${i}`} />
-          : <div key={c.iso}
-              onClick={() => onDayClick(c.iso)}
+          : <div key={c.iso} onClick={() => onDayClick(c.iso)}
               title={`${dateFmt(c.iso)}: ${moneyFmt(c.amt)}`}
-              style={{ aspectRatio:'1',borderRadius:4,background:getColor(c.amt),cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:c.amt?'#fff':T.slate[300],transition:'transform .1s',border:c.iso===today()?'2px solid '+T.indigo[500]:'none' }}>
+              style={{ aspectRatio:'1',borderRadius:5,background:getColor(c.amt),
+                cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',
+                fontSize:9,fontWeight:700,color:c.amt?'#fff':C.ink[400],
+                transition:'transform .1s',border:c.iso===today()?`2px solid ${C.terra[600]}`:'none' }}>
               {c.d}
             </div>
         )}
       </div>
-      <div style={{ display:'flex',gap:8,marginTop:10,fontSize:10,color:T.slate[400],flexWrap:'wrap' }}>
-        {[['None',T.slate[100]],['Low',T.emerald[200]],['Mid',T.emerald[400]],['High',T.amber[400]],['Peak',T.rose[500]]].map(([l,c])=>(
+      <div style={{ display:'flex',gap:8,marginTop:10,fontSize:10,color:C.ink[400],flexWrap:'wrap' }}>
+        {[['None',C.ink[100]],['Low',C.saffron[200]],['Mid',C.saffron[400]],['High',C.terra[400]],['Peak',C.rose[500]]].map(([l,col])=>(
           <span key={l} style={{ display:'flex',alignItems:'center',gap:3 }}>
-            <span style={{ width:10,height:10,borderRadius:2,background:c,display:'inline-block' }} />{l}
+            <span style={{ width:10,height:10,borderRadius:2,background:col,display:'inline-block' }} />{l}
           </span>
         ))}
       </div>
@@ -339,54 +385,33 @@ function CalendarHeatmap({ entries, onDayClick }) {
   )
 }
 
-// ─── Missing Meal Alerts ──────────────────────────────────────────────────────
+// ─── Missing Meal Alert ───────────────────────────────────────────────────────
 function MissingMealAlert({ entries, dateFilter }) {
   const present = entries.filter(e=>e.expense_date===dateFilter).map(e=>e.meal_type)
   const missing = MEAL_KEYS.filter(m => !present.includes(m))
-  const now     = new Date()
-  const hhmm    = now.getHours()*100 + now.getMinutes()
-
+  const hhmm    = nowHHMM()
   const overdue = missing.filter(mk => {
     const [h,m] = MEALS[mk].time.split(':').map(Number)
     return h*100+m < hhmm
   })
-
   if (overdue.length === 0 || dateFilter !== today()) return null
-
   return (
-    <div style={{ marginBottom:14,padding:'12px 16px',borderRadius:10,background:T.rose[50],border:`1px solid ${T.rose[200]}` }}>
-      <div style={{ fontSize:12,fontWeight:700,color:T.rose[700],marginBottom:5 }}>⚠ Missing Meal Entries Today</div>
+    <div style={{ marginBottom:14,padding:'12px 16px',borderRadius:10,
+      background:C.rose[50],border:`1px solid ${C.rose[200]}` }}>
+      <div style={{ fontSize:12,fontWeight:700,color:C.rose[700],marginBottom:6 }}>
+        ⚠ ꯂꯥꯎꯈꯨꯝ ꯑꯦꯟꯠꯔꯤ ꯁꯤꯔꯛꯂꯦ (Missing Meal Entries Today)
+      </div>
       <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-        {overdue.map(mk => <MealBadge key={mk} type={mk} />)}
+        {overdue.map(mk => <MealBadge key={mk} type={mk} showMeitei />)}
       </div>
-      <div style={{ fontSize:11,color:T.rose[500],marginTop:5 }}>These meals are past their scheduled time with no entry recorded.</div>
+      <div style={{ fontSize:11,color:C.rose[500],marginTop:5 }}>
+        These meals are past their scheduled time with no entry recorded.
+      </div>
     </div>
   )
 }
 
-// ─── Overspend Alert ─────────────────────────────────────────────────────────
-function OverspendAlert({ entries, dateFilter }) {
-  const allDates = [...new Set(entries.map(e=>e.expense_date))]
-  if (allDates.length < 3) return null
-
-  const dayTotals = allDates.map(d => entries.filter(e=>e.expense_date===d).reduce((s,e)=>s+Number(e.amount),0))
-  const avg       = dayTotals.reduce((a,b)=>a+b,0)/dayTotals.length
-  const todayAmt  = entries.filter(e=>e.expense_date===dateFilter).reduce((s,e)=>s+Number(e.amount),0)
-  const pct       = avg > 0 ? ((todayAmt-avg)/avg)*100 : 0
-
-  if (pct < 25 || todayAmt===0) return null
-
-  return (
-    <div style={{ marginBottom:14,padding:'12px 16px',borderRadius:10,background:T.amber[50],border:`1px solid ${T.amber[300]}` }}>
-      <div style={{ fontSize:12,fontWeight:700,color:T.amber[700] }}>
-        📈 Today's spend is {pct.toFixed(0)}% above your daily average ({moneyFmt(avg)})
-      </div>
-      <div style={{ fontSize:11,color:T.amber[600],marginTop:3 }}>Today: {moneyFmt(todayAmt)} · Avg: {moneyFmt(avg)}</div>
-    </div>
-  )
-}
-
-// ─── Vendor Spend Summary ─────────────────────────────────────────────────────
+// ─── Vendor Summary ───────────────────────────────────────────────────────────
 function VendorSummary({ entries }) {
   const vendors = useMemo(() => {
     const map = {}
@@ -395,22 +420,21 @@ function VendorSummary({ entries }) {
       map[e.vendor].count++
       map[e.vendor].total += Number(e.amount)
     })
-    return Object.entries(map).sort((a,b)=>b[1].total-a[1].total).slice(0,5)
+    return Object.entries(map).sort((a,b)=>b[1].total-a[1].total).slice(0,6)
   }, [entries])
-
   if (vendors.length===0) return null
-
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${T.slate[200]}`,borderRadius:12,padding:'16px 20px',marginBottom:16 }}>
-      <div style={{ fontSize:12,fontWeight:700,color:T.slate[600],marginBottom:10 }}>🏪 Top Vendors (This Month)</div>
+    <div style={{ ...card }}>
+      <div style={{ fontSize:13,fontWeight:700,color:C.ink[700],marginBottom:10 }}>🏪 Top Vendors (This Month)</div>
       <div style={{ display:'flex',flexDirection:'column',gap:6 }}>
         {vendors.map(([name, { count, total }]) => (
-          <div key={name} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',borderRadius:7,background:T.slate[50],border:`1px solid ${T.slate[100]}` }}>
+          <div key={name} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',
+            padding:'7px 12px',borderRadius:8,background:C.ink[50],border:`1px solid ${C.ink[100]}` }}>
             <div>
-              <div style={{ fontSize:12,fontWeight:700,color:T.slate[700] }}>{name}</div>
-              <div style={{ fontSize:10,color:T.slate[400] }}>{count} purchases</div>
+              <div style={{ fontSize:12,fontWeight:700,color:C.ink[700] }}>{name}</div>
+              <div style={{ fontSize:10,color:C.ink[400] }}>{count} ꯄꯨꯔꯛꯄꯥ (purchases)</div>
             </div>
-            <div style={{ fontSize:13,fontWeight:800,color:T.teal[600] }}>{moneyFmt(total)}</div>
+            <div style={{ fontSize:14,fontWeight:800,color:C.teal[600] }}>{moneyFmt(total)}</div>
           </div>
         ))}
       </div>
@@ -418,7 +442,7 @@ function VendorSummary({ entries }) {
   )
 }
 
-// ─── Item Frequency Tracker ───────────────────────────────────────────────────
+// ─── Item Frequency ───────────────────────────────────────────────────────────
 function ItemFrequency({ entries }) {
   const freq = useMemo(() => {
     const map = {}
@@ -428,19 +452,17 @@ function ItemFrequency({ entries }) {
         map[item] = (map[item]||0)+1
       })
     })
-    return Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,10)
+    return Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,12)
   }, [entries])
-
   if (freq.length===0) return null
-  const maxF = freq[0]?.[1]||1
-
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${T.slate[200]}`,borderRadius:12,padding:'16px 20px',marginBottom:16 }}>
-      <div style={{ fontSize:12,fontWeight:700,color:T.slate[600],marginBottom:10 }}>🥦 Most Used Items</div>
+    <div style={{ ...card }}>
+      <div style={{ fontSize:13,fontWeight:700,color:C.ink[700],marginBottom:10 }}>🥦 Most Used Items</div>
       <div style={{ display:'flex',flexWrap:'wrap',gap:6 }}>
         {freq.map(([item,count]) => (
-          <span key={item} style={{ padding:'4px 10px',borderRadius:99,background:T.violet[50],border:`1px solid ${T.violet[200]}`,fontSize:11,fontWeight:700,color:T.violet[700] }}>
-            {item} <span style={{ color:T.violet[400] }}>×{count}</span>
+          <span key={item} style={{ padding:'4px 11px',borderRadius:99,background:C.saffron[50],
+            border:`1px solid ${C.saffron[200]}`,fontSize:11,fontWeight:700,color:C.saffron[800] }}>
+            {item} <span style={{ color:C.saffron[500] }}>×{count}</span>
           </span>
         ))}
       </div>
@@ -452,149 +474,523 @@ function ItemFrequency({ entries }) {
 function CostPerStudentCard({ entries, dateFilter }) {
   const dayEntries = entries.filter(e=>e.expense_date===dateFilter && e.pax_count>0)
   if (dayEntries.length===0) return null
-
   const totalAmt = dayEntries.reduce((s,e)=>s+Number(e.amount),0)
   const avgPax   = dayEntries.reduce((s,e)=>s+Number(e.pax_count),0)/dayEntries.length
   const cps      = avgPax > 0 ? totalAmt/avgPax : 0
-
   return (
-    <div style={{ padding:'12px 16px',borderRadius:10,background:T.sky[50],border:`1px solid ${T.sky[200]}`,marginBottom:14,display:'flex',alignItems:'center',gap:14 }}>
-      <span style={{ fontSize:24 }}>👤</span>
+    <div style={{ padding:'12px 16px',borderRadius:10,background:C.sky[50],
+      border:`1px solid ${C.sky[200]}`,marginBottom:14,display:'flex',alignItems:'center',gap:14 }}>
+      <span style={{ fontSize:28 }}>👤</span>
       <div>
-        <div style={{ fontSize:16,fontWeight:800,color:T.sky[700] }}>{moneyFmt(cps)}</div>
-        <div style={{ fontSize:11,color:T.sky[600] }}>Cost per student today · Avg {Math.round(avgPax)} students served</div>
+        <div style={{ fontSize:18,fontWeight:800,color:C.sky[700] }}>{moneyFmt(cps)}</div>
+        <div style={{ fontSize:11,color:C.sky[600] }}>
+          ꯑꯃꯨꯛ ꯆꯦꯂꯣꯕ ꯃꯤꯑꯣꯢꯒꯤ ꯊꯃꯣꯢ / Cost per student today · Avg {Math.round(avgPax)} served
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Petty Cash Ledger ────────────────────────────────────────────────────────
+// ─── Petty Cash Widget ────────────────────────────────────────────────────────
 function PettyCashWidget({ entries, dateFilter }) {
   const [given, setGiven]     = useState('')
   const [cashLog, setCashLog] = useState([])
-
-  const daySpend = entries.filter(e=>e.expense_date===dateFilter).reduce((s,e)=>s+Number(e.amount),0)
+  const daySpend   = entries.filter(e=>e.expense_date===dateFilter).reduce((s,e)=>s+Number(e.amount),0)
   const totalGiven = cashLog.filter(c=>c.date===dateFilter).reduce((s,c)=>s+Number(c.amount),0)
   const balance    = totalGiven - daySpend
-
-  const addCash = () => {
+  const addCash    = () => {
     const amt = parseFloat(given)
     if (!amt||amt<=0) return
-    setCashLog(prev => [...prev, { date: dateFilter, amount: amt, at: new Date().toLocaleTimeString() }])
+    setCashLog(prev => [...prev, { date:dateFilter,amount:amt,at:new Date().toLocaleTimeString() }])
     setGiven('')
   }
+  return (
+    <div style={{ ...card }}>
+      <div style={{ fontSize:13,fontWeight:700,color:C.ink[700],marginBottom:10 }}>💵 Petty Cash Ledger</div>
+      <div style={{ display:'flex',gap:8,marginBottom:10 }}>
+        <input type="number" style={{ ...inp,flex:1 }} placeholder="Cash given (₹)" value={given} onChange={e=>setGiven(e.target.value)} />
+        <button onClick={addCash} style={{ ...btnSecondary(C.teal) }}>+ Add</button>
+      </div>
+      <div style={{ display:'flex',gap:14,fontSize:12 }}>
+        <span>Given: <strong style={{ color:C.forest[600] }}>{moneyFmt(totalGiven)}</strong></span>
+        <span>Spent: <strong style={{ color:C.rose[600] }}>{moneyFmt(daySpend)}</strong></span>
+        <span>Balance: <strong style={{ color: balance>=0?C.forest[600]:C.rose[600] }}>{moneyFmt(Math.abs(balance))} {balance<0?'short':''}</strong></span>
+      </div>
+      {cashLog.filter(c=>c.date===dateFilter).map((c,i)=>(
+        <div key={i} style={{ fontSize:11,color:C.ink[400],marginTop:5 }}>✓ {moneyFmt(c.amount)} at {c.at}</div>
+      ))}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 1 — RECEIPT VIEWER
+// ═══════════════════════════════════════════════════════════════════════════════
+function ReceiptViewer({ url, onClose, onDelete }) {
+  const [zoom, setZoom] = useState(1)
+  if (!url) return null
+  const isPDF = url.toLowerCase().includes('.pdf')
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(20,10,5,.92)',zIndex:99999,
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center' }}
+      onClick={onClose}>
+      <div style={{ position:'absolute',top:16,right:16,display:'flex',gap:10 }}>
+        {!isPDF && <>
+          <button onClick={e=>{e.stopPropagation();setZoom(z=>Math.min(z+.25,3))}} style={{ ...btnSecondary(C.ink),background:'rgba(255,255,255,.15)',color:'#fff',border:'none' }}>🔍+</button>
+          <button onClick={e=>{e.stopPropagation();setZoom(z=>Math.max(z-.25,.5))}} style={{ ...btnSecondary(C.ink),background:'rgba(255,255,255,.15)',color:'#fff',border:'none' }}>🔍−</button>
+        </>}
+        <a href={url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+          style={{ ...btnSecondary(C.teal),background:'rgba(255,255,255,.15)',color:'#fff',border:'none',textDecoration:'none' }}>⬇ Download</a>
+        {onDelete && <button onClick={e=>{e.stopPropagation();onDelete()}} style={{ ...btnSecondary(C.rose),background:'rgba(255,255,255,.15)',color:C.rose[300],border:'none' }}>🗑 Delete</button>}
+        <button onClick={onClose} style={{ ...btnSecondary(C.ink),background:'rgba(255,255,255,.15)',color:'#fff',border:'none' }}>✕ Close</button>
+      </div>
+      <div onClick={e=>e.stopPropagation()} style={{ maxWidth:'90vw',maxHeight:'85vh',overflow:'auto' }}>
+        {isPDF
+          ? <iframe src={url} style={{ width:'80vw',height:'80vh',border:'none',borderRadius:10 }} title="Receipt PDF" />
+          : <img src={url} alt="Receipt" style={{ transform:`scale(${zoom})`,transformOrigin:'top center',maxWidth:'85vw',borderRadius:10,boxShadow:'0 20px 60px rgba(0,0,0,.5)',transition:'transform .2s' }} />
+        }
+      </div>
+      {!isPDF && <div style={{ marginTop:10,fontSize:11,color:'rgba(255,255,255,.4)' }}>Zoom: {Math.round(zoom*100)}% · Click outside to close</div>}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 4 — ITEM SETUP SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+function ItemSetupPanel({ onClose, showToast }) {
+  const [items, setItems]     = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm]       = useState({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })
+  const [editId, setEditId]   = useState(null)
+  const [search, setSearch]   = useState('')
+  const [filterCat, setFilterCat] = useState('all')
+
+  const loadItems = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('kitchen_items').select('*').order('category').order('name')
+    setItems(data||[])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadItems() }, [])
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return
+    const row = { name:form.name, name_meitei:form.name_meitei||null, category:form.category, unit:form.unit, default_price:Number(form.default_price)||null, is_active:true }
+    if (editId) {
+      await supabase.from('kitchen_items').update(row).eq('id',editId)
+      showToast('Item updated ✓', C.saffron[600])
+    } else {
+      await supabase.from('kitchen_items').insert(row)
+      showToast('Item added ✓', C.forest[600])
+    }
+    setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })
+    setEditId(null)
+    loadItems()
+  }
+
+  const toggleActive = async (id, val) => {
+    await supabase.from('kitchen_items').update({ is_active:!val }).eq('id',id)
+    loadItems()
+  }
+
+  const startEdit = item => {
+    setEditId(item.id)
+    setForm({ name:item.name, name_meitei:item.name_meitei||'', category:item.category||'other', unit:item.unit||'kg', default_price:item.default_price||'' })
+  }
+
+  const filtered = items.filter(it =>
+    (filterCat==='all'||it.category===filterCat) &&
+    (it.name.toLowerCase().includes(search.toLowerCase()) || (it.name_meitei||'').includes(search))
+  )
 
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${T.slate[200]}`,borderRadius:12,padding:'16px 20px',marginBottom:16 }}>
-      <div style={{ fontSize:12,fontWeight:700,color:T.slate[600],marginBottom:10 }}>💵 Petty Cash Ledger</div>
-      <div style={{ display:'flex',gap:8,marginBottom:10 }}>
-        <input type="number" style={{ ...inp, flex:1 }} placeholder="Cash given (₹)" value={given} onChange={e=>setGiven(e.target.value)} />
-        <button onClick={addCash} style={btnBase(T.teal[600],'#fff')}>+ Add</button>
+    <div style={{ ...card, border:`1.5px solid ${C.saffron[200]}`, marginBottom:16 }}>
+      {/* Header */}
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:15,fontWeight:800,color:C.terra[700] }}>🧺 Item Setup System</div>
+          <div style={{ fontSize:11,color:C.ink[400] }}>Manage your kitchen item master list</div>
+        </div>
+        <button onClick={onClose} style={{ width:32,height:32,borderRadius:8,border:`1px solid ${C.ink[200]}`,background:'#fff',cursor:'pointer',fontSize:16,color:C.ink[500] }}>✕</button>
       </div>
-      <div style={{ display:'flex',gap:12,fontSize:12 }}>
-        <span>Given: <strong style={{ color:T.emerald[600] }}>{moneyFmt(totalGiven)}</strong></span>
-        <span>Spent: <strong style={{ color:T.rose[600] }}>{moneyFmt(daySpend)}</strong></span>
-        <span>Balance: <strong style={{ color: balance>=0?T.emerald[600]:T.rose[600] }}>{moneyFmt(Math.abs(balance))} {balance<0?'short':''}</strong></span>
+
+      {/* Add/Edit Form */}
+      <div style={{ background:C.saffron[50],border:`1px solid ${C.saffron[200]}`,borderRadius:10,padding:'14px 16px',marginBottom:16 }}>
+        <div style={{ fontSize:12,fontWeight:700,color:C.saffron[800],marginBottom:10 }}>{editId ? '✏️ Edit Item' : '➕ Add New Item'}</div>
+        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+          <FieldRow label="Item Name (English)">
+            <input style={inp} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Rice" />
+          </FieldRow>
+          <FieldRow label="ꯃꯃꯤ (Meitei Name)">
+            <input style={inp} value={form.name_meitei} onChange={e=>setForm(f=>({...f,name_meitei:e.target.value}))} placeholder="ꯃꯤꯇꯩ ꯃꯃꯤ" />
+          </FieldRow>
+          <FieldRow label="Category">
+            <select style={inp} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+              {Object.entries(ITEM_CATEGORIES).map(([k,v])=>(
+                <option key={k} value={k}>{v.emoji} {v.label}</option>
+              ))}
+            </select>
+          </FieldRow>
+          <FieldRow label="Unit">
+            <select style={inp} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>
+              {['kg','g','litre','ml','piece','dozen','packet','bundle'].map(u=><option key={u} value={u}>{u}</option>)}
+            </select>
+          </FieldRow>
+          <FieldRow label="Default Price (₹ per unit)">
+            <input type="number" style={inp} value={form.default_price} onChange={e=>setForm(f=>({...f,default_price:e.target.value}))} placeholder="0.00" />
+          </FieldRow>
+        </div>
+        <div style={{ display:'flex',gap:8,marginTop:12 }}>
+          <button onClick={handleSave} style={{ ...btnPrimary }}>{editId ? 'Update' : '+ Add Item'}</button>
+          {editId && <button onClick={()=>{setEditId(null);setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })}} style={{ ...btnSecondary(C.ink) }}>Cancel</button>}
+        </div>
       </div>
-      {cashLog.filter(c=>c.date===dateFilter).length>0 && (
-        <div style={{ marginTop:8,display:'flex',flexDirection:'column',gap:3 }}>
-          {cashLog.filter(c=>c.date===dateFilter).map((c,i)=>(
-            <div key={i} style={{ fontSize:11,color:T.slate[500] }}>✓ {moneyFmt(c.amount)} at {c.at}</div>
-          ))}
+
+      {/* Filter + Search */}
+      <div style={{ display:'flex',gap:8,marginBottom:12,flexWrap:'wrap' }}>
+        <input style={{ ...inp,flex:1,minWidth:120 }} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items…" />
+        <select style={{ ...inp,width:'auto' }} value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
+          <option value="all">All Categories</option>
+          {Object.entries(ITEM_CATEGORIES).map(([k,v])=><option key={k} value={k}>{v.emoji} {v.label}</option>)}
+        </select>
+      </div>
+
+      {/* Item List */}
+      {loading ? <div style={{ textAlign:'center',color:C.ink[400],padding:'20px 0' }}>Loading…</div> : (
+        <div style={{ display:'flex',flexDirection:'column',gap:6,maxHeight:320,overflowY:'auto' }}>
+          {filtered.length===0 && <div style={{ textAlign:'center',color:C.ink[400],padding:'20px 0',fontSize:12 }}>No items found</div>}
+          {filtered.map(it => {
+            const cat = ITEM_CATEGORIES[it.category]||ITEM_CATEGORIES.other
+            return (
+              <div key={it.id} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',
+                padding:'9px 12px',borderRadius:8,
+                background:it.is_active?'#fff':C.ink[50],
+                border:`1px solid ${it.is_active?cat.color[200]:C.ink[100]}`,
+                opacity:it.is_active?1:.6 }}>
+                <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                  <span style={{ fontSize:16 }}>{cat.emoji}</span>
+                  <div>
+                    <div style={{ fontSize:12,fontWeight:700,color:C.ink[800] }}>
+                      {it.name} {it.name_meitei && <span style={{ color:C.ink[400],fontWeight:400 }}>· {it.name_meitei}</span>}
+                    </div>
+                    <div style={{ fontSize:10,color:C.ink[400] }}>{cat.label} · {it.unit}{it.default_price?` · ₹${it.default_price}/${it.unit}`:''}</div>
+                  </div>
+                </div>
+                <div style={{ display:'flex',gap:6 }}>
+                  <button onClick={()=>startEdit(it)} style={{ padding:'4px 10px',borderRadius:6,fontSize:10,fontWeight:700,cursor:'pointer',border:`1px solid ${C.ink[200]}`,background:C.ink[50],color:C.ink[600] }}>Edit</button>
+                  <button onClick={()=>toggleActive(it.id,it.is_active)} style={{ padding:'4px 10px',borderRadius:6,fontSize:10,fontWeight:700,cursor:'pointer',border:`1px solid ${it.is_active?C.rose[200]:C.forest[200]}`,background:it.is_active?C.rose[50]:C.forest[50],color:it.is_active?C.rose[600]:C.forest[600] }}>
+                    {it.is_active?'Disable':'Enable'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-// ─── Menu Planner ─────────────────────────────────────────────────────────────
-function MenuPlanner({ onClose }) {
-  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-  const [menu, setMenu] = useState(() => {
-    const m = {}
-    days.forEach(d => { m[d] = {} ; MEAL_KEYS.forEach(mk => { m[d][mk]='' }) })
-    return m
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 5 — ADMIN MONITOR SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
+  const todayEntries  = entries.filter(e=>e.expense_date===today())
+  const todayTotal    = todayEntries.reduce((s,e)=>s+Number(e.amount),0)
+  const monthTotal    = entries.reduce((s,e)=>s+Number(e.amount),0)
+  const presentMeals  = todayEntries.map(e=>e.meal_type)
+  const missingMeals  = MEAL_KEYS.filter(m=>!presentMeals.includes(m))
+  const budgetPct     = budget ? (monthTotal/budget)*100 : 0
+  const hhmm          = nowHHMM()
+  const overdueAlerts = missingMeals.filter(mk => {
+    const [h,m] = MEALS[mk].time.split(':').map(Number)
+    return h*100+m < hhmm
   })
-  const set = (day,mk,v) => setMenu(prev => ({ ...prev, [day]: { ...prev[day], [mk]:v } }))
+  const todayCookLog  = cookLog.filter(l=>l.log_date===today())
+
+  // Per-meal spend status
+  const mealStatus = MEAL_KEYS.map(mk => {
+    const mealEntries = todayEntries.filter(e=>e.meal_type===mk)
+    const amt         = mealEntries.reduce((s,e)=>s+Number(e.amount),0)
+    const [h,m]       = MEALS[mk].time.split(':').map(Number)
+    const isDue       = h*100+m < hhmm
+    const isLogged    = mealEntries.length > 0
+    return { mk, amt, isDue, isLogged, entries: mealEntries }
+  })
 
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${T.violet[200]}`,borderRadius:14,marginBottom:16,overflow:'hidden' }}>
-      <div style={{ background:T.violet[50],borderBottom:`1px solid ${T.violet[200]}`,padding:'14px 20px',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
-        <span style={{ fontSize:15,fontWeight:800,color:T.violet[700] }}>📋 Weekly Menu Planner</span>
-        <button onClick={onClose} style={{ width:30,height:30,borderRadius:8,border:`1px solid ${T.violet[200]}`,background:'#fff',cursor:'pointer',fontSize:16,color:T.slate[500] }}>✕</button>
+    <div style={{ ...card, border:`1.5px solid ${C.terra[200]}`, marginBottom:16 }}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:15,fontWeight:800,color:C.terra[700] }}>🛡 Admin Monitor Dashboard</div>
+          <div style={{ fontSize:11,color:C.ink[400] }}>Live kitchen oversight — {dateFmt(today())}</div>
+        </div>
+        <button onClick={onClose} style={{ width:32,height:32,borderRadius:8,border:`1px solid ${C.ink[200]}`,background:'#fff',cursor:'pointer',fontSize:16,color:C.ink[500] }}>✕</button>
       </div>
-      <div style={{ overflowX:'auto',padding:'0 0 16px' }}>
-        <table style={{ width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:600 }}>
-          <thead>
-            <tr style={{ background:T.slate[50] }}>
-              <th style={{ padding:'8px 14px',textAlign:'left',color:T.slate[500],fontWeight:700,borderBottom:`1px solid ${T.slate[200]}` }}>Day</th>
-              {MEAL_KEYS.map(mk=>(
-                <th key={mk} style={{ padding:'8px 10px',textAlign:'left',color:MEALS[mk].color[600],fontWeight:700,borderBottom:`1px solid ${T.slate[200]}` }}>
-                  {MEALS[mk].emoji} {MEALS[mk].short}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {days.map(d=>(
-              <tr key={d} style={{ borderBottom:`1px solid ${T.slate[100]}` }}>
-                <td style={{ padding:'6px 14px',fontWeight:700,color:T.slate[700] }}>{d}</td>
-                {MEAL_KEYS.map(mk=>(
-                  <td key={mk} style={{ padding:'4px 8px' }}>
-                    <input style={{ ...inp,padding:'5px 8px',fontSize:11 }} value={menu[d][mk]}
-                      onChange={e=>set(d,mk,e.target.value)} placeholder="Menu items…" />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      {/* Live KPIs */}
+      <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:14 }}>
+        <KpiCard label="Today Spend" value={moneyFmt(todayTotal)} accent={C.terra[600]} icon="💸" pulse />
+        <KpiCard label="Month Spend" value={moneyFmt(monthTotal)} accent={C.ink[700]} icon="🗓" />
+        {budget && <KpiCard label="Budget Used" value={`${budgetPct.toFixed(1)}%`} accent={budgetPct>90?C.rose[600]:C.saffron[600]} icon="📊" />}
+        <KpiCard label="Meals Today" value={`${presentMeals.length}/4`} accent={presentMeals.length===4?C.forest[600]:C.rose[600]} icon="🍽" />
+      </div>
+
+      {/* Budget Breach Alert */}
+      {budgetPct > 90 && (
+        <div style={{ padding:'12px 16px',borderRadius:10,background:C.rose[50],border:`1px solid ${C.rose[200]}`,marginBottom:12 }}>
+          <div style={{ fontSize:12,fontWeight:700,color:C.rose[700] }}>
+            🚨 Budget Breach Alert — {budgetPct.toFixed(1)}% consumed!
+          </div>
+          <div style={{ fontSize:11,color:C.rose[500],marginTop:3 }}>
+            Spent {moneyFmt(monthTotal)} of {moneyFmt(budget)} monthly budget
+          </div>
+        </div>
+      )}
+
+      {/* Overdue Meal Alerts */}
+      {overdueAlerts.length > 0 && (
+        <div style={{ padding:'12px 16px',borderRadius:10,background:C.saffron[50],border:`1px solid ${C.saffron[300]}`,marginBottom:12 }}>
+          <div style={{ fontSize:12,fontWeight:700,color:C.saffron[800],marginBottom:6 }}>
+            ⏰ Missing Meal Entries (Past Due)
+          </div>
+          <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
+            {overdueAlerts.map(mk=><MealBadge key={mk} type={mk} showMeitei />)}
+          </div>
+        </div>
+      )}
+
+      {/* Meal-by-meal status grid */}
+      <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14 }}>
+        {mealStatus.map(({ mk, amt, isDue, isLogged, entries: me }) => {
+          const m = MEALS[mk]
+          const statusColor = isLogged ? C.forest[600] : isDue ? C.rose[600] : C.ink[400]
+          const statusLabel = isLogged ? '✓ Logged' : isDue ? '⚠ Missing' : '⏳ Upcoming'
+          return (
+            <div key={mk} style={{ padding:'10px 14px',borderRadius:10,background:m.soft,border:`1.5px solid ${m.border}` }}>
+              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4 }}>
+                <span style={{ fontSize:13 }}>{m.emoji} <strong>{m.short}</strong></span>
+                <span style={{ fontSize:10,fontWeight:700,color:statusColor,padding:'2px 7px',borderRadius:99,background:'rgba(255,255,255,.7)' }}>{statusLabel}</span>
+              </div>
+              <div style={{ fontSize:14,fontWeight:800,color:m.text }}>{moneyFmt(amt)}</div>
+              <div style={{ fontSize:10,color:m.text,opacity:.7 }}>Scheduled: {m.time}</div>
+              {me.length>0 && me[0].prepared_by && (
+                <div style={{ fontSize:10,color:m.text,opacity:.8,marginTop:3 }}>👨‍🍳 {me[0].prepared_by}</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Cook/Staff Activity Log */}
+      <div style={{ borderTop:`1px solid ${C.ink[100]}`,paddingTop:14 }}>
+        <div style={{ fontSize:12,fontWeight:700,color:C.ink[600],marginBottom:10 }}>👨‍🍳 Cook Activity Log — Today</div>
+        {todayCookLog.length===0
+          ? <div style={{ fontSize:11,color:C.ink[400],textAlign:'center',padding:'12px 0' }}>No cook log entries today</div>
+          : todayCookLog.map(log => (
+            <div key={log.id} style={{ display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',borderRadius:7,background:C.ink[50],border:`1px solid ${C.ink[100]}`,marginBottom:5 }}>
+              <div>
+                <div style={{ fontSize:12,fontWeight:700,color:C.ink[700] }}>{log.staff_name}</div>
+                <div style={{ fontSize:10,color:C.ink[400] }}><MealBadge type={log.meal_type} /> {log.arrived_at&&`In: ${log.arrived_at}`} {log.left_at&&`· Out: ${log.left_at}`}</div>
+              </div>
+              {log.notes && <div style={{ fontSize:10,color:C.ink[400],maxWidth:160,textAlign:'right' }}>{log.notes}</div>}
+            </div>
+          ))
+        }
+      </div>
+
+      {/* Last updated */}
+      <div style={{ textAlign:'right',fontSize:10,color:C.ink[300],marginTop:10 }}>
+        🔄 Live data · Refreshes on each page load
       </div>
     </div>
   )
 }
 
-// ─── Export Utilities ─────────────────────────────────────────────────────────
+// ─── Cook Log Entry Form ──────────────────────────────────────────────────────
+function CookLogForm({ onSave, onClose }) {
+  const [form, setForm] = useState({ staff_name:'',meal_type:'morning_breakfast',arrived_at:'',left_at:'',notes:'' })
+  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  const valid = form.staff_name && form.meal_type
+  return (
+    <div style={{ ...card, border:`1.5px solid ${C.forest[200]}`, marginBottom:14 }}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14 }}>
+        <div style={{ fontSize:14,fontWeight:800,color:C.forest[700] }}>👨‍🍳 Log Cook Activity</div>
+        <button onClick={onClose} style={{ width:28,height:28,borderRadius:7,border:`1px solid ${C.ink[200]}`,background:'#fff',cursor:'pointer',color:C.ink[500] }}>✕</button>
+      </div>
+      <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
+        <FieldRow label="Staff / Cook Name">
+          <input style={inp} value={form.staff_name} onChange={e=>set('staff_name',e.target.value)} placeholder="Name" />
+        </FieldRow>
+        <FieldRow label="Meal">
+          <select style={inp} value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
+            {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
+          </select>
+        </FieldRow>
+        <FieldRow label="Arrived At">
+          <input type="time" style={inp} value={form.arrived_at} onChange={e=>set('arrived_at',e.target.value)} />
+        </FieldRow>
+        <FieldRow label="Left At">
+          <input type="time" style={inp} value={form.left_at} onChange={e=>set('left_at',e.target.value)} />
+        </FieldRow>
+        <div style={{ gridColumn:'1/-1' }}>
+          <FieldRow label="Notes">
+            <input style={inp} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
+          </FieldRow>
+        </div>
+      </div>
+      <div style={{ display:'flex',gap:8,marginTop:12 }}>
+        <button onClick={()=>valid&&onSave(form)} disabled={!valid} style={{ ...btnPrimary }}>Save Log</button>
+        <button onClick={onClose} style={{ ...btnSecondary(C.ink) }}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 5 — PROFESSIONAL REPORT (Print / PDF)
+// ═══════════════════════════════════════════════════════════════════════════════
+function generatePrintReport(entries, budget, monthLabel) {
+  const total     = entries.reduce((s,e)=>s+Number(e.amount),0)
+  const byMeal    = {}
+  MEAL_KEYS.forEach(k=>{byMeal[k]=0})
+  entries.forEach(e=>{byMeal[e.meal_type]=(byMeal[e.meal_type]||0)+Number(e.amount)})
+  const byDay     = {}
+  entries.forEach(e=>{byDay[e.expense_date]=(byDay[e.expense_date]||0)+Number(e.amount)})
+  const days      = Object.keys(byDay).sort()
+  const avgPerDay = days.length ? total/days.length : 0
+  const topDay    = days.reduce((b,d)=>byDay[d]>byDay[b]?d:b, days[0])
+
+  const vendorMap = {}
+  entries.filter(e=>e.vendor).forEach(e=>{ vendorMap[e.vendor]=(vendorMap[e.vendor]||0)+Number(e.amount) })
+  const topVendors = Object.entries(vendorMap).sort((a,b)=>b[1]-a[1]).slice(0,5)
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>GNSI Kitchen Report — ${monthLabel}</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Georgia',serif; color:#2a1a0a; background:#fff; padding:32px 40px; }
+  .header { border-bottom:3px solid #c44e1c; padding-bottom:16px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:flex-end; }
+  .institute { font-size:20px; font-weight:800; color:#c44e1c; }
+  .sub { font-size:11px; color:#8c6a50; margin-top:2px; }
+  .report-title { font-size:13px; font-weight:700; color:#6e5038; text-align:right; }
+  .kpi-row { display:flex; gap:16px; margin-bottom:24px; }
+  .kpi { flex:1; padding:14px 18px; border-radius:8px; background:#fff5f0; border:1.5px solid #ffd0ba; }
+  .kpi-val { font-size:22px; font-weight:800; color:#c44e1c; }
+  .kpi-lbl { font-size:10px; color:#8c6a50; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-top:3px; font-family:system-ui,sans-serif; }
+  h2 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#c44e1c; margin:20px 0 10px; border-left:3px solid #c44e1c; padding-left:10px; font-family:system-ui,sans-serif; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { background:#fff5f0; color:#6e5038; font-weight:700; padding:7px 10px; text-align:left; border-bottom:2px solid #ffd0ba; text-transform:uppercase; letter-spacing:.04em; font-family:system-ui,sans-serif; }
+  td { padding:6px 10px; border-bottom:1px solid #ede5dc; color:#2a1a0a; }
+  tr:last-child td { border-bottom:none; }
+  .total-row td { font-weight:800; color:#c44e1c; border-top:2px solid #c44e1c; }
+  .meal-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+  .footer { margin-top:30px; padding-top:12px; border-top:1px solid #ede5dc; font-size:10px; color:#a88870; display:flex; justify-content:space-between; font-family:system-ui,sans-serif; }
+  @media print { body { padding:20px; } button { display:none; } }
+</style></head><body>
+  <div class="header">
+    <div>
+      <div class="institute">🏫 Guidance Navodaya & Sainik Institute</div>
+      <div class="sub">Khangabok, Thoubal, Manipur · Kitchen Expenditure Report</div>
+    </div>
+    <div class="report-title">Month: ${monthLabel}<br>Generated: ${new Date().toLocaleString('en-IN')}</div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-val">₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</div><div class="kpi-lbl">Total Expenditure</div></div>
+    <div class="kpi"><div class="kpi-val">${entries.length}</div><div class="kpi-lbl">Total Entries</div></div>
+    <div class="kpi"><div class="kpi-val">₹${avgPerDay.toLocaleString('en-IN',{minimumFractionDigits:2})}</div><div class="kpi-lbl">Daily Average</div></div>
+    ${budget?`<div class="kpi"><div class="kpi-val">${((total/budget)*100).toFixed(1)}%</div><div class="kpi-lbl">Budget Used (₹${Number(budget).toLocaleString('en-IN')})</div></div>`:''}
+  </div>
+
+  <h2>Meal-wise Summary</h2>
+  <table>
+    <thead><tr><th>Meal</th><th>Entries</th><th>Amount</th><th>% of Total</th></tr></thead>
+    <tbody>
+      ${MEAL_KEYS.map(mk=>{
+        const m = MEALS[mk]
+        const cnt = entries.filter(e=>e.meal_type===mk).length
+        const amt = byMeal[mk]
+        const pct = total ? ((amt/total)*100).toFixed(1) : 0
+        return `<tr><td>${m.emoji} ${m.label} (${m.meitei})</td><td>${cnt}</td><td>₹${amt.toLocaleString('en-IN',{minimumFractionDigits:2})}</td><td>${pct}%</td></tr>`
+      }).join('')}
+      <tr class="total-row"><td>TOTAL</td><td>${entries.length}</td><td>₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</td><td>100%</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Daily Expenditure Log</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Morning</th><th>Lunch</th><th>Evening</th><th>Dinner</th><th>Day Total</th></tr></thead>
+    <tbody>
+      ${days.map(d=>{
+        const dE = entries.filter(e=>e.expense_date===d)
+        const mAmt = mk => dE.filter(e=>e.meal_type===mk).reduce((s,e)=>s+Number(e.amount),0)
+        const dt = byDay[d]
+        return `<tr><td>${new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',weekday:'short'})}</td>
+          ${MEAL_KEYS.map(mk=>`<td>${mAmt(mk)?'₹'+mAmt(mk).toFixed(2):'—'}</td>`).join('')}
+          <td><strong>₹${dt.toFixed(2)}</strong>${d===topDay?' 🔺':''}</td></tr>`
+      }).join('')}
+    </tbody>
+  </table>
+
+  ${topVendors.length>0?`
+  <h2>Top Vendors</h2>
+  <table>
+    <thead><tr><th>Vendor / Market</th><th>Amount</th></tr></thead>
+    <tbody>${topVendors.map(([name,amt])=>`<tr><td>${name}</td><td>₹${amt.toFixed(2)}</td></tr>`).join('')}</tbody>
+  </table>`:''}
+
+  <div class="footer">
+    <span>GNSI Kitchen Report · ${monthLabel}</span>
+    <span>Khangabok, Thoubal, Manipur · guidancekhangabok.in</span>
+    <span>Page 1 of 1</span>
+  </div>
+
+  <script>window.onload = () => window.print()</script>
+</body></html>`
+
+  const win = window.open('','_blank')
+  if (win) { win.document.write(html); win.document.close() }
+}
+
+// ─── Export to CSV ────────────────────────────────────────────────────────────
 function exportToCSV(entries, month) {
-  const headers = ['Date','Meal','Amount','Items','Vendor','Staff','Students','Rating','Serving Time','Notes']
+  const headers = ['Date','Meal','Meal (Meitei)','Amount','Items','Vendor','Staff','Students','Rating','Serving Time','Notes']
   const rows = entries.map(e => [
-    e.expense_date,
-    MEALS[e.meal_type]?.label||e.meal_type,
-    e.amount,
-    e.item_details||'',
-    e.vendor||'',
-    e.prepared_by||'',
-    e.pax_count||'',
-    e.meal_rating||'',
-    e.serving_time||'',
-    e.notes||'',
+    e.expense_date, MEALS[e.meal_type]?.label||e.meal_type, MEALS[e.meal_type]?.meitei||'',
+    e.amount, e.item_details||'', e.vendor||'', e.prepared_by||'',
+    e.pax_count||'', e.meal_rating||'', e.serving_time||'', e.notes||'',
   ])
-  const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type:'text/csv' })
+  const csv  = [headers, ...rows].map(r => r.map(c=>`"${c}"`).join(',')).join('\n')
+  const blob = new Blob([csv],{type:'text/csv'})
   const a    = document.createElement('a')
   a.href     = URL.createObjectURL(blob)
-  a.download = `kitchen-${month}.csv`
+  a.download = `gnsi-kitchen-${month}.csv`
   a.click()
 }
 
 function generateWhatsAppMsg(entries, dateStr) {
-  const dayE   = entries.filter(e=>e.expense_date===dateStr)
-  const total  = dayE.reduce((s,e)=>s+Number(e.amount),0)
-  const lines  = MEAL_KEYS.map(mk => {
+  const dayE  = entries.filter(e=>e.expense_date===dateStr)
+  const total = dayE.reduce((s,e)=>s+Number(e.amount),0)
+  const lines = MEAL_KEYS.map(mk=>{
     const m   = MEALS[mk]
     const amt = dayE.filter(e=>e.meal_type===mk).reduce((s,e)=>s+Number(e.amount),0)
-    return amt > 0 ? `${m.emoji} ${m.short}: ₹${amt.toFixed(2)}` : null
+    return amt > 0 ? `${m.emoji} ${m.label} (${m.meitei}): ₹${amt.toFixed(2)}` : null
   }).filter(Boolean)
-  const msg = `🍽 *GNSI Kitchen Report — ${dateFmt(dateStr)}*\n\n${lines.join('\n')}\n\n*Total: ₹${total.toFixed(2)}*\n\n_Guidance Navodaya & Sainik Institute_`
+  const msg = `🍽 *GNSI ꯀꯤꯆꯦꯟ ꯔꯤꯄꯣꯔꯠ — ${dateFmt(dateStr)}*\n\n${lines.join('\n')}\n\n*ꯊꯝꯕ / Total: ₹${total.toFixed(2)}*\n\n_Guidance Navodaya & Sainik Institute, Khangabok_`
   navigator.clipboard?.writeText(msg).catch(()=>{})
   return msg
 }
 
-// ─── Entry Form ───────────────────────────────────────────────────────────────
-function EntryForm({ onSave, onCancel, editing, defaultDate }) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENTRY FORM (upgraded)
+// ═══════════════════════════════════════════════════════════════════════════════
+function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
   const def = (k, fb='') => editing ? (editing[k]??fb) : fb
   const [form, setForm] = useState({
-    meal_type:    def('meal_type', 'morning_breakfast'),
+    meal_type:    def('meal_type','morning_breakfast'),
     expense_date: def('expense_date', defaultDate||today()),
     amount:       def('amount',''),
     item_details: def('item_details',''),
@@ -607,11 +1003,20 @@ function EntryForm({ onSave, onCancel, editing, defaultDate }) {
     receipt_url:  def('receipt_url',''),
   })
   const [uploading, setUploading] = useState(false)
+  const [viewReceipt, setViewReceipt] = useState(false)
+  const [customItem, setCustomItem]   = useState('')
+  const m   = MEALS[form.meal_type]
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
-  const addPreset = item => {
+  const addItem = item => {
     const cur = form.item_details.trim()
     set('item_details', cur ? cur + ', ' + item : item)
+  }
+
+  const addCustomItem = () => {
+    if (!customItem.trim()) return
+    addItem(customItem.trim())
+    setCustomItem('')
   }
 
   const handleFileUpload = async e => {
@@ -627,146 +1032,214 @@ function EntryForm({ onSave, onCancel, editing, defaultDate }) {
     setUploading(false)
   }
 
+  const handleDeleteReceipt = async () => {
+    set('receipt_url', '')
+    setViewReceipt(false)
+  }
+
   const valid = form.meal_type && form.expense_date && Number(form.amount) > 0
+  const presets = MANIPURI_PRESETS[form.meal_type] || []
+  const dbItems = kitchenItems.filter(it=>it.is_active)
 
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${MEALS[form.meal_type]?.color[200]||T.slate[200]}`,borderRadius:14,overflow:'hidden',marginBottom:16 }}>
-      <div style={{ background: MEALS[form.meal_type]?.color[50]||T.slate[50], borderBottom:`1px solid ${MEALS[form.meal_type]?.color[200]||T.slate[200]}`, padding:'14px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <div style={{ fontSize:15,fontWeight:800,color:MEALS[form.meal_type]?.color[700]||T.slate[700] }}>
-          {editing ? '✏️ Edit Entry' : '➕ Add Kitchen Entry'}
+    <>
+      {viewReceipt && form.receipt_url && (
+        <ReceiptViewer url={form.receipt_url} onClose={()=>setViewReceipt(false)} onDelete={handleDeleteReceipt} />
+      )}
+      <div style={{ background:'#fff',border:`1.5px solid ${m.border}`,borderRadius:14,overflow:'hidden',marginBottom:16 }}>
+        <div style={{ background:m.soft,borderBottom:`1px solid ${m.border}`,padding:'14px 20px',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+          <div style={{ fontSize:15,fontWeight:800,color:m.text }}>
+            {editing ? `✏️ Edit — ${m.meitei}` : `➕ ${m.meitei} / ${m.label}`}
+          </div>
+          <button onClick={onCancel} style={{ width:30,height:30,borderRadius:8,border:`1px solid ${m.border}`,background:'#fff',cursor:'pointer',fontSize:16,color:C.ink[500] }}>✕</button>
         </div>
-        <button onClick={onCancel} style={{ width:30,height:30,borderRadius:8,border:`1px solid ${T.slate[200]}`,background:'#fff',cursor:'pointer',fontSize:16,color:T.slate[500] }}>✕</button>
+
+        <div style={{ padding:'20px' }}>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:4 }}>
+
+            <FieldRow label="ꯂꯥꯎꯈꯨꯝ (Meal) *">
+              <select style={inp} value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
+                {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].meitei} / {MEALS[mk].label}</option>)}
+              </select>
+            </FieldRow>
+
+            <FieldRow label="ꯅꯤꯡꯊꯧ (Date) *">
+              <input type="date" style={inp} value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
+            </FieldRow>
+
+            <FieldRow label="ꯊꯃꯣꯢ (Amount ₹) *">
+              <input type="number" style={inp} value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
+            </FieldRow>
+
+            <FieldRow label="Serving Time">
+              <input type="time" style={inp} value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
+            </FieldRow>
+
+            {/* Items */}
+            <div style={{ gridColumn:'1/-1' }}>
+              <FieldRow label="ꯍꯥꯡꯗꯣꯛꯄꯥ ꯁꯤꯡ (Items / Ingredients)">
+                <input style={inp} value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
+
+                {/* Manipuri dish presets */}
+                <div style={{ marginTop:8 }}>
+                  <div style={{ fontSize:10,fontWeight:700,color:C.terra[600],marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>
+                    🍛 Manipuri Dishes (Quick Add)
+                  </div>
+                  <div style={{ display:'flex',flexWrap:'wrap',gap:5 }}>
+                    {presets.map(item=>(
+                      <button key={item} onClick={()=>addItem(item)}
+                        style={{ padding:'3px 9px',borderRadius:99,border:`1px solid ${C.saffron[200]}`,background:C.saffron[50],fontSize:10,fontWeight:600,cursor:'pointer',color:C.saffron[800] }}>
+                        +{item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* DB Items */}
+                {dbItems.length > 0 && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ fontSize:10,fontWeight:700,color:C.teal[700],marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>
+                      🧺 Your Item List (Quick Add)
+                    </div>
+                    <div style={{ display:'flex',flexWrap:'wrap',gap:5 }}>
+                      {dbItems.map(it=>(
+                        <button key={it.id} onClick={()=>addItem(it.name)}
+                          style={{ padding:'3px 9px',borderRadius:99,border:`1px solid ${C.teal[200]}`,background:C.teal[50],fontSize:10,fontWeight:600,cursor:'pointer',color:C.teal[800] }}>
+                          +{it.name}{it.name_meitei?` / ${it.name_meitei}`:''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom item input */}
+                <div style={{ display:'flex',gap:8,marginTop:8 }}>
+                  <input style={{ ...inp,flex:1,fontSize:12 }} value={customItem}
+                    onChange={e=>setCustomItem(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addCustomItem()}
+                    placeholder="Type custom item + Enter" />
+                  <button onClick={addCustomItem} style={{ ...btnSecondary(C.terra) }}>+ Add</button>
+                </div>
+              </FieldRow>
+            </div>
+
+            <FieldRow label="Prepared By (ꯁꯦꯝꯒꯠꯄꯥ)">
+              <input style={inp} value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
+            </FieldRow>
+
+            <FieldRow label="ꯑꯃꯁꯨꯡ (Vendor / Supplier)">
+              <select style={inp} value={form.vendor} onChange={e=>set('vendor',e.target.value)}>
+                <option value="">— Select or type —</option>
+                {LOCAL_VENDORS.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+              {!LOCAL_VENDORS.includes(form.vendor) && form.vendor && (
+                <input style={{ ...inp,marginTop:5,fontSize:12 }} value={form.vendor} onChange={e=>set('vendor',e.target.value)} placeholder="Custom vendor name" />
+              )}
+              {LOCAL_VENDORS.includes(form.vendor) || !form.vendor ? (
+                <input style={{ ...inp,marginTop:5,fontSize:12 }} value={form.vendor==='—'?'':form.vendor}
+                  onChange={e=>set('vendor',e.target.value)} placeholder="Or type custom vendor…" />
+              ) : null}
+            </FieldRow>
+
+            <FieldRow label="ꯃꯤꯑꯣꯢ ꯂꯩꯔꯤꯕ (Students Served)">
+              <input type="number" style={inp} value={form.pax_count} onChange={e=>set('pax_count',e.target.value)} placeholder="0" min="0" />
+            </FieldRow>
+
+            <FieldRow label="Meal Quality ꯔꯦꯇꯤꯡ">
+              <StarRating value={form.meal_rating} onChange={v=>set('meal_rating',v)} />
+            </FieldRow>
+
+            <div style={{ gridColumn:'1/-1' }}>
+              <FieldRow label="Notes">
+                <textarea style={{ ...inp,resize:'vertical' }} rows={2} value={form.notes}
+                  onChange={e=>set('notes',e.target.value)} placeholder="Any observations about this meal…" />
+              </FieldRow>
+            </div>
+
+            {/* Receipt Upload — FEATURE 2 */}
+            <div style={{ gridColumn:'1/-1' }}>
+              <FieldRow label="📎 Receipt Photo / Bill">
+                <div style={{ display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' }}>
+                  <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} style={{ fontSize:11 }} />
+                  {uploading && <span style={{ fontSize:11,color:C.ink[400],animation:'pulse 1s ease-in-out infinite' }}>Uploading…</span>}
+                  {form.receipt_url && (
+                    <div style={{ display:'flex',gap:8,alignItems:'center' }}>
+                      <button onClick={()=>setViewReceipt(true)}
+                        style={{ padding:'5px 12px',borderRadius:7,background:C.sky[50],border:`1px solid ${C.sky[200]}`,color:C.sky[700],fontSize:11,fontWeight:700,cursor:'pointer' }}>
+                        👁 View Receipt
+                      </button>
+                      <button onClick={handleDeleteReceipt}
+                        style={{ padding:'5px 12px',borderRadius:7,background:C.rose[50],border:`1px solid ${C.rose[200]}`,color:C.rose[600],fontSize:11,fontWeight:700,cursor:'pointer' }}>
+                        🗑 Remove
+                      </button>
+                      <span style={{ fontSize:10,color:C.forest[600],fontWeight:700 }}>✓ Uploaded</span>
+                    </div>
+                  )}
+                </div>
+                {form.receipt_url && (
+                  <div style={{ marginTop:8,padding:'8px 10px',borderRadius:8,background:C.sky[50],border:`1px solid ${C.sky[200]}`,fontSize:11,color:C.sky[600] }}>
+                    Receipt stored · <a href={form.receipt_url} target="_blank" rel="noreferrer" style={{ color:C.sky[600],fontWeight:700 }}>Open in new tab ↗</a>
+                  </div>
+                )}
+              </FieldRow>
+            </div>
+
+          </div>
+
+          <div style={{ display:'flex',gap:10,marginTop:16 }}>
+            <button onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}
+              style={{ ...btnPrimary, background:valid?`linear-gradient(135deg,${m.bg},${m.bg}cc)`:`linear-gradient(135deg,${C.ink[200]},${C.ink[100]})`, cursor:valid?'pointer':'not-allowed', boxShadow:valid?`0 3px 10px rgba(0,0,0,.2)`:'none' }}>
+              {editing ? 'Update Entry' : 'Save Entry'}
+            </button>
+            <button onClick={onCancel} style={{ ...btnSecondary(C.ink) }}>Cancel</button>
+          </div>
+        </div>
       </div>
-
-      <div style={{ padding:20 }}>
-        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:4 }}>
-
-          {/* Meal Type */}
-          <FieldRow label="Meal *">
-            <select style={inp} value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
-              {MEAL_KEYS.map(mk=>(
-                <option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>
-              ))}
-            </select>
-          </FieldRow>
-
-          {/* Date */}
-          <FieldRow label="Date *">
-            <input type="date" style={inp} value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
-          </FieldRow>
-
-          {/* Amount */}
-          <FieldRow label="Amount (₹) *">
-            <input type="number" style={inp} value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
-          </FieldRow>
-
-          {/* Serving Time */}
-          <FieldRow label="Serving Time">
-            <input type="time" style={inp} value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
-          </FieldRow>
-
-          {/* Items */}
-          <div style={{ gridColumn:'1/-1' }}>
-            <FieldRow label="Items / Ingredients">
-              <input style={inp} value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Rice, Dal, Oil…" />
-              <div style={{ display:'flex',flexWrap:'wrap',gap:5,marginTop:6 }}>
-                {PRESET_ITEMS.map(item=>(
-                  <button key={item} onClick={()=>addPreset(item)} style={{ padding:'3px 9px',borderRadius:99,border:`1px solid ${T.slate[200]}`,background:T.slate[50],fontSize:10,fontWeight:600,cursor:'pointer',color:T.slate[600] }}>
-                    +{item}
-                  </button>
-                ))}
-              </div>
-            </FieldRow>
-          </div>
-
-          {/* Staff */}
-          <FieldRow label="Prepared By">
-            <input style={inp} value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
-          </FieldRow>
-
-          {/* Vendor */}
-          <FieldRow label="Vendor / Supplier">
-            <input style={inp} value={form.vendor} onChange={e=>set('vendor',e.target.value)} placeholder="Market / Supplier name" />
-          </FieldRow>
-
-          {/* Pax */}
-          <FieldRow label="Students Served">
-            <input type="number" style={inp} value={form.pax_count} onChange={e=>set('pax_count',e.target.value)} placeholder="0" min="0" />
-          </FieldRow>
-
-          {/* Meal Rating */}
-          <FieldRow label="Meal Quality Rating">
-            <StarRating value={form.meal_rating} onChange={v=>set('meal_rating',v)} />
-          </FieldRow>
-
-          {/* Notes */}
-          <div style={{ gridColumn:'1/-1' }}>
-            <FieldRow label="Notes">
-              <textarea style={{ ...inp,resize:'vertical' }} rows={2} value={form.notes}
-                onChange={e=>set('notes',e.target.value)} placeholder="Any observations about this meal…" />
-            </FieldRow>
-          </div>
-
-          {/* Receipt Upload */}
-          <div style={{ gridColumn:'1/-1' }}>
-            <FieldRow label="Receipt Photo">
-              <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-                <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} style={{ fontSize:11 }} />
-                {uploading && <span style={{ fontSize:11,color:T.slate[400] }}>Uploading…</span>}
-                {form.receipt_url && <a href={form.receipt_url} target="_blank" rel="noreferrer" style={{ fontSize:11,color:T.sky[600],textDecoration:'none',fontWeight:600 }}>📎 View</a>}
-              </div>
-            </FieldRow>
-          </div>
-
-        </div>
-
-        <div style={{ display:'flex',gap:10,marginTop:16 }}>
-          <button onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}
-            style={{ padding:'10px 24px',borderRadius:9,background:valid?MEALS[form.meal_type]?.gradient:`linear-gradient(135deg,${T.slate[300]},${T.slate[200]})`,color:'#fff',border:'none',fontSize:13,fontWeight:800,cursor:valid?'pointer':'not-allowed' }}>
-            {editing ? 'Update Entry' : 'Save Entry'}
-          </button>
-          <button onClick={onCancel} style={{ padding:'10px 16px',borderRadius:9,border:`1px solid ${T.slate[200]}`,background:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',color:T.slate[600] }}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
+    </>
   )
 }
 
 // ─── Entry Card ───────────────────────────────────────────────────────────────
 function EntryCard({ e, locked, onEdit, onDelete }) {
   const m = MEALS[e.meal_type]
+  const [viewReceipt, setViewReceipt] = useState(false)
 
   return (
-    <div style={{ background:'#fff',border:`1.5px solid ${m?.color[200]||T.slate[200]}`,borderRadius:10,padding:'14px 16px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap' }}>
-      <div style={{ flex:1,minWidth:0 }}>
-        <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:5,flexWrap:'wrap' }}>
-          <MealBadge type={e.meal_type} />
-          <span style={{ fontSize:17,fontWeight:800,color:m?.color[700]||T.slate[700] }}>{moneyFmt(e.amount)}</span>
-          {e.meal_rating>0 && <StarRating value={e.meal_rating} />}
-        </div>
-
-        <div style={{ display:'flex',gap:12,fontSize:11,color:T.slate[500],flexWrap:'wrap' }}>
-          {e.item_details && <span>🥦 {e.item_details}</span>}
-          {e.prepared_by  && <span>👨‍🍳 {e.prepared_by}</span>}
-          {e.vendor       && <span>🏪 {e.vendor}</span>}
-          {e.pax_count    && <span>👥 {e.pax_count} students</span>}
-          {e.serving_time && <span>🕐 {e.serving_time}</span>}
-          {e.pax_count>0  && <span style={{ color:T.sky[600],fontWeight:600 }}>₹{(e.amount/e.pax_count).toFixed(2)}/student</span>}
-        </div>
-
-        {e.notes && <div style={{ marginTop:6,fontSize:11,color:T.slate[400],padding:'4px 8px',background:T.slate[50],borderRadius:6 }}>{e.notes}</div>}
-        {e.receipt_url && <a href={e.receipt_url} target="_blank" rel="noreferrer" style={{ display:'inline-block',marginTop:5,fontSize:10,color:T.sky[600],fontWeight:600 }}>📎 Receipt</a>}
-      </div>
-
-      {!locked && (
-        <div style={{ display:'flex',gap:6,flexShrink:0 }}>
-          <button onClick={()=>onEdit(e)} style={{ padding:'5px 12px',borderRadius:7,background:T.slate[50],color:T.slate[600],border:`1px solid ${T.slate[200]}`,fontSize:11,fontWeight:700,cursor:'pointer' }}>Edit</button>
-          <button onClick={()=>onDelete(e.id)} style={{ padding:'5px 12px',borderRadius:7,background:T.rose[50],color:T.rose[500],border:`1px solid ${T.rose[200]}`,fontSize:11,fontWeight:700,cursor:'pointer' }}>Del</button>
-        </div>
+    <>
+      {viewReceipt && e.receipt_url && (
+        <ReceiptViewer url={e.receipt_url} onClose={()=>setViewReceipt(false)} />
       )}
-    </div>
+      <div style={{ background:'#fff',border:`1.5px solid ${m?.border||C.ink[200]}`,borderRadius:10,padding:'14px 16px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap',boxShadow:'0 1px 4px rgba(164,100,50,.05)' }}>
+        <div style={{ flex:1,minWidth:0 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:5,flexWrap:'wrap' }}>
+            <MealBadge type={e.meal_type} showMeitei />
+            <span style={{ fontSize:18,fontWeight:800,color:m?.text||C.ink[800],fontFamily:"'Georgia',serif" }}>{moneyFmt(e.amount)}</span>
+            {e.meal_rating>0 && <StarRating value={e.meal_rating} />}
+            {e.receipt_url && (
+              <button onClick={()=>setViewReceipt(true)}
+                style={{ padding:'2px 9px',borderRadius:99,background:C.sky[50],border:`1px solid ${C.sky[200]}`,color:C.sky[700],fontSize:10,fontWeight:700,cursor:'pointer' }}>
+                📎 Receipt
+              </button>
+            )}
+          </div>
+          <div style={{ display:'flex',gap:12,fontSize:11,color:C.ink[500],flexWrap:'wrap' }}>
+            {e.item_details && <span>🥦 {e.item_details}</span>}
+            {e.prepared_by  && <span>👨‍🍳 {e.prepared_by}</span>}
+            {e.vendor       && <span>🏪 {e.vendor}</span>}
+            {e.pax_count    && <span>👥 {e.pax_count} ꯃꯤꯑꯣꯢ</span>}
+            {e.serving_time && <span>🕐 {e.serving_time}</span>}
+            {e.pax_count>0  && <span style={{ color:C.teal[600],fontWeight:600 }}>₹{(e.amount/e.pax_count).toFixed(2)}/student</span>}
+          </div>
+          {e.notes && <div style={{ marginTop:6,fontSize:11,color:C.ink[400],padding:'4px 8px',background:C.ink[50],borderRadius:6 }}>{e.notes}</div>}
+        </div>
+        {!locked && (
+          <div style={{ display:'flex',gap:6,flexShrink:0 }}>
+            <button onClick={()=>onEdit(e)} style={{ padding:'5px 12px',borderRadius:7,background:C.ink[50],color:C.ink[600],border:`1px solid ${C.ink[200]}`,fontSize:11,fontWeight:700,cursor:'pointer' }}>Edit</button>
+            <button onClick={()=>onDelete(e.id)} style={{ padding:'5px 12px',borderRadius:7,background:C.rose[50],color:C.rose[500],border:`1px solid ${C.rose[200]}`,fontSize:11,fontWeight:700,cursor:'pointer' }}>Del</button>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -776,27 +1249,29 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
   const total  = dayE.reduce((s,e)=>s+Number(e.amount),0)
   const isToday= dateStr===today()
   const locked = locks.includes(dateStr)
-
   return (
     <div style={{ marginBottom:16 }}>
-      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,padding:'8px 14px',borderRadius:9,background: isToday ? T.indigo[50] : T.slate[50],border:`1px solid ${isToday?T.indigo[200]:T.slate[200]}` }}>
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,
+        padding:'9px 14px',borderRadius:9,
+        background: isToday ? C.terra[50] : C.ink[50],
+        border:`1.5px solid ${isToday?C.terra[200]:C.ink[200]}` }}>
         <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-          <span style={{ fontSize:12,fontWeight:800,color:isToday?T.indigo[700]:T.slate[700] }}>
-            {isToday ? '📌 Today — ' : ''}{dateFmt(dateStr)}
+          <span style={{ fontSize:12,fontWeight:800,color:isToday?C.terra[700]:C.ink[700] }}>
+            {isToday ? '📌 ꯑꯗꯣꯝ — ' : ''}{dateFmt(dateStr)}
           </span>
-          {locked && <span style={{ fontSize:10,fontWeight:700,color:T.rose[600],padding:'2px 8px',borderRadius:99,background:T.rose[50],border:`1px solid ${T.rose[200]}` }}>🔒 Locked</span>}
+          {locked && <span style={{ fontSize:10,fontWeight:700,color:C.rose[600],padding:'2px 8px',borderRadius:99,background:C.rose[50],border:`1px solid ${C.rose[200]}` }}>🔒 Locked</span>}
         </div>
         <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-          <span style={{ fontSize:14,fontWeight:800,color:T.slate[800] }}>{moneyFmt(total)}</span>
+          <span style={{ fontSize:15,fontWeight:800,color:C.ink[800],fontFamily:"'Georgia',serif" }}>{moneyFmt(total)}</span>
           {!locked
-            ? <button onClick={()=>onLockDay(dateStr)} style={{ padding:'4px 10px',borderRadius:7,background:T.rose[50],color:T.rose[600],border:`1px solid ${T.rose[200]}`,fontSize:10,fontWeight:700,cursor:'pointer' }}>🔒 Lock Day</button>
-            : <button onClick={()=>onUnlockDay(dateStr)} style={{ padding:'4px 10px',borderRadius:7,background:T.amber[50],color:T.amber[700],border:`1px solid ${T.amber[200]}`,fontSize:10,fontWeight:700,cursor:'pointer' }}>🔓 Unlock</button>
+            ? <button onClick={()=>onLockDay(dateStr)} style={{ padding:'4px 10px',borderRadius:7,background:C.rose[50],color:C.rose[600],border:`1px solid ${C.rose[200]}`,fontSize:10,fontWeight:700,cursor:'pointer' }}>🔒 Lock Day</button>
+            : <button onClick={()=>onUnlockDay(dateStr)} style={{ padding:'4px 10px',borderRadius:7,background:C.saffron[50],color:C.saffron[700],border:`1px solid ${C.saffron[200]}`,fontSize:10,fontWeight:700,cursor:'pointer' }}>🔓 Unlock</button>
           }
         </div>
       </div>
       <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
         {dayE.map(e=><EntryCard key={e.id} e={e} locked={locked} onEdit={onEdit} onDelete={onDelete} />)}
-        {dayE.length===0 && <div style={{ fontSize:12,color:T.slate[400],textAlign:'center',padding:'12px 0' }}>No entries for this date</div>}
+        {dayE.length===0 && <div style={{ fontSize:12,color:C.ink[400],textAlign:'center',padding:'12px 0' }}>No entries for this date</div>}
       </div>
     </div>
   )
@@ -806,67 +1281,65 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
 function BudgetModal({ current, month, onSave, onClose }) {
   const [val, setVal] = useState(current||'')
   return (
-    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.35)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center' }}>
-      <div style={{ background:'#fff',borderRadius:16,padding:28,width:360,boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
-        <div style={{ fontSize:16,fontWeight:800,color:T.slate[800],marginBottom:4 }}>Set Monthly Budget</div>
-        <div style={{ fontSize:12,color:T.slate[400],marginBottom:16 }}>For {month}</div>
+    <div style={{ position:'fixed',inset:0,background:'rgba(40,20,10,.4)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center' }}>
+      <div style={{ background:'#fff',borderRadius:16,padding:28,width:380,boxShadow:'0 20px 60px rgba(0,0,0,.25)',border:`1.5px solid ${C.terra[200]}` }}>
+        <div style={{ fontSize:16,fontWeight:800,color:C.terra[700],marginBottom:3 }}>💰 Set Monthly Budget</div>
+        <div style={{ fontSize:12,color:C.ink[400],marginBottom:16 }}>For {month}</div>
         <input type="number" style={{ ...inp,marginBottom:16 }} value={val} onChange={e=>setVal(e.target.value)} placeholder="e.g. 50000" />
         <div style={{ display:'flex',gap:10 }}>
-          <button onClick={()=>onSave(Number(val))} style={{ flex:1,padding:'10px 0',borderRadius:9,background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`,color:'#fff',border:'none',fontSize:13,fontWeight:800,cursor:'pointer' }}>Save</button>
-          <button onClick={onClose} style={{ padding:'10px 16px',borderRadius:9,border:`1px solid ${T.slate[200]}`,background:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',color:T.slate[600] }}>Cancel</button>
+          <button onClick={()=>onSave(Number(val))} style={{ ...btnPrimary, flex:1, justifyContent:'center' }}>Save Budget</button>
+          <button onClick={onClose} style={{ ...btnSecondary(C.ink) }}>Cancel</button>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-export default function Kitchen() {
-  const [entries,     setEntries]     = useState([])
-  const [locks,       setLocks]       = useState([])       // locked date strings
-  const [budget,      setBudget]      = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [formOpen,    setFormOpen]    = useState(false)
-  const [editing,     setEditing]     = useState(null)
-  const [toast,       setToast]       = useState(null)
-  const [filterDate,  setFilterDate]  = useState(today())
-  const [filterMeal,  setFilterMeal]  = useState('all')
-  const [viewMonth,   setViewMonth]   = useState(monthKey())
-  const [tab,         setTab]         = useState('ledger')  // ledger | analytics
-  const [showBudget,  setShowBudget]  = useState(false)
-  const [showMenu,    setShowMenu]    = useState(false)
-  const [showWA,      setShowWA]      = useState(null)
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+export default function Kitchen({ currentUser }) {
+  const isAdmin = (currentUser?.role||'').toLowerCase() === 'admin'
 
-  const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(()=>setToast(null), 3500) }
+  const [entries,      setEntries]      = useState([])
+  const [locks,        setLocks]        = useState([])
+  const [budget,       setBudget]       = useState(null)
+  const [kitchenItems, setKitchenItems] = useState([])
+  const [cookLog,      setCookLog]      = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [formOpen,     setFormOpen]     = useState(false)
+  const [editing,      setEditing]      = useState(null)
+  const [toast,        setToast]        = useState(null)
+  const [filterDate,   setFilterDate]   = useState(today())
+  const [filterMeal,   setFilterMeal]   = useState('all')
+  const [viewMonth,    setViewMonth]    = useState(monthKey())
+  const [tab,          setTab]          = useState('ledger')
+  const [showBudget,   setShowBudget]   = useState(false)
+  const [showWA,       setShowWA]       = useState(null)
+  const [showItemSetup,setShowItemSetup]= useState(false)
+  const [showMonitor,  setShowMonitor]  = useState(false)
+  const [showCookLog,  setShowCookLog]  = useState(false)
 
-  // ─── Load ─────────────────────────────────────────────────────────────────
+  const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(()=>setToast(null),3500) }
+
+  // ─── Load ────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true)
     const [from, to] = [`${viewMonth}-01`, `${viewMonth}-31`]
 
-    const { data: eData } = await supabase
-      .from('kitchen_expenditure')
-      .select('*')
-      .gte('expense_date', from)
-      .lte('expense_date', to)
-      .order('expense_date', { ascending:false })
-      .order('created_at',   { ascending:false })
+    const [{ data: eData }, { data: lData }, { data: bData }, { data: iData }, { data: clData }] = await Promise.all([
+      supabase.from('kitchen_expenditure').select('*').gte('expense_date',from).lte('expense_date',to).order('expense_date',{ascending:false}).order('created_at',{ascending:false}),
+      supabase.from('kitchen_daily_locks').select('lock_date').gte('lock_date',from).lte('lock_date',to),
+      supabase.from('kitchen_budgets').select('*').eq('month',viewMonth).maybeSingle(),
+      supabase.from('kitchen_items').select('*').order('category').order('name'),
+      supabase.from('kitchen_cook_log').select('*').gte('log_date',from).lte('log_date',to).order('created_at',{ascending:false}),
+    ])
 
-    const { data: lData } = await supabase
-      .from('kitchen_daily_locks')
-      .select('lock_date')
-      .gte('lock_date', from)
-      .lte('lock_date', to)
-
-    const { data: bData } = await supabase
-      .from('kitchen_budgets')
-      .select('*')
-      .eq('month', viewMonth)
-      .maybeSingle()
-
-    setEntries(eData || [])
+    setEntries(eData||[])
     setLocks((lData||[]).map(l=>l.lock_date))
-    setBudget(bData?.budget_amount || null)
+    setBudget(bData?.budget_amount||null)
+    setKitchenItems(iData||[])
+    setCookLog(clData||[])
     setLoading(false)
   }, [viewMonth])
 
@@ -888,83 +1361,96 @@ export default function Kitchen() {
       notes:        form.notes||null,
       updated_at:   new Date().toISOString(),
     }
-
     if (eid) {
-      const { error } = await supabase.from('kitchen_expenditure').update(row).eq('id', eid)
-      if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
-      showToast('Entry updated', T.amber[600])
+      const { error } = await supabase.from('kitchen_expenditure').update(row).eq('id',eid)
+      if (error) { showToast('Update failed: '+error.message, C.rose[600]); return }
+      showToast('Entry updated ✓', C.saffron[600])
     } else {
       const { error } = await supabase.from('kitchen_expenditure').insert(row)
-      if (error) { showToast('Save failed: '+error.message, T.rose[600]); return }
-      showToast('Entry saved ✓', T.emerald[600])
+      if (error) { showToast('Save failed: '+error.message, C.rose[600]); return }
+      showToast('Entry saved ✓', C.forest[600])
     }
     setFormOpen(false); setEditing(null); load()
   }
 
   const handleDelete = async id => {
     if (!confirm('Delete this entry?')) return
-    const { error } = await supabase.from('kitchen_expenditure').delete().eq('id', id)
-    if (error) { showToast('Delete failed: '+error.message, T.rose[600]); return }
-    showToast('Entry deleted', T.rose[600]); load()
+    const { error } = await supabase.from('kitchen_expenditure').delete().eq('id',id)
+    if (error) { showToast('Delete failed: '+error.message, C.rose[600]); return }
+    showToast('Deleted', C.rose[600]); load()
   }
 
-  // ─── Lock / Unlock Day ────────────────────────────────────────────────────
   const handleLockDay = async dateStr => {
-    if (!confirm(`Lock all entries for ${dateFmt(dateStr)}? No edits/deletions will be allowed.`)) return
-    const { error } = await supabase.from('kitchen_daily_locks').insert({ lock_date: dateStr })
-    if (error) { showToast('Lock failed: '+error.message, T.rose[600]); return }
-    showToast(`🔒 ${dateFmt(dateStr)} locked`, T.rose[500]); load()
+    if (!confirm(`Lock all entries for ${dateFmt(dateStr)}?`)) return
+    const { error } = await supabase.from('kitchen_daily_locks').insert({ lock_date:dateStr })
+    if (error) { showToast('Lock failed: '+error.message, C.rose[600]); return }
+    showToast(`🔒 ${dateFmt(dateStr)} locked`, C.rose[500]); load()
   }
 
   const handleUnlockDay = async dateStr => {
-    const { error } = await supabase.from('kitchen_daily_locks').delete().eq('lock_date', dateStr)
-    if (error) { showToast('Unlock failed: '+error.message, T.rose[600]); return }
-    showToast(`🔓 ${dateFmt(dateStr)} unlocked`, T.amber[600]); load()
+    const { error } = await supabase.from('kitchen_daily_locks').delete().eq('lock_date',dateStr)
+    if (error) { showToast('Unlock failed', C.rose[600]); return }
+    showToast(`🔓 ${dateFmt(dateStr)} unlocked`, C.saffron[600]); load()
   }
 
-  // ─── Budget Save ──────────────────────────────────────────────────────────
   const handleBudgetSave = async amount => {
-    const { error } = await supabase.from('kitchen_budgets')
-      .upsert({ month: viewMonth, budget_amount: amount }, { onConflict: 'month' })
-    if (error) { showToast('Budget save failed', T.rose[600]); return }
-    setBudget(amount); setShowBudget(false)
-    showToast('Budget updated ✓', T.emerald[600])
+    const { error } = await supabase.from('kitchen_budgets').upsert({ month:viewMonth, budget_amount:amount },{ onConflict:'month' })
+    if (error) { showToast('Budget save failed', C.rose[600]); return }
+    setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', C.forest[600])
   }
 
-  // ─── Filtered entries ─────────────────────────────────────────────────────
+  const handleCookLogSave = async form => {
+    const { error } = await supabase.from('kitchen_cook_log').insert({
+      log_date:   today(),
+      staff_name: form.staff_name,
+      meal_type:  form.meal_type,
+      arrived_at: form.arrived_at||null,
+      left_at:    form.left_at||null,
+      notes:      form.notes||null,
+    })
+    if (error) { showToast('Cook log save failed', C.rose[600]); return }
+    showToast('Cook log saved ✓', C.forest[600]); setShowCookLog(false); load()
+  }
+
+  // ─── Derived ─────────────────────────────────────────────────────────────
   const filteredByMeal = filterMeal==='all' ? entries : entries.filter(e=>e.meal_type===filterMeal)
   const uniqueDates    = [...new Set(filteredByMeal.map(e=>e.expense_date))].sort().reverse()
-
-  // ─── KPI ──────────────────────────────────────────────────────────────────
-  const todayTotal   = entries.filter(e=>e.expense_date===today()).reduce((s,e)=>s+Number(e.amount),0)
-  const weekTotal    = entries.filter(e=>e.expense_date>=weekStart()).reduce((s,e)=>s+Number(e.amount),0)
-  const monthTotal   = entries.reduce((s,e)=>s+Number(e.amount),0)
-  const allDays      = [...new Set(entries.map(e=>e.expense_date))]
-  const avgPerDay    = allDays.length ? monthTotal/allDays.length : 0
-  const highDay      = allDays.reduce((best,d)=>{
+  const todayTotal     = entries.filter(e=>e.expense_date===today()).reduce((s,e)=>s+Number(e.amount),0)
+  const weekTotal      = entries.filter(e=>e.expense_date>=weekStart()).reduce((s,e)=>s+Number(e.amount),0)
+  const monthTotal     = entries.reduce((s,e)=>s+Number(e.amount),0)
+  const allDays        = [...new Set(entries.map(e=>e.expense_date))]
+  const avgPerDay      = allDays.length ? monthTotal/allDays.length : 0
+  const highDay        = allDays.reduce((best,d)=>{
     const sum=entries.filter(e=>e.expense_date===d).reduce((s,e)=>s+Number(e.amount),0)
     return sum>best.sum?{d,sum}:best
-  }, { d:null,sum:0 })
+  },{ d:null,sum:0 })
 
   if (loading) return (
-    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',gap:14,color:T.slate[500],fontFamily:'system-ui,sans-serif' }}>
-      <div style={{ width:22,height:22,border:`2.5px solid ${T.slate[200]}`,borderTopColor:T.emerald[600],borderRadius:'50%',animation:'spin .7s linear infinite' }} />
-      <span style={{ fontWeight:600 }}>Loading kitchen data…</span>
+    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',gap:14,color:C.ink[400],fontFamily:"system-ui,sans-serif" }}>
+      <div style={{ width:22,height:22,border:`2.5px solid ${C.ink[100]}`,borderTopColor:C.terra[600],borderRadius:'50%',animation:'spin .7s linear infinite' }} />
+      <span style={{ fontWeight:600 }}>ꯂꯥꯎꯈꯨꯝ ꯌꯥꯑꯣꯅꯕꯥ ꯄꯥꯎꯊꯣꯛꯈꯔꯦ… (Loading kitchen data…)</span>
     </div>
   )
 
   return (
-    <div style={{ padding:'0 24px 32px',fontFamily:'system-ui,sans-serif',background:T.slate[50],minHeight:'100vh' }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}select:focus,input:focus,textarea:focus{border-color:${T.emerald[400]}!important;box-shadow:0 0 0 3px ${T.emerald[100]}}`}</style>
+    <div style={{ padding:'0 24px 40px',fontFamily:"system-ui,'Segoe UI',sans-serif",background:'#faf7f4',minHeight:'100vh' }}>
+      <style>{`
+        @keyframes spin { to { transform:rotate(360deg) } }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+        select:focus, input:focus, textarea:focus {
+          border-color:${C.terra[400]}!important;
+          box-shadow:0 0 0 3px ${C.terra[100]}!important;
+        }
+      `}</style>
 
-      {toast && <Toast msg={toast.msg} color={toast.color} />}
+      {toast    && <Toast msg={toast.msg} color={toast.color} />}
       {showBudget && <BudgetModal current={budget} month={viewMonth} onSave={handleBudgetSave} onClose={()=>setShowBudget(false)} />}
       {showWA && (
-        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.35)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center' }} onClick={()=>setShowWA(null)}>
-          <div style={{ background:'#fff',borderRadius:16,padding:24,width:380,boxShadow:'0 20px 60px rgba(0,0,0,.25)' }} onClick={e=>e.stopPropagation()}>
-            <div style={{ fontSize:14,fontWeight:700,color:T.slate[700],marginBottom:10 }}>📋 WhatsApp Message (Copied!)</div>
-            <pre style={{ fontSize:12,color:T.slate[600],whiteSpace:'pre-wrap',background:T.slate[50],borderRadius:8,padding:12,border:`1px solid ${T.slate[200]}`,maxHeight:280,overflowY:'auto' }}>{showWA}</pre>
-            <button onClick={()=>setShowWA(null)} style={{ marginTop:12,padding:'8px 20px',borderRadius:8,background:T.emerald[600],color:'#fff',border:'none',fontSize:13,fontWeight:700,cursor:'pointer' }}>Close</button>
+        <div style={{ position:'fixed',inset:0,background:'rgba(20,10,5,.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center' }} onClick={()=>setShowWA(null)}>
+          <div style={{ background:'#fff',borderRadius:16,padding:24,width:400,boxShadow:'0 20px 60px rgba(0,0,0,.3)',border:`1.5px solid ${C.forest[200]}` }} onClick={e=>e.stopPropagation()}>
+            <div style={{ fontSize:14,fontWeight:700,color:C.forest[700],marginBottom:10 }}>📲 WhatsApp Message — Copied!</div>
+            <pre style={{ fontSize:12,color:C.ink[600],whiteSpace:'pre-wrap',background:C.ink[50],borderRadius:8,padding:12,border:`1px solid ${C.ink[100]}`,maxHeight:280,overflowY:'auto' }}>{showWA}</pre>
+            <button onClick={()=>setShowWA(null)} style={{ marginTop:12,...btnPrimary }}>Close</button>
           </div>
         </div>
       )}
@@ -972,111 +1458,108 @@ export default function Kitchen() {
       {/* ── Header ── */}
       <div style={{ padding:'28px 0 16px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:14 }}>
         <div>
-          <div style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.12em',color:T.slate[400],marginBottom:5 }}>GNSI Portal</div>
-          <div style={{ fontSize:26,fontWeight:800,color:T.slate[900],letterSpacing:'-.03em',lineHeight:1.1 }}>Kitchen Expenditure</div>
-          <div style={{ fontSize:13,color:T.slate[500],marginTop:5 }}>Track daily meal costs · Breakfast · Lunch · Dinner</div>
+          <div style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.14em',color:C.terra[400],marginBottom:5 }}>GNSI Portal · Khangabok</div>
+          <div style={{ fontSize:27,fontWeight:800,color:C.ink[900],letterSpacing:'-.02em',lineHeight:1.1,fontFamily:"'Georgia',serif" }}>
+            🍽 ꯀꯤꯆꯦꯟ ꯊꯝꯕ
+          </div>
+          <div style={{ fontSize:14,color:C.ink[500],marginTop:4 }}>Kitchen Expenditure · {viewMonth}</div>
         </div>
         <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-          <button onClick={()=>setShowMenu(v=>!v)} style={btnBase(T.violet[50],T.violet[700],`1px solid ${T.violet[200]}`)}>📋 Menu Planner</button>
-          <button onClick={()=>setShowBudget(true)} style={btnBase(T.teal[50],T.teal[700],`1px solid ${T.teal[200]}`)}>💰 Budget</button>
-          <button onClick={()=>exportToCSV(entries,viewMonth)} style={btnBase(T.slate[50],T.slate[600],`1px solid ${T.slate[200]}`)}>⬇ CSV</button>
-          <button onClick={()=>{ const msg=generateWhatsAppMsg(entries,filterDate); setShowWA(msg) }} style={btnBase(`linear-gradient(135deg,#25D366,#128C7E)`,'#fff')}>
+          <button onClick={()=>setShowItemSetup(v=>!v)} style={{ ...btnSecondary(C.saffron) }}>🧺 Items</button>
+          {isAdmin && <button onClick={()=>setShowMonitor(v=>!v)} style={{ ...btnSecondary(C.terra) }}>🛡 Monitor</button>}
+          {isAdmin && <button onClick={()=>setShowCookLog(v=>!v)} style={{ ...btnSecondary(C.forest) }}>👨‍🍳 Cook Log</button>}
+          <button onClick={()=>setShowBudget(true)} style={{ ...btnSecondary(C.teal) }}>💰 Budget</button>
+          <button onClick={()=>generatePrintReport(entries, budget, viewMonth)} style={{ ...btnSecondary(C.violet) }}>🖨 Report</button>
+          <button onClick={()=>exportToCSV(entries,viewMonth)} style={{ ...btnSecondary(C.ink) }}>⬇ CSV</button>
+          <button onClick={()=>{ const msg=generateWhatsAppMsg(entries,filterDate); setShowWA(msg) }}
+            style={{ padding:'8px 16px',borderRadius:8,background:'linear-gradient(135deg,#25D366,#128C7E)',color:'#fff',border:'none',fontSize:12,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}>
             📲 WhatsApp
           </button>
-          <button onClick={()=>{ setEditing(null); setFormOpen(true) }}
-            style={{ padding:'10px 20px',borderRadius:10,background:`linear-gradient(135deg,${T.emerald[700]},${T.emerald[500]})`,color:'#fff',border:'none',fontSize:13,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',gap:8,boxShadow:`0 4px 12px rgba(5,150,105,.3)` }}>
-            <span style={{ fontSize:18,lineHeight:1 }}>+</span> Add Entry
+          <button onClick={()=>{ setEditing(null); setFormOpen(true) }} style={{ ...btnPrimary, fontSize:13 }}>
+            <span style={{ fontSize:16 }}>+</span> ꯑꯦꯟꯠꯔꯤ ꯌꯥꯎꯈꯨ
           </button>
         </div>
       </div>
 
-      {/* ── Month Picker ── */}
+      {/* ── Month Picker + Tabs ── */}
       <div style={{ display:'flex',gap:10,alignItems:'center',marginBottom:16,flexWrap:'wrap' }}>
         <input type="month" style={{ ...inp,width:'auto',padding:'7px 12px',fontSize:13 }} value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
-        <div style={{ display:'flex',borderRadius:9,overflow:'hidden',border:`1.5px solid ${T.slate[200]}` }}>
+        <div style={{ display:'flex',borderRadius:10,overflow:'hidden',border:`1.5px solid ${C.ink[200]}` }}>
           {[['ledger','📋 Ledger'],['analytics','📊 Analytics']].map(([k,l])=>(
-            <button key={k} onClick={()=>setTab(k)} style={{ padding:'8px 18px',background:tab===k?T.emerald[600]:'#fff',color:tab===k?'#fff':T.slate[600],border:'none',fontSize:12,fontWeight:700,cursor:'pointer' }}>{l}</button>
+            <button key={k} onClick={()=>setTab(k)}
+              style={{ padding:'8px 20px',background:tab===k?C.terra[500]:'#fff',color:tab===k?'#fff':C.ink[600],border:'none',fontSize:12,fontWeight:700,cursor:'pointer',transition:'background .2s' }}>{l}</button>
           ))}
         </div>
       </div>
 
       {/* ── KPI Strip ── */}
       <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:16 }}>
-        <KpiCard label="Today"       value={moneyFmt(todayTotal)}  accent={T.emerald[600]} icon="🌅" subtitle={today()} />
-        <KpiCard label="This Week"   value={moneyFmt(weekTotal)}   accent={T.indigo[600]}  icon="📅" />
-        <KpiCard label="This Month"  value={moneyFmt(monthTotal)}  accent={T.violet[600]}  icon="🗓" subtitle={viewMonth} />
-        <KpiCard label="Daily Avg"   value={moneyFmt(avgPerDay)}   accent={T.teal[600]}    icon="📈" />
-        <KpiCard label="Peak Day"    value={highDay.d?dateFmt(highDay.d):'—'} accent={T.rose[500]} icon="🔺" subtitle={highDay.d?moneyFmt(highDay.sum):''} />
+        <KpiCard label="ꯑꯗꯣꯝ (Today)"     value={moneyFmt(todayTotal)} accent={C.terra[600]} icon="🌅" subtitle={today()} pulse />
+        <KpiCard label="This Week"          value={moneyFmt(weekTotal)}  accent={C.ink[700]}   icon="📅" />
+        <KpiCard label="ꯃꯁꯤꯡ (Month)"     value={moneyFmt(monthTotal)} accent={C.teal[600]}  icon="🗓" subtitle={viewMonth} />
+        <KpiCard label="Daily Avg"          value={moneyFmt(avgPerDay)}  accent={C.forest[600]}icon="📈" />
+        <KpiCard label="Peak Day"           value={highDay.d?dateFmt(highDay.d):'—'} accent={C.rose[600]} icon="🔺" subtitle={highDay.d?moneyFmt(highDay.sum):''} />
       </div>
 
       {/* ── Budget Bar ── */}
       <BudgetBar spent={monthTotal} budget={budget} />
 
-      {/* ── Menu Planner ── */}
-      {showMenu && <MenuPlanner onClose={()=>setShowMenu(false)} />}
+      {/* ── Item Setup System ── */}
+      {showItemSetup && <ItemSetupPanel onClose={()=>setShowItemSetup(false)} showToast={showToast} />}
 
-      {/* ── Form ── */}
+      {/* ── Admin Monitor ── */}
+      {showMonitor && isAdmin && <AdminMonitorPanel entries={entries} budget={budget} cookLog={cookLog} onClose={()=>setShowMonitor(false)} />}
+
+      {/* ── Cook Log Form ── */}
+      {showCookLog && isAdmin && <CookLogForm onSave={handleCookLogSave} onClose={()=>setShowCookLog(false)} />}
+
+      {/* ── Entry Form ── */}
       {formOpen && (
         <EntryForm
           onSave={handleSave}
           onCancel={()=>{ setFormOpen(false); setEditing(null) }}
           editing={editing}
           defaultDate={filterDate}
+          kitchenItems={kitchenItems}
         />
       )}
 
       {/* ══ LEDGER TAB ══ */}
       {tab==='ledger' && (
         <>
-          {/* Filters */}
           <div style={{ display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center' }}>
             <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-              <label style={{ ...labelSt,marginBottom:0 }}>Date</label>
+              <label style={{ ...labelSt,marginBottom:0 }}>ꯅꯤꯡꯊꯧ</label>
               <input type="date" style={{ ...inp,width:'auto',padding:'7px 12px' }} value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
             </div>
             <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-              <label style={{ ...labelSt,marginBottom:0 }}>Meal</label>
+              <label style={{ ...labelSt,marginBottom:0 }}>ꯂꯥꯎꯈꯨꯝ</label>
               <select style={{ ...inp,width:'auto',padding:'7px 12px' }} value={filterMeal} onChange={e=>setFilterMeal(e.target.value)}>
-                <option value="all">All Meals</option>
-                {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
+                <option value="all">ꯑꯃꯨꯛ ꯂꯥꯎꯈꯨꯝ (All)</option>
+                {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].meitei}</option>)}
               </select>
             </div>
           </div>
 
-          {/* Today alerts */}
-          <OverspendAlert entries={entries} dateFilter={filterDate} />
           <MissingMealAlert entries={entries} dateFilter={filterDate} />
           <CostPerStudentCard entries={entries} dateFilter={filterDate} />
-
-          {/* Today's 4-meal strip */}
           <MealKpiStrip entries={entries} dateFilter={filterDate} />
-
-          {/* Petty Cash */}
           <PettyCashWidget entries={entries} dateFilter={filterDate} />
 
-          {/* Day groups */}
           {uniqueDates.length===0 && (
             <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'60px 20px',textAlign:'center' }}>
-              <div style={{ width:64,height:64,borderRadius:16,background:T.slate[100],display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,marginBottom:16 }}>🍽</div>
-              <div style={{ fontSize:16,fontWeight:700,color:T.slate[700],marginBottom:6 }}>No entries yet</div>
-              <p style={{ fontSize:13,color:T.slate[400],maxWidth:'38ch',lineHeight:1.6,margin:'0 0 20px' }}>
-                Start by adding your first kitchen entry for today's meals.
-              </p>
-              <button onClick={()=>setFormOpen(true)} style={{ padding:'10px 22px',borderRadius:10,background:`linear-gradient(135deg,${T.emerald[700]},${T.emerald[500]})`,color:'#fff',border:'none',fontSize:13,fontWeight:800,cursor:'pointer' }}>
-                + Add First Entry
-              </button>
+              <div style={{ width:70,height:70,borderRadius:18,background:C.terra[50],border:`2px dashed ${C.terra[200]}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:34,marginBottom:16 }}>🍽</div>
+              <div style={{ fontSize:16,fontWeight:700,color:C.ink[700],marginBottom:6 }}>ꯑꯦꯟꯠꯔꯤ ꯉꯝꯗꯦ (No entries yet)</div>
+              <p style={{ fontSize:13,color:C.ink[400],maxWidth:'38ch',lineHeight:1.6,margin:'0 0 20px' }}>Start by adding your first kitchen entry for today's meals.</p>
+              <button onClick={()=>setFormOpen(true)} style={{ ...btnPrimary }}>+ ꯄꯨꯝꯅꯛꯈꯤ ꯑꯦꯟꯠꯔꯤ ꯌꯥꯎꯈꯨ</button>
             </div>
           )}
 
           {uniqueDates.length>0 && (
             <>
-              <SectionDivider label={`Entries (${filteredByMeal.length})`} />
+              <SectionDivider label={`ꯑꯦꯟꯠꯔꯤꯁꯤꯡ ${filteredByMeal.length} ꯀꯤ`} />
               {uniqueDates.map(d=>(
-                <DayGroup
-                  key={d}
-                  dateStr={d}
-                  entries={filteredByMeal}
-                  locks={locks}
+                <DayGroup key={d} dateStr={d} entries={filteredByMeal} locks={locks}
                   onEdit={e=>{ setEditing(e); setFormOpen(true) }}
                   onDelete={handleDelete}
                   onLockDay={handleLockDay}
