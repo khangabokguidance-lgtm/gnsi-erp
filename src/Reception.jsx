@@ -1,4 +1,4 @@
-// Reception.jsx  — GNSI Portal  (Premium v5 · 10 New Features)
+// Reception.jsx  — GNSI Portal  (Premium v6 · Mobile Card Tables)
 // ─────────────────────────────────────────────────────────────────────────────
 // NEW IN v5:
 //  1. 🔄 Auto-refresh Monitors (60s countdown)
@@ -918,63 +918,75 @@ function Student360({ students }) {
             </div>
             <Card>
               <CardHead icon="🪪" title="Gate Passes" sub={`${gatePasses.length} total`} accentColor="#ca8a04" isMobile={mob} />
-              <div style={{ padding: '12px 16px' }}>
-                {gatePasses.length === 0 ? <EmptyState msg="No gate passes issued" /> : (
-                  <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
-                      <thead><tr>{['Date', 'Reason', 'Return By', 'Parent', 'Status', 'Actions'].map(h => <th key={h} style={thS}>{h}</th>)}</tr></thead>
-                      <tbody>
-                        {gatePasses.map(g => (
-                          <tr key={g.id} style={{ borderBottom: `0.5px solid ${C.slate[100]}` }}>
-                            <td style={tdS}>{fmtDate(g.exit_date)}</td>
-                            <td style={tdS}>{g.reason}</td>
-                            <td style={tdS}>{g.expected_return_time || '—'}</td>
-                            <td style={tdS}><span style={{ color: g.parent_informed === 'Yes' ? C.emerald : C.red, fontWeight: 700, fontFamily: font }}>{g.parent_informed}</span></td>
-                            <td style={tdS}><Pill label={g.status} /></td>
-                            <td style={{ ...tdS, whiteSpace: 'nowrap' }}>
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button onClick={() => printGatePass(g)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
-                                {canTransition(g.status, 'Exited')   && <button onClick={() => updateGPStatus(g.id, g.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red }}>→ Out</button>}
-                                {canTransition(g.status, 'Returned') && <button onClick={() => updateGPStatus(g.id, g.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+              {gatePasses.length === 0
+                ? <div style={{ padding: '12px 16px' }}><EmptyState msg="No gate passes issued" /></div>
+                : <RecordsTable rows={gatePasses} loading={false}
+                    columns={[
+                      { key: 'exit_date', label: 'Date', render: r => fmtDate(r.exit_date) },
+                      { key: 'reason', label: 'Reason' },
+                      { key: 'expected_return_time', label: 'Return By' },
+                      { key: 'parent_informed', label: 'Parent', render: r => <span style={{ color: r.parent_informed === 'Yes' ? C.emerald : C.red, fontWeight: 700, fontFamily: font }}>{r.parent_informed}</span> },
+                      { key: 'status', label: 'Status', render: r => <Pill label={r.status} /> },
+                      { key: '_a', label: 'Actions', render: r => (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
+                          {canTransition(r.status, 'Exited') && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')} style={{ ...delBtn, background: '#fee2e2', color: C.red }}>→ Out</button>}
+                          {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
+                        </div>
+                      )},
+                    ]}
+                    mobileConfig={{
+                      accent: r => r.status === 'Exited' ? C.red : r.status === 'Returned' ? C.emerald : '#ca8a04',
+                      title:  r => `🪪 ${r.reason}`,
+                      subtitle: r => `${fmtDate(r.exit_date)}${r.exit_time ? ' · ' + r.exit_time : ''}${r.expected_return_time ? ' · Return: ' + r.expected_return_time : ''}`,
+                      badge:  r => <Pill label={r.status} />,
+                      meta:   r => [`Parent: ${r.parent_informed}`, r.approved_by && `By: ${r.approved_by}`],
+                      actions: r => (
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                          {canTransition(r.status, 'Exited') && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')} style={{ ...delBtn, background: '#fee2e2', color: C.red, fontSize: 11 }}>→ Out</button>}
+                          {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
+                        </div>
+                      ),
+                    }}
+                  />
+              }
             </Card>
             <Card>
               <CardHead icon="📦" title="Parent Items" sub={`${parentItems.length} total`} accentColor={C.violet} isMobile={mob} />
-              <div style={{ padding: '12px 16px' }}>
-                {parentItems.length === 0 ? <EmptyState msg="No parent items recorded" /> : (
-                  <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
-                      <thead><tr>{['Date', 'Parent', 'Item', 'Qty', 'Status', 'Actions'].map(h => <th key={h} style={thS}>{h}</th>)}</tr></thead>
-                      <tbody>
-                        {parentItems.map(p => (
-                          <tr key={p.id} style={{ borderBottom: `0.5px solid ${C.slate[100]}` }}>
-                            <td style={tdS}>{fmtDate(p.received_date)}</td>
-                            <td style={tdS}>{p.parent_name}</td>
-                            <td style={{ ...tdS, fontWeight: 700 }}>{p.item_name}</td>
-                            <td style={tdS}>{p.quantity || '—'}</td>
-                            <td style={tdS}><Pill label={p.status} /></td>
-                            <td style={{ ...tdS, whiteSpace: 'nowrap' }}>
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button onClick={() => printItemInvoice(p)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet }}>🖨️</button>
-                                {canTransition(p.status, 'Delivered') && <button onClick={() => updatePIStatus(p.id, p.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓</button>}
-                                {canTransition(p.status, 'Returned')  && <button onClick={() => updatePIStatus(p.id, p.status, 'Returned')}  style={{ ...delBtn, background: '#f1f5f9',  color: C.slate[600] }}>↩</button>}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+              {parentItems.length === 0
+                ? <div style={{ padding: '12px 16px' }}><EmptyState msg="No parent items recorded" /></div>
+                : <RecordsTable rows={parentItems} loading={false}
+                    columns={[
+                      { key: 'received_date', label: 'Date', render: r => fmtDate(r.received_date) },
+                      { key: 'parent_name', label: 'Parent' },
+                      { key: 'item_name', label: 'Item', render: r => <b>{r.item_name}</b> },
+                      { key: 'quantity', label: 'Qty' },
+                      { key: 'status', label: 'Status', render: r => <Pill label={r.status} /> },
+                      { key: '_a', label: 'Actions', render: r => (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet }}>🖨️</button>
+                          {canTransition(r.status, 'Delivered') && <button onClick={() => updatePIStatus(r.id, r.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓</button>}
+                          {canTransition(r.status, 'Returned') && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f1f5f9', color: C.slate[600] }}>↩</button>}
+                        </div>
+                      )},
+                    ]}
+                    mobileConfig={{
+                      accent: r => r.status === 'Delivered' ? C.emerald : r.status === 'Returned' ? C.slate[400] : C.violet,
+                      title:  r => `📦 ${r.item_name}`,
+                      subtitle: r => `${r.parent_name} → ${r.student_name || '—'}`,
+                      badge:  r => <Pill label={r.status} />,
+                      meta:   r => [fmtDate(r.received_date), r.quantity && `Qty: ${r.quantity}`, r.house && `🏠 ${r.house}`],
+                      actions: r => (
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet, fontSize: 11 }}>🖨️</button>
+                          {canTransition(r.status, 'Delivered') && <button onClick={() => updatePIStatus(r.id, r.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Deliver</button>}
+                          {canTransition(r.status, 'Returned') && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f1f5f9', color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
+                        </div>
+                      ),
+                    }}
+                  />
+              }
             </Card>
           </div>
         )
@@ -983,9 +995,67 @@ function Student360({ students }) {
   )
 }
 
-// ── GENERIC RECORDS TABLE ─────────────────────────────────────────────────────
-function RecordsTable({ rows, columns, onDelete, loading }) {
+// ── GENERIC RECORDS TABLE — mobile card / desktop table ──────────────────────
+function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
+  const mob = useIsMobile()
   if (loading) return <div style={{ color: C.slate[400], padding: 24, fontFamily: font }}>Loading…</div>
+  if (rows.length === 0) return <div style={{ padding: 32, textAlign: 'center', color: C.slate[400], fontSize: 13, fontFamily: font }}>No records found</div>
+
+  // ── Mobile card layout ────────────────────────────────────────────────────
+  if (mob && mobileConfig) {
+    const { title, subtitle, meta, badge, actions, accent } = mobileConfig
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 12px' }}>
+        {rows.map((row, i) => {
+          const accentColor = accent ? accent(row) : C.navy
+          return (
+            <div key={row.id || i} style={{ background: 'white', borderRadius: 14, border: `0.5px solid ${C.slate[200]}`, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,.05)' }}>
+              {/* left accent bar + header */}
+              <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                <div style={{ width: 4, background: accentColor, flexShrink: 0 }} />
+                <div style={{ flex: 1, padding: '10px 12px', minWidth: 0 }}>
+                  {/* title row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900], fontFamily: font, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {title(row)}
+                    </div>
+                    {badge && <div style={{ flexShrink: 0 }}>{badge(row)}</div>}
+                  </div>
+                  {/* subtitle */}
+                  {subtitle && (
+                    <div style={{ fontSize: 12, color: C.slate[500], marginBottom: 5, fontFamily: font }}>
+                      {subtitle(row)}
+                    </div>
+                  )}
+                  {/* meta chips */}
+                  {meta && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: actions ? 8 : 0 }}>
+                      {meta(row).filter(Boolean).map((m, mi) => (
+                        <span key={mi} style={{ fontSize: 11, color: C.slate[500], background: C.slate[50], borderRadius: 6, padding: '2px 7px', fontFamily: font, border: `0.5px solid ${C.slate[200]}` }}>
+                          {m}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {/* actions row */}
+                  {(actions || onDelete) && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
+                      {actions && actions(row)}
+                      {onDelete && (
+                        <button onClick={() => onDelete(row.id)} style={{ ...delBtn, fontSize: 10, padding: '4px 8px' }}>✕ Delete</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // ── Desktop table layout ──────────────────────────────────────────────────
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500, fontFamily: font }}>
@@ -996,15 +1066,12 @@ function RecordsTable({ rows, columns, onDelete, loading }) {
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0
-            ? <tr><td colSpan={columns.length + 1} style={{ padding: 32, textAlign: 'center', color: C.slate[400], fontFamily: font }}>No records found</td></tr>
-            : rows.map((row, i) => (
-              <tr key={row.id || i} style={{ borderBottom: `0.5px solid ${C.slate[100]}`, transition: 'background .1s' }}>
-                {columns.map(c => <td key={c.key} style={tdS}>{c.render ? c.render(row) : (row[c.key] ?? '—')}</td>)}
-                {onDelete && <td style={tdS}><button onClick={() => onDelete(row.id)} style={delBtn}>✕</button></td>}
-              </tr>
-            ))
-          }
+          {rows.map((row, i) => (
+            <tr key={row.id || i} style={{ borderBottom: `0.5px solid ${C.slate[100]}`, transition: 'background .1s' }}>
+              {columns.map(c => <td key={c.key} style={tdS}>{c.render ? c.render(row) : (row[c.key] ?? '—')}</td>)}
+              {onDelete && <td style={tdS}><button onClick={() => onDelete(row.id)} style={delBtn}>✕</button></td>}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -1317,6 +1384,24 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                     </div>
                   )},
                 ]}
+                mobileConfig={{
+                  accent: r => r.status === 'Exited' ? C.red : r.status === 'Returned' ? C.emerald : '#ca8a04',
+                  title:  r => `🎓 ${r.student_name}`,
+                  subtitle: r => `${r.reason} · ${r.class_name || '—'}`,
+                  badge:  r => <Pill label={r.status} />,
+                  meta: r => [
+                    `📅 ${fmtDate(r.exit_date)}${r.exit_time ? ' ' + r.exit_time : ''}`,
+                    r.expected_return_time && `⏰ Return: ${r.expected_return_time}`,
+                    `Parent: ${r.parent_informed}`,
+                  ],
+                  actions: r => (
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
+                      {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
+                      <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                    </div>
+                  ),
+                }}
               />
             </div>
           </Card>
@@ -1410,6 +1495,23 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   </div>
                 )},
               ]}
+              mobileConfig={{
+                accent: r => hlOverdue.includes(r.id) ? C.red : r.status === 'Returned' ? C.emerald : C.navy,
+                title:  r => `🎓 ${r.student_name}`,
+                subtitle: r => `${r.reason} · ${r.house ? '🏠 ' + r.house : '—'}`,
+                badge:  r => <Pill label={hlOverdue.includes(r.id) ? 'Overdue' : r.status} />,
+                meta: r => [
+                  `Left: ${fmtDate(r.departure_date)}`,
+                  r.return_date && `Return by: ${fmtDate(r.return_date)}${hlOverdue.includes(r.id) ? ' ⚠' : ''}`,
+                  r.class_name && r.class_name,
+                ],
+                actions: r => (
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    {canTransition(r.status, 'Returned') && <button onClick={() => updateHLStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ Returned</button>}
+                    <button onClick={() => softDelete('hostel_leave_records', r.id, loadHL)} style={{ ...delBtn, fontSize: 11 }}>Archive</button>
+                  </div>
+                ),
+              }}
             />
           </Card>
         </>
@@ -1499,6 +1601,24 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   </div>
                 )},
               ]}
+              mobileConfig={{
+                accent: r => r.status === 'Approved' ? C.emerald : r.status === 'Pending' ? C.amber : r.status === 'Returned' ? C.slate[400] : C.navy,
+                title:  r => `👩‍🏫 ${r.staff_name}`,
+                subtitle: r => `${r.leave_type || '—'}${r.department ? ' · ' + r.department : ''}`,
+                badge:  r => <Pill label={r.status} />,
+                meta: r => [
+                  `${fmtDate(r.from_date)} – ${fmtDate(r.to_date)}`,
+                  r.days && `${r.days} day${r.days > 1 ? 's' : ''}`,
+                  r.role && r.role,
+                ],
+                actions: r => (
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    {canTransition(r.status, 'Approved') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Approved')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Approve</button>}
+                    {canTransition(r.status, 'Returned') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f1f5f9',  color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
+                    <button onClick={() => softDelete('staff_leave_requests', r.id, loadStaff)} style={{ ...delBtn, fontSize: 11 }}>Archive</button>
+                  </div>
+                ),
+              }}
             />
           </Card>
         </>
@@ -1847,7 +1967,6 @@ export default function ReceptionPage() {
                   { key: 'phone',          label: 'Phone',     render: r => (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontFamily: font }}>{r.phone || '—'}</span>
-                      {/* FEATURE 3: WhatsApp follow-up button */}
                       {r.phone && (
                         <a href={`https://wa.me/91${r.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hello ${r.parent_name || ''},\n\nFollowing up on the admission enquiry for ${r.student_name || 'your child'} at GNSI. Please let us know if you'd like to schedule a visit.\n\nGuidance Navodaya & Sainik Institute\nKhangabok, Thoubal`)}`}
                           target="_blank" rel="noopener noreferrer"
@@ -1862,6 +1981,24 @@ export default function ReceptionPage() {
                   { key: 'status',         label: 'Status',    render: r => <Pill label={r.status} /> },
                   { key: 'follow_up_date', label: 'Follow Up', render: r => { const due = r.follow_up_date === today(); return <span style={{ color: due ? '#ef4444' : 'inherit', fontWeight: due ? 700 : 400, fontFamily: font }}>{fmtDate(r.follow_up_date)}{due ? ' ⚠' : ''}</span> } },
                 ]}
+                mobileConfig={{
+                  accent: r => r.status === 'Converted' ? C.emerald : r.status === 'Closed' ? C.slate[400] : r.status === 'Follow Up' ? C.amber : C.navy,
+                  title:  r => r.student_name || r.parent_name || 'Enquiry',
+                  subtitle: r => `${r.parent_name || '—'} · ${r.phone || 'No phone'} · ${r.class_interest || '—'}`,
+                  badge:  r => <Pill label={r.status} />,
+                  meta:   r => [
+                    r.source && `📣 ${r.source}`,
+                    `📅 ${fmtDate(r.enquiry_date)}`,
+                    r.follow_up_date && `Follow up: ${fmtDate(r.follow_up_date)}${r.follow_up_date === today() ? ' ⚠' : ''}`,
+                  ],
+                  actions: r => r.phone ? (
+                    <a href={`https://wa.me/91${r.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hello ${r.parent_name || ''},\n\nFollowing up on the admission enquiry for ${r.student_name || 'your child'} at GNSI.\n\nGuidance Navodaya & Sainik Institute\nKhangabok, Thoubal`)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ background: '#25d366', color: 'white', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 700, textDecoration: 'none', fontFamily: font, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      💬 WhatsApp
+                    </a>
+                  ) : null,
+                }}
               />
             </Card>
           </>
@@ -1932,6 +2069,22 @@ export default function ReceptionPage() {
                   { key: 'id_proof',     label: 'ID' },
                   { key: '_badge',       label: '🖨️',      render: r => <button onClick={() => printVisitorBadge(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button> },
                 ]}
+                mobileConfig={{
+                  accent: r => r.out_time ? C.slate[400] : C.teal,
+                  title:  r => `👤 ${r.visitor_name}`,
+                  subtitle: r => `${r.purpose} · ${r.meeting_with || '—'}`,
+                  badge:  r => r.out_time
+                    ? <span style={{ fontSize: 11, fontWeight: 700, color: C.slate[500], background: C.slate[100], borderRadius: 99, padding: '2px 8px', fontFamily: font }}>Out {r.out_time}</span>
+                    : <span style={{ fontSize: 11, fontWeight: 700, color: C.red, background: '#fee2e2', borderRadius: 99, padding: '2px 8px', fontFamily: font }}>Still Inside</span>,
+                  meta: r => [
+                    r.phone && `📞 ${r.phone}`,
+                    `In: ${r.in_time || fmtDate(r.visit_date)}`,
+                    r.id_proof && `ID: ${r.id_proof}`,
+                  ],
+                  actions: r => (
+                    <button onClick={() => printVisitorBadge(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️ Badge</button>
+                  ),
+                }}
               />
             </Card>
           </>
@@ -2006,6 +2159,25 @@ export default function ReceptionPage() {
                     </div>
                   )},
                 ]}
+                mobileConfig={{
+                  accent: r => r.status === 'Exited' ? C.red : r.status === 'Returned' ? C.emerald : '#ca8a04',
+                  title:  r => `🎓 ${r.student_name}`,
+                  subtitle: r => `${r.reason} · ${r.class_name || '—'}`,
+                  badge:  r => <Pill label={r.status} />,
+                  meta: r => [
+                    `📅 ${fmtDate(r.exit_date)}${r.exit_time ? ' ' + r.exit_time : ''}`,
+                    r.expected_return_time && `⏰ Return: ${r.expected_return_time}`,
+                    `Parent: ${r.parent_informed}`,
+                    r.approved_by && `By: ${r.approved_by}`,
+                  ],
+                  actions: r => (
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                      {canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
+                      {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
+                    </div>
+                  ),
+                }}
               />
             </Card>
           </>
@@ -2104,6 +2276,25 @@ export default function ReceptionPage() {
                       </div>
                     )},
                   ]}
+                  mobileConfig={{
+                    accent: r => r.status === 'Delivered' ? C.emerald : r.status === 'Returned' ? C.slate[400] : C.violet,
+                    title:  r => `📦 ${r.item_name}`,
+                    subtitle: r => `${r.parent_name} → ${r.student_name || '—'}`,
+                    badge:  r => <Pill label={r.status} />,
+                    meta:   r => [
+                      fmtDate(r.received_date),
+                      r.quantity && `Qty: ${r.quantity}`,
+                      r.house && `🏠 ${r.house}`,
+                      r.received_by && `Rcvd by: ${r.received_by}`,
+                    ],
+                    actions: r => (
+                      <div style={{ display: 'flex', gap: 5 }}>
+                        <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet, fontSize: 11 }}>🖨️</button>
+                        {canTransition(r.status, 'Delivered') && <button onClick={() => updatePIStatus(r.id, r.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Deliver</button>}
+                        {canTransition(r.status, 'Returned')  && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')}  style={{ ...delBtn, background: '#f1f5f9',  color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
+                      </div>
+                    ),
+                  }}
                 />
               </Card>
             )}
