@@ -57,10 +57,10 @@ const C = {
 
 // ─── Meal Config ──────────────────────────────────────────────────────────────
 const MEALS = {
-  morning_breakfast: { label:'Morning Breakfast', meitei:'ꯁꯟꯗꯥ ꯂꯥꯎꯈꯨꯝ', short:'M.Bfast', emoji:'🌅', time:'07:00', bg:C.saffron[500], soft:C.saffron[50], border:C.saffron[200], text:C.saffron[800] },
-  lunch:             { label:'Lunch',             meitei:'ꯅꯨꯄꯥ ꯂꯥꯎꯈꯨꯝ',  short:'Lunch',   emoji:'🍱', time:'12:30', bg:C.forest[600],  soft:C.forest[50],  border:C.forest[200],  text:C.forest[800]  },
-  evening_breakfast: { label:'Evening Breakfast', meitei:'ꯑꯋꯥ ꯂꯥꯎꯈꯨꯝ',  short:'E.Bfast', emoji:'🌇', time:'16:30', bg:C.terra[500],   soft:C.terra[50],   border:C.terra[200],   text:C.terra[800]   },
-  dinner:            { label:'Dinner',            meitei:'ꯍꯧꯔꯛ ꯂꯥꯎꯈꯨꯝ', short:'Dinner',  emoji:'🌙', time:'19:30', bg:C.teal[700],    soft:C.teal[50],    border:C.teal[200],    text:C.teal[800]    },
+  morning_breakfast: { label:'Morning Breakfast', meitei:'Morning Breakfast', short:'M.Bfast', emoji:'🌅', time:'07:00', bg:C.saffron[500], soft:C.saffron[50], border:C.saffron[200], text:C.saffron[800] },
+  lunch:             { label:'Lunch',             meitei:'Lunch',  short:'Lunch',   emoji:'🍱', time:'12:30', bg:C.forest[600],  soft:C.forest[50],  border:C.forest[200],  text:C.forest[800]  },
+  evening_breakfast: { label:'Evening Breakfast', meitei:'Evening Breakfast',  short:'E.Bfast', emoji:'🌇', time:'16:30', bg:C.terra[500],   soft:C.terra[50],   border:C.terra[200],   text:C.terra[800]   },
+  dinner:            { label:'Dinner',            meitei:'Dinner', short:'Dinner',  emoji:'🌙', time:'19:30', bg:C.teal[700],    soft:C.teal[50],    border:C.teal[200],    text:C.teal[800]    },
 }
 const MEAL_KEYS = ['morning_breakfast','lunch','evening_breakfast','dinner']
 
@@ -77,13 +77,13 @@ const LOCAL_VENDORS = ['Khangabok Market','Thoubal Bazaar','Ima Keithel','Lilong
 
 // ─── Item Categories ──────────────────────────────────────────────────────────
 const ITEM_CATEGORIES = {
-  grain:     { label:'Grain / Cereal',  meitei:'ꯆꯥꯛ', emoji:'🌾', color:C.saffron },
-  vegetable: { label:'Vegetable',        meitei:'ꯐꯨꯟ',  emoji:'🥦', color:C.forest  },
-  protein:   { label:'Protein',          meitei:'ꯉꯥ/ꯃꯤ',emoji:'🍗', color:C.terra   },
-  dairy:     { label:'Dairy',            meitei:'ꯁꯥ',   emoji:'🥛', color:C.sky     },
-  spice:     { label:'Spice / Masala',   meitei:'ꯂꯥꯏ',  emoji:'🌶️', color:C.rose    },
-  oil:       { label:'Oil / Fat',        meitei:'ꯆꯦꯡ',  emoji:'🫙', color:C.ink     },
-  other:     { label:'Other',            meitei:'ꯑꯔꯤꯕ', emoji:'📦', color:C.slate   },
+  grain:     { label:'Grain / Cereal',  meitei:'Grain', emoji:'🌾', color:C.saffron },
+  vegetable: { label:'Vegetable',        meitei:'Vegetable',  emoji:'🥦', color:C.forest  },
+  protein:   { label:'Protein',          meitei:'Protein',emoji:'🍗', color:C.terra   },
+  dairy:     { label:'Dairy',            meitei:'Dairy',   emoji:'🥛', color:C.sky     },
+  spice:     { label:'Spice / Masala',   meitei:'Spice',  emoji:'🌶️', color:C.rose    },
+  oil:       { label:'Oil / Fat',        meitei:'Oil',  emoji:'🫙', color:C.ink     },
+  other:     { label:'Other',            meitei:'Other', emoji:'📦', color:C.slate   },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ function MealBadge({ type, showMeitei=false }) {
     <span style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'3px 10px',
       borderRadius:99,fontSize:11,fontWeight:700,
       background:m.soft,color:m.text,border:`1px solid ${m.border}` }}>
-      {m.emoji} {showMeitei ? m.meitei : m.short}
+      {m.emoji} {m.short}
     </span>
   )
 }
@@ -215,7 +215,7 @@ function MealKpiStrip({ entries, dateFilter }) {
           <div key={mk} style={{ flex:1,minWidth:110,padding:'12px 14px',borderRadius:10,
             background:m.soft,border:`1.5px solid ${m.border}`,position:'relative',overflow:'hidden' }}>
             <div style={{ position:'absolute',right:8,top:8,fontSize:20,opacity:.15 }}>{m.emoji}</div>
-            <div style={{ fontSize:10,fontWeight:700,color:m.text,textTransform:'uppercase',letterSpacing:'.05em',marginBottom:2 }}>{m.meitei}</div>
+            <div style={{ fontSize:10,fontWeight:700,color:m.text,textTransform:'uppercase',letterSpacing:'.05em',marginBottom:2 }}>{m.short}</div>
             <div style={{ fontSize:16,fontWeight:800,color:m.text,lineHeight:1 }}>{moneyFmt(amt)}</div>
             <div style={{ fontSize:9,color:m.text,opacity:.7,marginTop:2 }}>{m.short}</div>
           </div>
@@ -234,16 +234,16 @@ function BudgetBar({ spent, budget }) {
   return (
     <div style={{ ...card, marginBottom:14 }}>
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8 }}>
-        <span style={{ fontSize:12,fontWeight:700,color:C.ink[600],fontFamily:"system-ui,sans-serif" }}>📊 ꯃꯁꯤꯡ ꯕꯖꯦꯇ (Monthly Budget)</span>
+        <span style={{ fontSize:12,fontWeight:700,color:C.ink[600],fontFamily:"system-ui,sans-serif" }}>📊 Monthly Budget</span>
         <span style={{ fontSize:12,fontWeight:700,color:over?C.rose[600]:C.ink[700] }}>
-          {moneyFmt(spent)} / {moneyFmt(budget)} {over && '⚠ ꯑꯣꯚꯔ'}
+          {moneyFmt(spent)} / {moneyFmt(budget)} {over && '⚠ OVER'}
         </span>
       </div>
       <div style={{ height:10,borderRadius:99,background:C.ink[100],overflow:'hidden' }}>
         <div style={{ height:'100%',width:`${pct}%`,borderRadius:99,background:color,transition:'width .5s' }} />
       </div>
       <div style={{ fontSize:11,color:C.ink[400],marginTop:5,fontFamily:"system-ui,sans-serif" }}>
-        {over ? `Over budget by ${moneyFmt(spent-budget)}` : `${moneyFmt(budget-spent)} ꯂꯩꯔꯤ (${(100-pct).toFixed(1)}% remaining)`}
+        {over ? `Over budget by ${moneyFmt(spent-budget)}` : `${moneyFmt(budget-spent)} (${(100-pct).toFixed(1)}% remaining)`}
       </div>
     </div>
   )
@@ -311,7 +311,7 @@ function MealPieBreakdown({ entries }) {
           return (
             <div key={mk}>
               <div style={{ display:'flex',justifyContent:'space-between',fontSize:12,color:C.ink[600],marginBottom:3 }}>
-                <span>{m.emoji} {m.meitei} <span style={{ opacity:.6 }}>({m.short})</span></span>
+                <span>{m.emoji} {m.label}</span>
                 <span style={{ fontWeight:700 }}>{moneyFmt(amt)} ({pct}%)</span>
               </div>
               <div style={{ height:7,borderRadius:99,background:C.ink[100],overflow:'hidden' }}>
@@ -399,10 +399,10 @@ function MissingMealAlert({ entries, dateFilter }) {
     <div style={{ marginBottom:14,padding:'12px 16px',borderRadius:10,
       background:C.rose[50],border:`1px solid ${C.rose[200]}` }}>
       <div style={{ fontSize:12,fontWeight:700,color:C.rose[700],marginBottom:6 }}>
-        ⚠ ꯂꯥꯎꯈꯨꯝ ꯑꯦꯟꯠꯔꯤ ꯁꯤꯔꯛꯂꯦ (Missing Meal Entries Today)
+        ⚠ Missing Meal Entries Today
       </div>
       <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-        {overdue.map(mk => <MealBadge key={mk} type={mk} showMeitei />)}
+        {overdue.map(mk => <MealBadge key={mk} type={mk} />)}
       </div>
       <div style={{ fontSize:11,color:C.rose[500],marginTop:5 }}>
         These meals are past their scheduled time with no entry recorded.
@@ -432,7 +432,7 @@ function VendorSummary({ entries }) {
             padding:'7px 12px',borderRadius:8,background:C.ink[50],border:`1px solid ${C.ink[100]}` }}>
             <div>
               <div style={{ fontSize:12,fontWeight:700,color:C.ink[700] }}>{name}</div>
-              <div style={{ fontSize:10,color:C.ink[400] }}>{count} ꯄꯨꯔꯛꯄꯥ (purchases)</div>
+              <div style={{ fontSize:10,color:C.ink[400] }}>{count} purchases</div>
             </div>
             <div style={{ fontSize:14,fontWeight:800,color:C.teal[600] }}>{moneyFmt(total)}</div>
           </div>
@@ -484,7 +484,7 @@ function CostPerStudentCard({ entries, dateFilter }) {
       <div>
         <div style={{ fontSize:18,fontWeight:800,color:C.sky[700] }}>{moneyFmt(cps)}</div>
         <div style={{ fontSize:11,color:C.sky[600] }}>
-          ꯑꯃꯨꯛ ꯆꯦꯂꯣꯕ ꯃꯤꯑꯣꯢꯒꯤ ꯊꯃꯣꯢ / Cost per student today · Avg {Math.round(avgPax)} served
+          Cost per student today · Avg {Math.round(avgPax)} served
         </div>
       </div>
     </div>
@@ -623,8 +623,8 @@ function ItemSetupPanel({ onClose, showToast }) {
           <FieldRow label="Item Name (English)">
             <input style={inp} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Rice" />
           </FieldRow>
-          <FieldRow label="ꯃꯃꯤ (Meitei Name)">
-            <input style={inp} value={form.name_meitei} onChange={e=>setForm(f=>({...f,name_meitei:e.target.value}))} placeholder="ꯃꯤꯇꯩ ꯃꯃꯤ" />
+          <FieldRow label="Local Name (Optional)">
+            <input style={inp} value={form.name_meitei} onChange={e=>setForm(f=>({...f,name_meitei:e.target.value}))} placeholder="e.g. local/alternate name" />
           </FieldRow>
           <FieldRow label="Category">
             <select style={inp} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
@@ -757,7 +757,7 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
             ⏰ Missing Meal Entries (Past Due)
           </div>
           <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
-            {overdueAlerts.map(mk=><MealBadge key={mk} type={mk} showMeitei />)}
+            {overdueAlerts.map(mk=><MealBadge key={mk} type={mk} />)}
           </div>
         </div>
       )}
@@ -914,7 +914,7 @@ function generatePrintReport(entries, budget, monthLabel) {
         const cnt = entries.filter(e=>e.meal_type===mk).length
         const amt = byMeal[mk]
         const pct = total ? ((amt/total)*100).toFixed(1) : 0
-        return `<tr><td>${m.emoji} ${m.label} (${m.meitei})</td><td>${cnt}</td><td>₹${amt.toLocaleString('en-IN',{minimumFractionDigits:2})}</td><td>${pct}%</td></tr>`
+        return `<tr><td>${m.emoji} ${m.label}</td><td>${cnt}</td><td>₹${amt.toLocaleString('en-IN',{minimumFractionDigits:2})}</td><td>${pct}%</td></tr>`
       }).join('')}
       <tr class="total-row"><td>TOTAL</td><td>${entries.length}</td><td>₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</td><td>100%</td></tr>
     </tbody>
@@ -957,9 +957,9 @@ function generatePrintReport(entries, budget, monthLabel) {
 
 // ─── Export to CSV ────────────────────────────────────────────────────────────
 function exportToCSV(entries, month) {
-  const headers = ['Date','Meal','Meal (Meitei)','Amount','Items','Vendor','Staff','Students','Rating','Serving Time','Notes']
+  const headers = ['Date','Meal','Amount','Items','Vendor','Staff','Students','Rating','Serving Time','Notes']
   const rows = entries.map(e => [
-    e.expense_date, MEALS[e.meal_type]?.label||e.meal_type, MEALS[e.meal_type]?.meitei||'',
+    e.expense_date, MEALS[e.meal_type]?.label||e.meal_type,
     e.amount, e.item_details||'', e.vendor||'', e.prepared_by||'',
     e.pax_count||'', e.meal_rating||'', e.serving_time||'', e.notes||'',
   ])
@@ -977,9 +977,9 @@ function generateWhatsAppMsg(entries, dateStr) {
   const lines = MEAL_KEYS.map(mk=>{
     const m   = MEALS[mk]
     const amt = dayE.filter(e=>e.meal_type===mk).reduce((s,e)=>s+Number(e.amount),0)
-    return amt > 0 ? `${m.emoji} ${m.label} (${m.meitei}): ₹${amt.toFixed(2)}` : null
+    return amt > 0 ? `${m.emoji} ${m.label}: ₹${amt.toFixed(2)}` : null
   }).filter(Boolean)
-  const msg = `🍽 *GNSI ꯀꯤꯆꯦꯟ ꯔꯤꯄꯣꯔꯠ — ${dateFmt(dateStr)}*\n\n${lines.join('\n')}\n\n*ꯊꯝꯕ / Total: ₹${total.toFixed(2)}*\n\n_Guidance Navodaya & Sainik Institute, Khangabok_`
+  const msg = `🍽 *GNSI Kitchen Report — ${dateFmt(dateStr)}*\n\n${lines.join('\n')}\n\n*Total: ₹${total.toFixed(2)}*\n\n_Guidance Navodaya & Sainik Institute, Khangabok_`
   navigator.clipboard?.writeText(msg).catch(()=>{})
   return msg
 }
@@ -1049,7 +1049,7 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
       <div style={{ background:'#fff',border:`1.5px solid ${m.border}`,borderRadius:14,overflow:'hidden',marginBottom:16 }}>
         <div style={{ background:m.soft,borderBottom:`1px solid ${m.border}`,padding:'14px 20px',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
           <div style={{ fontSize:15,fontWeight:800,color:m.text }}>
-            {editing ? `✏️ Edit — ${m.meitei}` : `➕ ${m.meitei} / ${m.label}`}
+            {editing ? `✏️ Edit — ${m.label}` : `➕ Add ${m.label}`}
           </div>
           <button onClick={onCancel} style={{ width:30,height:30,borderRadius:8,border:`1px solid ${m.border}`,background:'#fff',cursor:'pointer',fontSize:16,color:C.ink[500] }}>✕</button>
         </div>
@@ -1057,17 +1057,17 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
         <div style={{ padding:'20px' }}>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:4 }}>
 
-            <FieldRow label="ꯂꯥꯎꯈꯨꯝ (Meal) *">
+            <FieldRow label="Meal *">
               <select style={inp} value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
-                {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].meitei} / {MEALS[mk].label}</option>)}
+                {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
               </select>
             </FieldRow>
 
-            <FieldRow label="ꯅꯤꯡꯊꯧ (Date) *">
+            <FieldRow label="Date *">
               <input type="date" style={inp} value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
             </FieldRow>
 
-            <FieldRow label="ꯊꯃꯣꯢ (Amount ₹) *">
+            <FieldRow label="Amount (₹) *">
               <input type="number" style={inp} value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
             </FieldRow>
 
@@ -1077,7 +1077,7 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
 
             {/* Items */}
             <div style={{ gridColumn:'1/-1' }}>
-              <FieldRow label="ꯍꯥꯡꯗꯣꯛꯄꯥ ꯁꯤꯡ (Items / Ingredients)">
+              <FieldRow label="Items / Ingredients">
                 <input style={inp} value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
 
                 {/* Manipuri dish presets */}
@@ -1123,11 +1123,11 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
               </FieldRow>
             </div>
 
-            <FieldRow label="Prepared By (ꯁꯦꯝꯒꯠꯄꯥ)">
+            <FieldRow label="Prepared By">
               <input style={inp} value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
             </FieldRow>
 
-            <FieldRow label="ꯑꯃꯁꯨꯡ (Vendor / Supplier)">
+            <FieldRow label="Vendor / Supplier">
               <select style={inp} value={form.vendor} onChange={e=>set('vendor',e.target.value)}>
                 <option value="">— Select or type —</option>
                 {LOCAL_VENDORS.map(v=><option key={v} value={v}>{v}</option>)}
@@ -1141,11 +1141,11 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
               ) : null}
             </FieldRow>
 
-            <FieldRow label="ꯃꯤꯑꯣꯢ ꯂꯩꯔꯤꯕ (Students Served)">
+            <FieldRow label="Students Served">
               <input type="number" style={inp} value={form.pax_count} onChange={e=>set('pax_count',e.target.value)} placeholder="0" min="0" />
             </FieldRow>
 
-            <FieldRow label="Meal Quality ꯔꯦꯇꯤꯡ">
+            <FieldRow label="Meal Quality Rating">
               <StarRating value={form.meal_rating} onChange={v=>set('meal_rating',v)} />
             </FieldRow>
 
@@ -1212,7 +1212,7 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
       <div style={{ background:'#fff',border:`1.5px solid ${m?.border||C.ink[200]}`,borderRadius:10,padding:'14px 16px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap',boxShadow:'0 1px 4px rgba(164,100,50,.05)' }}>
         <div style={{ flex:1,minWidth:0 }}>
           <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:5,flexWrap:'wrap' }}>
-            <MealBadge type={e.meal_type} showMeitei />
+            <MealBadge type={e.meal_type} />
             <span style={{ fontSize:18,fontWeight:800,color:m?.text||C.ink[800],fontFamily:"'Georgia',serif" }}>{moneyFmt(e.amount)}</span>
             {e.meal_rating>0 && <StarRating value={e.meal_rating} />}
             {e.receipt_url && (
@@ -1226,7 +1226,7 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
             {e.item_details && <span>🥦 {e.item_details}</span>}
             {e.prepared_by  && <span>👨‍🍳 {e.prepared_by}</span>}
             {e.vendor       && <span>🏪 {e.vendor}</span>}
-            {e.pax_count    && <span>👥 {e.pax_count} ꯃꯤꯑꯣꯢ</span>}
+            {e.pax_count    && <span>👥 {e.pax_count} students</span>}
             {e.serving_time && <span>🕐 {e.serving_time}</span>}
             {e.pax_count>0  && <span style={{ color:C.teal[600],fontWeight:600 }}>₹{(e.amount/e.pax_count).toFixed(2)}/student</span>}
           </div>
@@ -1257,7 +1257,7 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
         border:`1.5px solid ${isToday?C.terra[200]:C.ink[200]}` }}>
         <div style={{ display:'flex',alignItems:'center',gap:8 }}>
           <span style={{ fontSize:12,fontWeight:800,color:isToday?C.terra[700]:C.ink[700] }}>
-            {isToday ? '📌 ꯑꯗꯣꯝ — ' : ''}{dateFmt(dateStr)}
+            {isToday ? '📌 Today — ' : ''}{dateFmt(dateStr)}
           </span>
           {locked && <span style={{ fontSize:10,fontWeight:700,color:C.rose[600],padding:'2px 8px',borderRadius:99,background:C.rose[50],border:`1px solid ${C.rose[200]}` }}>🔒 Locked</span>}
         </div>
@@ -1428,7 +1428,7 @@ export default function Kitchen({ currentUser }) {
   if (loading) return (
     <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',gap:14,color:C.ink[400],fontFamily:"system-ui,sans-serif" }}>
       <div style={{ width:22,height:22,border:`2.5px solid ${C.ink[100]}`,borderTopColor:C.terra[600],borderRadius:'50%',animation:'spin .7s linear infinite' }} />
-      <span style={{ fontWeight:600 }}>ꯂꯥꯎꯈꯨꯝ ꯌꯥꯑꯣꯅꯕꯥ ꯄꯥꯎꯊꯣꯛꯈꯔꯦ… (Loading kitchen data…)</span>
+      <span style={{ fontWeight:600 }}>Loading kitchen data…</span>
     </div>
   )
 
@@ -1460,7 +1460,7 @@ export default function Kitchen({ currentUser }) {
         <div>
           <div style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.14em',color:C.terra[400],marginBottom:5 }}>GNSI Portal · Khangabok</div>
           <div style={{ fontSize:27,fontWeight:800,color:C.ink[900],letterSpacing:'-.02em',lineHeight:1.1,fontFamily:"'Georgia',serif" }}>
-            🍽 ꯀꯤꯆꯦꯟ ꯊꯝꯕ
+            🍽 Kitchen Expenditure
           </div>
           <div style={{ fontSize:14,color:C.ink[500],marginTop:4 }}>Kitchen Expenditure · {viewMonth}</div>
         </div>
@@ -1476,7 +1476,7 @@ export default function Kitchen({ currentUser }) {
             📲 WhatsApp
           </button>
           <button onClick={()=>{ setEditing(null); setFormOpen(true) }} style={{ ...btnPrimary, fontSize:13 }}>
-            <span style={{ fontSize:16 }}>+</span> ꯑꯦꯟꯠꯔꯤ ꯌꯥꯎꯈꯨ
+            <span style={{ fontSize:16 }}>+</span> Add Entry
           </button>
         </div>
       </div>
@@ -1494,9 +1494,9 @@ export default function Kitchen({ currentUser }) {
 
       {/* ── KPI Strip ── */}
       <div style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:16 }}>
-        <KpiCard label="ꯑꯗꯣꯝ (Today)"     value={moneyFmt(todayTotal)} accent={C.terra[600]} icon="🌅" subtitle={today()} pulse />
+        <KpiCard label="Today"     value={moneyFmt(todayTotal)} accent={C.terra[600]} icon="🌅" subtitle={today()} pulse />
         <KpiCard label="This Week"          value={moneyFmt(weekTotal)}  accent={C.ink[700]}   icon="📅" />
-        <KpiCard label="ꯃꯁꯤꯡ (Month)"     value={moneyFmt(monthTotal)} accent={C.teal[600]}  icon="🗓" subtitle={viewMonth} />
+        <KpiCard label="Month"     value={moneyFmt(monthTotal)} accent={C.teal[600]}  icon="🗓" subtitle={viewMonth} />
         <KpiCard label="Daily Avg"          value={moneyFmt(avgPerDay)}  accent={C.forest[600]}icon="📈" />
         <KpiCard label="Peak Day"           value={highDay.d?dateFmt(highDay.d):'—'} accent={C.rose[600]} icon="🔺" subtitle={highDay.d?moneyFmt(highDay.sum):''} />
       </div>
@@ -1529,14 +1529,14 @@ export default function Kitchen({ currentUser }) {
         <>
           <div style={{ display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center' }}>
             <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-              <label style={{ ...labelSt,marginBottom:0 }}>ꯅꯤꯡꯊꯧ</label>
+              <label style={{ ...labelSt,marginBottom:0 }}>Date</label>
               <input type="date" style={{ ...inp,width:'auto',padding:'7px 12px' }} value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
             </div>
             <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-              <label style={{ ...labelSt,marginBottom:0 }}>ꯂꯥꯎꯈꯨꯝ</label>
+              <label style={{ ...labelSt,marginBottom:0 }}>Meal</label>
               <select style={{ ...inp,width:'auto',padding:'7px 12px' }} value={filterMeal} onChange={e=>setFilterMeal(e.target.value)}>
-                <option value="all">ꯑꯃꯨꯛ ꯂꯥꯎꯈꯨꯝ (All)</option>
-                {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].meitei}</option>)}
+                <option value="all">All Meals</option>
+                {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
               </select>
             </div>
           </div>
@@ -1549,15 +1549,15 @@ export default function Kitchen({ currentUser }) {
           {uniqueDates.length===0 && (
             <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'60px 20px',textAlign:'center' }}>
               <div style={{ width:70,height:70,borderRadius:18,background:C.terra[50],border:`2px dashed ${C.terra[200]}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:34,marginBottom:16 }}>🍽</div>
-              <div style={{ fontSize:16,fontWeight:700,color:C.ink[700],marginBottom:6 }}>ꯑꯦꯟꯠꯔꯤ ꯉꯝꯗꯦ (No entries yet)</div>
+              <div style={{ fontSize:16,fontWeight:700,color:C.ink[700],marginBottom:6 }}>No entries yet</div>
               <p style={{ fontSize:13,color:C.ink[400],maxWidth:'38ch',lineHeight:1.6,margin:'0 0 20px' }}>Start by adding your first kitchen entry for today's meals.</p>
-              <button onClick={()=>setFormOpen(true)} style={{ ...btnPrimary }}>+ ꯄꯨꯝꯅꯛꯈꯤ ꯑꯦꯟꯠꯔꯤ ꯌꯥꯎꯈꯨ</button>
+              <button onClick={()=>setFormOpen(true)} style={{ ...btnPrimary }}>+ Add First Entry</button>
             </div>
           )}
 
           {uniqueDates.length>0 && (
             <>
-              <SectionDivider label={`ꯑꯦꯟꯠꯔꯤꯁꯤꯡ ${filteredByMeal.length} ꯀꯤ`} />
+              <SectionDivider label={`Entries (${filteredByMeal.length})`} />
               {uniqueDates.map(d=>(
                 <DayGroup key={d} dateStr={d} entries={filteredByMeal} locks={locks}
                   onEdit={e=>{ setEditing(e); setFormOpen(true) }}
