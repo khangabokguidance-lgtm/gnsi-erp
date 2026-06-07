@@ -1116,7 +1116,71 @@ function FormTextarea({ field, value, onChange }) {
 }
 
 function MonitorRow({ initLetter, avatarColor, name, sub, meta, elapsedRecord, statusLabel, actions }) {
-  const e = elapsedRecord ? elapsedLabel(elapsedRecord) : null
+  const mob = useIsMobile()
+  const e   = elapsedRecord ? elapsedLabel(elapsedRecord) : null
+
+  // ── Mobile card layout ───────────────────────────────────────────────────
+  if (mob) {
+    return (
+      <div style={{
+        background: 'white', borderRadius: 14, marginBottom: 10,
+        border: `0.5px solid ${C.slate[200]}`, overflow: 'hidden',
+        boxShadow: '0 1px 6px rgba(0,0,0,.05)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'stretch' }}>
+          {/* left accent */}
+          <div style={{ width: 4, background: avatarColor || C.navy, flexShrink: 0 }} />
+          <div style={{ flex: 1, padding: '10px 12px', minWidth: 0 }}>
+            {/* row 1: avatar + name + elapsed + status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor || C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: C.gold, flexShrink: 0, fontFamily: font }}>
+                {(initLetter || '?').toUpperCase()}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900], fontFamily: font, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
+              </div>
+              {e && (
+                <span style={{ background: e.bg, color: e.color, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, flexShrink: 0, whiteSpace: 'nowrap', fontFamily: font }}>
+                  ⏱ {e.label}
+                </span>
+              )}
+              {statusLabel && <div style={{ flexShrink: 0 }}><Pill label={statusLabel} /></div>}
+            </div>
+            {/* row 2: subtitle */}
+            {sub && (
+              <div style={{ fontSize: 12, color: C.slate[500], marginBottom: 5, marginLeft: 38, fontFamily: font, lineHeight: 1.4 }}>
+                {sub}
+              </div>
+            )}
+            {/* row 3: meta chips */}
+            {meta && Array.isArray(meta) && meta.filter(Boolean).length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginLeft: 38, marginBottom: 7 }}>
+                {meta.filter(Boolean).map((m, mi) => (
+                  <span key={mi} style={{ fontSize: 11, color: C.slate[500], background: C.slate[50], borderRadius: 6, padding: '2px 7px', fontFamily: font, border: `0.5px solid ${C.slate[200]}` }}>
+                    {m}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* non-array meta (JSX spans) */}
+            {meta && !Array.isArray(meta) && (
+              <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 38, marginBottom: 7, fontFamily: font }}>
+                {meta}
+              </div>
+            )}
+            {/* row 4: action buttons */}
+            {actions && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 38 }}>
+                {Array.isArray(actions) ? actions.filter(Boolean) : actions}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Desktop layout (original) ────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: `0.5px solid ${C.slate[100]}` }}>
       <div style={{ width: 36, height: 36, borderRadius: '50%', background: avatarColor || C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: C.gold, flexShrink: 0, fontFamily: font }}>
@@ -1339,12 +1403,12 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   <MonitorRow key={g.id}
                     initLetter={g.student_name?.[0]} avatarColor={g.status === 'Exited' ? C.red : C.navy}
                     name={g.student_name}
-                    sub={`${g.class_name || ''}${g.course ? ' · ' + g.course : ''} · ${g.reason}`}
+                    sub={[g.class_name, g.course, g.reason].filter(Boolean).join(' · ')}
                     meta={[
-                      g.exit_time && <span key="t">Out: {g.exit_time}</span>,
-                      g.expected_return_time && <span key="rt" style={{ color: C.amber, fontWeight: 700 }}>Return by: {g.expected_return_time}</span>,
-                      g.approved_by && <span key="a">By: {g.approved_by}</span>,
-                      <span key="p" style={{ color: g.parent_informed === 'Yes' ? C.emerald : C.red, fontWeight: 700 }}>Parent: {g.parent_informed}</span>,
+                      g.exit_time ? `Out: ${g.exit_time}` : null,
+                      g.expected_return_time ? `⏰ Return by: ${g.expected_return_time}` : null,
+                      g.approved_by ? `By: ${g.approved_by}` : null,
+                      `Parent: ${g.parent_informed}`,
                     ].filter(Boolean)}
                     elapsedRecord={g} statusLabel={g.status}
                     actions={[
@@ -1428,10 +1492,10 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   <MonitorRow key={r.id}
                     initLetter={r.student_name?.[0]} avatarColor={isOverdue ? C.red : C.navy}
                     name={<>{r.student_name}{isOverdue && <span style={{ marginLeft: 8, fontSize: 11, color: C.red, fontWeight: 700, fontFamily: font }}>⚠ OVERDUE</span>}</>}
-                    sub={`🏠 ${r.house || '—'} · ${r.class_name || ''} · ${r.reason}`}
+                    sub={['🏠 ' + (r.house || '—'), r.class_name, r.reason].filter(Boolean).join(' · ')}
                     meta={[
-                      <span key="dep">Left: {fmtDate(r.departure_date)}</span>,
-                      <span key="ret" style={{ color: isOverdue ? C.red : C.slate[500] }}>Return by: {fmtDate(r.return_date)}</span>,
+                      `Left: ${fmtDate(r.departure_date)}`,
+                      r.return_date ? `Return by: ${fmtDate(r.return_date)}${isOverdue ? ' ⚠' : ''}` : null,
                     ].filter(Boolean)}
                     elapsedRecord={{ created_at: r.created_at }}
                     statusLabel={isOverdue ? 'Overdue' : 'Out'}
@@ -1534,11 +1598,11 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   <MonitorRow key={r.id}
                     initLetter={r.staff_name?.[0]} avatarColor="#ca8a04"
                     name={r.staff_name}
-                    sub={`${r.role || ''}${r.department ? ' · ' + r.department : ''}`}
+                    sub={[r.role, r.department].filter(Boolean).join(' · ')}
                     meta={[
-                      <span key="lt" style={{ color: C.violet, fontFamily: font }}>{r.leave_type}</span>,
-                      <span key="d" style={{ fontFamily: font }}>{fmtDate(r.from_date)} – {fmtDate(r.to_date)}</span>,
-                      <span key="days" style={{ color: '#ca8a04', fontWeight: 700, fontFamily: font }}>{r.days} day{r.days > 1 ? 's' : ''}</span>,
+                      r.leave_type || null,
+                      `${fmtDate(r.from_date)} – ${fmtDate(r.to_date)}`,
+                      r.days ? `${r.days} day${r.days > 1 ? 's' : ''}` : null,
                     ].filter(Boolean)}
                     elapsedRecord={{ created_at: r.created_at }}
                     statusLabel="Pending"
@@ -1636,9 +1700,9 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                 name={v.visitor_name}
                 sub={`${v.purpose} · Meeting: ${v.meeting_with || '—'}`}
                 meta={[
-                  <span key="in" style={{ fontFamily: font }}>In: {v.in_time || fmtDate(v.visit_date)}</span>,
-                  v.phone && <span key="p" style={{ fontFamily: font }}>📞 {v.phone}</span>,
-                  v.id_proof && <span key="id" style={{ fontFamily: font }}>{v.id_proof}</span>,
+                  `In: ${v.in_time || fmtDate(v.visit_date)}`,
+                  v.phone ? `📞 ${v.phone}` : null,
+                  v.id_proof ? `ID: ${v.id_proof}` : null,
                 ].filter(Boolean)}
                 elapsedRecord={{ created_at: v.created_at }}
                 statusLabel="Active"
