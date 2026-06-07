@@ -1692,7 +1692,7 @@ function BudgetModal({ current, month, onSave, onClose }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function Kitchen({ currentUser }) {
-  const isAdmin = (currentUser?.role||'').toLowerCase() === 'admin'
+  const isAdmin = ['admin','superintendent'].includes((currentUser?.role||'').toLowerCase())
 
   const [entries,      setEntries]      = useState([])
   const [locks,        setLocks]        = useState([])
