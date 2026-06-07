@@ -189,6 +189,12 @@ const globalCSS = `
   ::-webkit-scrollbar { width:4px; height:4px }
   ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px }
   @media (max-width:640px) {
+  @media (max-width:1024px) {
+    .doubt-grid { grid-template-columns: repeat(2,1fr) !important }
+  }
+  @media (max-width:640px) {
+    .doubt-grid { grid-template-columns: 1fr !important }
+  }
     .stat-grid-4 { grid-template-columns: repeat(2,1fr) !important }
     .stat-grid-3 { grid-template-columns: repeat(2,1fr) !important }
     .form-grid   { grid-template-columns: 1fr !important }
@@ -1978,6 +1984,7 @@ function TabHMDashboard({ currentUser }) {
   const [photoView, setPhotoView]     = useState(null)
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin'
   const [selectedHouse, setSelectedHouse] = useState('All')
+  const [selectedDay, setSelectedDay]     = useState('All')
   const [loading, setLoading]     = useState(true)
   const [noteFor, setNoteFor]     = useState(null)
   const [note, setNote]           = useState('')
@@ -2031,9 +2038,22 @@ function TabHMDashboard({ currentUser }) {
 
   useEffect(() => { fetchAll() }, [])
 
-  const filteredDoubt = selectedHouse==='All' 
-  ? allDoubt 
-  : allDoubt.filter(d => d.hm_name===selectedHouse || d.resolved_by===selectedHouse)
+  const filteredDoubt = useMemo(() => {
+    const todayStr     = today()
+    const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0]
+    const last7Str     = new Date(Date.now()-7*86400000).toISOString().split('T')[0]
+    const last30Str    = new Date(Date.now()-30*86400000).toISOString().split('T')[0]
+    return allDoubt.filter(d => {
+      const hmMatch  = selectedHouse==='All' || d.hm_name===selectedHouse || d.resolved_by===selectedHouse
+      let dayMatch   = true
+      if      (selectedDay==='today')     dayMatch = d.teaching_date === todayStr
+      else if (selectedDay==='yesterday') dayMatch = d.teaching_date === yesterdayStr
+      else if (selectedDay==='last7')     dayMatch = d.teaching_date >= last7Str
+      else if (selectedDay==='last30')    dayMatch = d.teaching_date >= last30Str
+      else if (selectedDay!=='All')       dayMatch = d.teaching_date === selectedDay
+      return hmMatch && dayMatch
+    })
+  }, [allDoubt, selectedHouse, selectedDay])
   const openSessions  = filteredDoubt.filter(d => d.status==='open')
   const doneSessions  = filteredDoubt.filter(d => d.status==='resolved')
 
@@ -2127,6 +2147,16 @@ function TabHMDashboard({ currentUser }) {
           <option value="All">All HMs</option>
           {[...new Set(allDoubt.flatMap(d => [d.hm_name, d.resolved_by]).filter(Boolean))].sort().map(h => <option key={h} value={h}>{h}</option>)}
         </select>
+        <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} style={{ ...S.select, width:'auto' }}>
+          <option value="All">All Days</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="last7">Last 7 Days</option>
+          <option value="last30">Last 30 Days</option>
+          {[...new Set(allDoubt.map(d => d.teaching_date).filter(Boolean))].sort().reverse().slice(0,30).map(d => (
+            <option key={d} value={d}>{fmtDate(d)}</option>
+          ))}
+        </select>
         <span style={{ fontSize:13, color:'#64748b' }}>{openSessions.length} open · {doneSessions.length} resolved</span>
         <button onClick={() => {
           const w = window.open('', '_blank')
@@ -2163,17 +2193,19 @@ function TabHMDashboard({ currentUser }) {
       </div>
       <div style={S.card}>
         <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
-       {openSessions.length===0
-  ? <div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>
-  : openSessions.map(s => (
-      <HMDoubtSessionPanel
-        key={s.id}
-        session={s}
-        onFeedback={fetchAll}
-        currentUser={currentUser}
-      />
-    ))
-}
+        {openSessions.length===0
+          ? <div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>
+          : <div className="doubt-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14 }}>
+              {openSessions.map(s => (
+                <HMDoubtSessionPanel
+                  key={s.id}
+                  session={s}
+                  onFeedback={fetchAll}
+                  currentUser={currentUser}
+                />
+              ))}
+            </div>
+        }
       </div>
       {/* ── Accountability Flags ── */}
       {/* ── Excellent Logs Today ── */}
