@@ -3,9 +3,19 @@
 // Structure: Subject → Chapter → Subsection → Questions
 // 6 Tabs: Bank, Manual Add, Bulk Paste, Create Paper, Online Test, Stats
 // No AI — fully free, zero API cost
+//
+// ── INTERCONNECT PATCHES APPLIED ─────────────────────────────────────────────
+// 1. Import: useStudyMaterialsByChapter, normalizeToQBank from StudyMaterialBridge
+// 2. Import: EventBus, GNSI_EVENTS from EventBus
+// 3. Export signature: { currentUser, perms, onNavigate, initialFilter }
+// 4. TabBank: applies initialFilter on mount, listens for NAVIGATE_TO event
+// 5. TabManualAdd / TabBulkPaste: StudyMaterialsRefPanel + emit QUESTION_SAVED
+// ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { useStudyMaterialsByChapter, normalizeToQBank } from './StudyMaterialBridge'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ── SUBJECTS & CHAPTERS ──────────────────────────────────────────────────────
 const SUBJECTS = {
@@ -215,14 +225,9 @@ function needsDiagram(questionText) {
 }
 
 // ── SMART BULK PASTE PARSER ───────────────────────────────────────────────────
-// Extracts options from a single line that may contain 1, 2, 3 or 4 options
-// Handles tabs, multiple spaces, and any combo of (A), A), A. formats
 function extractOptionsFromLine(line) {
-  // Normalise: replace tabs and multiple spaces with single space
   const norm = line.replace(/\t+/g, ' ').replace(/  +/g, ' ').trim()
   const result = {}
-  // Split on option markers — look for (A) or A) or A. at word boundary
-  // We find all positions of option markers first
   const markerRe = /\(([a-dA-D])\)[ ]|([a-dA-D])[.)]\s/g
   const positions = []
   let mm
@@ -239,7 +244,6 @@ function extractOptionsFromLine(line) {
 }
 
 function parseQuestions(rawText) {
-  // Keep original line breaks but normalise tabs within each line
   const lines = rawText.split('\n').map(l => l.replace(/\r/g, '').trimEnd()).filter(l => l.trim())
   const questions = []
   let currentSubsectionHeading = ''
@@ -260,24 +264,20 @@ function parseQuestions(rawText) {
   }
 
   const isQuestionStart = (line) => /^(Q?\s*\d+[\.\)]\s+|Q\s*\d+\s+)/i.test(line.trim())
-
   const hasOptionMarker = (line) => /\(?\s*[a-dA-D]\s*[.)]\s*.{1,}/i.test(line.trim())
 
   while (i < lines.length) {
     const line = lines[i].trim()
 
-    // Subsection heading
     if (isHeading(line) && !isQuestionStart(line)) {
       currentSubsectionHeading = line.replace(/^\d+\.\s*/, '').trim()
       i++; continue
     }
 
-    // Question start
     if (isQuestionStart(line)) {
       const qNum   = line.match(/^Q?\s*(\d+)/i)?.[1]
       let qText    = line.replace(/^Q?\s*\d+[\.\)]\s*/i, '').trim()
 
-      // Collect multi-line question text (until we hit an option or next question)
       let j = i + 1
       while (j < lines.length) {
         const next = lines[j].trim()
@@ -287,12 +287,10 @@ function parseQuestions(rawText) {
       }
       i = j
 
-      // ── COLLECT OPTIONS ──────────────────────────────────────────────────────
       const options = { A:'', B:'', C:'', D:'' }
       let correctOption = ''
       let linesConsumed = 0
 
-      // Gather up to 4 lines that look like option lines
       const optionLines = []
       let k = i
       while (k < lines.length && optionLines.length < 4) {
@@ -301,22 +299,15 @@ function parseQuestions(rawText) {
         if (isAnswerLine(ol))   break
         if (isQuestionStart(ol) && linesConsumed > 0) break
         if (isHeading(ol))      break
-        if (hasOptionMarker(ol)) {
-          optionLines.push(ol)
-          k++
-        } else {
-          break
-        }
+        if (hasOptionMarker(ol)) { optionLines.push(ol); k++ } else break
       }
 
-      // Parse each option line — may contain 1, 2, 3 or 4 options
       optionLines.forEach(ol => {
         const extracted = extractOptionsFromLine(ol)
         Object.assign(options, extracted)
       })
       i = k
 
-      // Answer line immediately after options
       if (i < lines.length && isAnswerLine(lines[i].trim())) {
         const ans = lines[i].match(/[a-dA-D]/i)
         if (ans) correctOption = ans[0].toUpperCase()
@@ -328,16 +319,13 @@ function parseQuestions(rawText) {
           _id: questions.length,
           _qNum: parseInt(qNum) || questions.length + 1,
           question: qText.trim(),
-          option_a: options.A,
-          option_b: options.B,
-          option_c: options.C,
-          option_d: options.D,
+          option_a: options.A, option_b: options.B,
+          option_c: options.C, option_d: options.D,
           correct_option: correctOption,
           _subsectionHint: currentSubsectionHeading,
           _needsDiagram: needsDiagram(qText),
           subject: '', chapter: '', subsection: '',
-          difficulty: 'Medium', marks: 1,
-          diagram_url: '',
+          difficulty: 'Medium', marks: 1, diagram_url: '',
         })
       }
       continue
@@ -347,14 +335,10 @@ function parseQuestions(rawText) {
   return questions
 }
 
-// ── PARSE ANSWER KEY ──────────────────────────────────────────────────────────
 function parseAnswerKey(keyText) {
   const map = {}
-  // Formats: "1-b", "1. b", "1) b", "1:b", "Q1. B", "1.b", "1 b"
   const matches = keyText.matchAll(/Q?(\d+)[.\-\)\s:]+([a-dA-D])/gi)
-  for (const m of matches) {
-    map[parseInt(m[1])] = m[2].toUpperCase()
-  }
+  for (const m of matches) { map[parseInt(m[1])] = m[2].toUpperCase() }
   return map
 }
 
@@ -418,10 +402,59 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
   )
 }
 
+// ── STUDY MATERIALS REFERENCE PANEL ──────────────────────────────────────────
+// Shows existing study materials for the selected subject+chapter.
+// Used inside TabManualAdd and TabBulkPaste as a reference sidebar.
+function StudyMaterialsRefPanel({ subject, chapter, onNavigate }) {
+  const qbankSubject = normalizeToQBank(subject)
+  const { materials, loading } = useStudyMaterialsByChapter(qbankSubject, chapter)
+
+  if (!subject || !chapter) return null
+  if (!loading && !materials.length) return null
+
+  const TYPE_ICON = {
+    notes:'📄', formula:'🔣', practice:'✏️', solved:'✅',
+    mindmap:'🗂️', video:'🎥', currentaffairs:'📰',
+  }
+
+  return (
+    <div style={{ padding:'10px 14px', borderRadius:9, background:'#f0f9ff', border:'1px solid #bae6fd', marginBottom:14 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+        <span style={{ fontSize:12, fontWeight:700, color:'#0369a1' }}>
+          📖 Study Materials — {chapter}
+        </span>
+        <button
+          onClick={() => onNavigate?.('studymaterial')}
+          style={{ fontSize:10, color:'#0369a1', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>
+          Open Study Materials →
+        </button>
+      </div>
+      {loading
+        ? <div style={{ fontSize:11, color:'#94a3b8' }}>Loading…</div>
+        : <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+            {materials.map(m => (
+              <div key={m.id} style={{ display:'flex', gap:8, alignItems:'center', fontSize:12 }}>
+                <span>{TYPE_ICON[m.material_type] || '📄'}</span>
+                <span style={{ flex:1, color:'#1e293b', fontWeight:500 }}>{m.title}</span>
+                {m.file_url && (
+                  <a href={m.file_url} target="_blank" rel="noreferrer"
+                    style={{ fontSize:10, color:'#2563eb', fontWeight:700, whiteSpace:'nowrap' }}>
+                    Open ↗
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+      }
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 1: QUESTION BANK
+// Patch: applies initialFilter on mount + listens for NAVIGATE_TO event
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBank({ questions, loading, refetch, showToast }) {
+function TabBank({ questions, loading, refetch, showToast, initialFilter }) {
   const [filterSubject,    setFilterSubject]    = useState('All')
   const [filterChapter,    setFilterChapter]    = useState('All')
   const [filterSubsection, setFilterSubsection] = useState('All')
@@ -431,6 +464,22 @@ function TabBank({ questions, loading, refetch, showToast }) {
   const [selected,         setSelected]         = useState(new Set())
   const [editQ,            setEditQ]            = useState(null)
   const PAGE = 20
+
+  // ── PATCH: apply initialFilter from cross-module navigation ────────────────
+  useEffect(() => {
+    if (!initialFilter) return
+    if (initialFilter.subject) {
+      // Normalize: StudyMaterial subjects may differ from QBank subjects
+      const qbankSubject = normalizeToQBank(initialFilter.subject)
+      if (SUBJECTS[qbankSubject]) {
+        setFilterSubject(qbankSubject)
+      }
+    }
+    if (initialFilter.chapter) {
+      setFilterChapter(initialFilter.chapter)
+    }
+    setPage(1)
+  }, [initialFilter])
 
   const chapters    = filterSubject !== 'All' ? (SUBJECTS[filterSubject] || []) : []
   const subsections = useMemo(() => {
@@ -485,7 +534,6 @@ function TabBank({ questions, loading, refetch, showToast }) {
     else { showToast('Updated ✓', C.green); setEditQ(null); refetch() }
   }
 
-  // Stats by subject
   const stats = useMemo(() => {
     const map = {}
     SUBJECT_LIST.forEach(s => { map[s] = 0 })
@@ -495,6 +543,17 @@ function TabBank({ questions, loading, refetch, showToast }) {
 
   return (
     <>
+      {/* initialFilter active banner */}
+      {initialFilter && (filterSubject !== 'All' || filterChapter !== 'All') && (
+        <div style={{ padding:'8px 14px', borderRadius:8, background:'#ede9fe', border:'1px solid #ddd6fe', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span style={{ fontSize:12, fontWeight:700, color:'#7c3aed' }}>
+            📚 Showing: {filterSubject !== 'All' ? filterSubject : ''}{filterChapter !== 'All' ? ` › ${filterChapter}` : ''}
+          </span>
+          <button onClick={() => { setFilterSubject('All'); setFilterChapter('All'); setPage(1) }}
+            style={{ ...btnSm('#7c3aed'), fontSize:10 }}>✕ Clear filter</button>
+        </div>
+      )}
+
       {/* Subject stat cards */}
       <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:20 }}>
         {SUBJECT_LIST.map(s => {
@@ -584,9 +643,7 @@ function TabBank({ questions, loading, refetch, showToast }) {
               {paginated.map((q, i) => (
                 <QCard key={q.id} q={q} index={(page-1)*PAGE+i}
                   selectable selected={selected.has(q.id)}
-                  onToggle={toggleSelect}
-                  onEdit={setEditQ}
-                  onDelete={handleDelete} />
+                  onToggle={toggleSelect} onEdit={setEditQ} onDelete={handleDelete} />
               ))}
             </>
           )
@@ -627,7 +684,6 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
     showToast('Diagram uploaded ✓', C.green)
   }
 
-  // Auto-detect subsection when question changes
   const handleQuestionChange = (val) => {
     onChange(index, 'question', val)
     if (row.subject && val.length > 20) {
@@ -641,8 +697,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
         <span style={{ fontSize:12, fontWeight:700, color:C.navy }}>Question {index+1}</span>
         {onRemove && (
-          <button onClick={() => onRemove(index)}
-            style={btnSm('#fee2e2', C.rose)}>✖ Remove</button>
+          <button onClick={() => onRemove(index)} style={btnSm('#fee2e2', C.rose)}>✖ Remove</button>
         )}
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10 }}>
@@ -720,8 +775,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
           <div>
             <label style={lS}>Diagram (optional)</label>
             <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-              <button type="button" onClick={() => fileRef.current?.click()}
-                style={btnSm('#eff6ff', C.navy)}>
+              <button type="button" onClick={() => fileRef.current?.click()} style={btnSm('#eff6ff', C.navy)}>
                 {row.diagram_url ? '🔄 Change' : '📎 Upload'}
               </button>
               {row.diagram_url && (
@@ -739,7 +793,8 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 2: MANUAL ADD (multiple rows)
+// TAB 2: MANUAL ADD
+// Patch: StudyMaterialsRefPanel + emit QUESTION_SAVED after save
 // ══════════════════════════════════════════════════════════════════════════════
 const emptyRow = () => ({
   subject:'', chapter:'', subsection:'', question:'',
@@ -747,7 +802,7 @@ const emptyRow = () => ({
   correct_option:'', difficulty:'Medium', marks:1, diagram_url:'',
 })
 
-function TabManualAdd({ refetch, showToast }) {
+function TabManualAdd({ refetch, showToast, onNavigate }) {
   const [rows,   setRows]   = useState([emptyRow()])
   const [saving, setSaving] = useState(false)
 
@@ -756,11 +811,14 @@ function TabManualAdd({ refetch, showToast }) {
   const addRow    = () => setRows(prev => [...prev, emptyRow()])
   const removeRow = (i) => setRows(prev => prev.filter((_,idx) => idx!==i))
 
+  // Subject and chapter of first row — drives the reference panel
+  const refSubject = rows[0]?.subject
+  const refChapter = rows[0]?.chapter
+
   const handleSave = async () => {
     const invalid = rows.filter(r => !r.subject || !r.chapter || !r.question || !r.option_a || !r.option_b || !r.correct_option)
     if (invalid.length) { showToast(`${invalid.length} row(s) incomplete — fill all required fields`, C.amber); return }
     setSaving(true)
-    // Auto-detect subsection for rows without one
     const payload = rows.map(r => ({
       ...r,
       subsection: r.subsection || detectSubsection(r.question, r.subject),
@@ -768,6 +826,8 @@ function TabManualAdd({ refetch, showToast }) {
     const { error } = await supabase.from('qbank_questions').insert(payload)
     if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
     showToast(`✅ ${rows.length} question(s) saved!`, C.green)
+    // ── PATCH: notify StudyMaterial badge to refresh ──
+    EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: refSubject, chapter: refChapter, count: rows.length })
     setRows([emptyRow()]); refetch()
     setSaving(false)
   }
@@ -783,6 +843,9 @@ function TabManualAdd({ refetch, showToast }) {
         </div>
         <button onClick={addRow} style={btn(C.teal)}>+ Add Another Row</button>
       </div>
+
+      {/* ── PATCH: reference panel shows study materials for the active chapter ── */}
+      <StudyMaterialsRefPanel subject={refSubject} chapter={refChapter} onNavigate={onNavigate} />
 
       {rows.map((row, i) => (
         <QuestionRowForm key={i} row={row} index={i}
@@ -802,8 +865,9 @@ function TabManualAdd({ refetch, showToast }) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 3: BULK PASTE
+// Patch: StudyMaterialsRefPanel + emit QUESTION_SAVED after save
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBulkPaste({ refetch, showToast }) {
+function TabBulkPaste({ refetch, showToast, onNavigate }) {
   const [rawText,       setRawText]       = useState('')
   const [answerKeyText, setAnswerKeyText] = useState('')
   const [bulkSubject,   setBulkSubject]   = useState('')
@@ -811,14 +875,13 @@ function TabBulkPaste({ refetch, showToast }) {
   const [extracted,     setExtracted]     = useState([])
   const [showAnswerKey, setShowAnswerKey] = useState(false)
   const [saving,        setSaving]        = useState(false)
-  const [step,          setStep]          = useState(1) // 1=paste, 2=review+answer
+  const [step,          setStep]          = useState(1)
   const chapters = SUBJECTS[bulkSubject] || []
 
   const handleExtract = () => {
     if (!rawText.trim()) { showToast('Paste some text first', C.amber); return }
     const parsed = parseQuestions(rawText)
     if (!parsed.length) { showToast('No questions detected — check the format', C.rose); return }
-    // Auto-assign subsections
     const tagged = parsed.map(q => ({
       ...q,
       subject: bulkSubject || '',
@@ -864,6 +927,8 @@ function TabBulkPaste({ refetch, showToast }) {
     const { error } = await supabase.from('qbank_questions').insert(payload)
     if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
     showToast(`✅ ${payload.length} questions saved to bank!`, C.green)
+    // ── PATCH: notify StudyMaterial badge to refresh ──
+    EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: bulkSubject, chapter: bulkChapter, count: payload.length })
     setExtracted([]); setRawText(''); setAnswerKeyText(''); setStep(1); refetch()
     setSaving(false)
   }
@@ -878,7 +943,6 @@ function TabBulkPaste({ refetch, showToast }) {
             Paste any question paper format — app detects questions, options and subsections automatically
           </div>
 
-          {/* Bulk assign */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14,
             padding:'12px 14px', borderRadius:9, background:'#f8fafc', border:`1px solid ${C.border}` }}>
             <div>
@@ -899,6 +963,9 @@ function TabBulkPaste({ refetch, showToast }) {
             </div>
           </div>
 
+          {/* ── PATCH: reference panel ── */}
+          <StudyMaterialsRefPanel subject={bulkSubject} chapter={bulkChapter} onNavigate={onNavigate} />
+
           <label style={lS}>Paste Question Paper Text *</label>
           <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={14}
             style={{ ...iS, resize:'vertical', fontFamily:'monospace', fontSize:12, marginBottom:14 }}
@@ -909,9 +976,7 @@ function TabBulkPaste({ refetch, showToast }) {
 
 Q2. What is 1/2 + 1/3?
 A) 2/5   B) 5/6   C) 1/6   D) 3/5
-Answer: B
-
-3. Section headings like "1. Mathematical Terminology" are auto-detected as subsections`} />
+Answer: B`} />
 
           <div style={{ display:'flex', gap:10 }}>
             <button onClick={handleExtract} disabled={!rawText.trim()} style={btn(C.navy, !rawText.trim())}>
@@ -922,7 +987,7 @@ Answer: B
         </div>
       )}
 
-      {/* Step 2 — Review + Mark Answers */}
+      {/* Step 2 — Review + Mark Answers (unchanged) */}
       {step === 2 && extracted.length > 0 && (
         <div>
           <div style={{ ...cardS, borderLeft:`4px solid ${C.green}` }}>
@@ -943,7 +1008,6 @@ Answer: B
               </div>
             </div>
 
-            {/* Answer key upload */}
             {showAnswerKey && (
               <div style={{ marginTop:14, padding:'12px 14px', borderRadius:8, background:'#f0f9ff', border:'1px solid #bae6fd' }}>
                 <label style={{ ...lS, color:'#0369a1' }}>
@@ -959,7 +1023,6 @@ Answer: B
               </div>
             )}
 
-            {/* Progress: answered / total */}
             <div style={{ marginTop:12, display:'flex', gap:16, fontSize:12 }}>
               <span style={{ color:C.green }}>✅ {extracted.filter(q=>q.correct_option).length} answered</span>
               <span style={{ color:C.rose }}>❌ {extracted.filter(q=>!q.correct_option).length} unanswered</span>
@@ -967,7 +1030,6 @@ Answer: B
             </div>
           </div>
 
-          {/* Questions for review */}
           {extracted.map((q, i) => (
             <div key={i} style={{ ...cardS, marginBottom:10, padding:'14px 16px',
               border: q.correct_option ? `1px solid #86efac` : `1px solid ${C.rose}44`,
@@ -981,12 +1043,9 @@ Answer: B
                   <Badge text={`Section: ${q._subsectionHint}`} color="#0369a1" bg="#e0f2fe" />
                 )}
               </div>
-
               <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:10, lineHeight:1.6 }}>
                 {q.question}
               </div>
-
-              {/* Options display */}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:10 }}>
                 {['A','B','C','D'].map(l => (
                   <div key={l} style={{ padding:'5px 10px', borderRadius:6, fontSize:12,
@@ -998,8 +1057,6 @@ Answer: B
                   </div>
                 ))}
               </div>
-
-              {/* Mark answer buttons */}
               <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', marginBottom:10 }}>
                 <span style={{ fontSize:11, fontWeight:700, color:C.slate }}>Mark Answer:</span>
                 {['A','B','C','D'].map(l => (
@@ -1012,12 +1069,9 @@ Answer: B
                   </button>
                 ))}
                 {q.correct_option && (
-                  <button onClick={() => setAnswer(i,'')}
-                    style={btnSm('#f1f5f9', C.slate)}>✖ Clear</button>
+                  <button onClick={() => setAnswer(i,'')} style={btnSm('#f1f5f9', C.slate)}>✖ Clear</button>
                 )}
               </div>
-
-              {/* Per-question subject/chapter/subsection assign */}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:6 }}>
                 <select style={{ ...iS, fontSize:11, padding:'4px 8px' }} value={q.subject}
                   onChange={e => updateQ(i,'subject',e.target.value)}>
@@ -1075,7 +1129,6 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
 
   const checkPage = (need=10) => { if (y+need>285) { doc.addPage(); y=margin } }
 
-  // Header
   doc.setFillColor(30,58,95); doc.rect(0,0,W,30,'F')
   doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255)
   doc.text('Guidance Navodaya & Sainik Institute', margin, 12)
@@ -1084,7 +1137,6 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
   doc.text(`Date: ${today()}`, W-margin-40, 19)
   y = 36
 
-  // Title
   doc.setDrawColor(30,58,95); doc.setLineWidth(.5)
   doc.line(margin, y, W-margin, y); y+=6
   doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
@@ -1093,7 +1145,6 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
   doc.text(`Subject: ${subject}  |  Chapter: ${chapter}  |  Questions: ${questions.length}  |  Total Marks: ${questions.reduce((s,q)=>s+(q.marks||1),0)}`, margin, y)
   y+=5; doc.line(margin,y,W-margin,y); y+=8
 
-  // Questions
   questions.forEach((q,i) => {
     checkPage(24)
     const qText = `Q${i+1}. ${q.question}`
@@ -1115,7 +1166,6 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
     doc.line(margin,y,W-margin,y); y+=5
   })
 
-  // Answer key page
   if (!withAnswers) {
     doc.addPage(); y=margin
     doc.setFillColor(30,58,95); doc.rect(0,0,W,20,'F')
@@ -1130,7 +1180,6 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
     })
   }
 
-  // Page numbers
   const pages = doc.getNumberOfPages()
   for (let p=1;p<=pages;p++) {
     doc.setPage(p); doc.setFontSize(8); doc.setTextColor(148,163,184); doc.setFont('helvetica','normal')
@@ -1140,12 +1189,12 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 4: CREATE PAPER
+// TAB 4: CREATE PAPER (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 function TabPaper({ questions, showToast }) {
   const [subject,      setSubject]      = useState('')
   const [chapter,      setChapter]      = useState('')
-  const [selSubs,      setSelSubs]      = useState({}) // subsection → count
+  const [selSubs,      setSelSubs]      = useState({})
   const [difficulty,   setDifficulty]   = useState('All')
   const [title,        setTitle]        = useState('')
   const [withAnswers,  setWithAnswers]  = useState(false)
@@ -1153,7 +1202,6 @@ function TabPaper({ questions, showToast }) {
   const [downloading,  setDownloading]  = useState(false)
   const chapters = subject ? SUBJECTS[subject] : []
 
-  // Available subsections for selected subject+chapter
   const availableSubs = useMemo(() => {
     if (!subject || !chapter) return {}
     const map = {}
@@ -1172,14 +1220,12 @@ function TabPaper({ questions, showToast }) {
     })
   }
   const updateCount = (sub, val) => setSelSubs(prev => ({...prev, [sub]: parseInt(val)||1}))
-
   const totalSelected = Object.values(selSubs).reduce((a,b)=>a+b,0)
 
   const handlePreview = () => {
     if (!subject || !chapter) { showToast('Select subject and chapter', C.amber); return }
     const selected = Object.keys(selSubs)
     if (!selected.length) { showToast('Select at least one subsection', C.amber); return }
-
     let pool = []
     selected.forEach(sub => {
       const subQs = questions.filter(q =>
@@ -1239,14 +1285,11 @@ function TabPaper({ questions, showToast }) {
           </div>
         </div>
 
-        {/* Subsection selector */}
         {Object.keys(availableSubs).length > 0 && (
           <div style={{ marginBottom:16 }}>
             <label style={{ ...lS, marginBottom:8 }}>
               Select Subsections & Question Count
-              <span style={{ fontWeight:400, marginLeft:6, textTransform:'none' }}>
-                (Total: {totalSelected} questions)
-              </span>
+              <span style={{ fontWeight:400, marginLeft:6, textTransform:'none' }}>(Total: {totalSelected} questions)</span>
             </label>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
               {Object.entries(availableSubs).map(([sub, count]) => (
@@ -1296,7 +1339,6 @@ function TabPaper({ questions, showToast }) {
         </button>
       </div>
 
-      {/* Preview */}
       {preview && (
         <div style={cardS}>
           <div style={{ border:`2px solid ${C.navy}`, borderRadius:10, padding:'20px 24px', marginBottom:16 }}>
@@ -1346,7 +1388,7 @@ function TabPaper({ questions, showToast }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 5: ONLINE TEST
+// TAB 5: ONLINE TEST (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 function TabTest({ questions, showToast }) {
   const [studentName, setStudentName] = useState('')
@@ -1386,7 +1428,6 @@ function TabTest({ questions, showToast }) {
       subFilter.includes(q.subsection||'General')
     ).sort(() => Math.random()-.5).slice(0, count)
     if (!pool.length) { showToast('No questions available — add questions first', C.amber); return }
-    // Use index as answer key since questions may not have unique ids across sessions
     const indexedPool = pool.map((q,i) => ({...q, _testIdx: i}))
     setTestQs(indexedPool); setAnswers({}); setSubmitted(false); setResult(null)
     setTimeLeft(pool.length * 90); setTimerActive(true)
@@ -1404,7 +1445,6 @@ function TabTest({ questions, showToast }) {
     setResult({ correct, wrong, skipped, score, maxScore, pct }); setSubmitted(true)
   }
 
-  // Result screen
   if (submitted && result) {
     const { correct, wrong, skipped, score, maxScore, pct } = result
     const resultColor = pct>=75 ? C.green : pct>=50 ? C.amber : C.rose
@@ -1427,8 +1467,6 @@ function TabTest({ questions, showToast }) {
             {pct>=75 ? '🏆 Excellent!' : pct>=50 ? '👍 Good — keep practicing!' : '📚 Needs more practice'}
           </div>
         </div>
-
-        {/* Question-by-question review */}
         <div style={{ fontWeight:700, color:C.navy, marginBottom:10, fontSize:14 }}>📋 Question Review</div>
         {testQs?.map((q,i) => {
           const ua=answers[q._testIdx]; const ok=ua===q.correct_option; const wr=ua&&!ok
@@ -1459,7 +1497,6 @@ function TabTest({ questions, showToast }) {
     )
   }
 
-  // Test in progress
   if (testQs) {
     return (
       <div>
@@ -1505,15 +1542,12 @@ function TabTest({ questions, showToast }) {
           </div>
         ))}
         <div style={{ textAlign:'center', padding:24 }}>
-          <button onClick={() => confirm('Submit test?') && handleSubmit()} style={btn(C.green)}>
-            ✅ Submit Test
-          </button>
+          <button onClick={() => confirm('Submit test?') && handleSubmit()} style={btn(C.green)}>✅ Submit Test</button>
         </div>
       </div>
     )
   }
 
-  // Test setup
   return (
     <div style={cardS}>
       <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:18 }}>📝 Online Test</div>
@@ -1546,8 +1580,6 @@ function TabTest({ questions, showToast }) {
           </select>
         </div>
       </div>
-
-      {/* Subsection filter for test */}
       {availableSubs.length > 0 && (
         <div style={{ marginBottom:14 }}>
           <label style={{ ...lS, marginBottom:6 }}>
@@ -1567,16 +1599,12 @@ function TabTest({ questions, showToast }) {
           </div>
         </div>
       )}
-
       {subject && chapter && (
         <div style={{ padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
           border:'1px solid #bae6fd', fontSize:12, color:'#0369a1', marginBottom:14 }}>
-          📊 <strong>
-            {questions.filter(q=>q.subject===subject&&q.chapter===chapter).length}
-          </strong> questions available · Timer: ~{Math.round(count*1.5)} minutes
+          📊 <strong>{questions.filter(q=>q.subject===subject&&q.chapter===chapter).length}</strong> questions available · Timer: ~{Math.round(count*1.5)} minutes
         </div>
       )}
-
       <button onClick={handleStart} disabled={!subject||!chapter||!studentName.trim()}
         style={btn(C.navy, !subject||!chapter||!studentName.trim())}>
         ▶ Start Test
@@ -1586,7 +1614,7 @@ function TabTest({ questions, showToast }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 6: STATS
+// TAB 6: STATS (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 function TabStats({ questions }) {
   const [filterSubject, setFilterSubject] = useState('All')
@@ -1595,9 +1623,7 @@ function TabStats({ questions }) {
     const result = {}
     SUBJECT_LIST.forEach(subj => {
       result[subj] = {}
-      SUBJECTS[subj].forEach(ch => {
-        result[subj][ch] = { total:0, subsections:{} }
-      })
+      SUBJECTS[subj].forEach(ch => { result[subj][ch] = { total:0, subsections:{} } })
     })
     questions.forEach(q => {
       if (!result[q.subject]) return
@@ -1610,7 +1636,6 @@ function TabStats({ questions }) {
   }, [questions])
 
   const subjects = filterSubject==='All' ? SUBJECT_LIST : [filterSubject]
-
   const countColor = (n) => n >= 20 ? C.green : n >= 10 ? C.amber : C.rose
   const countBg    = (n) => n >= 20 ? '#dcfce7' : n >= 10 ? '#fef9c3' : '#fee2e2'
   const countLabel = (n) => n >= 20 ? '✅' : n >= 10 ? '⚠️' : '❌'
@@ -1627,12 +1652,9 @@ function TabStats({ questions }) {
           Total: <strong>{questions.length}</strong> questions in bank
         </span>
         <div style={{ display:'flex', gap:12, marginLeft:'auto', fontSize:12 }}>
-          <span>✅ 20+ Good</span>
-          <span>⚠️ 10–19 Low</span>
-          <span>❌ 0–9 Empty</span>
+          <span>✅ 20+ Good</span><span>⚠️ 10–19 Low</span><span>❌ 0–9 Empty</span>
         </div>
       </div>
-
       {subjects.map(subj => {
         const sc = SC[subj]
         const chapData = stats[subj] || {}
@@ -1659,7 +1681,6 @@ function TabStats({ questions }) {
                         {countLabel(chData.total)} {chData.total}
                       </span>
                     </div>
-                    {/* Subsection breakdown */}
                     {Object.keys(chData.subsections).length > 0 && (
                       <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
                         {Object.entries(chData.subsections).map(([ss,cnt]) => (
@@ -1688,12 +1709,15 @@ function TabStats({ questions }) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
+// Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
-export default function QuestionBank({ currentUser }) {
-  const [tab,       setTab]       = useState('bank')
-  const [questions, setQuestions] = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [toast,     setToast]     = useState(null)
+export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
+  const [tab,           setTab]           = useState('bank')
+  const [questions,     setQuestions]     = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [toast,         setToast]         = useState(null)
+  // initialFilter drives TabBank's pre-filtered view; updated by EventBus
+  const [initialFilter, setInitialFilter] = useState(initialFilterProp || null)
 
   const showToast = (msg, color=C.navy) => {
     setToast({ msg, color })
@@ -1710,33 +1734,42 @@ export default function QuestionBank({ currentUser }) {
 
   useEffect(() => { refetch() }, [refetch])
 
+  // ── PATCH: listen for cross-module NAVIGATE_TO events ─────────────────────
+  // When StudyMaterial's 📚 Q badge is clicked, this fires and switches to
+  // the Bank tab pre-filtered to that subject + chapter.
+  useEffect(() => {
+    const unsub = EventBus.on(GNSI_EVENTS.NAVIGATE_TO, ({ module, params }) => {
+      if (module === 'questionbank' && params) {
+        setInitialFilter(params)
+        setTab('bank')
+      }
+    })
+    return unsub
+  }, [])
+
   const TABS = [
-    { key:'bank',    icon:'📚', label:'Question Bank',  count: questions.length },
-    { key:'manual',  icon:'✏️', label:'Manual Add',     count: null },
-    { key:'bulk',    icon:'📤', label:'Bulk Paste',     count: null },
-    { key:'paper',   icon:'📄', label:'Create Paper',   count: null },
-    { key:'test',    icon:'📝', label:'Online Test',    count: null },
-    { key:'stats',   icon:'📊', label:'Stats',          count: null },
+    { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length },
+    { key:'manual',  icon:'✏️', label:'Manual Add',    count: null },
+    { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null },
+    { key:'paper',   icon:'📄', label:'Create Paper',  count: null },
+    { key:'test',    icon:'📝', label:'Online Test',   count: null },
+    { key:'stats',   icon:'📊', label:'Stats',         count: null },
   ]
 
   return (
     <div style={{ padding:24, fontFamily:'system-ui,sans-serif', background:C.bg, minHeight:'100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
-      {/* Header */}
       <div style={{ marginBottom:22 }}>
         <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:C.slate, marginBottom:4 }}>
           GNSI Portal
         </div>
-        <div style={{ fontSize:26, fontWeight:900, color:C.navy, letterSpacing:'-.02em' }}>
-          Question Bank
-        </div>
+        <div style={{ fontSize:26, fontWeight:900, color:C.navy, letterSpacing:'-.02em' }}>Question Bank</div>
         <div style={{ fontSize:13, color:C.slate, marginTop:3 }}>
           AISSEE · Sainik School · Navodaya — store, organise, test and print · No AI needed
         </div>
       </div>
 
-      {/* Tabs */}
       <div style={{ display:'flex', gap:6, marginBottom:22, flexWrap:'wrap' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -1757,10 +1790,9 @@ export default function QuestionBank({ currentUser }) {
         ))}
       </div>
 
-      {/* Tab content */}
-      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} />}
-      {tab === 'manual' && <TabManualAdd refetch={refetch} showToast={showToast} />}
-      {tab === 'bulk'   && <TabBulkPaste refetch={refetch} showToast={showToast} />}
+      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} />}
+      {tab === 'manual' && <TabManualAdd refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
+      {tab === 'bulk'   && <TabBulkPaste refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {tab === 'stats'  && <TabStats  questions={questions} />}

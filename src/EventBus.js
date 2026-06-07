@@ -1,6 +1,7 @@
 /**
  * Cross-Module Event Bus — Lightweight Pub/Sub for GNSI
- * Enables loose coupling between Attendance, Staff, Salary, and Geo modules
+ * Enables loose coupling between Attendance, Staff, Salary, Geo,
+ * StudyMaterial, QuestionBank, and StudyLockers modules
  */
 
 const listeners = new Map()
@@ -37,6 +38,7 @@ export const EventBus = {
 
 // Predefined events for type safety
 export const GNSI_EVENTS = {
+  // ── Existing events ──────────────────────────────────────────────────────────
   ATTENDANCE_MARKED:   'attendance:marked',      // { staffId, date, status, markedBy }
   GEO_CHECKIN:         'geo:checkin',            // { staffId, shiftId, timestamp, location }
   GEO_CHECKOUT:        'geo:checkout',           // { staffId, shiftId, timestamp }
@@ -55,4 +57,10 @@ export const GNSI_EVENTS = {
   LEAVE_APPLIED:       'leave:applied',          // { staffId, days, status }
   LEAVE_APPROVED:      'leave:approved',         // { staffId, approvedBy }
   SESSION_DEAD:        'geo:session_dead',       // { staffId, shiftId, reason }
+
+  // ── Study module events ───────────────────────────────────────────────────────
+  MATERIAL_SAVED:      'gnsi:material_saved',    // { course, subject, chapter, count }
+  QUESTION_SAVED:      'gnsi:question_saved',    // { subject, chapter, count }
+  LOCKER_UNLOCKED:     'gnsi:locker_unlocked',   // { lockerId }
+  NAVIGATE_TO:         'gnsi:navigate_to',       // { module, params: { subject?, chapter? } }
 }

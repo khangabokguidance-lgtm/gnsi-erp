@@ -5,6 +5,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { normalizeToQBank } from './StudyMaterialBridge'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const COURSES = ['sainik', 'navodaya', 'foundation']
@@ -419,8 +421,9 @@ function PaperGenerator({ locker, lockerMaterials, onClose, showToast }) {
   useEffect(() => {
     const load = async () => {
       setLoadingQs(true)
+      const qbankSubject = normalizeToQBank(locker.subject)
       const { data } = await supabase.from('qbank_questions')
-        .select('*').eq('subject', locker.subject).order('chapter')
+        .select('*').eq('subject', qbankSubject).order('chapter')
       setQbankQs(data || [])
       setLoadingQs(false)
     }
@@ -899,7 +902,7 @@ function LockerView({ locker, isUnlocked, onLock, showToast, currentUser }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
-export default function StudyLockers({ currentUser }) {
+export default function StudyLockers({ currentUser, perms, onNavigate }) {
   const [lockers,       setLockers]       = useState([])
   const [loading,       setLoading]       = useState(true)
   const [unlockedIds,   setUnlockedIds]   = useState({}) // { lockerId: timestamp }
@@ -944,6 +947,7 @@ export default function StudyLockers({ currentUser }) {
     setUnlockedIds(p => ({ ...p, [lockerId]: Date.now() }))
     setActiveLocker(lockerId)
     showToast('🔓 Locker unlocked! Auto-locks in 30 min.', C.green)
+    EventBus.emit(GNSI_EVENTS.LOCKER_UNLOCKED, { lockerId })
   }
 
   const handleLock = (lockerId) => {

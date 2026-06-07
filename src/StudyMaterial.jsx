@@ -4,6 +4,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { useQBankCountsByChapter } from './StudyMaterialBridge'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ── HARDCODED BASE COURSE DATA ────────────────────────────────────────────────
 // Custom subjects/chapters from Supabase are merged in at runtime.
@@ -426,11 +428,12 @@ function MaterialCard({ mat, onDelete, showToast }) {
 }
 
 // ── SUBJECT PANEL ─────────────────────────────────────────────────────────────
-function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange }) {
+function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate }) {
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [showUpload,      setShowUpload]      = useState(false)
   const [uploadChapter,   setUploadChapter]   = useState('')
   const [filterType,      setFilterType]      = useState('all')
+  const { counts: qCounts } = useQBankCountsByChapter(subjectName)
 
   const courseData = BASE_COURSES[course]
 
@@ -512,9 +515,22 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
                 {isCustomCh && <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#fef9c3', color: '#b45309' }}>custom</span>}
               </span>
               {total > 0
-                ? <Badge text={`${total}`} color={courseData.text} bg={courseData.bg} />
-                : <Badge text="—" color="#94a3b8" bg="#f1f5f9" />
-              }
+  ? <Badge text={`${total}`} color={courseData.text} bg={courseData.bg} />
+  : <Badge text="—" color="#94a3b8" bg="#f1f5f9" />
+}
+{qCounts[ch] > 0 && (
+  <span
+    onClick={e => {
+      e.stopPropagation()
+      onNavigate?.('questionbank')
+      EventBus.emit(GNSI_EVENTS.NAVIGATE_TO, { module: 'questionbank', params: { subject: subjectName, chapter: ch } })
+    }}
+    title={`${qCounts[ch]} questions in QBank — click to open`}
+    style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', cursor: 'pointer', whiteSpace: 'nowrap' }}
+  >
+    📚 {qCounts[ch]} Q
+  </span>
+)}
               <button onClick={e => { e.stopPropagation(); handleUploadForChapter(ch) }} style={btnSm(courseData.bg, courseData.text)}>+ Add</button>
               {isCustomCh && (
                 <button onClick={e => { e.stopPropagation(); deleteCustomChapter(course, subjectName, ch, showToast, onStructureChange) }}
@@ -641,7 +657,7 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
-export default function StudyMaterial() {
+export default function StudyMaterial({ currentUser, perms, onNavigate }) {
   const [activeCourse,   setActiveCourse]   = useState('sainik')
   const [activeSubject,  setActiveSubject]  = useState(null)
   const [activeView,     setActiveView]     = useState('subjects')
@@ -830,6 +846,7 @@ export default function StudyMaterial() {
               materials={search.trim() ? filteredMaterials : courseMaterials}
               customChapters={customChaptersBySubject[activeSubject] || []}
               onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
+              onNavigate={onNavigate}
             />
           ) : (
             <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Select a subject above</div>
@@ -876,6 +893,7 @@ export default function StudyMaterial() {
                 materials={search.trim() ? filteredMaterials : courseMaterials}
                 customChapters={customChaptersBySubject[activeSubject] || []}
                 onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
+                onNavigate={onNavigate}
               />
             ) : (
               <div style={{ ...cardS, textAlign: 'center', padding: 48, color: '#94a3b8' }}>Select a subject from the sidebar</div>
