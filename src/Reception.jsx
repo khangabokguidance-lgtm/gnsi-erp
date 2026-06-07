@@ -940,7 +940,7 @@ function Student360({ students }) {
                       title:  r => `🪪 ${r.reason}`,
                       subtitle: r => `${fmtDate(r.exit_date)}${r.exit_time ? ' · ' + r.exit_time : ''}${r.expected_return_time ? ' · Return: ' + r.expected_return_time : ''}`,
                       badge:  r => <Pill label={r.status} />,
-                      meta:   r => [`Parent: ${r.parent_informed}`, r.approved_by && `By: ${r.approved_by}`],
+                      meta:   r => [`Parent: ${r.parent_informed}`, r.approved_by ? `By: ${r.approved_by}` : null],
                       actions: r => (
                         <div style={{ display: 'flex', gap: 5 }}>
                           <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
@@ -976,7 +976,7 @@ function Student360({ students }) {
                       title:  r => `📦 ${r.item_name}`,
                       subtitle: r => `${r.parent_name} → ${r.student_name || '—'}`,
                       badge:  r => <Pill label={r.status} />,
-                      meta:   r => [fmtDate(r.received_date), r.quantity && `Qty: ${r.quantity}`, r.house && `🏠 ${r.house}`],
+                      meta:   r => [fmtDate(r.received_date), r.quantity ? `Qty: ${r.quantity}` : null, r.house ? `🏠 ${r.house}` : null],
                       actions: r => (
                         <div style={{ display: 'flex', gap: 5 }}>
                           <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet, fontSize: 11 }}>🖨️</button>
@@ -1030,7 +1030,7 @@ function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
                   {/* meta chips */}
                   {meta && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: actions ? 8 : 0 }}>
-                      {meta(row).filter(Boolean).map((m, mi) => (
+                      {meta(row).filter(v => v !== null && v !== false && v !== undefined).map((m, mi) => (
                         <span key={mi} style={{ fontSize: 11, color: C.slate[500], background: C.slate[50], borderRadius: 6, padding: '2px 7px', fontFamily: font, border: `0.5px solid ${C.slate[200]}` }}>
                           {m}
                         </span>
@@ -1391,7 +1391,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   badge:  r => <Pill label={r.status} />,
                   meta: r => [
                     `📅 ${fmtDate(r.exit_date)}${r.exit_time ? ' ' + r.exit_time : ''}`,
-                    r.expected_return_time && `⏰ Return: ${r.expected_return_time}`,
+                    r.expected_return_time ? `⏰ Return: ${r.expected_return_time}` : null,
                     `Parent: ${r.parent_informed}`,
                   ],
                   actions: r => (
@@ -1502,9 +1502,9 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                 badge:  r => <Pill label={hlOverdue.includes(r.id) ? 'Overdue' : r.status} />,
                 meta: r => [
                   `Left: ${fmtDate(r.departure_date)}`,
-                  r.return_date && `Return by: ${fmtDate(r.return_date)}${hlOverdue.includes(r.id) ? ' ⚠' : ''}`,
-                  r.class_name && r.class_name,
-                ],
+                  r.return_date ? `Return by: ${fmtDate(r.return_date)}${hlOverdue.includes(r.id) ? ' ⚠' : ''}` : null,
+                  r.class_name || null,
+                ].filter(Boolean),
                 actions: r => (
                   <div style={{ display: 'flex', gap: 5 }}>
                     {canTransition(r.status, 'Returned') && <button onClick={() => updateHLStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ Returned</button>}
@@ -1608,9 +1608,9 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                 badge:  r => <Pill label={r.status} />,
                 meta: r => [
                   `${fmtDate(r.from_date)} – ${fmtDate(r.to_date)}`,
-                  r.days && `${r.days} day${r.days > 1 ? 's' : ''}`,
-                  r.role && r.role,
-                ],
+                  r.days ? `${r.days} day${r.days > 1 ? 's' : ''}` : null,
+                  r.role || null,
+                ].filter(Boolean),
                 actions: r => (
                   <div style={{ display: 'flex', gap: 5 }}>
                     {canTransition(r.status, 'Approved') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Approved')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Approve</button>}
@@ -1987,9 +1987,9 @@ export default function ReceptionPage() {
                   subtitle: r => `${r.parent_name || '—'} · ${r.phone || 'No phone'} · ${r.class_interest || '—'}`,
                   badge:  r => <Pill label={r.status} />,
                   meta:   r => [
-                    r.source && `📣 ${r.source}`,
+                    r.source ? `📣 ${r.source}` : null,
                     `📅 ${fmtDate(r.enquiry_date)}`,
-                    r.follow_up_date && `Follow up: ${fmtDate(r.follow_up_date)}${r.follow_up_date === today() ? ' ⚠' : ''}`,
+                    r.follow_up_date ? `Follow up: ${fmtDate(r.follow_up_date)}${r.follow_up_date === today() ? ' ⚠' : ''}` : null,
                   ],
                   actions: r => r.phone ? (
                     <a href={`https://wa.me/91${r.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hello ${r.parent_name || ''},\n\nFollowing up on the admission enquiry for ${r.student_name || 'your child'} at GNSI.\n\nGuidance Navodaya & Sainik Institute\nKhangabok, Thoubal`)}`}
@@ -2077,9 +2077,9 @@ export default function ReceptionPage() {
                     ? <span style={{ fontSize: 11, fontWeight: 700, color: C.slate[500], background: C.slate[100], borderRadius: 99, padding: '2px 8px', fontFamily: font }}>Out {r.out_time}</span>
                     : <span style={{ fontSize: 11, fontWeight: 700, color: C.red, background: '#fee2e2', borderRadius: 99, padding: '2px 8px', fontFamily: font }}>Still Inside</span>,
                   meta: r => [
-                    r.phone && `📞 ${r.phone}`,
+                    r.phone ? `📞 ${r.phone}` : null,
                     `In: ${r.in_time || fmtDate(r.visit_date)}`,
-                    r.id_proof && `ID: ${r.id_proof}`,
+                    r.id_proof ? `ID: ${r.id_proof}` : null,
                   ],
                   actions: r => (
                     <button onClick={() => printVisitorBadge(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️ Badge</button>
@@ -2166,9 +2166,9 @@ export default function ReceptionPage() {
                   badge:  r => <Pill label={r.status} />,
                   meta: r => [
                     `📅 ${fmtDate(r.exit_date)}${r.exit_time ? ' ' + r.exit_time : ''}`,
-                    r.expected_return_time && `⏰ Return: ${r.expected_return_time}`,
+                    r.expected_return_time ? `⏰ Return: ${r.expected_return_time}` : null,
                     `Parent: ${r.parent_informed}`,
-                    r.approved_by && `By: ${r.approved_by}`,
+                    r.approved_by ? `By: ${r.approved_by}` : null,
                   ],
                   actions: r => (
                     <div style={{ display: 'flex', gap: 5 }}>
@@ -2283,9 +2283,9 @@ export default function ReceptionPage() {
                     badge:  r => <Pill label={r.status} />,
                     meta:   r => [
                       fmtDate(r.received_date),
-                      r.quantity && `Qty: ${r.quantity}`,
-                      r.house && `🏠 ${r.house}`,
-                      r.received_by && `Rcvd by: ${r.received_by}`,
+                      r.quantity ? `Qty: ${r.quantity}` : null,
+                      r.house ? `🏠 ${r.house}` : null,
+                      r.received_by ? `Rcvd by: ${r.received_by}` : null,
                     ],
                     actions: r => (
                       <div style={{ display: 'flex', gap: 5 }}>
