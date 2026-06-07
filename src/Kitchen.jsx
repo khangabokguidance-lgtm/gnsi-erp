@@ -39,7 +39,7 @@
 //  Enable Storage bucket: "kitchen-receipts" (public)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from './supabase.js'
 
 // ─── Design Tokens — Warm Terracotta × Saffron (Manipur palette) ─────────────
@@ -57,23 +57,35 @@ const C = {
 
 // ─── Meal Config ──────────────────────────────────────────────────────────────
 const MEALS = {
-  morning_breakfast: { label:'Morning Breakfast', meitei:'Morning Breakfast', short:'M.Bfast', emoji:'🌅', time:'07:00', bg:C.saffron[500], soft:C.saffron[50], border:C.saffron[200], text:C.saffron[800] },
-  lunch:             { label:'Lunch',             meitei:'Lunch',  short:'Lunch',   emoji:'🍱', time:'12:30', bg:C.forest[600],  soft:C.forest[50],  border:C.forest[200],  text:C.forest[800]  },
-  evening_breakfast: { label:'Evening Breakfast', meitei:'Evening Breakfast',  short:'E.Bfast', emoji:'🌇', time:'16:30', bg:C.terra[500],   soft:C.terra[50],   border:C.terra[200],   text:C.terra[800]   },
-  dinner:            { label:'Dinner',            meitei:'Dinner', short:'Dinner',  emoji:'🌙', time:'19:30', bg:C.teal[700],    soft:C.teal[50],    border:C.teal[200],    text:C.teal[800]    },
+  lunch:             { label:'Morning Lunch',       meitei:'Morning Lunch',       short:'Lunch',    emoji:'🍱', time:'12:30', bg:C.forest[600],  soft:C.forest[50],  border:C.forest[200],  text:C.forest[800]  },
+  morning_breakfast: { label:'Afternoon Breakfast', meitei:'Afternoon Breakfast', short:'A.Bfast',  emoji:'☕', time:'14:30', bg:C.saffron[500], soft:C.saffron[50], border:C.saffron[200], text:C.saffron[800] },
+  evening_breakfast: { label:'Evening Breakfast',   meitei:'Evening Breakfast',   short:'E.Bfast',  emoji:'🌇', time:'16:30', bg:C.terra[500],   soft:C.terra[50],   border:C.terra[200],   text:C.terra[800]   },
+  dinner:            { label:'Dinner',              meitei:'Dinner',              short:'Dinner',   emoji:'🌙', time:'19:30', bg:C.teal[700],    soft:C.teal[50],    border:C.teal[200],    text:C.teal[800]    },
 }
-const MEAL_KEYS = ['morning_breakfast','lunch','evening_breakfast','dinner']
+const MEAL_KEYS = ['lunch','morning_breakfast','evening_breakfast','dinner']
+// ─── Cook Attendance Config ───────────────────────────────────────────────────
+const COOKS = [
+  'Khundrakpam Jamuna Devi',
+  'Ningthoujam Madhomti Devi',
+  'Ningthoujam Santi Devi',
+  'Khundrakpam Premabati Devi',
+]
+
+const COOK_SHIFTS = {
+  morning: { label:'Morning Shift', short:'Morning', emoji:'🌅', time:'06:30–09:00 AM', defaultIn:'06:30', defaultOut:'09:00', bg:C.saffron[50],  border:C.saffron[200], text:C.saffron[800] },
+  evening: { label:'Evening Shift', short:'Evening', emoji:'🌇', time:'06:00–09:00 PM', defaultIn:'18:00', defaultOut:'21:00', bg:C.terra[50],    border:C.terra[200],   text:C.terra[800]   },
+}
 
 // ─── Manipuri Dish Presets by meal ───────────────────────────────────────────
-const MANIPURI_PRESETS = {
-  morning_breakfast: ['Chak (Rice)','Eromba','Singju','Bread','Egg','Chai','Milk','Banana','Chak-hao (Black Rice)','Momo'],
-  lunch:             ['Chak (Rice)','Kangsoi','Eromba','Nga Thongba (Fish Curry)','Dal','Alu Kangmec','Khichdi','Papad','Pickle','Sabzi'],
-  evening_breakfast: ['Singju','Pakora','Chak-hao Kheer','Samosa','Bread Pakora','Chow Chow','Tea','Biscuit','Fruits'],
+  const MANIPURI_PRESETS = {
+  lunch:             ['Chak (Rice)','Kangsoi','Eromba','Nga Thongba (Fish Curry)','Hawai Thongba','Alu Kangmet','Khichdi','Papad','Pickle','Sabzi'],
+  morning_breakfast: ['Tea','Bread','Rusk','Halwa','Egg','Milk','Banana','Biscuit','Momo','Chak-hao Kheer'],
+  evening_breakfast: ['Tea','Bread','Rusk','Singju','Pakora','Samosa','Bread Pakora','Chow Chow','Biscuit','Fruits'],
   dinner:            ['Chak (Rice)','Dal','Sabzi','Nga Thongba','Paneer','Chapati','Khichdi','Soup','Papad'],
 }
 
 // ─── Local Vendor Presets ─────────────────────────────────────────────────────
-const LOCAL_VENDORS = ['Khangabok Market','Thoubal Bazaar','Ima Keithel','Lilong Market','Wangkhei Market','Singjamei Market','Thangal Bazaar','Lamlong Bazaar','Local Farmer','Daily Supplier']
+const LOCAL_VENDORS = ['Khangabok Market','Thoubal Bazaar','Ima Keithel','Wangjing Market','Chandani Shop','Imphal Market','Thangal Bazaar','Lamlong Bazaar','Local Farmer','Daily Supplier']
 
 // ─── Item Categories ──────────────────────────────────────────────────────────
 const ITEM_CATEGORIES = {
@@ -811,7 +823,7 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
 
 // ─── Cook Log Entry Form ──────────────────────────────────────────────────────
 function CookLogForm({ onSave, onClose }) {
-  const [form, setForm] = useState({ staff_name:'',meal_type:'morning_breakfast',arrived_at:'',left_at:'',notes:'' })
+  const [form, setForm] = useState({ staff_name:'',meal_type:'lunch',arrived_at:'',left_at:'',notes:'' })
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   const valid = form.staff_name && form.meal_type
   return (
@@ -922,8 +934,7 @@ function generatePrintReport(entries, budget, monthLabel) {
 
   <h2>Daily Expenditure Log</h2>
   <table>
-    <thead><tr><th>Date</th><th>Morning</th><th>Lunch</th><th>Evening</th><th>Dinner</th><th>Day Total</th></tr></thead>
-    <tbody>
+    <thead><tr><th>Date</th><th>Mor. Lunch</th><th>A.Bfast</th><th>E.Bfast</th><th>Dinner</th><th>Day Total</th></tr></thead>    <tbody>
       ${days.map(d=>{
         const dE = entries.filter(e=>e.expense_date===d)
         const mAmt = mk => dE.filter(e=>e.meal_type===mk).reduce((s,e)=>s+Number(e.amount),0)
@@ -985,12 +996,394 @@ function generateWhatsAppMsg(entries, dateStr) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// COOK ATTENDANCE PANEL
+// ═══════════════════════════════════════════════════════════════════════════════
+function CookAttendancePanel({ onClose, showToast }) {
+  const [attDate,   setAttDate]   = useState(today())
+  const [monthly,   setMonthly]   = useState([])   // month summary rows
+  const [loading,   setLoading]   = useState(false)
+  const [view,      setView]      = useState('mark') // 'mark' | 'monthly'
+  const [viewMonth, setViewMonth] = useState(monthKey())
+
+  // local draft: { 'CookName__shift': { status, check_in, check_out, notes } }
+  const [draft, setDraft] = useState({})
+
+  const draftKey = (cook, shift) => `${cook}__${shift}`
+
+  // ── Load day records ────────────────────────────────────────────────────
+  const loadDay = async (date) => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('kitchen_cook_attendance')
+      .select('*')
+      .eq('att_date', date)
+   const rows = data || []
+    // seed draft from DB
+    const d = {}
+    COOKS.forEach(cook => {
+      Object.keys(COOK_SHIFTS).forEach(shift => {
+        const row = rows.find(r => r.cook_name === cook && r.shift === shift)
+        d[draftKey(cook, shift)] = {
+          status:    row?.status    || 'present',
+          check_in:  row?.check_in  || COOK_SHIFTS[shift].defaultIn,
+          check_out: row?.check_out || COOK_SHIFTS[shift].defaultOut,
+          notes:     row?.notes     || '',
+          id:        row?.id        || null,
+        }
+      })
+    })
+    setDraft(d)
+    setLoading(false)
+  }
+
+  // ── Load monthly summary ────────────────────────────────────────────────
+  const loadMonthly = async (month) => {
+    setLoading(true)
+    const from = `${month}-01`
+    const to   = `${month}-31`
+    const { data } = await supabase
+      .from('kitchen_cook_attendance')
+      .select('*')
+      .gte('att_date', from)
+      .lte('att_date', to)
+    setMonthly(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadDay(attDate) }, [attDate])
+  useEffect(() => { if (view === 'monthly') loadMonthly(viewMonth) }, [view, viewMonth])
+
+  const setField = (cook, shift, field, val) => {
+    setDraft(d => ({ ...d, [draftKey(cook, shift)]: { ...d[draftKey(cook, shift)], [field]: val } }))
+  }
+
+  // ── Save one row ────────────────────────────────────────────────────────
+  const saveRow = async (cook, shift) => {
+    const dk  = draftKey(cook, shift)
+    const rec = draft[dk]
+    const row = {
+      att_date:  attDate,
+      cook_name: cook,
+      shift,
+      status:    rec.status,
+      check_in:  rec.status === 'absent' ? null : (rec.check_in  || null),
+      check_out: rec.status === 'absent' ? null : (rec.check_out || null),
+      notes:     rec.notes || null,
+    }
+    const { error } = await supabase
+      .from('kitchen_cook_attendance')
+      .upsert(row, { onConflict: 'att_date,cook_name,shift' })
+    if (error) { showToast('Save failed: ' + error.message, C.rose[600]); return }
+    showToast(`${cook.split(' ')[0]} ${COOK_SHIFTS[shift].short} saved ✓`, C.forest[600])
+    loadDay(attDate)
+  }
+
+  // ── Save all ────────────────────────────────────────────────────────────
+  const saveAll = async () => {
+    setLoading(true)
+    const rows = []
+    COOKS.forEach(cook => {
+      Object.keys(COOK_SHIFTS).forEach(shift => {
+        const rec = draft[draftKey(cook, shift)]
+        rows.push({
+          att_date:  attDate,
+          cook_name: cook,
+          shift,
+          status:    rec.status,
+          check_in:  rec.status === 'absent' ? null : (rec.check_in  || null),
+          check_out: rec.status === 'absent' ? null : (rec.check_out || null),
+          notes:     rec.notes || null,
+        })
+      })
+    })
+    const { error } = await supabase
+      .from('kitchen_cook_attendance')
+      .upsert(rows, { onConflict: 'att_date,cook_name,shift' })
+    setLoading(false)
+    if (error) { showToast('Save failed: ' + error.message, C.rose[600]); return }
+    showToast('All attendance saved ✓', C.forest[600])
+    loadDay(attDate)
+  }
+
+  // ── Monthly summary calc ────────────────────────────────────────────────
+  const monthlySummary = useMemo(() => {
+    return COOKS.map(cook => {
+      const rows = monthly.filter(r => r.cook_name === cook)
+      const present   = rows.filter(r => r.status === 'present').length
+      const absent    = rows.filter(r => r.status === 'absent').length
+      const half      = rows.filter(r => r.status === 'half_day').length
+      const totalDays = present + absent + half
+      const pct       = totalDays ? Math.round(((present + half * 0.5) / totalDays) * 100) : 0
+      // per shift
+      const mPresent = rows.filter(r => r.shift === 'morning' && r.status === 'present').length
+      const ePresent = rows.filter(r => r.shift === 'evening' && r.status === 'present').length
+      return { cook, present, absent, half, pct, mPresent, ePresent, totalDays }
+    })
+  }, [monthly])
+
+  const statusStyle = (status, selected) => {
+    const base = { padding:'5px 12px', borderRadius:7, fontSize:11, fontWeight:700, cursor:'pointer', border:'1.5px solid transparent', transition:'all .15s' }
+    if (status === 'present')  return { ...base, background: selected ? C.forest[600] : C.forest[50],  color: selected ? '#fff' : C.forest[700], border: `1.5px solid ${selected ? C.forest[600] : C.forest[200]}` }
+    if (status === 'absent')   return { ...base, background: selected ? C.rose[600]   : C.rose[50],    color: selected ? '#fff' : C.rose[700],   border: `1.5px solid ${selected ? C.rose[600]   : C.rose[200]  }` }
+    if (status === 'half_day') return { ...base, background: selected ? C.saffron[500]: C.saffron[50], color: selected ? '#fff' : C.saffron[700],border: `1.5px solid ${selected ? C.saffron[500]: C.saffron[200]}` }
+    return base
+  }
+
+  return (
+    <div style={{ ...card, border:`1.5px solid ${C.teal[200]}`, marginBottom:16 }}>
+      {/* ── Header ── */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:15, fontWeight:800, color:C.teal[700] }}>👩‍🍳 Cook Attendance</div>
+          <div style={{ fontSize:11, color:C.ink[400] }}>Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
+        </div>
+        <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, border:`1px solid ${C.ink[200]}`, background:'#fff', cursor:'pointer', fontSize:16, color:C.ink[500] }}>✕</button>
+      </div>
+
+      {/* ── View Toggle + Date ── */}
+      <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:16, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', borderRadius:8, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
+          {[['mark','📋 Mark'],['monthly','📊 Monthly']].map(([k,l]) => (
+            <button key={k} onClick={() => setView(k)}
+              style={{ padding:'7px 16px', background: view===k ? C.teal[600] : '#fff', color: view===k ? '#fff' : C.ink[600], border:'none', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {view === 'mark' && (
+          <input type="date" style={{ ...inp, width:'auto', padding:'7px 12px', fontSize:12 }}
+            value={attDate} onChange={e => { setAttDate(e.target.value) }} />
+        )}
+        {view === 'monthly' && (
+          <input type="month" style={{ ...inp, width:'auto', padding:'7px 12px', fontSize:12 }}
+            value={viewMonth} onChange={e => setViewMonth(e.target.value)} />
+        )}
+      </div>
+
+      {/* ══ MARK VIEW ══ */}
+      {view === 'mark' && (
+        <>
+          {loading
+            ? <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>Loading…</div>
+            : Object.entries(COOK_SHIFTS).map(([shift, sh]) => (
+              <div key={shift} style={{ marginBottom:18 }}>
+                {/* Shift Header */}
+                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px', borderRadius:9,
+                  background:sh.bg, border:`1.5px solid ${sh.border}`, marginBottom:10 }}>
+                  <span style={{ fontSize:16 }}>{sh.emoji}</span>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:800, color:sh.text }}>{sh.label}</div>
+                    <div style={{ fontSize:10, color:sh.text, opacity:.7 }}>🕐 {sh.time}</div>
+                  </div>
+                  {/* Shift summary badges */}
+                  <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
+                    {['present','absent','half_day'].map(st => {
+                      const cnt = COOKS.filter(c => draft[draftKey(c, shift)]?.status === st).length
+                      if (!cnt) return null
+                      const colors = { present:C.forest, absent:C.rose, half_day:C.saffron }
+                      const col = colors[st]
+                      return (
+                        <span key={st} style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:99,
+                          background:col[50], color:col[700], border:`1px solid ${col[200]}` }}>
+                          {st === 'present' ? '✓' : st === 'absent' ? '✗' : '½'} {cnt}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Cook rows */}
+                {COOKS.map((cook, ci) => {
+                  const dk  = draftKey(cook, shift)
+                  const rec = draft[dk] || {}
+                  const isAbsent = rec.status === 'absent'
+                  return (
+                    <div key={cook} style={{ marginBottom:8, padding:'12px 14px', borderRadius:10,
+                      background: isAbsent ? C.rose[50] : '#fff',
+                      border:`1.5px solid ${isAbsent ? C.rose[200] : C.ink[100]}`,
+                      opacity: isAbsent ? .85 : 1 }}>
+
+                      {/* Cook name + status buttons */}
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom: isAbsent ? 0 : 10 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ width:30, height:30, borderRadius:'50%', background:sh.bg, border:`1.5px solid ${sh.border}`,
+                            display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, color:sh.text }}>
+                            {cook[0]}
+                          </div>
+                          <div>
+                            <div style={{ fontSize:12, fontWeight:700, color:C.ink[800] }}>{cook}</div>
+                            <div style={{ fontSize:10, color:C.ink[400] }}>Cook #{ci + 1}</div>
+                          </div>
+                        </div>
+                        <div style={{ display:'flex', gap:6 }}>
+                          {['present','absent','half_day'].map(st => (
+                            <button key={st} onClick={() => setField(cook, shift, 'status', st)}
+                              style={statusStyle(st, rec.status === st)}>
+                              {st === 'present' ? '✓ Present' : st === 'absent' ? '✗ Absent' : '½ Half Day'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Check-in / Check-out — hidden if absent */}
+                      {!isAbsent && (
+                        <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <label style={{ ...labelSt, marginBottom:0, fontSize:10 }}>IN</label>
+                            <input type="time" style={{ ...inp, width:'auto', padding:'5px 9px', fontSize:12 }}
+                              value={rec.check_in || ''} onChange={e => setField(cook, shift, 'check_in', e.target.value)} />
+                          </div>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <label style={{ ...labelSt, marginBottom:0, fontSize:10 }}>OUT</label>
+                            <input type="time" style={{ ...inp, width:'auto', padding:'5px 9px', fontSize:12 }}
+                              value={rec.check_out || ''} onChange={e => setField(cook, shift, 'check_out', e.target.value)} />
+                          </div>
+                          <div style={{ flex:1, minWidth:120 }}>
+                            <input style={{ ...inp, padding:'5px 9px', fontSize:11 }}
+                              value={rec.notes || ''} onChange={e => setField(cook, shift, 'notes', e.target.value)}
+                              placeholder="Notes…" />
+                          </div>
+                          <button onClick={() => saveRow(cook, shift)}
+                            style={{ padding:'5px 12px', borderRadius:7, background:C.teal[50], color:C.teal[700],
+                              border:`1px solid ${C.teal[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                            Save
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))
+          }
+
+          {/* Save All button */}
+          <div style={{ display:'flex', gap:10, marginTop:4 }}>
+            <button onClick={saveAll} disabled={loading}
+              style={{ ...btnPrimary, background:`linear-gradient(135deg,${C.teal[700]},${C.teal[500]})`,
+                boxShadow:`0 3px 10px rgba(13,148,136,.25)` }}>
+              {loading ? 'Saving…' : '💾 Save All Attendance'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ══ MONTHLY VIEW ══ */}
+      {view === 'monthly' && (
+        <div>
+          {loading
+            ? <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>Loading…</div>
+            : (
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {monthlySummary.map(({ cook, present, absent, half, pct, mPresent, ePresent, totalDays }) => {
+                  const pctColor = pct >= 90 ? C.forest[600] : pct >= 70 ? C.saffron[600] : C.rose[600]
+                  return (
+                    <div key={cook} style={{ padding:'14px 16px', borderRadius:10, background:'#fff',
+                      border:`1.5px solid ${C.ink[100]}`, boxShadow:'0 1px 4px rgba(164,100,50,.05)' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          <div style={{ width:36, height:36, borderRadius:'50%', background:C.teal[50],
+                            border:`1.5px solid ${C.teal[200]}`, display:'flex', alignItems:'center',
+                            justifyContent:'center', fontSize:14, fontWeight:800, color:C.teal[700] }}>
+                            {cook[0]}
+                          </div>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:700, color:C.ink[800] }}>{cook}</div>
+                            <div style={{ fontSize:10, color:C.ink[400] }}>{totalDays} shifts recorded · {viewMonth}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize:20, fontWeight:800, color:pctColor }}>{pct}%</div>
+                      </div>
+
+                      {/* Attendance bar */}
+                      <div style={{ height:8, borderRadius:99, background:C.ink[100], overflow:'hidden', marginBottom:8 }}>
+                        <div style={{ height:'100%', width:`${pct}%`, borderRadius:99,
+                          background: pct >= 90 ? C.forest[500] : pct >= 70 ? C.saffron[500] : C.rose[500],
+                          transition:'width .5s' }} />
+                      </div>
+
+                      {/* Stats row */}
+                      <div style={{ display:'flex', gap:14, fontSize:11, flexWrap:'wrap' }}>
+                        <span style={{ color:C.forest[600], fontWeight:700 }}>✓ Present: {present}</span>
+                        <span style={{ color:C.rose[600],   fontWeight:700 }}>✗ Absent: {absent}</span>
+                        <span style={{ color:C.saffron[600],fontWeight:700 }}>½ Half: {half}</span>
+                        <span style={{ color:C.teal[600],   fontWeight:700 }}>🌅 Morning: {mPresent}</span>
+                        <span style={{ color:C.terra[600],  fontWeight:700 }}>🌇 Evening: {ePresent}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Monthly shift-wise grid */}
+                {monthly.length > 0 && (
+                  <div style={{ ...card, marginTop:4 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:12 }}>
+                      📅 Day-wise Detail — {viewMonth}
+                    </div>
+                    <div style={{ overflowX:'auto' }}>
+                      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ padding:'6px 10px', textAlign:'left', background:C.ink[50], color:C.ink[600], fontWeight:700, borderBottom:`2px solid ${C.ink[100]}`, whiteSpace:'nowrap' }}>Cook</th>
+                            {[...new Set(monthly.map(r => r.att_date))].sort().map(d => (
+                              <th key={d} style={{ padding:'6px 6px', textAlign:'center', background:C.ink[50], color:C.ink[600], fontWeight:700, borderBottom:`2px solid ${C.ink[100]}`, whiteSpace:'nowrap', fontSize:9 }}>
+                                {new Date(d+'T00:00:00').getDate()}<br/>
+                                <span style={{ fontWeight:400, color:C.ink[400] }}>{new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {COOKS.map(cook => {
+                            const dates = [...new Set(monthly.map(r => r.att_date))].sort()
+                            return (
+                              <tr key={cook} style={{ borderBottom:`1px solid ${C.ink[100]}` }}>
+                                <td style={{ padding:'7px 10px', fontWeight:700, color:C.ink[700], whiteSpace:'nowrap', fontSize:10 }}>
+                                  {cook.split(' ').slice(0,2).join(' ')}
+                                </td>
+                                {dates.map(d => {
+                                  const mRow = monthly.find(r => r.cook_name===cook && r.att_date===d && r.shift==='morning')
+                                  const eRow = monthly.find(r => r.cook_name===cook && r.att_date===d && r.shift==='evening')
+                                  const cell = (row) => {
+                                    if (!row) return <span style={{ color:C.ink[300] }}>—</span>
+                                    if (row.status==='present')  return <span style={{ color:C.forest[600], fontWeight:800 }}>✓</span>
+                                    if (row.status==='absent')   return <span style={{ color:C.rose[600],   fontWeight:800 }}>✗</span>
+                                    if (row.status==='half_day') return <span style={{ color:C.saffron[600],fontWeight:800 }}>½</span>
+                                  }
+                                  return (
+                                    <td key={d} style={{ padding:'5px 6px', textAlign:'center', verticalAlign:'middle' }}>
+                                      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:1, fontSize:11 }}>
+                                        <span title="Morning">{cell(mRow)}</span>
+                                        <span title="Evening" style={{ fontSize:9, opacity:.7 }}>{cell(eRow)}</span>
+                                      </div>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{ fontSize:10, color:C.ink[400], marginTop:8 }}>
+                      Top row = 🌅 Morning · Bottom row = 🌇 Evening &nbsp;·&nbsp; ✓ Present &nbsp;✗ Absent &nbsp;½ Half Day
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          }
+        </div>
+      )}
+    </div>
+  )
+}
 // ENTRY FORM (upgraded)
 // ═══════════════════════════════════════════════════════════════════════════════
 function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
   const def = (k, fb='') => editing ? (editing[k]??fb) : fb
   const [form, setForm] = useState({
-    meal_type:    def('meal_type','morning_breakfast'),
+    meal_type:    def('meal_type','lunch'),
     expense_date: def('expense_date', defaultDate||today()),
     amount:       def('amount',''),
     item_details: def('item_details',''),
@@ -1319,6 +1712,7 @@ export default function Kitchen({ currentUser }) {
   const [showItemSetup,setShowItemSetup]= useState(false)
   const [showMonitor,  setShowMonitor]  = useState(false)
   const [showCookLog,  setShowCookLog]  = useState(false)
+  const [showCookAtt, setShowCookAtt] = useState(false)
 
   const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(()=>setToast(null),3500) }
 
@@ -1467,7 +1861,8 @@ export default function Kitchen({ currentUser }) {
         <div style={{ display:'flex',gap:8,flexWrap:'wrap' }}>
           <button onClick={()=>setShowItemSetup(v=>!v)} style={{ ...btnSecondary(C.saffron) }}>🧺 Items</button>
           {isAdmin && <button onClick={()=>setShowMonitor(v=>!v)} style={{ ...btnSecondary(C.terra) }}>🛡 Monitor</button>}
-          {isAdmin && <button onClick={()=>setShowCookLog(v=>!v)} style={{ ...btnSecondary(C.forest) }}>👨‍🍳 Cook Log</button>}
+         {isAdmin && <button onClick={()=>setShowCookLog(v=>!v)} style={{ ...btnSecondary(C.forest) }}>👨‍🍳 Cook Log</button>}
+          {isAdmin && <button onClick={()=>setShowCookAtt(v=>!v)} style={{ ...btnSecondary(C.forest) }}>👩‍🍳 Cook Att.</button>}
           <button onClick={()=>setShowBudget(true)} style={{ ...btnSecondary(C.teal) }}>💰 Budget</button>
           <button onClick={()=>generatePrintReport(entries, budget, viewMonth)} style={{ ...btnSecondary(C.violet) }}>🖨 Report</button>
           <button onClick={()=>exportToCSV(entries,viewMonth)} style={{ ...btnSecondary(C.ink) }}>⬇ CSV</button>
@@ -1512,6 +1907,9 @@ export default function Kitchen({ currentUser }) {
 
       {/* ── Cook Log Form ── */}
       {showCookLog && isAdmin && <CookLogForm onSave={handleCookLogSave} onClose={()=>setShowCookLog(false)} />}
+
+      {/* ── Cook Attendance Panel ── */}
+      {showCookAtt && isAdmin && <CookAttendancePanel onClose={()=>setShowCookAtt(false)} showToast={showToast} />}
 
       {/* ── Entry Form ── */}
       {formOpen && (
