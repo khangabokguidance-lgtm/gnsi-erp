@@ -60,17 +60,17 @@ const PAGE_SIZE = 50
 
 // FIX-11: which roles can see which tabs
 const TAB_ROLES = {
-  logs:        ['admin','manager','teacher'],
-  calendar:    ['admin','manager','teacher'],
-  syllabus:    ['admin','manager','teacher','house master'],
-  timetable:   ['admin','manager'],
-  reports:     ['admin','manager','accounts'],
-  search:      ['admin','manager','teacher','hostel','house master'],
-  monthly:     ['admin','manager','teacher','hostel','house master'],
-  performance: ['admin','manager','teacher'],
-  hmdash:      ['admin','manager','hostel','house master'],
-  admin:       ['admin'],
-  remediation: ['admin','manager'],
+  logs:           ['admin','manager','teacher','superintendent'],
+  calendar:       ['admin','manager','teacher','superintendent'],
+  syllabus:       ['admin','manager','teacher','house master','superintendent'],
+  timetable:      ['admin','manager','superintendent'],
+  reports:        ['admin','manager','accounts','superintendent'],
+  search:         ['admin','manager','teacher','hostel','house master','superintendent'],
+  monthly:        ['admin','manager','teacher','hostel','house master','superintendent'],
+  performance:    ['admin','manager','teacher','superintendent'],
+  hmdash:         ['admin','manager','hostel','house master','superintendent'],
+  admin:          ['admin','superintendent'],
+  remediation:    ['admin','manager','superintendent'],
   syllabus_admin: ['admin'],
 }
 
