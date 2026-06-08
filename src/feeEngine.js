@@ -30,16 +30,17 @@ export const PROSPECTUS_FEE = 200
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const TABLES = {
-  students:          'students',
-  admissions:        'admissions',
-  fees:              'fees',
-  feeInvoices:       'fee_invoices',
-  feePayments:       'fee_payments',
-  admFeeCollections: 'adm_fee_collections',
-  admFlatFees:       'adm_flat_fees',
-  admCourseFees:     'adm_course_fees',
-  accounts:          'accounts',
-  feeStructures:     'fee_structures',
+  students:           'students',
+  admissions:         'admissions',
+  fees:               'fee_invoices',
+  feeInvoices:        'fee_invoices',
+  feePayments:        'fee_payments',
+  admFeeCollections:  'adm_fee_collections',
+  admFlatFees:        'adm_flat_fees',
+  admCourseFees:      'adm_course_fees',
+  accounts:           'accounts',
+  feeStructures:      'fee_structures',
+  studentFeeOverrides:'student_fee_overrides',   // ← NEW
 }
 
 export const INVOICE_STATUS = {
@@ -111,52 +112,119 @@ export const rcptNo = (prefix = 'INV') => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4. FEE RATE HELPERS  — DB-fetched (fee_structures table)
+// 4. FEE RATE HELPERS  — DB-fetched (fee_structures + student_fee_overrides)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** In-memory cache — cleared on save */
-const _rateCache = {}
+/** In-memory caches — both cleared on save */
+const _rateCache     = {}   // key = session__course__batch__hostel
+const _overrideCache = {}   // key = gcc__session
+
+/** Clear both caches (call after saving fee_structures or student_fee_overrides) */
+export const clearFeeRateCache = () => {
+  Object.keys(_rateCache).forEach(k => delete _rateCache[k])
+  Object.keys(_overrideCache).forEach(k => delete _overrideCache[k])
+}
+
+// ─── 4a. Per-student flat fee override ───────────────────────────────────────
+
+/**
+ * Fetch the flat_fee_override for one student in a session.
+ * Returns null if no override exists.
+ */
+export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
+  const key = `${gccNo}__${sessionYear}`
+  if (_overrideCache[key] !== undefined) return _overrideCache[key]
+
+  const { data } = await supabase
+    .from(TABLES.studentFeeOverrides)
+    .select('flat_fee_override, reason, updated_by, updated_at')
+    .eq('gcc_no', gccNo)
+    .eq('session_year', sessionYear)
+    .maybeSingle()
+
+  const result = data ?? null
+  _overrideCache[key] = result
+  return result
+}
+
+/**
+ * Save (upsert) a per-student flat fee override.
+ * Pass null / undefined flatFeeOverride to REMOVE the override.
+ */
+export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOverride, reason = '', updatedBy = '') => {
+  // Remove override
+  if (flatFeeOverride === null || flatFeeOverride === undefined) {
+    await supabase
+      .from(TABLES.studentFeeOverrides)
+      .delete()
+      .eq('gcc_no', gccNo)
+      .eq('session_year', sessionYear)
+  } else {
+    const { error } = await supabase
+      .from(TABLES.studentFeeOverrides)
+      .upsert(
+        { gcc_no: gccNo, session_year: sessionYear, flat_fee_override: flatFeeOverride, reason, updated_by: updatedBy },
+        { onConflict: 'gcc_no,session_year', ignoreDuplicates: false }
+      )
+    if (error) throw error
+  }
+  // Bust override cache for this student
+  delete _overrideCache[`${gccNo}__${sessionYear}`]
+}
+
+// ─── 4b. Structural rates ─────────────────────────────────────────────────────
 
 /**
  * Fetch flat_fee, course_fee, admission_fee from fee_structures.
  * Falls back to legacy FLAT_RATES / COURSE_RATES if not configured in DB.
+ *
+ * ✦ NEW: if gccNo is supplied, checks student_fee_overrides first and
+ *        substitutes flatFee with the override value when present.
  */
 export const getFeeRates = async (
   sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
   course      = '',
   batch       = '',
   hostelType  = 'Day Scholar',
+  gccNo       = null,   // ← NEW optional param
 ) => {
-  const key = `${sessionYear}__${course}__${batch}__${hostelType}`
-  if (_rateCache[key]) return _rateCache[key]
+  const structKey = `${sessionYear}__${course}__${batch}__${hostelType}`
 
-  const { data } = await supabase
-    .from(TABLES.feeStructures)
-    .select('flat_fee, course_fee, admission_fee')
-    .eq('session_year', sessionYear)
-    .eq('course',       course)
-    .eq('batch',        batch)
-    .eq('hostel_type',  hostelType)
-    .maybeSingle()
+  // Fetch structural rates (cached)
+  if (!_rateCache[structKey]) {
+    const { data } = await supabase
+      .from(TABLES.feeStructures)
+      .select('flat_fee, course_fee, admission_fee')
+      .eq('session_year', sessionYear)
+      .eq('course',       course)
+      .eq('batch',        batch)
+      .eq('hostel_type',  hostelType)
+      .maybeSingle()
 
-  const rates = {
-    flatFee:      data?.flat_fee      ?? FLAT_RATES[hostelType]                ?? 0,
-    courseFee:    data?.course_fee    ?? COURSE_RATES[course]?.[hostelType]    ?? 0,
-    admissionFee: data?.admission_fee ?? ADM_FEE_BASE,
+    _rateCache[structKey] = {
+      flatFee:      data?.flat_fee      ?? FLAT_RATES[hostelType]             ?? 0,
+      courseFee:    data?.course_fee    ?? COURSE_RATES[course]?.[hostelType] ?? 0,
+      admissionFee: data?.admission_fee ?? ADM_FEE_BASE,
+    }
   }
 
-  _rateCache[key] = rates
+  const rates = { ..._rateCache[structKey] }
+
+  // ✦ Apply per-student flat fee override if gcc supplied
+  if (gccNo) {
+    const override = await getStudentFlatFeeOverride(gccNo, sessionYear)
+    if (override !== null) {
+      rates.flatFee         = Number(override.flat_fee_override)
+      rates.flatFeeOverride = override   // attach metadata so callers can show badge
+    }
+  }
+
   return rates
 }
 
-/** Call after saving fee_structures so modal picks up new rates */
-export const clearFeeRateCache = () => {
-  Object.keys(_rateCache).forEach(k => delete _rateCache[k])
-}
-
-/** Async — returns flat fee amount for this student */
-export const getFlatFeeAmt = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
-  const r = await getFeeRates(sessionYear, course, batch, hostelType)
+/** Async — returns flat fee amount for this student (respects override) */
+export const getFlatFeeAmt = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccNo = null) => {
+  const r = await getFeeRates(sessionYear, course, batch, hostelType, gccNo)
   return r.flatFee
 }
 
@@ -166,51 +234,34 @@ export const getCourseFeeAmt = async (hostelType, course, batch, sessionYear = `
   return r.courseFee
 }
 
-/**
- * Async — returns full 12-month flat fee list for the academic year.
- * Each row has the correct amount from fee_structures.
- */
-/**
- * Months that always use FLAT FEE (same every session, every course/batch).
- * All other months use COURSE FEE.
- */
-export const FLAT_FEE_MONTHS = ["February", "March"]
+// ─── Flat-fee month helpers ───────────────────────────────────────────────────
 
-/** Returns true if a given month should use flat fee. */
-export const isFlatFeeMonth = (month) => FLAT_FEE_MONTHS.includes(month)
-
-/** Returns true if a given month should use course fee. */
+export const FLAT_FEE_MONTHS = ['February', 'March']
+export const isFlatFeeMonth   = (month) => FLAT_FEE_MONTHS.includes(month)
 export const isCourseFeeMonth = (month) => !FLAT_FEE_MONTHS.includes(month)
 
 /**
  * Async — returns ONLY flat fee months (Feb & Mar) for the session.
- * Only includes months up to the current date.
+ * Respects per-student override when gccNo is supplied.
  */
-export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
-  const amount = await getFlatFeeAmt(hostelType, course, batch, sessionYear)
+export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccNo = null) => {
+  const amount = await getFlatFeeAmt(hostelType, course, batch, sessionYear, gccNo)
   const now = new Date()
   const currentCalYear  = now.getFullYear()
-  const currentCalMonth = now.getMonth() + 1  // 1-based
+  const currentCalMonth = now.getMonth() + 1
 
-  // MONTHS_LIST: Apr(0)-Dec(8) = CURRENT_YEAR, Jan(9)-Mar(11) = CURRENT_YEAR+1
-  // But Feb & Mar in calendar are always the actual next calendar year from April start.
-  // e.g. CURRENT_YEAR=2026 → Feb/Mar entries get year=2027 (future, filtered out).
-  // Fix: for FLAT_FEE_MONTHS, always use the most recent past occurrence.
   return FLAT_FEE_MONTHS.map(month => {
-    // Try current calendar year first, fall back to previous year
     let year = currentCalYear
-    const d = new Date(`${month} 1, ${year}`)
+    const d  = new Date(`${month} 1, ${year}`)
     const calMonth = d.getMonth() + 1
-    // If this month hasn't happened yet this calendar year, use previous year
     if (calMonth > currentCalMonth) year = currentCalYear - 1
     return {
-      id:     `flat_${month.slice(0, 3).toLowerCase()}_${year}`,
+      id: `flat_${month.slice(0, 3).toLowerCase()}_${year}`,
       month, year, amount, hostelType,
     }
   })
 }
 
-/** Session year string: "2025-2026" */
 export const getSessionYear = () => `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -254,13 +305,13 @@ export const checkCourseFeeExists = async (gcc, forMonth, year) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════
 // 7. ACCOUNTS UPSERT
 // ═══════════════════════════════════════════════════════════════════════════
+
 export const upsertAccount = async ({
   entry_date, type, category, amount,
   payment_mode, note, source_ref: sRef, source_type,
-  is_recurring = false, receipt_url = null,  // ← add these
+  is_recurring = false, receipt_url = null,
 }) => {
   const { error } = await supabase
     .from(TABLES.accounts)
@@ -269,7 +320,7 @@ export const upsertAccount = async ({
         entry_date: new Date().toISOString().slice(0, 10),
         type, category, amount, payment_mode, note,
         source_ref: sRef, source_type,
-        is_recurring, receipt_url,  // ← add these
+        is_recurring, receipt_url,
       },
       { onConflict: 'source_ref,source_type', ignoreDuplicates: false }
     )
