@@ -139,7 +139,8 @@ function StatusCycleCell({ student, status, onChange, index, isMobile }) {
       }}
       style={{
         borderRadius: 14,
-        padding: isMobile ? '10px 4px' : '12px 6px',
+        padding: isMobile ? '10px 6px' : '12px 8px',
+minHeight: isMobile ? 90 : 100,
         textAlign: 'center',
         cursor: 'pointer',
         border: `1.5px solid ${sm.border}`,
@@ -156,9 +157,9 @@ function StatusCycleCell({ student, status, onChange, index, isMobile }) {
       }}
     >
       <span style={{ fontSize: isMobile ? 16 : 18, fontWeight: 900, color: sm.color, lineHeight: 1 }}>{sm.icon}</span>
-      <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, color: C.slate[800], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', paddingInline: 2 }}>
-        {student.student_name.split(' ').slice(-1)[0]}
-      </div>
+      <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, color: C.slate[800], whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', width: '100%', paddingInline: 2, lineHeight: 1.3, textAlign: 'center', minHeight: 28 }}>
+  {student.student_name}
+</div>
       {student.gcc_no && (
         <div style={{ fontSize: 8, color: C.slate[400] }}>GCC-{student.gcc_no}</div>
       )}
@@ -840,7 +841,7 @@ function TabMark({ staff, prefill }) {
           <div style={{
             padding: isMobile ? '4px 12px 16px' : '4px 20px 20px',
             display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(4,1fr)' : 'repeat(6,1fr)',
+            gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(5,1fr)',
             gap: isMobile ? 7 : 9,
           }}>
             {filteredStudents.map(s => {
