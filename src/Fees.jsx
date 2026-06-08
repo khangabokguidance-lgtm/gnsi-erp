@@ -104,6 +104,318 @@ function StudentSearch({ students, onSelect, placeholder }) {
   )
 }
 
+// ─── Tab: Fee Dashboard ───────────────────────────────────────────────────────
+
+function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows, onCollect }) {
+  const n = v => Number(v || 0).toLocaleString('en-IN')
+  const now      = new Date()
+  const thisMonth= now.toLocaleString('default', { month: 'long' })
+  const thisYear = now.getFullYear()
+  const prevMonth= new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleString('default', { month: 'long' })
+
+  // ── Totals ──────────────────────────────────────────────────────────────────
+  const totalCollected  = liveRows.reduce((s, r) => s + r.grandTotal, 0)
+  const admTotal        = adm_fee_collections.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0)
+  const flatTotal       = adm_flat_fees.filter(r => r.paid).reduce((s, r) => s + (r.amount || 0), 0)
+  const crsfTotal       = adm_course_fees.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+
+  // This month collections
+  const thisMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === thisMonth && r.year === thisYear).reduce((s, r) => s + (r.amount || 0), 0)
+  const thisMonthCrsf   = adm_course_fees.filter(r => r.for_month === thisMonth && r.year === thisYear).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const thisMonthTotal  = thisMonthFlat + thisMonthCrsf
+
+  const prevMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === prevMonth).reduce((s, r) => s + (r.amount || 0), 0)
+  const prevMonthCrsf   = adm_course_fees.filter(r => r.for_month === prevMonth).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const prevMonthTotal  = prevMonthFlat + prevMonthCrsf
+  const monthChange     = prevMonthTotal > 0 ? Math.round(((thisMonthTotal - prevMonthTotal) / prevMonthTotal) * 100) : null
+
+  // Today's collections
+  const todayStr        = new Date().toISOString().slice(0, 10)
+  const todayFlat       = adm_flat_fees.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (r.amount || 0), 0)
+  const todayCrsf       = adm_course_fees.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const todayAdm        = adm_fee_collections.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const todayTotal      = todayFlat + todayCrsf + todayAdm
+
+  // ── Student alerts ──────────────────────────────────────────────────────────
+  const paidFlatGccs    = new Set(adm_flat_fees.filter(r => r.paid).map(r => gccStr(r.adm_app_id)))
+  const paidCrsfGccs    = new Set(adm_course_fees.map(r => gccStr(r.adm_app_id)))
+  const paidAdmGccs     = new Set(adm_fee_collections.filter(r => r.fee_type === 'admission').map(r => gccStr(r.adm_app_id)))
+
+  const zeroPayment     = liveRows.filter(s => s.grandTotal === 0)
+  const admOnlyPaid     = liveRows.filter(s => paidAdmGccs.has(gccStr(s.gcc_no)) && !paidFlatGccs.has(gccStr(s.gcc_no)) && !paidCrsfGccs.has(gccStr(s.gcc_no)))
+  const repeaters       = liveRows.filter(s => s.is_repeater && s.grandTotal === 0)
+  const fullyPaid       = liveRows.filter(s => paidFlatGccs.has(gccStr(s.gcc_no)) && paidCrsfGccs.has(gccStr(s.gcc_no)))
+
+  // This month defaulters — paid no course fee this month
+  const paidThisMonthCrsf = new Set(adm_course_fees.filter(r => r.for_month === thisMonth && r.year === thisYear).map(r => gccStr(r.adm_app_id)))
+  const defaultersThisMonth = liveRows.filter(s => !paidThisMonthCrsf.has(gccStr(s.gcc_no)))
+
+  // ── Monthly trend (last 6 months) ───────────────────────────────────────────
+  const last6 = Array.from({ length: 6 }, (_, i) => {
+    const d   = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+    const mon = d.toLocaleString('default', { month: 'short' })
+    const yr  = d.getFullYear()
+    const fullMon = d.toLocaleString('default', { month: 'long' })
+    const flat = adm_flat_fees.filter(r => r.paid && r.month === fullMon && r.year === yr).reduce((s, r) => s + (r.amount || 0), 0)
+    const crsf = adm_course_fees.filter(r => r.for_month === fullMon && r.year === yr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+    return { label: mon, flat, crsf, total: flat + crsf }
+  })
+  const maxBar = Math.max(...last6.map(m => m.total), 1)
+
+  // ── Course-wise breakdown ───────────────────────────────────────────────────
+  const courses = ['Sainik', 'Navodaya', 'Foundation', 'Combined Course']
+  const courseBreakdown = courses.map(c => {
+    const sts   = liveRows.filter(s => s.course === c)
+    const total = sts.reduce((s, r) => s + r.grandTotal, 0)
+    return { course: c, count: sts.length, total }
+  }).filter(c => c.count > 0)
+  const maxCourse = Math.max(...courseBreakdown.map(c => c.total), 1)
+
+  // ── Hostel breakdown ────────────────────────────────────────────────────────
+  const hostelBreakdown = ['Boarder', 'Day Boarder', 'Day Scholar'].map(h => {
+    const sts   = liveRows.filter(s => s.hostel_type === h)
+    const total = sts.reduce((s, r) => s + r.grandTotal, 0)
+    return { type: h, count: sts.length, total }
+  }).filter(h => h.count > 0)
+
+  const COURSE_COLORS = { Sainik: '#4f46e5', Navodaya: '#059669', Foundation: '#d97706', 'Combined Course': '#7c3aed' }
+  const HOSTEL_COLORS = { Boarder: '#059669', 'Day Boarder': '#d97706', 'Day Scholar': '#64748b' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* ── Top stat cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        {[
+          { icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` },
+          { icon: '📅', label: 'This Month', value: `₹${n(thisMonthTotal)}`, color: '#059669', bg: '#f0fdf4',
+            sub: monthChange !== null ? `${monthChange >= 0 ? '▲' : '▼'} ${Math.abs(monthChange)}% vs last month` : 'First month data' },
+          { icon: '🌅', label: "Today's Collection", value: `₹${n(todayTotal)}`, color: '#7c3aed', bg: '#f5f3ff', sub: todayStr },
+          { icon: '⚠️', label: 'No Payment Yet', value: zeroPayment.length, color: '#dc2626', bg: '#fef2f2', sub: 'students with ₹0 paid' },
+        ].map(c => (
+          <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '16px 18px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+            <div style={{ fontSize: 24, marginBottom: 6 }}>{c.icon}</div>
+            <div style={{ fontSize: 12, color: c.color, fontWeight: 600, marginBottom: 4 }}>{c.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: c.color }}>{c.value}</div>
+            <div style={{ fontSize: 11, color: c.color, opacity: .7, marginTop: 4 }}>{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Second row cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        {[
+          { icon: '🎓', label: 'Admission Fees', value: `₹${n(admTotal)}`, color: '#4f46e5', bg: '#eef2ff' },
+          { icon: '📅', label: 'Flat Fees', value: `₹${n(flatTotal)}`, color: '#059669', bg: '#f0fdf4' },
+          { icon: '📚', label: 'Course Fees', value: `₹${n(crsfTotal)}`, color: '#7c3aed', bg: '#f5f3ff' },
+          { icon: '✅', label: 'Fully Paid', value: fullyPaid.length, color: '#059669', bg: '#dcfce7', sub: 'flat + course both paid' },
+        ].map(c => (
+          <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '14px 16px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>{c.icon}</div>
+            <div style={{ fontSize: 11, color: c.color, fontWeight: 600, marginBottom: 3 }}>{c.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: c.color }}>{c.value}</div>
+            {c.sub && <div style={{ fontSize: 10, color: c.color, opacity: .7, marginTop: 3 }}>{c.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+
+        {/* ── Monthly trend bar chart ── */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>📈 Monthly Collection Trend</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Last 6 months — flat + course fees</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 140 }}>
+            {last6.map(m => (
+              <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#1e3a5f' }}>
+                  {m.total > 0 ? `₹${Math.round(m.total / 1000)}k` : '—'}
+                </div>
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <div style={{ width: '100%', height: Math.max(4, Math.round((m.crsf / maxBar) * 100)), background: '#7c3aed', borderRadius: '3px 3px 0 0' }} />
+                  <div style={{ width: '100%', height: Math.max(4, Math.round((m.flat / maxBar) * 100)), background: '#059669', borderRadius: '0 0 3px 3px' }} />
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b' }}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 14, marginTop: 10 }}>
+            <span style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: '#7c3aed', borderRadius: 2, display: 'inline-block' }} />Course</span>
+            <span style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: '#059669', borderRadius: 2, display: 'inline-block' }} />Flat</span>
+          </div>
+        </div>
+
+        {/* ── Hostel breakdown ── */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>🏠 Hostel Breakdown</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Collection by hostel type</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {hostelBreakdown.map(h => (
+              <div key={h.type}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: HOSTEL_COLORS[h.type] || '#64748b', marginBottom: 4 }}>
+                  <span>{h.type} <span style={{ fontWeight: 400, color: '#94a3b8' }}>({h.count})</span></span>
+                  <span>₹{n(h.total)}</span>
+                </div>
+                <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.round((h.total / (liveRows.reduce((s, r) => s + r.grandTotal, 1))) * 100)}%`, background: HOSTEL_COLORS[h.type] || '#64748b', borderRadius: 4, transition: 'width .4s' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Course-wise breakdown ── */}
+      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>📚 Course-wise Collection</div>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Total collected per course</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {courseBreakdown.map(c => (
+            <div key={c.course} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 80px', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: COURSE_COLORS[c.course] || '#64748b' }}>{c.course} <span style={{ fontWeight: 400, color: '#94a3b8' }}>({c.count})</span></div>
+              <div style={{ height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.round((c.total / maxCourse) * 100)}%`, background: COURSE_COLORS[c.course] || '#64748b', borderRadius: 5, transition: 'width .4s' }} />
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: COURSE_COLORS[c.course] || '#64748b', textAlign: 'right' }}>₹{n(c.total)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Smart Alerts ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+        {/* No payment */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fca5a5', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+          <div style={{ background: '#fef2f2', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fca5a5' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#dc2626' }}>🔴 Zero Payment Students</div>
+            <span style={{ fontSize: 11, fontWeight: 800, background: '#dc2626', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{zeroPayment.length}</span>
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {zeroPayment.length === 0
+              ? <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>🎉 All students have made at least one payment</div>
+              : zeroPayment.map(s => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fef2f2' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
+                  </div>
+                  <button onClick={() => onCollect(s)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer' }}>
+                    Collect
+                  </button>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* This month defaulters */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fde68a', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+          <div style={{ background: '#fffbeb', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fde68a' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#d97706' }}>🟡 {thisMonth} Course Fee Pending</div>
+            <span style={{ fontSize: 11, fontWeight: 800, background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{defaultersThisMonth.length}</span>
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {defaultersThisMonth.length === 0
+              ? <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>✅ All students paid course fee for {thisMonth}</div>
+              : defaultersThisMonth.map(s => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fffbeb' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
+                  </div>
+                  <button onClick={() => onCollect(s)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#d97706', color: 'white', cursor: 'pointer' }}>
+                    Collect
+                  </button>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* Adm paid, no monthly yet */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #c4b5fd', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+          <div style={{ background: '#f5f3ff', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #c4b5fd' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#7c3aed' }}>🟠 Adm Paid · No Monthly Yet</div>
+            <span style={{ fontSize: 11, fontWeight: 800, background: '#7c3aed', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{admOnlyPaid.length}</span>
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {admOnlyPaid.length === 0
+              ? <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>All students paying monthly fees</div>
+              : admOnlyPaid.map(s => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #f5f3ff' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
+                  </div>
+                  <button onClick={() => onCollect(s)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#7c3aed', color: 'white', cursor: 'pointer' }}>
+                    Collect
+                  </button>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* Repeaters with dues */}
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fcd34d', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+          <div style={{ background: '#fef3c7', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fcd34d' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>🔁 Repeaters — Pending</div>
+            <span style={{ fontSize: 11, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeaters.length}</span>
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {repeaters.length === 0
+              ? <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>No repeater students with pending dues</div>
+              : repeaters.map(s => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fef3c7' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
+                  </div>
+                  <button onClick={() => onCollect(s)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#92400e', color: 'white', cursor: 'pointer' }}>
+                    Collect
+                  </button>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+
+      {/* ── Session progress bars ── */}
+      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 16 }}>📊 Session Progress</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+          {[
+            { label: 'Paid Admission', count: paidAdmGccs.size,  color: '#4f46e5', bg: '#eef2ff' },
+            { label: 'Paid Flat Fee',  count: paidFlatGccs.size, color: '#059669', bg: '#f0fdf4' },
+            { label: 'Paid Course Fee',count: paidCrsfGccs.size, color: '#7c3aed', bg: '#f5f3ff' },
+          ].map(p => {
+            const pct = students.length > 0 ? Math.round((p.count / students.length) * 100) : 0
+            return (
+              <div key={p.label} style={{ background: p.bg, borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: p.color, marginBottom: 8 }}>
+                  <span>{p.label}</span>
+                  <span>{p.count} / {students.length}</span>
+                </div>
+                <div style={{ height: 10, background: 'white', borderRadius: 5, overflow: 'hidden', marginBottom: 6 }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: p.color, borderRadius: 5, transition: 'width .5s' }} />
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: p.color }}>{pct}%</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+    </div>
+  )
+}
+
 // ─── Tab: Fee Payment ─────────────────────────────────────────────────────────
 
 function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh }) {
@@ -965,7 +1277,7 @@ export default function Fees() {
   const [showForm,            setShowForm]      = useState(false)
   const [search,              setSearch]        = useState('')
   const [sf,                  setSf]            = useState('All')
-  const [tab,                 setTab]           = useState('payment')
+  const [tab, setTab] = useState('dashboard')
   const [form,                setForm]          = useState({ gcc_no: '', name: '', class_name: '', course: '', amount: '', paid: '0' })
 
   const loadAll = async () => {
@@ -1056,9 +1368,10 @@ export default function Fees() {
   const n = v => Number(v || 0).toLocaleString('en-IN')
 
   const TABS = [
-    { id: 'payment', label: '💳 Fee Payment' },
-    { id: 'live',    label: '📊 Live Summary' },
-    { id: 'legacy',  label: '🗂️ Legacy Records' },
+    { id: 'dashboard', label: '🏠 Dashboard' },
+    { id: 'payment',   label: '💳 Fee Payment' },
+    { id: 'live',      label: '📊 Live Summary' },
+    { id: 'legacy',    label: '🗂️ Legacy Records' },
   ]
 
   return (
@@ -1066,7 +1379,7 @@ export default function Fees() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>💰 Fee Management</h1>
-          <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Collect · Invoice · Live summary · Legacy records</p>
+          <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Dashboard · Collect · Invoice · Live summary · Legacy records</p>
         </div>
         {tab === 'legacy' && (
           <button onClick={() => setShowForm(!showForm)} style={{ backgroundColor: '#1e3a5f', color: 'white', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
@@ -1083,6 +1396,17 @@ export default function Fees() {
           </button>
         ))}
       </div>
+
+      {tab === 'dashboard' && (
+        <FeeDashboardTab
+          students={students}
+          adm_fee_collections={adm_fee_collections}
+          adm_flat_fees={adm_flat_fees}
+          adm_course_fees={adm_course_fees}
+          liveRows={liveRows}
+          onCollect={s => setTab('payment')}
+        />
+      )}
 
       {tab === 'payment' && (
         <FeePaymentTab
