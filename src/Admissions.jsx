@@ -1460,7 +1460,183 @@ function SortControl({ sortBy, sortDir, onChange }) {
     </div>
   )
 }
+// ─── Dashboard ─────────────────────────────────────────────────────────────────
+function Dashboard({ apps, cols, darkMode }) {
+  const [activeTab, setActiveTab] = useState('overview')
+  const bg   = darkMode ? T.slate[800] : '#fff'
+  const bd   = darkMode ? T.slate[700] : T.slate[200]
+  const tx   = darkMode ? T.slate[100] : T.slate[800]
+  const today = new Date().toISOString().slice(0,10)
 
+  const byStatus = s => apps.filter(a => a.status === s).length
+  const total    = apps.length
+  const enrolled = byStatus('Enrolled')
+  const admitted = byStatus('Admitted')
+  const revenue  = apps.filter(a => a.status === 'Enrolled')
+                       .reduce((s, a) => s + getFlatFeeAmt(a.hostel_type), 0)
+
+  const admitRate  = total > 0 ? Math.round((admitted + enrolled) / total * 100) : 0
+  const enrollRate = (admitted + enrolled) > 0
+    ? Math.round(enrolled / (admitted + enrolled) * 100) : 0
+
+  const days      = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - 6 + i); return d
+  })
+  const dayCounts = days.map(d =>
+    apps.filter(a => a.created_at?.slice(0, 10) === d.toISOString().slice(0, 10)).length
+  )
+
+  const houseFill = HOUSES_LIST.filter(h => h !== 'Day Scholar').map(h => ({
+    name: h,
+    count: apps.filter(a => a.house === h).length,
+    cap: HOUSE_CAPACITIES[h] || 40,
+  }))
+
+  const overdue  = apps.filter(a => a.followupDate && a.followupDate < today)
+  const dueToday = apps.filter(a => a.followupDate === today)
+  const upcoming = apps.filter(a => a.followupDate && a.followupDate > today)
+
+  const metric = (label, value, accent, sub) => (
+    <div style={{ background: darkMode ? T.slate[700] : T.slate[50], borderRadius: 8, padding: '14px 16px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: accent || tx, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: T.slate[400], marginTop: 4 }}>{sub}</div>}
+    </div>
+  )
+
+  const funnelBar = (label, count, color) => {
+    const pct = total > 0 ? Math.round(count / total * 100) : 0
+    return (
+      <div key={label} style={{ marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 600, color: T.slate[500], marginBottom: 3 }}>
+          <span>{label}</span><span>{count} ({pct}%)</span>
+        </div>
+        <div style={{ height: 7, borderRadius: 99, background: T.slate[100], overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: color, transition: 'width .4s' }} />
+        </div>
+      </div>
+    )
+  }
+
+  const tabs = ['Overview', 'Funnel', 'Hostel & House', 'Follow-ups']
+
+  return (
+    <div style={{ background: bg, border: `1px solid ${bd}`, borderRadius: 14, padding: '18px 20px', marginBottom: 16 }}>
+      {/* Tab strip */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 18, background: T.slate[100], borderRadius: 9, padding: 3, width: 'fit-content' }}>
+        {tabs.map(t => (
+          <button key={t} onClick={() => setActiveTab(t.toLowerCase().replace(/[^a-z]/g, ''))}
+            style={{ padding: '5px 14px', borderRadius: 7, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+              background: activeTab === t.toLowerCase().replace(/[^a-z]/g,'') ? '#fff' : 'transparent',
+              color: activeTab === t.toLowerCase().replace(/[^a-z]/g,'') ? T.slate[800] : T.slate[400],
+              boxShadow: activeTab === t.toLowerCase().replace(/[^a-z]/g,'') ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Overview ── */}
+      {activeTab === 'overview' && <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 10, marginBottom: 16 }}>
+          {metric('Total', total, undefined, `₹${fmt(revenue)}/mo`)}
+          {metric('Enrolled', enrolled, T.emerald[600])}
+          {metric('Admitted', admitted, T.violet[600])}
+          {metric('Under Review', byStatus('Under Review'), T.amber[600])}
+          {metric('Rejected', byStatus('Rejected'), T.rose[600])}
+          {metric('Waitlisted', byStatus('Waitlisted'), T.slate[400])}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ padding: 14, border: `1px solid ${bd}`, borderRadius: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', marginBottom: 10 }}>By Course</div>
+            {Object.keys(COURSE_STRUCTURE).map(c =>
+              funnelBar(c, apps.filter(a => a.course === c).length, COURSE_STRUCTURE[c].color)
+            )}
+          </div>
+          <div style={{ padding: 14, border: `1px solid ${bd}`, borderRadius: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', marginBottom: 10 }}>Daily (7 days)</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
+              {dayCounts.map((v, i) => {
+                const max = Math.max(...dayCounts, 1)
+                return (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    <div style={{ width: '100%', background: T.indigo[400], borderRadius: 3, height: `${(v / max) * 64}px`, minHeight: v > 0 ? 4 : 0, transition: 'height .4s' }} />
+                    <span style={{ fontSize: 9, color: T.slate[300] }}>{days[i]?.toLocaleDateString('en-IN',{weekday:'short'})}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </>}
+
+      {/* ── Funnel ── */}
+      {activeTab === 'funnel' && <div style={{ padding: 4 }}>
+        {[['Applied',byStatus('Applied'),T.indigo[500]],['Under Review',byStatus('Under Review'),T.amber[500]],['Admitted',admitted,T.violet[500]],['Enrolled',enrolled,T.emerald[500]],['Rejected',byStatus('Rejected'),T.rose[500]]].map(([l,v,c]) => funnelBar(l,v,c))}
+        <div style={{ marginTop: 14, fontSize: 12, color: T.slate[500] }}>
+          Admit rate: <strong style={{ color: T.violet[600] }}>{admitRate}%</strong> &nbsp;·&nbsp;
+          Enroll rate: <strong style={{ color: T.emerald[600] }}>{enrollRate}%</strong>
+        </div>
+      </div>}
+
+      {/* ── Hostel & House ── */}
+      {activeTab === 'hostelhouseandhouse'.slice(0,11) && <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          {HOSTEL_TYPES.map(h => {
+            const count = apps.filter(a => a.hostel_type === h).length
+            const rev   = apps.filter(a => a.status === 'Enrolled' && a.hostel_type === h).reduce((s) => s + getFlatFeeAmt(h), 0)
+            const s = HOSTEL_STYLES[h]
+            return (
+              <div key={h} style={{ padding: 14, background: s.bg, border: `1px solid ${s.border}`, borderRadius: 10 }}>
+                <div style={{ fontSize: 16, marginBottom: 4 }}>{s.icon} {h}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{count}</div>
+                <div style={{ fontSize: 11, color: s.color, marginTop: 2 }}>₹{fmt(rev)}/mo revenue</div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', marginBottom: 8 }}>House Fill Rate</div>
+        {houseFill.map(({ name, count, cap }) => {
+          const pct = Math.round(count / cap * 100)
+          const col = pct >= 90 ? T.rose[500] : pct >= 70 ? T.amber[500] : T.emerald[500]
+          return (
+            <div key={name} style={{ marginBottom: 7 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 600, color: T.slate[500], marginBottom: 2 }}>
+                <span>{name}</span><span style={{ color: col }}>{count}/{cap}</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 99, background: T.slate[100], overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: col, borderRadius: 99 }} />
+              </div>
+            </div>
+          )
+        })}
+      </>}
+
+      {/* ── Follow-ups ── */}
+      {activeTab === 'followups' && <>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {[[`${overdue.length} Overdue`, T.rose[600], T.rose[50]], [`${dueToday.length} Today`, T.amber[600], T.amber[50]], [`${upcoming.length} Upcoming`, T.sky[600], T.sky[50]]].map(([l, c, bg]) => (
+            <span key={l} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 99, color: c, background: bg }}>{l}</span>
+          ))}
+        </div>
+        {[['Overdue', overdue, T.rose[600]], ['Due Today', dueToday, T.amber[600]], ['Upcoming (7 days)', upcoming.slice(0,7), T.sky[600]]].map(([heading, list, accent]) => (
+          <div key={heading} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>{heading}</div>
+            {list.length === 0
+              ? <div style={{ fontSize: 12, color: T.slate[300] }}>None</div>
+              : list.map(a => (
+                <div key={a.gcc} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: T.slate[50], borderRadius: 7, marginBottom: 4, fontSize: 12 }}>
+                  <span style={{ fontWeight: 700, flex: 1, color: tx }}>{a.name}</span>
+                  <StatusBadge status={a.status} />
+                  <span style={{ color: accent, fontWeight: 700 }}>{dateFmt(a.followupDate)}</span>
+                </div>
+              ))
+            }
+          </div>
+        ))}
+      </>}
+    </div>
+  )
+}
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function Admissions() {
   const [apps,           setApps]          = useState([])
@@ -1884,6 +2060,9 @@ export default function Admissions() {
 
         {/* Analytics Dashboard */}
         {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
+
+        {/* Dashboard — default view */}
+        <Dashboard apps={apps} cols={cols} darkMode={darkMode} />
 
         {/* KPI Strip */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(110px, 1fr))', gap:10, marginBottom:16 }}>
