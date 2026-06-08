@@ -12,6 +12,17 @@ import {
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
 
+// ── Responsive hook ───────────────────────────────────────────────────────────
+function useWindowWidth() {
+  const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200)
+  useEffect(() => {
+    const fn = () => setW(window.innerWidth)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return w
+}
+
 // ── Sync helpers for display/hints only (not used for saving) ─────────────────
 const syncCourseFeeAmt = (course, hostelType) => COURSE_RATES[course]?.[hostelType] ?? 0
 const syncFlatFeeAmt   = (hostelType) => FLAT_RATES[hostelType] ?? 0
@@ -107,6 +118,9 @@ function StudentSearch({ students, onSelect, placeholder }) {
 // ─── Tab: Fee Dashboard ───────────────────────────────────────────────────────
 
 function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows, onCollect }) {
+  const w       = useWindowWidth()
+  const isMobile= w < 640
+  const is2Col  = w >= 640 && w < 900
   const n = v => Number(v || 0).toLocaleString('en-IN')
   const now      = new Date()
   const thisMonth= now.toLocaleString('default', { month: 'long' })
@@ -185,9 +199,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* ── Top stat cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-        {[
-          { icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` },
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 14 }}> value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` },
           { icon: '📅', label: 'This Month', value: `₹${n(thisMonthTotal)}`, color: '#059669', bg: '#f0fdf4',
             sub: monthChange !== null ? `${monthChange >= 0 ? '▲' : '▼'} ${Math.abs(monthChange)}% vs last month` : 'First month data' },
           { icon: '🌅', label: "Today's Collection", value: `₹${n(todayTotal)}`, color: '#7c3aed', bg: '#f5f3ff', sub: todayStr },
@@ -203,9 +215,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       </div>
 
       {/* ── Second row cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-        {[
-          { icon: '🎓', label: 'Admission Fees', value: `₹${n(admTotal)}`, color: '#4f46e5', bg: '#eef2ff' },
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 14 }}> value: `₹${n(admTotal)}`, color: '#4f46e5', bg: '#eef2ff' },
           { icon: '📅', label: 'Flat Fees', value: `₹${n(flatTotal)}`, color: '#059669', bg: '#f0fdf4' },
           { icon: '📚', label: 'Course Fees', value: `₹${n(crsfTotal)}`, color: '#7c3aed', bg: '#f5f3ff' },
           { icon: '✅', label: 'Fully Paid', value: fullyPaid.length, color: '#059669', bg: '#dcfce7', sub: 'flat + course both paid' },
@@ -219,7 +229,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: 20 }}>
 
         {/* ── Monthly trend bar chart ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
@@ -271,7 +281,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Total collected per course</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {courseBreakdown.map(c => (
-            <div key={c.course} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 80px', alignItems: 'center', gap: 12 }}>
+            <div key={c.course} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '140px 1fr 80px', alignItems: 'center', gap: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: COURSE_COLORS[c.course] || '#64748b' }}>{c.course} <span style={{ fontWeight: 400, color: '#94a3b8' }}>({c.count})</span></div>
               <div style={{ height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${Math.round((c.total / maxCourse) * 100)}%`, background: COURSE_COLORS[c.course] || '#64748b', borderRadius: 5, transition: 'width .4s' }} />
@@ -283,7 +293,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       </div>
 
       {/* ── Smart Alerts ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
 
         {/* No payment */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fca5a5', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
@@ -389,7 +399,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       {/* ── Session progress bars ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 16 }}>📊 Session Progress</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : is2Col ? '1fr 1fr' : '1fr 1fr 1fr', gap: 20 }}>
           {[
             { label: 'Paid Admission', count: paidAdmGccs.size,  color: '#4f46e5', bg: '#eef2ff' },
             { label: 'Paid Flat Fee',  count: paidFlatGccs.size, color: '#059669', bg: '#f0fdf4' },
@@ -419,6 +429,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 // ─── Tab: Fee Payment ─────────────────────────────────────────────────────────
 
 function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh }) {
+  const w        = useWindowWidth()
+  const isMobile = w < 768
   const [step,    setStep]    = useState('select')
   const [student, setStudent] = useState(null)
   const [admRec,  setAdmRec]  = useState(null)
@@ -945,7 +957,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>
             ✏️ Custom flat fee for {student.name} — {`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
               <label style={{ ...lbl, fontSize: 11, color: '#7c3aed' }}>New Amount (₹/month)</label>
               <div style={{ position: 'relative' }}>
@@ -996,7 +1008,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 20, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: 20, alignItems: 'start' }}>
 
         {/* Left: fee items */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1118,7 +1130,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               )}
               {crsfRows.map((row, i) => (
                 <div key={i} style={{ border: '1px solid #ede9fe', borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 8 }}>
                     <div>
                       <label style={{ ...lbl, fontSize: 11 }}>Course</label>
                       <select value={row.course} onChange={e => updateCrsfRow(i, 'course', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
@@ -1134,7 +1146,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                       </select>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 8 }}>
                     <div>
                       <label style={{ ...lbl, fontSize: 11 }}>Subtype</label>
                       {(COURSE_STRUCTURE[row.course]?.subtypes || []).length > 0
@@ -1197,7 +1209,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {/* Advance */}
           <div style={{ background: 'white', border: '1px solid #fcd34d', borderRadius: 12, padding: '12px 16px' }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: '#b45309', marginBottom: 10 }}>⮕ Advance fee (optional)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={{ ...lbl, fontSize: 11 }}>Amount ₹</label>
                 <input type="number" min={0} value={advAmt} onChange={e => setAdvAmt(e.target.value)} placeholder="0" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
@@ -1211,7 +1223,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         </div>
 
         {/* Right: payment + summary */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: isMobile ? 'static' : 'sticky', top: 20 }}>
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
             <div style={{ fontWeight: 800, fontSize: 14, color: '#1e3a5f', marginBottom: 14 }}>💳 Payment details</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
@@ -1266,6 +1278,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 // ─── Root: Fees page ──────────────────────────────────────────────────────────
 
 export default function Fees() {
+  const w        = useWindowWidth()
+  const isMobile = w < 768
   const [fees,                setFees]         = useState([])
   const [students,            setStudents]      = useState([])
   const [admissions,          setAdmissions]    = useState([])
@@ -1375,7 +1389,7 @@ export default function Fees() {
   ]
 
   return (
-    <div style={{ padding: 24, fontFamily: 'system-ui,sans-serif' }}>
+    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>💰 Fee Management</h1>
@@ -1388,7 +1402,7 @@ export default function Fees() {
         )}
       </div>
 
-      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 24 }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 24, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setSearch(''); setSf('All') }}
             style={{ padding: '9px 20px', border: 'none', borderBottom: tab === t.id ? '3px solid #1e3a5f' : '3px solid transparent', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? '#1e3a5f' : '#64748b', marginBottom: -2, whiteSpace: 'nowrap' }}>
@@ -1420,7 +1434,7 @@ export default function Fees() {
 
       {tab === 'live' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
             {[
               { label: 'Total students',  value: students.length,  color: '#1e3a5f', bg: '#eff6ff', icon: '👨‍🎓' },
               { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅' },
@@ -1488,7 +1502,7 @@ export default function Fees() {
 
       {tab === 'legacy' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
             {[
               { label: 'Total fees', amount: legTtl,         color: '#1e3a5f', bg: '#eff6ff' },
               { label: 'Collected',  amount: legPd,          color: '#16a34a', bg: '#dcfce7' },
@@ -1504,7 +1518,7 @@ export default function Fees() {
             <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
               <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1e3a5f', marginBottom: 16 }}>Add fee record</h2>
               <form onSubmit={handleAdd}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={lbl}>Search student</label>
                     <StudentSearch students={students} onSelect={s => setForm(f => ({ ...f, gcc_no: gccStr(s.gcc_no), name: s.name || '', class_name: s.class_name || s.batch || '', course: s.course || '' }))} />
