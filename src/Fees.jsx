@@ -142,6 +142,32 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const [flatChecked, setFlatChecked] = useState([])
 
+  // ── Repeater state ────────────────────────────────────────────────────────
+  const [isRepeater,     setIsRepeater]     = useState(false)
+  const [repeaterSaving, setRepeaterSaving] = useState(false)
+
+  useEffect(() => {
+    if (!student?.gcc_no) return
+    supabase
+      .from('students')
+      .select('is_repeater')
+      .eq('gcc_no', parseInt(student.gcc_no))
+      .maybeSingle()
+      .then(({ data }) => { if (data) setIsRepeater(!!data.is_repeater) })
+  }, [student?.gcc_no])
+
+  const toggleRepeater = async () => {
+    if (!student?.gcc_no) return
+    const newVal = !isRepeater
+    setRepeaterSaving(true)
+    await supabase
+      .from('students')
+      .update({ is_repeater: newVal })
+      .eq('gcc_no', parseInt(student.gcc_no))
+    setIsRepeater(newVal)
+    setRepeaterSaving(false)
+  }
+
   const showToast = (msg, color = '#16a34a') => {
     setToast({ msg, color })
     setTimeout(() => setToast(null), 3500)
@@ -171,6 +197,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const handleSelect = async s => {
     setStudent(s)
+    setIsRepeater(!!s.is_repeater)   // use value already loaded in students list
     const rec = admissions.find(a => gccStr(a.gcc_no) === gccStr(s.gcc_no)) || null
     setAdmRec(rec)
 
@@ -184,7 +211,6 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     const defaultHostelType = s.hostel_type || 'Day Scholar'
     const defaultBatch      = s.batch || ''
 
-    // Fetch real rate from DB for this student's course+batch+hostelType
     let defaultAmt = ''
     if (defaultCourse && defaultHostelType) {
       try {
@@ -211,6 +237,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const handleBack = () => {
     setStep('select'); setStudent(null); setAdmRec(null)
+    setIsRepeater(false)
     setAdmFeeAmt(ADM_FEE_BASE)
     setDressChecked(DRESS_ITEMS.map(() => true))
     setProspChecked(true)
@@ -221,7 +248,6 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   }
 
   const updateCrsfRow = async (i, field, value) => {
-    // Update the field immediately for responsive UI
     setCrsfRows(rows => {
       const updated = [...rows]
       const row = { ...updated[i], [field]: value }
@@ -230,7 +256,6 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       return updated
     })
 
-    // Fetch DB rate when course, hostelType or subtype changes
     if (field === 'course' || field === 'hostelType' || field === 'subtype') {
       const currentRow = crsfRows[i]
       const course     = field === 'course'     ? value : currentRow.course
@@ -491,7 +516,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {(student.name || '?').split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase()}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{student.name}</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {student.name}
+            {/* ── REPEATER badge ── */}
+            {isRepeater && (
+              <span style={{ fontSize: 10, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '2px 9px', borderRadius: 4, border: '1px solid #fcd34d', letterSpacing: '.04em' }}>
+                🔁 REPEATER
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             {student.gcc_no && <span style={{ fontWeight: 700, color: '#1e3a5f' }}>GCC-{student.gcc_no}</span>}
             {(student.class_name || student.batch) && <span>{student.class_name || student.batch}</span>}
@@ -502,6 +535,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               Flat fee: ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo
             </span>
             {totalEverPaid > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>₹{totalEverPaid.toLocaleString('en-IN')} prev. paid</span>}
+            {/* ── REPEATER toggle ── */}
+            <button
+              type="button"
+              onClick={toggleRepeater}
+              disabled={repeaterSaving}
+              title={isRepeater ? 'Remove Repeater tag' : 'Mark as Repeater (2+ years at GNSI)'}
+              style={{ fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 4, border: `1px solid ${isRepeater ? '#fcd34d' : '#e2e8f0'}`, background: isRepeater ? '#fef3c7' : '#f8fafc', color: isRepeater ? '#92400e' : '#94a3b8', cursor: repeaterSaving ? 'not-allowed' : 'pointer' }}>
+              {repeaterSaving ? '…' : isRepeater ? '✕ Remove Repeater' : '🔁 Mark Repeater'}
+            </button>
           </div>
         </div>
         <button onClick={handleBack} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b' }}>← Change</button>
@@ -962,7 +1004,14 @@ export default function Fees() {
                       onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                       <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
+                      <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {s.name}
+                          {s.is_repeater && (
+                            <span style={{ fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 3, border: '1px solid #fcd34d', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>🔁 RPT</span>
+                          )}
+                        </div>
+                      </td>
                       <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.class_name || s.batch || '—'}</td>
                       <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
                       <td style={{ padding: '10px 14px' }}><HostelBadge type={s.hostel_type} /></td>
