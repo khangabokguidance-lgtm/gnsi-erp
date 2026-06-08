@@ -24,7 +24,7 @@ import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from 
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
 import './mobile.css';
-import ExamCSVImport from './ExamCSVImport';
+import ExamCSVImport from './lib/ExamCSVImport';
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
