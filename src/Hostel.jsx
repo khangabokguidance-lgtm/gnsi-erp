@@ -68,7 +68,7 @@ const MobileCardList = ({ children, style = {} }) => (
 )
 
 const MobileRecordCard = ({ children, accentColor = '#1e3a5f', onClick }) => (
-  <div 
+  <div
     onClick={onClick}
     style={{
       background: 'white', borderRadius: '12px', padding: '14px',
@@ -82,43 +82,43 @@ const MobileRecordCard = ({ children, accentColor = '#1e3a5f', onClick }) => (
 )
 
 const TABS = [
-  { id: 'schedule',    label: '📅 Schedule' },
-  { id: 'house',       label: '🏠 Houses' },
+  { id: 'schedule', label: '📅 Schedule' },
+  { id: 'house', label: '🏠 Houses' },
   { id: 'housemaster', label: '👨‍🏫 HM' },
   { id: 'hmactivities', label: '📌 Activities' },
   { id: 'adminmonitor', label: '🖥 Monitor' },
-  { id: 'discipline',  label: '⚠️ Discipline' },
-  { id: 'sickbay',     label: '🏥 Sickbay' },
-  { id: 'kitchen',     label: '🍽️ Kitchen' },
-  { id: 'nightduty',   label: '🍽️ Mess Duty' },
-  { id: 'allotments',  label: '📋 Day Scholar' },
+  { id: 'discipline', label: '⚠️ Discipline' },
+  { id: 'sickbay', label: '🏥 Sickbay' },
+  { id: 'kitchen', label: '🍽️ Kitchen' },
+  { id: 'nightduty', label: '🍽️ Mess Duty' },
+  { id: 'allotments', label: '📋 Day Scholar' },
   // ─── NEW: House Master Daily Features ──────────────────
-  { id: 'attendance',  label: '✓ Roll Call' },
-  { id: 'leave',       label: '🚪 Leave' },
+  { id: 'attendance', label: '✓ Roll Call' },
+  { id: 'leave', label: '🚪 Leave' },
   { id: 'hmdashboard', label: '📊 HM Dash' },
-  { id: 'maintenance',  label: '🔧 Repairs' },
-  { id: 'journal',     label: '📝 Journal' },
-  { id: 'doubtsession',   label: '🙋 Doubt'   },
+  { id: 'maintenance', label: '🔧 Repairs' },
+  { id: 'journal', label: '📝 Journal' },
+  { id: 'doubtsession', label: '🙋 Doubt' },
   { id: 'classtimetable', label: '🗓️ Classes' },
 ]
 
 const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
 const today = () => new Date().toISOString().split('T')[0]
 const nowTime = () => {
   const d = new Date()
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 function getStudentClass(s) {
   if (!s) return ''
   const batch = (s.batch || '').trim()
-  const cls   = (s.class_name || '').trim()
+  const cls = (s.class_name || '').trim()
   if (batch && batch !== '???') return batch
-  if (cls   && cls   !== '???') return cls
+  if (cls && cls !== '???') return cls
   return ''
 }
 
@@ -163,25 +163,25 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
 
 function statusStyle(status) {
   const map = {
-    Occupied:      { bg: '#dcfce7', color: '#16a34a' },
-    Vacant:        { bg: '#fee2e2', color: '#dc2626' },
-    Shifted:       { bg: '#fef9c3', color: '#ca8a04' },
-    Vacated:       { bg: '#e5e7eb', color: '#374151' },
-    Resolved:      { bg: '#dcfce7', color: '#16a34a' },
-    Open:          { bg: '#fee2e2', color: '#dc2626' },
+    Occupied: { bg: '#dcfce7', color: '#16a34a' },
+    Vacant: { bg: '#fee2e2', color: '#dc2626' },
+    Shifted: { bg: '#fef9c3', color: '#ca8a04' },
+    Vacated: { bg: '#e5e7eb', color: '#374151' },
+    Resolved: { bg: '#dcfce7', color: '#16a34a' },
+    Open: { bg: '#fee2e2', color: '#dc2626' },
     'In Progress': { bg: '#fef9c3', color: '#ca8a04' },
-    Closed:        { bg: '#e5e7eb', color: '#374151' },
-    Discharged:    { bg: '#dcfce7', color: '#16a34a' },
-    Admitted:      { bg: '#dbeafe', color: '#1d4ed8' },
-    Present:       { bg: '#dcfce7', color: '#16a34a' },
-    Absent:        { bg: '#fee2e2', color: '#dc2626' },
-    Late:          { bg: '#fef9c3', color: '#ca8a04' },
-    'On Leave':    { bg: '#dbeafe', color: '#1d4ed8' },
-    Sick:          { bg: '#f5f3ff', color: '#7c3aed' },
-    Pending:       { bg: '#fef9c3', color: '#ca8a04' },
-    Approved:      { bg: '#dcfce7', color: '#16a34a' },
-    Rejected:      { bg: '#fee2e2', color: '#dc2626' },
-    Overdue:       { bg: '#fee2e2', color: '#dc2626' },
+    Closed: { bg: '#e5e7eb', color: '#374151' },
+    Discharged: { bg: '#dcfce7', color: '#16a34a' },
+    Admitted: { bg: '#dbeafe', color: '#1d4ed8' },
+    Present: { bg: '#dcfce7', color: '#16a34a' },
+    Absent: { bg: '#fee2e2', color: '#dc2626' },
+    Late: { bg: '#fef9c3', color: '#ca8a04' },
+    'On Leave': { bg: '#dbeafe', color: '#1d4ed8' },
+    Sick: { bg: '#f5f3ff', color: '#7c3aed' },
+    Pending: { bg: '#fef9c3', color: '#ca8a04' },
+    Approved: { bg: '#dcfce7', color: '#16a34a' },
+    Rejected: { bg: '#fee2e2', color: '#dc2626' },
+    Overdue: { bg: '#fee2e2', color: '#dc2626' },
   }
   const s = map[status] || { bg: '#e0f2fe', color: '#0891b2' }
   return {
@@ -222,11 +222,11 @@ function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GC
 
   return (
     <div style={{ position: 'relative' }}>
-      <input 
-        value={query} 
-        onChange={e => setQuery(e.target.value)} 
-        placeholder={placeholder} 
-        style={inp} 
+      <input
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder={placeholder}
+        style={inp}
         type="search"
         autoComplete="off"
       />
@@ -240,9 +240,9 @@ function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GC
         }}>
           {matches.map(s => (
             <div key={s.id} onClick={() => select(s)}
-              style={{ 
-                padding: mobile ? '12px 14px' : '10px 14px', 
-                cursor: 'pointer', borderBottom: '1px solid #f1f5f9', 
+              style={{
+                padding: mobile ? '12px 14px' : '10px 14px',
+                cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
                 fontSize: '14px',
                 minHeight: '44px',
                 display: 'flex', alignItems: 'center',
@@ -291,11 +291,11 @@ function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name
 
   return (
     <div style={{ position: 'relative' }}>
-      <input 
-        value={query} 
-        onChange={e => setQuery(e.target.value)} 
-        placeholder={placeholder} 
-        style={inp} 
+      <input
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder={placeholder}
+        style={inp}
         type="search"
         autoComplete="off"
       />
@@ -309,9 +309,9 @@ function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name
         }}>
           {matches.map(s => (
             <div key={s.id} onClick={() => select(s)}
-              style={{ 
-                padding: mobile ? '12px 14px' : '10px 14px', 
-                cursor: 'pointer', borderBottom: '1px solid #f1f5f9', 
+              style={{
+                padding: mobile ? '12px 14px' : '10px 14px',
+                cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
                 fontSize: '14px',
                 minHeight: '44px',
                 display: 'flex', alignItems: 'center',
@@ -358,7 +358,7 @@ function MobileActionButtons({ actions }) {
   return (
     <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
       {actions.map((action, i) => (
-        <button 
+        <button
           key={i}
           onClick={action.onClick}
           style={{
@@ -402,12 +402,12 @@ const HOUSE_PALETTE = [
 ]
 
 const statusConfig = {
-  Present:    { bg: '#dcfce7', color: '#16a34a', icon: '✓' },
-  Absent:     { bg: '#fee2e2', color: '#dc2626', icon: '✕' },
-  Late:       { bg: '#fef9c3', color: '#ca8a04', icon: '⏰' },
+  Present: { bg: '#dcfce7', color: '#16a34a', icon: '✓' },
+  Absent: { bg: '#fee2e2', color: '#dc2626', icon: '✕' },
+  Late: { bg: '#fef9c3', color: '#ca8a04', icon: '⏰' },
   'On Leave': { bg: '#dbeafe', color: '#1d4ed8', icon: '🚪' },
-  Sick:       { bg: '#f5f3ff', color: '#7c3aed', icon: '🏥' },
-  Unmarked:   { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
+  Sick: { bg: '#f5f3ff', color: '#7c3aed', icon: '🏥' },
+  Unmarked: { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
 }
 
 function AttendanceTab({ students, currentHousemaster }) {
@@ -715,7 +715,7 @@ function AttendanceTab({ students, currentHousemaster }) {
 
             {/* ── ALERT BANNER: Absent + Unmarked reminders ── */}
             {(() => {
-              const absentCount   = allRecords.filter(r => r.status === 'Absent').length
+              const absentCount = allRecords.filter(r => r.status === 'Absent').length
               const unmarkedCount = totalStudents - totalMarked
               if (absentCount === 0 && unmarkedCount === 0) return null
               return (
@@ -1211,12 +1211,11 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
     const payload = {
-  ...form,
-  reported_by: currentHousemaster?.name || form.reported_by,
-  raised_at: new Date().toISOString(),
-  resolved_at: form.resolved_at || null,
-  cost: form.cost !== '' && form.cost !== null ? Number(form.cost) : null,
-}
+      ...form,
+      reported_by: currentHousemaster?.name || form.reported_by,
+      raised_at: new Date().toISOString(),
+      cost: form.cost !== '' && form.cost !== null ? Number(form.cost) : null,
+    }
     const { error } = await supabase.from('maintenance_records').insert([payload])
     if (error) alert('Error: ' + error.message)
     else { setForm({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }); setShowForm(false); load() }
@@ -1679,15 +1678,15 @@ const emptyDayScholar = {
 }
 
 function DayScholarTab({ students }) {
-  const [records,      setRecords]      = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [saving,       setSaving]       = useState(false)
-  const [showForm,     setShowForm]     = useState(false)
-  const [editRec,      setEditRec]      = useState(null)
-  const [search,       setSearch]       = useState('')
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec, setEditRec] = useState(null)
+  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
-  const [routeFilter,  setRouteFilter]  = useState('All')
-  const [form,         setForm]         = useState(emptyDayScholar)
+  const [routeFilter, setRouteFilter] = useState('All')
+  const [form, setForm] = useState(emptyDayScholar)
   const mobile = useMobileView()
 
   const load = async () => {
@@ -1758,7 +1757,7 @@ function DayScholarTab({ students }) {
     )
   }, [records, search, statusFilter, routeFilter])
 
-  const active   = records.filter(r => r.status === 'Active').length
+  const active = records.filter(r => r.status === 'Active').length
   const inactive = records.filter(r => r.status === 'Inactive').length
   const withTransport = records.filter(r => r.transport_route).length
 
@@ -1999,73 +1998,62 @@ create table if not exists day_scholar_records (
 // ─── Default activity templates ───────────────────────────────
 const DEFAULT_HOSTEL_ACTIVITIES = {
   weekday: [
-    { no: 1,  from: '5:30 AM',  to: '6:00 AM',  activity: 'Wake Up Bell & Morning PT',      category: 'Routine' },
-    { no: 2,  from: '6:00 AM',  to: '6:45 AM',  activity: 'PT / Exercise / Sports',          category: 'Physical' },
-    { no: 3,  from: '6:45 AM',  to: '7:30 AM',  activity: 'Bath & Morning Routine',           category: 'Routine' },
-    { no: 4,  from: '7:30 AM',  to: '8:00 AM',  activity: 'Morning Assembly & Roll Call',    category: 'Assembly' },
-    { no: 5,  from: '8:00 AM',  to: '8:45 AM',  activity: 'Breakfast',                       category: 'Meals' },
-    { no: 6,  from: '9:00 AM',  to: '1:00 PM',  activity: 'Academic Classes',                category: 'Academic' },
-    { no: 7,  from: '1:00 PM',  to: '2:00 PM',  activity: 'Lunch Break',                     category: 'Meals' },
-    { no: 8,  from: '2:00 PM',  to: '5:00 PM',  activity: 'Academic Classes',                category: 'Academic' },
-    { no: 9,  from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break',                       category: 'Meals' },
-    { no: 10, from: '5:30 PM',  to: '7:00 PM',  activity: 'Recreation / Sports',             category: 'Physical' },
-    { no: 11, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner',                          category: 'Meals' },
-    { no: 12, from: '8:00 PM',  to: '10:00 PM', activity: 'Doubt Class / Assignment',        category: 'Academic' },
-    { no: 13, from: '10:00 PM', to: '',         activity: 'Lights Out',                      category: 'Routine' },
+    { no: 1, from: '5:30 AM', to: '6:00 AM', activity: 'Wake Up Bell & Morning PT', category: 'Routine' },
+    { no: 2, from: '6:00 AM', to: '6:45 AM', activity: 'PT / Exercise / Sports', category: 'Physical' },
+    { no: 3, from: '6:45 AM', to: '7:30 AM', activity: 'Bath & Morning Routine', category: 'Routine' },
+    { no: 4, from: '7:30 AM', to: '8:00 AM', activity: 'Morning Assembly & Roll Call', category: 'Assembly' },
+    { no: 5, from: '8:00 AM', to: '8:45 AM', activity: 'Breakfast', category: 'Meals' },
+    { no: 6, from: '9:00 AM', to: '1:00 PM', activity: 'Academic Classes', category: 'Academic' },
+    { no: 7, from: '1:00 PM', to: '2:00 PM', activity: 'Lunch Break', category: 'Meals' },
+    { no: 8, from: '2:00 PM', to: '5:00 PM', activity: 'Academic Classes', category: 'Academic' },
+    { no: 9, from: '5:00 PM', to: '5:30 PM', activity: 'Tea Break', category: 'Meals' },
+    { no: 10, from: '5:30 PM', to: '7:00 PM', activity: 'Recreation / Sports', category: 'Physical' },
+    { no: 11, from: '7:00 PM', to: '8:00 PM', activity: 'Dinner', category: 'Meals' },
+    { no: 12, from: '8:00 PM', to: '10:00 PM', activity: 'Doubt Class / Assignment', category: 'Academic' },
+    { no: 13, from: '10:00 PM', to: '', activity: 'Lights Out', category: 'Routine' },
   ],
   sunday: [
-    { no: 1, from: '6:00 AM',  to: '7:00 AM',  activity: 'Wake Up & Morning Routine',        category: 'Routine' },
-    { no: 2, from: '7:00 AM',  to: '8:00 AM',  activity: 'Breakfast',                        category: 'Meals' },
-    { no: 3, from: '8:00 AM',  to: '12:00 PM', activity: 'Recreation / Free Time',           category: 'Physical' },
-    { no: 4, from: '12:00 PM', to: '1:00 PM',  activity: 'Lunch',                            category: 'Meals' },
-    { no: 5, from: '1:00 PM',  to: '5:00 PM',  activity: 'Rest / Recreation',                category: 'Physical' },
-    { no: 6, from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break',                        category: 'Meals' },
-    { no: 7, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner',                           category: 'Meals' },
-    { no: 8, from: '8:00 PM',  to: '9:30 PM',  activity: 'Academic Review / Self Study',     category: 'Academic' },
-    { no: 9, from: '10:00 PM', to: '',         activity: 'Lights Out',                       category: 'Routine' },
+    { no: 1, from: '6:00 AM', to: '7:00 AM', activity: 'Wake Up & Morning Routine', category: 'Routine' },
+    { no: 2, from: '7:00 AM', to: '8:00 AM', activity: 'Breakfast', category: 'Meals' },
+    { no: 3, from: '8:00 AM', to: '12:00 PM', activity: 'Recreation / Free Time', category: 'Physical' },
+    { no: 4, from: '12:00 PM', to: '1:00 PM', activity: 'Lunch', category: 'Meals' },
+    { no: 5, from: '1:00 PM', to: '5:00 PM', activity: 'Rest / Recreation', category: 'Physical' },
+    { no: 6, from: '5:00 PM', to: '5:30 PM', activity: 'Tea Break', category: 'Meals' },
+    { no: 7, from: '7:00 PM', to: '8:00 PM', activity: 'Dinner', category: 'Meals' },
+    { no: 8, from: '8:00 PM', to: '9:30 PM', activity: 'Academic Review / Self Study', category: 'Academic' },
+    { no: 9, from: '10:00 PM', to: '', activity: 'Lights Out', category: 'Routine' },
   ],
   holiday: [
-    { no: 1, from: '6:30 AM',  to: '7:30 AM',  activity: 'Wake Up & Morning Routine',        category: 'Routine' },
-    { no: 2, from: '7:30 AM',  to: '8:30 AM',  activity: 'Breakfast',                        category: 'Meals' },
-    { no: 3, from: '8:30 AM',  to: '12:00 PM', activity: 'Holiday Activities / Excursion',   category: 'Special' },
-    { no: 4, from: '12:00 PM', to: '1:00 PM',  activity: 'Lunch',                            category: 'Meals' },
-    { no: 5, from: '1:00 PM',  to: '5:00 PM',  activity: 'Free Time / Cultural Activities',  category: 'Special' },
-    { no: 6, from: '5:00 PM',  to: '5:30 PM',  activity: 'Tea Break',                        category: 'Meals' },
-    { no: 7, from: '7:00 PM',  to: '8:00 PM',  activity: 'Dinner',                           category: 'Meals' },
-    { no: 8, from: '8:00 PM',  to: '9:00 PM',  activity: 'Evening Study Hour',               category: 'Academic' },
-    { no: 9, from: '10:00 PM', to: '',         activity: 'Lights Out',                       category: 'Routine' },
+    { no: 1, from: '6:30 AM', to: '7:30 AM', activity: 'Wake Up & Morning Routine', category: 'Routine' },
+    { no: 2, from: '7:30 AM', to: '8:30 AM', activity: 'Breakfast', category: 'Meals' },
+    { no: 3, from: '8:30 AM', to: '12:00 PM', activity: 'Holiday Activities / Excursion', category: 'Special' },
+    { no: 4, from: '12:00 PM', to: '1:00 PM', activity: 'Lunch', category: 'Meals' },
+    { no: 5, from: '1:00 PM', to: '5:00 PM', activity: 'Free Time / Cultural Activities', category: 'Special' },
+    { no: 6, from: '5:00 PM', to: '5:30 PM', activity: 'Tea Break', category: 'Meals' },
+    { no: 7, from: '7:00 PM', to: '8:00 PM', activity: 'Dinner', category: 'Meals' },
+    { no: 8, from: '8:00 PM', to: '9:00 PM', activity: 'Evening Study Hour', category: 'Academic' },
+    { no: 9, from: '10:00 PM', to: '', activity: 'Lights Out', category: 'Routine' },
   ],
 }
 
 const ACTIVITY_CATEGORIES = ['Routine', 'Physical', 'Assembly', 'Meals', 'Academic', 'Special', 'Other']
 
 const CATEGORY_STYLE = {
-  Routine:  { color: '#0891b2', bg: '#e0f2fe' },
+  Routine: { color: '#0891b2', bg: '#e0f2fe' },
   Physical: { color: '#16a34a', bg: '#dcfce7' },
   Assembly: { color: '#7c3aed', bg: '#f5f3ff' },
-  Meals:    { color: '#ca8a04', bg: '#fef9c3' },
+  Meals: { color: '#ca8a04', bg: '#fef9c3' },
   Academic: { color: '#1d4ed8', bg: '#dbeafe' },
-  Special:  { color: '#be185d', bg: '#fce7f3' },
-  Other:    { color: '#374151', bg: '#f1f5f9' },
+  Special: { color: '#be185d', bg: '#fce7f3' },
+  Other: { color: '#374151', bg: '#f1f5f9' },
 }
 
-const SCHED_STORAGE_KEY = 'gnsi_hostel_activities_v2'
-const CHECK_KEY         = () => 'gnsi_sched_check_' + todayKey()
-
-function loadActivities() {
-  try {
-    const saved = localStorage.getItem(SCHED_STORAGE_KEY)
-    return saved ? JSON.parse(saved) : DEFAULT_HOSTEL_ACTIVITIES
-  } catch { return DEFAULT_HOSTEL_ACTIVITIES }
-}
-function saveActivities(obj) {
-  try { localStorage.setItem(SCHED_STORAGE_KEY, JSON.stringify(obj)) } catch {}
-}
+const CHECK_KEY = () => 'gnsi_sched_check_' + today()
 function loadChecks() {
   try { return JSON.parse(localStorage.getItem(CHECK_KEY()) || '{}') } catch { return {} }
 }
 function saveChecks(obj) {
-  try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch {}
+  try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch { }
 }
 
 function ScheduleTab() {
@@ -2076,27 +2064,46 @@ function ScheduleTab() {
   ]
 
   const [type,      setType]      = useState('weekday')
-  const [schedule,  setSchedule]  = useState(loadActivities)
+  const [schedule,  setSchedule]  = useState({ weekday: [], sunday: [], holiday: [] })
   const [checked,   setChecked]   = useState(loadChecks)
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState(false)
   const [adminMode, setAdminMode] = useState(false)
   const [addForm,   setAddForm]   = useState(false)
   const [editRow,   setEditRow]   = useState(null)
   const [catFilter, setCatFilter] = useState('All')
-  const [newRow,    setNewRow]    = useState({ from: '', to: '', activity: '', category: 'Routine' })
+  const [newRow,    setNewRow]    = useState({ from_time: '', to_time: '', activity: '', category: 'Routine' })
   const mobile = useMobileView()
 
-  // Persist on every schedule change
-  useEffect(() => { saveActivities(schedule) }, [schedule])
-
-  const rows    = schedule[type] || []
-  const visible = catFilter === 'All' ? rows : rows.filter(r => r.category === catFilter)
-  const done    = rows.filter(r => checked[`${type}_${r.no}`]).length
-  const pct     = rows.length ? Math.round(done / rows.length * 100) : 0
   const todayDayType = (() => {
     const day = new Date().getDay()
     if (day === 0) return 'sunday'
     return 'weekday'
   })()
+
+  // ── Load from Supabase
+  const loadSchedule = async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('hostel_schedules')
+      .select('*')
+      .order('schedule_type')
+      .order('no')
+    if (error) { console.error(error); setLoading(false); return }
+    const grouped = { weekday: [], sunday: [], holiday: [] }
+    ;(data || []).forEach(r => {
+      if (grouped[r.schedule_type]) grouped[r.schedule_type].push(r)
+    })
+    setSchedule(grouped)
+    setLoading(false)
+  }
+
+  useEffect(() => { loadSchedule() }, [])
+
+  const rows    = schedule[type] || []
+  const visible = catFilter === 'All' ? rows : rows.filter(r => r.category === catFilter)
+  const done    = rows.filter(r => checked[`${type}_${r.no}`]).length
+  const pct     = rows.length ? Math.round(done / rows.length * 100) : 0
 
   const toggle = no => {
     const k    = `${type}_${no}`
@@ -2104,109 +2111,98 @@ function ScheduleTab() {
     setChecked(next); saveChecks(next)
   }
 
-  const saveEdit = no => {
-    const fromEl = document.getElementById(`se-from-${no}`)
-    const toEl   = document.getElementById(`se-to-${no}`)
-    const actEl  = document.getElementById(`se-act-${no}`)
-    const catEl  = document.getElementById(`se-cat-${no}`)
-    setSchedule(s => ({
-      ...s,
-      [type]: s[type].map(r => r.no === no ? {
-        ...r,
-        from: fromEl?.value || r.from,
-        to:   toEl?.value   || r.to,
-        activity: actEl?.value || r.activity,
-        category: catEl?.value || r.category,
-      } : r),
-    }))
-    setEditRow(null)
-  }
-
-  const deleteRow = no => {
-    if (!window.confirm('Remove this activity?')) return
-    setSchedule(s => ({ ...s, [type]: s[type].filter(r => r.no !== no) }))
-  }
-
-  const addRow = () => {
-    if (!newRow.from || !newRow.activity) { alert('From time and activity name are required'); return }
+  const handleAdd = async () => {
+    if (!newRow.from_time || !newRow.activity) { alert('From time and activity name are required'); return }
+    setSaving(true)
     const maxNo = rows.length ? Math.max(...rows.map(r => r.no)) : 0
-    setSchedule(s => ({
-      ...s,
-      [type]: [...s[type], { no: maxNo + 1, ...newRow }],
-    }))
-    setNewRow({ from: '', to: '', activity: '', category: 'Routine' })
-    setAddForm(false)
+    const { error } = await supabase.from('hostel_schedules').insert([{
+      schedule_type: type,
+      no: maxNo + 1,
+      from_time: newRow.from_time,
+      to_time: newRow.to_time || null,
+      activity: newRow.activity,
+      category: newRow.category,
+    }])
+    if (error) alert('Error: ' + error.message)
+    else { setNewRow({ from_time: '', to_time: '', activity: '', category: 'Routine' }); setAddForm(false); loadSchedule() }
+    setSaving(false)
   }
 
-  const resetToDefault = () => {
-    if (!window.confirm(`Reset ${type} schedule to default? All custom activities will be lost.`)) return
-    setSchedule(s => ({ ...s, [type]: DEFAULT_HOSTEL_ACTIVITIES[type] }))
+  const handleDelete = async (id) => {
+    if (!window.confirm('Remove this activity?')) return
+    setSaving(true)
+    await supabase.from('hostel_schedules').delete().eq('id', id)
+    loadSchedule()
+    setSaving(false)
   }
 
-  const actIcon = a => {
-    if (a.includes('PT') || a.includes('Exercise') || a.includes('Sports')) return '🏃'
-    if (a.includes('Doubt') || a.includes('Assignment') || a.includes('Study')) return '📖'
-    if (a.includes('Lunch') || a.includes('Dinner') || a.includes('Breakfast')) return '🍽️'
-    if (a.includes('Academic') || a.includes('Class')) return '🏫'
-    if (a.includes('Tea')) return '☕'
-    if (a.includes('Recreation') || a.includes('Free')) return '⚽'
-    if (a.includes('Wake') || a.includes('Bell')) return '🔔'
-    if (a.includes('Assembly') || a.includes('Roll')) return '🎌'
-    if (a.includes('Lights')) return '💡'
-    if (a.includes('Bath') || a.includes('Routine')) return '🚿'
-    if (a.includes('Rest')) return '😴'
-    if (a.includes('Holiday') || a.includes('Excursion')) return '🎉'
-    if (a.includes('Cultural')) return '🎭'
-    return '•'
+  const handleSaveEdit = async (id) => {
+    const fromEl = document.getElementById(`se-from-${id}`)
+    const toEl   = document.getElementById(`se-to-${id}`)
+    const actEl  = document.getElementById(`se-act-${id}`)
+    const catEl  = document.getElementById(`se-cat-${id}`)
+    setSaving(true)
+    await supabase.from('hostel_schedules').update({
+      from_time: fromEl?.value,
+      to_time:   toEl?.value || null,
+      activity:  actEl?.value,
+      category:  catEl?.value,
+    }).eq('id', id)
+    setEditRow(null)
+    loadSchedule()
+    setSaving(false)
   }
 
   const catStyle = cat => CATEGORY_STYLE[cat] || CATEGORY_STYLE['Other']
 
+  const actIcon = a => {
+    if (a.includes('PT') || a.includes('Exercise') || a.includes('Sports') || a.includes('Recreation')) return '⚽'
+    if (a.includes('Doubt') || a.includes('Assignment') || a.includes('Study') || a.includes('Studies')) return '📖'
+    if (a.includes('Lunch') || a.includes('Dinner') || a.includes('Breakfast')) return '🍽️'
+    if (a.includes('Class') || a.includes('Academic')) return '🏫'
+    if (a.includes('Tea')) return '☕'
+    if (a.includes('Wake') || a.includes('Bell')) return '🔔'
+    if (a.includes('Assembly') || a.includes('Roll')) return '🎌'
+    if (a.includes('Lights') || a.includes('Off')) return '💡'
+    if (a.includes('Bath') || a.includes('Fresh') || a.includes('Dress') || a.includes('Routine')) return '🚿'
+    if (a.includes('Rest')) return '😴'
+    if (a.includes('Holiday') || a.includes('Excursion')) return '🎉'
+    return '•'
+  }
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading schedule...</div>
+
   return (
     <div>
-      {/* Header with mode indicator */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: '16px', flexWrap: 'wrap', gap: '10px',
-      }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>🏠 Hostel Daily Activities</h2>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>
             Today is a <strong style={{ color: todayDayType === 'sunday' ? '#16a34a' : '#1d4ed8' }}>
               {todayDayType === 'sunday' ? 'Sunday / Rest Day' : 'Weekday'}
-            </strong> · Tracking {rows.length} activities
+            </strong> · {rows.length} activities
           </p>
         </div>
-        <button
-          onClick={() => setAdminMode(m => !m)}
-          style={{
-            ...btn(adminMode ? '#dc2626' : '#f1f5f9', adminMode ? 'white' : '#374151'),
-            fontSize: '12px', padding: '8px 14px',
-          }}
-        >
+        <button onClick={() => setAdminMode(m => !m)} style={{ ...btn(adminMode ? '#dc2626' : '#f1f5f9', adminMode ? 'white' : '#374151'), fontSize: '12px', padding: '8px 14px' }}>
           {adminMode ? '🔓 Admin Mode ON' : '🔒 Admin Mode'}
         </button>
       </div>
 
-      {/* Schedule type tabs */}
+      {/* Type tabs */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', background: '#f1f5f9', padding: '6px', borderRadius: '12px' }}>
         {TYPE_TABS.map(t => (
           <button key={t.id} onClick={() => { setType(t.id); setCatFilter('All') }} style={{
             flex: 1, padding: '9px 10px', border: 'none', borderRadius: '8px',
             background: type === t.id ? '#1e3a5f' : 'transparent',
             color: type === t.id ? 'white' : '#64748b',
-            cursor: 'pointer', fontSize: '13px',
-            fontWeight: type === t.id ? 700 : 500,
-            transition: 'all .15s',
+            cursor: 'pointer', fontSize: '13px', fontWeight: type === t.id ? 700 : 500,
           }}>{t.label}</button>
         ))}
       </div>
 
-      {/* Progress tracker */}
-      <div style={{
-        background: '#1e3a5f', borderRadius: '14px', padding: '16px 20px',
-        marginBottom: '16px', color: 'white',
-      }}>
+      {/* Progress bar */}
+      <div style={{ background: '#1e3a5f', borderRadius: '14px', padding: '16px 20px', marginBottom: '16px', color: 'white' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
           <div>
             <div style={{ fontSize: '13px', fontWeight: '700', opacity: 0.8 }}>TODAY'S ACTIVITY PROGRESS</div>
@@ -2220,18 +2216,8 @@ function ScheduleTab() {
           </div>
         </div>
         <div style={{ height: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '99px', overflow: 'hidden' }}>
-          <div style={{
-            height: '100%', width: `${pct}%`,
-            background: pct === 100 ? '#4ade80' : pct > 60 ? '#60a5fa' : '#fbbf24',
-            borderRadius: '99px', transition: 'width 0.4s',
-          }} />
+          <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#4ade80' : pct > 60 ? '#60a5fa' : '#fbbf24', borderRadius: '99px', transition: 'width 0.4s' }} />
         </div>
-        {pct === 100 && (
-          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4ade80', fontWeight: '700' }}>
-            🎉 All activities completed for today!
-          </div>
-        )}
-        {/* Category summary row */}
         <div style={{ display: 'flex', gap: '6px', marginTop: '12px', flexWrap: 'wrap' }}>
           {ACTIVITY_CATEGORIES.map(cat => {
             const catRows = rows.filter(r => r.category === cat)
@@ -2254,112 +2240,80 @@ function ScheduleTab() {
 
       {/* Admin controls */}
       {adminMode && (
-        <div style={{
-          background: '#fff7ed', border: '1.5px solid #fed7aa',
-          borderRadius: '12px', padding: '14px', marginBottom: '14px',
-          display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center',
-        }}>
+        <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: '12px', padding: '14px', marginBottom: '14px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400e', flex: 1 }}>
-            🔧 Admin Mode — Edit, add, or remove activities for the {type} schedule
+            🔧 Admin Mode — Edit, add, or delete activities for {type} schedule
           </div>
           <button onClick={() => setAddForm(f => !f)} style={{ ...btn(), fontSize: '12px', padding: '7px 14px' }}>
             {addForm ? '✕ Cancel' : '➕ Add Activity'}
           </button>
-          <button onClick={resetToDefault} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '12px', padding: '7px 14px' }}>
-            ↺ Reset to Default
-          </button>
         </div>
       )}
 
-      {/* Add form (admin only) */}
+      {/* Add form */}
       {adminMode && addForm && (
-        <div style={{
-          background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px',
-          padding: '16px', marginBottom: '14px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', alignItems: 'end',
-        }}>
-          <div><label style={lbl}>From *</label><input value={newRow.from} onChange={e => setNewRow(n => ({ ...n, from: e.target.value }))} placeholder="6:00 AM" style={inp} /></div>
-          <div><label style={lbl}>To</label><input value={newRow.to} onChange={e => setNewRow(n => ({ ...n, to: e.target.value }))} placeholder="7:00 AM" style={inp} /></div>
-          <div style={{ gridColumn: 'span 2' }}><label style={lbl}>Activity Name *</label><input value={newRow.activity} onChange={e => setNewRow(n => ({ ...n, activity: e.target.value }))} placeholder="e.g. Special Assembly" style={inp} /></div>
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', marginBottom: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', alignItems: 'end' }}>
+          <div><label style={lbl}>From *</label><input value={newRow.from_time} onChange={e => setNewRow(n => ({ ...n, from_time: e.target.value }))} placeholder="6:00 AM" style={inp} /></div>
+          <div><label style={lbl}>To</label><input value={newRow.to_time} onChange={e => setNewRow(n => ({ ...n, to_time: e.target.value }))} placeholder="7:00 AM" style={inp} /></div>
+          <div style={{ gridColumn: 'span 2' }}><label style={lbl}>Activity Name *</label><input value={newRow.activity} onChange={e => setNewRow(n => ({ ...n, activity: e.target.value }))} placeholder="e.g. Assembly" style={inp} /></div>
           <div><label style={lbl}>Category</label>
             <select value={newRow.category} onChange={e => setNewRow(n => ({ ...n, category: e.target.value }))} style={inp}>
               {ACTIVITY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
-            <button onClick={addRow} style={btn('#16a34a')}>✓ Add</button>
+            <button onClick={handleAdd} disabled={saving} style={btn('#16a34a')}>✓ Add</button>
             <button onClick={() => setAddForm(false)} style={btn('#f1f5f9', '#374151')}>✕</button>
           </div>
         </div>
       )}
 
-      {/* Activity list */}
+      {/* Table */}
       {mobile ? (
-        /* ── Mobile card view ── */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {visible.map(r => {
-            const isDone  = !!checked[`${type}_${r.no}`]
-            const cs      = catStyle(r.category || 'Other')
-            const isEdit  = adminMode && editRow === r.no
+            const isDone = !!checked[`${type}_${r.no}`]
+            const cs = catStyle(r.category || 'Other')
+            const isEdit = adminMode && editRow === r.id
             if (isEdit) return (
-              <div key={r.no} style={{ background: '#eff6ff', borderRadius: '12px', padding: '14px', border: '2px solid #60a5fa' }}>
+              <div key={r.id} style={{ background: '#eff6ff', borderRadius: '12px', padding: '14px', border: '2px solid #60a5fa' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                  <input id={`se-from-${r.no}`} defaultValue={r.from} placeholder="From" style={{ ...inp, fontSize: '13px' }} />
-                  <input id={`se-to-${r.no}`} defaultValue={r.to} placeholder="To" style={{ ...inp, fontSize: '13px' }} />
-                  <input id={`se-act-${r.no}`} defaultValue={r.activity} placeholder="Activity" style={{ ...inp, fontSize: '13px', gridColumn: '1/-1' }} />
-                  <select id={`se-cat-${r.no}`} defaultValue={r.category || 'Routine'} style={{ ...inp, fontSize: '13px', gridColumn: '1/-1' }}>
+                  <input id={`se-from-${r.id}`} defaultValue={r.from_time} placeholder="From" style={{ ...inp, fontSize: '13px' }} />
+                  <input id={`se-to-${r.id}`} defaultValue={r.to_time} placeholder="To" style={{ ...inp, fontSize: '13px' }} />
+                  <input id={`se-act-${r.id}`} defaultValue={r.activity} placeholder="Activity" style={{ ...inp, fontSize: '13px', gridColumn: '1/-1' }} />
+                  <select id={`se-cat-${r.id}`} defaultValue={r.category || 'Routine'} style={{ ...inp, fontSize: '13px', gridColumn: '1/-1' }}>
                     {ACTIVITY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => saveEdit(r.no)} style={{ ...btn('#16a34a'), flex: 1, fontSize: '12px' }}>✓ Save</button>
+                  <button onClick={() => handleSaveEdit(r.id)} style={{ ...btn('#16a34a'), flex: 1, fontSize: '12px' }}>✓ Save</button>
                   <button onClick={() => setEditRow(null)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1, fontSize: '12px' }}>Cancel</button>
                 </div>
               </div>
             )
             return (
-              <div key={r.no} style={{
-                background: isDone ? '#f0fdf4' : 'white',
-                borderRadius: '12px', padding: '13px 14px',
-                boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
-                borderLeft: `4px solid ${isDone ? '#16a34a' : cs.color}`,
-                display: 'flex', alignItems: 'center', gap: '12px',
-                opacity: isDone ? 0.75 : 1, transition: 'opacity 0.2s',
-              }}>
+              <div key={r.id} style={{ background: isDone ? '#f0fdf4' : 'white', borderRadius: '12px', padding: '13px 14px', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', borderLeft: `4px solid ${isDone ? '#16a34a' : cs.color}`, display: 'flex', alignItems: 'center', gap: '12px', opacity: isDone ? 0.75 : 1 }}>
                 <div style={{ fontSize: '20px' }}>{actIcon(r.activity)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '3px' }}>
                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', textDecoration: isDone ? 'line-through' : 'none' }}>{r.activity}</span>
-                    <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: cs.bg, color: cs.color, fontWeight: '700', whiteSpace: 'nowrap' }}>{r.category}</span>
+                    <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: cs.bg, color: cs.color, fontWeight: '700' }}>{r.category}</span>
                   </div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>
-                    {r.from}{r.to ? ` → ${r.to}` : ''}
-                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>{r.from_time}{r.to_time ? ` → ${r.to_time}` : ''}</div>
                 </div>
                 {adminMode && (
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button onClick={() => setEditRow(r.no)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#eff6ff', color: '#1e3a5f', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
-                    <button onClick={() => deleteRow(r.no)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+                    <button onClick={() => setEditRow(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#eff6ff', color: '#1e3a5f', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
+                    <button onClick={() => handleDelete(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '12px' }}>✕</button>
                   </div>
                 )}
-                <button onClick={() => toggle(r.no)} style={{
-                  width: '36px', height: '36px', borderRadius: '50%',
-                  border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
-                  background: isDone ? '#16a34a' : 'transparent',
-                  color: isDone ? 'white' : '#94a3b8',
-                  cursor: 'pointer', fontSize: '16px', fontWeight: '700',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>{isDone ? '✓' : ''}</button>
+                <button onClick={() => toggle(r.no)} style={{ width: '36px', height: '36px', borderRadius: '50%', border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db', background: isDone ? '#16a34a' : 'transparent', color: isDone ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '16px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{isDone ? '✓' : ''}</button>
               </div>
             )
           })}
-          {visible.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No activities in this category</div>
-          )}
+          {visible.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No activities. Click Admin Mode → ➕ Add Activity.</div>}
         </div>
       ) : (
-        /* ── Desktop table view ── */
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 560 }}>
             <thead>
@@ -2372,22 +2326,22 @@ function ScheduleTab() {
             <tbody>
               {visible.map(r => {
                 const isDone = !!checked[`${type}_${r.no}`]
-                const cs     = catStyle(r.category || 'Other')
-                const isEdit = adminMode && editRow === r.no
+                const cs = catStyle(r.category || 'Other')
+                const isEdit = adminMode && editRow === r.id
                 if (isEdit) return (
-                  <tr key={r.no} style={{ background: '#eff6ff' }}>
+                  <tr key={r.id} style={{ background: '#eff6ff' }}>
                     <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                    <td style={{ padding: '8px 14px' }}><input id={`se-from-${r.no}`} defaultValue={r.from} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
-                    <td style={{ padding: '8px 14px' }}><input id={`se-to-${r.no}`} defaultValue={r.to} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
-                    <td style={{ padding: '8px 14px' }}><input id={`se-act-${r.no}`} defaultValue={r.activity} style={{ ...inp, padding: '5px 8px', fontSize: 12 }} /></td>
+                    <td style={{ padding: '8px 14px' }}><input id={`se-from-${r.id}`} defaultValue={r.from_time} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
+                    <td style={{ padding: '8px 14px' }}><input id={`se-to-${r.id}`} defaultValue={r.to_time} style={{ ...inp, width: 90, padding: '5px 8px', fontSize: 12 }} /></td>
+                    <td style={{ padding: '8px 14px' }}><input id={`se-act-${r.id}`} defaultValue={r.activity} style={{ ...inp, padding: '5px 8px', fontSize: 12 }} /></td>
                     <td style={{ padding: '8px 14px' }}>
-                      <select id={`se-cat-${r.no}`} defaultValue={r.category || 'Routine'} style={{ ...inp, padding: '5px 8px', fontSize: 12 }}>
+                      <select id={`se-cat-${r.id}`} defaultValue={r.category || 'Routine'} style={{ ...inp, padding: '5px 8px', fontSize: 12 }}>
                         {ACTIVITY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                       </select>
                     </td>
                     <td style={{ padding: '8px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => saveEdit(r.no)} style={{ ...btn('#16a34a'), fontSize: 11, padding: '4px 10px' }}>✓ Save</button>
+                        <button onClick={() => handleSaveEdit(r.id)} style={{ ...btn('#16a34a'), fontSize: 11, padding: '4px 10px' }}>✓ Save</button>
                         <button onClick={() => setEditRow(null)} style={{ ...btn('#f1f5f9', '#374151'), fontSize: 11, padding: '4px 10px' }}>Cancel</button>
                       </div>
                     </td>
@@ -2395,10 +2349,10 @@ function ScheduleTab() {
                   </tr>
                 )
                 return (
-                  <tr key={r.no} style={{ background: isDone ? '#f0fdf4' : 'white', borderBottom: '1px solid #f1f5f9', opacity: isDone ? 0.75 : 1, transition: 'opacity 0.2s' }}>
+                  <tr key={r.id} style={{ background: isDone ? '#f0fdf4' : 'white', borderBottom: '1px solid #f1f5f9', opacity: isDone ? 0.75 : 1 }}>
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{r.from}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to || '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{r.from_time}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to_time || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
                       <span style={{ fontWeight: 600, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>{r.activity}</span>
@@ -2409,26 +2363,19 @@ function ScheduleTab() {
                     {adminMode ? (
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => setEditRow(r.no)} style={{ background: '#eff6ff', color: '#1e3a5f', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
-                          <button onClick={() => deleteRow(r.no)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✕</button>
+                          <button onClick={() => setEditRow(r.id)} style={{ background: '#eff6ff', color: '#1e3a5f', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
+                          <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✕ Del</button>
                         </div>
                       </td>
                     ) : <td />}
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <button onClick={() => toggle(r.no)} title={isDone ? 'Mark pending' : 'Mark done'} style={{
-                        width: 32, height: 32, borderRadius: '50%',
-                        border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db',
-                        background: isDone ? '#16a34a' : 'transparent',
-                        color: isDone ? 'white' : '#94a3b8',
-                        cursor: 'pointer', fontSize: 15, fontWeight: 700,
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s',
-                      }}>{isDone ? '✓' : ''}</button>
+                      <button onClick={() => toggle(r.no)} style={{ width: 32, height: 32, borderRadius: '50%', border: isDone ? '2px solid #16a34a' : '2px dashed #d1d5db', background: isDone ? '#16a34a' : 'transparent', color: isDone ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}>{isDone ? '✓' : ''}</button>
                     </td>
                   </tr>
                 )
               })}
               {visible.length === 0 && (
-                <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No activities match this filter</td></tr>
+                <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No activities. Click Admin Mode → ➕ Add Activity.</td></tr>
               )}
             </tbody>
           </table>
@@ -2441,8 +2388,8 @@ function ScheduleTab() {
 // ══════════════════════════════════════════════════════════════
 //  TAB 3 — Mess Duty Tracker
 // ══════════════════════════════════════════════════════════════
-const MESS_SHIFTS   = ['Breakfast', 'Lunch', 'Tea', 'Dinner', 'Full Day']
-const MESS_ROLES    = ['Mess In-Charge', 'Server', 'Cleaner', 'Cook Assistant', 'Supervisor']
+const MESS_SHIFTS = ['Breakfast', 'Lunch', 'Tea', 'Dinner', 'Full Day']
+const MESS_ROLES = ['Mess In-Charge', 'Server', 'Cleaner', 'Cook Assistant', 'Supervisor']
 const MESS_STATUSES = ['Assigned', 'On Duty', 'Completed', 'Absent']
 
 const emptyMD = {
@@ -2454,22 +2401,22 @@ const emptyMD = {
 }
 
 const SHIFT_STYLE = {
-  'Breakfast':  { color: '#ca8a04', bg: '#fef9c3', icon: '🌅' },
-  'Lunch':      { color: '#16a34a', bg: '#dcfce7', icon: '☀️' },
-  'Tea':        { color: '#0891b2', bg: '#e0f2fe', icon: '☕' },
-  'Dinner':     { color: '#7c3aed', bg: '#f5f3ff', icon: '🌙' },
-  'Full Day':   { color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
+  'Breakfast': { color: '#ca8a04', bg: '#fef9c3', icon: '🌅' },
+  'Lunch': { color: '#16a34a', bg: '#dcfce7', icon: '☀️' },
+  'Tea': { color: '#0891b2', bg: '#e0f2fe', icon: '☕' },
+  'Dinner': { color: '#7c3aed', bg: '#f5f3ff', icon: '🌙' },
+  'Full Day': { color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
 }
 
 function NightDutyTab({ staffProfiles }) {
-  const [records,  setRecords]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [editRec,  setEditRec]  = useState(null)
-  const [form,     setForm]     = useState(emptyMD)
-  const [month,    setMonth]    = useState(new Date().getMonth())
-  const [year,     setYear]     = useState(new Date().getFullYear())
+  const [editRec, setEditRec] = useState(null)
+  const [form, setForm] = useState(emptyMD)
+  const [month, setMonth] = useState(new Date().getMonth())
+  const [year, setYear] = useState(new Date().getFullYear())
   const [shiftFilter, setShiftFilter] = useState('All')
   const mobile = useMobileView()
 
@@ -2541,21 +2488,21 @@ function NightDutyTab({ staffProfiles }) {
   const todayDuties = enriched.filter(r => r.date === today())
 
   // Uncovered days (only for Full Day shift check)
-  const daysInMonth  = new Date(year, month + 1, 0).getDate()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
   const coveredDates = new Set(enriched.filter(r => r.date && new Date(r.date).getMonth() === month && new Date(r.date).getFullYear() === year).map(r => r.date))
-  const uncovered    = Array.from({ length: daysInMonth }, (_, i) => {
-    const d   = new Date(year, month, i + 1)
+  const uncovered = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = new Date(year, month, i + 1)
     const key = d.toISOString().split('T')[0]
     return coveredDates.has(key) ? null : key
   }).filter(Boolean)
 
   // Stats
   const stats = {
-    total:     monthRoster.length,
-    assigned:  monthRoster.filter(r => r.status === 'Assigned').length,
-    onDuty:    monthRoster.filter(r => r.status === 'On Duty').length,
+    total: monthRoster.length,
+    assigned: monthRoster.filter(r => r.status === 'Assigned').length,
+    onDuty: monthRoster.filter(r => r.status === 'On Duty').length,
     completed: monthRoster.filter(r => r.status === 'Completed').length,
-    absent:    monthRoster.filter(r => r.status === 'Absent').length,
+    absent: monthRoster.filter(r => r.status === 'Absent').length,
   }
 
   // ── Staff search clear helper
@@ -2649,10 +2596,10 @@ function NightDutyTab({ staffProfiles }) {
 
       {/* ── Stats */}
       <div style={mobile ? mobileStatGrid : statGrid(130)}>
-        <StatCard icon="📋" label="Total"     value={stats.total}     color="#1e3a5f" bg="#eff6ff" compact={mobile} />
+        <StatCard icon="📋" label="Total" value={stats.total} color="#1e3a5f" bg="#eff6ff" compact={mobile} />
         <StatCard icon="✅" label="Completed" value={stats.completed} color="#16a34a" bg="#dcfce7" compact={mobile} />
-        <StatCard icon="🟡" label="On Duty"   value={stats.onDuty}   color="#ca8a04" bg="#fef9c3" compact={mobile} />
-        <StatCard icon="❌" label="Absent"    value={stats.absent}    color="#dc2626" bg="#fee2e2" compact={mobile} />
+        <StatCard icon="🟡" label="On Duty" value={stats.onDuty} color="#ca8a04" bg="#fef9c3" compact={mobile} />
+        <StatCard icon="❌" label="Absent" value={stats.absent} color="#dc2626" bg="#fee2e2" compact={mobile} />
       </div>
 
       {/* ── Toolbar */}
@@ -2895,14 +2842,14 @@ const emptyDisc = {
 const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 
 function DisciplineTab({ students }) {
-  const [records,  setRecords]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [editRec,  setEditRec]  = useState(null)
-  const [form,     setForm]     = useState(emptyDisc)
-  const [search,   setSearch]   = useState('')
-  const [filter,   setFilter]   = useState('All')
+  const [editRec, setEditRec] = useState(null)
+  const [form, setForm] = useState(emptyDisc)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('All')
 
   const load = async () => {
     setLoading(true)
@@ -2957,18 +2904,18 @@ function DisciplineTab({ students }) {
     )
   }, [enriched, search, filter])
 
-  const open       = records.filter(r => r.status === 'Open').length
+  const open = records.filter(r => r.status === 'Open').length
   const inProgress = records.filter(r => r.status === 'In Progress').length
-  const resolved   = records.filter(r => r.status === 'Resolved').length
+  const resolved = records.filter(r => r.status === 'Resolved').length
 
   return (
     <div>
       {/* FIXED: was repeat(4,1fr) */}
       <div style={statGrid()}>
-        <StatCard icon="📋" label="Total"       value={records.length} color="#1e3a5f" bg="#eff6ff" />
-        <StatCard icon="🔴" label="Open"        value={open}           color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🟡" label="In Progress" value={inProgress}     color="#ca8a04" bg="#fef9c3" />
-        <StatCard icon="🟢" label="Resolved"    value={resolved}       color="#16a34a" bg="#dcfce7" />
+        <StatCard icon="📋" label="Total" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🔴" label="Open" value={open} color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="🟢" label="Resolved" value={resolved} color="#16a34a" bg="#dcfce7" />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -3088,14 +3035,14 @@ const emptySick = {
 }
 
 function SickbayTab({ students }) {
-  const [records,  setRecords]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [editRec,  setEditRec]  = useState(null)
-  const [form,     setForm]     = useState(emptySick)
-  const [search,   setSearch]   = useState('')
-  const [filter,   setFilter]   = useState('All')
+  const [editRec, setEditRec] = useState(null)
+  const [form, setForm] = useState(emptySick)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('All')
 
   const load = async () => {
     setLoading(true)
@@ -3151,16 +3098,16 @@ function SickbayTab({ students }) {
     )
   }, [enriched, search, filter])
 
-  const admitted   = records.filter(r => r.status === 'Admitted').length
+  const admitted = records.filter(r => r.status === 'Admitted').length
   const discharged = records.filter(r => r.status === 'Discharged').length
 
   return (
     <div>
       {/* FIXED: was repeat(3,1fr) */}
       <div style={statGrid(160)}>
-        <StatCard icon="🏥" label="Total Records"      value={records.length} color="#1e3a5f" bg="#eff6ff" />
-        <StatCard icon="🛏️" label="Currently Admitted" value={admitted}       color="#1d4ed8" bg="#dbeafe" />
-        <StatCard icon="✅" label="Discharged"         value={discharged}     color="#16a34a" bg="#dcfce7" />
+        <StatCard icon="🏥" label="Total Records" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🛏️" label="Currently Admitted" value={admitted} color="#1d4ed8" bg="#dbeafe" />
+        <StatCard icon="✅" label="Discharged" value={discharged} color="#16a34a" bg="#dcfce7" />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -3293,19 +3240,19 @@ const emptyHouse = {
 
 function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
-  const [houses,       setHouses]       = useState([])
-  const [students,     setStudents]     = useState(propStudents || [])
-  const [masters,      setMasters]      = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [saving,       setSaving]       = useState(false)
-  const [showForm,     setShowForm]     = useState(false)
-  const [editRec,      setEditRec]      = useState(null)
-  const [form,         setForm]         = useState(emptyHouse)
-  const [activeHouse,  setActiveHouse]  = useState(null)
-  const [search,       setSearch]       = useState('')
+  const [houses, setHouses] = useState([])
+  const [students, setStudents] = useState(propStudents || [])
+  const [masters, setMasters] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec, setEditRec] = useState(null)
+  const [form, setForm] = useState(emptyHouse)
+  const [activeHouse, setActiveHouse] = useState(null)
+  const [search, setSearch] = useState('')
   const [assignSearch, setAssignSearch] = useState('')
   const [assignFilter, setAssignFilter] = useState('All')
-  const [toast,        setToast]        = useState(null)
+  const [toast, setToast] = useState(null)
 
   const showToast = (msg, color = '#16a34a') => {
     setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
@@ -3325,7 +3272,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
   const handleSaveHouse = async e => {
     e.preventDefault(); setSaving(true)
-    const HOUSE_COLOR_HEX = ['#1d4ed8','#dc2626','#16a34a','#ca8a04','#7c3aed','#0891b2']
+    const HOUSE_COLOR_HEX = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#0891b2']
     const payload = {
       name: form.name.trim(), motto: form.motto, color_index: Number(form.color_index),
       color: HOUSE_COLOR_HEX[Number(form.color_index) % HOUSE_COLOR_HEX.length],
@@ -3367,22 +3314,22 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
   const getHouseStyle = h => {
     const c = houseColorMap[h.name] || HOUSE_PALETTE[(Number(h.color_index) || 0) % HOUSE_PALETTE.length]
-    return typeof c === 'string' ? {color: c, bg: `${c}10`, border: `${c}40`} : c
+    return typeof c === 'string' ? { color: c, bg: `${c}10`, border: `${c}40` } : c
   }
 
-  const activeHouseObj  = houses.find(h => h.id === activeHouse)
-  const houseStudents   = activeHouseObj ? students.filter(s => normalizeHouse(s.house) === normalizeHouse(activeHouseObj.name)) : []
-  const houseMasters    = activeHouseObj ? masters.filter(m => normalizeHouse(m.house) === normalizeHouse(activeHouseObj.name)) : []
+  const activeHouseObj = houses.find(h => h.id === activeHouse)
+  const houseStudents = activeHouseObj ? students.filter(s => normalizeHouse(s.house) === normalizeHouse(activeHouseObj.name)) : []
+  const houseMasters = activeHouseObj ? masters.filter(m => normalizeHouse(m.house) === normalizeHouse(activeHouseObj.name)) : []
   const unassignedCount = students.filter(s => !isAssigned(s)).length
 
   const assignHits = assignSearch.length > 0
     ? students.filter(s =>
-        !isAssigned(s) && (
-          (s.name || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
-          String(s.gcc_no || '').includes(assignSearch) ||
-          (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase())
-        )
-      ).slice(0, 10)
+      !isAssigned(s) && (
+        (s.name || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+        String(s.gcc_no || '').includes(assignSearch) ||
+        (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase())
+      )
+    ).slice(0, 10)
     : []
 
   const filteredStudents = useMemo(() => {
@@ -3428,10 +3375,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
             {/* FIXED: was repeat(4,1fr) */}
             <div style={statGrid(130)}>
-              <StatCard icon="👥"  label="Students"     value={houseStudents.length}               color={hs.color} bg={hs.bg} />
-              <StatCard icon="👨‍🏫" label="Housemasters" value={houseMasters.length}                color={hs.color} bg={hs.bg} />
-              <StatCard icon="🎖"  label="Captain"      value={activeHouseObj.captain || '—'}       color={hs.color} bg={hs.bg} />
-              <StatCard icon="🎗"  label="Vice Captain" value={activeHouseObj.vice_captain || '—'}  color={hs.color} bg={hs.bg} />
+              <StatCard icon="👥" label="Students" value={houseStudents.length} color={hs.color} bg={hs.bg} />
+              <StatCard icon="👨‍🏫" label="Housemasters" value={houseMasters.length} color={hs.color} bg={hs.bg} />
+              <StatCard icon="🎖" label="Captain" value={activeHouseObj.captain || '—'} color={hs.color} bg={hs.bg} />
+              <StatCard icon="🎗" label="Vice Captain" value={activeHouseObj.vice_captain || '—'} color={hs.color} bg={hs.bg} />
             </div>
 
             {houseMasters.length > 0 && (
@@ -3556,10 +3503,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
         <>
           {/* FIXED: was repeat(4,1fr) */}
           <div style={statGrid(130)}>
-            <StatCard icon="🏠"  label="Total Houses"  value={houses.length}                        color="#1e3a5f" bg="#eff6ff" />
-            <StatCard icon="👥"  label="Assigned"      value={students.filter(s => s.house).length}  color="#16a34a" bg="#dcfce7" />
-            <StatCard icon="⚠️"  label="Unassigned"    value={unassignedCount}                       color="#dc2626" bg="#fee2e2" />
-            <StatCard icon="👨‍🏫" label="Housemasters"  value={masters.length}                        color="#7c3aed" bg="#f5f3ff" />
+            <StatCard icon="🏠" label="Total Houses" value={houses.length} color="#1e3a5f" bg="#eff6ff" />
+            <StatCard icon="👥" label="Assigned" value={students.filter(s => s.house).length} color="#16a34a" bg="#dcfce7" />
+            <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" />
+            <StatCard icon="👨‍🏫" label="Housemasters" value={masters.length} color="#7c3aed" bg="#f5f3ff" />
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -3587,7 +3534,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
             : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, marginBottom: 24 }}>
                 {houses.map(h => {
-                  const hs  = getHouseStyle(h)
+                  const hs = getHouseStyle(h)
                   const cnt = students.filter(s => normalizeHouse(s.house) === normalizeHouse(h.name)).length
                   const hms = masters.filter(m => normalizeHouse(m.house) === normalizeHouse(h.name))
                   return (
@@ -3611,9 +3558,9 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
                           {[
-                            { label: 'Students', value: cnt,              icon: '👥' },
-                            { label: 'Masters',  value: hms.length,       icon: '👨‍🏫' },
-                            { label: 'Est.',     value: h.established_year || '—', icon: '📅' },
+                            { label: 'Students', value: cnt, icon: '👥' },
+                            { label: 'Masters', value: hms.length, icon: '👨‍🏫' },
+                            { label: 'Est.', value: h.established_year || '—', icon: '📅' },
                           ].map(s => (
                             <div key={s.label} style={{ background: hs.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
                               <div style={{ fontSize: 14 }}>{s.icon}</div>
@@ -3654,7 +3601,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 </thead>
                 <tbody>
                   {filteredStudents.map((s, i) => {
-                    const h  = houses.find(h => normalizeHouse(h.name) === normalizeHouse(s.house))
+                    const h = houses.find(h => normalizeHouse(h.name) === normalizeHouse(s.house))
                     const hs = h ? getHouseStyle(h) : null
                     return (
                       <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}
@@ -3707,14 +3654,14 @@ const emptyHM = {
 }
 
 function HousemasterTab() {
-  const [records,  setRecords]  = useState([])
-  const [houses,   setHouses]   = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
+  const [records, setRecords] = useState([])
+  const [houses, setHouses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [editRec,  setEditRec]  = useState(null)
-  const [form,     setForm]     = useState(emptyHM)
-  const [filter,   setFilter]   = useState('All')
+  const [editRec, setEditRec] = useState(null)
+  const [form, setForm] = useState(emptyHM)
+  const [filter, setFilter] = useState('All')
 
   const load = async () => {
     setLoading(true)
@@ -3748,7 +3695,7 @@ function HousemasterTab() {
   }
 
   const houseNames = houses.map(h => h.name)
-  const filtered   = filter === 'All' ? records : records.filter(r => r.house === filter)
+  const filtered = filter === 'All' ? records : records.filter(r => r.house === filter)
 
   return (
     <div>
@@ -3855,16 +3802,16 @@ function HousemasterTab() {
 // ══════════════════════════════════════════════════════════════
 //  TAB 8 — Kitchen
 // ══════════════════════════════════════════════════════════════
-const emptyMeal  = { date: today(), meal_type: 'Breakfast', menu: '', prepared_by: '', served_count: 0, remarks: '' }
+const emptyMeal = { date: today(), meal_type: 'Breakfast', menu: '', prepared_by: '', served_count: 0, remarks: '' }
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Tea', 'Dinner']
 
 function KitchenTab() {
-  const [records,    setRecords]    = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [saving,     setSaving]     = useState(false)
-  const [showForm,   setShowForm]   = useState(false)
-  const [form,       setForm]       = useState(emptyMeal)
-  const [search,     setSearch]     = useState('')
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState(emptyMeal)
+  const [search, setSearch] = useState('')
   const [mealFilter, setMealFilter] = useState('All')
   const [dateFilter, setDateFilter] = useState(today())
 
@@ -3906,7 +3853,7 @@ function KitchenTab() {
         <StatCard icon="📋" label="Total Records" value={records.length} color="#1e3a5f" bg="#eff6ff" />
         {MEAL_TYPES.map((m, i) => {
           const colors = ['#ca8a04', '#16a34a', '#0891b2', '#7c3aed']
-          const bgs    = ['#fef9c3', '#dcfce7', '#e0f2fe', '#f5f3ff']
+          const bgs = ['#fef9c3', '#dcfce7', '#e0f2fe', '#f5f3ff']
           return (
             <StatCard key={m}
               icon={['🌅', '☀️', '☕', '🌙'][i]}
@@ -4022,17 +3969,17 @@ function KitchenTab() {
 //  ROOT — Hostel module (Updated with new House Master features)
 // ══════════════════════════════════════════════════════════════
 function Hostel() {
-  const [activeTab,     setActiveTab]     = useState('hmdashboard')
-  const [students,      setStudents]      = useState([])
+  const [activeTab, setActiveTab] = useState('hmdashboard')
+  const [students, setStudents] = useState([])
   const [staffProfiles, setStaffProfiles] = useState([])
-  const [dataLoading,   setDataLoading]   = useState(true)
-  const [mobile,        setMobile]        = useState(isMobile())
+  const [dataLoading, setDataLoading] = useState(true)
+  const [mobile, setMobile] = useState(isMobile())
   const [currentHousemaster, setCurrentHousemaster] = useState(null)
   const [houseColorMap, setHouseColorMap] = useState({})  // ← ADD THIS
   const currentUser = (() => { try { const s = localStorage.getItem('gnsi_session'); return s ? JSON.parse(s).user : {} } catch { return {} } })()
-const userRole = (currentUser?.role || '').toLowerCase()
-const isAdmin = userRole === 'admin'
-const isHM = userRole === 'house master'
+  const userRole = (currentUser?.role || '').toLowerCase()
+  const isAdmin = userRole === 'admin'
+  const isHM = userRole === 'house master'
 
   // Track mobile state
   useEffect(() => {
@@ -4058,7 +4005,7 @@ const isHM = userRole === 'house master'
       setStudents(s || [])
       setStaffProfiles(st || [])
       setCurrentHousemaster(hm || null)
-      
+
       // Load house colors
       if (houses?.length) {
         const colorMap = {}
@@ -4068,7 +4015,7 @@ const isHM = userRole === 'house master'
         })
         setHouseColorMap(colorMap)
       }
-      
+
       setDataLoading(false)
     }
     fetchShared()
@@ -4077,24 +4024,24 @@ const isHM = userRole === 'house master'
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor'
 
   const tabContent = {
-    allotments:   <DayScholarTab  students={students} />,
-    schedule:     <ScheduleTab />,
-    nightduty:    <NightDutyTab   staffProfiles={staffProfiles} />,
-    discipline:   <DisciplineTab  students={students} />,
-    sickbay:      <SickbayTab     students={students} />,
+    allotments: <DayScholarTab students={students} />,
+    schedule: <ScheduleTab />,
+    nightduty: <NightDutyTab staffProfiles={staffProfiles} />,
+    discipline: <DisciplineTab students={students} />,
+    sickbay: <SickbayTab students={students} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
-    housemaster:  <HousemasterTab />,
-    kitchen:      <KitchenTab />,
+    housemaster: <HousemasterTab />,
+    kitchen: <KitchenTab />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
-    attendance:   <AttendanceTab  students={students} currentHousemaster={currentHousemaster} />,
-    leave:        <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    hmdashboard:  <HMDashboard    students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} />,
+    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} />,
+    leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
+    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    journal:      <JournalTab     currentHousemaster={currentHousemaster} />,
+    journal: <JournalTab currentHousemaster={currentHousemaster} />,
     classtimetable: <ClassTimetableTab />,
-    doubtsession:   <DoubtSessionTab  />,
+    doubtsession: <DoubtSessionTab />,
   }
 
   return (
