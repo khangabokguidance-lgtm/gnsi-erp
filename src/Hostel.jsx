@@ -4028,7 +4028,7 @@ function Hostel() {
   const [mobile,        setMobile]        = useState(isMobile())
   const [currentHousemaster, setCurrentHousemaster] = useState(null)
   const [houseColorMap, setHouseColorMap] = useState({})  // ← ADD THIS
-  const currentUser = JSON.parse(localStorage.getItem('gnsi_user') || sessionStorage.getItem('gnsi_user') || '{}')
+  const currentUser = (() => { try { const s = localStorage.getItem('gnsi_session'); return s ? JSON.parse(s).user : {} } catch { return {} } })()
 const userRole = (currentUser?.role || '').toLowerCase()
 const isAdmin = userRole === 'admin'
 const isHM = userRole === 'house master'
