@@ -631,7 +631,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       {overrideMode && (
         <div style={{ background: '#faf5ff', border: '1.5px solid #c4b5fd', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-            ✏️ Custom flat fee for {student.name} — {CURRENT_YEAR}-{CURRENT_YEAR + 1}
+            ✏️ Custom flat fee for {student.name} — {`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
@@ -677,6 +677,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {overrideFeedback.type === 'ok' ? '✅' : '❌'} {overrideFeedback.msg}
         </div>
       )}
+
+      {!admRec && (
         <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
           ⚠️ No admission record found for GCC-{student.gcc_no || '??'}. Create one in the Admissions module first.
         </div>
