@@ -520,7 +520,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   // ── Per-house stats
   const getHouseStats = (houseName) => {
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
-    const hRecords = allRecords.filter(r => r.house === houseName)
+    const hRecords = allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
     const present = hRecords.filter(r => r.status === 'Present').length
     const absent = hRecords.filter(r => r.status === 'Absent').length
     const sick = hRecords.filter(r => r.status === 'Sick').length
