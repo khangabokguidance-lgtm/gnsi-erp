@@ -9,6 +9,7 @@ import {
   getFeeRates, getFlatFees, clearFeeRateCache,
   CURRENT_YEAR, PAY_MODES, MONTHS_LIST,
   checkCourseFeeExists, checkFlatFeeExists,
+  saveStudentFlatFeeOverride, getStudentFlatFeeOverride,
 } from './feeEngine'
 
 const FEE_ITEMS = [
@@ -92,26 +93,39 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const [hostelAutoFixed, setHostelAutoFixed] = useState(false)
 
   // ── Rates from DB ─────────────────────────────────────────────────────────
-  const [feeRates,  setFeeRates]  = useState({ flatFee: 0, courseFee: 0, admissionFee: 6000 })
-  const [flatFees,  setFlatFees]  = useState([])
+  const [feeRates,     setFeeRates]     = useState({ flatFee: 0, courseFee: 0, admissionFee: 6000 })
+  const [flatFees,     setFlatFees]     = useState([])
   const [ratesLoading, setRatesLoading] = useState(true)
 
-  // Load rates whenever hostelType / course / batch changes
+  // ── Per-student flat fee override state ───────────────────────────────────
+  const [hasOverride,     setHasOverride]     = useState(false)   // true if DB override exists
+  const [overrideMode,    setOverrideMode]    = useState(false)   // show inline editor
+  const [overrideAmt,     setOverrideAmt]     = useState('')      // editor value
+  const [overrideReason,  setOverrideReason]  = useState('')
+  const [overrideSaving,  setOverrideSaving]  = useState(false)
+  const [overrideFeedback,setOverrideFeedback]= useState(null)    // { type, msg }
+
+  // Load rates + check override whenever hostelType / course / batch changes
   useEffect(() => {
     setRatesLoading(true)
-    getFeeRates(sessionYear, course, batch, hostelType)
+    getFeeRates(sessionYear, course, batch, hostelType, gcc || null)
       .then(rates => {
         setFeeRates(rates)
         setCourseAmt(rates.courseFee)
+        setHasOverride(!!rates.flatFeeOverride)
+        if (rates.flatFeeOverride) {
+          setOverrideAmt(String(rates.flatFeeOverride.flat_fee_override))
+          setOverrideReason(rates.flatFeeOverride.reason || '')
+        }
       })
       .finally(() => setRatesLoading(false))
   }, [hostelType, course, batch])
 
-  // Load flat fee list whenever hostelType / course / batch changes
+  // Load flat fee list (pass gcc so override is respected in amounts)
   useEffect(() => {
-    getFlatFees(hostelType, course, batch, sessionYear)
+    getFlatFees(hostelType, course, batch, sessionYear, gcc || null)
       .then(setFlatFees)
-  }, [hostelType, course, batch])
+  }, [hostelType, course, batch, hasOverride])  // re-run when override changes
 
   const [tab,         setTab]         = useState('admission')
   const [saving,      setSaving]      = useState(false)
@@ -129,8 +143,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const [loadingAdm,   setLoadingAdm]   = useState(false)
 
   // Flat fee tab
-  const [flatSel,    setFlatSel]    = useState({})
-  const [paidMonths, setPaidMonths] = useState([])
+  const [flatSel,     setFlatSel]     = useState({})
+  const [paidMonths,  setPaidMonths]  = useState([])
   const [loadingPaid, setLoadingPaid] = useState(false)
 
   // Course fee tab
@@ -162,11 +176,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [student?.id])
 
-  // Reset messages on hostel type change
-  useEffect(() => {
-    setSaved(null)
-    setError(null)
-  }, [hostelType])
+  useEffect(() => { setSaved(null); setError(null) }, [hostelType])
 
   // ── Load paid admission items ─────────────────────────────────────────────
   useEffect(() => {
@@ -202,13 +212,51 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const isMonthPaid       = fee   => paidMonths.includes(`${fee.month}_${fee.year}`)
   const isCourseMonthPaid = ()    => paidCourseMonths.includes(`${courseMonth}_${courseYear}`)
 
-  const admTotal = FEE_ITEMS
-    .filter(f => selected[f.id] && !isAdmItemPaid(f.label))
-    .reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
+  const admTotal  = FEE_ITEMS.filter(f => selected[f.id] && !isAdmItemPaid(f.label)).reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
+  const flatTotal = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f)).reduce((s, f) => s + f.amount, 0)
 
-  const flatTotal = flatFees
-    .filter(f => flatSel[f.id] && !isMonthPaid(f))
-    .reduce((s, f) => s + f.amount, 0)
+  // ── Save flat fee override inline ─────────────────────────────────────────
+  const saveOverrideInline = async () => {
+    const amt = parseFloat(overrideAmt)
+    if (isNaN(amt) || amt < 0) { setOverrideFeedback({ type: 'err', msg: 'Enter a valid amount.' }); return }
+    setOverrideSaving(true)
+    try {
+      await saveStudentFlatFeeOverride(parseInt(gcc), sessionYear, amt, overrideReason, 'admin')
+      clearFeeRateCache()
+      // Reload rates with override applied
+      const rates = await getFeeRates(sessionYear, course, batch, hostelType, parseInt(gcc))
+      setFeeRates(rates)
+      setHasOverride(true)
+      // Reload flat fee list with new amount
+      const updated = await getFlatFees(hostelType, course, batch, sessionYear, parseInt(gcc))
+      setFlatFees(updated)
+      setOverrideMode(false)
+      setOverrideFeedback({ type: 'ok', msg: `Flat fee set to ₹${amt.toLocaleString('en-IN')}/month for ${sessionYear}.` })
+    } catch (err) {
+      setOverrideFeedback({ type: 'err', msg: err.message || 'Save failed.' })
+    } finally { setOverrideSaving(false) }
+  }
+
+  // ── Remove override inline ────────────────────────────────────────────────
+  const removeOverrideInline = async () => {
+    if (!window.confirm('Remove override? This student will revert to the standard flat fee rate.')) return
+    setOverrideSaving(true)
+    try {
+      await saveStudentFlatFeeOverride(parseInt(gcc), sessionYear, null)
+      clearFeeRateCache()
+      const rates = await getFeeRates(sessionYear, course, batch, hostelType, null)
+      setFeeRates(rates)
+      setHasOverride(false)
+      setOverrideAmt('')
+      setOverrideReason('')
+      const updated = await getFlatFees(hostelType, course, batch, sessionYear, null)
+      setFlatFees(updated)
+      setOverrideMode(false)
+      setOverrideFeedback({ type: 'ok', msg: 'Override removed. Standard rate restored.' })
+    } catch (err) {
+      setOverrideFeedback({ type: 'err', msg: err.message || 'Remove failed.' })
+    } finally { setOverrideSaving(false) }
+  }
 
   const commonReceiptFields = rcpt => ({
     receipt_no: rcpt, pay_date: payDate, pay_mode: payMode,
@@ -403,15 +451,87 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                 ))}
               </div>
             </div>
-            <div style={{ marginTop:8, display:'flex', gap:16, fontSize:11, color:C.slate[500] }}>
+            <div style={{ marginTop:8, display:'flex', gap:16, fontSize:11, color:C.slate[500], alignItems:'center', flexWrap:'wrap' }}>
               {ratesLoading
                 ? <span style={{ color:C.slate[400] }}>⏳ Loading rates…</span>
                 : <>
-                    <span>📅 Flat fee: <strong style={{ color:C.emerald }}>₹{fmt(feeRates.flatFee).replace('₹','')}/month</strong></span>
+                    {/* Flat fee display with override badge + edit button */}
+                    <span style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      📅 Flat fee:{' '}
+                      <strong style={{ color: hasOverride ? C.violet : C.emerald }}>
+                        ₹{fmt(feeRates.flatFee).replace('₹','')}/month
+                      </strong>
+                      {hasOverride && (
+                        <span style={{ fontSize:9, fontWeight:800, background:'#ede9fe', color:C.violet, padding:'1px 6px', borderRadius:4, border:'1px solid #c4b5fd', letterSpacing:'.04em' }}>
+                          OVERRIDE
+                        </span>
+                      )}
+                      <button type="button" onClick={() => { setOverrideMode(m => !m); setOverrideFeedback(null) }}
+                        title="Change flat fee for this student"
+                        style={{ padding:'2px 8px', borderRadius:5, border:`1px solid ${C.slate[200]}`, background:'white', cursor:'pointer', fontSize:11, fontWeight:700, color:C.slate[500], lineHeight:1 }}>
+                        ✏️ {overrideMode ? 'Cancel' : 'Change'}
+                      </button>
+                    </span>
                     <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong></span>
                   </>
               }
             </div>
+
+            {/* ── Inline override editor ── */}
+            {overrideMode && (
+              <div style={{ marginTop:10, background:'#faf5ff', border:'1.5px solid #c4b5fd', borderRadius:9, padding:'12px 14px' }}>
+                <div style={{ fontSize:11, fontWeight:700, color:C.violet, marginBottom:8, textTransform:'uppercase', letterSpacing:'.06em' }}>
+                  ✏️ Set custom flat fee for {name} — {sessionYear}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, color:C.slate[500], display:'block', marginBottom:4 }}>New Amount (₹/month)</label>
+                    <div style={{ position:'relative' }}>
+                      <span style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', fontSize:12, color:C.slate[400] }}>₹</span>
+                      <input
+                        type="number" min="0" value={overrideAmt}
+                        onChange={e => setOverrideAmt(e.target.value)}
+                        placeholder={String(feeRates.flatFee)}
+                        style={{ ...inp, paddingLeft:22, fontWeight:700, color:C.violet, borderColor:'#c4b5fd', fontSize:13 }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, fontWeight:600, color:C.slate[500], display:'block', marginBottom:4 }}>Reason (optional)</label>
+                    <input
+                      type="text" value={overrideReason}
+                      onChange={e => setOverrideReason(e.target.value)}
+                      placeholder="e.g. Scholarship, concession…"
+                      style={{ ...inp, borderColor:'#c4b5fd', fontSize:12 }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button type="button" onClick={saveOverrideInline} disabled={overrideSaving || overrideAmt === ''}
+                    style={{ flex:1, padding:'7px 0', borderRadius:7, border:'none', fontSize:12, fontWeight:700, cursor:overrideSaving||overrideAmt===''?'not-allowed':'pointer', background:overrideSaving||overrideAmt===''?C.slate[200]:`linear-gradient(135deg,${C.violet},${C.indigo})`, color:overrideSaving||overrideAmt===''?C.slate[400]:'white' }}>
+                    {overrideSaving ? '⏳ Saving…' : '✅ Save Override'}
+                  </button>
+                  {hasOverride && (
+                    <button type="button" onClick={removeOverrideInline} disabled={overrideSaving}
+                      style={{ padding:'7px 14px', borderRadius:7, border:'1px solid #fca5a5', background:'#fef2f2', fontSize:12, fontWeight:700, cursor:'pointer', color:C.red }}>
+                      🗑 Remove
+                    </button>
+                  )}
+                </div>
+                {overrideFeedback && (
+                  <div style={{ marginTop:8, padding:'8px 12px', borderRadius:7, fontSize:12, fontWeight:600, background:overrideFeedback.type==='ok'?'#ecfdf5':'#fef2f2', border:`1px solid ${overrideFeedback.type==='ok'?'#6ee7b7':'#fca5a5'}`, color:overrideFeedback.type==='ok'?'#065f46':'#b91c1c' }}>
+                    {overrideFeedback.type==='ok'?'✅':'❌'} {overrideFeedback.msg}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Feedback shown outside editor too */}
+            {!overrideMode && overrideFeedback && (
+              <div style={{ marginTop:8, padding:'7px 12px', borderRadius:7, fontSize:11, fontWeight:600, background:overrideFeedback.type==='ok'?'#ecfdf5':'#fef2f2', color:overrideFeedback.type==='ok'?'#065f46':'#b91c1c' }}>
+                {overrideFeedback.type==='ok'?'✅':'❌'} {overrideFeedback.msg}
+              </div>
+            )}
           </div>
 
           <div style={{ display:'flex', gap:6, marginTop:12 }}>
@@ -494,12 +614,24 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
           {/* ── Flat fee tab ── */}
           {tab === 'flat' && (
             <div>
-              <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:9, padding:'10px 14px', marginBottom:14 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:C.emerald, marginBottom:4 }}>Monthly Flat Fee — {hostelType} · {course} {batch}</div>
-                <div style={{ fontSize:20, fontWeight:800, color:C.emerald }}>
-                  {ratesLoading ? '⏳' : `₹${fmt(feeRates.flatFee).replace('₹','')}`}
-                  <span style={{ fontSize:13, fontWeight:500, color:'#047857' }}> per month</span>
+              <div style={{ background: hasOverride ? '#faf5ff' : '#f0fdf4', border:`1px solid ${hasOverride ? '#c4b5fd' : '#bbf7d0'}`, borderRadius:9, padding:'10px 14px', marginBottom:14 }}>
+                <div style={{ fontSize:12, fontWeight:700, color: hasOverride ? C.violet : C.emerald, marginBottom:4, display:'flex', alignItems:'center', gap:8 }}>
+                  Monthly Flat Fee — {hostelType} · {course} {batch}
+                  {hasOverride && <span style={{ fontSize:9, fontWeight:800, background:'#ede9fe', color:C.violet, padding:'1px 6px', borderRadius:4, border:'1px solid #c4b5fd' }}>CUSTOM RATE</span>}
                 </div>
+                <div style={{ fontSize:20, fontWeight:800, color: hasOverride ? C.violet : C.emerald }}>
+                  {ratesLoading ? '⏳' : `₹${fmt(feeRates.flatFee).replace('₹','')}`}
+                  <span style={{ fontSize:13, fontWeight:500, color: hasOverride ? '#6d28d9' : '#047857' }}> per month</span>
+                </div>
+                {hasOverride && (
+                  <div style={{ fontSize:11, color:'#6d28d9', marginTop:4 }}>
+                    Standard rate overridden for this student.{' '}
+                    <button type="button" onClick={() => { setOverrideMode(true); setTab('flat') }}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:C.violet, fontWeight:700, fontSize:11, padding:0, textDecoration:'underline' }}>
+                      Edit override ↑
+                    </button>
+                  </div>
+                )}
               </div>
               <PaidSummaryBar paid={flatPaidCount} unpaid={flatFees.length - flatPaidCount} loading={loadingPaid} />
               <div style={{ fontSize:11, fontWeight:700, color:C.slate[400], textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>Select months</div>
@@ -514,7 +646,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                         <div style={{ fontWeight:700, fontSize:13, color:C.slate[900] }}>{fee.month} {fee.year}</div>
                         <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid ? 'Already paid' : `${hostelType} rate`}</div>
                       </div>
-                      <span style={{ fontSize:15, fontWeight:800, color:C.emerald }}>{fmt(fee.amount)}</span>
+                      <span style={{ fontSize:15, fontWeight:800, color: hasOverride ? C.violet : C.emerald }}>{fmt(fee.amount)}</span>
                       {paid ? <PaidBadge /> : (
                         <div style={{ width:20, height:20, borderRadius:5, flexShrink:0, border:`2px solid ${flatSel[fee.id]?C.emerald:C.slate[300]}`, background:flatSel[fee.id]?C.emerald:'white', display:'flex', alignItems:'center', justifyContent:'center' }}>
                           {flatSel[fee.id] && <span style={{ color:'white', fontSize:11, fontWeight:900 }}>✓</span>}
@@ -527,7 +659,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
               {flatTotal > 0 && (
                 <div style={{ background:C.slate[50], borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ fontSize:13, fontWeight:600, color:C.slate[500] }}>Total</span>
-                  <span style={{ fontSize:18, fontWeight:800, color:C.emerald }}>{fmt(flatTotal)}</span>
+                  <span style={{ fontSize:18, fontWeight:800, color: hasOverride ? C.violet : C.emerald }}>{fmt(flatTotal)}</span>
                 </div>
               )}
               {!loadingPaid && allFlatPaid && (
