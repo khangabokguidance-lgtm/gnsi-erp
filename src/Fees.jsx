@@ -7,6 +7,7 @@ import {
   upsertAccount, checkCourseFeeExists, checkFlatFeeExists,
   printReceipt, sourceRef,
   getFlatFees, getFeeRates,
+  saveStudentFlatFeeOverride, clearFeeRateCache,
   COURSE_RATES, FLAT_RATES,
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
@@ -132,12 +133,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   useEffect(() => {
     if (!student) return
-    getFlatFees(hostelType, student.course || '', student.batch || '')
+    const gccInt = parseInt(gccStr(student.gcc_no)) || null
+    getFlatFees(hostelType, student.course || '', student.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccInt)
       .then(setFlatFees)
     getFeeRates(
       `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
-      student.course || '', student.batch || '', hostelType
-    ).then(setFeeRates)
+      student.course || '', student.batch || '', hostelType, gccInt
+    ).then(rates => {
+      setFeeRates(rates)
+      setHasOverride(!!rates.flatFeeOverride)
+      if (rates.flatFeeOverride) {
+        setOverrideAmt(String(rates.flatFeeOverride.flat_fee_override))
+        setOverrideReason(rates.flatFeeOverride.reason || '')
+      } else {
+        setOverrideAmt('')
+        setOverrideReason('')
+      }
+    })
   }, [student, hostelType])
 
   const [flatChecked, setFlatChecked] = useState([])
@@ -145,6 +157,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // ── Repeater state ────────────────────────────────────────────────────────
   const [isRepeater,     setIsRepeater]     = useState(false)
   const [repeaterSaving, setRepeaterSaving] = useState(false)
+
+  // ── Flat fee override state ───────────────────────────────────────────────
+  const [hasOverride,      setHasOverride]      = useState(false)
+  const [overrideMode,     setOverrideMode]     = useState(false)
+  const [overrideAmt,      setOverrideAmt]      = useState('')
+  const [overrideReason,   setOverrideReason]   = useState('')
+  const [overrideSaving,   setOverrideSaving]   = useState(false)
+  const [overrideFeedback, setOverrideFeedback] = useState(null)
 
   useEffect(() => {
     if (!student?.gcc_no) return
@@ -166,6 +186,49 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       .eq('gcc_no', parseInt(student.gcc_no))
     setIsRepeater(newVal)
     setRepeaterSaving(false)
+  }
+
+  const saveOverrideInline = async () => {
+    const amt = parseFloat(overrideAmt)
+    if (isNaN(amt) || amt < 0) { setOverrideFeedback({ type: 'err', msg: 'Enter a valid amount.' }); return }
+    const gccInt = parseInt(gcc) || null
+    if (!gccInt) return
+    setOverrideSaving(true)
+    try {
+      await saveStudentFlatFeeOverride(gccInt, `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, amt, overrideReason, 'admin')
+      clearFeeRateCache()
+      const rates = await getFeeRates(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, student.course || '', student.batch || '', hostelType, gccInt)
+      setFeeRates(rates)
+      setHasOverride(true)
+      const updated = await getFlatFees(hostelType, student.course || '', student.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccInt)
+      setFlatFees(updated)
+      setOverrideMode(false)
+      setOverrideFeedback({ type: 'ok', msg: `Flat fee set to ₹${amt.toLocaleString('en-IN')}/month.` })
+    } catch (err) {
+      setOverrideFeedback({ type: 'err', msg: err.message || 'Save failed.' })
+    } finally { setOverrideSaving(false) }
+  }
+
+  const removeOverrideInline = async () => {
+    if (!window.confirm('Remove override? This student will revert to the standard flat fee rate.')) return
+    const gccInt = parseInt(gcc) || null
+    if (!gccInt) return
+    setOverrideSaving(true)
+    try {
+      await saveStudentFlatFeeOverride(gccInt, `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, null)
+      clearFeeRateCache()
+      const rates = await getFeeRates(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, student.course || '', student.batch || '', hostelType, null)
+      setFeeRates(rates)
+      setHasOverride(false)
+      setOverrideAmt('')
+      setOverrideReason('')
+      const updated = await getFlatFees(hostelType, student.course || '', student.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, null)
+      setFlatFees(updated)
+      setOverrideMode(false)
+      setOverrideFeedback({ type: 'ok', msg: 'Override removed. Standard rate restored.' })
+    } catch (err) {
+      setOverrideFeedback({ type: 'err', msg: err.message || 'Remove failed.' })
+    } finally { setOverrideSaving(false) }
   }
 
   const showToast = (msg, color = '#16a34a') => {
@@ -201,7 +264,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     const rec = admissions.find(a => gccStr(a.gcc_no) === gccStr(s.gcc_no)) || null
     setAdmRec(rec)
 
-    const studentFlatFees = await getFlatFees(s.hostel_type || 'Day Scholar', s.course || '', s.batch || '')
+    const studentFlatFees = await getFlatFees(s.hostel_type || 'Day Scholar', s.course || '', s.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, parseInt(gccStr(s.gcc_no)) || null)
     const paid = adm_flat_fees
       .filter(r => gccStr(r.adm_app_id) === gccStr(s.gcc_no) && r.paid)
       .map(r => r.month)
@@ -216,7 +279,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       try {
         const rates = await getFeeRates(
           `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
-          defaultCourse, defaultBatch, defaultHostelType
+          defaultCourse, defaultBatch, defaultHostelType, parseInt(gccStr(s.gcc_no)) || null
         )
         defaultAmt = rates.courseFee || syncCourseFeeAmt(defaultCourse, defaultHostelType)
       } catch (_) {
@@ -238,6 +301,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const handleBack = () => {
     setStep('select'); setStudent(null); setAdmRec(null)
     setIsRepeater(false)
+    setHasOverride(false)
+    setOverrideMode(false)
+    setOverrideAmt('')
+    setOverrideReason('')
+    setOverrideFeedback(null)
     setAdmFeeAmt(ADM_FEE_BASE)
     setDressChecked(DRESS_ITEMS.map(() => true))
     setProspChecked(true)
@@ -531,8 +599,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             {student.course && <span>{student.course}</span>}
             {admRec?.adm_no && <span style={{ color: '#4f46e5', fontWeight: 600 }}>{admRec.adm_no}</span>}
             {hostelType && <HostelBadge type={hostelType} />}
-            <span style={{ fontSize: 11, color: '#059669', fontWeight: 700 }}>
-              Flat fee: ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo
+            {/* ── Flat fee display with override badge + Change button ── */}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 11, color: hasOverride ? '#7c3aed' : '#059669', fontWeight: 700 }}>
+                Flat fee: ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo
+              </span>
+              {hasOverride && (
+                <span style={{ fontSize: 9, fontWeight: 800, background: '#ede9fe', color: '#7c3aed', padding: '1px 5px', borderRadius: 3, border: '1px solid #c4b5fd' }}>OVERRIDE</span>
+              )}
+              <button type="button" onClick={() => { setOverrideMode(m => !m); setOverrideFeedback(null) }}
+                style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', color: '#64748b' }}>
+                ✏️ {overrideMode ? 'Cancel' : 'Change'}
+              </button>
             </span>
             {totalEverPaid > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>₹{totalEverPaid.toLocaleString('en-IN')} prev. paid</span>}
             {/* ── REPEATER toggle ── */}
@@ -549,7 +627,56 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         <button onClick={handleBack} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b' }}>← Change</button>
       </div>
 
-      {!admRec && (
+      {/* ── Inline flat fee override editor ── */}
+      {overrideMode && (
+        <div style={{ background: '#faf5ff', border: '1.5px solid #c4b5fd', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            ✏️ Custom flat fee for {student.name} — {CURRENT_YEAR}-{CURRENT_YEAR + 1}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={{ ...lbl, fontSize: 11, color: '#7c3aed' }}>New Amount (₹/month)</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#94a3b8' }}>₹</span>
+                <input type="number" min="0" value={overrideAmt}
+                  onChange={e => setOverrideAmt(e.target.value)}
+                  placeholder={String(feeRates.flatFee)}
+                  style={{ ...inp, paddingLeft: 26, fontWeight: 700, color: '#7c3aed', borderColor: '#c4b5fd', fontSize: 14 }} />
+              </div>
+            </div>
+            <div>
+              <label style={{ ...lbl, fontSize: 11, color: '#7c3aed' }}>Reason (optional)</label>
+              <input type="text" value={overrideReason}
+                onChange={e => setOverrideReason(e.target.value)}
+                placeholder="e.g. Scholarship, concession…"
+                style={{ ...inp, borderColor: '#c4b5fd', fontSize: 13 }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={saveOverrideInline} disabled={overrideSaving || overrideAmt === ''}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700, cursor: overrideSaving || overrideAmt === '' ? 'not-allowed' : 'pointer', background: overrideSaving || overrideAmt === '' ? '#e2e8f0' : 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: overrideSaving || overrideAmt === '' ? '#94a3b8' : 'white' }}>
+              {overrideSaving ? '⏳ Saving…' : '✅ Save Override'}
+            </button>
+            {hasOverride && (
+              <button type="button" onClick={removeOverrideInline} disabled={overrideSaving}
+                style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fef2f2', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#dc2626' }}>
+                🗑 Remove
+              </button>
+            )}
+          </div>
+          {overrideFeedback && (
+            <div style={{ marginTop: 10, padding: '9px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: overrideFeedback.type === 'ok' ? '#ecfdf5' : '#fef2f2', border: `1px solid ${overrideFeedback.type === 'ok' ? '#6ee7b7' : '#fca5a5'}`, color: overrideFeedback.type === 'ok' ? '#065f46' : '#b91c1c' }}>
+              {overrideFeedback.type === 'ok' ? '✅' : '❌'} {overrideFeedback.msg}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!overrideMode && overrideFeedback && (
+        <div style={{ background: overrideFeedback.type === 'ok' ? '#ecfdf5' : '#fef2f2', border: `1px solid ${overrideFeedback.type === 'ok' ? '#6ee7b7' : '#fca5a5'}`, borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 12, fontWeight: 600, color: overrideFeedback.type === 'ok' ? '#065f46' : '#b91c1c' }}>
+          {overrideFeedback.type === 'ok' ? '✅' : '❌'} {overrideFeedback.msg}
+        </div>
+      )}
         <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
           ⚠️ No admission record found for GCC-{student.gcc_no || '??'}. Create one in the Admissions module first.
         </div>
