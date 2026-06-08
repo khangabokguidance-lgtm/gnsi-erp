@@ -1214,6 +1214,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
   ...form,
   reported_by: currentHousemaster?.name || form.reported_by,
   raised_at: new Date().toISOString(),
+  resolved_at: form.resolved_at || null,
   cost: form.cost !== '' && form.cost !== null ? Number(form.cost) : null,
 }
     const { error } = await supabase.from('maintenance_records').insert([payload])
