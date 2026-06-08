@@ -413,7 +413,7 @@ function Btn({ children, onClick, variant='secondary', size='md', disabled, styl
   return (
     <button onClick={onClick} disabled={disabled} title={title} style={{
       ...s, borderRadius:T.r8, fontWeight:600, cursor:disabled?'not-allowed':'pointer',
-      opacity:disabled?.5:1, display:'inline-flex', alignItems:'center', gap:6,
+      opacity:disabled ? .5 : 1, display:'inline-flex', alignItems:'center', gap:6,
       transition:'all .12s', whiteSpace:'nowrap', flexShrink:0,
       fontFamily:'inherit', ...v, ...style,
     }}
@@ -1588,7 +1588,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents }) {
           </FieldRow>
           <FieldRow label="Session"><select style={SEL} value={form.session} onChange={e=>set('session',e.target.value)}><option value="">—</option>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="House / Block"><select style={SEL} value={form.house} onChange={e=>set('house',e.target.value)}><option value="">— House —</option>{HOUSES_LIST.map(h=><option key={h}>{h}</option>)}</select></FieldRow>
-          <FieldRow label="Hostel Type"><select style={{...SEL,opacity:DAY_SCHOLAR_HOUSES.includes(form.house)?.6:1}} value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>{['Boarder','Day Scholar','Day Boarder'].map(h=><option key={h}>{h}</option>)}</select></FieldRow>
+          <FieldRow label="Hostel Type"><select style={{...SEL,opacity:DAY_SCHOLAR_HOUSES.includes(form.house) ? .6 : 1}} value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>{['Boarder','Day Scholar','Day Boarder'].map(h=><option key={h}>{h}</option>)}</select></FieldRow>
         </div>
         <div style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'8px 14px',borderRadius:T.r8,background:hostelCfg.bg,border:`1px solid ${hostelCfg.border}`,fontSize:12,fontWeight:600,color:hostelCfg.color}}>
           {derived} · ₹{fmt(getFlatFeeAmt(derived))}/month
