@@ -3705,7 +3705,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
   // ── Current user role (drives which actions are shown)
   // Pull from your portal_users / gnsi_staff_credentials auth system.
   // Default 'hm' for backwards compatibility. Set via props or context.
-  const userRole = (currentHousemaster?.role || 'hm').toLowerCase()
+  const userRole = (currentUser?.role || currentHousemaster?.role || 'hm').toLowerCase()
   // userRole: 'hm' | 'superintendent' | 'admin'
 
   // ── Filter/search state
@@ -4204,7 +4204,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
     if (record.status === 'Rejected' || record.status === 'Returned' || record.status === 'Overdue') return false
     if (record.status === 'Approved' && level >= 2) return false
     if (level === 0) return userRole === 'hm' || userRole === 'admin'
-    if (level === 1) return userRole === 'admin'  // ← superintendent CANNOT approve
+    if (level === 1) return ['superintendent', 'admin'].includes(userRole)
     return false
   }
 
