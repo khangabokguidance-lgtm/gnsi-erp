@@ -24,6 +24,7 @@ import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from 
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
 import './mobile.css';
+import ExamCSVImport from './ExamCSVImport';
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
@@ -101,9 +102,12 @@ function usePerm(currentUser, perms) {
 
 const TAB_GROUPS = [
   {
-    groupLabel: "Entry", color: "#1433a8",
-    tabs: [{ id: "entry", icon: "✏️", label: "Mark Entry", tip: "Enter & save marks" }]
-  },
+  groupLabel: "Entry", color: "#1433a8",
+  tabs: [
+    { id: "entry",     icon: "✏️", label: "Mark Entry",  tip: "Enter & save marks" },
+    { id: "csvimport", icon: "📂", label: "CSV Import",   tip: "Smart CSV / Excel import" },
+  ]
+},
   {
     groupLabel: "Results", color: "#0891b2",
     tabs: [
@@ -3746,12 +3750,12 @@ export default function Exams({ currentUser, perms }) {
   const [schedule, setSchedule]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [institute, setInstitute]   = useState(INSTITUTE_DEFAULT);
-
+ 
   const refetchSchedule = useCallback(async () => {
     const { data } = await supabase.from('exam_schedule').select('*').order('exam_date');
     setSchedule(data || []);
   }, []);
-
+ 
   useEffect(() => {
     ensureLibs();
     Promise.all([
@@ -3769,7 +3773,7 @@ export default function Exams({ currentUser, perms }) {
       setLoading(false);
     });
   }, []);
-
+ 
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", background: "#F7F6F1", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -3777,13 +3781,63 @@ export default function Exams({ currentUser, perms }) {
       </div>
     );
   }
-
+ 
   const courses = Object.keys(courseSubjects);
+ 
+  const handleCSVImportDone = async (importedMarks, course) => {
+  const examTypeId = examTypes[0]?.id || "";
+  const examDate   = new Date().toISOString().split("T")[0];
+  const rows = [];
 
+  for (const [key, markValue] of Object.entries(importedMarks)) {
+    const student = students.find(s => key.startsWith(`${s.id}-`));
+    if (!student) continue;
+    const subject = key.slice(`${student.id}-`.length);
+
+    const subjectMax = (COURSE_MAX_MARKS[course] || {})[subject] || 100;
+    rows.push({
+      student_id:   student.id,
+      student_name: student.name,
+      class_name:   student.class_name,
+      exam_type_id: examTypeId,
+      subject,
+      marks:        Math.min(markValue, subjectMax),
+      total_marks:  subjectMax,
+      exam_date:    examDate,
+    });
+  }
+
+  for (let i = 0; i < rows.length; i += 100) {
+    await supabase
+      .from("exam_marks")
+      .upsert(rows.slice(i, i + 100), {
+        onConflict: "student_id,exam_type_id,subject,exam_date",
+      });
+  }
+
+  setTab("entry");
+};
+ 
+  // ── Section map ────────────────────────────────────────────────────────────
   const sectionMap = {
     dashboard:      <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
     toppers:        <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
     entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} />,
+ 
+    // ── NEW: smart CSV import tab ──────────────────────────────────────────
+    csvimport: (
+      <ExamCSVImport
+        courseSubjects={courseSubjects}
+        students={students}
+        examTypes={examTypes}
+        examDate={new Date().toISOString().split("T")[0]}
+        examTypeId={examTypes[0]?.id || ""}
+        isMobile={window.innerWidth < 768}
+        onImportDone={handleCSVImportDone}
+      />
+    ),
+    // ──────────────────────────────────────────────────────────────────────
+ 
     marks:          <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     analytics:      <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     rankings:       <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
@@ -3800,10 +3854,10 @@ export default function Exams({ currentUser, perms }) {
     admitcard:      <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
     bulkreport:     <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
   };
-
+ 
   const activeTabInfo = TAB_GROUPS.flatMap(g => g.tabs).find(t => t.id === tab);
   const isMobile = window.innerWidth < 768;
-
+ 
   return (
     <div className="exams-root" style={{ minHeight: "100vh", background: "#F7F6F1", fontFamily: "'DM Sans','Inter',sans-serif" }}>
       <ExamHubHeader institute={institute} students={students} courses={courses} examTypes={examTypes} currentUser={currentUser} />
