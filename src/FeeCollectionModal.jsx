@@ -92,6 +92,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   const [hostelWarning,   setHostelWarning]   = useState(null)
   const [hostelAutoFixed, setHostelAutoFixed] = useState(false)
 
+  // ── Repeater flag ─────────────────────────────────────────────────────────
+  const [isRepeater,     setIsRepeater]     = useState(false)
+  const [repeaterSaving, setRepeaterSaving] = useState(false)
+
   // ── Rates from DB ─────────────────────────────────────────────────────────
   const [feeRates,     setFeeRates]     = useState({ flatFee: 0, courseFee: 0, admissionFee: 6000 })
   const [flatFees,     setFlatFees]     = useState([])
@@ -177,6 +181,28 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   }, [student?.id])
 
   useEffect(() => { setSaved(null); setError(null) }, [hostelType])
+
+  // ── Load repeater flag ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!gcc) return
+    supabase
+      .from('students')
+      .select('is_repeater')
+      .eq('gcc_no', parseInt(gcc))
+      .maybeSingle()
+      .then(({ data }) => { if (data) setIsRepeater(!!data.is_repeater) })
+  }, [gcc])
+
+  const toggleRepeater = async () => {
+    const newVal = !isRepeater
+    setRepeaterSaving(true)
+    await supabase
+      .from('students')
+      .update({ is_repeater: newVal })
+      .eq('gcc_no', parseInt(gcc))
+    setIsRepeater(newVal)
+    setRepeaterSaving(false)
+  }
 
   // ── Load paid admission items ─────────────────────────────────────────────
   useEffect(() => {
@@ -425,6 +451,19 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                 {admNo  && <span style={{ color:C.indigo, fontWeight:600 }}>{admNo}</span>}
                 <HostelBadge type={hostelType} />
                 {hostelAutoFixed && <span style={{ fontSize:10, fontWeight:700, color:C.red, background:'#fef2f2', padding:'2px 7px', borderRadius:4, border:'1px solid #fca5a5' }}>⚠ AUTO-CORRECTED</span>}
+                {isRepeater && (
+                  <span style={{ fontSize:10, fontWeight:800, color:"#92400e", background:"#fef3c7", padding:"2px 9px", borderRadius:4, border:"1px solid #fcd34d", letterSpacing:".04em" }}>
+                    🔁 REPEATER
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={toggleRepeater}
+                  disabled={repeaterSaving}
+                  title={isRepeater ? "Remove Repeater tag" : "Mark as Repeater (2+ years at GNSI)"}
+                  style={{ fontSize:10, fontWeight:700, padding:"2px 9px", borderRadius:4, border:`1px solid ${isRepeater ? "#fcd34d" : C.slate[200]}`, background: isRepeater ? "#fef3c7" : C.slate[50], color: isRepeater ? "#92400e" : C.slate[400], cursor: repeaterSaving ? "not-allowed" : "pointer", letterSpacing:".03em" }}>
+                  {repeaterSaving ? "…" : isRepeater ? "✕ Remove" : "🔁 Mark Repeater"}
+                </button>
               </div>
             </div>
             <button type="button" onClick={handleClose} style={{ width:30, height:30, borderRadius:8, border:`1px solid ${C.slate[200]}`, background:C.slate[50], cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
