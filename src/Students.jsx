@@ -1744,6 +1744,441 @@ function StudentRow({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuick
   )
 }
 
+// ─── Student Dashboard Tab ────────────────────────────────────────────────────
+function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, onOpenFee }) {
+  const isMobile = useIsMobile()
+  const col2 = isMobile ? '1fr' : '1fr 1fr'
+  const n = v => Number(v || 0).toLocaleString('en-IN')
+
+  // ── Derived counts ──────────────────────────────────────────────────────────
+  const active      = students.filter(s => s.status === 'Active')
+  const boarders    = students.filter(s => s.hostel_type === 'Boarder')
+  const dayBoard    = students.filter(s => s.hostel_type === 'Day Boarder')
+  const dayScholar  = students.filter(s => s.hostel_type === 'Day Scholar')
+  const male        = students.filter(s => s.gender === 'Male')
+  const female      = students.filter(s => s.gender === 'Female')
+  const repeaters   = students.filter(s => s.is_repeater)
+  const missingInfo = students.filter(s => getMissingFields(s).length > 0)
+
+  // ── Attendance buckets ──────────────────────────────────────────────────────
+  const withAtt = students.filter(s => attData[s.id] != null)
+  const att90p  = withAtt.filter(s => attData[s.id] >= 90)
+  const att75   = withAtt.filter(s => attData[s.id] >= 75 && attData[s.id] < 90)
+  const att50   = withAtt.filter(s => attData[s.id] >= 50 && attData[s.id] < 75)
+  const attLow  = withAtt.filter(s => attData[s.id] < 50)
+  const avgAtt  = withAtt.length
+    ? (withAtt.reduce((a, s) => a + attData[s.id], 0) / withAtt.length).toFixed(1)
+    : null
+  const criticalAtt = withAtt.filter(s => attData[s.id] < 60)
+
+  // ── Fee summary ─────────────────────────────────────────────────────────────
+  const withFee   = students.filter(s => feeData[s.id] != null)
+  const feeDue    = withFee.filter(s => feeData[s.id].dues > 0)
+  const feeClear  = withFee.filter(s => feeData[s.id].dues === 0)
+  const totalDues = feeDue.reduce((a, s) => a + (feeData[s.id].dues || 0), 0)
+  const highDue   = feeDue.filter(s => feeData[s.id].dues > 10000)
+
+  // ── Exam summary ───────────────────────────────────────────────────────────
+  const withExams = students.filter(s => (examData[s.id]?.length || 0) > 0)
+  const allScores = withExams.map(s => {
+    const exams = examData[s.id]
+    return exams.reduce((a, e) => a + (e.total || 0), 0) / exams.length
+  })
+  const avgScore = allScores.length
+    ? (allScores.reduce((a, v) => a + v, 0) / allScores.length).toFixed(0)
+    : null
+
+  // Subject-wise average across all students
+  const subjectAvg = {}
+  SUBJECTS.forEach(sub => {
+    const vals = withExams.flatMap(s =>
+      examData[s.id].map(e => e[sub]).filter(v => v != null)
+    )
+    if (vals.length)
+      subjectAvg[sub] = (vals.reduce((a, v) => a + Number(v), 0) / vals.length).toFixed(1)
+  })
+  const weakSubjects = Object.entries(subjectAvg)
+    .filter(([, v]) => Number(v) < 50)
+    .sort((a, b) => Number(a[1]) - Number(b[1]))
+
+  // ── Course distribution ────────────────────────────────────────────────────
+  const courseData = Object.keys(COURSE_STRUCTURE).map(c => ({
+    course: c,
+    count:  students.filter(s => s.course === c).length,
+    color:  COURSE_STRUCTURE[c].color,
+  })).filter(c => c.count > 0)
+  const maxCourse = Math.max(...courseData.map(c => c.count), 1)
+
+  // ── House census ───────────────────────────────────────────────────────────
+  const houseData = HOUSES_LIST
+    .map(h => ({ house: h, count: students.filter(s => s.house === h).length, color: HOUSE_COLORS[h] || T.text3 }))
+    .filter(h => h.count > 0)
+    .sort((a, b) => b.count - a.count)
+  const maxHouse = Math.max(...houseData.map(h => h.count), 1)
+
+  // ── Batch distribution ─────────────────────────────────────────────────────
+  const batchMap = {}
+  students.forEach(s => { if (s.batch) batchMap[s.batch] = (batchMap[s.batch] || 0) + 1 })
+  const batchData = Object.entries(batchMap).sort((a, b) => b[1] - a[1])
+  const maxBatch  = Math.max(...batchData.map(b => b[1]), 1)
+
+  // ── Status distribution ────────────────────────────────────────────────────
+  const statusData = Object.entries(
+    students.reduce((a, s) => { a[s.status || 'Unknown'] = (a[s.status || 'Unknown'] || 0) + 1; return a }, {})
+  ).sort((a, b) => b[1] - a[1])
+
+  // ── Sub-components ─────────────────────────────────────────────────────────
+  const DashCard = ({ title, sub, children, accent }) => (
+    <div style={{
+      background: T.surface, borderRadius: T.r12,
+      border: `1px solid ${T.border}`, boxShadow: T.shadow, overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '13px 16px', borderBottom: `1px solid ${T.border}`,
+        borderLeft: accent ? `3px solid ${accent}` : 'none',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>{title}</div>
+        {sub && <div style={{ fontSize: 11, color: T.text4, marginTop: 2 }}>{sub}</div>}
+      </div>
+      <div style={{ padding: '14px 16px' }}>{children}</div>
+    </div>
+  )
+
+  const StatRow = ({ label, value, pct, color }) => (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: color || T.text1 }}>{value}</span>
+      </div>
+      <div style={{ height: 6, background: T.surface2, borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: color || T.brand, borderRadius: 3, transition: 'width .4s' }} />
+      </div>
+    </div>
+  )
+
+  const AlertList = ({ items, color, border, emptyMsg, keyFn, nameFn, subFn, btnLabel, onBtn }) => (
+    <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+      {items.length === 0
+        ? <div style={{ padding: '14px 16px', fontSize: 12, color: T.text4, textAlign: 'center' }}>{emptyMsg}</div>
+        : items.map(s => (
+            <div key={keyFn(s)} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 14px', borderBottom: `1px solid ${border}20`,
+            }}>
+              <Avatar name={nameFn(s)} size={28} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.text1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFn(s)}</div>
+                <div style={{ fontSize: 10, color: T.text3 }}>{subFn(s)}</div>
+              </div>
+              {onBtn && (
+                <button onClick={() => onBtn(s)} style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 9px',
+                  borderRadius: T.r6, border: 'none', background: color,
+                  color: 'white', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit',
+                }}>{btnLabel}</button>
+              )}
+            </div>
+          ))
+      }
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 24 }}>
+
+      {/* ── KPI Row 1 ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10 }}>
+        {[
+          { icon: '👥', label: 'Total Students', value: students.length,  color: T.brand,   sub: `${active.length} active` },
+          { icon: '🏠', label: 'Boarders',        value: boarders.length,  color: T.green,   sub: `${dayBoard.length} day boarders · ${dayScholar.length} day scholars` },
+          { icon: '💰', label: 'Fee Dues',         value: feeDue.length,    color: T.red,     sub: `₹${n(totalDues)} outstanding`, warn: feeDue.length > 0 },
+          { icon: '📉', label: 'Low Attendance',   value: attLow.length,    color: T.red,     sub: '< 50% attendance', warn: attLow.length > 0 },
+        ].map(c => (
+          <div key={c.label} style={{
+            background: c.warn ? T.redLight : `${c.color}08`,
+            borderRadius: T.r12, padding: '14px 16px',
+            borderLeft: `4px solid ${c.color}`, boxShadow: T.shadow,
+          }}>
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: c.color, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: c.color }}>{c.value}</div>
+            <div style={{ fontSize: 10, color: c.color, opacity: .7, marginTop: 3 }}>{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── KPI Row 2 ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10 }}>
+        {[
+          { icon: '♂♀',  label: 'Gender Split',   value: `${male.length}M / ${female.length}F`,   color: '#3B82F6' },
+          { icon: '📝',  label: 'Avg Exam Score', value: avgScore ? `${avgScore}/700` : '—',        color: T.violet },
+          { icon: '📅',  label: 'Avg Attendance', value: avgAtt ? `${avgAtt}%` : '—',               color: Number(avgAtt) >= 75 ? T.green : T.red },
+          { icon: '🔁',  label: 'Repeaters',       value: repeaters.length,                          color: '#92400e' },
+        ].map(c => (
+          <div key={c.label} style={{
+            background: T.surface, borderRadius: T.r12, padding: '12px 14px',
+            border: `1px solid ${T.border}`, boxShadow: T.shadow,
+          }}>
+            <div style={{ fontSize: 18, marginBottom: 3 }}>{c.icon}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: T.text4, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: c.color }}>{c.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Attendance + Fee ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: col2, gap: 16 }}>
+
+        <DashCard title="📅 Attendance Distribution" sub={`${withAtt.length} students tracked · Institute avg ${avgAtt ?? '—'}%`} accent={T.green}>
+          <StatRow label="Excellent ≥90%"   value={att90p.length} pct={(att90p.length / Math.max(students.length,1)) * 100} color={T.green} />
+          <StatRow label="Good 75–90%"      value={att75.length}  pct={(att75.length  / Math.max(students.length,1)) * 100} color={T.brand} />
+          <StatRow label="Average 50–75%"   value={att50.length}  pct={(att50.length  / Math.max(students.length,1)) * 100} color={T.amber} />
+          <StatRow label="Critical <50%"    value={attLow.length} pct={(attLow.length / Math.max(students.length,1)) * 100} color={T.red} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+            <div style={{ background: T.greenLight, border: `1px solid ${T.greenBorder}`, borderRadius: T.r8, padding: '10px', textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: T.green }}>{avgAtt ? `${avgAtt}%` : '—'}</div>
+              <div style={{ fontSize: 9, color: T.green, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Institute Avg</div>
+            </div>
+            <div style={{ background: T.redLight, border: `1px solid ${T.redBorder}`, borderRadius: T.r8, padding: '10px', textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: T.red }}>{criticalAtt.length}</div>
+              <div style={{ fontSize: 9, color: T.red, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Need Action</div>
+            </div>
+          </div>
+        </DashCard>
+
+        <DashCard title="💰 Fee Status Overview" sub={`${withFee.length} students with records`} accent={T.green}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            <div style={{ background: T.greenLight, border: `1px solid ${T.greenBorder}`, borderRadius: T.r8, padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: T.green }}>{feeClear.length}</div>
+              <div style={{ fontSize: 9, color: T.green, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Fee Clear ✓</div>
+            </div>
+            <div style={{ background: T.redLight, border: `1px solid ${T.redBorder}`, borderRadius: T.r8, padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: T.red }}>{feeDue.length}</div>
+              <div style={{ fontSize: 9, color: T.red, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Dues Pending</div>
+            </div>
+          </div>
+          <div style={{ background: T.surface2, borderRadius: T.r8, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: T.text3, fontWeight: 600 }}>Total Outstanding</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: T.red }}>₹{n(totalDues)}</span>
+          </div>
+          <StatRow label={`High dues >₹10k (${highDue.length})`}  value={highDue.length}   pct={(highDue.length  / Math.max(feeDue.length,1)) * 100}   color={T.red} />
+          <StatRow label={`Fee clear (${feeClear.length})`}        value={feeClear.length}  pct={(feeClear.length / Math.max(withFee.length,1)) * 100}  color={T.green} />
+        </DashCard>
+      </div>
+
+      {/* ── Course + House + Batch ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 16 }}>
+
+        <DashCard title="📚 Course Distribution" accent={T.violet}>
+          {courseData.map(c => (
+            <div key={c.course} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: c.color }}>{c.course}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: c.color }}>{c.count}</span>
+              </div>
+              <div style={{ height: 6, background: T.surface2, borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(c.count / maxCourse) * 100}%`, background: c.color, borderRadius: 3 }} />
+              </div>
+            </div>
+          ))}
+        </DashCard>
+
+        <DashCard title="🏠 House Census" accent={T.sky}>
+          {houseData.slice(0, 10).map(h => (
+            <div key={h.house} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: h.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: T.text2, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.house}</span>
+              <div style={{ width: 60, height: 5, background: T.surface2, borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(h.count / maxHouse) * 100}%`, background: h.color, borderRadius: 3 }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 800, color: T.text1, minWidth: 18, textAlign: 'right' }}>{h.count}</span>
+            </div>
+          ))}
+        </DashCard>
+
+        <DashCard title="🎓 Batch & Status" accent={T.brand}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: T.text4, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Batch</div>
+          {batchData.slice(0, 6).map(([b, cnt]) => (
+            <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: T.brand, width: 72, flexShrink: 0 }}>{b}</span>
+              <div style={{ flex: 1, height: 5, background: T.surface2, borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(cnt / maxBatch) * 100}%`, background: T.brand, borderRadius: 3 }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 800, color: T.text1, minWidth: 18, textAlign: 'right' }}>{cnt}</span>
+            </div>
+          ))}
+          <div style={{ height: 1, background: T.border, margin: '10px 0 8px' }} />
+          <div style={{ fontSize: 10, fontWeight: 600, color: T.text4, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Status</div>
+          {statusData.map(([st, cnt]) => {
+            const cfg = STATUS_CFG[st] || { color: T.text3, dot: T.text3 }
+            return (
+              <div key={st} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.dot, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: cfg.color, flex: 1 }}>{st}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: T.text1 }}>{cnt}</span>
+              </div>
+            )
+          })}
+        </DashCard>
+      </div>
+
+      {/* ── Exam performance ── */}
+      {withExams.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: col2, gap: 16 }}>
+          <DashCard title="📝 Subject-wise Performance" sub="Average marks across all exams" accent={T.violet}>
+            {Object.entries(subjectAvg).sort((a, b) => Number(a[1]) - Number(b[1])).map(([sub, avg]) => {
+              const v = Number(avg)
+              const color = v >= 60 ? T.green : v >= 40 ? T.amber : T.red
+              return (
+                <div key={sub} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: T.text2 }}>{sub}</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color }}>{avg}/100</span>
+                  </div>
+                  <div style={{ height: 6, background: T.surface2, borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${v}%`, background: color, borderRadius: 3 }} />
+                  </div>
+                </div>
+              )
+            })}
+            {weakSubjects.length > 0 && (
+              <div style={{ marginTop: 10, background: T.redLight, border: `1px solid ${T.redBorder}`, borderRadius: T.r8, padding: '8px 12px', fontSize: 11, color: T.red, fontWeight: 600 }}>
+                ⚠ Weak areas: {weakSubjects.map(([s]) => s).join(', ')}
+              </div>
+            )}
+          </DashCard>
+
+          <DashCard title="🏆 Score Distribution" sub={`${withExams.length} students · avg ${avgScore ?? '—'}/700`} accent={T.amber}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div style={{ background: T.violetLight, border: `1px solid ${T.violetBorder}`, borderRadius: T.r8, padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: T.violet }}>{avgScore ?? '—'}</div>
+                <div style={{ fontSize: 9, color: T.violet, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Avg / 700</div>
+              </div>
+              <div style={{ background: T.amberLight, border: `1px solid ${T.amberBorder}`, borderRadius: T.r8, padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: T.amber }}>{withExams.length}</div>
+                <div style={{ fontSize: 9, color: T.amber, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Appeared</div>
+              </div>
+            </div>
+            {[
+              { label: 'Excellent ≥500',  count: withExams.filter(s => (examData[s.id]?.[0]?.total || 0) >= 500).length, color: T.green },
+              { label: 'Good 350–499',    count: withExams.filter(s => { const t = examData[s.id]?.[0]?.total || 0; return t >= 350 && t < 500 }).length, color: T.brand },
+              { label: 'Average 200–349', count: withExams.filter(s => { const t = examData[s.id]?.[0]?.total || 0; return t >= 200 && t < 350 }).length, color: T.amber },
+              { label: 'Needs work <200', count: withExams.filter(s => (examData[s.id]?.[0]?.total || 0) < 200).length, color: T.red },
+            ].map(row => (
+              <StatRow key={row.label} label={row.label} value={row.count} pct={(row.count / Math.max(withExams.length, 1)) * 100} color={row.color} />
+            ))}
+          </DashCard>
+        </div>
+      )}
+
+      {/* ── Smart Alerts ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: col2, gap: 16 }}>
+
+        <div style={{ background: T.surface, borderRadius: T.r12, border: `1px solid ${T.redBorder}`, overflow: 'hidden', boxShadow: T.shadow }}>
+          <div style={{ background: T.redLight, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${T.redBorder}` }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T.red }}>📉 Critical Attendance</div>
+            <span style={{ fontSize: 10, fontWeight: 800, background: T.red, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{criticalAtt.length}</span>
+          </div>
+          <AlertList
+            items={criticalAtt.slice(0, 8)}
+            color={T.red} border={T.redBorder}
+            emptyMsg="🎉 All students above 60% attendance"
+            keyFn={s => s.id}
+            nameFn={s => s.name}
+            subFn={s => `GCC-${s.gcc_no} · ${attData[s.id]?.toFixed(0) ?? '—'}% · ${s.course || '—'}`}
+            btnLabel="Profile"
+            onBtn={onOpenDetail}
+          />
+        </div>
+
+        <div style={{ background: T.surface, borderRadius: T.r12, border: `1px solid ${T.amberBorder}`, overflow: 'hidden', boxShadow: T.shadow }}>
+          <div style={{ background: T.amberLight, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${T.amberBorder}` }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T.amber }}>💰 Fee Defaulters</div>
+            <span style={{ fontSize: 10, fontWeight: 800, background: T.amber, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{feeDue.length}</span>
+          </div>
+          <AlertList
+            items={feeDue.sort((a, b) => (feeData[b.id]?.dues || 0) - (feeData[a.id]?.dues || 0)).slice(0, 8)}
+            color={T.amber} border={T.amberBorder}
+            emptyMsg="✅ All students are fee-clear"
+            keyFn={s => s.id}
+            nameFn={s => s.name}
+            subFn={s => `GCC-${s.gcc_no} · ₹${n(feeData[s.id]?.dues)} due · ${s.hostel_type || '—'}`}
+            btnLabel="Collect"
+            onBtn={onOpenFee}
+          />
+        </div>
+
+        <div style={{ background: T.surface, borderRadius: T.r12, border: `1px solid ${T.violetBorder}`, overflow: 'hidden', boxShadow: T.shadow }}>
+          <div style={{ background: T.violetLight, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${T.violetBorder}` }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T.violet }}>⚠ Incomplete Profiles</div>
+            <span style={{ fontSize: 10, fontWeight: 800, background: T.violet, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{missingInfo.length}</span>
+          </div>
+          <AlertList
+            items={missingInfo.slice(0, 8)}
+            color={T.violet} border={T.violetBorder}
+            emptyMsg="✅ All profiles complete"
+            keyFn={s => s.id}
+            nameFn={s => s.name}
+            subFn={s => `Missing: ${getMissingFields(s).join(', ')}`}
+            btnLabel="Edit"
+            onBtn={onOpenDetail}
+          />
+        </div>
+
+        <div style={{ background: T.surface, borderRadius: T.r12, border: '1px solid #fcd34d', overflow: 'hidden', boxShadow: T.shadow }}>
+          <div style={{ background: '#fef3c7', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #fcd34d' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>🔁 Repeater Students</div>
+            <span style={{ fontSize: 10, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeaters.length}</span>
+          </div>
+          <AlertList
+            items={repeaters.slice(0, 8)}
+            color="#92400e" border="#fcd34d"
+            emptyMsg="No repeater students tagged yet"
+            keyFn={s => s.id}
+            nameFn={s => s.name}
+            subFn={s => `GCC-${s.gcc_no} · ${s.course || '—'} · ${s.batch || '—'}`}
+            btnLabel="Profile"
+            onBtn={onOpenDetail}
+          />
+        </div>
+      </div>
+
+      {/* ── Data completeness ── */}
+      <div style={{ background: T.surface, borderRadius: T.r12, border: `1px solid ${T.border}`, boxShadow: T.shadow, overflow: 'hidden' }}>
+        <div style={{ padding: '13px 16px', borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${T.brand}` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>📊 Data Completeness</div>
+          <div style={{ fontSize: 11, color: T.text4, marginTop: 2 }}>Profile quality across {students.length} students</div>
+        </div>
+        <div style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 14 }}>
+            {[
+              { label: 'Have GCC No.',   count: students.filter(s => s.gcc_no).length,       color: T.brand },
+              { label: 'Have DOB',       count: students.filter(s => s.dob).length,           color: T.sky },
+              { label: 'Have Exam Data', count: withExams.length,                             color: T.violet },
+              { label: 'Att. Tracked',   count: withAtt.length,                               color: T.green },
+            ].map(p => {
+              const pct = students.length ? Math.round((p.count / students.length) * 100) : 0
+              return (
+                <div key={p.label} style={{ background: `${p.color}08`, borderRadius: T.r10, padding: '12px 14px', border: `1px solid ${p.color}20` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: p.color, marginBottom: 6 }}>
+                    <span>{p.label}</span><span>{p.count}/{students.length}</span>
+                  </div>
+                  <div style={{ height: 8, background: 'white', borderRadius: 4, overflow: 'hidden', marginBottom: 5 }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: p.color, borderRadius: 4, transition: 'width .5s' }} />
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: p.color }}>{pct}%</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  )
+}
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Students() {
   const { role, can }=usePermissions()
@@ -1769,7 +2204,7 @@ export default function Students() {
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
-  const [showAnalytics,setShowAnalytics]=useState(false)
+  const [showDashboard,setShowDashboard]=useState(false)
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
@@ -2202,7 +2637,7 @@ const effectiveCols = visibleCols.filter(col => {
               )}
             </div>
           </IfCan>
-          <Btn onClick={()=>setShowAnalytics(v=>!v)} size='sm' style={{color:showAnalytics?T.violet:T.text2,background:showAnalytics?T.violetLight:'transparent',borderColor:showAnalytics?T.violetBorder:T.border}}>📊 Analytics</Btn>
+          <Btn onClick={()=>setShowDashboard(v=>!v)} size='sm' style={{color:showDashboard?T.brand:T.text2,background:showDashboard?T.brandLight:'transparent',borderColor:showDashboard?T.brandBorder:T.border}}>🏠 Dashboard</Btn>
           <Btn onClick={()=>setShowDeleted(v=>!v)} size='sm' style={{color:showDeleted?T.red:T.text2,background:showDeleted?T.redLight:'transparent',borderColor:showDeleted?T.redBorder:T.border}}>Archive{deleted.length>0?` (${deleted.length})`:''}</Btn>
           <IfCan can={can.write}>
             <Btn onClick={()=>setShowMergeDups(true)} size='sm' style={{color:T.red,borderColor:T.redBorder}}>Merge</Btn>
@@ -2210,7 +2645,16 @@ const effectiveCols = visibleCols.filter(col => {
           </IfCan>
         </div>
 
-        {showAnalytics&&<AnalyticsPanel students={students}/>}
+        {showDashboard&&(
+          <StudentDashboard
+            students={students}
+            attData={attData}
+            examData={examData}
+            feeData={feeData}
+            onOpenDetail={setDetailPanel}
+            onOpenFee={setFeePanel}
+          />
+        )}
 
         {/* Archive panel */}
         {showDeleted&&(
