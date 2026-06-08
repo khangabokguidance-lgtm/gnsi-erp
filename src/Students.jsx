@@ -2204,7 +2204,7 @@ export default function Students() {
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
-  const [showDashboard,setShowDashboard]=useState(false)
+  const [showDashboard,setShowDashboard]=useState(true)
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
