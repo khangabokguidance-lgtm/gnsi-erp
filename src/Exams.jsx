@@ -95,7 +95,7 @@ function usePerm(currentUser, perms) {
   const role = currentUser?.role
   if (role === 'Admin')    return { canEdit:true,  canDelete:true,  canImport:true,  canPrint:true  }
   if (role === 'Manager')  return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
-  if (role === 'Accounts') return { canEdit:false, canDelete:false, canImport:false, canPrint:false }
+  if (role === 'Accounts') return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
   return                          { canEdit:true,  canDelete:false, canImport:false, canPrint:true  }
 }
 
@@ -303,7 +303,7 @@ function TabNav({ active, onSelect, perms, isAdmin }) {
     const p = perms || {};
     if (SETUP_TABS.includes(tabId)) return p.edit === true;
     if (WRITE_TABS.includes(tabId)) return p.add === true || p.edit === true;
-    if (DOC_TABS.includes(tabId))   return false;
+    if (DOC_TABS.includes(tabId))   return p.read === true;
     return p.read === true;
   };
 
