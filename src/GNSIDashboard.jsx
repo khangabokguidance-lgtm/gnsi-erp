@@ -443,9 +443,10 @@ async function loadAllData() {
   const batchTypeMap={}
   batchesData.forEach(b=>{const t=b.batch_type||"Regular";batchTypeMap[t]=(batchTypeMap[t]||0)+1})
   const batchByType=Object.entries(batchTypeMap).map(([name,count],i)=>({name,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
-  const timetableByDay={}
-  timetableData.forEach(t=>{const d=t.day_of_week||"Mon";if(!timetableByDay[d])timetableByDay[d]=0;timetableByDay[d]++})
-  const timetableChart=["Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>({day:d,classes:timetableByDay[d]||0}))
+  const DAY_ABBR={"Monday":"Mon","Tuesday":"Tue","Wednesday":"Wed","Thursday":"Thu","Friday":"Fri","Saturday":"Sat","Sunday":"Sun"}
+const timetableByDay={}
+timetableData.forEach(t=>{const d=DAY_ABBR[t.day_of_week]||t.day_of_week||"Mon";if(!timetableByDay[d])timetableByDay[d]=0;timetableByDay[d]++})
+const timetableChart=["Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>({day:d,classes:timetableByDay[d]||0}))
 
   // ── Enquiry ──
   const totalEnquiries=allAdm.length
@@ -532,7 +533,8 @@ const recentExpenses=expensesData.slice(-6).reverse()
   const flatFeePaid_fs=admFlatFeesData.filter(r=>r.status==="Paid").reduce((s,r)=>s+(Number(r.amount)||0),0)
   const courseFeeTotal_fs=admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const flatFeeMonthMap={}
-  admFlatFeesData.forEach(r=>{const k=`${r.year||"?"}-${String(r.month||"?").padStart(2,"0")}`;flatFeeMonthMap[k]=(flatFeeMonthMap[k]||0)+(Number(r.amount)||0)})
+  const MONTH_NAME_TO_NUM={"January":"01","February":"02","March":"03","April":"04","May":"05","June":"06","July":"07","August":"08","September":"09","October":"10","November":"11","December":"12"}
+admFlatFeesData.forEach(r=>{const mo=MONTH_NAME_TO_NUM[r.month]||String(r.month).padStart(2,"0");const k=`${r.year||"?"}-${mo}`;flatFeeMonthMap[k]=(flatFeeMonthMap[k]||0)+(Number(r.amount)||0)})
   const flatFeeTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,amount:flatFeeMonthMap[m.key]||0}))
 
   // ── Entrance ──
