@@ -8,7 +8,6 @@ import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 //  MOBILE-FIRST RESPONSIVE STYLES
 // ══════════════════════════════════════════════════════════════
 const isMobile = () => window.innerWidth < 768
-const isTablet = () => window.innerWidth >= 768 && window.innerWidth < 1024
 
 // ─── Shared styles ─────────────────────────────────────────────
 const inp = {
@@ -42,11 +41,7 @@ const grid2 = {
   gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
   gap: '14px',
 }
-const mobileGrid = {
-  display: 'grid',
-  gridTemplateColumns: '1fr',
-  gap: '10px',
-}
+
 const statGrid = (min = 140) => ({
   display: 'grid',
   gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))`,
@@ -93,7 +88,7 @@ const TABS = [
   { id: 'nightduty', label: '🍽️ Mess Duty' },
   { id: 'allotments', label: '📋 Day Scholar' },
   // ─── NEW: House Master Daily Features ──────────────────
-  { id: 'attendance', label: '✓ Roll Call' },
+  { id: 'attendance', label: '✅ Roll Call' },
   { id: 'leave', label: '🚪 Leave' },
   { id: 'hmdashboard', label: '📊 HM Dash' },
   { id: 'maintenance', label: '🔧 Repairs' },
@@ -356,7 +351,7 @@ function useMobileView() {
 
 function MobileActionButtons({ actions }) {
   return (
-    <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: '8px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
       {actions.map((action, i) => (
         <button
           key={i}
@@ -424,6 +419,7 @@ function AttendanceTab({ students, currentHousemaster }) {
   const [rollCallIndex, setRollCallIndex] = useState(0)
   const [rollCallStudents, setRollCallStudents] = useState([])
   const [justMarked, setJustMarked] = useState(null)
+  const [savingId, setSavingId] = useState(null)
   const mobile = useMobileView()
 
   const activeStudents = useMemo(() =>
@@ -461,11 +457,15 @@ function AttendanceTab({ students, currentHousemaster }) {
     }
   }, [allRecords, selectedHouse])
 
-  const getStatus = (studentId) =>
-    allRecords.find(r => r.student_id === studentId)?.status || 'Unmarked'
+  const statusMap = useMemo(() =>
+    Object.fromEntries(allRecords.map(r => [r.student_id, r.status])),
+    [allRecords]
+  )
+  const getStatus = (studentId) => statusMap[studentId] || 'Unmarked'
 
   const handleMark = async (studentId, status) => {
     setSaving(true)
+    setSavingId(studentId)
     const existing = allRecords.find(r => r.student_id === studentId)
     const student = activeStudents.find(s => s.id === studentId)
     const payload = {
@@ -489,10 +489,12 @@ function AttendanceTab({ students, currentHousemaster }) {
         return [...prev, { ...payload, id: Date.now() }]
       })
       setJustMarked(studentId)
-      setTimeout(() => setJustMarked(null), 600)
-    }
-    setSaving(false)
-  }
+          setTimeout(() => setJustMarked(null), 600)
+          if (!existing) await loadAll() // reconcile real DB id
+        }
+        setSaving(false)
+        setSavingId(null)
+      }
 
   const handleBulkMark = async (studentIds, status) => {
     setSaving(true)
@@ -510,9 +512,9 @@ function AttendanceTab({ students, currentHousemaster }) {
         marked_at: new Date().toISOString(),
       }
     })
-    await supabase.from('attendance_records').delete()
-      .eq('date', date).eq('session', session).in('student_id', studentIds)
-    const { error } = await supabase.from('attendance_records').insert(payloads)
+    const { error } = await supabase.from('attendance_records').upsert(payloads, {
+      onConflict: 'date,session,student_id'
+    })
     if (!error) await loadAll()
     setSaving(false)
   }
@@ -592,7 +594,7 @@ function AttendanceTab({ students, currentHousemaster }) {
             ].map(s => (
               <div key={s.label} style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: mobile ? '22px' : '28px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '11px', opacity: 0.7 }}>{s.label}</div>
+                <div style={{ fontSize: mobile ? '9px' : '11px', opacity: 0.7 }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -918,7 +920,7 @@ function AttendanceTab({ students, currentHousemaster }) {
                 </span>
 
                 {/* Action buttons */}
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: mobile ? '160px' : 'none' }}>
                   {ATTENDANCE_TYPES.map(s => {
                     const sConf = statusConfig[s]
                     const isActive = status === s
@@ -926,7 +928,7 @@ function AttendanceTab({ students, currentHousemaster }) {
                       <button
                         key={s}
                         onClick={() => handleMark(student.id, s)}
-                        disabled={saving}
+                        disabled={savingId === student.id}
                         title={s}
                         style={{
                           width: '34px', height: '34px',
@@ -934,10 +936,12 @@ function AttendanceTab({ students, currentHousemaster }) {
                           background: isActive ? sConf.color : '#f1f5f9',
                           color: isActive ? 'white' : '#94a3b8',
                           fontSize: '14px', fontWeight: '700',
-                          cursor: 'pointer', transition: 'all 0.15s',
+                          cursor: savingId === student.id ? 'wait' : 'pointer',
+                          transition: 'all 0.15s',
+                          opacity: savingId === student.id ? 0.5 : 1,
                         }}
                       >
-                        {sConf.icon}
+                        {savingId === student.id ? '⏳' : sConf.icon}
                       </button>
                     )
                   })}
@@ -1026,6 +1030,17 @@ function AttendanceTab({ students, currentHousemaster }) {
               })}
             </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {rollCallStudents.some(s => getStatus(s.id) === 'Unmarked') && (
+                <button
+                  onClick={() => {
+                    const firstUnmarked = rollCallStudents.findIndex(s => getStatus(s.id) === 'Unmarked')
+                    if (firstUnmarked >= 0) { setRollCallIndex(firstUnmarked); setView('rollcall') }
+                  }}
+                  style={{ ...btn('#ca8a04'), padding: '12px 24px' }}
+                >
+                  ⏳ Mark Remaining
+                </button>
+              )}
               <button onClick={() => setView('dashboard')} style={{ ...btn(pal.color), padding: '12px 24px' }}>
                 View {selectedHouse} Dashboard
               </button>
@@ -1038,7 +1053,7 @@ function AttendanceTab({ students, currentHousemaster }) {
           /* ── Student card */
           <div>
             {/* Navigation dots (mini) */}
-            <div style={{ display: 'flex', gap: '3px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '2px' }}>
+            <div style={{ display: 'flex', gap: '3px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '2px', touchAction: 'pan-x', WebkitOverflowScrolling: 'touch' }}>
               {rollCallStudents.map((s, i) => {
                 const st = getStatus(s.id)
                 const sc = statusConfig[st] || statusConfig['Unmarked']
@@ -1112,7 +1127,7 @@ function AttendanceTab({ students, currentHousemaster }) {
                 <button
                   key={status}
                   onClick={() => markAndAdvance(currentStudent.id, status)}
-                  disabled={saving}
+                  disabled={savingId === currentStudent.id}
                   style={{
                     padding: '18px', borderRadius: '14px', border: 'none',
                     background: currentStatus === status ? bg : bg + '15',
@@ -1137,7 +1152,7 @@ function AttendanceTab({ students, currentHousemaster }) {
                 <button
                   key={status}
                   onClick={() => markAndAdvance(currentStudent.id, status)}
-                  disabled={saving}
+                  disabled={savingId === currentStudent.id}
                   style={{
                     padding: '12px 8px', borderRadius: '10px', border: 'none',
                     background: currentStatus === status ? bg : bg + '15',
@@ -1199,6 +1214,8 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
   const [search, setSearch] = useState('')
   const mobile = useMobileView()
   const [form, setForm] = useState({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' })
+  const [toast, setToast] = useState(null)
+  const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
   const load = async () => {
     setLoading(true)
@@ -1217,7 +1234,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
       cost: form.cost !== '' && form.cost !== null ? Number(form.cost) : null,
     }
     const { error } = await supabase.from('maintenance_records').insert([payload])
-    if (error) alert('Error: ' + error.message)
+    if (error) showToast('Error: ' + error.message, '#dc2626')
     else { setForm({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }); setShowForm(false); load() }
     setSaving(false)
   }
@@ -1231,8 +1248,9 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
 
   const handleDelete = async id => {
     if (!window.confirm('Delete this maintenance record?')) return
-    await supabase.from('maintenance_records').delete().eq('id', id)
-    load()
+    const { error } = await supabase.from('maintenance_records').delete().eq('id', id)
+    if (error) showToast('Delete failed: ' + error.message, '#dc2626')
+    else load()
   }
 
   const filtered = useMemo(() => {
@@ -1253,6 +1271,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
   if (mobile) {
     return (
       <div>
+        {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
         <div style={mobileStatGrid}>
           <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" compact />
           <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" compact />
@@ -1312,6 +1331,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
 
   return (
     <div>
+      {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
       <div style={statGrid(130)}>
         <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" />
         <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" />
@@ -1384,7 +1404,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
 // ══════════════════════════════════════════════════════════════
 //  TAB: HOUSEMASTER DASHBOARD
 // ══════════════════════════════════════════════════════════════
-function HMDashboard({ students, staffProfiles, currentHousemaster }) {
+function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange }) {
   const [attendanceToday, setAttendanceToday] = useState([])
   const [leaveToday, setLeaveToday] = useState([])
   const [sickbayToday, setSickbayToday] = useState([])
@@ -1404,7 +1424,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster }) {
         supabase.from('sickbay_records').select('*').eq('status', 'Admitted'),
         supabase.from('maintenance_records').select('*').in('status', ['Raised', 'Assigned', 'In Progress']).eq('priority', 'Urgent'),
         supabase.from('discipline_records').select('*').in('status', ['Open', 'In Progress']),
-        supabase.from('night_duty').select('*').eq('date', todayStr).single(),
+        supabase.from('night_duty').select('*').eq('date', todayStr).limit(1).maybeSingle(),
       ])
       setAttendanceToday(a.data || [])
       setLeaveToday(l.data || [])
@@ -1448,7 +1468,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster }) {
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
           {quickActions.map(action => (
-            <button key={action.id} style={{ background: action.bg, border: `1.5px solid ${action.color}20`, borderRadius: '14px', padding: '16px 12px', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '6px', minHeight: '90px' }}>
+            <button key={action.id} onClick={() => onTabChange?.(action.id)} style={{ background: action.bg, border: `1.5px solid ${action.color}20`, borderRadius: '14px', padding: '16px 12px', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '6px', minHeight: '90px' }}>
               <span style={{ fontSize: '24px' }}>{action.icon}</span>
               <span style={{ fontSize: '14px', fontWeight: '700', color: action.color }}>{action.label}</span>
               <span style={{ fontSize: '12px', color: '#64748b' }}>{action.desc}</span>
@@ -1487,14 +1507,14 @@ function HMDashboard({ students, staffProfiles, currentHousemaster }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
         {quickActions.map(action => (
-          <div key={action.id} style={{ background: action.bg, borderRadius: '14px', padding: '20px', border: `1.5px solid ${action.color}20`, cursor: 'pointer' }}>
+          <div key={action.id} onClick={() => onTabChange?.(action.id)} style={{ background: action.bg, borderRadius: '14px', padding: '20px', border: `1.5px solid ${action.color}20`, cursor: 'pointer' }}>
             <div style={{ fontSize: '28px', marginBottom: '8px' }}>{action.icon}</div>
             <div style={{ fontSize: '16px', fontWeight: '700', color: action.color, marginBottom: '4px' }}>{action.label}</div>
             <div style={{ fontSize: '13px', color: '#64748b' }}>{action.desc}</div>
           </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
         <div style={card}>
           <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>📊 Today's Snapshot</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -1531,6 +1551,8 @@ function JournalTab({ currentHousemaster }) {
   const [date, setDate] = useState(today())
   const [search, setSearch] = useState('')
   const mobile = useMobileView()
+  const [toast, setToast] = useState(null)
+  const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
   const JOURNAL_CATEGORIES = ['General', 'Assembly', 'Discipline', 'Medical', 'Maintenance', 'Parent Call', 'Staff Handover', 'Inspection', 'Event']
   const [form, setForm] = useState({ entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false })
 
@@ -1545,7 +1567,7 @@ function JournalTab({ currentHousemaster }) {
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
     const { error } = await supabase.from('housemaster_journal').insert([{ ...form, housemaster_name: currentHousemaster?.name || 'Unknown' }])
-    if (error) alert('Error: ' + error.message)
+    if (error) showToast('Error: ' + error.message, '#dc2626')
     else { setForm({ entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false }); setShowForm(false); load() }
     setSaving(false)
   }
@@ -1568,6 +1590,7 @@ function JournalTab({ currentHousemaster }) {
   if (mobile) {
     return (
       <div>
+        {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, flex: 1 }} />
           <button onClick={() => setShowForm(!showForm)} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '📝'}</button>
@@ -1618,6 +1641,7 @@ function JournalTab({ currentHousemaster }) {
 
   return (
     <div>
+      {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, width: 'auto' }} />
@@ -1688,6 +1712,8 @@ function DayScholarTab({ students }) {
   const [routeFilter, setRouteFilter] = useState('All')
   const [form, setForm] = useState(emptyDayScholar)
   const mobile = useMobileView()
+  const [toast, setToast] = useState(null)
+  const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
   const load = async () => {
     setLoading(true)
@@ -1728,7 +1754,7 @@ function DayScholarTab({ students }) {
     const { error } = editRec
       ? await supabase.from('day_scholar_records').update(payload).eq('id', editRec.id)
       : await supabase.from('day_scholar_records').insert([payload])
-    if (error) alert('Error: ' + error.message)
+    if (error) showToast('Error: ' + error.message, '#dc2626')
     else { setForm(emptyDayScholar); setShowForm(false); setEditRec(null); load() }
     setSaving(false)
   }
@@ -1765,7 +1791,7 @@ function DayScholarTab({ students }) {
   const createTableSQL = `
 create table if not exists day_scholar_records (
   id uuid primary key default gen_random_uuid(),
-  student_id uuid references students(id),
+  student_id bigint references students(id),
   gcc_no text,
   student_name text not null,
   class_name text,
@@ -1785,6 +1811,7 @@ create table if not exists day_scholar_records (
   if (mobile) {
     return (
       <div>
+        {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
         <div style={mobileStatGrid}>
           <StatCard icon="📋" label="Total" value={records.length} color="#1e3a5f" bg="#eff6ff" compact />
           <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" compact />
@@ -1815,7 +1842,7 @@ create table if not exists day_scholar_records (
                 </div>
                 <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Home Address" style={inp} />
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <input value={form.transport_route} onChange={e => setForm(f => ({ ...f, transport_route: e.target.value }))} placeholder="Route (e.g. Route 1)" style={{ ...inp, flex: 1 }} />
+                  <input value={form.transport_route} onChange={e => setForm(f => ({ ...f, transport_route: e.target.value }))} placeholder="Route" style={{ ...inp, flex: 1 }} />
                   <input value={form.vehicle_number} onChange={e => setForm(f => ({ ...f, vehicle_number: e.target.value }))} placeholder="Vehicle No." style={{ ...inp, flex: 1 }} />
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -1863,6 +1890,7 @@ create table if not exists day_scholar_records (
 
   return (
     <div>
+      {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
       <div style={statGrid()}>
         <StatCard icon="📋" label="Total Day Scholars" value={records.length} color="#1e3a5f" bg="#eff6ff" />
         <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" />
@@ -1994,46 +2022,6 @@ create table if not exists day_scholar_records (
       </details>
     </div>
   )
-}
-// ─── Default activity templates ───────────────────────────────
-const DEFAULT_HOSTEL_ACTIVITIES = {
-  weekday: [
-    { no: 1, from: '5:30 AM', to: '6:00 AM', activity: 'Wake Up Bell & Morning PT', category: 'Routine' },
-    { no: 2, from: '6:00 AM', to: '6:45 AM', activity: 'PT / Exercise / Sports', category: 'Physical' },
-    { no: 3, from: '6:45 AM', to: '7:30 AM', activity: 'Bath & Morning Routine', category: 'Routine' },
-    { no: 4, from: '7:30 AM', to: '8:00 AM', activity: 'Morning Assembly & Roll Call', category: 'Assembly' },
-    { no: 5, from: '8:00 AM', to: '8:45 AM', activity: 'Breakfast', category: 'Meals' },
-    { no: 6, from: '9:00 AM', to: '1:00 PM', activity: 'Academic Classes', category: 'Academic' },
-    { no: 7, from: '1:00 PM', to: '2:00 PM', activity: 'Lunch Break', category: 'Meals' },
-    { no: 8, from: '2:00 PM', to: '5:00 PM', activity: 'Academic Classes', category: 'Academic' },
-    { no: 9, from: '5:00 PM', to: '5:30 PM', activity: 'Tea Break', category: 'Meals' },
-    { no: 10, from: '5:30 PM', to: '7:00 PM', activity: 'Recreation / Sports', category: 'Physical' },
-    { no: 11, from: '7:00 PM', to: '8:00 PM', activity: 'Dinner', category: 'Meals' },
-    { no: 12, from: '8:00 PM', to: '10:00 PM', activity: 'Doubt Class / Assignment', category: 'Academic' },
-    { no: 13, from: '10:00 PM', to: '', activity: 'Lights Out', category: 'Routine' },
-  ],
-  sunday: [
-    { no: 1, from: '6:00 AM', to: '7:00 AM', activity: 'Wake Up & Morning Routine', category: 'Routine' },
-    { no: 2, from: '7:00 AM', to: '8:00 AM', activity: 'Breakfast', category: 'Meals' },
-    { no: 3, from: '8:00 AM', to: '12:00 PM', activity: 'Recreation / Free Time', category: 'Physical' },
-    { no: 4, from: '12:00 PM', to: '1:00 PM', activity: 'Lunch', category: 'Meals' },
-    { no: 5, from: '1:00 PM', to: '5:00 PM', activity: 'Rest / Recreation', category: 'Physical' },
-    { no: 6, from: '5:00 PM', to: '5:30 PM', activity: 'Tea Break', category: 'Meals' },
-    { no: 7, from: '7:00 PM', to: '8:00 PM', activity: 'Dinner', category: 'Meals' },
-    { no: 8, from: '8:00 PM', to: '9:30 PM', activity: 'Academic Review / Self Study', category: 'Academic' },
-    { no: 9, from: '10:00 PM', to: '', activity: 'Lights Out', category: 'Routine' },
-  ],
-  holiday: [
-    { no: 1, from: '6:30 AM', to: '7:30 AM', activity: 'Wake Up & Morning Routine', category: 'Routine' },
-    { no: 2, from: '7:30 AM', to: '8:30 AM', activity: 'Breakfast', category: 'Meals' },
-    { no: 3, from: '8:30 AM', to: '12:00 PM', activity: 'Holiday Activities / Excursion', category: 'Special' },
-    { no: 4, from: '12:00 PM', to: '1:00 PM', activity: 'Lunch', category: 'Meals' },
-    { no: 5, from: '1:00 PM', to: '5:00 PM', activity: 'Free Time / Cultural Activities', category: 'Special' },
-    { no: 6, from: '5:00 PM', to: '5:30 PM', activity: 'Tea Break', category: 'Meals' },
-    { no: 7, from: '7:00 PM', to: '8:00 PM', activity: 'Dinner', category: 'Meals' },
-    { no: 8, from: '8:00 PM', to: '9:00 PM', activity: 'Evening Study Hour', category: 'Academic' },
-    { no: 9, from: '10:00 PM', to: '', activity: 'Lights Out', category: 'Routine' },
-  ],
 }
 
 const ACTIVITY_CATEGORIES = ['Routine', 'Physical', 'Assembly', 'Meals', 'Academic', 'Special', 'Other']
@@ -2580,7 +2568,7 @@ function NightDutyTab({ staffProfiles }) {
                       fontWeight: 700,
                     }}>{d.status}</span>
                   </div>
-                  <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  <div style={{ fontSize: 12, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {[
                       d.staff1 && `${d.staff1} (${d.staff1_role})`,
                       d.staff2 && `${d.staff2} (${d.staff2_role})`,
@@ -2797,7 +2785,7 @@ function NightDutyTab({ staffProfiles }) {
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {uncovered.map(d => (
-              <button key={d} onClick={() => { setForm(f => ({ ...f, date: d })); setShowForm(true) }}
+              <button key={d} onClick={() => { setForm(f => ({ ...f, date: d })); setShowForm(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
                 style={{ padding: '3px 10px', borderRadius: 99, background: '#fee2e2', color: '#dc2626', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}
                 title="Click to assign duty for this date"
               >{d}</button>
@@ -3197,7 +3185,7 @@ function SickbayTab({ students }) {
                     <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.referred_to || '—'}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.attended_by || '—'}</td>
                     <td style={{ padding: '10px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
-                    <td style={{ padding: '10px 14px' }}>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', minWidth: 110 }}>
                       <div style={{ display: 'flex', gap: 6, flexDirection: 'column' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => { setEditRec(r); setForm({ ...r, discharge_date: r.discharge_date || '' }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
@@ -3242,6 +3230,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [houses, setHouses] = useState([])
   const [students, setStudents] = useState(propStudents || [])
+  // keep setStudents only for local optimistic house assignment updates
   const [masters, setMasters] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -3260,12 +3249,11 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
   const load = async () => {
     setLoading(true)
-    const [{ data: h }, { data: s }, { data: m }] = await Promise.all([
+    const [{ data: h }, { data: m }] = await Promise.all([
       supabase.from('houses').select('*').order('name'),
-      supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,admission_no').order('name'),
       supabase.from('housemasters').select('*').order('house'),
     ])
-    setHouses(h || []); setStudents(s || []); setMasters(m || [])
+    setHouses(h || []); setMasters(m || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -3304,6 +3292,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   }
 
   const handleBulkAssign = async houseName => {
+    if (!isAdmin) { showToast('Only admins can bulk assign', '#dc2626'); return }
     const unassigned = students.filter(s => !isAssigned(s))
     if (!unassigned.length) { showToast('No unassigned students', '#ca8a04'); return }
     if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
@@ -3347,11 +3336,12 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     <div>
       {toast && (
         <div style={{
-          position: 'fixed', top: 20, right: 20, zIndex: 99999,
+          position: 'sticky', top: 0, zIndex: 99,
           background: '#fff', border: `1px solid #e2e8f0`,
           borderLeft: `3px solid ${toast.color}`, borderRadius: 10,
           padding: '11px 16px', fontSize: 13, fontWeight: 600,
-          boxShadow: '0 8px 32px rgba(0,0,0,.12)', color: '#1e293b',
+          boxShadow: '0 2px 8px rgba(0,0,0,.10)', color: '#1e293b',
+          marginBottom: 12,
         }}>{toast.msg}</div>
       )}
 
@@ -3621,7 +3611,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         </td>
                         <td style={{ padding: '9px 14px' }}>
                           {isAdmin ? (
-                            <select value={s.house || ''} onChange={e => handleAssign(s.id, e.target.value)} style={{ ...inp, width: 150, padding: '6px 10px', fontSize: 12 }}>
+                            <select value={s.house || ''} onChange={e => handleAssign(s.id, e.target.value)} style={{ ...inp, minWidth: 120, width: 'auto', maxWidth: 200, padding: '6px 10px', fontSize: 12 }}>
                               <option value="">— Remove / None —</option>
                               {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
                             </select>
@@ -3721,7 +3711,7 @@ function HousemasterTab() {
       )}
 
       {showForm && (
-        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+        <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)', maxWidth: 900 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>{editRec ? '✏️ Edit Housemaster' : '➕ Add Housemaster'}</h3>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
@@ -3858,7 +3848,7 @@ function KitchenTab() {
             <StatCard key={m}
               icon={['🌅', '☀️', '☕', '🌙'][i]}
               label={`Today's ${m}`}
-              value={todayRecords.filter(r => r.meal_type === m).length > 0 ? '✓' : '—'}
+              value={todayRecords.filter(r => r.meal_type === m).length || '—'}
               color={colors[i]} bg={bgs[i]}
             />
           )
@@ -3976,7 +3966,14 @@ function Hostel() {
   const [mobile, setMobile] = useState(isMobile())
   const [currentHousemaster, setCurrentHousemaster] = useState(null)
   const [houseColorMap, setHouseColorMap] = useState({})  // ← ADD THIS
-  const currentUser = (() => { try { const s = localStorage.getItem('gnsi_session'); return s ? JSON.parse(s).user : {} } catch { return {} } })()
+  const currentUser = useMemo(() => {
+    try {
+      const s = localStorage.getItem('gnsi_session')
+      return s ? JSON.parse(s).user : {}
+    } catch {
+      return {}
+    }
+  }, [])
   const userRole = (currentUser?.role || '').toLowerCase()
   const isAdmin = userRole === 'admin'
   const isHM = userRole === 'house master'
@@ -4037,7 +4034,7 @@ function Hostel() {
     // ─── NEW TABS ──────────────────────────────────────
     attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} />,
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} />,
+    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     journal: <JournalTab currentHousemaster={currentHousemaster} />,
     classtimetable: <ClassTimetableTab />,
@@ -4091,6 +4088,13 @@ function Hostel() {
           gridTemplateColumns: '1fr 1fr 1fr',
           gap: '8px',
           marginBottom: '16px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+          background: 'white',
+          paddingTop: '8px',
+          paddingBottom: '8px',
+          marginTop: '-8px',
         }}>
           {TABS.map(t => {
             const isActive = activeTab === t.id
