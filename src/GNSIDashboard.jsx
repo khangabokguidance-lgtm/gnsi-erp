@@ -244,12 +244,12 @@ async function loadAllData() {
   ] = await Promise.all([
     supabase.from("Students").select("*", {count:"exact", head:true}),
     supabase.from("Students").select("gender, state, date_of_birth, created_at"),
-    supabase.from("admissions").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category"),
+    supabase.from("admissions").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
     supabase.from("admissions").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
     supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note").eq("type","Income"),
     supabase.from("adm_fee_collections").select("amount_paid,fee_type,adm_app_id,student_name,pay_date,pay_mode,description").order("pay_date",{ascending:false}).limit(6),
     safeFetch(()=>supabase.from("gnsi_staff_biodata").select("id,name,department,status,basic_salary,seniority_allowance,loyalty_bonus,role_bonus,designation")),
-    supabase.from("management_checklist").select("id,status,priority,section,task,owner,created_at"),
+    supabase.from("management_checklist").select("id,status,priority,section,task,owner,created_at,period"),
     safeFetch(()=>supabase.from("staff_monthly_scores").select("staff_id,month,total_score,level").order("month",{ascending:false}).limit(50)),
     supabase.from("attendance").select("status,date").eq("date",today),
     supabase.from("attendance").select("status,date").order("date",{ascending:false}).limit(1500),
@@ -277,7 +277,7 @@ async function loadAllData() {
     safeFetch(()=>supabase.from("selections").select("id,student_name,exam_name,rank,year,batch_name,category,school_allotted")),
     safeFetch(()=>supabase.from("monthly_syllabus").select("teacher_name,subject,batch_name,total_topics,covered_topics,month")),
     safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
-    safeFetch(()=>supabase.from("accounts").select("id,category,amount,entry_date,note,type").eq("type","Expense")),
+    safeFetch(()=>supabase.from("gnsi_expenditure").select("id,category,amount,date,description,approved_by,created_at")),
     safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,topic_taught,classwork,remarks")),
     safeFetch(()=>supabase.from("fee_structures").select("session_year,course,batch,hostel_type,flat_fee,course_fee,admission_fee")),
     safeFetch(()=>supabase.from("student_fee_overrides").select("gcc_no,flat_fee_override,reason,created_at")),
@@ -505,14 +505,14 @@ async function loadAllData() {
 
   // ── Expenses ──
   const totalExpenses=expensesData.reduce((s,e)=>s+(Number(e.amount)||0),0)
-  const netPL=totalFeeCollected-totalExpenses
-  const expenseCategoryMap={}
-  expensesData.forEach(e=>{const c=e.category||"Other";expenseCategoryMap[c]=(expenseCategoryMap[c]||0)+(Number(e.amount)||0)})
-  const expenseByCategory=Object.entries(expenseCategoryMap).sort((a,b)=>b[1]-a[1]).map(([name,amount],i)=>({name,amount,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
-  const expenseMonthMap={}
-  expensesData.forEach(e=>{const mo=e.entry_date?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(e.amount)||0)})
-  const plTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,income:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),expense:expenseMonthMap[m.key]||0})).map(m=>({...m,pl:m.income-m.expense}))
-  const recentExpenses=expensesData.slice(-6).reverse()
+const netPL=totalFeeCollected-totalExpenses
+const expenseCategoryMap={}
+expensesData.forEach(e=>{const c=e.category||"Other";expenseCategoryMap[c]=(expenseCategoryMap[c]||0)+(Number(e.amount)||0)})
+const expenseByCategory=Object.entries(expenseCategoryMap).sort((a,b)=>b[1]-a[1]).map(([name,amount],i)=>({name,amount,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+const expenseMonthMap={}
+expensesData.forEach(e=>{const mo=(e.date||e.created_at)?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(e.amount)||0)})
+const plTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,income:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),expense:expenseMonthMap[m.key]||0})).map(m=>({...m,pl:m.income-m.expense}))
+const recentExpenses=expensesData.slice(-6).reverse()
 
   // ── Notifications ──
   const notifications=[]
