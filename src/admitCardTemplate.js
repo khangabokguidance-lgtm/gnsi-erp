@@ -1,13 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// admitCardTemplate.js — PRINT-OPTIMISED VERSION
-// Changes from original:
-//   • Header: dark navy BG → white with navy border + navy text (saves ~80% ink)
-//   • Footer bar: dark navy BG → white with navy top-border + navy text
-//   • Indian-flag tricolor strips: kept as thin lines (they're already thin, low ink)
-//   • Orange top strip: kept (minimal ink)
-//   • All on-screen colours preserved; @media print overrides heavy fills
-//   • Hall Ticket bar: light cream BG instead of dark
-//   • Red ADMIT CARD badge → outlined version for print
+// GNSI Portal — admitCardTemplate.js  (print-optimised)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ADMIT_CARD_CSS = `
@@ -35,7 +27,6 @@ export const ADMIT_CARD_CSS = `
 
   .page-break{page-break-after:always;height:0;overflow:hidden;}
 
-  /* ── Card wrapper ───────────────────────────────────────────────────── */
   .admit-card{
     width:720px;margin:0 auto 28px;
     background:white;
@@ -46,17 +37,11 @@ export const ADMIT_CARD_CSS = `
     font-family:'EB Garamond','Palatino Linotype',Georgia,serif;
   }
 
-  /* ── Tricolor top strip ─────────────────────────────────────────────── */
-  .flag-strip{
-    display:grid;grid-template-columns:1fr 1fr 1fr;
-    height:6px;
-  }
+  .flag-strip{display:grid;grid-template-columns:1fr 1fr 1fr;height:6px;}
   .flag-strip .orange{background:#FF9933;}
   .flag-strip .white{background:#ffffff;border-top:1px solid #ccc;border-bottom:1px solid #ccc;}
   .flag-strip .green{background:#138808;}
 
-  /* ── HEADER ─────────────────────────────────────────────────────────── */
-  /* On screen: dark navy. On print: white + navy border (ink saver) */
   .header{
     background:linear-gradient(135deg,#0d1f3c 0%,#1a2d5a 60%,#1a3c2e 100%);
     padding:20px 28px;
@@ -72,241 +57,112 @@ export const ADMIT_CARD_CSS = `
     flex-shrink:0;overflow:hidden;
   }
   .logo-circle img{width:100%;height:100%;object-fit:contain;border-radius:50%;}
-  .logo-fallback{
-    font-family:'Palatino Linotype',Georgia,serif;
-    font-size:13px;font-weight:700;color:#c9a84c;text-align:center;line-height:1.2;
-  }
+  .logo-fallback{font-family:'Palatino Linotype',Georgia,serif;font-size:13px;font-weight:700;color:#c9a84c;text-align:center;line-height:1.2;}
 
   .header-text{flex:1;text-align:center;}
-  .header-eyebrow{
-    font-size:9px;letter-spacing:4px;text-transform:uppercase;
-    color:rgba(201,168,76,0.85);margin-bottom:6px;font-family:'DM Sans',sans-serif;
-  }
-  .header-name{
-    font-family:'Playfair Display',Georgia,serif;
-    font-size:26px;font-weight:700;color:white;margin-bottom:3px;letter-spacing:.5px;
-  }
+  .header-eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(201,168,76,0.85);margin-bottom:6px;font-family:'DM Sans',sans-serif;}
+  .header-name{font-family:'Playfair Display',Georgia,serif;font-size:26px;font-weight:700;color:white;margin-bottom:3px;letter-spacing:.5px;}
   .header-addr{font-size:11.5px;color:rgba(255,255,255,0.75);margin-bottom:3px;}
   .header-tagline{font-size:12px;font-style:italic;color:rgba(201,168,76,0.9);}
 
-  .admit-badge{
-    background:#c0392b;
-    border:2px solid #e74c3c;
-    border-radius:6px;
-    padding:10px 18px;
-    text-align:center;
-    flex-shrink:0;
-  }
-  .admit-badge-text{
-    font-family:'Playfair Display',Georgia,serif;
-    font-size:20px;font-weight:700;color:white;
-    letter-spacing:3px;line-height:1.25;text-transform:uppercase;
-  }
+  .admit-badge{background:#c0392b;border:2px solid #e74c3c;border-radius:6px;padding:10px 18px;text-align:center;flex-shrink:0;}
+  .admit-badge-text{font-family:'Playfair Display',Georgia,serif;font-size:20px;font-weight:700;color:white;letter-spacing:3px;line-height:1.25;text-transform:uppercase;}
 
-  /* Gold divider below header */
   .gold-divider{height:3px;background:linear-gradient(90deg,#c9a84c,#f0d080,#c9a84c);}
 
-  /* ── Exam title bar ─────────────────────────────────────────────────── */
-  .exam-bar{
-    background:#1a3580;
-    padding:10px 24px;
-    display:flex;align-items:center;justify-content:space-between;
-  }
-  .exam-bar-title{
-    font-family:'Playfair Display',Georgia,serif;
-    font-size:17px;font-weight:700;color:white;
-    display:flex;align-items:center;gap:8px;
-  }
+  .exam-bar{background:#1a3580;padding:10px 24px;display:flex;align-items:center;justify-content:space-between;}
+  .exam-bar-title{font-family:'Playfair Display',Georgia,serif;font-size:17px;font-weight:700;color:white;display:flex;align-items:center;gap:8px;}
   .exam-bar-title::before{content:'✦';color:#c9a84c;font-size:13px;}
-  .exam-bar-year{
-    font-size:12px;font-weight:600;color:white;
-    background:rgba(255,255,255,0.18);
-    padding:4px 12px;border-radius:4px;letter-spacing:.5px;
-  }
+  .exam-bar-year{font-size:12px;font-weight:600;color:white;background:rgba(255,255,255,0.18);padding:4px 12px;border-radius:4px;letter-spacing:.5px;}
 
-  /* ── Warning strip ──────────────────────────────────────────────────── */
-  .warning-strip{
-    background:#fefae8;border-top:1px solid #e8d870;border-bottom:1px solid #e8d870;
-    padding:9px 24px;
-    font-size:12.5px;font-weight:600;color:#7a5c00;
-    display:flex;align-items:center;gap:8px;
-  }
+  .warning-strip{background:#fefae8;border-top:1px solid #e8d870;border-bottom:1px solid #e8d870;padding:9px 24px;font-size:12.5px;font-weight:600;color:#7a5c00;display:flex;align-items:center;gap:8px;}
   .warning-strip::before{content:'⚠';font-size:14px;}
 
-  /* ── Body ───────────────────────────────────────────────────────────── */
   .body{padding:18px 24px 14px;}
 
-  .section-label{
-    font-size:10px;letter-spacing:3px;text-transform:uppercase;
-    color:#1a2744;font-weight:700;
-    font-family:'DM Sans',sans-serif;
-    border-bottom:2px solid #1a2744;
-    padding-bottom:4px;margin-bottom:12px;
-  }
+  .section-label{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#1a2744;font-weight:700;font-family:'DM Sans',sans-serif;border-bottom:2px solid #1a2744;padding-bottom:4px;margin-bottom:12px;}
 
-  /* Candidate info table */
   .info-table{width:100%;border-collapse:collapse;margin-bottom:18px;}
-  .info-table td{
-    padding:9px 12px;
-    border:1px solid #c8d0dc;
-    font-size:13px;
-    vertical-align:middle;
-  }
-  .info-table .lbl{
-    font-size:9.5px;letter-spacing:2px;text-transform:uppercase;
-    color:#4a5568;font-weight:700;background:#f7f9fc;width:180px;
-    font-family:'DM Sans',sans-serif;
-  }
+  .info-table td{padding:9px 12px;border:1px solid #c8d0dc;font-size:13px;vertical-align:middle;}
+  .info-table .lbl{font-size:9.5px;letter-spacing:2px;text-transform:uppercase;color:#4a5568;font-weight:700;background:#f7f9fc;width:180px;font-family:'DM Sans',sans-serif;}
   .info-table .val{font-weight:700;color:#0d1f3c;font-size:14px;}
   .info-table .val.big{font-size:18px;letter-spacing:3px;}
 
-  /* Photo box */
-  .photo-box{
-    border:1.5px dashed #8090b0;border-radius:4px;
-    width:110px;height:130px;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    background:#f7f9fc;text-align:center;color:#8090b0;font-size:11px;line-height:1.5;
-    font-family:'DM Sans',sans-serif;
-  }
+  .photo-box{border:1.5px dashed #8090b0;border-radius:4px;width:110px;height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f7f9fc;text-align:center;color:#8090b0;font-size:11px;line-height:1.5;font-family:'DM Sans',sans-serif;}
 
-  /* ── Schedule table ─────────────────────────────────────────────────── */
   .schedule-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12.5px;}
   .schedule-table thead tr{background:#1a2744;}
-  .schedule-table thead th{
-    padding:8px 12px;color:white;font-weight:700;
-    font-size:9.5px;letter-spacing:1.5px;text-transform:uppercase;
-    font-family:'DM Sans',sans-serif;text-align:left;
-  }
-  .schedule-table tbody td{
-    padding:8px 12px;border-bottom:1px solid #dde3ed;color:#1a2030;
-  }
+  .schedule-table thead th{padding:8px 12px;color:white;font-weight:700;font-size:9.5px;letter-spacing:1.5px;text-transform:uppercase;font-family:'DM Sans',sans-serif;text-align:left;}
+  .schedule-table tbody td{padding:8px 12px;border-bottom:1px solid #dde3ed;color:#1a2030;}
   .schedule-table tbody tr:nth-child(even){background:#f7f9fc;}
 
-  /* ── Instructions ───────────────────────────────────────────────────── */
-  .instructions{
-    background:#f7f9fc;border:1px solid #dde3ed;border-left:4px solid #1a2744;
-    border-radius:2px;padding:12px 16px;margin-bottom:16px;
-  }
-  .instructions-title{
-    font-size:10px;letter-spacing:2.5px;text-transform:uppercase;
-    color:#1a2744;font-weight:700;margin-bottom:8px;
-    font-family:'DM Sans',sans-serif;
-  }
+  .instructions{background:#f7f9fc;border:1px solid #dde3ed;border-left:4px solid #1a2744;border-radius:2px;padding:12px 16px;margin-bottom:16px;}
+  .instructions-title{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#1a2744;font-weight:700;margin-bottom:8px;font-family:'DM Sans',sans-serif;}
   .instructions ol{padding-left:18px;}
   .instructions li{font-size:11.5px;color:#2d3748;margin-bottom:4px;line-height:1.5;}
 
-  /* ── Signature section ──────────────────────────────────────────────── */
-  .sig-row{
-    display:flex;justify-content:space-between;align-items:flex-end;
-    padding:14px 24px 16px;border-top:1px solid #dde3ed;gap:12px;
-  }
+  .sig-row{display:flex;justify-content:space-between;align-items:flex-end;padding:14px 24px 16px;border-top:1px solid #dde3ed;gap:12px;}
   .sig-block{text-align:center;flex:1;}
   .sig-space{height:38px;}
-  .sig-line{
-    border-top:1.5px solid #1a2030;padding-top:5px;
-    font-size:9px;letter-spacing:2px;text-transform:uppercase;
-    color:#4a5568;font-weight:700;font-family:'DM Sans',sans-serif;margin:0 8px;
-  }
+  .sig-line{border-top:1.5px solid #1a2030;padding-top:5px;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#4a5568;font-weight:700;font-family:'DM Sans',sans-serif;margin:0 8px;}
   .seal-block{flex:0 0 80px;text-align:center;}
-  .seal{
-    width:70px;height:70px;border-radius:50%;
-    border:2px dashed #c9a84c;
-    background:white;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
-    margin:0 auto;
-  }
+  .seal{width:70px;height:70px;border-radius:50%;border:2px dashed #c9a84c;background:white;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;margin:0 auto;}
   .seal-word{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;font-weight:700;font-family:'DM Sans',sans-serif;}
   .seal-star{font-size:16px;color:#c9a84c;line-height:1;}
 
-  /* ── Hall ticket bar ────────────────────────────────────────────────── */
-  .ticket-bar{
-    background:#f5f0e0;
-    border-top:1px solid #c9a84c;
-    padding:8px 24px;
-    display:flex;align-items:center;justify-content:space-between;
-    font-family:'DM Sans',sans-serif;
-  }
+  .ticket-bar{background:#f5f0e0;border-top:1px solid #c9a84c;padding:8px 24px;display:flex;align-items:center;justify-content:space-between;font-family:'DM Sans',sans-serif;}
   .ticket-label{font-size:11px;color:#6b6050;letter-spacing:1px;text-transform:uppercase;}
-  .ticket-number{
-    font-family:'Courier New',monospace;
-    font-size:15px;font-weight:700;letter-spacing:4px;color:#0d1f3c;
-  }
+  .ticket-number{font-family:'Courier New',monospace;font-size:15px;font-weight:700;letter-spacing:4px;color:#0d1f3c;}
   .ticket-date{font-size:11px;color:#6b6050;}
 
-  /* ── FOOTER bar ─────────────────────────────────────────────────────── */
-  /* On screen: dark navy. On print: white + navy border (ink saver) */
-  .footer-bar{
-    background:#0d1f3c;
-    padding:10px 20px;text-align:center;
-    font-size:11px;color:rgba(255,255,255,0.8);
-    line-height:1.6;font-family:'DM Sans',sans-serif;
-  }
+  .footer-bar{background:#0d1f3c;padding:10px 20px;text-align:center;font-size:11px;color:rgba(255,255,255,0.8);line-height:1.6;font-family:'DM Sans',sans-serif;}
 
-  /* ── Tricolor bottom strip ──────────────────────────────────────────── */
-  /* (reuse .flag-strip) */
-
-  /* ════════════════════════════════════════════════
-     PRINT OVERRIDES — ink-saving rules
-     ════════════════════════════════════════════════ */
   @media print {
-    body{background:white;padding:0;}
-    .no-print{display:none!important;}
-    .admit-card{box-shadow:none;border-radius:0;width:100%;margin:0;}
+    body { background: white; padding: 0; }
+    .no-print { display: none !important; }
+    .admit-card { box-shadow: none; border-radius: 0; width: 100%; margin: 0; }
 
-    /* Header: white BG, navy text + border instead of dark fill */
-    .header{
-      background:white!important;
-      border-bottom:2px solid #1a2744;
-      padding:16px 24px;
+    .header {
+      background: white !important;
+      border-bottom: 2px solid #1a2744 !important;
+      padding: 16px 24px !important;
     }
-    .header-eyebrow{color:#7a6010!important;}
-    .header-name{color:#0d1f3c!important;}
-    .header-addr{color:#2d3748!important;}
-    .header-tagline{color:#7a6010!important;}
+    .header-name    { color: #0d1f3c !important; }
+    .header-addr    { color: #2d3748 !important; }
+    .header-eyebrow { color: #7a6010 !important; }
+    .header-tagline { color: #7a6010 !important; }
 
-    /* Logo circle: outlined only */
-    .logo-circle{
-      border-color:#1a2744!important;
-      background:white!important;
+    .logo-circle {
+      background: white !important;
+      border-color: #1a2744 !important;
     }
 
-    /* ADMIT CARD badge: outlined, no heavy red fill */
-    .admit-badge{
-      background:white!important;
-      border:2.5px solid #c0392b!important;
+    .admit-badge {
+      background: white !important;
+      border: 2.5px solid #c0392b !important;
+      box-shadow: none !important;
     }
-    .admit-badge-text{color:#c0392b!important;}
+    .admit-badge-text { color: #c0392b !important; }
 
-    /* Gold divider: keep (very thin, low ink) */
-
-    /* Exam bar: outlined instead of navy fill */
-    .exam-bar{
-      background:white!important;
-      border-bottom:1.5px solid #1a3580;
+    .exam-bar {
+      background: white !important;
+      border-bottom: 1.5px solid #1a3580 !important;
     }
-    .exam-bar-title{color:#1a3580!important;}
-    .exam-bar-title::before{color:#c9a84c!important;}
-    .exam-bar-year{
-      background:#1a3580!important;
-      color:white!important;
+    .exam-bar-title { color: #1a3580 !important; }
+    .exam-bar-title::before { color: #c9a84c !important; }
+    .exam-bar-year {
+      background: #1a3580 !important;
+      color: white !important;
     }
 
-    /* Schedule table header: lighter */
-    .schedule-table thead tr{background:#1a2744!important;}
-    /* (keeping this dark is fine — it's a small row, acceptable ink) */
-
-    /* Footer bar: white + navy border instead of dark fill */
-    .footer-bar{
-      background:white!important;
-      color:#0d1f3c!important;
-      border-top:2px solid #0d1f3c;
+    .footer-bar {
+      background: white !important;
+      color: #0d1f3c !important;
+      border-top: 2px solid #0d1f3c !important;
     }
-
-    /* Ticket bar stays cream — very light, ok */
   }
 `;
 
-// ── Helper: build a single admit card's HTML ──────────────────────────────────
 export function generateAdmitCardHTML(student, { examTypeName, examSchedule = [], institute, course }) {
   const scheduleRows = examSchedule
     .filter(s => !s.course || s.course.toUpperCase() === (course || "").toUpperCase())
@@ -333,10 +189,8 @@ export function generateAdmitCardHTML(student, { examTypeName, examSchedule = []
 
   return `
   <div class="admit-card">
-    <!-- Tricolor top -->
     <div class="flag-strip"><div class="orange"></div><div class="white"></div><div class="green"></div></div>
 
-    <!-- Header -->
     <div class="header">
       <div class="logo-circle">${logoHTML}</div>
       <div class="header-text">
@@ -349,18 +203,15 @@ export function generateAdmitCardHTML(student, { examTypeName, examSchedule = []
     </div>
     <div class="gold-divider"></div>
 
-    <!-- Exam bar -->
     <div class="exam-bar">
       <div class="exam-bar-title">${examTypeName || "Examination"}</div>
       <div class="exam-bar-year">Academic Year ${institute?.academicYear || "2026-2027"}</div>
     </div>
 
-    <!-- Warning -->
     <div class="warning-strip">
       This Admit Card must be produced at the Examination Hall. Without this card, entry will not be permitted.
     </div>
 
-    <!-- Body -->
     <div class="body">
       <div class="section-label">Candidate Information</div>
       <table class="info-table">
@@ -409,12 +260,8 @@ export function generateAdmitCardHTML(student, { examTypeName, examSchedule = []
       </div>
     </div>
 
-    <!-- Signatures -->
     <div class="sig-row">
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-line">Candidate's Signature</div>
-      </div>
+      <div class="sig-block"><div class="sig-space"></div><div class="sig-line">Candidate's Signature</div></div>
       <div class="seal-block">
         <div class="seal">
           <div class="seal-word">Official</div>
@@ -422,24 +269,16 @@ export function generateAdmitCardHTML(student, { examTypeName, examSchedule = []
           <div class="seal-word">Seal</div>
         </div>
       </div>
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-line">Exam Coordinator</div>
-      </div>
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-line">Head of Institute</div>
-      </div>
+      <div class="sig-block"><div class="sig-space"></div><div class="sig-line">Exam Coordinator</div></div>
+      <div class="sig-block"><div class="sig-space"></div><div class="sig-line">Head of Institute</div></div>
     </div>
 
-    <!-- Hall ticket bar -->
     <div class="ticket-bar">
       <span class="ticket-label">Hall Ticket No.</span>
       <span class="ticket-number">${ticketCode}</span>
       <span class="ticket-date">Issued: ${new Date().toLocaleDateString("en-IN")}</span>
     </div>
 
-    <!-- Footer -->
     <div class="footer-bar">
       ${institute?.name || "Guidance Navodaya &amp; Sainik Institute"} &middot;
       ${institute?.address || "Khangabok, Manipur"} &middot;
@@ -448,12 +287,10 @@ export function generateAdmitCardHTML(student, { examTypeName, examSchedule = []
       For queries contact the Institute Office
     </div>
 
-    <!-- Tricolor bottom -->
     <div class="flag-strip"><div class="orange"></div><div class="white"></div><div class="green"></div></div>
   </div>`;
 }
 
-// ── Helper: open a print window with one or more admit cards ─────────────────
 export function openAdmitCardPrintWindow(cardHTMLArray, title = "Admit Cards") {
   const w = window.open("", "_blank");
   if (!w) { alert("⚠️ Popup blocked! Please allow popups for this site."); return; }
