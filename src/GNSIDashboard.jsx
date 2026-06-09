@@ -295,7 +295,7 @@ async function loadAllData() {
     safeFetch(()=>supabase.from("connect_grievances").select("id,status,created_at").order("created_at",{ascending:false})),
     safeFetch(()=>supabase.from("connect_replies").select("id,is_read,created_at").order("created_at",{ascending:false}).limit(100)),
     safeFetch(()=>supabase.from("qbank_questions").select("id,course,subject,difficulty,question_type,created_at").order("created_at",{ascending:false})),
-    safeFetch(()=>supabase.from("syllabus_topics").select("id,subject,batch_name,status,teacher_name,course").order("created_at",{ascending:false})),
+    safeFetch(()=>supabase.from("syllabus_topics").select("id,subject_name,course,completed,completed_at,chapter_name,expected_date,display_order").order("display_order",{ascending:true})),
   ])
 
   // ── Finance ──
@@ -620,19 +620,19 @@ async function loadAllData() {
 
   // ── Syllabus Topics ──
   const totalSyllabusTopics=syllabusTopicsData.length
-  const completedTopics_st=syllabusTopicsData.filter(t=>t.status==="completed"||t.status==="Completed").length
-  const pendingTopics_st=syllabusTopicsData.filter(t=>t.status==="pending"||t.status==="Pending").length
-  const inProgressTopics=syllabusTopicsData.filter(t=>t.status==="in_progress"||t.status==="In Progress").length
-  const syllabusOverallPct=totalSyllabusTopics>0?pct(completedTopics_st,totalSyllabusTopics):0
-  const syllabusCourseMap={}
-  syllabusTopicsData.forEach(t=>{const c=t.course||"Other";if(!syllabusCourseMap[c])syllabusCourseMap[c]={total:0,completed:0};syllabusCourseMap[c].total++;if(t.status==="completed"||t.status==="Completed")syllabusCourseMap[c].completed++})
-  const syllabusByCourse=Object.entries(syllabusCourseMap).map(([course,v],i)=>({course,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
-  const syllabusTeacherMap={}
-  syllabusTopicsData.forEach(t=>{const name=t.teacher_name||"Unknown";if(!syllabusTeacherMap[name])syllabusTeacherMap[name]={total:0,completed:0};syllabusTeacherMap[name].total++;if(t.status==="completed"||t.status==="Completed")syllabusTeacherMap[name].completed++})
-  const syllabusByTeacher=Object.values(syllabusTeacherMap).map(t=>({...t,pct:t.total>0?pct(t.completed,t.total):0})).sort((a,b)=>b.pct-a.pct).slice(0,8)
-  const syllabusSubjectMap={}
-  syllabusTopicsData.forEach(t=>{const s=t.subject||"Other";if(!syllabusSubjectMap[s])syllabusSubjectMap[s]={total:0,completed:0};syllabusSubjectMap[s].total++;if(t.status==="completed"||t.status==="Completed")syllabusSubjectMap[s].completed++})
-  const syllabusBySubject=Object.entries(syllabusSubjectMap).sort((a,b)=>b[1].total-a[1].total).slice(0,8).map(([subject,v],i)=>({subject,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+const completedTopics_st=syllabusTopicsData.filter(t=>t.completed===true).length
+const pendingTopics_st=syllabusTopicsData.filter(t=>!t.completed&&!t.completed_at).length
+const inProgressTopics=syllabusTopicsData.filter(t=>!t.completed&&t.expected_date&&new Date(t.expected_date)<=new Date()).length
+const syllabusOverallPct=totalSyllabusTopics>0?pct(completedTopics_st,totalSyllabusTopics):0
+const syllabusCourseMap={}
+syllabusTopicsData.forEach(t=>{const c=t.course||"Other";if(!syllabusCourseMap[c])syllabusCourseMap[c]={total:0,completed:0};syllabusCourseMap[c].total++;if(t.completed)syllabusCourseMap[c].completed++})
+const syllabusByCourse=Object.entries(syllabusCourseMap).map(([course,v],i)=>({course,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+const syllabusTeacherMap={}  // no teacher_name in table — group by subject_name instead
+syllabusTopicsData.forEach(t=>{const name=t.subject_name||"Other";if(!syllabusTeacherMap[name])syllabusTeacherMap[name]={total:0,completed:0};syllabusTeacherMap[name].total++;if(t.completed)syllabusTeacherMap[name].completed++})
+const syllabusByTeacher=Object.values(syllabusTeacherMap).map(t=>({...t,pct:t.total>0?pct(t.completed,t.total):0})).sort((a,b)=>b.pct-a.pct).slice(0,8)
+const syllabusSubjectMap={}
+syllabusTopicsData.forEach(t=>{const s=t.subject_name||"Other";if(!syllabusSubjectMap[s])syllabusSubjectMap[s]={total:0,completed:0};syllabusSubjectMap[s].total++;if(t.completed)syllabusSubjectMap[s].completed++})
+const syllabusBySubject=Object.entries(syllabusSubjectMap).sort((a,b)=>b[1].total-a[1].total).slice(0,8).map(([subject,v],i)=>({subject,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
 
   return {
     totalStudents:admEnrolled||totalStudentsCount, maleStudents, femaleStudents,
@@ -1818,10 +1818,10 @@ export default function GNSIDashboard({ scrollToSection }) {
                   </div>
                 </Panel>
               </div>
-              <Panel title="Teacher-wise Syllabus Progress">
+              <Panel title="Subject-wise Syllabus Progress">
                 <TableWrap>
                   <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px",minWidth:440}}>
-                    <thead><tr>{["Teacher","Total","Done","Progress","Status"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                    <thead><tr>{["Subject","Total","Done","Progress","Status"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.syllabusByTeacher.map((t,i)=>(
                       <tr key={i}>
                         <td style={tdFirst}>{t.name||"Unknown"}</td>
