@@ -1404,7 +1404,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
 // ══════════════════════════════════════════════════════════════
 //  TAB: HOUSEMASTER DASHBOARD
 // ══════════════════════════════════════════════════════════════
-function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange }) {
+function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
   const [attendanceToday, setAttendanceToday] = useState([])
   const [leaveToday, setLeaveToday] = useState([])
   const [sickbayToday, setSickbayToday] = useState([])
@@ -1457,7 +1457,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange 
       <div>
         <div style={{ marginBottom: '20px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}</h2>
-          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{currentHousemaster?.name || 'House Master'} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{currentHousemaster?.name || currentUser?.name || 'House Master'} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
         </div>
         {nightDutyTonight && (
           <div style={{ ...mobileCard, marginBottom: '16px', background: '#1e3a5f', color: 'white' }}>
@@ -1494,7 +1494,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange 
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {currentHousemaster?.name || 'House Master'}</h2>
+          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {currentHousemaster?.name || currentUser?.name || 'House Master'}</h2>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
         {nightDutyTonight && (
@@ -3991,7 +3991,10 @@ function Hostel() {
       const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
         supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob').order('name'),
         supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
-        supabase.from('housemasters').select('*').eq('status', 'Active').limit(1).maybeSingle(),
+        supabase.from('housemasters').select('*')
+          .eq('status', 'Active')
+          .eq('name', (currentUser?.name || '').trim())
+          .maybeSingle(),
         supabase.from('houses').select('name, color_index'),
       ])
       if (e1) console.error('Students fetch error:', e1)
@@ -4034,7 +4037,7 @@ function Hostel() {
     // ─── NEW TABS ──────────────────────────────────────
     attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} />,
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} />,
+    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} currentUser={currentUser} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     journal: <JournalTab currentHousemaster={currentHousemaster} />,
     classtimetable: <ClassTimetableTab />,
