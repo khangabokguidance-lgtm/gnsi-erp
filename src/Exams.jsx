@@ -63,13 +63,12 @@ const COURSE_MAX_MARKS = {
 };
 
 function getCourseMax(course) {
-  const maxMap = COURSE_MAX_MARKS[course] || {};
-  const total = Object.values(maxMap).reduce((s, v) => s + v, 0);
-  return total || 100;
+  const maxMap = ((window.__gnsiCourseMaxMarks || COURSE_MAX_MARKS)[course]) || {};
+  return Object.values(maxMap).reduce((s, v) => s + v, 0) || 100;
 }
 
 function getSubjectMax(course, subject) {
-  return (COURSE_MAX_MARKS[course] || {})[subject] || 100;
+  return ((window.__gnsiCourseMaxMarks || COURSE_MAX_MARKS)[course] || {})[subject] || 100;
 }
 
 // ─── Grade presets ────────────────────────────────────────────────────────────
@@ -142,6 +141,7 @@ const TAB_GROUPS = [
       { id: "studentsmgr",    icon: "👤", label: "Students",        tip: "Add & manage students" },
       { id: "coursesubjects", icon: "📚", label: "Course Subjects",  tip: "Subjects per course/batch" },
       { id: "examtypes",      icon: "⚙️",  label: "Exam Types",      tip: "Configure exam types" },
+      { id: "examconfig", icon: "🗂️", label: "Exam Config", tip: "Switch exam mark schemes" },
       { id: "settings",       icon: "🔧", label: "Settings",        tip: "Grading & institute config" },
     ]
   },
@@ -3740,6 +3740,1161 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// EXAM CONFIG MANAGER v3 — Full Exam Format Builder
+// NEW in v3:
+//   • Duplicate / clone any config
+//   • Edit custom configs (built-ins are read-only)
+//   • Export any config as .json / Import from .json file
+//   • Preview modal — admit-card-style mark sheet
+//
+// Paste this entire block just above the // ─── ROOT EXPORT comment
+// (replaces the entire v2 block you had before)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Built-in preset configs ────────────────────────────────────────────────
+const EXAM_CONFIG_PRESETS = [
+  {
+    id: "default",
+    name: "Default Configuration",
+    description: "Standard GNSI subject & mark scheme",
+    examDate: "",
+    examMode: "Written",
+    sessions: [],
+    courseSubjects: {
+      ACHIEVER:  ["English Grammar","Vocabulary","General Knowledge","Mathematics -I","Mathematics - II","Reasoning","Science"],
+      ELITE:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
+      PRIME:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
+      LAKSHYA:   ["Grammar","Mental","Mathematics","Meitei Mayek"],
+      UMEED:     ["Grammar & Vocabulary","Mental","Mathematics","Meitei Mayek"],
+      CHAMPION:  ["Vocabulary","General Knowledge","Mathematics-II","Mathematics - I","Reasoning","Grammar","Science"],
+      LEADER:    ["Vocabulary","Grammar","General Knowledge","Mathematics -I","Mathematics - II","Reasoning","Science"],
+    },
+    courseMaxMarks: {
+      ACHIEVER:  {"English Grammar":10,"Vocabulary":10,"General Knowledge":10,"Mathematics -I":20,"Mathematics - II":20,"Reasoning":20,"Science":10},
+      ELITE:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
+      PRIME:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
+      LAKSHYA:   {"Grammar":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
+      UMEED:     {"Grammar & Vocabulary":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
+      CHAMPION:  {"Vocabulary":10,"General Knowledge":10,"Mathematics-II":20,"Mathematics - I":20,"Reasoning":20,"Grammar":10,"Science":10},
+      LEADER:    {"Vocabulary":10,"Grammar":10,"General Knowledge":10,"Mathematics -I":20,"Mathematics - II":20,"Reasoning":20,"Science":10},
+    },
+  },
+  {
+    id: "monthly_june_2026",
+    name: "1st Monthly Test — June 2026",
+    description: "OMR-based · 9th June 2026",
+    examDate: "2026-06-09",
+    examMode: "OMR",
+    sessions: [
+      { label: "Session I",  time: "10:15 AM – 12:45 PM" },
+      { label: "Session II", time: "01:30 PM – 03:30 PM" },
+    ],
+    courseSubjects: {
+      ACHIEVER:  ["Mathematics -I","Mathematics - II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      CHAMPION:  ["Mathematics -I","Mathematics - II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      LAKSHYA:   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+    },
+    courseMaxMarks: {
+      ACHIEVER:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      CHAMPION:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      LAKSHYA:   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+    },
+  },
+  {
+    id: "monthly_july_2026",
+    name: "2nd Monthly Test — July 2026",
+    description: "OMR-based · July 2026",
+    examDate: "",
+    examMode: "OMR",
+    sessions: [
+      { label: "Session I",  time: "10:15 AM – 12:45 PM" },
+      { label: "Session II", time: "01:30 PM – 03:30 PM" },
+    ],
+    courseSubjects: {
+      ACHIEVER:  ["Mathematics -I","Mathematics - II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      CHAMPION:  ["Mathematics -I","Mathematics - II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      LAKSHYA:   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+    },
+    courseMaxMarks: {
+      ACHIEVER:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      CHAMPION:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      LAKSHYA:   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+    },
+  },
+];
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+/** Deep-clone a config and return it with a fresh id and "Copy of …" name */
+function cloneConfig(cfg) {
+  return {
+    ...JSON.parse(JSON.stringify(cfg)),
+    id:   `custom_${Date.now()}`,
+    name: `Copy of ${cfg.name}`,
+  };
+}
+
+/** Trigger a browser file download of arbitrary text */
+function downloadText(filename, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Exam Format Builder Wizard ─────────────────────────────────────────────
+// editingConfig: if passed, the wizard opens pre-filled for editing
+function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) {
+  const isMobile = useMobile();
+  const allCourses = Object.keys(courseSubjects);
+  const isEdit = !!editingConfig;
+
+  // Wizard steps
+  const [step, setStep] = useState(1);
+  const TOTAL_STEPS = 5;
+
+  // Step 1
+  const [name, setName]         = useState(editingConfig?.name || "");
+  const [description, setDesc]  = useState(editingConfig?.description || "");
+  const [examDate, setExamDate] = useState(editingConfig?.examDate || "");
+  const [examMode, setExamMode] = useState(editingConfig?.examMode || "Written");
+  const [copyFrom, setCopyFrom] = useState("");
+
+  // Step 2
+  const [selectedCourses, setSelectedCourses] = useState(
+    editingConfig ? new Set(Object.keys(editingConfig.courseSubjects || {})) : new Set(allCourses)
+  );
+
+  // Step 3 — pre-fill from editingConfig if present
+  const buildInitialCourseData = () => {
+    const data = {};
+    const src = editingConfig || {};
+    for (const c of (editingConfig ? Object.keys(src.courseSubjects || {}) : allCourses)) {
+      data[c] = {
+        subjects: [...(src.courseSubjects?.[c] || courseSubjects[c] || [])],
+        marks:    { ...(src.courseMaxMarks?.[c] || {}) },
+      };
+    }
+    return data;
+  };
+  const [courseData, setCourseData]   = useState(buildInitialCourseData);
+  const [activeCourse, setActiveCourse] = useState(
+    editingConfig ? Object.keys(editingConfig.courseSubjects || {})[0] : allCourses[0] || ""
+  );
+  const [subInput, setSubInput]   = useState("");
+  const [markInput, setMarkInput] = useState("");
+  const [editingSub, setEditingSub] = useState(null);
+
+  // Step 4
+  const [sessions, setSessions] = useState(
+    editingConfig?.sessions?.length
+      ? editingConfig.sessions.map(s => ({ ...s }))
+      : [{ label: "Session I", time: "" }]
+  );
+
+  const [saving, setSaving] = useState(false);
+
+  // copyFrom handler (only active when not editing)
+  useEffect(() => {
+    if (!copyFrom) return;
+    const src = EXAM_CONFIG_PRESETS.find(p => p.id === copyFrom);
+    if (!src) return;
+    const data = {};
+    for (const course of Object.keys(src.courseSubjects)) {
+      data[course] = {
+        subjects: [...src.courseSubjects[course]],
+        marks: { ...(src.courseMaxMarks[course] || {}) },
+      };
+    }
+    setCourseData(data);
+    setSelectedCourses(new Set(Object.keys(src.courseSubjects)));
+    setExamMode(src.examMode || "Written");
+    setSessions(src.sessions?.length ? src.sessions.map(s => ({ ...s })) : [{ label: "Session I", time: "" }]);
+  }, [copyFrom]);
+
+  // Ensure courseData has entry for every selected course
+  useEffect(() => {
+    setCourseData(prev => {
+      const next = { ...prev };
+      for (const c of selectedCourses) {
+        if (!next[c]) {
+          next[c] = {
+            subjects: [...(courseSubjects[c] || [])],
+            marks: {},
+          };
+        }
+      }
+      return next;
+    });
+    const arr = [...selectedCourses];
+    if (arr.length && !selectedCourses.has(activeCourse)) setActiveCourse(arr[0]);
+  }, [selectedCourses]);
+
+  const toggleCourse = (c) => {
+    setSelectedCourses(prev => {
+      const n = new Set(prev);
+      n.has(c) ? n.delete(c) : n.add(c);
+      return n;
+    });
+  };
+
+  const addSubject = () => {
+    const sub = subInput.trim();
+    if (!sub || !activeCourse) return;
+    setCourseData(prev => {
+      const existing = prev[activeCourse] || { subjects: [], marks: {} };
+      if (existing.subjects.includes(sub)) return prev;
+      return { ...prev, [activeCourse]: { ...existing, subjects: [...existing.subjects, sub] } };
+    });
+    setSubInput("");
+  };
+
+  const removeSubject = (course, sub) => {
+    setCourseData(prev => {
+      const existing = prev[course] || { subjects: [], marks: {} };
+      const marks = { ...existing.marks };
+      delete marks[sub];
+      return { ...prev, [course]: { ...existing, subjects: existing.subjects.filter(s => s !== sub), marks } };
+    });
+  };
+
+  const setMark = (course, sub, val) => {
+    setCourseData(prev => {
+      const existing = prev[course] || { subjects: [], marks: {} };
+      return { ...prev, [course]: { ...existing, marks: { ...existing.marks, [sub]: Number(val) } } };
+    });
+  };
+
+  // FIX: add subject + set mark atomically in one setState call, no setTimeout
+  const addSubjectWithMark = () => {
+    const sub = subInput.trim();
+    if (!sub || !activeCourse) return;
+    const markVal = markInput ? Number(markInput) : undefined;
+    setCourseData(prev => {
+      const existing = prev[activeCourse] || { subjects: [], marks: {} };
+      if (existing.subjects.includes(sub)) return prev;
+      const newMarks = markVal !== undefined
+        ? { ...existing.marks, [sub]: markVal }
+        : existing.marks;
+      return { ...prev, [activeCourse]: { ...existing, subjects: [...existing.subjects, sub], marks: newMarks } };
+    });
+    setSubInput("");
+    setMarkInput("");
+  };
+
+  const autoSplitMarks = (course, total = 100) => {
+    const subs = courseData[course]?.subjects || [];
+    if (!subs.length) return;
+    const per = Math.floor(total / subs.length);
+    const rem = total - per * subs.length;
+    const marks = {};
+    subs.forEach((s, i) => { marks[s] = per + (i === 0 ? rem : 0); });
+    setCourseData(prev => ({ ...prev, [course]: { ...prev[course], marks } }));
+  };
+
+  const getTotalForCourse = (course) => {
+    const marks = courseData[course]?.marks || {};
+    return Object.values(marks).reduce((s, v) => s + (Number(v) || 0), 0);
+  };
+
+  const addSession = () => setSessions(p => [...p, { label: `Session ${p.length + 1}`, time: "" }]);
+  const removeSession = (i) => setSessions(p => p.filter((_, j) => j !== i));
+  const updateSession = (i, key, val) => setSessions(p => p.map((s, j) => j === i ? { ...s, [key]: val } : s));
+
+  const handleSave = async () => {
+    setSaving(true);
+    const courseSubjectsOut = {};
+    const courseMaxMarksOut = {};
+    for (const course of selectedCourses) {
+      const d = courseData[course] || { subjects: [], marks: {} };
+      courseSubjectsOut[course] = d.subjects;
+      courseMaxMarksOut[course] = d.marks;
+    }
+    const cfg = {
+      id: isEdit ? editingConfig.id : `custom_${Date.now()}`,
+      name: name.trim(),
+      description: description.trim(),
+      examDate,
+      examMode,
+      sessions,
+      courseSubjects: courseSubjectsOut,
+      courseMaxMarks: courseMaxMarksOut,
+    };
+    await onSave(cfg);
+    setSaving(false);
+  };
+
+  const canNext = () => {
+    if (step === 1) return name.trim().length > 0;
+    if (step === 2) return selectedCourses.size > 0;
+    if (step === 3) {
+      for (const c of selectedCourses) {
+        if (!(courseData[c]?.subjects?.length)) return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  const STEP_LABELS = ["Basic Info", "Courses", "Subjects & Marks", "Sessions", "Review"];
+  const StepBar = () => (
+    <div style={{ display:"flex", alignItems:"center", marginBottom:24, gap:0 }}>
+      {STEP_LABELS.map((label, i) => {
+        const n = i + 1;
+        const done = step > n;
+        const active = step === n;
+        return (
+          <React.Fragment key={n}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor: done ? "pointer" : "default" }}
+              onClick={() => done && setStep(n)}>
+              <div style={{
+                width:30, height:30, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:13, fontWeight:700,
+                background: done ? "#1a3c2e" : active ? "#2A5C45" : "#F1F5F9",
+                color: (done || active) ? "white" : "#9CA3AF",
+                border: active ? "2px solid #1a3c2e" : "none",
+              }}>
+                {done ? "✓" : n}
+              </div>
+              {!isMobile && <div style={{ fontSize:9, fontWeight:700, color: active ? "#1a3c2e" : done ? "#0F6E56" : "#9CA3AF", textTransform:"uppercase", letterSpacing:".08em", whiteSpace:"nowrap" }}>{label}</div>}
+            </div>
+            {i < STEP_LABELS.length - 1 && (
+              <div style={{ flex:1, height:2, background: step > n ? "#1a3c2e" : "#E5E7EB", margin:"0 4px 18px" }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+
+  const NavButtons = () => (
+    <div style={{ display:"flex", gap:10, marginTop:24, paddingTop:16, borderTop:"1px solid #F1F5F9" }}>
+      {step > 1 && <button onClick={() => setStep(s => s-1)} style={{ ...css.btn, background:"#F3F4F6", color:"#374151", flex:1 }}>← Back</button>}
+      {step < TOTAL_STEPS
+        ? <button onClick={() => setStep(s => s+1)} disabled={!canNext()} style={{ ...css.btn, background:canNext()?"#1a3c2e":"#D1D5DB", color:"white", flex:2, fontSize:14 }}>
+            Next →
+          </button>
+        : <button onClick={handleSave} disabled={saving} style={{ ...css.btn, background:saving?"#93C5FD":"#16A34A", color:"white", flex:2, fontSize:14 }}>
+            {saving ? "⏳ Saving…" : isEdit ? "✅ Save Changes" : "✅ Create Exam Format"}
+          </button>
+      }
+    </div>
+  );
+
+  // ── STEP 1 ──────────────────────────────────────────────────────────────
+  const Step1 = () => (
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      <div>
+        <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Name *</label>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. 3rd Monthly Test — August 2026" style={{ ...css.input, fontSize:15 }} autoFocus />
+      </div>
+      <div>
+        <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Short Description</label>
+        <input value={description} onChange={e=>setDesc(e.target.value)} placeholder="e.g. OMR-based · August 2026" style={css.input} />
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:12 }}>
+        <div>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Date</label>
+          <input type="date" value={examDate} onChange={e=>setExamDate(e.target.value)} style={css.input} />
+        </div>
+        <div>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Mode</label>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            {["Written","OMR","Online","Oral"].map(m => (
+              <button key={m} onClick={() => setExamMode(m)}
+                style={{ ...css.btn, padding:"7px 16px", fontSize:12, background:examMode===m?"#1a3c2e":"#F3F4F6", color:examMode===m?"white":"#374151", border:examMode===m?"none":"1px solid #E5E7EB" }}>
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Hide "copy from" in edit mode — user is already editing an existing one */}
+      {!isEdit && (
+        <>
+          <div style={{ height:1, background:"#F1F5F9" }} />
+          <div>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:8, textTransform:"uppercase" }}>
+              Copy from existing format <span style={{ fontWeight:400, color:"#9CA3AF" }}>(optional)</span>
+            </label>
+            <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(200px,1fr))", gap:8 }}>
+              <div onClick={() => setCopyFrom("")}
+                style={{ padding:"10px 14px", borderRadius:10, border: !copyFrom?"2px solid #1a3c2e":"1px solid #E5E7EB", background: !copyFrom?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
+                <div style={{ fontWeight:700, fontSize:12, color: !copyFrom?"#0F6E56":"#374151" }}>Start fresh</div>
+                <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>Define everything from scratch</div>
+              </div>
+              {EXAM_CONFIG_PRESETS.map(p => (
+                <div key={p.id} onClick={() => setCopyFrom(p.id)}
+                  style={{ padding:"10px 14px", borderRadius:10, border: copyFrom===p.id?"2px solid #1a3c2e":"1px solid #E5E7EB", background: copyFrom===p.id?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
+                  <div style={{ fontWeight:700, fontSize:12, color: copyFrom===p.id?"#0F6E56":"#374151" }}>{p.name}</div>
+                  <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>{p.description || "Built-in preset"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  // ── STEP 2 ──────────────────────────────────────────────────────────────
+  const Step2 = () => (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ fontSize:13, color:"#64748b" }}>Select which courses/batches this exam applies to.</div>
+      <div style={{ display:"flex", gap:8, marginBottom:4 }}>
+        <button onClick={() => setSelectedCourses(new Set(allCourses))} style={{ ...css.btn, padding:"5px 12px", fontSize:11, background:"#E0F2FE", color:"#0369A1" }}>Select All</button>
+        <button onClick={() => setSelectedCourses(new Set())} style={{ ...css.btn, padding:"5px 12px", fontSize:11, background:"#FEF2F2", color:"#DC2626" }}>Clear All</button>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill,minmax(160px,1fr))", gap:10 }}>
+        {allCourses.map(c => {
+          const sel = selectedCourses.has(c);
+          const subCount = courseData[c]?.subjects?.length || courseSubjects[c]?.length || 0;
+          return (
+            <div key={c} onClick={() => toggleCourse(c)}
+              style={{ padding:"14px 16px", borderRadius:12, border: sel?"2px solid #1a3c2e":"1.5px solid #E5E7EB", background: sel?"#E1F5EE":"#F9FAFB", cursor:"pointer", transition:"all .15s" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div style={{ fontWeight:700, fontSize:14, color: sel?"#0F6E56":"#374151" }}>{c}</div>
+                <div style={{ width:20, height:20, borderRadius:"50%", background: sel?"#0F6E56":"#E5E7EB", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"white", fontWeight:700 }}>
+                  {sel ? "✓" : ""}
+                </div>
+              </div>
+              <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{subCount} subjects</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ background:"#F8FAFC", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#64748b" }}>
+        {selectedCourses.size} course{selectedCourses.size !== 1 ? "s" : ""} selected: <b style={{ color:"#1a3c2e" }}>{[...selectedCourses].join(", ") || "none"}</b>
+      </div>
+    </div>
+  );
+
+  // ── STEP 3 ──────────────────────────────────────────────────────────────
+  const Step3 = () => {
+    const courseArr = [...selectedCourses];
+    const d = courseData[activeCourse] || { subjects: [], marks: {} };
+    const total = getTotalForCourse(activeCourse);
+
+    return (
+      <div style={{ display:"flex", flexDirection: isMobile ? "column" : "row", gap:16 }}>
+        <div style={{ width: isMobile ? "100%" : 160, flexShrink:0 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:"#6B7280", textTransform:"uppercase", marginBottom:8 }}>Courses</div>
+          <div style={{ display:"flex", flexDirection: isMobile ? "row" : "column", flexWrap:"wrap", gap:5 }}>
+            {courseArr.map(c => {
+              const cd = courseData[c] || { subjects:[], marks:{} };
+              const ok = cd.subjects.length > 0;
+              return (
+                <button key={c} onClick={() => setActiveCourse(c)}
+                  style={{ ...css.btn, padding:"8px 12px", textAlign:"left", fontSize:12,
+                    background: activeCourse===c?"#1a3c2e":"#F9FAFB",
+                    color: activeCourse===c?"white":"#374151",
+                    border: activeCourse===c?"none": ok?"1px solid #BBF7D0":"1px solid #E5E7EB",
+                    display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+                  <span>{c}</span>
+                  <span style={{ fontSize:10, opacity:0.75 }}>{ok ? `${cd.subjects.length}s` : "⚠️"}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontWeight:700, fontSize:15, color:"#1a3c2e" }}>{activeCourse}</div>
+            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+              <span style={{ fontSize:11, color: total===100?"#0F6E56":total>100?"#DC2626":"#9CA3AF", fontWeight:700 }}>
+                Total: {total} / 100
+              </span>
+              <button onClick={() => autoSplitMarks(activeCourse, 100)}
+                style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE" }}>
+                ⚡ Auto-split 100
+              </button>
+            </div>
+          </div>
+
+          {/* Add subject row — fixed: atomic addSubjectWithMark */}
+          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+            <input value={subInput} onChange={e=>setSubInput(e.target.value)}
+              placeholder="Subject name…" style={{ ...css.input, flex:2 }}
+              onKeyDown={e=>{ if(e.key==="Enter") addSubjectWithMark(); }} />
+            <input type="number" value={markInput} onChange={e=>setMarkInput(e.target.value)}
+              placeholder="Max" style={{ ...css.input, width:70 }}
+              onKeyDown={e=>{ if(e.key==="Enter") addSubjectWithMark(); }} />
+            <button onClick={addSubjectWithMark}
+              style={{ ...css.btn, background:"#1a3c2e", color:"white", whiteSpace:"nowrap" }}>+ Add</button>
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {d.subjects.map((sub, i) => (
+              <div key={sub} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 12px", background: i%2?"#F9FAFB":"white", borderRadius:8, border:"1px solid #F1F5F9" }}>
+                <div style={{ fontSize:10, color:"#CBD5E1", fontWeight:700, width:18, flexShrink:0 }}>{i+1}</div>
+                <div style={{ flex:1, fontSize:13, fontWeight:600, color:"#1e293b" }}>{sub}</div>
+                {editingSub === `${activeCourse}-${sub}` ? (
+                  <input type="number" autoFocus defaultValue={d.marks[sub]||""}
+                    style={{ ...css.input, width:70, fontSize:13, padding:"4px 8px" }}
+                    onBlur={e => { setMark(activeCourse, sub, e.target.value); setEditingSub(null); }}
+                    onKeyDown={e => { if(e.key==="Enter") { setMark(activeCourse, sub, e.target.value); setEditingSub(null); } }} />
+                ) : (
+                  <div onClick={() => setEditingSub(`${activeCourse}-${sub}`)}
+                    style={{ width:70, textAlign:"center", padding:"4px 8px", borderRadius:6, border:"1px solid #E5E7EB", fontSize:13, fontWeight:700, color: d.marks[sub]?"#1a3c2e":"#CBD5E1", cursor:"pointer", background:"#F9FAFB" }}>
+                    {d.marks[sub] || "—"}
+                  </div>
+                )}
+                <span style={{ fontSize:11, color:"#9CA3AF" }}>marks</span>
+                <button onClick={() => removeSubject(activeCourse, sub)}
+                  style={{ ...css.btn, padding:"3px 8px", background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA", fontSize:11 }}>✕</button>
+              </div>
+            ))}
+            {!d.subjects.length && (
+              <div style={{ padding:"24px 0", textAlign:"center", color:"#CBD5E1", fontSize:13 }}>
+                No subjects yet. Add subjects above.
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop:14, display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+            <span style={{ fontSize:11, color:"#9CA3AF", fontWeight:700 }}>Copy from:</span>
+            {[...selectedCourses].filter(c => c !== activeCourse).map(c => (
+              <button key={c} onClick={() => {
+                const src = courseData[c];
+                if (!src) return;
+                setCourseData(prev => ({
+                  ...prev,
+                  [activeCourse]: { subjects:[...src.subjects], marks:{...src.marks} }
+                }));
+              }} style={{ ...css.btn, padding:"3px 10px", fontSize:11, background:"#F3F4F6", color:"#374151", border:"1px solid #E5E7EB" }}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── STEP 4 ──────────────────────────────────────────────────────────────
+  const Step4 = () => (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ fontSize:13, color:"#64748b" }}>Define exam sessions (optional). These appear on admit cards and the schedule.</div>
+      {sessions.map((s, i) => (
+        <div key={i} style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr auto", gap:10, alignItems:"flex-end", padding:"12px 14px", background:"#F9FAFB", borderRadius:10, border:"1px solid #E5E7EB" }}>
+          <div>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:4, textTransform:"uppercase" }}>Session Label</label>
+            <input value={s.label} onChange={e=>updateSession(i,"label",e.target.value)} placeholder="e.g. Session I" style={css.input} />
+          </div>
+          <div>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:4, textTransform:"uppercase" }}>Time</label>
+            <input value={s.time} onChange={e=>updateSession(i,"time",e.target.value)} placeholder="e.g. 10:15 AM – 12:45 PM" style={css.input} />
+          </div>
+          <button onClick={() => removeSession(i)} style={{ ...css.btn, padding:"8px 12px", background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA", alignSelf:"flex-end" }}>✕</button>
+        </div>
+      ))}
+      <button onClick={addSession} style={{ ...css.btn, background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE", fontSize:13 }}>+ Add Session</button>
+      <div style={{ height:1, background:"#F1F5F9", margin:"4px 0" }} />
+      <div style={{ fontWeight:700, fontSize:13, color:"#1e293b", marginBottom:6 }}>📅 Evaluation Timeline <span style={{ fontWeight:400, fontSize:11, color:"#9CA3AF" }}>(optional)</span></div>
+      <EvaluationTimeline examDate={examDate} />
+    </div>
+  );
+
+  // ── STEP 5 ──────────────────────────────────────────────────────────────
+  const Step5 = () => {
+    const courseArr = [...selectedCourses];
+    return (
+      <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+        <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", borderRadius:12, padding:"16px 20px", color:"white" }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, marginBottom:4 }}>{name || "Untitled Exam"}</div>
+          <div style={{ fontSize:12, opacity:.75 }}>{description}</div>
+          <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
+            {examDate && <span style={{ fontSize:11, background:"rgba(255,255,255,.12)", padding:"3px 10px", borderRadius:999 }}>📅 {examDate}</span>}
+            <span style={{ fontSize:11, background:"rgba(255,255,255,.12)", padding:"3px 10px", borderRadius:999 }}>📝 {examMode}</span>
+            <span style={{ fontSize:11, background:"rgba(255,255,255,.12)", padding:"3px 10px", borderRadius:999 }}>🏫 {selectedCourses.size} courses</span>
+            {sessions.filter(s=>s.time).length > 0 && <span style={{ fontSize:11, background:"rgba(255,255,255,.12)", padding:"3px 10px", borderRadius:999 }}>⏰ {sessions.length} session{sessions.length>1?"s":""}</span>}
+          </div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(280px,1fr))", gap:12 }}>
+          {courseArr.map(c => {
+            const d = courseData[c] || { subjects:[], marks:{} };
+            const total = Object.values(d.marks).reduce((s,v)=>s+(Number(v)||0),0);
+            const ok = d.subjects.length > 0;
+            return (
+              <div key={c} style={{ background:"white", borderRadius:10, border: ok?"1px solid #BBF7D0":"1px solid #FECACA", padding:"12px 14px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontWeight:700, color:"#1a3c2e", fontSize:13 }}>{c}</div>
+                  <span style={{ fontSize:11, padding:"2px 8px", borderRadius:999, background: total===100?"#E1F5EE":total>100?"#FCEBEB":"#FFFBEB", color: total===100?"#0F6E56":total>100?"#DC2626":"#92400E", fontWeight:700 }}>
+                    {total} marks
+                  </span>
+                </div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                  {d.subjects.map(s => (
+                    <span key={s} style={{ fontSize:10, padding:"2px 8px", background:"#F1F5F9", borderRadius:999, color:"#475569" }}>
+                      {s}{d.marks[s] ? <span style={{ color:"#94A3B8", marginLeft:2 }}>/{d.marks[s]}</span> : null}
+                    </span>
+                  ))}
+                  {!ok && <span style={{ fontSize:11, color:"#DC2626" }}>⚠️ No subjects defined</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {sessions.filter(s=>s.time).length > 0 && (
+          <div style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 16px", border:"1px solid #E5E7EB" }}>
+            <div style={{ fontWeight:700, fontSize:12, color:"#6B7280", textTransform:"uppercase", marginBottom:8 }}>Sessions</div>
+            {sessions.map((s,i) => (
+              <div key={i} style={{ fontSize:13, color:"#374151", marginBottom:4 }}>
+                <b>{s.label}</b>{s.time ? ` · ${s.time}` : ""}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#1D4ED8" }}>
+          ℹ️ {isEdit ? "Changes will be saved. Click Activate on the config list if you want to apply it now." : "Once created, go to the config list and click Activate to apply this format across all tabs."}
+        </div>
+      </div>
+    );
+  };
+
+  const stepContent = [<Step1/>, <Step2/>, <Step3/>, <Step4/>, <Step5/>];
+  const stepTitles  = ["Basic Information", "Select Courses", "Subjects & Marks", "Exam Sessions", "Review & " + (isEdit ? "Save" : "Create")];
+
+  return (
+    <div style={{ background:"white", borderRadius:14, boxShadow:"0 2px 16px rgba(0,0,0,0.09)", overflow:"hidden" }}>
+      <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", padding:"18px 24px" }}>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, color:"white", marginBottom:2 }}>
+          {isEdit ? "✏️ Edit Exam Format" : "✏️ Exam Format Builder"}
+        </div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.6)" }}>Step {step} of {TOTAL_STEPS} — {stepTitles[step-1]}</div>
+      </div>
+
+      <div style={{ padding: isMobile ? "16px 14px" : "24px 28px" }}>
+        <StepBar />
+        {stepContent[step - 1]}
+        <NavButtons />
+      </div>
+
+      <div style={{ padding:"0 28px 18px", textAlign:"center" }}>
+        <button onClick={onCancel} style={{ ...css.btn, background:"none", color:"#9CA3AF", fontSize:12, border:"none" }}>✕ Cancel and go back</button>
+      </div>
+    </div>
+  );
+}
+
+// ── EvaluationTimeline ─────────────────────────────────────────────────────
+function EvaluationTimeline({ examDate }) {
+  const [rows, setRows] = useState([
+    { label: "OMR Evaluation & Mark Entry", date: "" },
+    { label: "Final Check by Marking Students", date: "" },
+    { label: "Report Card Entry by Class Teacher", date: "" },
+    { label: "Prize Distribution", date: "" },
+    { label: "Report Card Distribution to Parents", date: "" },
+  ]);
+
+  const autoFill = () => {
+    if (!examDate) return;
+    const base = new Date(examDate);
+    const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x.toISOString().split("T")[0]; };
+    setRows([
+      { label: "OMR Evaluation & Mark Entry",             date: `${add(base,1)} to ${add(base,4)}` },
+      { label: "Final Check by Marking Students",         date: add(base,6) },
+      { label: "Report Card Entry by Class Teacher",      date: add(base,6) },
+      { label: "Prize Distribution",                      date: add(base,8) },
+      { label: "Report Card Distribution to Parents",     date: `${add(base,9)} to ${add(base,10)}` },
+    ]);
+  };
+
+  return (
+    <div>
+      {examDate && (
+        <button onClick={autoFill} style={{ ...css.btn, padding:"5px 14px", fontSize:11, background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE", marginBottom:10 }}>
+          ⚡ Auto-fill from exam date ({examDate})
+        </button>
+      )}
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {rows.map((r,i) => (
+          <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, alignItems:"center" }}>
+            <div style={{ fontSize:12, color:"#374151", fontWeight:600 }}>{r.label}</div>
+            <input value={r.date} onChange={e => setRows(p => p.map((x,j)=>j===i?{...x,date:e.target.value}:x))}
+              placeholder="Date or range…" style={{ ...css.input, fontSize:12 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── NEW: Admit-card-style Preview Modal ────────────────────────────────────
+function ExamPreviewModal({ cfg, onClose }) {
+  const isMobile = useMobile();
+  const courses  = Object.keys(cfg.courseSubjects || {});
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:1100,
+      display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflowY:"auto" }}>
+      <div style={{ background:"white", borderRadius:14, width:"100%", maxWidth:700,
+        maxHeight:"92vh", overflowY:"auto", boxShadow:"0 8px 40px rgba(0,0,0,0.25)" }}>
+
+        {/* sticky header */}
+        <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", padding:"14px 20px",
+          display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
+          <div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:"white" }}>👁 Preview — {cfg.name}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,.6)", marginTop:2 }}>{cfg.description}</div>
+          </div>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            {/* Export from preview shortcut */}
+            <button onClick={() => downloadText(`${cfg.name.replace(/\s+/g,"_")}.json`, JSON.stringify(cfg, null, 2))}
+              style={{ ...css.btn, padding:"6px 12px", background:"rgba(255,255,255,.15)", color:"white", fontSize:11, border:"1px solid rgba(255,255,255,.3)" }}>
+              ⬇ Export
+            </button>
+            <button onClick={onClose}
+              style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:6, padding:"5px 12px", color:"white", cursor:"pointer", fontSize:13 }}>✕</button>
+          </div>
+        </div>
+
+        <div style={{ padding: isMobile ? "16px 14px" : "22px 26px" }}>
+
+          {/* Meta strip */}
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:18 }}>
+            {cfg.examDate && <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#E0F2FE", color:"#0369A1", fontWeight:700 }}>📅 {cfg.examDate}</span>}
+            {cfg.examMode && <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#EEF2FF", color:"#4338CA", fontWeight:700 }}>📝 {cfg.examMode}</span>}
+            {cfg.sessions?.filter(s=>s.time).length > 0 &&
+              <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#FFF7ED", color:"#C2410C", fontWeight:700 }}>
+                ⏰ {cfg.sessions.length} Session{cfg.sessions.length>1?"s":""}
+              </span>}
+          </div>
+
+          {/* Sessions table */}
+          {cfg.sessions?.filter(s=>s.time).length > 0 && (
+            <div style={{ marginBottom:22 }}>
+              <div style={{ fontWeight:700, fontSize:12, color:"#6B7280", textTransform:"uppercase", marginBottom:8, letterSpacing:".06em" }}>Exam Schedule</div>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr style={{ background:"#F8FAFC" }}>
+                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#1a3c2e", fontWeight:700 }}>Session</th>
+                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#1a3c2e", fontWeight:700 }}>Timing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cfg.sessions.filter(s=>s.time).map((s,i) => (
+                    <tr key={i} style={{ borderBottom:"1px solid #F1F5F9" }}>
+                      <td style={{ padding:"8px 12px", fontWeight:600, color:"#374151" }}>{s.label}</td>
+                      <td style={{ padding:"8px 12px", color:"#64748b" }}>{s.time}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Per-course mark tables */}
+          {courses.map(course => {
+            const subs  = cfg.courseSubjects[course] || [];
+            const marks = cfg.courseMaxMarks?.[course] || {};
+            const total = Object.values(marks).reduce((s,v)=>s+(Number(v)||0),0);
+            return (
+              <div key={course} style={{ marginBottom:20 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                  background:"linear-gradient(90deg,#1a3c2e 0%,#2A5C45 100%)",
+                  borderRadius:"8px 8px 0 0", padding:"8px 14px" }}>
+                  <div style={{ fontWeight:700, color:"white", fontSize:13 }}>{course}</div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,.75)", fontWeight:600 }}>Total: {total} marks</div>
+                </div>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, border:"1px solid #E5E7EB", borderTop:"none" }}>
+                  <thead>
+                    <tr style={{ background:"#F8FAFC" }}>
+                      <th style={{ padding:"7px 12px", textAlign:"left", color:"#6B7280", fontWeight:700, fontSize:11, textTransform:"uppercase", width:36 }}>#</th>
+                      <th style={{ padding:"7px 12px", textAlign:"left", color:"#6B7280", fontWeight:700, fontSize:11, textTransform:"uppercase" }}>Subject</th>
+                      <th style={{ padding:"7px 12px", textAlign:"center", color:"#6B7280", fontWeight:700, fontSize:11, textTransform:"uppercase", width:90 }}>Max Marks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subs.map((sub, i) => (
+                      <tr key={sub} style={{ borderBottom:"1px solid #F1F5F9", background: i%2?"#FAFAFA":"white" }}>
+                        <td style={{ padding:"8px 12px", color:"#CBD5E1", fontWeight:700 }}>{i+1}</td>
+                        <td style={{ padding:"8px 12px", color:"#1e293b", fontWeight:500 }}>{sub}</td>
+                        <td style={{ padding:"8px 12px", textAlign:"center", fontWeight:700,
+                          color: marks[sub] ? "#1a3c2e" : "#CBD5E1" }}>
+                          {marks[sub] || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Total row */}
+                    <tr style={{ background:"#F0FDF4", borderTop:"2px solid #BBF7D0" }}>
+                      <td colSpan={2} style={{ padding:"9px 12px", fontWeight:700, color:"#166534", fontSize:13 }}>TOTAL</td>
+                      <td style={{ padding:"9px 12px", textAlign:"center", fontWeight:800, color:"#166534", fontSize:14 }}>{total}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main ExamConfigManager ─────────────────────────────────────────────────
+function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigSwitch }) {
+  const isMobile = useMobile();
+  const [configs, setConfigs]       = useState(EXAM_CONFIG_PRESETS);
+  const [loading, setLoading]       = useState(true);
+  const [activeId, setActiveId]     = useState(activeConfigId || "default");
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [editingConfig, setEditingConfig] = useState(null); // config to edit, or null for "new"
+  const [switching, setSwitching]   = useState(false);
+  const [switchDone, setSwitchDone] = useState(false);
+  const [deleteId, setDeleteId]     = useState(null);
+  const [viewId, setViewId]         = useState(null);   // detail modal (old)
+  const [previewCfg, setPreviewCfg] = useState(null);   // NEW: admit-card preview
+  const [importError, setImportError] = useState("");   // NEW: import feedback
+  const importRef = React.useRef();
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from("system_settings").select("value").eq("key","exam_configs").single(),
+      supabase.from("system_settings").select("value").eq("key","active_exam_config").single(),
+    ]).then(([{ data: cfgData }, { data: actData }]) => {
+      if (cfgData?.value) {
+        try { setConfigs([...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]); } catch(_) {}
+      }
+      if (actData?.value) setActiveId(actData.value);
+      setLoading(false);
+    });
+  }, []);
+
+  const saveCustomConfigs = async (all) => {
+    const custom = all.filter(c => !EXAM_CONFIG_PRESETS.find(p => p.id === c.id));
+    await supabase.from("system_settings").upsert({ key:"exam_configs", value:JSON.stringify(custom) }, { onConflict:"key" });
+  };
+
+  const handleSwitch = async (cfg) => {
+    if (cfg.id === activeId) return;
+    setSwitching(true);
+    await supabase.from("system_settings").upsert({ key:"active_exam_config", value:cfg.id }, { onConflict:"key" });
+    await supabase.from("system_settings").upsert({ key:"course_subjects", value:JSON.stringify(cfg.courseSubjects) }, { onConflict:"key" });
+    setActiveId(cfg.id);
+    onUpdate(cfg.courseSubjects);
+    onConfigSwitch && onConfigSwitch(cfg);
+    setSwitching(false); setSwitchDone(true);
+    setTimeout(() => setSwitchDone(false), 3000);
+  };
+
+  const handleDelete = async (id) => {
+    const updated = configs.filter(c => c.id !== id);
+    setConfigs(updated);
+    await saveCustomConfigs(updated);
+    setDeleteId(null);
+    if (activeId === id) handleSwitch(EXAM_CONFIG_PRESETS[0]);
+  };
+
+  // NEW: handles both create-new and save-after-edit
+  const handleSaveNew = async (cfg) => {
+    const isEditing = !!editingConfig;
+    let updated;
+    if (isEditing) {
+      // Replace in-place
+      updated = configs.map(c => c.id === cfg.id ? cfg : c);
+    } else {
+      updated = [...configs, cfg];
+    }
+    setConfigs(updated);
+    await saveCustomConfigs(updated);
+    setShowBuilder(false);
+    setEditingConfig(null);
+    // If we just edited the active config, propagate the change immediately
+    if (isEditing && cfg.id === activeId) {
+      onUpdate(cfg.courseSubjects);
+      onConfigSwitch && onConfigSwitch(cfg);
+      window.__gnsiCourseMaxMarks = cfg.courseMaxMarks;
+    }
+  };
+
+  // NEW: Duplicate
+  const handleDuplicate = async (cfg) => {
+    const clone = cloneConfig(cfg);
+    const updated = [...configs, clone];
+    setConfigs(updated);
+    await saveCustomConfigs(updated);
+  };
+
+  // NEW: Export single config
+  const handleExport = (cfg) => {
+    downloadText(`${cfg.name.replace(/\s+/g,"_")}.json`, JSON.stringify(cfg, null, 2));
+  };
+
+  // NEW: Import from .json file
+  const handleImportFile = async (e) => {
+    setImportError("");
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // Validate minimum shape
+      if (!parsed.name || !parsed.courseSubjects) throw new Error("Missing required fields (name, courseSubjects).");
+      // Give it a fresh id so it doesn't collide
+      const imported = { ...parsed, id: `custom_${Date.now()}`, name: parsed.name + (parsed.name.includes("(imported)") ? "" : " (imported)") };
+      const updated = [...configs, imported];
+      setConfigs(updated);
+      await saveCustomConfigs(updated);
+    } catch (err) {
+      setImportError(`Import failed: ${err.message}`);
+    }
+    // Reset file input so same file can be re-imported if needed
+    e.target.value = "";
+  };
+
+  const getTotalMarks = (cfg, course) => {
+    const map = cfg.courseMaxMarks?.[course] || {};
+    return Object.values(map).reduce((s,v)=>s+v,0) || 100;
+  };
+
+  if (loading) return <Spinner />;
+
+  // Show builder (new or edit)
+  if (showBuilder) return (
+    <ExamFormatBuilder
+      courseSubjects={courseSubjects}
+      onSave={handleSaveNew}
+      onCancel={() => { setShowBuilder(false); setEditingConfig(null); }}
+      editingConfig={editingConfig}
+    />
+  );
+
+  const viewCfg = viewId ? configs.find(c => c.id === viewId) : null;
+
+  return (
+    <div>
+      {/* ── Modals ── */}
+
+      {/* Delete confirm */}
+      {deleteId && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"white", borderRadius:14, padding:28, maxWidth:380, width:"90%", boxShadow:"0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>⚠️</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:600, textAlign:"center", marginBottom:8 }}>Delete Configuration?</div>
+            <div style={{ fontSize:13, color:"#64748b", textAlign:"center", marginBottom:22 }}>
+              Permanently delete <b>{configs.find(c=>c.id===deleteId)?.name}</b>?
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => setDeleteId(null)} style={{ ...css.btn, flex:1, background:"#F3F4F6", color:"#374151" }}>Cancel</button>
+              <button onClick={() => handleDelete(deleteId)} style={{ ...css.btn, flex:1, background:"#DC2626", color:"white" }}>🗑️ Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail view modal (kept from v2) */}
+      {viewCfg && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"white", borderRadius:14, width:"100%", maxWidth:620, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 8px 40px rgba(0,0,0,0.2)" }}>
+            <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", padding:"16px 22px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0 }}>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:"white" }}>{viewCfg.name}</div>
+              <button onClick={() => setViewId(null)} style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:6, padding:"4px 10px", color:"white", cursor:"pointer" }}>✕</button>
+            </div>
+            <div style={{ padding:22 }}>
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
+                {viewCfg.examDate && <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#E0F2FE", color:"#0369A1", fontWeight:700 }}>📅 {viewCfg.examDate}</span>}
+                {viewCfg.examMode && <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#EEF2FF", color:"#4338CA", fontWeight:700 }}>📝 {viewCfg.examMode}</span>}
+              </div>
+              {viewCfg.sessions?.filter(s=>s.time).length > 0 && (
+                <div style={{ background:"#F8FAFC", borderRadius:8, padding:"10px 14px", marginBottom:14, border:"1px solid #E5E7EB" }}>
+                  <div style={{ fontWeight:700, fontSize:11, color:"#6B7280", textTransform:"uppercase", marginBottom:6 }}>Sessions</div>
+                  {viewCfg.sessions.map((s,i)=>(
+                    <div key={i} style={{ fontSize:12, color:"#374151", marginBottom:3 }}><b>{s.label}</b>{s.time?` · ${s.time}`:""}</div>
+                  ))}
+                </div>
+              )}
+              {Object.entries(viewCfg.courseSubjects||{}).map(([c,subs])=>(
+                <div key={c} style={{ marginBottom:12, background:"#F9FAFB", borderRadius:10, padding:"10px 14px", border:"1px solid #E5E7EB" }}>
+                  <div style={{ fontWeight:700, color:"#1a3c2e", fontSize:13, marginBottom:6 }}>
+                    {c} <span style={{ fontWeight:400, color:"#9CA3AF" }}>· {getTotalMarks(viewCfg,c)} marks</span>
+                  </div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                    {subs.map(s=>(
+                      <span key={s} style={{ fontSize:11, padding:"3px 10px", background:"#E0F2FE", color:"#0369A1", borderRadius:999, fontWeight:600 }}>
+                        {s}{viewCfg.courseMaxMarks?.[c]?.[s]?<span style={{ opacity:.6 }}> /{viewCfg.courseMaxMarks[c][s]}</span>:null}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Admit-card Preview */}
+      {previewCfg && <ExamPreviewModal cfg={previewCfg} onClose={() => setPreviewCfg(null)} />}
+
+      {/* ── Header ── */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
+        <div>
+          <h3 style={{ margin:0, fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:400, color:"#1C1A16" }}>🗂️ Exam Configurations</h3>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:"#9CA3AF" }}>{configs.length} formats available — {configs.find(c=>c.id===activeId)?.name || "none"} is active</p>
+        </div>
+
+        {/* Action bar: Create + Import */}
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+          {/* Hidden file input for import */}
+          <input ref={importRef} type="file" accept=".json" style={{ display:"none" }} onChange={handleImportFile} />
+          <button onClick={() => { setImportError(""); importRef.current?.click(); }}
+            style={{ ...css.btn, background:"#F0FDF4", color:"#166534", border:"1px solid #BBF7D0", fontSize:13, padding:"9px 16px" }}>
+            ⬆ Import JSON
+          </button>
+          <button onClick={() => { setEditingConfig(null); setShowBuilder(true); }}
+            style={{ ...css.btn, background:"#1a3c2e", color:"white", fontSize:13, padding:"10px 20px" }}>
+            ✏️ Create New Format
+          </button>
+        </div>
+      </div>
+
+      {/* Import error banner */}
+      {importError && (
+        <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", padding:"10px 16px", borderRadius:8, marginBottom:14, fontSize:13, display:"flex", justifyContent:"space-between" }}>
+          <span>⚠️ {importError}</span>
+          <button onClick={() => setImportError("")} style={{ background:"none", border:"none", color:"#DC2626", cursor:"pointer", fontWeight:700 }}>✕</button>
+        </div>
+      )}
+
+      {switchDone && (
+        <div style={{ background:"#F0FDF4", border:"1px solid #BBF7D0", color:"#166534", padding:"10px 16px", borderRadius:8, marginBottom:16, fontSize:13, fontWeight:600 }}>
+          ✅ Configuration switched! All tabs now use the new mark scheme.
+        </div>
+      )}
+
+      {/* ── Config cards ── */}
+      <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(340px,1fr))", gap:14, marginBottom:24 }}>
+        {configs.map(cfg => {
+          const isActive = activeId === cfg.id;
+          const isPreset = !!EXAM_CONFIG_PRESETS.find(p => p.id === cfg.id);
+          const courses = Object.keys(cfg.courseSubjects || {});
+          return (
+            <div key={cfg.id} style={{
+              background:"white", borderRadius:12,
+              border: isActive ? "2px solid #1a3c2e" : "1.5px solid #E5E7EB",
+              boxShadow: isActive ? "0 4px 16px rgba(26,60,46,0.12)" : "0 1px 4px rgba(0,0,0,0.06)",
+              overflow:"hidden", position:"relative",
+            }}>
+              {isActive && <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"linear-gradient(90deg,#1a3c2e,#2A5C45,#B8860B)" }} />}
+              <div style={{ padding:"16px 18px 10px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6, gap:8 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:700, fontSize:14, color:"#1e293b" }}>{cfg.name}</div>
+                    {cfg.description && <div style={{ fontSize:11, color:"#9CA3AF", marginTop:1 }}>{cfg.description}</div>}
+                  </div>
+                  <div style={{ display:"flex", gap:5, flexShrink:0 }}>
+                    {isActive
+                      ? <span style={{ fontSize:11, padding:"2px 9px", borderRadius:999, background:"#E1F5EE", color:"#0F6E56", fontWeight:700 }}>✓ Active</span>
+                      : <span style={{ fontSize:11, padding:"2px 9px", borderRadius:999, background:"#F1F5F9", color:"#64748b" }}>Inactive</span>
+                    }
+                    {isPreset && <span style={{ fontSize:10, padding:"2px 7px", borderRadius:999, background:"#EFF6FF", color:"#1D4ED8", fontWeight:700 }}>Built-in</span>}
+                  </div>
+                </div>
+
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:10 }}>
+                  {cfg.examDate && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#EEF2FF", color:"#4338CA", fontWeight:600 }}>📅 {cfg.examDate}</span>}
+                  {cfg.examMode && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#F5F3FF", color:"#7C3AED", fontWeight:600 }}>📝 {cfg.examMode}</span>}
+                  {cfg.sessions?.length > 0 && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#FFF7ED", color:"#C2410C", fontWeight:600 }}>⏰ {cfg.sessions.length} session{cfg.sessions.length>1?"s":""}</span>}
+                </div>
+
+                <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:10 }}>
+                  {courses.map(c => (
+                    <div key={c} style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#F8FAFC", border:"1px solid #E5E7EB", color:"#374151" }}>
+                      <span style={{ fontWeight:700, color:"#1a3c2e" }}>{c}</span>
+                      <span style={{ color:"#9CA3AF", marginLeft:3 }}>{getTotalMarks(cfg,c)}m</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Card actions ── */}
+              <div style={{ display:"flex", gap:6, padding:"10px 14px 14px", borderTop:"1px solid #F1F5F9", flexWrap:"wrap" }}>
+
+                {/* Preview (NEW) */}
+                <button onClick={() => setPreviewCfg(cfg)}
+                  style={{ ...css.btn, padding:"7px 10px", background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE", fontSize:12 }}>
+                  🔍 Preview
+                </button>
+
+                {/* Export (NEW) */}
+                <button onClick={() => handleExport(cfg)}
+                  style={{ ...css.btn, padding:"7px 10px", background:"#F0FDF4", color:"#166534", border:"1px solid #BBF7D0", fontSize:12 }}>
+                  ⬇ Export
+                </button>
+
+                {/* Duplicate (NEW) */}
+                <button onClick={() => handleDuplicate(cfg)}
+                  style={{ ...css.btn, padding:"7px 10px", background:"#FEFCE8", color:"#854D0E", border:"1px solid #FEF08A", fontSize:12 }}>
+                  ⎘ Clone
+                </button>
+
+                {/* Edit (NEW — only for custom configs) */}
+                {!isPreset && (
+                  <button onClick={() => { setEditingConfig(cfg); setShowBuilder(true); }}
+                    style={{ ...css.btn, padding:"7px 10px", background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE", fontSize:12 }}>
+                    ✏️ Edit
+                  </button>
+                )}
+
+                {/* Activate / active label */}
+                {isActive
+                  ? <div style={{ flex:1, textAlign:"center", fontSize:12, color:"#0F6E56", fontWeight:600, padding:"7px 0", minWidth:100 }}>✓ Active</div>
+                  : <button onClick={() => handleSwitch(cfg)} disabled={switching}
+                      style={{ ...css.btn, flex:1, minWidth:100, background:switching?"#93C5FD":"#1a3c2e", color:"white", fontSize:13 }}>
+                      {switching ? "⏳…" : "⚡ Activate"}
+                    </button>
+                }
+
+                {/* Delete — only custom */}
+                {!isPreset && (
+                  <button onClick={() => setDeleteId(cfg.id)}
+                    style={{ ...css.btn, padding:"7px 10px", background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA", fontSize:12 }}>🗑️</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Info */}
+      <div style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:10, padding:"14px 18px", fontSize:13, color:"#1D4ED8" }}>
+        <div style={{ fontWeight:700, marginBottom:6 }}>ℹ️ What you can do</div>
+        <div style={{ color:"#374151", lineHeight:1.8 }}>
+          <b>Create</b> — step-by-step wizard for new formats. &nbsp;
+          <b>Clone</b> — duplicate any config (great for the next monthly test). &nbsp;
+          <b>Edit</b> — modify your custom configs at any time. &nbsp;
+          <b>Preview</b> — admit-card-style mark sheet. &nbsp;
+          <b>Export</b> — download as <code>.json</code>. &nbsp;
+          <b>Import</b> — load a <code>.json</code> file exported from another device or shared by a colleague. &nbsp;
+          <b>Activate</b> — apply instantly across all tabs.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── ROOT EXPORT ──────────────────────────────────────────────────────────────
 export default function Exams({ currentUser, perms }) {
@@ -3750,6 +4905,7 @@ export default function Exams({ currentUser, perms }) {
   const [schedule, setSchedule]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [institute, setInstitute]   = useState(INSTITUTE_DEFAULT);
+  const [activeConfigId, setActiveConfigId] = useState("default");
  
   const refetchSchedule = useCallback(async () => {
     const { data } = await supabase.from('exam_schedule').select('*').order('exam_date');
@@ -3848,6 +5004,7 @@ export default function Exams({ currentUser, perms }) {
     studentsmgr:    <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
     coursesubjects: <CourseSubjectsManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} />,
     examtypes:      <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
+    examconfig: <ExamConfigManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks; }} />,
     settings:       <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
     progress:       <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     compare:        <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
