@@ -58,25 +58,33 @@ async function safeFetch(queryFn) {
 }
 
 const SECTIONS = [
-  {id:"overview", icon:"🏠", label:"Overview"},
-  {id:"finance", icon:"💰", label:"Finance"},
-  {id:"students", icon:"🎓", label:"Students"},
-  {id:"admissions", icon:"📋", label:"Admissions"},
-  {id:"staff", icon:"👨‍💼", label:"Staff"},
-  {id:"attendance", icon:"✅", label:"Attendance"},
-  {id:"academic", icon:"📚", label:"Academic"},
-  {id:"hostel", icon:"🛏️", label:"Hostel"},
-  {id:"houses", icon:"🏆", label:"Houses"},
-  {id:"operations", icon:"⚙️", label:"Operations"},
-  {id:"batches", icon:"🗂️", label:"Batches"},
-  {id:"tests", icon:"📝", label:"Tests"},
-  {id:"enquiry", icon:"🔍", label:"Enquiry"},
-  {id:"doubts", icon:"💬", label:"Doubts"},
-  {id:"parents", icon:"👨‍👩‍👧", label:"Parents"},
-  {id:"material", icon:"📦", label:"Material"},
-  {id:"results", icon:"🏅", label:"Results"},
-  {id:"teaching", icon:"🖊️", label:"Teaching"},
-  {id:"expenses", icon:"📉", label:"Expenses"},
+  {id:"overview",    icon:"🏠", label:"Overview"},
+  {id:"finance",     icon:"💰", label:"Finance"},
+  {id:"feesetup",    icon:"💳", label:"Fee Setup"},
+  {id:"feeledger",   icon:"📒", label:"Fee Ledger"},
+  {id:"students",    icon:"🎓", label:"Students"},
+  {id:"admissions",  icon:"📋", label:"Admissions"},
+  {id:"staff",       icon:"👨‍💼", label:"Staff"},
+  {id:"attendance",  icon:"✅", label:"Attendance"},
+  {id:"academic",    icon:"📚", label:"Academic"},
+  {id:"entrance",    icon:"🏆", label:"Entrance"},
+  {id:"hostel",      icon:"🛏️", label:"Hostel"},
+  {id:"houses",      icon:"🏆", label:"Houses"},
+  {id:"operations",  icon:"⚙️", label:"Operations"},
+  {id:"batches",     icon:"🗂️", label:"Batches"},
+  {id:"tests",       icon:"📝", label:"Tests"},
+  {id:"enquiry",     icon:"🔍", label:"Enquiry"},
+  {id:"doubts",      icon:"💬", label:"Doubts"},
+  {id:"parents",     icon:"👨‍👩‍👧", label:"Parents"},
+  {id:"material",    icon:"📦", label:"Material"},
+  {id:"lockers",     icon:"🗃️", label:"Study Lockers"},
+  {id:"syllabus",    icon:"📐", label:"Syllabus"},
+  {id:"results",     icon:"🏅", label:"Results"},
+  {id:"teaching",    icon:"🖊️", label:"Teaching"},
+  {id:"social",      icon:"📣", label:"Social"},
+  {id:"connect",     icon:"🔗", label:"Connect"},
+  {id:"qbank",       icon:"❓", label:"Question Bank"},
+  {id:"expenses",    icon:"📉", label:"Expenses"},
 ]
 
 function Counter({ value, duration=1200 }) {
@@ -229,6 +237,25 @@ async function loadAllData() {
     syllabusCoverageData,
     expensesData,
     teachingLogsRaw,
+
+    // new modules
+    feeStructuresData,
+    feeOverridesData,
+    admFlatFeesData,
+    admCourseFeesData,
+    entranceExamsData,
+    entranceCandidatesData,
+    entranceResultsData,
+    studyLockersData,
+    lockerMaterialsData,
+    socialCampaignsData,
+    socialLeadsData,
+    socialPostsData,
+    connectBroadcastsData,
+    connectGrievancesData,
+    connectRepliesData,
+    qbankData,
+    syllabusTopicsData,
   ] = await Promise.all([
     // ── Students (table name is "Students" with capital S) ──
     supabase.from("Students").select("*", {count:"exact", head:true}),
@@ -320,6 +347,25 @@ async function loadAllData() {
     safeFetch(()=>supabase.from("accounts").select("id,category,amount,entry_date,note,type").eq("type","Expense")),
     // ── Teaching logs for streak tracker ──
     safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,topic_taught,classwork,remarks")),
+
+    // ── NEW: Previously missing modules ────────────────────────────────────
+    safeFetch(()=>supabase.from("fee_structures").select("session_year,course,batch,hostel_type,flat_fee,course_fee,admission_fee")),
+    safeFetch(()=>supabase.from("student_fee_overrides").select("gcc_no,flat_fee_override,reason,created_at")),
+    safeFetch(()=>supabase.from("adm_flat_fees").select("adm_app_id,amount,status,month,year").order("created_at",{ascending:false}).limit(200)),
+    safeFetch(()=>supabase.from("adm_course_fees").select("adm_app_id,amount_paid,status,for_month,year").order("created_at",{ascending:false}).limit(200)),
+    safeFetch(()=>supabase.from("entrance_exams").select("id,exam_type,exam_date,status,total_seats,venue").order("exam_date",{ascending:false})),
+    safeFetch(()=>supabase.from("entrance_candidates").select("id,exam_id,status,roll_number").order("created_at",{ascending:false})),
+    safeFetch(()=>supabase.from("entrance_results").select("id,exam_id,total_marks,marks_obtained,result_status").order("created_at",{ascending:false})),
+    safeFetch(()=>supabase.from("study_lockers").select("id,teacher_name,course,locker_name,created_at")),
+    safeFetch(()=>supabase.from("study_materials").select("id,locker_id,material_type,subject,created_at").order("created_at",{ascending:false}).limit(200)),
+    safeFetch(()=>supabase.from("social_campaigns").select("id,campaign_name,platform,status,budget,start_date,end_date")),
+    safeFetch(()=>supabase.from("social_leads").select("id,status,source,follow_up_date,created_at").order("created_at",{ascending:false})),
+    safeFetch(()=>supabase.from("social_posts").select("id,platform,status,post_date,content_type").order("post_date",{ascending:false})),
+    safeFetch(()=>supabase.from("connect_broadcasts").select("id,title,channel,status,priority,created_at,recipient_count").order("created_at",{ascending:false}).limit(100)),
+    safeFetch(()=>supabase.from("connect_grievances").select("id,status,created_at").order("created_at",{ascending:false})),
+    safeFetch(()=>supabase.from("connect_replies").select("id,is_read,created_at").order("created_at",{ascending:false}).limit(100)),
+    safeFetch(()=>supabase.from("qbank_questions").select("id,course,subject,difficulty,question_type,created_at").order("created_at",{ascending:false})),
+    safeFetch(()=>supabase.from("syllabus_topics").select("id,subject,batch_name,status,teacher_name,course").order("created_at",{ascending:false})),
   ])
 
   // ════════════════════════════════════════════════════════
@@ -893,6 +939,146 @@ async function loadAllData() {
   if(openEnquiries>0) notifications.push({type:"info",msg:`${openEnquiries} applications pending review`,time:"This week"})
 
   // ════════════════════════════════════════════════════════
+  // FEE SETUP
+  // ════════════════════════════════════════════════════════
+  const totalFeeStructures = feeStructuresData.length
+  const activeSessionStructures = feeStructuresData.filter(f=>f.session_year===`${CURRENT_YEAR}-${CURRENT_YEAR+1}`)
+  const uniqueCourses_fs = [...new Set(feeStructuresData.map(f=>f.course).filter(Boolean))]
+  const feeStructureByCourse = uniqueCourses_fs.map((course,i)=>{
+    const rows = activeSessionStructures.filter(f=>f.course===course)
+    const avgFlat = rows.length>0 ? Math.round(rows.reduce((s,r)=>s+(Number(r.flat_fee)||0),0)/rows.length) : 0
+    const avgCourse = rows.length>0 ? Math.round(rows.reduce((s,r)=>s+(Number(r.course_fee)||0),0)/rows.length) : 0
+    return {course, avgFlat, avgCourse, count:rows.length, color:COURSE_COLORS[i%COURSE_COLORS.length]}
+  })
+  const totalOverrides = feeOverridesData.length
+  const hostelBreakdown_fs = ["Boarder","Day Boarder","Day Scholar"].map((ht,i)=>{
+    const rows = activeSessionStructures.filter(f=>f.hostel_type===ht)
+    const avgFlat = rows.length>0 ? Math.round(rows.reduce((s,r)=>s+(Number(r.flat_fee)||0),0)/rows.length) : 0
+    return {hostel:ht, avgFlat, count:rows.length, color:COURSE_COLORS[i%COURSE_COLORS.length]}
+  })
+  const flatFeeTotal_fs = admFlatFeesData.reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const flatFeePaid_fs = admFlatFeesData.filter(r=>r.status==="Paid").reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const courseFeeTotal_fs = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  const flatFeeMonthMap={}
+  admFlatFeesData.forEach(r=>{const k=`${r.year||"?"}-${String(r.month||"?").padStart(2,"0")}`;flatFeeMonthMap[k]=(flatFeeMonthMap[k]||0)+(Number(r.amount)||0)})
+  const flatFeeTrend = ACADEMIC_MONTHS.map(m=>({month:m.label,amount:flatFeeMonthMap[m.key]||0}))
+
+  // ════════════════════════════════════════════════════════
+  // ENTRANCE EXAMS
+  // ════════════════════════════════════════════════════════
+  const totalEntranceExams = entranceExamsData.length
+  const completedExams = entranceExamsData.filter(e=>e.status==="Completed").length
+  const scheduledExams = entranceExamsData.filter(e=>e.status==="Scheduled").length
+  const totalEntranceCandidates = entranceCandidatesData.length
+  const appearedCandidates = entranceCandidatesData.filter(c=>c.status==="Appeared").length
+  const passedCandidates = entranceResultsData.filter(r=>r.result_status==="Pass").length
+  const admittedFromEntrance = entranceResultsData.filter(r=>r.result_status==="Admitted").length
+  const entrancePassRate = appearedCandidates>0 ? pct(passedCandidates,appearedCandidates) : 0
+  const entranceTypeMap={}
+  entranceExamsData.forEach(e=>{const t=e.exam_type||"Other";if(!entranceTypeMap[t])entranceTypeMap[t]={type:t,total:0,completed:0};entranceTypeMap[t].total++;if(e.status==="Completed")entranceTypeMap[t].completed++})
+  const entranceByType = Object.values(entranceTypeMap).map((t,i)=>({...t,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const candidateStatusMap={}
+  entranceCandidatesData.forEach(c=>{const s=c.status||"Registered";candidateStatusMap[s]=(candidateStatusMap[s]||0)+1})
+  const candidatesByStatus = Object.entries(candidateStatusMap).map(([status,count],i)=>({status,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const recentEntranceExams = entranceExamsData.slice(0,6)
+
+  // ════════════════════════════════════════════════════════
+  // STUDY LOCKERS
+  // ════════════════════════════════════════════════════════
+  const totalLockers = studyLockersData.length
+  const lockerCourseMap={}
+  studyLockersData.forEach(l=>{const c=l.course||"Other";lockerCourseMap[c]=(lockerCourseMap[c]||0)+1})
+  const lockersByCourse = Object.entries(lockerCourseMap).map(([course,count],i)=>({course,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const totalLockerMaterials = lockerMaterialsData.length
+  const lockerMatTypeMap={}
+  lockerMaterialsData.forEach(m=>{const t=m.material_type||"notes";lockerMatTypeMap[t]=(lockerMatTypeMap[t]||0)+1})
+  const lockerMatByType = Object.entries(lockerMatTypeMap).sort((a,b)=>b[1]-a[1]).map(([type,count],i)=>({type,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const lockerTeacherMap={}
+  studyLockersData.forEach(l=>{const t=l.teacher_name||"Unknown";if(!lockerTeacherMap[t])lockerTeacherMap[t]=0;lockerTeacherMap[t]++})
+  const lockersByTeacher = Object.entries(lockerTeacherMap).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([name,count],i)=>({name,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+
+  // ════════════════════════════════════════════════════════
+  // SOCIAL / MARKETING
+  // ════════════════════════════════════════════════════════
+  const totalCampaigns = socialCampaignsData.length
+  const activeCampaigns = socialCampaignsData.filter(c=>c.status==="Active").length
+  const totalSocialLeads = socialLeadsData.length
+  const convertedLeads = socialLeadsData.filter(l=>l.status==="Converted").length
+  const newLeads = socialLeadsData.filter(l=>l.status==="New").length
+  const overdueFollowUps = socialLeadsData.filter(l=>l.follow_up_date&&l.follow_up_date<todayStr()&&!["Converted","Closed"].includes(l.status)).length
+  const socialConvRate = totalSocialLeads>0 ? pct(convertedLeads,totalSocialLeads) : 0
+  const platformMap={}
+  socialCampaignsData.forEach(c=>{const p=c.platform||"Other";platformMap[p]=(platformMap[p]||0)+1})
+  const campaignsByPlatform = Object.entries(platformMap).map(([platform,count],i)=>({platform,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const totalBudget = socialCampaignsData.reduce((s,c)=>s+(Number(c.budget)||0),0)
+  const totalPosts = socialPostsData.length
+  const postedCount = socialPostsData.filter(p=>p.status==="Posted").length
+  const plannedPosts_count = socialPostsData.filter(p=>p.status==="Planned").length
+  const leadSourceMap={}
+  socialLeadsData.forEach(l=>{const s=l.source||"Unknown";leadSourceMap[s]=(leadSourceMap[s]||0)+1})
+  const leadsBySource = Object.entries(leadSourceMap).sort((a,b)=>b[1]-a[1]).map(([source,count],i)=>({source,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const socialMonthMap={}
+  socialLeadsData.forEach(l=>{const mo=l.created_at?.slice(0,7);if(!mo)return;if(!socialMonthMap[mo])socialMonthMap[mo]={leads:0,converted:0};socialMonthMap[mo].leads++;if(l.status==="Converted")socialMonthMap[mo].converted++})
+  const socialTrend = ACADEMIC_MONTHS.map(m=>({month:m.label,leads:socialMonthMap[m.key]?.leads||0,converted:socialMonthMap[m.key]?.converted||0}))
+
+  // ════════════════════════════════════════════════════════
+  // CONNECT (Broadcast & Communication)
+  // ════════════════════════════════════════════════════════
+  const totalBroadcasts = connectBroadcastsData.length
+  const sentBroadcasts = connectBroadcastsData.filter(b=>b.status==="Sent").length
+  const totalRecipients = connectBroadcastsData.reduce((s,b)=>s+(Number(b.recipient_count)||0),0)
+  const totalGrievances = connectGrievancesData.length
+  const openGrievances = connectGrievancesData.filter(g=>g.status==="Open"||g.status==="Pending").length
+  const resolvedGrievances = connectGrievancesData.filter(g=>g.status==="Resolved").length
+  const unreadReplies = connectRepliesData.filter(r=>!r.is_read).length
+  const broadcastChannelMap={}
+  connectBroadcastsData.forEach(b=>{const c=b.channel||"SMS";broadcastChannelMap[c]=(broadcastChannelMap[c]||0)+1})
+  const broadcastsByChannel = Object.entries(broadcastChannelMap).map(([channel,count],i)=>({channel,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const recentBroadcasts = connectBroadcastsData.slice(0,6)
+
+  // ════════════════════════════════════════════════════════
+  // QUESTION BANK
+  // ════════════════════════════════════════════════════════
+  const totalQBankQuestions = qbankData.length
+  const qbankCourseMap={}
+  qbankData.forEach(q=>{const c=q.course||"Other";qbankCourseMap[c]=(qbankCourseMap[c]||0)+1})
+  const qbankByCourse = Object.entries(qbankCourseMap).sort((a,b)=>b[1]-a[1]).map(([course,count],i)=>({course,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const qbankSubjectMap={}
+  qbankData.forEach(q=>{const s=q.subject||"Other";qbankSubjectMap[s]=(qbankSubjectMap[s]||0)+1})
+  const qbankBySubject = Object.entries(qbankSubjectMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([subject,count],i)=>({subject,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const qbankDiffMap={}
+  qbankData.forEach(q=>{const d=q.difficulty||"Medium";qbankDiffMap[d]=(qbankDiffMap[d]||0)+1})
+  const qbankByDifficulty = [
+    {difficulty:"Easy",  count:qbankDiffMap["Easy"]||0,  color:T.emerald},
+    {difficulty:"Medium",count:qbankDiffMap["Medium"]||0,color:T.amber},
+    {difficulty:"Hard",  count:qbankDiffMap["Hard"]||0,  color:T.rose},
+  ]
+  const qbankTypeMap={}
+  qbankData.forEach(q=>{const t=q.question_type||"MCQ";qbankTypeMap[t]=(qbankTypeMap[t]||0)+1})
+  const qbankByType = Object.entries(qbankTypeMap).map(([type,count],i)=>({type,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const qbankMonthMap={}
+  qbankData.forEach(q=>{const mo=q.created_at?.slice(0,7);if(!mo)return;qbankMonthMap[mo]=(qbankMonthMap[mo]||0)+1})
+  const qbankTrend = ACADEMIC_MONTHS.map(m=>({month:m.label,count:qbankMonthMap[m.key]||0}))
+
+  // ════════════════════════════════════════════════════════
+  // SYLLABUS TOPICS (from SyllabusManager)
+  // ════════════════════════════════════════════════════════
+  const totalSyllabusTopics = syllabusTopicsData.length
+  const completedTopics_st = syllabusTopicsData.filter(t=>t.status==="completed"||t.status==="Completed").length
+  const pendingTopics_st = syllabusTopicsData.filter(t=>t.status==="pending"||t.status==="Pending").length
+  const inProgressTopics = syllabusTopicsData.filter(t=>t.status==="in_progress"||t.status==="In Progress").length
+  const syllabusOverallPct = totalSyllabusTopics>0 ? pct(completedTopics_st,totalSyllabusTopics) : 0
+  const syllabusCourseMap={}
+  syllabusTopicsData.forEach(t=>{const c=t.course||"Other";if(!syllabusCourseMap[c])syllabusCourseMap[c]={total:0,completed:0};syllabusCourseMap[c].total++;if(t.status==="completed"||t.status==="Completed")syllabusCourseMap[c].completed++})
+  const syllabusByCourse = Object.entries(syllabusCourseMap).map(([course,v],i)=>({course,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const syllabusTeacherMap={}
+  syllabusTopicsData.forEach(t=>{const name=t.teacher_name||"Unknown";if(!syllabusTeacherMap[name])syllabusTeacherMap[name]={total:0,completed:0};syllabusTeacherMap[name].total++;if(t.status==="completed"||t.status==="Completed")syllabusTeacherMap[name].completed++})
+  const syllabusByTeacher = Object.values(syllabusTeacherMap).map(t=>({...t,pct:t.total>0?pct(t.completed,t.total):0})).sort((a,b)=>b.pct-a.pct).slice(0,8)
+  const syllabusSubjectMap={}
+  syllabusTopicsData.forEach(t=>{const s=t.subject||"Other";if(!syllabusSubjectMap[s])syllabusSubjectMap[s]={total:0,completed:0};syllabusSubjectMap[s].total++;if(t.status==="completed"||t.status==="Completed")syllabusSubjectMap[s].completed++})
+  const syllabusBySubject = Object.entries(syllabusSubjectMap).sort((a,b)=>b[1].total-a[1].total).slice(0,8).map(([subject,v],i)=>({subject,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+
+  // ════════════════════════════════════════════════════════
   // RETURN — all dashboard data
   // ════════════════════════════════════════════════════════
   return {
@@ -974,6 +1160,39 @@ async function loadAllData() {
 
     // Expenses
     totalExpenses, netPL, expenseByCategory, plTrend, recentExpenses,
+
+    // Fee Setup
+    totalFeeStructures, activeSessionStructures, feeStructureByCourse,
+    totalOverrides, hostelBreakdown_fs, flatFeeTrend,
+    flatFeeTotal_fs, flatFeePaid_fs, courseFeeTotal_fs,
+
+    // Entrance
+    totalEntranceExams, completedExams, scheduledExams,
+    totalEntranceCandidates, appearedCandidates, passedCandidates, admittedFromEntrance,
+    entrancePassRate, entranceByType, candidatesByStatus, recentEntranceExams,
+
+    // Study Lockers
+    totalLockers, lockersByCourse, totalLockerMaterials,
+    lockerMatByType, lockersByTeacher,
+
+    // Social / Marketing
+    totalCampaigns, activeCampaigns, totalSocialLeads, convertedLeads,
+    newLeads, overdueFollowUps, socialConvRate, campaignsByPlatform,
+    totalBudget, totalPosts, postedCount, plannedPosts_count,
+    leadsBySource, socialTrend,
+
+    // Connect
+    totalBroadcasts, sentBroadcasts, totalRecipients,
+    totalGrievances, openGrievances, resolvedGrievances,
+    unreadReplies, broadcastsByChannel, recentBroadcasts,
+
+    // Question Bank
+    totalQBankQuestions, qbankByCourse, qbankBySubject,
+    qbankByDifficulty, qbankByType, qbankTrend,
+
+    // Syllabus Topics
+    totalSyllabusTopics, completedTopics_st, pendingTopics_st, inProgressTopics,
+    syllabusOverallPct, syllabusByCourse, syllabusByTeacher, syllabusBySubject,
   }
 }
 
@@ -1902,7 +2121,393 @@ export default function GNSIDashboard({ scrollToSection }) {
         </section>
         </div>
 
-        {/* ═══ EXPENSES ═══════════════════════════════════════════ */}
+        {/* ═══ FEE SETUP ══════════════════════════════════════════════════════ */}
+        <div ref={setSectionRef('feesetup')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="💳" title="Fee Setup & Structure"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="📋" label="Fee Structures" value={data.totalFeeStructures} color={T.sky} sub={`${data.activeSessionStructures.length} this session`}/>
+            <KPI icon="💰" label="Flat Fee Collected" value={data.flatFeePaid_fs} isMoney color={T.emerald}/>
+            <KPI icon="📄" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
+            <KPI icon="📚" label="Course Fee Collected" value={data.courseFeeTotal_fs} isMoney color={T.violet}/>
+            <KPI icon="✏️" label="Student Overrides" value={data.totalOverrides} color={T.amber} sub="Custom fee assignments"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <Panel title="Fee Structure by Course" sub={`AY ${CURRENT_YEAR}–${CURRENT_YEAR+1}`}>
+              {data.feeStructureByCourse.length===0?<EmptyState msg="No fee_structures data yet"/>:(
+                <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                  {data.feeStructureByCourse.map(c=>(
+                    <div key={c.course} style={{padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:700}}>{c.course}</span><Badge label={`${c.count} rows`} color={c.color}/></div>
+                      <div style={{display:"flex",gap:16,fontSize:11,color:T.slateL}}>
+                        <span>Flat Fee avg: <b style={{color:T.sky}}>{fmt(c.avgFlat)}</b></span>
+                        <span>Course Fee avg: <b style={{color:T.violet}}>{fmt(c.avgCourse)}</b></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+            <Panel title="Hostel Type Fee Breakdown">
+              {data.hostelBreakdown_fs.every(h=>h.avgFlat===0)?<EmptyState msg="No fee structures for current session"/>:(
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {data.hostelBreakdown_fs.map(h=>(
+                    <div key={h.hostel}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,color:T.slateL}}>{h.hostel}</span><span style={{fontSize:13,fontWeight:800,color:h.color}}>{fmt(h.avgFlat)} avg</span></div><ProgressBar value={h.avgFlat} max={data.hostelBreakdown_fs.reduce((mx,x)=>Math.max(mx,x.avgFlat),1)} color={h.color} height={7}/></div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          </div>
+          <Panel title="Monthly Flat Fee Collection Trend">
+            {data.flatFeeTrend.every(m=>m.amount===0)?<EmptyState msg="No adm_flat_fees data yet"/>:(
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={data.flatFeeTrend}>
+                  <defs><linearGradient id="ffGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.gold} stopOpacity={0.3}/><stop offset="95%" stopColor={T.gold} stopOpacity={0}/></linearGradient></defs>
+                  <XAxis dataKey="month" tick={{fill:T.slateL,fontSize:11}} axisLine={false} tickLine={false}/>
+                  <YAxis hide/><Tooltip content={<Tip/>}/>
+                  <Area dataKey="amount" name="Flat Fee" stroke={T.gold} strokeWidth={2.5} fill="url(#ffGrad)"/>
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </Panel>
+        </section>
+        </div>
+
+        {/* ═══ FEE LEDGER ═════════════════════════════════════════════════════ */}
+        <div ref={setSectionRef('feeledger')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="📒" title="Student Fee Ledger"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="💰" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
+            <KPI icon="✅" label="Flat Fee Paid" value={data.flatFeePaid_fs} isMoney color={T.emerald} progress={data.flatFeePaid_fs} progressMax={data.flatFeeTotal_fs}/>
+            <KPI icon="📚" label="Course Fee Paid" value={data.courseFeeTotal_fs} isMoney color={T.violet}/>
+            <KPI icon="✏️" label="Fee Overrides" value={data.totalOverrides} color={T.amber}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <Panel title="Flat Fee Collection Status">
+              <div style={{display:"flex",alignItems:"center",gap:16,padding:"8px 0"}}>
+                <Gauge value={data.flatFeeTotal_fs>0?pct(data.flatFeePaid_fs,data.flatFeeTotal_fs):0} color={T.emerald} size={90}/>
+                <div style={{flex:1}}>
+                  {[{l:"Paid",v:data.flatFeePaid_fs,c:T.emerald},{l:"Outstanding",v:data.flatFeeTotal_fs-data.flatFeePaid_fs,c:T.rose}].map(x=>(
+                    <div key={x.l} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.slateL}}>{x.l}</span><span style={{fontSize:12,fontWeight:700,color:x.c}}>{fmt(x.v)}</span></div><ProgressBar value={x.v} max={data.flatFeeTotal_fs||1} color={x.c}/></div>
+                  ))}
+                </div>
+              </div>
+            </Panel>
+            <Panel title="Fee Overrides / Custom Rates">
+              {data.totalOverrides===0?<div style={{color:T.emerald,fontSize:13,fontWeight:600,marginTop:8}}>✅ No student overrides set</div>:(
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{fontSize:12,color:T.slateL,marginBottom:8}}>Students with custom flat fee amounts:</div>
+                  <div style={{fontSize:22,fontWeight:900,color:T.amber,textAlign:"center",padding:"16px 0"}}>{data.totalOverrides}</div>
+                  <div style={{fontSize:11,color:T.slateL,textAlign:"center"}}>overrides active in fee_structures</div>
+                </div>
+              )}
+            </Panel>
+          </div>
+        </section>
+        </div>
+
+        {/* ═══ ENTRANCE EXAM ══════════════════════════════════════════════════ */}
+        <div ref={setSectionRef('entrance')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="🏆" title="Entrance Exam Management"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="📝" label="Total Exams" value={data.totalEntranceExams} color={T.sky}/>
+            <KPI icon="✅" label="Completed" value={data.completedExams} color={T.emerald}/>
+            <KPI icon="📅" label="Scheduled" value={data.scheduledExams} color={T.amber}/>
+            <KPI icon="👥" label="Candidates" value={data.totalEntranceCandidates} color={T.violet}/>
+            <KPI icon="🎯" label="Appeared" value={data.appearedCandidates} color={T.sky} progress={data.appearedCandidates} progressMax={data.totalEntranceCandidates}/>
+            <KPI icon="✅" label="Pass Rate" value={data.entrancePassRate} color={data.entrancePassRate>=60?T.emerald:T.rose} sub={`${data.passedCandidates} passed`}/>
+            <KPI icon="🎓" label="Admitted" value={data.admittedFromEntrance} color={T.gold}/>
+          </div>
+          {data.totalEntranceExams===0?<Panel><EmptyState msg="No data in entrance_exams table yet. Create entrance exams in the Entrance module."/></Panel>:(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+              <Panel title="Exams by Type">
+                {data.entranceByType.length===0?<EmptyState msg="No exam type data"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {data.entranceByType.map(t=>(
+                      <div key={t.type}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{t.type}</span><span style={{fontSize:13,fontWeight:800,color:t.color}}>{t.completed}/{t.total}</span></div><ProgressBar value={t.completed} max={t.total||1} color={t.color} height={6}/></div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+              <Panel title="Candidate Status Breakdown">
+                {data.candidatesByStatus.length===0?<EmptyState msg="No candidate data"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                    {data.candidatesByStatus.map(s=>(
+                      <div key={s.status}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{s.status}</span><span style={{fontSize:12,fontWeight:700,color:s.color}}>{s.count}</span></div><ProgressBar value={s.count} max={data.totalEntranceCandidates||1} color={s.color} height={5}/></div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </div>
+          )}
+          {data.recentEntranceExams.length>0&&(
+            <Panel title="Recent Entrance Exams">
+              <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px"}}>
+                <thead><tr>{["Exam Type","Date","Seats","Venue","Status"].map(h=><th key={h} style={{textAlign:"left",fontSize:11,color:T.slate,fontWeight:600,padding:"5px 12px",textTransform:"uppercase"}}>{h}</th>)}</tr></thead>
+                <tbody>{data.recentEntranceExams.map((e,i)=>(
+                  <tr key={i}>
+                    <td style={{fontSize:12,fontWeight:700,padding:"9px 12px",background:"rgba(255,255,255,.03)",borderRadius:"10px 0 0 10px"}}>{e.exam_type||"—"}</td>
+                    <td style={{fontSize:12,color:T.slateL,padding:"9px 12px",background:"rgba(255,255,255,.03)"}}>{e.exam_date?.slice(0,10)||"—"}</td>
+                    <td style={{fontSize:12,padding:"9px 12px",background:"rgba(255,255,255,.03)"}}>{e.total_seats||"—"}</td>
+                    <td style={{fontSize:12,color:T.slateL,padding:"9px 12px",background:"rgba(255,255,255,.03)"}}>{e.venue?.slice(0,20)||"—"}</td>
+                    <td style={{padding:"9px 12px",background:"rgba(255,255,255,.03)",borderRadius:"0 10px 10px 0"}}><Badge label={e.status||"—"} color={statusColor(e.status||"—")}/></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </Panel>
+          )}
+        </section>
+        </div>
+
+        {/* ═══ STUDY LOCKERS ══════════════════════════════════════════════════ */}
+        <div ref={setSectionRef('lockers')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="🗃️" title="Study Lockers"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="🗃️" label="Total Lockers" value={data.totalLockers} color={T.sky}/>
+            <KPI icon="📦" label="Total Materials" value={data.totalLockerMaterials} color={T.violet}/>
+            <KPI icon="📚" label="Courses" value={data.lockersByCourse.length} color={T.amber}/>
+          </div>
+          {data.totalLockers===0?<Panel><EmptyState msg="No study_lockers data yet. Teachers can create lockers in the Study Lockers module."/></Panel>:(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+              <Panel title="Lockers by Course">
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {data.lockersByCourse.map(c=>(
+                    <div key={c.course}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{c.course}</span><span style={{fontSize:12,fontWeight:700,color:c.color}}>{c.count}</span></div><ProgressBar value={c.count} max={data.totalLockers||1} color={c.color} height={5}/></div>
+                  ))}
+                </div>
+              </Panel>
+              <Panel title="Material Types">
+                {data.lockerMatByType.length===0?<EmptyState msg="No materials uploaded yet"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                    {data.lockerMatByType.map(m=>(
+                      <div key={m.type}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{m.type}</span><span style={{fontSize:12,fontWeight:700,color:m.color}}>{m.count}</span></div><ProgressBar value={m.count} max={data.totalLockerMaterials||1} color={m.color} height={5}/></div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+              <Panel title="Top Teachers by Lockers">
+                {data.lockersByTeacher.length===0?<EmptyState msg="No teacher data"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                    {data.lockersByTeacher.map((t,i)=>(
+                      <div key={t.name} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                        <span style={{fontSize:13,fontWeight:900,color:i===0?T.gold:T.slateL}}>#{i+1}</span>
+                        <span style={{flex:1,fontSize:12,fontWeight:700}}>{t.name}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:t.color}}>{t.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </div>
+          )}
+        </section>
+        </div>
+
+        {/* ═══ SYLLABUS MANAGER ═══════════════════════════════════════════════ */}
+        <div ref={setSectionRef('syllabus')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="📐" title="Syllabus Manager"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="📐" label="Total Topics" value={data.totalSyllabusTopics} color={T.sky}/>
+            <KPI icon="✅" label="Completed" value={data.completedTopics_st} color={T.emerald} progress={data.completedTopics_st} progressMax={data.totalSyllabusTopics}/>
+            <KPI icon="🔄" label="In Progress" value={data.inProgressTopics} color={T.amber}/>
+            <KPI icon="⏳" label="Pending" value={data.pendingTopics_st} color={T.rose}/>
+            <KPI icon="📊" label="Overall Completion" value={data.syllabusOverallPct} color={data.syllabusOverallPct>=80?T.emerald:data.syllabusOverallPct>=60?T.amber:T.rose} sub={`${data.syllabusOverallPct}%`}/>
+          </div>
+          {data.totalSyllabusTopics===0?<Panel><EmptyState msg="No data in syllabus_topics table yet. Add topics in the Syllabus Manager module."/></Panel>:(
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                <Panel title="Completion by Course">
+                  <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                    {data.syllabusByCourse.map(c=>(
+                      <div key={c.course}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{c.course}</span><span style={{fontSize:13,fontWeight:800,color:c.pct>=80?T.emerald:c.pct>=60?T.amber:T.rose}}>{c.pct}%</span></div><ProgressBar value={c.pct} max={100} color={c.pct>=80?T.emerald:c.pct>=60?T.amber:T.rose} height={7}/><div style={{fontSize:10,color:T.slateL,marginTop:2}}>{c.completed}/{c.total} topics</div></div>
+                    ))}
+                  </div>
+                </Panel>
+                <Panel title="Completion by Subject">
+                  <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                    {data.syllabusBySubject.map(s=>(
+                      <div key={s.subject}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.slateL}}>{s.subject.slice(0,16)}</span><span style={{fontSize:12,fontWeight:700,color:s.color}}>{s.pct}%</span></div><ProgressBar value={s.pct} max={100} color={s.color} height={4}/></div>
+                    ))}
+                  </div>
+                </Panel>
+              </div>
+              <Panel title="Teacher-wise Syllabus Progress">
+                <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px"}}>
+                  <thead><tr>{["Teacher","Total","Done","Progress","Status"].map(h=><th key={h} style={{textAlign:"left",fontSize:11,color:T.slate,fontWeight:600,padding:"5px 12px",textTransform:"uppercase"}}>{h}</th>)}</tr></thead>
+                  <tbody>{data.syllabusByTeacher.map((t,i)=>(
+                    <tr key={i}>
+                      <td style={{fontSize:12,fontWeight:700,padding:"9px 12px",background:"rgba(255,255,255,.03)",borderRadius:"10px 0 0 10px"}}>{t.name||"Unknown"}</td>
+                      <td style={{fontSize:12,color:T.slateL,padding:"9px 12px",background:"rgba(255,255,255,.03)"}}>{t.total}</td>
+                      <td style={{fontSize:12,fontWeight:700,color:T.emerald,padding:"9px 12px",background:"rgba(255,255,255,.03)"}}>{t.completed}</td>
+                      <td style={{padding:"9px 12px",background:"rgba(255,255,255,.03)",minWidth:130}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1}}><ProgressBar value={t.pct} max={100} color={t.pct>=80?T.emerald:t.pct>=60?T.amber:T.rose} height={5}/></div><span style={{fontSize:11,fontWeight:800,color:t.pct>=80?T.emerald:t.pct>=60?T.amber:T.rose}}>{t.pct}%</span></div></td>
+                      <td style={{padding:"9px 12px",background:"rgba(255,255,255,.03)",borderRadius:"0 10px 10px 0"}}><Badge label={t.pct>=80?"On Track":t.pct>=60?"Behind":"At Risk"} color={t.pct>=80?T.emerald:t.pct>=60?T.amber:T.rose}/></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </Panel>
+            </>
+          )}
+        </section>
+        </div>
+
+        {/* ═══ QUESTION BANK ══════════════════════════════════════════════════ */}
+        <div ref={setSectionRef('qbank')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="❓" title="Question Bank"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="❓" label="Total Questions" value={data.totalQBankQuestions} color={T.sky}/>
+            <KPI icon="✅" label="Easy" value={data.qbankByDifficulty[0]?.count||0} color={T.emerald}/>
+            <KPI icon="⚡" label="Medium" value={data.qbankByDifficulty[1]?.count||0} color={T.amber}/>
+            <KPI icon="🔥" label="Hard" value={data.qbankByDifficulty[2]?.count||0} color={T.rose}/>
+          </div>
+          {data.totalQBankQuestions===0?<Panel><EmptyState msg="No data in qbank_questions yet. Add questions in the Question Bank module."/></Panel>:(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:16}}>
+              <Panel title="By Course">
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {data.qbankByCourse.map(c=>(
+                    <div key={c.course}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{c.course}</span><span style={{fontSize:12,fontWeight:700,color:c.color}}>{c.count}</span></div><ProgressBar value={c.count} max={data.totalQBankQuestions||1} color={c.color} height={5}/></div>
+                  ))}
+                </div>
+              </Panel>
+              <Panel title="By Difficulty">
+                <div style={{display:"flex",flexDirection:"column",gap:10,paddingTop:4}}>
+                  {data.qbankByDifficulty.map(d=>(
+                    <div key={d.difficulty}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:700}}>{d.difficulty}</span><span style={{fontSize:14,fontWeight:900,color:d.color}}>{d.count}</span></div><ProgressBar value={d.count} max={data.totalQBankQuestions||1} color={d.color} height={8}/></div>
+                  ))}
+                </div>
+              </Panel>
+              <Panel title="By Question Type">
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {data.qbankByType.map(t=>(
+                    <div key={t.type}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{t.type}</span><span style={{fontSize:12,fontWeight:700,color:t.color}}>{t.count}</span></div><ProgressBar value={t.count} max={data.totalQBankQuestions||1} color={t.color} height={5}/></div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+          )}
+          {data.totalQBankQuestions>0&&(
+            <Panel title="Questions Added Monthly">
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={data.qbankTrend}>
+                  <XAxis dataKey="month" tick={{fill:T.slateL,fontSize:11}} axisLine={false} tickLine={false}/>
+                  <YAxis hide/><Tooltip content={<Tip/>}/>
+                  <Bar dataKey="count" name="Questions" fill={T.violet} radius={[4,4,0,0]} barSize={20}/>
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+          )}
+          {data.totalQBankQuestions>0&&data.qbankBySubject.length>0&&(
+            <Panel title="Top Subjects by Question Count" style={{marginTop:14}}>
+              <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                {data.qbankBySubject.map(s=>(
+                  <div key={s.subject}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{s.subject}</span><span style={{fontSize:12,fontWeight:700,color:s.color}}>{s.count}</span></div><ProgressBar value={s.count} max={data.qbankBySubject[0]?.count||1} color={s.color} height={4}/></div>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </section>
+        </div>
+
+        {/* ═══ SOCIAL / MARKETING ═════════════════════════════════════════════ */}
+        <div ref={setSectionRef('social')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="📣" title="Social & Marketing"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="📣" label="Campaigns" value={data.totalCampaigns} color={T.sky} sub={`${data.activeCampaigns} active`}/>
+            <KPI icon="👥" label="Total Leads" value={data.totalSocialLeads} color={T.violet}/>
+            <KPI icon="🆕" label="New Leads" value={data.newLeads} color={T.amber}/>
+            <KPI icon="✅" label="Converted" value={data.convertedLeads} color={T.emerald} progress={data.convertedLeads} progressMax={data.totalSocialLeads}/>
+            <KPI icon="📊" label="Conv. Rate" value={data.socialConvRate} color={data.socialConvRate>=20?T.emerald:T.rose} sub={`${data.socialConvRate}%`}/>
+            <KPI icon="⚠️" label="Overdue Follow-ups" value={data.overdueFollowUps} color={T.rose}/>
+            <KPI icon="📝" label="Posts" value={data.totalPosts} color={T.sky} sub={`${data.postedCount} posted · ${data.plannedPosts_count} planned`}/>
+            <KPI icon="💰" label="Campaign Budget" value={data.totalBudget} isMoney color={T.gold}/>
+          </div>
+          {data.totalSocialLeads===0&&data.totalCampaigns===0?<Panel><EmptyState msg="No social data yet. Add campaigns and leads in the Social module."/></Panel>:(
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:16}}>
+              <Panel title="Monthly Leads vs Conversions">
+                <ResponsiveContainer width="100%" height={200}>
+                  <ComposedChart data={data.socialTrend}>
+                    <XAxis dataKey="month" tick={{fill:T.slateL,fontSize:11}} axisLine={false} tickLine={false}/>
+                    <YAxis hide/><Tooltip content={<Tip/>}/>
+                    <Bar dataKey="leads" name="Leads" fill={T.sky} radius={[4,4,0,0]} barSize={18}/>
+                    <Bar dataKey="converted" name="Converted" fill={T.emerald} radius={[4,4,0,0]} barSize={18}/>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </Panel>
+              <Panel title="Campaigns by Platform">
+                {data.campaignsByPlatform.length===0?<EmptyState msg="No campaigns"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {data.campaignsByPlatform.map(p=>(
+                      <div key={p.platform}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{p.platform}</span><span style={{fontSize:12,fontWeight:700,color:p.color}}>{p.count}</span></div><ProgressBar value={p.count} max={data.totalCampaigns||1} color={p.color} height={5}/></div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </div>
+          )}
+          {data.leadsBySource.length>0&&(
+            <Panel title="Leads by Source">
+              <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                {data.leadsBySource.map(s=>(
+                  <div key={s.source}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{s.source}</span><span style={{fontSize:12,fontWeight:700,color:s.color}}>{s.count}</span></div><ProgressBar value={s.count} max={data.leadsBySource[0]?.count||1} color={s.color} height={5}/></div>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </section>
+        </div>
+
+        {/* ═══ CONNECT ════════════════════════════════════════════════════════ */}
+        <div ref={setSectionRef('connect')}>
+        <section style={{marginBottom:40}}>
+          <SectionHeader icon="🔗" title="Connect — Broadcast & Communication"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:13,marginBottom:20}}>
+            <KPI icon="📡" label="Broadcasts" value={data.totalBroadcasts} color={T.sky} sub={`${data.sentBroadcasts} sent`}/>
+            <KPI icon="👥" label="Total Recipients" value={data.totalRecipients} color={T.violet}/>
+            <KPI icon="📩" label="Unread Replies" value={data.unreadReplies} color={data.unreadReplies>0?T.rose:T.emerald}/>
+            <KPI icon="📋" label="Grievances" value={data.totalGrievances} color={T.amber} sub={`${data.openGrievances} open · ${data.resolvedGrievances} resolved`}/>
+          </div>
+          {data.totalBroadcasts===0?<Panel><EmptyState msg="No data in connect_broadcasts yet. Send communications from the Connect module."/></Panel>:(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+              <Panel title="Recent Broadcasts">
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {data.recentBroadcasts.map((b,i)=>(
+                    <div key={i} style={{padding:"9px 12px",borderRadius:10,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:12,fontWeight:700}}>{b.title||"—"}</span><Badge label={b.status||"—"} color={statusColor(b.status||"Pending")}/></div>
+                      <div style={{fontSize:10,color:T.slateL}}>{b.channel||"—"} · {b.priority||"Normal"} · {b.created_at?.slice(0,10)||"—"}{b.recipient_count?` · ${b.recipient_count} recipients`:""}</div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+              <Panel title="Broadcasts by Channel">
+                {data.broadcastsByChannel.length===0?<EmptyState msg="No channel data"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {data.broadcastsByChannel.map(c=>(
+                      <div key={c.channel}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.slateL}}>{c.channel}</span><span style={{fontSize:12,fontWeight:700,color:c.color}}>{c.count}</span></div><ProgressBar value={c.count} max={data.totalBroadcasts||1} color={c.color} height={5}/></div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </div>
+          )}
+          {data.totalGrievances>0&&(
+            <Panel title="Grievance Status" accent={data.openGrievances>0?T.amber:T.emerald}>
+              <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+                {[{l:"Total",v:data.totalGrievances,c:T.sky},{l:"Open",v:data.openGrievances,c:T.rose},{l:"Resolved",v:data.resolvedGrievances,c:T.emerald}].map(x=>(
+                  <div key={x.l} style={{flex:1,minWidth:120,textAlign:"center",padding:"14px",background:`${x.c}08`,borderRadius:12,border:`1px solid ${x.c}18`}}>
+                    <div style={{fontSize:24,fontWeight:900,color:x.c}}>{x.v}</div>
+                    <div style={{fontSize:11,color:T.slateL,marginTop:4}}>{x.l}</div>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </section>
+        </div>
         <div ref={setSectionRef('expenses')}>
         <section style={{marginBottom:40}}>
           <SectionHeader icon="📉" title="Expenses & P&L"/>
