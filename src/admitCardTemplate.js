@@ -4,7 +4,7 @@
 
 export const ADMIT_CARD_CSS = `
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  @page{margin:0.7cm;size:A4;}
+  @page{margin:0.3cm;size:A4;}
 
   body{
     font-family:'EB Garamond','Palatino Linotype',Georgia,serif;
@@ -78,7 +78,7 @@ export const ADMIT_CARD_CSS = `
   .warning-strip{background:#fefae8;border-top:1px solid #e8d870;border-bottom:1px solid #e8d870;padding:9px 24px;font-size:12.5px;font-weight:600;color:#7a5c00;display:flex;align-items:center;gap:8px;}
   .warning-strip::before{content:'⚠';font-size:14px;}
 
-  .body{padding:18px 24px 14px;}
+  .body{padding:6px 14px 4px;}
 
   .section-label{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#1a2744;font-weight:700;font-family:'DM Sans',sans-serif;border-bottom:2px solid #1a2744;padding-bottom:4px;margin-bottom:12px;}
 
@@ -101,9 +101,9 @@ export const ADMIT_CARD_CSS = `
   .instructions ol{padding-left:18px;}
   .instructions li{font-size:11.5px;color:#2d3748;margin-bottom:4px;line-height:1.5;}
 
-  .sig-row{display:flex;justify-content:space-between;align-items:flex-end;padding:14px 24px 16px;border-top:1px solid #dde3ed;gap:12px;}
+  .sig-row{display:flex;justify-content:space-between;align-items:flex-end;padding:6px 16px 8px;border-top:1px solid #dde3ed;gap:12px;}
   .sig-block{text-align:center;flex:1;}
-  .sig-space{height:38px;}
+  .sig-space{height:24px;}
   .sig-line{border-top:1.5px solid #1a2030;padding-top:5px;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#4a5568;font-weight:700;font-family:'DM Sans',sans-serif;margin:0 8px;}
   .seal-block{flex:0 0 80px;text-align:center;}
   .seal{width:70px;height:70px;border-radius:50%;border:2px dashed #c9a84c;background:white;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;margin:0 auto;}
