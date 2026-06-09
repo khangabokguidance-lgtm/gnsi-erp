@@ -14,10 +14,8 @@ const CHART_COLORS       = ['#1e3a5f','#16a34a','#dc2626','#f59e0b','#7c3aed','#
 const STATUS_OPTIONS     = ['Confirmed', 'Pending']
 const PAGE_SIZES         = [25, 50, 100]
 const RECEIPT_BUCKET     = 'account-receipts'
-const ROUND_NUMBER_THRESHOLD = 1000
-const SPIKE_MULTIPLIER       = 2
-const WORK_HOUR_START        = 9
-const WORK_HOUR_END          = 18
+
+// ── PHASE 1: removed module-level today constant (now reactive state inside component) ──
 
 const emptyRow = {
   entry_date   : new Date().toLocaleDateString('en-CA'),
@@ -41,7 +39,8 @@ const DEFAULT_BUDGETS = {
 // ── helpers ────────────────────────────────────────────────────────────────
 const fmt      = (n) => `₹${Number(n).toLocaleString('en-IN')}`
 const monthKey = (d) => d ? d.slice(0,7) : ''
-const today    = new Date().toLocaleDateString('en-CA')
+// PHASE 1 FIX: getToday() helper used for reactive today state
+const getToday = () => new Date().toLocaleDateString('en-CA')
 
 // ── responsive hook ────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -57,14 +56,15 @@ function useWindowWidth() {
 function getQuickRange(key) {
   const now=new Date(),yyyy=now.getFullYear(),mm=String(now.getMonth()+1).padStart(2,'0')
   const pad=(n)=>String(n).padStart(2,'0')
-  if (key==='today')    return {from:today,to:today}
-  if (key==='week'){const d=new Date(now);d.setDate(now.getDate()-now.getDay());return{from:d.toLocaleDateString('en-CA'),to:today}}
-  if (key==='month')    return {from:`${yyyy}-${mm}-01`,to:today}
+  const todayStr=getToday()
+  if (key==='today')    return {from:todayStr,to:todayStr}
+  if (key==='week'){const d=new Date(now);d.setDate(now.getDate()-now.getDay());return{from:d.toLocaleDateString('en-CA'),to:todayStr}}
+  if (key==='month')    return {from:`${yyyy}-${mm}-01`,to:todayStr}
   if (key==='lastmonth'){
     const d=new Date(yyyy,now.getMonth()-1,1),last=new Date(yyyy,now.getMonth(),0)
     return{from:`${d.getFullYear()}-${pad(d.getMonth()+1)}-01`,to:`${last.getFullYear()}-${pad(last.getMonth()+1)}-${pad(last.getDate())}`}
   }
-  if (key==='year')     return {from:`${yyyy}-01-01`,to:today}
+  if (key==='year')     return {from:`${yyyy}-01-01`,to:todayStr}
   return {from:'',to:''}
 }
 
@@ -80,24 +80,9 @@ async function writeAuditLog({action,role,targetId,oldValues,newValues}){
   }catch(e){console.warn('Audit log failed',e)}
 }
 
-// ── fraud detection ────────────────────────────────────────────────────────
-function detectFraudFlags(entry,allEntries){
-  const flags=[],amount=Number(entry.amount)
-  if(amount>=ROUND_NUMBER_THRESHOLD&&amount%ROUND_NUMBER_THRESHOLD===0)
-    flags.push({type:'round_number',label:'Round amount',severity:'low'})
-  const entryHour=entry.created_at?new Date(entry.created_at).getHours():null
-  if(entryHour!==null&&(entryHour<WORK_HOUR_START||entryHour>=WORK_HOUR_END))
-    flags.push({type:'after_hours',label:'After-hours',severity:'medium'})
-  if(entry.entry_date){const day=new Date(entry.entry_date).getDay();if(day===0||day===6)flags.push({type:'weekend',label:'Weekend entry',severity:'low'})}
-  const dupes=allEntries.filter(e=>e.id!==entry.id&&e.category===entry.category&&Number(e.amount)===amount&&e.entry_date===entry.entry_date)
-  if(dupes.length>0)flags.push({type:'duplicate',label:`Duplicate (${dupes.length})`,severity:'high'})
-  const sameCat=allEntries.filter(e=>e.id!==entry.id&&e.category===entry.category&&e.type===entry.type)
-  if(sameCat.length>=3){const avg=sameCat.reduce((s,e)=>s+Number(e.amount),0)/sameCat.length;if(amount>avg*SPIKE_MULTIPLIER)flags.push({type:'spike',label:`Spike (${Math.round(amount/avg)}×avg)`,severity:'high'})}
-  return flags
-}
-
-function detectFrequencyAnomalies(entries){
-  const thisMonth=today.slice(0,7),map={}
+// ── PHASE 3: client-side fraud helpers kept for frequency anomaly display only ──
+function detectFrequencyAnomalies(entries, todayStr){
+  const thisMonth=todayStr.slice(0,7),map={}
   entries.filter(e=>monthKey(e.entry_date)===thisMonth).forEach(e=>{const k=`${e.category}-${e.amount}`;if(!map[k])map[k]=[];map[k].push(e)})
   return Object.entries(map).filter(([,arr])=>arr.length>2).map(([key,arr])=>({key,count:arr.length,entries:arr}))
 }
@@ -140,6 +125,13 @@ function Accounts({role,userId}){
   const isMobile     = windowWidth < 640
   const isTablet     = windowWidth >= 640 && windowWidth < 1024
 
+  // PHASE 1 FIX: reactive today — updates at midnight, never stale
+  const [today, setToday] = useState(getToday)
+  useEffect(()=>{
+    const t=setInterval(()=>setToday(getToday()),60_000)
+    return()=>clearInterval(t)
+  },[])
+
   // data
   const [entries,   setEntries]   = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -153,7 +145,6 @@ function Accounts({role,userId}){
 
   // tabs
   const [activeTab, setActiveTab] = useState('transactions')
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // form
   const [showForm,  setShowForm]  = useState(false)
@@ -191,7 +182,7 @@ function Accounts({role,userId}){
 
   // P&L modal
   const [showPL,  setShowPL]  = useState(false)
-  const [plMonth, setPlMonth] = useState(today.slice(0,7))
+  const [plMonth, setPlMonth] = useState(()=>getToday().slice(0,7))
 
   // daily expenditure filters
   const [dailySearch,      setDailySearch]      = useState('')
@@ -204,9 +195,17 @@ function Accounts({role,userId}){
   const [deletedRows, setDeletedRows] = useState([])
   const [auditLog,    setAuditLog]    = useState([])
   const [exportLog,   setExportLog]   = useState([])
+
+  // PHASE 3: fraud flags now fetched from DB (fraud_alerts table)
   const [fraudFlags,  setFraudFlags]  = useState({})
 
+  // PHASE 4: balance sheet + trial balance
+  const [trialBalance,      setTrialBalance]      = useState([])
+  const [balanceSheet,      setBalanceSheet]      = useState([])
+  const [loadingFinancials, setLoadingFinancials] = useState(false)
+
   // ── fetch ─────────────────────────────────────────────────────────────
+  // PHASE 3 FIX: fraud flags fetched from DB, not computed client-side
   const fetchEntries = useCallback(async()=>{
     setLoading(true)
     const {data,error}=await supabase.from('accounts').select('*')
@@ -214,13 +213,20 @@ function Accounts({role,userId}){
       .order('entry_date',{ascending:false})
       .order('created_at',{ascending:false})
     if(error)console.error(error)
-    else{
-      setEntries(data||[])
-      if(isAdmin){
-        const flags={}
-        ;(data||[]).forEach(e=>{const f=detectFraudFlags(e,data||[]);if(f.length)flags[e.id]=f})
-        setFraudFlags(flags)
-      }
+    else setEntries(data||[])
+
+    if(isAdmin){
+      const {data:alerts}=await supabase
+        .from('fraud_alerts')
+        .select('*')
+        .eq('resolved',false)
+        .order('detected_at',{ascending:false})
+      const flags={}
+      ;(alerts||[]).forEach(a=>{
+        if(!flags[a.entry_id])flags[a.entry_id]=[]
+        flags[a.entry_id].push({type:a.flag_type,label:a.label,severity:a.severity,alertId:a.id})
+      })
+      setFraudFlags(flags)
     }
     setLoading(false)
   },[isAdmin])
@@ -249,12 +255,26 @@ function Accounts({role,userId}){
     setExportLog(data||[])
   },[isAdmin])
 
+  // PHASE 4: fetch trial balance + balance sheet from DB views
+  const fetchFinancials = useCallback(async()=>{
+    if(!isAdmin)return
+    setLoadingFinancials(true)
+    const [{data:tb},{data:bs}]=await Promise.all([
+      supabase.from('trial_balance').select('*'),
+      supabase.from('balance_sheet').select('*'),
+    ])
+    setTrialBalance(tb||[])
+    setBalanceSheet(bs||[])
+    setLoadingFinancials(false)
+  },[isAdmin])
+
   useEffect(()=>{
     fetchEntries();fetchBudgets()
-    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog()}
-  },[fetchEntries,fetchBudgets,fetchDeletedRows,fetchAuditLog,fetchExportLog,isAdmin])
+    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials()}
+  },[fetchEntries,fetchBudgets,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,isAdmin])
 
   // ── recurring ─────────────────────────────────────────────────────────
+  // PHASE 2 FIX: DB-level unique constraint handles dupes; error code 23505 caught gracefully
   useEffect(()=>{
     const lastRun=localStorage.getItem('acc_recurring_run')
     if(lastRun===today)return
@@ -265,10 +285,26 @@ function Accounts({role,userId}){
     const toInsert=recurring
       .filter(e=>monthKey(e.entry_date)!==thisMonth)
       .filter(e=>!existing.includes(`${e.category}-${thisMonth}-${e.amount}`))
-      .map(({id,created_at,entry_date,...rest})=>({...rest,entry_date:`${thisMonth}-${entry_date.slice(8)}`}))
-    if(toInsert.length)supabase.from('accounts').insert(toInsert).then(()=>{fetchEntries();localStorage.setItem('acc_recurring_run',today)})
+      .map(({id,created_at,entry_date,...rest})=>({
+        ...rest,
+        entry_date:`${thisMonth}-${entry_date.slice(8)}`,
+        added_by:'auto-recurring',
+      }))
+    if(toInsert.length){
+      supabase.from('accounts').insert(toInsert).then(({error})=>{
+        if(!error){
+          fetchEntries()
+          localStorage.setItem('acc_recurring_run',today)
+        }else if(error.code==='23505'){
+          // unique constraint — already inserted this month
+          localStorage.setItem('acc_recurring_run',today)
+        }else{
+          console.error('Recurring insert failed:',error.message)
+        }
+      })
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[entries.length])
+  },[entries.length, today])
 
   // ── quick date ────────────────────────────────────────────────────────
   const applyQuick=(key)=>{const{from,to}=getQuickRange(key);setDateFrom(from);setDateTo(to);setActiveQuick(key);setPage(1)}
@@ -277,7 +313,7 @@ function Accounts({role,userId}){
   // ── CRUD ──────────────────────────────────────────────────────────────
   const openAdd=()=>{
     setEditEntry(null)
-    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense'}])
+    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today}])
     setReceiptFile(null);setShowForm(true)
   }
 
@@ -388,10 +424,12 @@ function Accounts({role,userId}){
   const toggleSelectAll=()=>selected.size===pagedEntries.length?setSelected(new Set()):setSelected(new Set(pagedEntries.map(e=>e.id)))
 
   const updateRow=(i,key,val)=>setRows(prev=>prev.map((r,idx)=>idx===i?{...r,[key]:val}:r))
-  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense'}])
+  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today}])
   const removeRow=(i)=>setRows(prev=>prev.filter((_,idx)=>idx!==i))
 
+  // PHASE 1 FIX: budget save confirmation to prevent silent overwrite
   const saveBudgets=async()=>{
+    if(!window.confirm('Save budget changes? This will overwrite any edits made by other admins.'))return
     const oldBudgets={...budgets};setBudgets(budgetDraft)
     localStorage.setItem('acc_budgets',JSON.stringify(budgetDraft))
     const editedAt=new Date().toISOString()
@@ -408,7 +446,12 @@ function Accounts({role,userId}){
     const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob)
     const a=Object.assign(document.createElement('a'),{href:url,download:'accounts.csv'})
     a.click();URL.revokeObjectURL(url)
-    try{await supabase.from('export_log').insert({exported_by:role,filter_type:typeFilter,filter_dates:`${dateFrom}–${dateTo}`,row_count:filteredEntries.length,created_at:new Date().toISOString()});if(isAdmin)fetchExportLog()}catch{}
+    // PHASE 1 FIX: export log with proper error handling
+    try{
+      const{error:logErr}=await supabase.from('export_log').insert({exported_by:role,filter_type:typeFilter,filter_dates:`${dateFrom}–${dateTo}`,row_count:filteredEntries.length,created_at:new Date().toISOString()})
+      if(logErr)console.warn('Export log failed:',logErr.message)
+      if(isAdmin)fetchExportLog()
+    }catch(e){console.warn('Export log error:',e)}
   }
 
   const exportDailyCSV=()=>{
@@ -475,6 +518,7 @@ function Accounts({role,userId}){
     w.document.close();w.print()
   }
 
+  // PHASE 1 FIX: AI insights routed through /api/ai-insights serverless function
   const getInsights=async()=>{
     setLoadingAI(true);setInsights('')
     const summary={totalIncome,totalExpense,netBalance:totalIncome-totalExpense,pendingCount,
@@ -483,11 +527,8 @@ function Accounts({role,userId}){
       budgetAlerts:Object.entries(budgets).filter(([cat,limit])=>limit>0&&(monthlyExpenses[cat]||0)>limit).map(([cat])=>cat),
     }
     try{
-      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,
-          system:'You are a concise financial advisor. Give 4-5 bullet-point insights. Use ₹. Be specific and actionable. No preamble.',
-          messages:[{role:'user',content:`Analyze this school accounts data: ${JSON.stringify(summary)}`}],
-        })})
+      const res=await fetch('/api/ai-insights',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({summary})})
       const data=await res.json()
       setInsights(data.content?.[0]?.text||'No insights available.')
     }catch{setInsights('Failed to load AI insights.')}
@@ -525,12 +566,13 @@ function Accounts({role,userId}){
     }).sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
   },[entries,dailySearch,dailyAcctFilter,dailyModeFilter,voucherHead,dateFrom,dateTo])
 
+  // PHASE 2 FIX: running balance computed from ALL entries, not filtered subset
   const runningBalanceMap=useMemo(()=>{
-    const sorted=[...filteredEntries].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
+    const sorted=[...entries].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
     let balance=0;const map={}
     sorted.forEach(e=>{balance+=e.type==='Income'?Number(e.amount):-Number(e.amount);map[e.id]=balance})
     return map
-  },[filteredEntries])
+  },[entries])
 
   const totalPages   = Math.max(1,Math.ceil(filteredEntries.length/pageSize))
   const pagedEntries = filteredEntries.slice((page-1)*pageSize,page*pageSize)
@@ -597,10 +639,10 @@ function Accounts({role,userId}){
       high:all.filter(f=>f.severity==='high').length,
       medium:all.filter(f=>f.severity==='medium').length,
       flaggedEntries:entries.filter(e=>fraudFlags[e.id]?.length>0),
-      freqAnomalies:detectFrequencyAnomalies(entries),
+      freqAnomalies:detectFrequencyAnomalies(entries,today),
       phantoms:deletedRows.filter(e=>e.entry_date===today&&e.deleted_at?.startsWith(today)),
     }
-  },[fraudFlags,entries,deletedRows,isAdmin])
+  },[fraudFlags,entries,deletedRows,isAdmin,today])
 
   const totalFraudAlerts=isAdmin?(fraudSummary.high||0)+(fraudSummary.medium||0):0
 
@@ -762,12 +804,15 @@ function Accounts({role,userId}){
         ['recurring','🔁 Recurring'],
         ['daily','📋 Daily'],
         ...(isAdmin?[['fraud',totalFraudAlerts>0?`🕵️ Fraud (${totalFraudAlerts})`:'🕵️ Fraud']]:[] ),
+        // PHASE 4: Balance Sheet tab (admin only)
+        ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
         ['timeline','🕐 Activity'],
       ].map(([id,label])=>(
         <button key={id} style={{
           ...tabStyle(id),
           ...(id==='fraud'?{backgroundColor:activeTab===id?'#7c3aed':'#faf5ff',color:activeTab===id?'white':'#7c3aed',border:'1px solid #e9d5ff'}:{}),
-          ...(id==='daily'?{backgroundColor:activeTab===id?'#0369a1':'#f0f9ff',color:activeTab===id?'white':'#0369a1',border:'1px solid #bae6fd'}:{})
+          ...(id==='daily'?{backgroundColor:activeTab===id?'#0369a1':'#f0f9ff',color:activeTab===id?'white':'#0369a1',border:'1px solid #bae6fd'}:{}),
+          ...(id==='balancesheet'?{backgroundColor:activeTab===id?'#047857':'#f0fdf4',color:activeTab===id?'white':'#047857',border:'1px solid #bbf7d0'}:{}),
         }} onClick={()=>setActiveTab(id)}>{label}</button>
       ))}
     </div>
@@ -775,7 +820,6 @@ function Accounts({role,userId}){
     {/* ══ TAB: TRANSACTIONS ══ */}
     {activeTab==='transactions'&&(
       <>
-        {/* Quick date filters */}
         <div style={{display:'flex',gap: isMobile ? 6 : 8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
           <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
           {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
@@ -784,7 +828,6 @@ function Accounts({role,userId}){
           {activeQuick&&<button onClick={clearQuick} style={{padding:'5px 8px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,backgroundColor:'#fee2e2',color:'#dc2626',fontWeight:600}}>✖</button>}
         </div>
 
-        {/* Filters */}
         <div style={{display:'grid',gridTemplateColumns:filterCols,gap:10,marginBottom:16}}>
           <input placeholder="🔍 Search…" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} style={iStyle}/>
           <select value={typeFilter} onChange={e=>{setTypeFilter(e.target.value);setPage(1)}} style={iStyle}><option value="All">All Types</option><option>Income</option><option>Expense</option></select>
@@ -813,7 +856,6 @@ function Accounts({role,userId}){
 
         {loading?<div style={{textAlign:'center',padding:48,color:'#64748b'}}>⏳ Loading…</div>:(
           isMobile ? (
-            /* ── Mobile card list view ── */
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
               {pagedEntries.map((item,i)=>{
                 const isPending=(item.status||'Confirmed')==='Pending'
@@ -850,7 +892,6 @@ function Accounts({role,userId}){
               {pagedEntries.length===0&&<div style={{textAlign:'center',padding:32,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No entries found</div>}
             </div>
           ) : (
-            /* ── Desktop table view ── */
             <div style={{backgroundColor:'white',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                 <thead>
@@ -902,7 +943,6 @@ function Accounts({role,userId}){
           )
         )}
 
-        {/* Pagination */}
         {totalPages>1&&(
           <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap: isMobile ? 4 : 8,marginTop:16,flexWrap:'wrap'}}>
             <button onClick={()=>setPage(1)} disabled={page===1} style={pgBtn(page===1)}>«</button>
@@ -940,7 +980,6 @@ function Accounts({role,userId}){
           </div>
         </div>
 
-        {/* daily filters */}
         <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'auto auto auto auto auto auto auto',gap:8,marginBottom:16,alignItems:'center'}}>
           <input placeholder="🔍 Search…" value={dailySearch} onChange={e=>setDailySearch(e.target.value)} style={{...iStyle, gridColumn: isMobile ? 'span 2' : 'auto'}}/>
           <select value={dailyAcctFilter} onChange={e=>setDailyAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
@@ -960,8 +999,6 @@ function Accounts({role,userId}){
           <>
             {dailyGroups.map(([date,dayRows])=>{
               const dayTotal=dayRows.reduce((s,e)=>s+Number(e.amount),0)
-              const dayCash=dayRows.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)
-              const dayBank=dayRows.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)
               const dow=new Date(date).toLocaleDateString('en-IN',{weekday:'long'})
               const isCollapsed=dailyCollapsed[date]
               return(
@@ -979,7 +1016,6 @@ function Accounts({role,userId}){
                   </div>
                   {!isCollapsed&&(
                     isMobile ? (
-                      /* mobile daily card view */
                       <div style={{backgroundColor:'white',border:'1.5px solid #d8e3f0',borderTop:'none',padding:12,display:'flex',flexDirection:'column',gap:8}}>
                         {dayRows.map((item,rowIdx)=>(
                           <div key={item.id} style={{borderBottom:'1px solid #f0f4f9',paddingBottom:8}}>
@@ -1007,7 +1043,6 @@ function Accounts({role,userId}){
                         </div>
                       </div>
                     ) : (
-                      /* desktop daily table */
                       <div style={{backgroundColor:'white',border:'1.5px solid #d8e3f0',borderTop:'none',overflowX:'auto'}}>
                         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                           <thead>
@@ -1044,7 +1079,6 @@ function Accounts({role,userId}){
                 </div>
               )
             })}
-            {/* grand total */}
             <div style={{backgroundColor:'#1e3a5f',borderRadius:12,padding: isMobile ? '16px' : '20px 28px',display:'flex',flexDirection: isMobile ? 'column' : 'row',justifyContent:'space-between',alignItems: isMobile ? 'stretch' : 'center',gap:16,marginTop:8}}>
               <span style={{fontWeight:800,color:'white',fontSize: isMobile ? 14 : 16}}>Grand Total</span>
               <div style={{display:'flex',gap: isMobile ? 16 : 32,flexWrap:'wrap'}}>
@@ -1206,7 +1240,19 @@ function Accounts({role,userId}){
                 <td style={{...tdS,fontWeight:500}}>{item.category}</td>
                 <td style={{...tdS,fontWeight:600,color:item.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(item.amount)}</td>
                 <td style={tdS}>{item.added_by||item.edited_by||'admin'}</td>
-                <td style={tdS}><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{(fraudFlags[item.id]||[]).map((f,i)=><span key={i} style={{display:'flex',alignItems:'center',gap:3}}><span style={{fontSize:11,color:'#374151'}}>{f.label}</span><SeverityBadge severity={f.severity}/></span>)}</div></td>
+                {/* PHASE 3 FIX: resolve button on each fraud flag */}
+                <td style={tdS}><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                  {(fraudFlags[item.id]||[]).map((f,i)=>(
+                    <span key={i} style={{display:'flex',alignItems:'center',gap:4}}>
+                      <span style={{fontSize:11,color:'#374151'}}>{f.label}</span>
+                      <SeverityBadge severity={f.severity}/>
+                      {f.alertId&&<button onClick={async()=>{
+                        await supabase.from('fraud_alerts').update({resolved:true,resolved_by:role,resolved_at:new Date().toISOString()}).eq('id',f.alertId)
+                        fetchEntries()
+                      }} style={{...smallBtn('#f0fdf4','#16a34a'),fontSize:10,padding:'1px 6px'}}>✓</button>}
+                    </span>
+                  ))}
+                </div></td>
               </tr>))}</tbody>
             </table>
           )}
@@ -1245,6 +1291,111 @@ function Accounts({role,userId}){
             </table>
           )}
         </div>
+      </div>
+    )}
+
+    {/* ══ TAB: BALANCE SHEET (PHASE 4) ══ */}
+    {activeTab==='balancesheet'&&isAdmin&&(
+      <div>
+        {loadingFinancials?<div style={{textAlign:'center',padding:48,color:'#64748b'}}>⏳ Loading financials…</div>:(
+          <>
+            {/* Trial Balance */}
+            <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile?14:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',marginBottom:20,borderLeft:'4px solid #047857'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+                <h3 style={{fontSize:16,fontWeight:700,color:'#047857',margin:0}}>📊 Trial Balance</h3>
+                <button onClick={fetchFinancials} style={{...smallBtn('#f0fdf4','#047857'),padding:'6px 14px',fontSize:12}}>↻ Refresh</button>
+              </div>
+              {trialBalance.length===0
+                ?<div style={{backgroundColor:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'14px 18px'}}>
+                  <p style={{color:'#047857',fontSize:13,margin:0,fontWeight:500}}>📋 No journal entries yet.</p>
+                  <p style={{color:'#64748b',fontSize:12,margin:'6px 0 0'}}>Run the Phase 4 SQL migration in your Supabase SQL editor. New transactions added after migration will auto-generate DR/CR journal lines via the <code>sync_journal_entry</code> trigger.</p>
+                </div>
+                :<div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                    <thead>
+                      <tr style={{backgroundColor:'#f8fafc'}}>
+                        {['Account Head','Type','Total Debit','Total Credit','Net Balance'].map(h=>(
+                          <th key={h} style={{padding:'10px 14px',textAlign:h.includes('Total')||h.includes('Net')?'right':'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trialBalance.map((row,i)=>(
+                        <tr key={i} style={{borderBottom:'1px solid #f1f5f9'}}>
+                          <td style={{...tdS,fontWeight:500,color:'#1e293b'}}>{row.account_head}</td>
+                          <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,
+                            backgroundColor:row.account_type==='Income'?'#dcfce7':row.account_type==='Expense'?'#fee2e2':row.account_type==='Asset'?'#eff6ff':row.account_type==='Liability'?'#fef3c7':'#f3e8ff',
+                            color:row.account_type==='Income'?'#16a34a':row.account_type==='Expense'?'#dc2626':row.account_type==='Asset'?'#1e3a5f':row.account_type==='Liability'?'#92400e':'#7c3aed'
+                          }}>{row.account_type}</span></td>
+                          <td style={{...tdS,textAlign:'right',color:'#16a34a',fontWeight:600}}>{fmt(row.total_debit)}</td>
+                          <td style={{...tdS,textAlign:'right',color:'#dc2626',fontWeight:600}}>{fmt(row.total_credit)}</td>
+                          <td style={{...tdS,textAlign:'right',fontWeight:700,color:Number(row.net_balance)>=0?'#1e3a5f':'#dc2626'}}>{fmt(Math.abs(row.net_balance))}<span style={{fontSize:10,marginLeft:4,opacity:0.7}}>{Number(row.net_balance)<0?'Cr':'Dr'}</span></td>
+                        </tr>
+                      ))}
+                      <tr style={{backgroundColor:'#f8fafc',fontWeight:700,borderTop:'2px solid #e2e8f0'}}>
+                        <td style={{...tdS,fontWeight:700,color:'#1e293b'}} colSpan={2}>Totals</td>
+                        <td style={{...tdS,textAlign:'right',fontWeight:700,color:'#16a34a'}}>{fmt(trialBalance.reduce((s,r)=>s+Number(r.total_debit),0))}</td>
+                        <td style={{...tdS,textAlign:'right',fontWeight:700,color:'#dc2626'}}>{fmt(trialBalance.reduce((s,r)=>s+Number(r.total_credit),0))}</td>
+                        <td/>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </div>
+
+            {/* Balance check banner */}
+            {trialBalance.length>0&&(()=>{
+              const totalDr=trialBalance.reduce((s,r)=>s+Number(r.total_debit),0)
+              const totalCr=trialBalance.reduce((s,r)=>s+Number(r.total_credit),0)
+              const balanced=Math.abs(totalDr-totalCr)<0.01
+              return(
+                <div style={{marginBottom:20,backgroundColor:balanced?'#dcfce7':'#fee2e2',borderRadius:10,padding:'12px 18px',display:'flex',alignItems:'center',gap:10,border:`1px solid ${balanced?'#bbf7d0':'#fecaca'}`}}>
+                  <span style={{fontSize:20}}>{balanced?'✅':'⚠️'}</span>
+                  <div>
+                    <p style={{fontWeight:700,color:balanced?'#166534':'#dc2626',margin:0,fontSize:14}}>{balanced?'Books are balanced':'Books are OUT OF BALANCE'}</p>
+                    <p style={{fontSize:12,color:balanced?'#166534':'#dc2626',margin:'2px 0 0'}}>
+                      Total Debits: {fmt(totalDr)} &nbsp;|&nbsp; Total Credits: {fmt(totalCr)} &nbsp;|&nbsp; Difference: {fmt(Math.abs(totalDr-totalCr))}
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Balance Sheet — Assets vs Liabilities & Equity */}
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1fr 1fr',gap:16,marginBottom:20}}>
+              {[
+                {title:'Assets',filterFn:(r)=>r.account_type==='Asset',color:'#1e3a5f',bg:'#eff6ff',border:'#bfdbfe'},
+                {title:'Liabilities & Equity',filterFn:(r)=>r.account_type==='Liability'||r.account_type==='Equity',color:'#7c3aed',bg:'#f3e8ff',border:'#e9d5ff'},
+              ].map(sec=>{
+                const rows=balanceSheet.filter(sec.filterFn)
+                const total=rows.reduce((s,r)=>s+Number(r.balance),0)
+                return(
+                  <div key={sec.title} style={{backgroundColor:'white',borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:`4px solid ${sec.color}`}}>
+                    <h3 style={{fontSize:14,fontWeight:700,color:sec.color,marginBottom:14,borderBottom:`2px solid ${sec.bg}`,paddingBottom:8}}>{sec.title}</h3>
+                    {rows.length===0
+                      ?<p style={{color:'#94a3b8',fontSize:13,fontStyle:'italic'}}>No entries yet</p>
+                      :<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                        <tbody>
+                          {rows.map((r,i)=>(
+                            <tr key={i} style={{borderBottom:'1px solid #f1f5f9'}}>
+                              <td style={{padding:'7px 0',color:'#374151'}}>{r.account_head}</td>
+                              <td style={{padding:'7px 0',textAlign:'right',fontWeight:600,color:sec.color}}>{fmt(Math.abs(Number(r.balance)))}</td>
+                            </tr>
+                          ))}
+                          <tr style={{borderTop:`2px solid ${sec.color}`}}>
+                            <td style={{padding:'8px 0',fontWeight:700,color:'#1e293b'}}>Total {sec.title}</td>
+                            <td style={{padding:'8px 0',textAlign:'right',fontWeight:700,color:sec.color}}>{fmt(Math.abs(total))}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    }
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
     )}
 
