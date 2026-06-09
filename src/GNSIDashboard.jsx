@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -12,22 +11,15 @@ import { supabase } from "./supabase"
 
 // ─── LIGHT THEME TOKENS ──────────────────────────────────────────────────────
 const T = {
-  // Backgrounds
-  bg:       "#f4f6fb",       // page background
-  bgCard:   "#ffffff",       // card surface
-  bgCardAlt:"#f8fafd",       // alternate card
-  bgInset:  "#f0f3f8",       // inset / table row tint
-
-  // Borders
+  bg:       "#f4f6fb",
+  bgCard:   "#ffffff",
+  bgCardAlt:"#f8fafd",
+  bgInset:  "#f0f3f8",
   border:   "rgba(0,0,0,.07)",
   borderMd: "rgba(0,0,0,.11)",
-
-  // Text
-  ink:      "#0f172a",       // primary text
-  inkMid:   "#334155",       // secondary text
-  inkSub:   "#64748b",       // muted / labels
-
-  // Accent palette (unchanged — vivid against white)
+  ink:      "#0f172a",
+  inkMid:   "#334155",
+  inkSub:   "#64748b",
   gold:     "#c89b3c",
   goldLt:   "#f0c96a",
   emerald:  "#059669",
@@ -42,11 +34,10 @@ const T = {
   lime:     "#65a30d",
   slate:    "#64748b",
   slateL:   "#94a3b8",
-  // keep navy alias for anything that still refs it
   navy:     "#f4f6fb",
   navyLt:   "#eef1f8",
   navyCard: "#ffffff",
-  white:    "#0f172a",       // was used as text color in original
+  white:    "#0f172a",
 }
 
 const fmt = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN")
@@ -217,15 +208,15 @@ function SectionHeader({ icon, title }) {
   )
 }
 
-// ─── TABLE WRAPPER (horizontal scroll on mobile) ─────────────────────────────
 function TableWrap({ children }) {
   return <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
 
-// ─── DATA LOADING (unchanged from original) ──────────────────────────────────
+// ─── DATA LOADING ─────────────────────────────────────────────────────────────
 async function loadAllData() {
   const today = todayStr(), nowD = new Date()
 
+  // FIX #4: removed duplicate teaching_logs fetch (was last item in Promise.all)
   const [
     studentsCountRes, studentsRes, admissionsRes, recentAdmRes,
     accountsRes, recentFeeRes, staffRes, staffTasksRes, staffScoresRes,
@@ -246,7 +237,7 @@ async function loadAllData() {
     supabase.from("Students").select("gender, state, date_of_birth, created_at"),
     supabase.from("admissions").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
     supabase.from("admissions").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
-    supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note").eq("type","Income"),
+    supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note"),
     supabase.from("adm_fee_collections").select("amount_paid,fee_type,adm_app_id,student_name,pay_date,pay_mode,description").order("pay_date",{ascending:false}).limit(6),
     safeFetch(()=>supabase.from("gnsi_staff_biodata").select("id,name,department,status,basic_salary,seniority_allowance,loyalty_bonus,role_bonus,designation")),
     supabase.from("management_checklist").select("id,status,priority,section,task,owner,created_at,period"),
@@ -276,9 +267,9 @@ async function loadAllData() {
     safeFetch(()=>supabase.from("study_material").select("id,title,subject,batch_name,material_type,distributed_date,total_copies,distributed_copies")),
     safeFetch(()=>supabase.from("selections").select("id,student_name,exam_name,rank,year,batch_name,category,school_allotted")),
     safeFetch(()=>supabase.from("monthly_syllabus").select("teacher_name,subject,batch_name,total_topics,covered_topics,month")),
-    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
     safeFetch(()=>supabase.from("gnsi_expenditure").select("id,category,amount,date,description,approved_by,created_at")),
-    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,topic_taught,classwork,remarks")),
+    // FIX #4: single fetch with all needed columns (removed duplicate)
+    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
     safeFetch(()=>supabase.from("fee_structures").select("session_year,course,batch,hostel_type,flat_fee,course_fee,admission_fee")),
     safeFetch(()=>supabase.from("student_fee_overrides").select("gcc_no,flat_fee_override,reason,created_at")),
     safeFetch(()=>supabase.from("adm_flat_fees").select("adm_app_id,amount,status,month,year").order("created_at",{ascending:false}).limit(200)),
@@ -299,7 +290,9 @@ async function loadAllData() {
   ])
 
   // ── Finance ──
-  const allIncome = accountsRes.data || []
+  const allIncome = (accountsRes.data || []).filter(r => r.type === "Income")
+  // FIX #5: also track expense rows in accounts table so P&L is accurate
+  const accountsExpense = (accountsRes.data || []).filter(r => r.type === "Expense")
   const totalFeeCollected = allIncome.reduce((s,r)=>s+(Number(r.amount)||0),0)
   const admFeeTotal    = allIncome.filter(r=>r.category==="Admission").reduce((s,r)=>s+(Number(r.amount)||0),0)
   const flatFeeTotal   = allIncome.filter(r=>r.category==="Flat Fee").reduce((s,r)=>s+(Number(r.amount)||0),0)
@@ -332,12 +325,27 @@ async function loadAllData() {
   const batchCounts={}
   allAdm.forEach(a=>{if(a.batch)batchCounts[a.batch]=(batchCounts[a.batch]||0)+1})
   const yoyAdmissions=Object.entries(batchCounts).sort((a,b)=>a[0].localeCompare(b[0])).map(([year,count])=>({year,count}))
-  const admissionFunnel=[{stage:"Applied",count:admApplied+admUnderReview+admAdmitted+admEnrolled,color:T.sky},{stage:"Under Review",count:admUnderReview+admAdmitted+admEnrolled,color:T.violet},{stage:"Admitted",count:admAdmitted+admEnrolled,color:T.amber},{stage:"Enrolled",count:admEnrolled,color:T.emerald}]
-  const enquiryFunnel=[{stage:"Walk-in / Call",count:allAdm.length,color:T.sky},{stage:"Interested",count:Math.round(allAdm.length*0.85),color:T.violet},{stage:"Follow-up Done",count:admUnderReview+admAdmitted+admEnrolled,color:T.amber},{stage:"Converted",count:admEnrolled,color:T.emerald}]
+
+  // FIX #2: admissionFunnel — each stage is its own exact status count, not cumulative
+  const admissionFunnel=[
+    {stage:"Applied",     count:admApplied,      color:T.sky},
+    {stage:"Under Review",count:admUnderReview,  color:T.violet},
+    {stage:"Admitted",    count:admAdmitted,      color:T.amber},
+    {stage:"Enrolled",    count:admEnrolled,      color:T.emerald},
+  ]
+
+  // FIX #3: enquiryFunnel — removed hardcoded ×0.85 estimate; use real counts only
+  const enquiryFunnel=[
+    {stage:"Total Applications", count:allAdm.length,                                       color:T.sky},
+    {stage:"Under Review",       count:admUnderReview+admAdmitted+admEnrolled,              color:T.violet},
+    {stage:"Admitted",           count:admAdmitted+admEnrolled,                             color:T.amber},
+    {stage:"Enrolled",           count:admEnrolled,                                          color:T.emerald},
+  ]
 
   // ── Students ──
   const allStudents=studentsRes.data||[]
-  const totalStudentsCount=studentsCountRes.count||allAdm.length
+  // FIX #1: keep raw DB count and enrolled count separate
+  const totalStudentsCount = studentsCountRes.count || allStudents.length
   const maleStudents=allAdm.filter(s=>s.gender==="Male"||s.gender==="male").length||allStudents.filter(s=>s.gender==="Male").length
   const femaleStudents=allAdm.filter(s=>s.gender==="Female"||s.gender==="female").length||allStudents.filter(s=>s.gender==="Female").length
   const stateCounts={}
@@ -355,7 +363,9 @@ async function loadAllData() {
   const allTasks=staffTasksRes.data||[]
   const taskPending=allTasks.filter(t=>t.status==="Pending").length
   const taskDone=allTasks.filter(t=>t.status==="Done").length
-  const taskOverdue=allTasks.filter(t=>t.status==="Pending"&&t.period==="daily"&&t.created_at&&new Date(t.created_at)<nowD).length
+  // FIX #6: taskOverdue — compare against start of today, not right now
+  const startOfToday = new Date(today)
+  const taskOverdue=allTasks.filter(t=>t.status==="Pending"&&t.period==="daily"&&t.created_at&&new Date(t.created_at)<startOfToday).length
   const taskDeptMap={}
   allTasks.forEach(t=>{const d=(t.section||"Other").slice(0,8);if(!taskDeptMap[d])taskDeptMap[d]={dept:d,pending:0,done:0,overdue:0};if(t.status==="Done")taskDeptMap[d].done++;else taskDeptMap[d].pending++})
   const taskByDept=Object.values(taskDeptMap).slice(0,6)
@@ -365,7 +375,8 @@ async function loadAllData() {
   const allScores=staffScoresRes||[]
   const latestMonth=allScores[0]?.month||null
   const topStaff=[],staffRadar=[],leaveBreakdown=[],recruitmentFunnel=[],trainingHours=[]
-  const salaryTrend=ACADEMIC_MONTHS.slice(0,9).map(m=>({month:m.label,bill:totalSalaryBill+(Math.random()-0.5)*totalSalaryBill*0.03}))
+  // FIX — salaryTrend: removed Math.random() fake variation; flat real bill per month
+  const salaryTrend=ACADEMIC_MONTHS.slice(0,9).map(m=>({month:m.label,bill:totalSalaryBill}))
 
   // ── Attendance ──
   const todayAtt=attendanceTodayRes.data||[]
@@ -444,9 +455,9 @@ async function loadAllData() {
   batchesData.forEach(b=>{const t=b.batch_type||"Regular";batchTypeMap[t]=(batchTypeMap[t]||0)+1})
   const batchByType=Object.entries(batchTypeMap).map(([name,count],i)=>({name,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const DAY_ABBR={"Monday":"Mon","Tuesday":"Tue","Wednesday":"Wed","Thursday":"Thu","Friday":"Fri","Saturday":"Sat","Sunday":"Sun"}
-const timetableByDay={}
-timetableData.forEach(t=>{const d=DAY_ABBR[t.day_of_week]||t.day_of_week||"Mon";if(!timetableByDay[d])timetableByDay[d]=0;timetableByDay[d]++})
-const timetableChart=["Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>({day:d,classes:timetableByDay[d]||0}))
+  const timetableByDay={}
+  timetableData.forEach(t=>{const d=DAY_ABBR[t.day_of_week]||t.day_of_week||"Mon";if(!timetableByDay[d])timetableByDay[d]=0;timetableByDay[d]++})
+  const timetableChart=["Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>({day:d,classes:timetableByDay[d]||0}))
 
   // ── Enquiry ──
   const totalEnquiries=allAdm.length
@@ -465,7 +476,7 @@ const timetableChart=["Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>({day:d,classe
   const enqTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,enquiries:enqMonthMap[m.key]?.enquiries||0,converted:enqMonthMap[m.key]?.converted||0}))
   const recentEnquiries=allAdm.slice(-6).reverse().map(a=>({name:a.applicant_name,course_interest:a.course,source:a.referral_source||"—",status:a.status,follow_up_date:a.created_at?.slice(0,10)}))
 
-  // ── Doubts / SMS / Material (empty) ──
+  // ── Doubts / SMS / Material ──
   const totalDoubts=doubtSessionsData.length,resolvedDoubts=0,unresolvedDoubts=0,avgResolutionHrs=0,doubtsBySubject=[],doubtsByBatch=[],doubtStaffLeaderboard=[],doubtTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,raised:0,resolved:0}))
   const totalSMSSent=smsLogsData.reduce((s,l)=>s+(Number(l.count)||1),0),smsSent=0,smsFailed=0,smsDeliveryRate=0,smsByType=[],smsTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,count:0}))
   const totalMaterials=studyMaterialData.length,distributedMat=0,pendingDistribution=0,totalCopies=0,distributedCopies=0,materialByType=[],materialBySubject=[]
@@ -502,18 +513,53 @@ const timetableChart=["Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>({day:d,classe
   const wc=str=>str?.trim().split(/\s+/).filter(Boolean).length||0
   const teacherLogMap={}
   teachingLogsRaw.forEach(l=>{const name=l.teacher_name||"Unknown";if(!teacherLogMap[name])teacherLogMap[name]=[];teacherLogMap[name].push(l)})
-  const teacherStreaks=Object.entries(teacherLogMap).map(([name,logs])=>{const dates=[...new Set(logs.map(l=>l.teaching_date))].sort();let streak=0,cur=0;const todayD=new Date(today);for(let i=dates.length-1;i>=0;i--){const d=new Date(dates[i]);const diff=Math.floor((todayD-d)/86400000);if(diff===streak){cur++;streak++}else break};const monthKey=today.slice(0,7);const loggedDays=new Set(logs.filter(l=>l.teaching_date?.startsWith(monthKey)).map(l=>l.teaching_date)).size;const missingDays=todayD.getDate()-loggedDays;const lateCount=logs.filter(l=>l.late_submission).length;const avgWc=logs.length>0?Math.round(logs.reduce((s,l)=>s+wc(l.topic_taught)+wc(l.classwork)+wc(l.remarks),0)/logs.length):0;return{name,streak:cur,totalLogs:logs.length,missingDays:Math.max(0,missingDays),lateCount,avgWc}}).sort((a,b)=>b.streak-a.streak)
+
+  // FIX #8: teacherStreaks — fixed off-by-one; now counts consecutive dates ending at/before today
+  const teacherStreaks=Object.entries(teacherLogMap).map(([name,logs])=>{
+    const dates=[...new Set(logs.map(l=>l.teaching_date).filter(Boolean))].sort()
+    let streak=0
+    if(dates.length>0){
+      // Walk backwards from most-recent date, counting consecutive calendar days
+      const todayMs=new Date(today).getTime()
+      let expectedMs=null
+      for(let i=dates.length-1;i>=0;i--){
+        const dMs=new Date(dates[i]).getTime()
+        if(expectedMs===null){
+          // Allow the streak to start from today OR yesterday (today may not be logged yet)
+          if(todayMs-dMs<=86400000){expectedMs=dMs-86400000;streak++}
+          else break
+        } else {
+          if(dMs===expectedMs){expectedMs=dMs-86400000;streak++}
+          else break
+        }
+      }
+    }
+    const monthKey=today.slice(0,7)
+    const loggedDays=new Set(logs.filter(l=>l.teaching_date?.startsWith(monthKey)).map(l=>l.teaching_date)).size
+    const missingDays=Math.max(0,new Date().getDate()-loggedDays)
+    const lateCount=logs.filter(l=>l.late_submission).length
+    const avgWc=logs.length>0?Math.round(logs.reduce((s,l)=>s+wc(l.topic_taught)+wc(l.classwork)+wc(l.remarks),0)/logs.length):0
+    return{name,streak,totalLogs:logs.length,missingDays,lateCount,avgWc}
+  }).sort((a,b)=>b.streak-a.streak)
 
   // ── Expenses ──
-  const totalExpenses=expensesData.reduce((s,e)=>s+(Number(e.amount)||0),0)
-const netPL=totalFeeCollected-totalExpenses
-const expenseCategoryMap={}
-expensesData.forEach(e=>{const c=e.category||"Other";expenseCategoryMap[c]=(expenseCategoryMap[c]||0)+(Number(e.amount)||0)})
-const expenseByCategory=Object.entries(expenseCategoryMap).sort((a,b)=>b[1]-a[1]).map(([name,amount],i)=>({name,amount,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
-const expenseMonthMap={}
-expensesData.forEach(e=>{const mo=(e.date||e.created_at)?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(e.amount)||0)})
-const plTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,income:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),expense:expenseMonthMap[m.key]||0})).map(m=>({...m,pl:m.income-m.expense}))
-const recentExpenses=expensesData.slice(-6).reverse()
+  // FIX #5: merge gnsi_expenditure + accounts Expense rows for complete P&L
+  const gnsiExpTotal = expensesData.reduce((s,e)=>s+(Number(e.amount)||0),0)
+  const acctExpTotal = accountsExpense.reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const totalExpenses = gnsiExpTotal + acctExpTotal
+  const netPL=totalFeeCollected-totalExpenses
+
+  const expenseCategoryMap={}
+  expensesData.forEach(e=>{const c=e.category||"Other";expenseCategoryMap[c]=(expenseCategoryMap[c]||0)+(Number(e.amount)||0)})
+  // Also bucket accounts-based expenses under their category
+  accountsExpense.forEach(r=>{const c=r.category||"Other";expenseCategoryMap[c]=(expenseCategoryMap[c]||0)+(Number(r.amount)||0)})
+  const expenseByCategory=Object.entries(expenseCategoryMap).sort((a,b)=>b[1]-a[1]).map(([name,amount],i)=>({name,amount,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+
+  const expenseMonthMap={}
+  expensesData.forEach(e=>{const mo=(e.date||e.created_at)?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(e.amount)||0)})
+  accountsExpense.forEach(r=>{const mo=r.entry_date?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(r.amount)||0)})
+  const plTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,income:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),expense:expenseMonthMap[m.key]||0})).map(m=>({...m,pl:m.income-m.expense}))
+  const recentExpenses=expensesData.slice(-6).reverse()
 
   // ── Notifications ──
   const notifications=[]
@@ -532,9 +578,21 @@ const recentExpenses=expensesData.slice(-6).reverse()
   const flatFeeTotal_fs=admFlatFeesData.reduce((s,r)=>s+(Number(r.amount)||0),0)
   const flatFeePaid_fs=admFlatFeesData.filter(r=>r.status==="Paid").reduce((s,r)=>s+(Number(r.amount)||0),0)
   const courseFeeTotal_fs=admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
-  const flatFeeMonthMap={}
+
+  // FIX #9: flatFeeMonthMap — robust month→number conversion; handles name strings, numeric strings, integers
   const MONTH_NAME_TO_NUM={"January":"01","February":"02","March":"03","April":"04","May":"05","June":"06","July":"07","August":"08","September":"09","October":"10","November":"11","December":"12"}
-admFlatFeesData.forEach(r=>{const mo=MONTH_NAME_TO_NUM[r.month]||String(r.month).padStart(2,"0");const k=`${r.year||"?"}-${mo}`;flatFeeMonthMap[k]=(flatFeeMonthMap[k]||0)+(Number(r.amount)||0)})
+  const flatFeeMonthMap={}
+  admFlatFeesData.forEach(r=>{
+    const raw = r.month
+    let mo = MONTH_NAME_TO_NUM[raw]          // "April" → "04"
+    if(!mo){
+      const n = parseInt(raw, 10)
+      if(!isNaN(n) && n>=1 && n<=12) mo = String(n).padStart(2,"0")  // 4 or "4" → "04"
+    }
+    if(!mo) return  // unrecognisable value — skip silently
+    const k=`${r.year||"?"}-${mo}`
+    flatFeeMonthMap[k]=(flatFeeMonthMap[k]||0)+(Number(r.amount)||0)
+  })
   const flatFeeTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,amount:flatFeeMonthMap[m.key]||0}))
 
   // ── Entrance ──
@@ -622,22 +680,26 @@ admFlatFeesData.forEach(r=>{const mo=MONTH_NAME_TO_NUM[r.month]||String(r.month)
 
   // ── Syllabus Topics ──
   const totalSyllabusTopics=syllabusTopicsData.length
-const completedTopics_st=syllabusTopicsData.filter(t=>t.completed===true).length
-const pendingTopics_st=syllabusTopicsData.filter(t=>!t.completed&&!t.completed_at).length
-const inProgressTopics=syllabusTopicsData.filter(t=>!t.completed&&t.expected_date&&new Date(t.expected_date)<=new Date()).length
-const syllabusOverallPct=totalSyllabusTopics>0?pct(completedTopics_st,totalSyllabusTopics):0
-const syllabusCourseMap={}
-syllabusTopicsData.forEach(t=>{const c=t.course||"Other";if(!syllabusCourseMap[c])syllabusCourseMap[c]={total:0,completed:0};syllabusCourseMap[c].total++;if(t.completed)syllabusCourseMap[c].completed++})
-const syllabusByCourse=Object.entries(syllabusCourseMap).map(([course,v],i)=>({course,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
-const syllabusTeacherMap={}  // no teacher_name in table — group by subject_name instead
-syllabusTopicsData.forEach(t=>{const name=t.subject_name||"Other";if(!syllabusTeacherMap[name])syllabusTeacherMap[name]={total:0,completed:0};syllabusTeacherMap[name].total++;if(t.completed)syllabusTeacherMap[name].completed++})
-const syllabusByTeacher=Object.values(syllabusTeacherMap).map(t=>({...t,pct:t.total>0?pct(t.completed,t.total):0})).sort((a,b)=>b.pct-a.pct).slice(0,8)
-const syllabusSubjectMap={}
-syllabusTopicsData.forEach(t=>{const s=t.subject_name||"Other";if(!syllabusSubjectMap[s])syllabusSubjectMap[s]={total:0,completed:0};syllabusSubjectMap[s].total++;if(t.completed)syllabusSubjectMap[s].completed++})
-const syllabusBySubject=Object.entries(syllabusSubjectMap).sort((a,b)=>b[1].total-a[1].total).slice(0,8).map(([subject,v],i)=>({subject,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const completedTopics_st=syllabusTopicsData.filter(t=>t.completed===true).length
+  const pendingTopics_st=syllabusTopicsData.filter(t=>!t.completed&&!t.completed_at).length
+  const inProgressTopics=syllabusTopicsData.filter(t=>!t.completed&&t.expected_date&&new Date(t.expected_date)<=new Date()).length
+  const syllabusOverallPct=totalSyllabusTopics>0?pct(completedTopics_st,totalSyllabusTopics):0
+  const syllabusCourseMap={}
+  syllabusTopicsData.forEach(t=>{const c=t.course||"Other";if(!syllabusCourseMap[c])syllabusCourseMap[c]={total:0,completed:0};syllabusCourseMap[c].total++;if(t.completed)syllabusCourseMap[c].completed++})
+  const syllabusByCourse=Object.entries(syllabusCourseMap).map(([course,v],i)=>({course,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  // FIX #7: renamed syllabusTopicsBySubject (was syllabusByTeacher) — grouped by subject_name, not teacher
+  const syllabusSubjectDetailMap={}
+  syllabusTopicsData.forEach(t=>{const name=t.subject_name||"Other";if(!syllabusSubjectDetailMap[name])syllabusSubjectDetailMap[name]={name,total:0,completed:0};syllabusSubjectDetailMap[name].total++;if(t.completed)syllabusSubjectDetailMap[name].completed++})
+  const syllabusTopicsBySubject=Object.values(syllabusSubjectDetailMap).map(t=>({...t,pct:t.total>0?pct(t.completed,t.total):0})).sort((a,b)=>b.pct-a.pct).slice(0,8)
+  const syllabusSubjectMap={}
+  syllabusTopicsData.forEach(t=>{const s=t.subject_name||"Other";if(!syllabusSubjectMap[s])syllabusSubjectMap[s]={total:0,completed:0};syllabusSubjectMap[s].total++;if(t.completed)syllabusSubjectMap[s].completed++})
+  const syllabusBySubject=Object.entries(syllabusSubjectMap).sort((a,b)=>b[1].total-a[1].total).slice(0,8).map(([subject,v],i)=>({subject,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
 
   return {
-    totalStudents:admEnrolled||totalStudentsCount, maleStudents, femaleStudents,
+    // FIX #1: expose both counts separately
+    totalStudents: totalStudentsCount,
+    enrolledStudents: admEnrolled,
+    maleStudents, femaleStudents,
     boarders, dayBoarders, dayScholars, stateData, ageDistribution,
     totalAdmissions:allAdm.length, admApplied, admUnderReview, admAdmitted, admEnrolled, admRejected, admWaitlisted,
     courseBreakdown, applicationSource, yoyAdmissions, recentAdmissions:recentAdmRes.data||[], admissionFunnel,
@@ -666,17 +728,18 @@ const syllabusBySubject=Object.entries(syllabusSubjectMap).sort((a,b)=>b[1].tota
     totalCampaigns, activeCampaigns, totalSocialLeads, convertedLeads, newLeads, overdueFollowUps, socialConvRate, campaignsByPlatform, totalBudget, totalPosts, postedCount, plannedPosts_count, leadsBySource, socialTrend,
     totalBroadcasts, sentBroadcasts, totalRecipients, totalGrievances, openGrievances, resolvedGrievances, unreadReplies, broadcastsByChannel, recentBroadcasts,
     totalQBankQuestions, qbankByCourse, qbankBySubject, qbankByDifficulty, qbankByType, qbankTrend,
-    totalSyllabusTopics, completedTopics_st, pendingTopics_st, inProgressTopics, syllabusOverallPct, syllabusByCourse, syllabusByTeacher, syllabusBySubject,
+    totalSyllabusTopics, completedTopics_st, pendingTopics_st, inProgressTopics, syllabusOverallPct, syllabusByCourse,
+    // FIX #7: renamed export
+    syllabusTopicsBySubject, syllabusBySubject,
   }
 }
 
 // ─── MOBILE-RESPONSIVE GRID HELPERS ─────────────────────────────────────────
-// Use className strings so the CSS media queries below can target them
 const G = {
-  kpi:    "grid-kpi",      // KPI tiles — 2 on mobile, 4 on tablet, auto on desktop
-  cols2:  "grid-cols2",    // 2-col panels
-  cols3:  "grid-cols3",    // 3-col panels
-  split:  "grid-split",    // 2fr/1fr split
+  kpi:    "grid-kpi",
+  cols2:  "grid-cols2",
+  cols3:  "grid-cols3",
+  split:  "grid-split",
 }
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
@@ -735,10 +798,10 @@ export default function GNSIDashboard({ scrollToSection }) {
     </div>
   )
 
-  const feeProgress=pct(liveTotal,liveTotal+data.feePending)
+  // FIX #5: feeProgress — clamp feePending to ≥0 so ratio never exceeds 100%
+  const feeProgress = Math.min(100, pct(liveTotal, liveTotal + Math.max(0, data.feePending)))
   const attProgress=pct(data.presentToday,data.totalToday)
 
-  // Shared table cell style
   const td = (extra={}) => ({fontSize:13,color:T.inkMid,padding:"9px 12px",background:T.bgInset,...extra})
   const tdFirst = {fontSize:13,fontWeight:700,color:T.ink,padding:"9px 12px",background:T.bgInset,borderRadius:"10px 0 0 10px"}
   const tdLast  = {padding:"9px 12px",background:T.bgInset,borderRadius:"0 10px 10px 0"}
@@ -746,7 +809,6 @@ export default function GNSIDashboard({ scrollToSection }) {
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",color:T.ink}}>
-      {/* ─── Global Styles + Mobile Grid ─────────────────────────────────────── */}
       <style>{`
         @keyframes shimmer{0%{opacity:.4}50%{opacity:.7}100%{opacity:.4}}
         @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -754,16 +816,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         ::-webkit-scrollbar{width:4px;height:4px}
         ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
         html{scroll-behavior:smooth}
-
-        /* KPI grid: 2-col mobile → 3-col tablet → auto desktop */
         .grid-kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-        /* 2-col equal */
         .grid-cols2{display:grid;grid-template-columns:1fr;gap:12px}
-        /* 3-col equal */
         .grid-cols3{display:grid;grid-template-columns:1fr;gap:12px}
-        /* 2fr/1fr split */
         .grid-split{display:grid;grid-template-columns:1fr;gap:12px}
-
         @media(min-width:600px){
           .grid-kpi{grid-template-columns:repeat(3,1fr);gap:12px}
           .grid-cols2{grid-template-columns:repeat(2,1fr)}
@@ -777,11 +833,7 @@ export default function GNSIDashboard({ scrollToSection }) {
           .grid-cols2{grid-template-columns:repeat(2,1fr)}
           .grid-split{grid-template-columns:2fr 1fr}
         }
-
-        /* Section spacing */
         .dash-section{margin-bottom:36px}
-
-        /* Live fee banner responsive */
         .fee-banner{
           background:linear-gradient(135deg,${T.gold}14,${T.gold}06);
           border:1px solid ${T.gold}30;
@@ -795,11 +847,7 @@ export default function GNSIDashboard({ scrollToSection }) {
           gap:14px;
         }
         .fee-banner-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;width:100%}
-        @media(min-width:700px){
-          .fee-banner-meta{width:auto}
-        }
-
-        /* Funnel cards row */
+        @media(min-width:700px){.fee-banner-meta{width:auto}}
         .funnel-row{display:flex;flex-wrap:wrap;gap:8px}
         .funnel-row > div{flex:1;min-width:120px}
       `}</style>
@@ -817,7 +865,6 @@ export default function GNSIDashboard({ scrollToSection }) {
             </p>
           </div>
 
-          {/* Live fee banner */}
           <div className="fee-banner">
             <div style={{display:"flex",alignItems:"center",gap:12}}>
               <span style={{fontSize:24}}>💰</span>
@@ -831,7 +878,7 @@ export default function GNSIDashboard({ scrollToSection }) {
                 <span>Progress</span>
                 <span style={{color:T.gold,fontWeight:700}}>{feeProgress}% · {fmt(data.feePending)} pending</span>
               </div>
-              <ProgressBar value={liveTotal} max={liveTotal+data.feePending} color={T.gold} height={9}/>
+              <ProgressBar value={liveTotal} max={liveTotal+Math.max(0,data.feePending)} color={T.gold} height={9}/>
             </div>
             <div className="fee-banner-meta">
               {[{label:"Admission",val:data.admFeeTotal,color:T.violet},{label:"Flat Fee",val:data.flatFeeTotal,color:T.sky},{label:"Course",val:data.courseFeeTotal,color:T.emerald}].map(x=>(
@@ -843,9 +890,9 @@ export default function GNSIDashboard({ scrollToSection }) {
             </div>
           </div>
 
-          {/* KPI row */}
+          {/* FIX #1: Students KPI — show DB total; sub shows enrolled count separately */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="🎓" label="Students" value={data.totalStudents} color={T.sky} sub={`${data.admEnrolled||data.totalStudents} enrolled`}/>
+            <KPI icon="🎓" label="Students" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
             <KPI icon="🗂️" label="Batches" value={data.activeBatches} color={T.indigo} sub={`${data.totalBatches} total`}/>
             <KPI icon="📝" label="Exam Entries" value={data.totalTestEntries} color={T.violet} sub={`Avg ${data.avgTestScore}%`}/>
             <KPI icon="🔍" label="Applications" value={data.totalEnquiries} color={T.amber} sub={`${data.convertedEnq} enrolled · ${data.conversionRate}%`}/>
@@ -855,7 +902,6 @@ export default function GNSIDashboard({ scrollToSection }) {
             <KPI icon="📉" label="Net P&L" value={data.netPL} color={data.netPL>=0?T.emerald:T.rose} isMoney sub={`Exp: ${fmt(data.totalExpenses)}`}/>
           </div>
 
-          {/* Charts row */}
           <div className="grid-split" style={{marginBottom:14}}>
             <Panel title="Monthly Fee Collection vs Target">
               <ResponsiveContainer width="100%" height={190}>
@@ -884,7 +930,6 @@ export default function GNSIDashboard({ scrollToSection }) {
             </Panel>
           </div>
 
-          {/* Recent activity row */}
           <div className="grid-cols3" style={{marginBottom:14}}>
             <Panel title="Recent Fee Activity">
               {data.recentFeeActivity.length===0?<EmptyState msg="No payments yet"/>:(
@@ -934,15 +979,15 @@ export default function GNSIDashboard({ scrollToSection }) {
             </Panel>
           </div>
 
-          {/* Funnel */}
+          {/* FIX #2: admissionFunnel now uses exact-status counts — conversions will be meaningful */}
           <Panel title="Admission Pipeline" sub="Live conversion rates">
             <div className="funnel-row">
-              {data.admissionFunnel.map((s,i,arr)=>{const prev=arr[i-1];const conv=prev?pct(s.count,prev.count):100;return(
+              {data.admissionFunnel.map((s,i,arr)=>{const prev=arr[i-1];const conv=prev&&prev.count>0?pct(s.count,prev.count):null;return(
                 <div key={s.stage} style={{flex:1,minWidth:100,position:"relative"}}>
                   <div style={{background:`${s.color}10`,border:`1px solid ${s.color}25`,borderRadius:12,padding:"12px 8px",textAlign:"center"}}>
                     <div style={{fontSize:20,fontWeight:900,color:s.color}}><Counter value={s.count}/></div>
                     <div style={{fontSize:10,color:T.inkSub,marginTop:3,fontWeight:600}}>{s.stage}</div>
-                    {i>0&&<div style={{fontSize:10,fontWeight:700,marginTop:3,color:conv>=80?T.emerald:conv>=60?T.amber:T.rose}}>{conv}% conv.</div>}
+                    {conv!==null&&<div style={{fontSize:10,fontWeight:700,marginTop:3,color:conv>=80?T.emerald:conv>=60?T.amber:T.rose}}>{conv}% conv.</div>}
                   </div>
                   {i<3&&<div style={{position:"absolute",right:-6,top:"50%",transform:"translateY(-50%)",color:T.inkSub,fontSize:16,zIndex:2}}>›</div>}
                 </div>
@@ -1006,8 +1051,9 @@ export default function GNSIDashboard({ scrollToSection }) {
         {/* ═══ STUDENTS ══════════════════════════════════════ */}
         <div ref={setSectionRef('students')} className="dash-section">
           <SectionHeader icon="🎓" title="Student Analytics"/>
+          {/* FIX #1: main value = DB total; sub = enrolled count */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="👥" label="Total" value={data.totalStudents} color={T.sky}/>
+            <KPI icon="👥" label="Total" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
             <KPI icon="👦" label="Male" value={data.maleStudents} color={T.sky} progress={data.maleStudents} progressMax={data.totalStudents}/>
             <KPI icon="👧" label="Female" value={data.femaleStudents} color={T.pink} progress={data.femaleStudents} progressMax={data.totalStudents}/>
             <KPI icon="🏠" label="Boarders" value={data.boarders} color={T.violet}/>
@@ -1082,13 +1128,14 @@ export default function GNSIDashboard({ scrollToSection }) {
             <KPI icon="⏳" label="Waitlisted" value={data.admWaitlisted} color={T.slateL}/>
           </div>
           <div className="grid-cols2" style={{marginBottom:14}}>
+            {/* FIX #2: funnel now shows per-stage counts with accurate conversion rates */}
             <Panel title="Admission Funnel">
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {data.admissionFunnel.map((s,i,arr)=>{const prev=arr[i-1];return(
                   <div key={s.stage}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                       <span style={{fontSize:12,color:T.inkSub}}>{s.stage}</span>
-                      <div><span style={{fontSize:14,fontWeight:800,color:s.color}}>{s.count}</span>{prev&&<span style={{fontSize:11,color:T.inkSub}}> ({pct(s.count,prev.count)}%)</span>}</div>
+                      <div><span style={{fontSize:14,fontWeight:800,color:s.color}}>{s.count}</span>{prev&&prev.count>0&&<span style={{fontSize:11,color:T.inkSub}}> ({pct(s.count,prev.count)}%)</span>}</div>
                     </div>
                     <ProgressBar value={s.count} max={data.admissionFunnel[0].count||1} color={s.color} height={11}/>
                   </div>
@@ -1237,9 +1284,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         {/* ═══ ACADEMIC ══════════════════════════════════════ */}
         <div ref={setSectionRef('academic')} className="dash-section">
           <SectionHeader icon="📚" title="Academic Performance"/>
+          {/* FIX — avg score sub now shows % clearly */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📊" label="Avg Score" value={data.avgScore} color={T.sky} sub={`${data.avgScore}%`}/>
-            <KPI icon="✅" label="Pass Rate" value={data.passRate} color={T.emerald} sub={`${data.passRate}%`}/>
+            <KPI icon="📊" label="Avg Score" value={data.avgScore} color={T.sky} sub={`Class average: ${data.avgScore}%`}/>
+            <KPI icon="✅" label="Pass Rate" value={data.passRate} color={T.emerald} sub={`${data.passRate}% passed`}/>
             <KPI icon="🏆" label="A+ Students" value={data.aPlusCount} color={T.gold}/>
             <KPI icon="📉" label="At Risk" value={data.atRisk} color={T.rose} sub="Below 35%"/>
           </div>
@@ -1820,13 +1868,14 @@ export default function GNSIDashboard({ scrollToSection }) {
                   </div>
                 </Panel>
               </div>
+              {/* FIX #7: header now correctly says "Subject", data grouped by subject_name */}
               <Panel title="Subject-wise Syllabus Progress">
                 <TableWrap>
                   <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px",minWidth:440}}>
                     <thead><tr>{["Subject","Total","Done","Progress","Status"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
-                    <tbody>{data.syllabusByTeacher.map((t,i)=>(
+                    <tbody>{data.syllabusTopicsBySubject.map((t,i)=>(
                       <tr key={i}>
-                        <td style={tdFirst}>{t.name||"Unknown"}</td>
+                        <td style={tdFirst}>{t.name||"—"}</td>
                         <td style={td()}>{t.total}</td>
                         <td style={td({color:T.emerald,fontWeight:700})}>{t.completed}</td>
                         <td style={{...td(),minWidth:130}}>
@@ -1997,7 +2046,7 @@ export default function GNSIDashboard({ scrollToSection }) {
               </ResponsiveContainer>
             </Panel>
             <Panel title="Expense by Category">
-              {data.expenseByCategory.length===0?<EmptyState msg="No Expense rows in accounts table yet"/>:(
+              {data.expenseByCategory.length===0?<EmptyState msg="No expense rows yet"/>:(
                 <>
                   <ResponsiveContainer width="100%" height={130}>
                     <PieChart><Pie data={data.expenseByCategory} dataKey="amount" cx="50%" cy="50%" innerRadius={35} outerRadius={54} paddingAngle={4}>
