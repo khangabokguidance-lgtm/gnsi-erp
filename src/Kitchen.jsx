@@ -1094,20 +1094,29 @@ function CookAttendancePanel({ onClose, showToast }) {
     setDraft(d => ({ ...d, [draftKey(cook,shift)]:{ ...d[draftKey(cook,shift)], [field]:val } }))
   }
 
-  const saveAll = async () => {
-    setLoading(true)
-    const rows = []
-    COOKS.forEach(cook => {
-      Object.keys(COOK_SHIFTS).forEach(shift => {
-        const rec = draft[draftKey(cook,shift)]
-        rows.push({ att_date:attDate, cook_name:cook, shift, status:rec.status, check_in:rec.status==='absent'?null:(rec.check_in||null), check_out:rec.status==='absent'?null:(rec.check_out||null), notes:rec.notes||null })
-      })
+ const saveAll = async () => {
+  setLoading(true)
+  const rows = []
+  COOKS.forEach(cook => {
+    Object.keys(COOK_SHIFTS).forEach(shift => {
+      const rec = draft[draftKey(cook,shift)]
+      rows.push({ att_date:attDate, cook_name:cook, shift, status:rec.status, check_in:rec.status==='absent'?null:(rec.check_in||null), check_out:rec.status==='absent'?null:(rec.check_out||null), notes:rec.notes||null })
     })
-    const { error } = await supabase.from('kitchen_cook_attendance').upsert(rows, { onConflict:'att_date,cook_name,shift' })
-    setLoading(false)
-    if (error) { showToast('Save failed: '+error.message, C.rose[600]); return }
-    showToast('Attendance saved ✓', C.forest[600]); loadDay(attDate)
-  }
+  })
+
+  // Delete existing records for this date first, then insert fresh
+  const { error: delError } = await supabase
+    .from('kitchen_cook_attendance')
+    .delete()
+    .eq('att_date', attDate)
+
+  if (delError) { setLoading(false); showToast('Save failed: '+delError.message, C.rose[600]); return }
+
+  const { error } = await supabase.from('kitchen_cook_attendance').insert(rows)
+  setLoading(false)
+  if (error) { showToast('Save failed: '+error.message, C.rose[600]); return }
+  showToast('Attendance saved ✓', C.forest[600]); loadDay(attDate)
+}
 
   const monthlySummary = useMemo(() => COOKS.map(cook => {
     const rows = monthly.filter(r=>r.cook_name===cook)
