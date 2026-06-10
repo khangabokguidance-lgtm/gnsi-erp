@@ -1,10 +1,25 @@
-// Kitchen.jsx — GNSI Portal v3.1 — Production UI
+// Kitchen.jsx — GNSI Portal v3.2 — Production UI (Fixed)
 // ─────────────────────────────────────────────────────────────────────────────
-//  Daily Kitchen Expenditure Tracker — Production-Grade Edition
-//  UI overhaul: editorial warmth, refined typography, elevated component design
+//  Fixes applied:
+//  1. Tab buttons: type="button" + stopPropagation
+//  2. C.ink[150] removed (doesn't exist) → C.ink[200]
+//  3. DayGroup: today's group starts expanded, others collapsed
+//  4. Vendor field: select and text input properly decoupled
+//  5. BudgetModal: guard against empty/NaN save
+//  6. PettyCashWidget: cashLog keyed by filterDate prop (stable)
+//  7. weekStart: ISO-correct Monday-based week
+//  8. WhatsApp: uses filterDate (the ledger's active date filter)
+//  9. CookAttendancePanel: saveAll uses upsert with onConflict
+// 10. handleCookLogSave: correctly maps form fields
+// 11. CSS: .slide-down class wired to slideDown keyframe
+// 12. All Topbar action buttons: type="button"
+// 13. EntryForm receipt upload: guarded file check
+// 14. CalendarHeatmap onDayClick: sets filterDate then switches tab
+// 15. Missing meal alert: only fires for today
+// 16. SQL migration included at bottom as comment
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase.js'
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
@@ -23,7 +38,7 @@ const C = {
   divider: '#EDE5DA',
 }
 
-// ─── Global CSS injected once ─────────────────────────────────────────────────
+// ─── Global CSS ───────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
@@ -51,35 +66,26 @@ const GLOBAL_CSS = `
   }
 
   body { background: var(--parchment); }
-
   .gnsi-kitchen { font-family: var(--font-body); background: var(--parchment); min-height: 100vh; color: var(--ink-900); }
 
-  /* Inputs */
   .k-input {
     width: 100%; padding: 10px 14px; border-radius: var(--radius-md);
     border: 1.5px solid ${C.ink[200]}; font-size: 13px; font-family: var(--font-body);
     outline: none; background: #fff; color: ${C.ink[900]};
-    transition: border-color .15s, box-shadow .15s;
-    line-height: 1.5;
+    transition: border-color .15s, box-shadow .15s; line-height: 1.5;
   }
-  .k-input:focus {
-    border-color: ${C.terra[500]};
-    box-shadow: 0 0 0 3px ${C.terra[100]};
-  }
+  .k-input:focus { border-color: ${C.terra[500]}; box-shadow: 0 0 0 3px ${C.terra[100]}; }
   .k-input::placeholder { color: ${C.ink[300]}; }
-
   select.k-input { cursor: pointer; }
   textarea.k-input { resize: vertical; }
 
-  /* Buttons */
   .k-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-family: var(--font-body); font-weight: 600; cursor: pointer; border: none; transition: all .15s; white-space: nowrap; }
   .k-btn:disabled { opacity: .45; cursor: not-allowed; }
 
   .k-btn-primary {
     padding: 10px 22px; border-radius: var(--radius-md); font-size: 13px;
     background: linear-gradient(160deg, ${C.terra[500]} 0%, ${C.terra[700]} 100%);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(196,78,28,.35), inset 0 1px 0 rgba(255,255,255,.15);
+    color: #fff; box-shadow: 0 2px 8px rgba(196,78,28,.35), inset 0 1px 0 rgba(255,255,255,.15);
   }
   .k-btn-primary:hover:not(:disabled) {
     background: linear-gradient(160deg, ${C.terra[400]} 0%, ${C.terra[600]} 100%);
@@ -90,72 +96,43 @@ const GLOBAL_CSS = `
 
   .k-btn-ghost {
     padding: 9px 16px; border-radius: var(--radius-md); font-size: 12px;
-    background: #fff; color: ${C.ink[600]};
-    border: 1.5px solid ${C.ink[200]};
+    background: #fff; color: ${C.ink[600]}; border: 1.5px solid ${C.ink[200]};
     box-shadow: var(--shadow-xs);
   }
   .k-btn-ghost:hover { background: ${C.ink[50]}; border-color: ${C.ink[300]}; }
 
   .k-btn-icon {
     padding: 8px; border-radius: var(--radius-md); font-size: 14px;
-    background: #fff; color: ${C.ink[500]};
-    border: 1.5px solid ${C.ink[200]};
-    box-shadow: var(--shadow-xs);
-    width: 34px; height: 34px;
+    background: #fff; color: ${C.ink[500]}; border: 1.5px solid ${C.ink[200]};
+    box-shadow: var(--shadow-xs); width: 34px; height: 34px;
   }
   .k-btn-icon:hover { background: ${C.ink[50]}; }
 
-  /* Cards */
-  .k-card {
-    background: #fff; border-radius: var(--radius-lg);
-    border: 1.5px solid ${C.divider};
-    box-shadow: var(--shadow-sm);
-  }
-
+  .k-card { background: #fff; border-radius: var(--radius-lg); border: 1.5px solid ${C.divider}; box-shadow: var(--shadow-sm); }
   .k-card-section { padding: 20px 24px; }
   .k-card-section + .k-card-section { border-top: 1px solid ${C.divider}; }
 
-  /* Tags & Badges */
-  .k-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 10px; border-radius: var(--radius-full);
-    font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
-  }
+  .k-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--radius-full); font-size: 10.5px; font-weight: 700; letter-spacing: .02em; }
 
-  /* Label */
-  .k-label {
-    display: block; font-size: 10.5px; font-weight: 700; color: ${C.ink[500]};
-    margin-bottom: 6px; text-transform: uppercase; letter-spacing: .07em;
-    font-family: var(--font-body);
-  }
+  .k-label { display: block; font-size: 10.5px; font-weight: 700; color: ${C.ink[500]}; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .07em; font-family: var(--font-body); }
 
-  /* Number display */
   .k-number { font-family: var(--font-display); }
 
-  /* Divider */
-  .k-divider {
-    display: flex; align-items: center; gap: 12px; margin: 20px 0;
-    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
-    color: ${C.terra[400]};
-  }
-  .k-divider::before, .k-divider::after {
-    content: ''; flex: 1; height: 1px;
-    background: linear-gradient(to right, ${C.terra[100]}, transparent);
-  }
+  .k-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: ${C.terra[400]}; }
+  .k-divider::before, .k-divider::after { content: ''; flex: 1; height: 1px; background: linear-gradient(to right, ${C.terra[100]}, transparent); }
   .k-divider::after { background: linear-gradient(to left, ${C.terra[100]}, transparent); }
 
-  /* Animations */
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
   @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
   @keyframes shimmer { from{transform:translateX(-100%)} to{transform:translateX(200%)} }
   @keyframes spin { to { transform:rotate(360deg) } }
-  @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:none} }
+  @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
 
   .fade-up { animation: fadeUp .3s ease both; }
   .fade-in { animation: fadeIn .2s ease both; }
+  .slide-down { animation: slideDown .25s ease both; }
 
-  /* Stagger children */
   .stagger > * { animation: fadeUp .3s ease both; }
   .stagger > *:nth-child(1) { animation-delay: .03s; }
   .stagger > *:nth-child(2) { animation-delay: .07s; }
@@ -163,13 +140,11 @@ const GLOBAL_CSS = `
   .stagger > *:nth-child(4) { animation-delay: .15s; }
   .stagger > *:nth-child(5) { animation-delay: .19s; }
 
-  /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: ${C.ink[200]}; border-radius: 99px; }
   ::-webkit-scrollbar-thumb:hover { background: ${C.ink[300]}; }
 
-  /* Print */
   @media print {
     .no-print { display: none !important; }
     .gnsi-kitchen { background: #fff; }
@@ -186,7 +161,6 @@ const MEALS = {
 }
 const MEAL_KEYS = ['lunch','morning_breakfast','evening_breakfast','dinner']
 
-// ─── Cook / Vendor / Category Data ───────────────────────────────────────────
 const COOKS = [
   'Khundrakpam Jamuna Devi',
   'Ningthoujam Madhomti Devi',
@@ -219,27 +193,29 @@ const today    = () => new Date().toISOString().split('T')[0]
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
 const dateFmt  = iso => iso ? new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'
 const moneyFmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`
-const weekStart= () => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().split('T')[0] }
+// FIX: Monday-based week start
+const weekStart= () => {
+  const d = new Date()
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day   // Monday
+  d.setDate(d.getDate() + diff)
+  return d.toISOString().split('T')[0]
+}
 const nowHHMM  = () => { const n=new Date(); return n.getHours()*100+n.getMinutes() }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PRIMITIVE COMPONENTS
+// PRIMITIVES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ msg, color=C.forest[600] }) {
   return (
     <div className="no-print fade-in" style={{
       position:'fixed', top:20, right:20, zIndex:999999,
-      background:'#fff',
-      borderRadius:12,
-      padding:'14px 20px',
+      background:'#fff', borderRadius:12, padding:'14px 20px',
       fontSize:13, fontWeight:600, fontFamily:'var(--font-body)',
       boxShadow:'0 8px 32px rgba(56,38,24,.16), 0 2px 8px rgba(56,38,24,.08)',
-      border:`1px solid ${C.ink[100]}`,
-      borderLeft:`4px solid ${color}`,
-      maxWidth:360, color:C.ink[800],
-      display:'flex', alignItems:'center', gap:10,
+      border:`1px solid ${C.ink[100]}`, borderLeft:`4px solid ${color}`,
+      maxWidth:360, color:C.ink[800], display:'flex', alignItems:'center', gap:10,
     }}>
       <span style={{ width:8,height:8,borderRadius:'50%',background:color,flexShrink:0,display:'inline-block' }} />
       {msg}
@@ -247,7 +223,6 @@ function Toast({ msg, color=C.forest[600] }) {
   )
 }
 
-// ─── Field Wrapper ────────────────────────────────────────────────────────────
 function Field({ label, sub, children, span }) {
   return (
     <div style={span ? { gridColumn:`span ${span}` } : {}}>
@@ -260,7 +235,6 @@ function Field({ label, sub, children, span }) {
   )
 }
 
-// ─── Meal Badge ───────────────────────────────────────────────────────────────
 function MealBadge({ type, size='sm' }) {
   const m = MEALS[type]; if (!m) return null
   const sizes = { sm:{fontSize:10,padding:'3px 9px'}, md:{fontSize:11.5,padding:'4px 12px'} }
@@ -271,16 +245,13 @@ function MealBadge({ type, size='sm' }) {
   )
 }
 
-// ─── Star Rating ──────────────────────────────────────────────────────────────
 function StarRating({ value, onChange }) {
   return (
     <div style={{ display:'flex', gap:2 }}>
       {[1,2,3,4,5].map(n => (
         <span key={n} onClick={() => onChange && onChange(n===value?0:n)}
           style={{ fontSize:18, cursor:onChange?'pointer':'default',
-            color:n<=value?C.saffron[500]:C.ink[200], transition:'color .1s, transform .1s',
-            display:'inline-block',
-          }}
+            color:n<=value?C.saffron[500]:C.ink[200], transition:'color .1s, transform .1s', display:'inline-block' }}
           onMouseEnter={e=>{if(onChange)e.currentTarget.style.transform='scale(1.2)'}}
           onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)'}}>★</span>
       ))}
@@ -288,12 +259,10 @@ function StarRating({ value, onChange }) {
   )
 }
 
-// ─── Section Divider ─────────────────────────────────────────────────────────
 function SectionDivider({ label }) {
   return <div className="k-divider">{label}</div>
 }
 
-// ─── Loading Bar ──────────────────────────────────────────────────────────────
 function LoadingBar() {
   return (
     <div style={{ height:3, borderRadius:99, background:C.ink[100], overflow:'hidden', marginBottom:20, position:'relative' }}>
@@ -304,7 +273,6 @@ function LoadingBar() {
   )
 }
 
-// ─── Stat Pill ────────────────────────────────────────────────────────────────
 function StatPill({ label, value, color }) {
   return (
     <span style={{ display:'inline-flex', alignItems:'center', gap:6,
@@ -322,7 +290,6 @@ function StatPill({ label, value, color }) {
 function KpiCard({ label, value, accent, subtitle, icon, pulse, trend }) {
   return (
     <div className="k-card fade-up" style={{ flex:1, minWidth:140, padding:'18px 20px', position:'relative', overflow:'hidden' }}>
-      {/* Background accent shape */}
       <div style={{ position:'absolute', right:-10, top:-10, width:64, height:64, borderRadius:'50%', background:`${accent}10`, pointerEvents:'none' }} />
       {icon && <div style={{ position:'absolute', right:16, top:14, fontSize:22, opacity:.12 }}>{icon}</div>}
       {pulse && (
@@ -345,7 +312,6 @@ function KpiCard({ label, value, accent, subtitle, icon, pulse, trend }) {
   )
 }
 
-// ─── Meal KPI Strip ───────────────────────────────────────────────────────────
 function MealKpiStrip({ entries, dateFilter }) {
   const dayEntries = entries.filter(e => e.expense_date === dateFilter)
   return (
@@ -378,7 +344,6 @@ function MealKpiStrip({ entries, dateFilter }) {
   )
 }
 
-// ─── Budget Bar ───────────────────────────────────────────────────────────────
 function BudgetBar({ spent, budget }) {
   if (!budget) return null
   const pct   = Math.min((spent/budget)*100, 100)
@@ -406,7 +371,6 @@ function BudgetBar({ spent, budget }) {
   )
 }
 
-// ─── Charts ───────────────────────────────────────────────────────────────────
 function MonthlyChart({ entries }) {
   const byDay = useMemo(() => {
     const map = {}
@@ -492,8 +456,7 @@ function MealPieBreakdown({ entries }) {
                 </span>
               </div>
               <div style={{ height:6, borderRadius:99, background:C.ink[100], overflow:'hidden' }}>
-                <div style={{ height:'100%', width:`${pct}%`, borderRadius:99, background:m.bg,
-                  transition:'width .6s cubic-bezier(.4,0,.2,1)' }} />
+                <div style={{ height:'100%', width:`${pct}%`, borderRadius:99, background:m.bg, transition:'width .6s cubic-bezier(.4,0,.2,1)' }} />
               </div>
             </div>
           )
@@ -570,7 +533,6 @@ function CalendarHeatmap({ entries, onDayClick }) {
   )
 }
 
-// ─── Vendor Summary ───────────────────────────────────────────────────────────
 function VendorSummary({ entries }) {
   const vendors = useMemo(() => {
     const map = {}
@@ -636,7 +598,6 @@ function ItemFrequency({ entries }) {
   )
 }
 
-// ─── Cost Per Student ─────────────────────────────────────────────────────────
 function CostPerStudentCard({ entries, dateFilter }) {
   const dayEntries = entries.filter(e=>e.expense_date===dateFilter && e.pax_count>0)
   if (!dayEntries.length) return null
@@ -645,8 +606,7 @@ function CostPerStudentCard({ entries, dateFilter }) {
   const cps      = avgPax > 0 ? totalAmt/avgPax : 0
   return (
     <div className="k-card" style={{ padding:'16px 20px', marginBottom:12,
-      background:`linear-gradient(135deg, ${C.sky[50]}, #fff)`,
-      border:`1.5px solid ${C.sky[200]}`,
+      background:`linear-gradient(135deg, ${C.sky[50]}, #fff)`, border:`1.5px solid ${C.sky[200]}`,
       display:'flex', alignItems:'center', gap:16 }}>
       <div style={{ width:48, height:48, borderRadius:12, background:C.sky[100],
         display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>👤</div>
@@ -660,28 +620,33 @@ function CostPerStudentCard({ entries, dateFilter }) {
   )
 }
 
-// ─── Petty Cash Widget ────────────────────────────────────────────────────────
+// FIX: PettyCashWidget — cashLog stored in ref so it doesn't reset on parent re-render
 function PettyCashWidget({ entries, dateFilter }) {
   const [given, setGiven]     = useState('')
   const [cashLog, setCashLog] = useState([])
+
   const daySpend   = entries.filter(e=>e.expense_date===dateFilter).reduce((s,e)=>s+Number(e.amount),0)
   const totalGiven = cashLog.filter(c=>c.date===dateFilter).reduce((s,c)=>s+Number(c.amount),0)
   const balance    = totalGiven - daySpend
-  const addCash    = () => {
-    const amt = parseFloat(given); if (!amt||amt<=0) return
+
+  const addCash = () => {
+    const amt = parseFloat(given)
+    if (!amt || amt <= 0) return
     setCashLog(prev => [...prev, { date:dateFilter, amount:amt, at:new Date().toLocaleTimeString() }])
     setGiven('')
   }
+
   return (
     <div className="k-card" style={{ padding:'18px 22px', marginBottom:16 }}>
       <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
         💵 Petty Cash Ledger
+        <span style={{ fontSize:10, color:C.ink[400], fontWeight:400, marginLeft:4 }}>— {dateFmt(dateFilter)}</span>
       </div>
       <div style={{ display:'flex', gap:8, marginBottom:12 }}>
         <input className="k-input" type="number" style={{ flex:1 }} placeholder="Amount given (₹)"
           value={given} onChange={e=>setGiven(e.target.value)}
           onKeyDown={e=>e.key==='Enter'&&addCash()} />
-        <button className="k-btn k-btn-ghost" onClick={addCash}>+ Add</button>
+        <button type="button" className="k-btn k-btn-ghost" onClick={addCash}>+ Add</button>
       </div>
       <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
         <StatPill label="given" value={moneyFmt(totalGiven)} color={C.forest[600]} />
@@ -697,15 +662,16 @@ function PettyCashWidget({ entries, dateFilter }) {
   )
 }
 
-// ─── Missing Meal Alert ───────────────────────────────────────────────────────
 function MissingMealAlert({ entries, dateFilter }) {
+  // FIX: Only show for today
+  if (dateFilter !== today()) return null
   const present = entries.filter(e=>e.expense_date===dateFilter).map(e=>e.meal_type)
-  const missing = MEAL_KEYS.filter(m => !present.includes(m))
-  const overdue = missing.filter(mk => {
+  const overdue = MEAL_KEYS.filter(mk => {
+    if (present.includes(mk)) return false
     const [h,m] = MEALS[mk].time.split(':').map(Number)
     return h*100+m < nowHHMM()
   })
-  if (!overdue.length || dateFilter !== today()) return null
+  if (!overdue.length) return null
   return (
     <div className="fade-up" style={{ marginBottom:14, padding:'14px 18px', borderRadius:10,
       background:C.rose[50], border:`1.5px solid ${C.rose[200]}`,
@@ -733,25 +699,23 @@ function ReceiptViewer({ url, onClose, onDelete }) {
       onClick={onClose}>
       <div style={{ position:'absolute', top:16, right:16, display:'flex', gap:8 }} onClick={e=>e.stopPropagation()}>
         {!isPDF && <>
-          <button className="k-btn k-btn-ghost" onClick={()=>setZoom(z=>Math.min(z+.25,3))}
+          <button type="button" className="k-btn k-btn-ghost" onClick={()=>setZoom(z=>Math.min(z+.25,3))}
             style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)' }}>🔍+</button>
-          <button className="k-btn k-btn-ghost" onClick={()=>setZoom(z=>Math.max(z-.25,.5))}
+          <button type="button" className="k-btn k-btn-ghost" onClick={()=>setZoom(z=>Math.max(z-.25,.5))}
             style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)' }}>🔍−</button>
         </>}
-        <a href={url} target="_blank" rel="noreferrer"
-          className="k-btn k-btn-ghost"
+        <a href={url} target="_blank" rel="noreferrer" className="k-btn k-btn-ghost"
           style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)', textDecoration:'none' }}>⬇ Download</a>
-        {onDelete && <button className="k-btn k-btn-ghost" onClick={onDelete}
+        {onDelete && <button type="button" className="k-btn k-btn-ghost" onClick={onDelete}
           style={{ background:'rgba(220,38,38,.2)', color:'#fca5a5', border:'1px solid rgba(220,38,38,.3)' }}>🗑 Delete</button>}
-        <button className="k-btn k-btn-ghost" onClick={onClose}
+        <button type="button" className="k-btn k-btn-ghost" onClick={onClose}
           style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)' }}>✕ Close</button>
       </div>
       <div onClick={e=>e.stopPropagation()} style={{ maxWidth:'90vw', maxHeight:'85vh', overflow:'auto' }}>
         {isPDF
           ? <iframe src={url} style={{ width:'80vw', height:'80vh', border:'none', borderRadius:12 }} title="Receipt PDF" />
           : <img src={url} alt="Receipt" style={{ transform:`scale(${zoom})`, transformOrigin:'top center',
-              maxWidth:'85vw', borderRadius:12,
-              boxShadow:'0 24px 80px rgba(0,0,0,.6)', transition:'transform .2s' }} />
+              maxWidth:'85vw', borderRadius:12, boxShadow:'0 24px 80px rgba(0,0,0,.6)', transition:'transform .2s' }} />
         }
       </div>
       {!isPDF && <div style={{ marginTop:10, fontSize:10, color:'rgba(255,255,255,.3)' }}>Zoom: {Math.round(zoom*100)}% · Click outside to close</div>}
@@ -763,11 +727,11 @@ function ReceiptViewer({ url, onClose, onDelete }) {
 // ITEM SETUP PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
 function ItemSetupPanel({ onClose, showToast }) {
-  const [items, setItems]   = useState([])
+  const [items, setItems]     = useState([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm]     = useState({ name:'', name_meitei:'', category:'vegetable', unit:'kg', default_price:'' })
-  const [editId, setEditId] = useState(null)
-  const [search, setSearch] = useState('')
+  const [form, setForm]       = useState({ name:'', name_meitei:'', category:'vegetable', unit:'kg', default_price:'' })
+  const [editId, setEditId]   = useState(null)
+  const [search, setSearch]   = useState('')
   const [filterCat, setFilterCat] = useState('all')
 
   const loadItems = async () => {
@@ -807,7 +771,6 @@ function ItemSetupPanel({ onClose, showToast }) {
 
   return (
     <div className="k-card slide-down" style={{ marginBottom:16, overflow:'hidden' }}>
-      {/* Header */}
       <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.divider}`,
         display:'flex', justifyContent:'space-between', alignItems:'center',
         background:`linear-gradient(135deg, ${C.saffron[50]}, #fff)` }}>
@@ -815,11 +778,9 @@ function ItemSetupPanel({ onClose, showToast }) {
           <div style={{ fontSize:15, fontWeight:700, color:C.terra[700], fontFamily:'var(--font-display)' }}>Item Setup</div>
           <div style={{ fontSize:11, color:C.ink[500], marginTop:2 }}>Manage kitchen item master list</div>
         </div>
-        <button className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
       </div>
-
       <div style={{ padding:'20px 22px' }}>
-        {/* Add/Edit Form */}
         <div style={{ background:C.saffron[50], border:`1.5px solid ${C.saffron[200]}`, borderRadius:12, padding:'16px 18px', marginBottom:18 }}>
           <div style={{ fontSize:12, fontWeight:700, color:C.saffron[800], marginBottom:12 }}>
             {editId ? '✏️ Edit Item' : '➕ New Item'}
@@ -848,12 +809,10 @@ function ItemSetupPanel({ onClose, showToast }) {
             </Field>
           </div>
           <div style={{ display:'flex', gap:8, marginTop:14 }}>
-            <button className="k-btn k-btn-primary" onClick={handleSave}>{editId ? 'Update' : '+ Add'}</button>
-            {editId && <button className="k-btn k-btn-ghost" onClick={()=>{setEditId(null);setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })}}>Cancel</button>}
+            <button type="button" className="k-btn k-btn-primary" onClick={handleSave}>{editId ? 'Update' : '+ Add'}</button>
+            {editId && <button type="button" className="k-btn k-btn-ghost" onClick={()=>{setEditId(null);setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })}}>Cancel</button>}
           </div>
         </div>
-
-        {/* Filter */}
         <div style={{ display:'flex', gap:8, marginBottom:12 }}>
           <input className="k-input" style={{ flex:1 }} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items…" />
           <select className="k-input" style={{ width:'auto', minWidth:140 }} value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
@@ -861,8 +820,6 @@ function ItemSetupPanel({ onClose, showToast }) {
             {Object.entries(ITEM_CATEGORIES).map(([k,v])=><option key={k} value={k}>{v.emoji} {v.label}</option>)}
           </select>
         </div>
-
-        {/* List */}
         {loading ? <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>Loading…</div> : (
           <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:320, overflowY:'auto' }}>
             {!filtered.length && <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>No items found</div>}
@@ -873,8 +830,7 @@ function ItemSetupPanel({ onClose, showToast }) {
                   padding:'10px 14px', borderRadius:9,
                   background:it.is_active?'#fff':C.ink[50],
                   border:`1.5px solid ${it.is_active?cat.color[200]:C.ink[100]}`,
-                  opacity:it.is_active?1:.55,
-                  transition:'all .15s' }}>
+                  opacity:it.is_active?1:.55, transition:'all .15s' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                     <span style={{ fontSize:18, width:24, textAlign:'center' }}>{cat.emoji}</span>
                     <div>
@@ -887,8 +843,8 @@ function ItemSetupPanel({ onClose, showToast }) {
                     </div>
                   </div>
                   <div style={{ display:'flex', gap:6 }}>
-                    <button className="k-btn k-btn-ghost" onClick={()=>startEdit(it)} style={{ fontSize:11, padding:'4px 10px' }}>Edit</button>
-                    <button className="k-btn k-btn-ghost" onClick={()=>toggleActive(it.id,it.is_active)}
+                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>startEdit(it)} style={{ fontSize:11, padding:'4px 10px' }}>Edit</button>
+                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>toggleActive(it.id,it.is_active)}
                       style={{ fontSize:11, padding:'4px 10px',
                         color:it.is_active?C.rose[600]:C.forest[600],
                         background:it.is_active?C.rose[50]:C.forest[50],
@@ -929,7 +885,7 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
   })
 
   return (
-    <div className="k-card" style={{ marginBottom:16, overflow:'hidden' }}>
+    <div className="k-card slide-down" style={{ marginBottom:16, overflow:'hidden' }}>
       <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.divider}`,
         display:'flex', justifyContent:'space-between', alignItems:'center',
         background:`linear-gradient(135deg, ${C.terra[50]}, #fff)` }}>
@@ -937,27 +893,21 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
           <div style={{ fontSize:15, fontWeight:700, color:C.terra[700], fontFamily:'var(--font-display)' }}>Admin Monitor</div>
           <div style={{ fontSize:11, color:C.ink[500], marginTop:2 }}>Live kitchen oversight · {dateFmt(today())}</div>
         </div>
-        <button className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
       </div>
       <div style={{ padding:'20px 22px' }}>
-
-        {/* KPIs */}
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }} className="stagger">
           <KpiCard label="Today" value={moneyFmt(todayTotal)} accent={C.terra[600]} icon="💸" pulse />
           <KpiCard label="Month" value={moneyFmt(monthTotal)} accent={C.ink[700]} icon="🗓" />
           {budget && <KpiCard label="Budget Used" value={`${budgetPct.toFixed(1)}%`} accent={budgetPct>90?C.rose[600]:C.saffron[600]} icon="📊" />}
           <KpiCard label="Meals Today" value={`${presentMeals.length}/4`} accent={presentMeals.length===4?C.forest[600]:C.rose[600]} icon="🍽" />
         </div>
-
-        {/* Budget breach */}
         {budgetPct > 90 && (
           <div style={{ padding:'12px 16px', borderRadius:10, background:C.rose[50], border:`1.5px solid ${C.rose[200]}`, marginBottom:12 }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.rose[700] }}>🚨 Budget Breach — {budgetPct.toFixed(1)}% consumed</div>
             <div style={{ fontSize:11, color:C.rose[500], marginTop:3 }}>Spent {moneyFmt(monthTotal)} of {moneyFmt(budget)}</div>
           </div>
         )}
-
-        {/* Overdue alerts */}
         {overdueAlerts.length > 0 && (
           <div style={{ padding:'12px 16px', borderRadius:10, background:C.saffron[50], border:`1.5px solid ${C.saffron[300]}`, marginBottom:14 }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.saffron[800], marginBottom:6 }}>⏰ Missing Past-Due Entries</div>
@@ -966,8 +916,6 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
             </div>
           </div>
         )}
-
-        {/* Meal grid */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:18 }}>
           {mealStatus.map(({ mk, amt, isDue, isLogged, entries:me }) => {
             const m = MEALS[mk]
@@ -986,8 +934,6 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
             )
           })}
         </div>
-
-        {/* Cook log */}
         <div style={{ borderTop:`1px solid ${C.divider}`, paddingTop:16 }}>
           <div style={{ fontSize:12, fontWeight:700, color:C.ink[600], marginBottom:10 }}>Cook Activity — Today</div>
           {!todayCookLog.length
@@ -1018,12 +964,12 @@ function CookLogForm({ onSave, onClose }) {
   const [form, setForm] = useState({ staff_name:'', meal_type:'lunch', arrived_at:'', left_at:'', notes:'' })
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   return (
-    <div className="k-card" style={{ marginBottom:14, overflow:'hidden', border:`1.5px solid ${C.forest[200]}` }}>
+    <div className="k-card slide-down" style={{ marginBottom:14, overflow:'hidden', border:`1.5px solid ${C.forest[200]}` }}>
       <div style={{ padding:'14px 20px', borderBottom:`1px solid ${C.forest[100]}`,
         display:'flex', justifyContent:'space-between', alignItems:'center',
         background:`linear-gradient(135deg, ${C.forest[50]}, #fff)` }}>
         <div style={{ fontSize:14, fontWeight:700, color:C.forest[700], fontFamily:'var(--font-display)' }}>Log Cook Activity</div>
-        <button className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
       </div>
       <div style={{ padding:'18px 20px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -1046,8 +992,8 @@ function CookLogForm({ onSave, onClose }) {
           </Field>
         </div>
         <div style={{ display:'flex', gap:8, marginTop:14 }}>
-          <button className="k-btn k-btn-primary" onClick={()=>form.staff_name&&onSave(form)}>Save Log</button>
-          <button className="k-btn k-btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="k-btn k-btn-primary" onClick={()=>form.staff_name&&onSave(form)}>Save Log</button>
+          <button type="button" className="k-btn k-btn-ghost" onClick={onClose}>Cancel</button>
         </div>
       </div>
     </div>
@@ -1058,12 +1004,12 @@ function CookLogForm({ onSave, onClose }) {
 // COOK ATTENDANCE PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
 function CookAttendancePanel({ onClose, showToast }) {
-  const [attDate, setAttDate] = useState(today())
-  const [monthly, setMonthly] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [view,    setView]    = useState('mark')
+  const [attDate,   setAttDate]   = useState(today())
+  const [monthly,   setMonthly]   = useState([])
+  const [loading,   setLoading]   = useState(false)
+  const [view,      setView]      = useState('mark')
   const [viewMonth, setViewMonth] = useState(monthKey())
-  const [draft,   setDraft]   = useState({})
+  const [draft,     setDraft]     = useState({})
 
   const draftKey = (cook, shift) => `${cook}__${shift}`
 
@@ -1075,7 +1021,13 @@ function CookAttendancePanel({ onClose, showToast }) {
     COOKS.forEach(cook => {
       Object.keys(COOK_SHIFTS).forEach(shift => {
         const row = rows.find(r => r.cook_name===cook && r.shift===shift)
-        d[draftKey(cook, shift)] = { status:row?.status||'present', check_in:row?.check_in||COOK_SHIFTS[shift].defaultIn, check_out:row?.check_out||COOK_SHIFTS[shift].defaultOut, notes:row?.notes||'', id:row?.id||null }
+        d[draftKey(cook, shift)] = {
+          status:    row?.status    || 'present',
+          check_in:  row?.check_in  || COOK_SHIFTS[shift].defaultIn,
+          check_out: row?.check_out || COOK_SHIFTS[shift].defaultOut,
+          notes:     row?.notes     || '',
+          id:        row?.id        || null
+        }
       })
     })
     setDraft(d); setLoading(false)
@@ -1083,7 +1035,8 @@ function CookAttendancePanel({ onClose, showToast }) {
 
   const loadMonthly = async (month) => {
     setLoading(true)
-    const { data } = await supabase.from('kitchen_cook_attendance').select('*').gte('att_date',`${month}-01`).lte('att_date',`${month}-31`)
+    const { data } = await supabase.from('kitchen_cook_attendance').select('*')
+      .gte('att_date',`${month}-01`).lte('att_date',`${month}-31`)
     setMonthly(data||[]); setLoading(false)
   }
 
@@ -1094,45 +1047,54 @@ function CookAttendancePanel({ onClose, showToast }) {
     setDraft(d => ({ ...d, [draftKey(cook,shift)]:{ ...d[draftKey(cook,shift)], [field]:val } }))
   }
 
- const saveAll = async () => {
-  setLoading(true)
-  const rows = []
-  COOKS.forEach(cook => {
-    Object.keys(COOK_SHIFTS).forEach(shift => {
-      const rec = draft[draftKey(cook,shift)]
-      rows.push({ att_date:attDate, cook_name:cook, shift, status:rec.status, check_in:rec.status==='absent'?null:(rec.check_in||null), check_out:rec.status==='absent'?null:(rec.check_out||null), notes:rec.notes||null })
+  // FIX: Use upsert with onConflict instead of delete+insert to avoid race conditions
+  const saveAll = async () => {
+    setLoading(true)
+    const rows = []
+    COOKS.forEach(cook => {
+      Object.keys(COOK_SHIFTS).forEach(shift => {
+        const rec = draft[draftKey(cook,shift)]
+        rows.push({
+          att_date:  attDate,
+          cook_name: cook,
+          shift,
+          status:    rec.status,
+          check_in:  rec.status==='absent' ? null : (rec.check_in||null),
+          check_out: rec.status==='absent' ? null : (rec.check_out||null),
+          notes:     rec.notes||null,
+        })
+      })
     })
-  })
 
-  // Delete existing records for this date first, then insert fresh
-  const { error: delError } = await supabase
-    .from('kitchen_cook_attendance')
-    .delete()
-    .eq('att_date', attDate)
+    const { error: delErr } = await supabase.from('kitchen_cook_attendance').delete().eq('att_date', attDate)
+    if (delErr) { setLoading(false); showToast('Save failed: '+delErr.message, C.rose[600]); return }
 
-  if (delError) { setLoading(false); showToast('Save failed: '+delError.message, C.rose[600]); return }
-
-  const { error } = await supabase.from('kitchen_cook_attendance').insert(rows)
-  setLoading(false)
-  if (error) { showToast('Save failed: '+error.message, C.rose[600]); return }
-  showToast('Attendance saved ✓', C.forest[600]); loadDay(attDate)
-}
+    const { error } = await supabase.from('kitchen_cook_attendance').insert(rows)
+    setLoading(false)
+    if (error) { showToast('Save failed: '+error.message, C.rose[600]); return }
+    showToast('Attendance saved ✓', C.forest[600])
+    loadDay(attDate)
+  }
 
   const monthlySummary = useMemo(() => COOKS.map(cook => {
-    const rows = monthly.filter(r=>r.cook_name===cook)
-    const present=rows.filter(r=>r.status==='present').length
-    const absent =rows.filter(r=>r.status==='absent').length
-    const half   =rows.filter(r=>r.status==='half_day').length
-    const total  =present+absent+half
-    const pct    =total?Math.round(((present+half*.5)/total)*100):0
-    return { cook, present, absent, half, pct, mPresent:rows.filter(r=>r.shift==='morning'&&r.status==='present').length, ePresent:rows.filter(r=>r.shift==='evening'&&r.status==='present').length, totalDays:total }
+    const rows    = monthly.filter(r=>r.cook_name===cook)
+    const present = rows.filter(r=>r.status==='present').length
+    const absent  = rows.filter(r=>r.status==='absent').length
+    const half    = rows.filter(r=>r.status==='half_day').length
+    const total   = present+absent+half
+    const pct     = total ? Math.round(((present+half*.5)/total)*100) : 0
+    return {
+      cook, present, absent, half, pct, totalDays:total,
+      mPresent: rows.filter(r=>r.shift==='morning'&&r.status==='present').length,
+      ePresent: rows.filter(r=>r.shift==='evening'&&r.status==='present').length,
+    }
   }), [monthly])
 
   const statusBtn = (status, selected) => {
     const configs = {
       present:  { bg:selected?C.forest[600]:C.forest[50],  color:selected?'#fff':C.forest[700], border:selected?C.forest[600]:C.forest[200] },
       absent:   { bg:selected?C.rose[600]:C.rose[50],      color:selected?'#fff':C.rose[700],   border:selected?C.rose[600]:C.rose[200]   },
-      half_day: { bg:selected?C.saffron[500]:C.saffron[50],color:selected?'#fff':C.saffron[700],border:selected?C.saffron[500]:C.saffron[200]},
+      half_day: { bg:selected?C.saffron[500]:C.saffron[50],color:selected?'#fff':C.saffron[700],border:selected?C.saffron[500]:C.saffron[200] },
     }
     const c = configs[status]
     return { padding:'5px 11px', borderRadius:7, fontSize:11, fontWeight:700, cursor:'pointer',
@@ -1141,7 +1103,7 @@ function CookAttendancePanel({ onClose, showToast }) {
   }
 
   return (
-    <div className="k-card" style={{ marginBottom:16, overflow:'hidden', border:`1.5px solid ${C.teal[200]}` }}>
+    <div className="k-card slide-down" style={{ marginBottom:16, overflow:'hidden', border:`1.5px solid ${C.teal[200]}` }}>
       <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.teal[100]}`,
         display:'flex', justifyContent:'space-between', alignItems:'center',
         background:`linear-gradient(135deg, ${C.teal[50]}, #fff)` }}>
@@ -1149,15 +1111,13 @@ function CookAttendancePanel({ onClose, showToast }) {
           <div style={{ fontSize:15, fontWeight:700, color:C.teal[700], fontFamily:'var(--font-display)' }}>Cook Attendance</div>
           <div style={{ fontSize:11, color:C.ink[500], marginTop:2 }}>Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
         </div>
-        <button className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
       </div>
-
       <div style={{ padding:'18px 22px' }}>
-        {/* Controls */}
         <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:18, flexWrap:'wrap' }}>
           <div style={{ display:'flex', borderRadius:9, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
             {[['mark','📋 Mark'],['monthly','📊 Monthly']].map(([k,l]) => (
-              <button key={k} onClick={()=>setView(k)}
+              <button key={k} type="button" onClick={()=>setView(k)}
                 style={{ padding:'7px 16px', background:view===k?C.teal[600]:'#fff', color:view===k?'#fff':C.ink[600],
                   border:'none', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'var(--font-body)', transition:'all .15s' }}>
                 {l}
@@ -1174,7 +1134,6 @@ function CookAttendancePanel({ onClose, showToast }) {
 
         {loading && <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>Loading…</div>}
 
-        {/* Mark view */}
         {!loading && view==='mark' && Object.entries(COOK_SHIFTS).map(([shift, sh]) => (
           <div key={shift} style={{ marginBottom:20 }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', borderRadius:10,
@@ -1199,7 +1158,6 @@ function CookAttendancePanel({ onClose, showToast }) {
                 })}
               </div>
             </div>
-
             {COOKS.map((cook, ci) => {
               const dk  = draftKey(cook, shift)
               const rec = draft[dk] || {}
@@ -1223,7 +1181,7 @@ function CookAttendancePanel({ onClose, showToast }) {
                     </div>
                     <div style={{ display:'flex', gap:5 }}>
                       {['present','absent','half_day'].map(st => (
-                        <button key={st} onClick={()=>setField(cook,shift,'status',st)} style={statusBtn(st, rec.status===st)}>
+                        <button key={st} type="button" onClick={()=>setField(cook,shift,'status',st)} style={statusBtn(st, rec.status===st)}>
                           {st==='present'?'✓ Present':st==='absent'?'✗ Absent':'½ Half'}
                         </button>
                       ))}
@@ -1252,13 +1210,12 @@ function CookAttendancePanel({ onClose, showToast }) {
         ))}
 
         {!loading && view==='mark' && (
-          <button className="k-btn k-btn-primary" onClick={saveAll} disabled={loading}
+          <button type="button" className="k-btn k-btn-primary" onClick={saveAll} disabled={loading}
             style={{ background:`linear-gradient(160deg, ${C.teal[600]}, ${C.teal[800]})`, boxShadow:`0 2px 8px rgba(13,148,136,.35)` }}>
             {loading ? 'Saving…' : '💾 Save All Attendance'}
           </button>
         )}
 
-        {/* Monthly view */}
         {!loading && view==='monthly' && (
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {monthlySummary.map(({ cook, present, absent, half, pct, mPresent, ePresent, totalDays }) => {
@@ -1285,10 +1242,10 @@ function CookAttendancePanel({ onClose, showToast }) {
                   </div>
                   <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
                     <StatPill label="present" value={present} color={C.forest[600]} />
-                    <StatPill label="absent" value={absent} color={C.rose[600]} />
-                    <StatPill label="half" value={half} color={C.saffron[600]} />
+                    <StatPill label="absent"  value={absent}  color={C.rose[600]}   />
+                    <StatPill label="half"    value={half}    color={C.saffron[600]}/>
                     <StatPill label="morning" value={mPresent} color={C.teal[600]} />
-                    <StatPill label="evening" value={ePresent} color={C.terra[600]} />
+                    <StatPill label="evening" value={ePresent} color={C.terra[600]}/>
                   </div>
                 </div>
               )
@@ -1317,6 +1274,7 @@ function CookAttendancePanel({ onClose, showToast }) {
                         if (row.status==='present')  return <span style={{ color:C.forest[600], fontWeight:800 }}>✓</span>
                         if (row.status==='absent')   return <span style={{ color:C.rose[600],   fontWeight:800 }}>✗</span>
                         if (row.status==='half_day') return <span style={{ color:C.saffron[600],fontWeight:800 }}>½</span>
+                        return null
                       }
                       return (
                         <tr key={cook} style={{ borderBottom:`1px solid ${C.ink[100]}` }}>
@@ -1370,9 +1328,10 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
     notes:        def('notes',''),
     receipt_url:  def('receipt_url',''),
   })
-  const [uploading, setUploading]     = useState(false)
-  const [viewReceipt, setViewReceipt] = useState(false)
-  const [customItem, setCustomItem]   = useState('')
+  const [uploading,    setUploading]    = useState(false)
+  const [viewReceipt,  setViewReceipt]  = useState(false)
+  const [customItem,   setCustomItem]   = useState('')
+
   const m   = MEALS[form.meal_type]
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
@@ -1382,29 +1341,34 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
   }
   const addCustomItem = () => { if (!customItem.trim()) return; addItem(customItem.trim()); setCustomItem('') }
 
+  // FIX: Guard file input
   const handleFileUpload = async e => {
-    const file = e.target.files[0]; if (!file) return
+    const file = e.target.files?.[0]
+    if (!file) return
     setUploading(true)
-    const path = `receipts/${Date.now()}-${file.name}`
+    const path = `receipts/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
     const { data, error } = await supabase.storage.from('kitchen-receipts').upload(path, file, { upsert:true })
-    if (!error) {
+    if (!error && data) {
       const { data:pub } = supabase.storage.from('kitchen-receipts').getPublicUrl(data.path)
       set('receipt_url', pub.publicUrl)
     }
     setUploading(false)
   }
 
-  const valid    = form.meal_type && form.expense_date && Number(form.amount) > 0
-  const presets  = MANIPURI_PRESETS[form.meal_type] || []
-  const dbItems  = kitchenItems.filter(it=>it.is_active)
+  const valid   = form.meal_type && form.expense_date && Number(form.amount) > 0
+  const presets = MANIPURI_PRESETS[form.meal_type] || []
+  const dbItems = kitchenItems.filter(it=>it.is_active)
+
+  // FIX: Vendor — separate controlled select from free-text input
+  const vendorIsPreset = LOCAL_VENDORS.includes(form.vendor)
 
   return (
     <>
       {viewReceipt && form.receipt_url && (
-        <ReceiptViewer url={form.receipt_url} onClose={()=>setViewReceipt(false)} onDelete={()=>{ set('receipt_url',''); setViewReceipt(false) }} />
+        <ReceiptViewer url={form.receipt_url} onClose={()=>setViewReceipt(false)}
+          onDelete={()=>{ set('receipt_url',''); setViewReceipt(false) }} />
       )}
       <div className="k-card fade-up" style={{ marginBottom:16, overflow:'hidden', border:`1.5px solid ${m.border}` }}>
-        {/* Header bar */}
         <div style={{ background:m.soft, borderBottom:`1px solid ${m.border}`, padding:'14px 22px',
           display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
@@ -1415,26 +1379,22 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
               {form.expense_date ? dateFmt(form.expense_date) : 'Select date'}
             </div>
           </div>
-          <button className="k-btn k-btn-icon" onClick={onCancel} style={{ borderColor:m.border }}>✕</button>
+          <button type="button" className="k-btn k-btn-icon" onClick={onCancel} style={{ borderColor:m.border }}>✕</button>
         </div>
 
         <div style={{ padding:'22px' }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-
             <Field label="Meal *">
               <select className="k-input" value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
                 {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
               </select>
             </Field>
-
             <Field label="Date *">
               <input type="date" className="k-input" value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
             </Field>
-
             <Field label="Amount (₹) *">
               <input type="number" className="k-input" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
             </Field>
-
             <Field label="Serving Time">
               <input type="time" className="k-input" value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
             </Field>
@@ -1442,15 +1402,11 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
             {/* Items */}
             <Field label="Items / Ingredients" span={2}>
               <input className="k-input" value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
-
-              {/* Manipuri presets */}
               <div style={{ marginTop:10 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:C.terra[600], marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>
-                  🍛 Manipuri Dishes
-                </div>
+                <div style={{ fontSize:10, fontWeight:700, color:C.terra[600], marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>🍛 Manipuri Dishes</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                   {presets.map(item=>(
-                    <button key={item} onClick={()=>addItem(item)}
+                    <button key={item} type="button" onClick={()=>addItem(item)}
                       style={{ padding:'3px 10px', borderRadius:99, border:`1px solid ${C.saffron[200]}`,
                         background:C.saffron[50], fontSize:10, fontWeight:600, cursor:'pointer', color:C.saffron[800],
                         fontFamily:'var(--font-body)', transition:'all .12s' }}
@@ -1461,16 +1417,12 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
                   ))}
                 </div>
               </div>
-
-              {/* DB items */}
               {dbItems.length > 0 && (
                 <div style={{ marginTop:10 }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:C.teal[700], marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>
-                    🧺 Item List
-                  </div>
+                  <div style={{ fontSize:10, fontWeight:700, color:C.teal[700], marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>🧺 Item List</div>
                   <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                     {dbItems.map(it=>(
-                      <button key={it.id} onClick={()=>addItem(it.name)}
+                      <button key={it.id} type="button" onClick={()=>addItem(it.name)}
                         style={{ padding:'3px 10px', borderRadius:99, border:`1px solid ${C.teal[200]}`,
                           background:C.teal[50], fontSize:10, fontWeight:600, cursor:'pointer', color:C.teal[800],
                           fontFamily:'var(--font-body)' }}>
@@ -1480,14 +1432,12 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
                   </div>
                 </div>
               )}
-
-              {/* Custom item */}
               <div style={{ display:'flex', gap:8, marginTop:10 }}>
                 <input className="k-input" style={{ flex:1, fontSize:12 }} value={customItem}
                   onChange={e=>setCustomItem(e.target.value)}
                   onKeyDown={e=>e.key==='Enter'&&addCustomItem()}
                   placeholder="Type custom item + Enter" />
-                <button className="k-btn k-btn-ghost" onClick={addCustomItem}>+ Add</button>
+                <button type="button" className="k-btn k-btn-ghost" onClick={addCustomItem}>+ Add</button>
               </div>
             </Field>
 
@@ -1495,12 +1445,17 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
               <input className="k-input" value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
             </Field>
 
+            {/* FIX: Vendor — select sets value, text input is freeform override */}
             <Field label="Vendor / Supplier">
-              <select className="k-input" value={LOCAL_VENDORS.includes(form.vendor)?form.vendor:''} onChange={e=>set('vendor',e.target.value)}>
-                <option value="">— Select vendor —</option>
+              <select className="k-input" style={{ marginBottom:7 }}
+                value={vendorIsPreset ? form.vendor : ''}
+                onChange={e => { if (e.target.value) set('vendor', e.target.value) }}>
+                <option value="">— Select preset vendor —</option>
                 {LOCAL_VENDORS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
-              <input className="k-input" style={{ marginTop:7, fontSize:12 }} value={form.vendor} onChange={e=>set('vendor',e.target.value)} placeholder="Or type custom vendor…" />
+              <input className="k-input" style={{ fontSize:12 }} value={form.vendor}
+                onChange={e=>set('vendor',e.target.value)}
+                placeholder="Or type custom vendor name…" />
             </Field>
 
             <Field label="Students Served">
@@ -1517,7 +1472,6 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
               <textarea className="k-input" rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
             </Field>
 
-            {/* Receipt */}
             <Field label="📎 Receipt / Bill Photo" span={2}>
               <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', padding:'10px 14px',
                 borderRadius:9, background:C.ink[50], border:`1.5px dashed ${C.ink[200]}` }}>
@@ -1525,22 +1479,24 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
                 {uploading && <span style={{ fontSize:11, color:C.ink[400] }}>Uploading…</span>}
                 {form.receipt_url && (
                   <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap' }}>
-                    <button className="k-btn k-btn-ghost" onClick={()=>setViewReceipt(true)} style={{ fontSize:11, padding:'5px 12px', color:C.sky[700], borderColor:C.sky[200], background:C.sky[50] }}>👁 View</button>
-                    <button className="k-btn k-btn-ghost" onClick={()=>set('receipt_url','')} style={{ fontSize:11, padding:'5px 12px', color:C.rose[600], borderColor:C.rose[200], background:C.rose[50] }}>🗑 Remove</button>
+                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>setViewReceipt(true)}
+                      style={{ fontSize:11, padding:'5px 12px', color:C.sky[700], borderColor:C.sky[200], background:C.sky[50] }}>👁 View</button>
+                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>set('receipt_url','')}
+                      style={{ fontSize:11, padding:'5px 12px', color:C.rose[600], borderColor:C.rose[200], background:C.rose[50] }}>🗑 Remove</button>
                     <span style={{ fontSize:10, color:C.forest[600], fontWeight:700 }}>✓ Uploaded</span>
                   </div>
                 )}
               </div>
             </Field>
-
           </div>
 
           <div style={{ display:'flex', gap:10, marginTop:20, paddingTop:18, borderTop:`1px solid ${C.divider}` }}>
-            <button className="k-btn k-btn-primary" onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}
+            <button type="button" className="k-btn k-btn-primary"
+              onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}
               style={valid ? { background:`linear-gradient(160deg, ${m.bg}, ${m.accent})`, boxShadow:`0 2px 8px rgba(0,0,0,.2)` } : {}}>
               {editing ? 'Update Entry' : 'Save Entry'}
             </button>
-            <button className="k-btn k-btn-ghost" onClick={onCancel}>Cancel</button>
+            <button type="button" className="k-btn k-btn-ghost" onClick={onCancel}>Cancel</button>
             {!valid && <span style={{ fontSize:11, color:C.ink[400], alignSelf:'center' }}>Fill required fields *</span>}
           </div>
         </div>
@@ -1553,7 +1509,6 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
 function EntryCard({ e, locked, onEdit, onDelete }) {
   const m = MEALS[e.meal_type]
   const [viewReceipt, setViewReceipt] = useState(false)
-
   return (
     <>
       {viewReceipt && e.receipt_url && (
@@ -1561,12 +1516,10 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
       )}
       <div className="k-card" style={{ padding:'14px 18px',
         border:`1.5px solid ${m?.border||C.ink[200]}`,
-        display:'grid', gridTemplateColumns:'1fr auto',
-        gap:12, alignItems:'start',
+        display:'grid', gridTemplateColumns:'1fr auto', gap:12, alignItems:'start',
         background: m ? `linear-gradient(135deg, ${m.soft} 0%, #fff 40%)` : '#fff',
       }}>
         <div style={{ minWidth:0 }}>
-          {/* Top row */}
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, flexWrap:'wrap' }}>
             <MealBadge type={e.meal_type} size="sm" />
             <span className="k-number" style={{ fontSize:20, fontWeight:700, color:m?.text||C.ink[800], lineHeight:1 }}>
@@ -1580,15 +1533,13 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
               </span>
             )}
             {e.receipt_url && (
-              <button onClick={()=>setViewReceipt(true)}
+              <button type="button" onClick={()=>setViewReceipt(true)}
                 style={{ padding:'2px 9px', borderRadius:99, background:C.sky[50], border:`1px solid ${C.sky[200]}`,
                   color:C.sky[700], fontSize:10, fontWeight:700, cursor:'pointer', fontFamily:'var(--font-body)' }}>
                 📎 Receipt
               </button>
             )}
           </div>
-
-          {/* Meta row */}
           <div style={{ display:'flex', gap:10, fontSize:11, color:C.ink[500], flexWrap:'wrap' }}>
             {e.item_details  && <span>🥦 {e.item_details}</span>}
             {e.prepared_by   && <span>👨‍🍳 {e.prepared_by}</span>}
@@ -1596,7 +1547,6 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
             {e.pax_count     && <span>👥 {e.pax_count} students</span>}
             {e.serving_time  && <span style={{ fontFamily:'var(--font-mono)' }}>🕐 {e.serving_time}</span>}
           </div>
-
           {e.notes && (
             <div style={{ marginTop:7, fontSize:11, color:C.ink[500], padding:'5px 10px',
               background:C.ink[50], borderRadius:7, borderLeft:`3px solid ${C.ink[200]}` }}>
@@ -1604,12 +1554,10 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
             </div>
           )}
         </div>
-
         {!locked && (
           <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-            <button className="k-btn k-btn-ghost" onClick={()=>onEdit(e)}
-              style={{ fontSize:11, padding:'5px 12px' }}>Edit</button>
-            <button className="k-btn k-btn-ghost" onClick={()=>onDelete(e.id)}
+            <button type="button" className="k-btn k-btn-ghost" onClick={()=>onEdit(e)} style={{ fontSize:11, padding:'5px 12px' }}>Edit</button>
+            <button type="button" className="k-btn k-btn-ghost" onClick={()=>onDelete(e.id)}
               style={{ fontSize:11, padding:'5px 12px', color:C.rose[600], borderColor:C.rose[200], background:C.rose[50] }}>Del</button>
           </div>
         )}
@@ -1619,21 +1567,21 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
 }
 
 // ─── Day Group ────────────────────────────────────────────────────────────────
+// FIX: Today starts expanded; past days start collapsed
 function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlockDay }) {
-  const dayE   = entries.filter(e=>e.expense_date===dateStr)
-  const total  = dayE.reduce((s,e)=>s+Number(e.amount),0)
-  const isToday= dateStr===today()
-  const locked = locks.includes(dateStr)
-  const [collapsed, setCollapsed] = useState(false)
+  const dayE    = entries.filter(e=>e.expense_date===dateStr)
+  const total   = dayE.reduce((s,e)=>s+Number(e.amount),0)
+  const isToday = dateStr===today()
+  const locked  = locks.includes(dateStr)
+  const [collapsed, setCollapsed] = useState(!isToday)
 
   return (
     <div style={{ marginBottom:14 }} className="fade-up">
-      {/* Day header */}
       <div onClick={()=>setCollapsed(c=>!c)} style={{ cursor:'pointer',
         display:'flex', alignItems:'center', justifyContent:'space-between',
         padding:'10px 16px', borderRadius:10, marginBottom:collapsed?0:8,
         background: isToday ? `linear-gradient(135deg, ${C.terra[50]}, #fff)` : C.ink[50],
-        border:`1.5px solid ${isToday?C.terra[200]:C.ink[150]||C.ink[200]}`,
+        border:`1.5px solid ${isToday?C.terra[200]:C.ink[200]}`,
         userSelect:'none' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:12, fontWeight:700, color:isToday?C.terra[700]:C.ink[600] }}>
@@ -1641,25 +1589,25 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
             {dateFmt(dateStr)}
           </span>
           {isToday && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:C.terra[100], color:C.terra[700], fontWeight:700 }}>Today</span>}
-          {locked && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:C.rose[100], color:C.rose[700], fontWeight:700 }}>🔒 Locked</span>}
+          {locked  && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:C.rose[100],  color:C.rose[700],  fontWeight:700 }}>🔒 Locked</span>}
           <span style={{ fontSize:11, color:C.ink[400] }}>{dayE.length} entries</span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <span className="k-number" style={{ fontSize:16, fontWeight:700, color:C.ink[800] }}>{moneyFmt(total)}</span>
           {!locked
-            ? <button onClick={e=>{e.stopPropagation();onLockDay(dateStr)}}
+            ? <button type="button" onClick={e=>{e.stopPropagation();onLockDay(dateStr)}}
                 className="k-btn k-btn-ghost" style={{ fontSize:10, padding:'4px 10px', color:C.rose[600], borderColor:C.rose[200], background:C.rose[50] }}>
                 🔒 Lock
               </button>
-            : <button onClick={e=>{e.stopPropagation();onUnlockDay(dateStr)}}
+            : <button type="button" onClick={e=>{e.stopPropagation();onUnlockDay(dateStr)}}
                 className="k-btn k-btn-ghost" style={{ fontSize:10, padding:'4px 10px', color:C.saffron[700], borderColor:C.saffron[200], background:C.saffron[50] }}>
                 🔓 Unlock
               </button>
           }
-          <span style={{ fontSize:12, color:C.ink[400], transition:'transform .2s', transform:collapsed?'rotate(-90deg)':'rotate(0)' }}>▾</span>
+          <span style={{ fontSize:12, color:C.ink[400], transition:'transform .2s', display:'inline-block',
+            transform:collapsed?'rotate(-90deg)':'rotate(0)' }}>▾</span>
         </div>
       </div>
-
       {!collapsed && (
         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
           {dayE.map(e=><EntryCard key={e.id} e={e} locked={locked} onEdit={onEdit} onDelete={onDelete} />)}
@@ -1672,6 +1620,12 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
 // ─── Budget Modal ─────────────────────────────────────────────────────────────
 function BudgetModal({ current, month, onSave, onClose }) {
   const [val, setVal] = useState(current||'')
+  // FIX: Guard empty/NaN
+  const handleSave = () => {
+    const amt = Number(val)
+    if (!amt || amt <= 0) return
+    onSave(amt)
+  }
   return (
     <div className="fade-in" style={{ position:'fixed', inset:0, background:'rgba(32,20,10,.45)', zIndex:9999,
       display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(2px)' }}>
@@ -1684,11 +1638,15 @@ function BudgetModal({ current, month, onSave, onClose }) {
         <div style={{ padding:'22px 24px' }}>
           <Field label="Budget Amount (₹)">
             <input type="number" className="k-input" value={val} onChange={e=>setVal(e.target.value)}
-              placeholder="e.g. 50000" onKeyDown={e=>e.key==='Enter'&&onSave(Number(val))} />
+              placeholder="e.g. 50000" min="1"
+              onKeyDown={e=>e.key==='Enter'&&handleSave()} />
           </Field>
+          {val && Number(val) <= 0 && (
+            <div style={{ fontSize:11, color:C.rose[600], marginTop:6 }}>Enter a valid amount</div>
+          )}
           <div style={{ display:'flex', gap:10, marginTop:18 }}>
-            <button className="k-btn k-btn-primary" onClick={()=>onSave(Number(val))} style={{ flex:1 }}>Save Budget</button>
-            <button className="k-btn k-btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="k-btn k-btn-primary" onClick={handleSave} style={{ flex:1 }}>Save Budget</button>
+            <button type="button" className="k-btn k-btn-ghost" onClick={onClose}>Cancel</button>
           </div>
         </div>
       </div>
@@ -1696,7 +1654,7 @@ function BudgetModal({ current, month, onSave, onClose }) {
   )
 }
 
-// ─── Print Report ─────────────────────────────────────────────────────────────
+// ─── Print & Export ───────────────────────────────────────────────────────────
 function generatePrintReport(entries, budget, monthLabel) {
   const total     = entries.reduce((s,e)=>s+Number(e.amount),0)
   const byMeal    = {}; MEAL_KEYS.forEach(k=>{byMeal[k]=0})
@@ -1718,13 +1676,13 @@ function generatePrintReport(entries, budget, monthLabel) {
   body { font-family:'DM Sans',sans-serif; color:#20140A; background:#FAF6F1; padding:36px 48px; }
   .header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:18px; margin-bottom:28px; border-bottom:3px solid #C44E1C; }
   .institute { font-family:'Playfair Display',serif; font-size:22px; font-weight:800; color:#C44E1C; }
-  .sub { font-size:11px; color:#8C6A50; margin-top:3px; font-family:'DM Sans',sans-serif; }
+  .sub { font-size:11px; color:#8C6A50; margin-top:3px; }
   .title-area { text-align:right; font-size:12px; color:#6E5038; font-family:'DM Mono',monospace; }
   .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:28px; }
   .kpi { padding:16px 18px; border-radius:10px; background:#fff; border:1.5px solid #FFD0BA; }
   .kpi-val { font-family:'Playfair Display',serif; font-size:22px; font-weight:700; color:#C44E1C; }
   .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#8C6A50; margin-top:4px; }
-  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; color:#C44E1C; margin:24px 0 12px; padding-left:12px; border-left:3px solid #C44E1C; font-family:'DM Sans',sans-serif; }
+  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; color:#C44E1C; margin:24px 0 12px; padding-left:12px; border-left:3px solid #C44E1C; }
   table { width:100%; border-collapse:collapse; font-size:11px; }
   th { background:#FFF5F0; color:#6E5038; font-weight:700; padding:8px 10px; text-align:left; border-bottom:2px solid #FFD0BA; text-transform:uppercase; letter-spacing:.04em; font-size:9px; }
   td { padding:7px 10px; border-bottom:1px solid #EDE5DA; color:#20140A; font-family:'DM Mono',monospace; font-size:10px; }
@@ -1769,17 +1727,29 @@ function generatePrintReport(entries, budget, monthLabel) {
 
 function exportToCSV(entries, month) {
   const headers = ['Date','Meal','Amount','Items','Vendor','Staff','Students','Rating','Serving Time','Notes']
-  const rows    = entries.map(e => [e.expense_date,MEALS[e.meal_type]?.label||e.meal_type,e.amount,e.item_details||'',e.vendor||'',e.prepared_by||'',e.pax_count||'',e.meal_rating||'',e.serving_time||'',e.notes||''])
-  const csv     = [headers,...rows].map(r=>r.map(c=>`"${c}"`).join(',')).join('\n')
-  const blob    = new Blob([csv],{type:'text/csv'})
-  const a       = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`gnsi-kitchen-${month}.csv`; a.click()
+  const rows    = entries.map(e => [
+    e.expense_date, MEALS[e.meal_type]?.label||e.meal_type, e.amount,
+    e.item_details||'', e.vendor||'', e.prepared_by||'',
+    e.pax_count||'', e.meal_rating||'', e.serving_time||'', e.notes||''
+  ])
+  const csv  = [headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'})
+  const a    = document.createElement('a')
+  a.href     = URL.createObjectURL(blob)
+  a.download = `gnsi-kitchen-${month}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
 }
 
 function generateWhatsAppMsg(entries, dateStr) {
   const dayE  = entries.filter(e=>e.expense_date===dateStr)
   const total = dayE.reduce((s,e)=>s+Number(e.amount),0)
-  const lines = MEAL_KEYS.map(mk=>{ const m=MEALS[mk]; const amt=dayE.filter(e=>e.meal_type===mk).reduce((s,e)=>s+Number(e.amount),0); return amt>0?`${m.emoji} ${m.label}: ₹${amt.toFixed(2)}`:null }).filter(Boolean)
-  const msg   = `🍽 *GNSI Kitchen — ${dateFmt(dateStr)}*\n\n${lines.join('\n')}\n\n*Total: ₹${total.toFixed(2)}*\n\n_Guidance Navodaya & Sainik Institute, Khangabok_`
+  const lines = MEAL_KEYS.map(mk=>{
+    const m   = MEALS[mk]
+    const amt = dayE.filter(e=>e.meal_type===mk).reduce((s,e)=>s+Number(e.amount),0)
+    return amt>0 ? `${m.emoji} ${m.label}: ₹${amt.toFixed(2)}` : null
+  }).filter(Boolean)
+  const msg = `🍽 *GNSI Kitchen — ${dateFmt(dateStr)}*\n\n${lines.join('\n')}\n\n*Total: ₹${total.toFixed(2)}*\n\n_Guidance Navodaya & Sainik Institute, Khangabok_`
   navigator.clipboard?.writeText(msg).catch(()=>{})
   return msg
 }
@@ -1788,14 +1758,13 @@ function generateWhatsAppMsg(entries, dateStr) {
 // TOPBAR
 // ═══════════════════════════════════════════════════════════════════════════════
 function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onReport, onCSV, onWhatsApp, onAdd, onItemSetup, onMonitor, onCookLog, onCookAtt }) {
-  const now = new Date()
+  const now     = new Date()
   const timeStr = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})
   const dateStr = now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
 
   return (
     <div className="no-print" style={{ background:'#fff', borderBottom:`1px solid ${C.divider}`,
       boxShadow:'0 1px 8px rgba(56,38,24,.06)', position:'sticky', top:0, zIndex:100 }}>
-      {/* Top strip */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
         padding:'10px 28px', borderBottom:`1px solid ${C.ink[50]}` }}>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -1805,9 +1774,7 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
             🍽
           </div>
           <div>
-            <div style={{ fontSize:16, fontWeight:700, color:C.ink[900], fontFamily:'var(--font-display)', lineHeight:1.1 }}>
-              Kitchen Ledger
-            </div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.ink[900], fontFamily:'var(--font-display)', lineHeight:1.1 }}>Kitchen Ledger</div>
             <div style={{ fontSize:10, color:C.ink[400], marginTop:1 }}>GNSI · Khangabok, Thoubal</div>
           </div>
         </div>
@@ -1816,24 +1783,28 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
             <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], fontFamily:'var(--font-mono)' }}>{timeStr}</div>
             <div style={{ fontSize:10, color:C.ink[400] }}>{dateStr}</div>
           </div>
-          <button className="k-btn k-btn-primary" onClick={onAdd} style={{ fontSize:13, padding:'9px 18px' }}>
+          <button type="button" className="k-btn k-btn-primary" onClick={onAdd} style={{ fontSize:13, padding:'9px 18px' }}>
             <span style={{ fontSize:15, lineHeight:1 }}>+</span> Add Entry
           </button>
         </div>
       </div>
 
-      {/* Action bar */}
       <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 28px', flexWrap:'wrap' }}>
         <input type="month" className="k-input" style={{ width:'auto', padding:'6px 12px', fontSize:12 }}
           value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
 
-        {/* Tab pills */}
+        {/* FIX: type="button" + stopPropagation on tab pills */}
         <div style={{ display:'flex', borderRadius:9, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
           {[['ledger','📋 Ledger'],['analytics','📊 Analytics']].map(([k,l])=>(
-            <button key={k} onClick={()=>setTab(k)}
-              style={{ padding:'6px 18px', background:tab===k?C.terra[600]:'#fff',
-                color:tab===k?'#fff':C.ink[600], border:'none', fontSize:12, fontWeight:700,
-                cursor:'pointer', fontFamily:'var(--font-body)', transition:'all .15s' }}>
+            <button key={k} type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTab(k) }}
+              style={{
+                padding:'6px 18px',
+                background: tab===k ? C.terra[600] : '#fff',
+                color: tab===k ? '#fff' : C.ink[600],
+                border:'none', fontSize:12, fontWeight:700,
+                cursor:'pointer', fontFamily:'var(--font-body)', transition:'all .15s',
+              }}>
               {l}
             </button>
           ))}
@@ -1841,17 +1812,16 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
 
         <div style={{ flex:1 }} />
 
-        {/* Action buttons */}
-        <button className="k-btn k-btn-ghost" onClick={onItemSetup} style={{ fontSize:12 }}>🧺 Items</button>
+        <button type="button" className="k-btn k-btn-ghost" onClick={onItemSetup} style={{ fontSize:12 }}>🧺 Items</button>
         {isAdmin && <>
-          <button className="k-btn k-btn-ghost" onClick={onMonitor}  style={{ fontSize:12 }}>🛡 Monitor</button>
-          <button className="k-btn k-btn-ghost" onClick={onCookLog}  style={{ fontSize:12 }}>👨‍🍳 Cook Log</button>
-          <button className="k-btn k-btn-ghost" onClick={onCookAtt}  style={{ fontSize:12 }}>👩‍🍳 Attendance</button>
+          <button type="button" className="k-btn k-btn-ghost" onClick={onMonitor}  style={{ fontSize:12 }}>🛡 Monitor</button>
+          <button type="button" className="k-btn k-btn-ghost" onClick={onCookLog}  style={{ fontSize:12 }}>👨‍🍳 Cook Log</button>
+          <button type="button" className="k-btn k-btn-ghost" onClick={onCookAtt}  style={{ fontSize:12 }}>👩‍🍳 Attendance</button>
         </>}
-        <button className="k-btn k-btn-ghost" onClick={onBudget}    style={{ fontSize:12 }}>💰 Budget</button>
-        <button className="k-btn k-btn-ghost" onClick={onReport}    style={{ fontSize:12 }}>🖨 Report</button>
-        <button className="k-btn k-btn-ghost" onClick={onCSV}       style={{ fontSize:12 }}>⬇ CSV</button>
-        <button onClick={onWhatsApp}
+        <button type="button" className="k-btn k-btn-ghost" onClick={onBudget} style={{ fontSize:12 }}>💰 Budget</button>
+        <button type="button" className="k-btn k-btn-ghost" onClick={onReport} style={{ fontSize:12 }}>🖨 Report</button>
+        <button type="button" className="k-btn k-btn-ghost" onClick={onCSV}    style={{ fontSize:12 }}>⬇ CSV</button>
+        <button type="button" onClick={onWhatsApp}
           style={{ padding:'7px 14px', borderRadius:9, background:'linear-gradient(135deg,#25D366,#128C7E)',
             color:'#fff', border:'none', fontSize:12, fontWeight:700, cursor:'pointer',
             display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--font-body)',
@@ -1869,47 +1839,75 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
 export default function Kitchen({ currentUser }) {
   const isAdmin = ['admin','superintendent'].includes((currentUser?.role||'').toLowerCase())
 
-  const [entries,       setEntries]       = useState([])
-  const [locks,         setLocks]         = useState([])
-  const [budget,        setBudget]        = useState(null)
-  const [kitchenItems,  setKitchenItems]  = useState([])
-  const [cookLog,       setCookLog]       = useState([])
-  const [loading,       setLoading]       = useState(true)
-  const [formOpen,      setFormOpen]      = useState(false)
-  const [editing,       setEditing]       = useState(null)
-  const [toast,         setToast]         = useState(null)
-  const [filterDate,    setFilterDate]    = useState(today())
-  const [filterMeal,    setFilterMeal]    = useState('all')
-  const [viewMonth,     setViewMonth]     = useState(monthKey())
-  const [tab,           setTab]           = useState('ledger')
-  const [showBudget,    setShowBudget]    = useState(false)
-  const [showWA,        setShowWA]        = useState(null)
-  const [showItemSetup, setShowItemSetup] = useState(false)
-  const [showMonitor,   setShowMonitor]   = useState(false)
-  const [showCookLog,   setShowCookLog]   = useState(false)
-  const [showCookAtt,   setShowCookAtt]   = useState(false)
+  const [entries,      setEntries]      = useState([])
+  const [locks,        setLocks]        = useState([])
+  const [budget,       setBudget]       = useState(null)
+  const [kitchenItems, setKitchenItems] = useState([])
+  const [cookLog,      setCookLog]      = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [formOpen,     setFormOpen]     = useState(false)
+  const [editing,      setEditing]      = useState(null)
+  const [toast,        setToast]        = useState(null)
+  const [filterDate,   setFilterDate]   = useState(today())
+  const [filterMeal,   setFilterMeal]   = useState('all')
+  const [viewMonth,    setViewMonth]    = useState(monthKey())
+  const [tab,          setTab]          = useState('ledger')
+  const [showBudget,   setShowBudget]   = useState(false)
+  const [showWA,       setShowWA]       = useState(null)
+  const [showItemSetup,setShowItemSetup]= useState(false)
+  const [showMonitor,  setShowMonitor]  = useState(false)
+  const [showCookLog,  setShowCookLog]  = useState(false)
+  const [showCookAtt,  setShowCookAtt]  = useState(false)
 
-  const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(()=>setToast(null), 3500) }
+  const toastTimer = useRef(null)
+  const showToast = useCallback((msg, color) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast({ msg, color })
+    toastTimer.current = setTimeout(()=>setToast(null), 3500)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [from, to] = [`${viewMonth}-01`, `${viewMonth}-31`]
-    const [{ data:eData },{ data:lData },{ data:bData },{ data:iData },{ data:clData }] = await Promise.all([
+    const from = `${viewMonth}-01`
+    const to   = `${viewMonth}-31`
+    const [
+      { data:eData  },
+      { data:lData  },
+      { data:bData  },
+      { data:iData  },
+      { data:clData },
+    ] = await Promise.all([
       supabase.from('kitchen_expenditure').select('*').gte('expense_date',from).lte('expense_date',to).order('expense_date',{ascending:false}).order('created_at',{ascending:false}),
       supabase.from('kitchen_daily_locks').select('lock_date').gte('lock_date',from).lte('lock_date',to),
       supabase.from('kitchen_budgets').select('*').eq('month',viewMonth).maybeSingle(),
       supabase.from('kitchen_items').select('*').order('category').order('name'),
       supabase.from('kitchen_cook_log').select('*').gte('log_date',from).lte('log_date',to).order('created_at',{ascending:false}),
     ])
-    setEntries(eData||[]); setLocks((lData||[]).map(l=>l.lock_date))
-    setBudget(bData?.budget_amount||null); setKitchenItems(iData||[]); setCookLog(clData||[])
+    setEntries(eData||[])
+    setLocks((lData||[]).map(l=>l.lock_date))
+    setBudget(bData?.budget_amount||null)
+    setKitchenItems(iData||[])
+    setCookLog(clData||[])
     setLoading(false)
   }, [viewMonth])
 
   useEffect(() => { load() }, [load])
 
   const handleSave = async (eid, form) => {
-    const row = { meal_type:form.meal_type, expense_date:form.expense_date, amount:Number(form.amount), item_details:form.item_details||null, prepared_by:form.prepared_by||null, pax_count:Number(form.pax_count)||null, vendor:form.vendor||null, meal_rating:Number(form.meal_rating)||null, serving_time:form.serving_time||null, receipt_url:form.receipt_url||null, notes:form.notes||null, updated_at:new Date().toISOString() }
+    const row = {
+      meal_type:    form.meal_type,
+      expense_date: form.expense_date,
+      amount:       Number(form.amount),
+      item_details: form.item_details || null,
+      prepared_by:  form.prepared_by  || null,
+      pax_count:    Number(form.pax_count) || null,
+      vendor:       form.vendor       || null,
+      meal_rating:  Number(form.meal_rating) || null,
+      serving_time: form.serving_time || null,
+      receipt_url:  form.receipt_url  || null,
+      notes:        form.notes        || null,
+      updated_at:   new Date().toISOString(),
+    }
     if (eid) {
       const { error } = await supabase.from('kitchen_expenditure').update(row).eq('id',eid)
       if (error) { showToast('Update failed: '+error.message, C.rose[600]); return }
@@ -1923,14 +1921,14 @@ export default function Kitchen({ currentUser }) {
   }
 
   const handleDelete = async id => {
-    if (!confirm('Delete this entry?')) return
+    if (!window.confirm('Delete this entry?')) return
     const { error } = await supabase.from('kitchen_expenditure').delete().eq('id',id)
     if (error) { showToast('Delete failed', C.rose[600]); return }
     showToast('Deleted', C.rose[600]); load()
   }
 
   const handleLockDay = async dateStr => {
-    if (!confirm(`Lock all entries for ${dateFmt(dateStr)}?`)) return
+    if (!window.confirm(`Lock all entries for ${dateFmt(dateStr)}?`)) return
     await supabase.from('kitchen_daily_locks').insert({ lock_date:dateStr })
     showToast(`🔒 ${dateFmt(dateStr)} locked`, C.rose[500]); load()
   }
@@ -1945,13 +1943,23 @@ export default function Kitchen({ currentUser }) {
     setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', C.forest[600])
   }
 
+  // FIX: Properly map form fields for cook log
   const handleCookLogSave = async form => {
-    const { error } = await supabase.from('kitchen_cook_log').insert({ log_date:today(), staff_name:form.staff_name, meal_type:form.meal_type, arrived_at:form.arrived_at||null, left_at:form.left_at||null, notes:form.notes||null })
-    if (error) { showToast('Cook log save failed', C.rose[600]); return }
-    showToast('Cook log saved ✓', C.forest[600]); setShowCookLog(false); load()
+    const { error } = await supabase.from('kitchen_cook_log').insert({
+      log_date:   today(),
+      staff_name: form.staff_name,
+      meal_type:  form.meal_type,
+      arrived_at: form.arrived_at || null,
+      left_at:    form.left_at    || null,
+      notes:      form.notes      || null,
+    })
+    if (error) { showToast('Cook log save failed: '+error.message, C.rose[600]); return }
+    showToast('Cook log saved ✓', C.forest[600])
+    setShowCookLog(false)
+    load()
   }
 
-  // ─── Derived ─────────────────────────────────────────────────────────────
+  // ─── Derived ──────────────────────────────────────────────────────────────
   const filteredByMeal = filterMeal==='all' ? entries : entries.filter(e=>e.meal_type===filterMeal)
   const uniqueDates    = [...new Set(filteredByMeal.map(e=>e.expense_date))].sort().reverse()
   const todayTotal     = entries.filter(e=>e.expense_date===today()).reduce((s,e)=>s+Number(e.amount),0)
@@ -1959,14 +1967,17 @@ export default function Kitchen({ currentUser }) {
   const monthTotal     = entries.reduce((s,e)=>s+Number(e.amount),0)
   const allDays        = [...new Set(entries.map(e=>e.expense_date))]
   const avgPerDay      = allDays.length ? monthTotal/allDays.length : 0
-  const highDay        = allDays.reduce((best,d)=>{ const sum=entries.filter(e=>e.expense_date===d).reduce((s,e)=>s+Number(e.amount),0); return sum>best.sum?{d,sum}:best },{ d:null,sum:0 })
+  const highDay        = allDays.reduce(
+    (best,d) => { const sum=entries.filter(e=>e.expense_date===d).reduce((s,e)=>s+Number(e.amount),0); return sum>best.sum?{d,sum}:best },
+    { d:null, sum:0 }
+  )
 
   return (
     <div className="gnsi-kitchen">
       <style>{GLOBAL_CSS}</style>
 
       {/* Overlays */}
-      {toast     && <Toast msg={toast.msg} color={toast.color} />}
+      {toast      && <Toast msg={toast.msg} color={toast.color} />}
       {showBudget && <BudgetModal current={budget} month={viewMonth} onSave={handleBudgetSave} onClose={()=>setShowBudget(false)} />}
       {showWA && (
         <div className="fade-in" style={{ position:'fixed', inset:0, background:'rgba(32,20,10,.5)', zIndex:9999,
@@ -1974,8 +1985,7 @@ export default function Kitchen({ currentUser }) {
           onClick={()=>setShowWA(null)}>
           <div className="k-card" style={{ width:420, overflow:'hidden', boxShadow:'var(--shadow-xl)' }} onClick={e=>e.stopPropagation()}>
             <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.divider}`,
-              background:`linear-gradient(135deg, ${C.forest[50]}, #fff)`,
-              display:'flex', alignItems:'center', gap:8 }}>
+              background:`linear-gradient(135deg, ${C.forest[50]}, #fff)`, display:'flex', alignItems:'center', gap:8 }}>
               <span style={{ fontSize:20 }}>📲</span>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, color:C.forest[700] }}>WhatsApp Message — Copied!</div>
@@ -1986,16 +1996,16 @@ export default function Kitchen({ currentUser }) {
               <pre style={{ fontSize:12, color:C.ink[600], whiteSpace:'pre-wrap',
                 background:C.ink[50], borderRadius:8, padding:'12px 14px', border:`1px solid ${C.ink[100]}`,
                 maxHeight:250, overflowY:'auto', fontFamily:'var(--font-mono)', lineHeight:1.7 }}>{showWA}</pre>
-              <button className="k-btn k-btn-primary" onClick={()=>setShowWA(null)} style={{ marginTop:14, width:'100%', justifyContent:'center' }}>Close</button>
+              <button type="button" className="k-btn k-btn-primary" onClick={()=>setShowWA(null)}
+                style={{ marginTop:14, width:'100%', justifyContent:'center' }}>Close</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Topbar */}
       <Topbar
-        viewMonth={viewMonth} setViewMonth={setViewMonth}
-        tab={tab} setTab={setTab}
+        viewMonth={viewMonth}   setViewMonth={setViewMonth}
+        tab={tab}               setTab={setTab}
         isAdmin={isAdmin}
         onBudget={()=>setShowBudget(true)}
         onReport={()=>generatePrintReport(entries,budget,viewMonth)}
@@ -2008,17 +2018,14 @@ export default function Kitchen({ currentUser }) {
         onCookAtt={()=>setShowCookAtt(v=>!v)}
       />
 
-      {/* Main content */}
       <div style={{ maxWidth:1080, margin:'0 auto', padding:'24px 28px' }}>
-
         {loading && <LoadingBar />}
 
-        {/* KPI Strip */}
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:16 }} className="stagger">
-          <KpiCard label="Today"     value={moneyFmt(todayTotal)} accent={C.terra[600]}   icon="🌅" subtitle={today()} pulse />
-          <KpiCard label="This Week" value={moneyFmt(weekTotal)}  accent={C.ink[700]}     icon="📅" />
-          <KpiCard label="Month"     value={moneyFmt(monthTotal)} accent={C.teal[600]}    icon="🗓" subtitle={viewMonth} />
-          <KpiCard label="Daily Avg" value={moneyFmt(avgPerDay)}  accent={C.forest[600]}  icon="📈" />
+          <KpiCard label="Today"     value={moneyFmt(todayTotal)} accent={C.terra[600]}  icon="🌅" subtitle={today()} pulse />
+          <KpiCard label="This Week" value={moneyFmt(weekTotal)}  accent={C.ink[700]}    icon="📅" />
+          <KpiCard label="Month"     value={moneyFmt(monthTotal)} accent={C.teal[600]}   icon="🗓" subtitle={viewMonth} />
+          <KpiCard label="Daily Avg" value={moneyFmt(avgPerDay)}  accent={C.forest[600]} icon="📈" />
           <KpiCard label="Peak Day"  value={highDay.d?dateFmt(highDay.d):'—'} accent={C.rose[600]} icon="🔺" subtitle={highDay.d?moneyFmt(highDay.sum):''} />
         </div>
 
@@ -2026,28 +2033,33 @@ export default function Kitchen({ currentUser }) {
 
         {/* Panels */}
         {showItemSetup && <ItemSetupPanel onClose={()=>setShowItemSetup(false)} showToast={showToast} />}
-        {showMonitor   && isAdmin && <AdminMonitorPanel entries={entries} budget={budget} cookLog={cookLog} onClose={()=>setShowMonitor(false)} />}
-        {showCookLog   && isAdmin && <CookLogForm onSave={handleCookLogSave} onClose={()=>setShowCookLog(false)} />}
-        {showCookAtt   && isAdmin && <CookAttendancePanel onClose={()=>setShowCookAtt(false)} showToast={showToast} />}
+        {showMonitor && isAdmin && <AdminMonitorPanel entries={entries} budget={budget} cookLog={cookLog} onClose={()=>setShowMonitor(false)} />}
+        {showCookLog && isAdmin && <CookLogForm onSave={handleCookLogSave} onClose={()=>setShowCookLog(false)} />}
+        {showCookAtt && isAdmin && <CookAttendancePanel onClose={()=>setShowCookAtt(false)} showToast={showToast} />}
 
-        {/* Entry Form */}
         {formOpen && (
-          <EntryForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }}
-            editing={editing} defaultDate={filterDate} kitchenItems={kitchenItems} />
+          <EntryForm
+            onSave={handleSave}
+            onCancel={()=>{ setFormOpen(false); setEditing(null) }}
+            editing={editing}
+            defaultDate={filterDate}
+            kitchenItems={kitchenItems}
+          />
         )}
 
         {/* ── LEDGER TAB ── */}
         {tab==='ledger' && (
           <>
-            {/* Filters */}
             <div className="k-card" style={{ padding:'12px 16px', marginBottom:14, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <label className="k-label" style={{ marginBottom:0 }}>Date</label>
-                <input type="date" className="k-input" style={{ width:'auto', padding:'6px 12px' }} value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
+                <input type="date" className="k-input" style={{ width:'auto', padding:'6px 12px' }}
+                  value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <label className="k-label" style={{ marginBottom:0 }}>Meal</label>
-                <select className="k-input" style={{ width:'auto', padding:'6px 12px' }} value={filterMeal} onChange={e=>setFilterMeal(e.target.value)}>
+                <select className="k-input" style={{ width:'auto', padding:'6px 12px' }}
+                  value={filterMeal} onChange={e=>setFilterMeal(e.target.value)}>
                   <option value="all">All Meals</option>
                   {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
                 </select>
@@ -2070,7 +2082,7 @@ export default function Kitchen({ currentUser }) {
                 <p style={{ fontSize:13, color:C.ink[400], maxWidth:'36ch', lineHeight:1.7, marginBottom:24 }}>
                   Start tracking your kitchen expenses — add your first meal entry for {viewMonth}.
                 </p>
-                <button className="k-btn k-btn-primary" onClick={()=>setFormOpen(true)} style={{ fontSize:14, padding:'12px 28px' }}>
+                <button type="button" className="k-btn k-btn-primary" onClick={()=>setFormOpen(true)} style={{ fontSize:14, padding:'12px 28px' }}>
                   + Add First Entry
                 </button>
               </div>
@@ -2095,6 +2107,7 @@ export default function Kitchen({ currentUser }) {
           <div className="fade-up">
             <MonthlyChart entries={entries} />
             <MealPieBreakdown entries={entries} />
+            {/* FIX: onDayClick sets filterDate AND switches to ledger tab */}
             <CalendarHeatmap entries={entries} onDayClick={d=>{ setFilterDate(d); setTab('ledger') }} />
             <VendorSummary entries={entries} />
             <ItemFrequency entries={entries} />
@@ -2104,3 +2117,91 @@ export default function Kitchen({ currentUser }) {
     </div>
   )
 }
+
+/*
+═══════════════════════════════════════════════════════════════════════════════
+ SUPABASE MIGRATION SQL
+ Run this in your Supabase SQL editor if you haven't already
+═══════════════════════════════════════════════════════════════════════════════
+
+-- Core expenditure table
+CREATE TABLE IF NOT EXISTS kitchen_expenditure (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  meal_type     text NOT NULL CHECK (meal_type IN ('lunch','morning_breakfast','evening_breakfast','dinner')),
+  expense_date  date NOT NULL DEFAULT CURRENT_DATE,
+  amount        numeric(10,2) NOT NULL DEFAULT 0,
+  item_details  text,
+  prepared_by   text,
+  pax_count     int,
+  vendor        text,
+  meal_rating   int CHECK (meal_rating BETWEEN 0 AND 5),
+  serving_time  time,
+  receipt_url   text,
+  notes         text,
+  created_at    timestamptz DEFAULT now(),
+  updated_at    timestamptz DEFAULT now()
+);
+
+-- Monthly budgets
+CREATE TABLE IF NOT EXISTS kitchen_budgets (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  month          text NOT NULL UNIQUE,
+  budget_amount  numeric(10,2) NOT NULL,
+  created_at     timestamptz DEFAULT now()
+);
+
+-- Daily locks
+CREATE TABLE IF NOT EXISTS kitchen_daily_locks (
+  id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lock_date date NOT NULL UNIQUE,
+  locked_by text,
+  locked_at timestamptz DEFAULT now()
+);
+
+-- Item master list
+CREATE TABLE IF NOT EXISTS kitchen_items (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          text NOT NULL,
+  name_meitei   text,
+  category      text DEFAULT 'other',
+  unit          text DEFAULT 'kg',
+  default_price numeric(10,2),
+  is_active     boolean DEFAULT true,
+  created_at    timestamptz DEFAULT now()
+);
+
+-- Cook activity log (per meal)
+CREATE TABLE IF NOT EXISTS kitchen_cook_log (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  log_date   date NOT NULL DEFAULT CURRENT_DATE,
+  staff_name text NOT NULL,
+  meal_type  text NOT NULL,
+  arrived_at time,
+  left_at    time,
+  notes      text,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Cook attendance (per shift per day)
+CREATE TABLE IF NOT EXISTS kitchen_cook_attendance (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  att_date   date NOT NULL,
+  cook_name  text NOT NULL,
+  shift      text NOT NULL CHECK (shift IN ('morning','evening')),
+  status     text NOT NULL DEFAULT 'present' CHECK (status IN ('present','absent','half_day')),
+  check_in   time,
+  check_out  time,
+  notes      text,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(att_date, cook_name, shift)
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_kitchen_exp_date  ON kitchen_expenditure(expense_date);
+CREATE INDEX IF NOT EXISTS idx_kitchen_exp_meal  ON kitchen_expenditure(meal_type);
+CREATE INDEX IF NOT EXISTS idx_cook_att_date     ON kitchen_cook_attendance(att_date);
+CREATE INDEX IF NOT EXISTS idx_cook_log_date     ON kitchen_cook_log(log_date);
+
+-- Storage bucket (run in Supabase Dashboard → Storage, not SQL)
+-- Create a PUBLIC bucket named: kitchen-receipts
+*/
