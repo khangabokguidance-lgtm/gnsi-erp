@@ -1779,6 +1779,22 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {/* Tab pills — moved here so they never wrap off-screen */}
+          <div style={{ display:'flex', borderRadius:9, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
+            {[['ledger','📋 Ledger'],['analytics','📊 Analytics']].map(([k,l])=>(
+              <button key={k} type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTab(k) }}
+                style={{
+                  padding:'7px 18px',
+                  background: tab===k ? C.terra[600] : '#fff',
+                  color: tab===k ? '#fff' : C.ink[600],
+                  border:'none', fontSize:12, fontWeight:700,
+                  cursor:'pointer', fontFamily:'var(--font-body)', transition:'all .15s',
+                }}>
+                {l}
+              </button>
+            ))}
+          </div>
           <div style={{ textAlign:'right' }}>
             <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], fontFamily:'var(--font-mono)' }}>{timeStr}</div>
             <div style={{ fontSize:10, color:C.ink[400] }}>{dateStr}</div>
@@ -1792,23 +1808,6 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
       <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 28px', flexWrap:'wrap' }}>
         <input type="month" className="k-input" style={{ width:'auto', padding:'6px 12px', fontSize:12 }}
           value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
-
-        {/* FIX: type="button" + stopPropagation on tab pills */}
-        <div style={{ display:'flex', borderRadius:9, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
-          {[['ledger','📋 Ledger'],['analytics','📊 Analytics']].map(([k,l])=>(
-            <button key={k} type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTab(k) }}
-              style={{
-                padding:'6px 18px',
-                background: tab===k ? C.terra[600] : '#fff',
-                color: tab===k ? '#fff' : C.ink[600],
-                border:'none', fontSize:12, fontWeight:700,
-                cursor:'pointer', fontFamily:'var(--font-body)', transition:'all .15s',
-              }}>
-              {l}
-            </button>
-          ))}
-        </div>
 
         <div style={{ flex:1 }} />
 
@@ -1858,6 +1857,11 @@ export default function Kitchen({ currentUser }) {
   const [showMonitor,  setShowMonitor]  = useState(false)
   const [showCookLog,  setShowCookLog]  = useState(false)
   const [showCookAtt,  setShowCookAtt]  = useState(false)
+
+  const contentRef = useRef(null)
+  useEffect(() => {
+    contentRef.current?.scrollIntoView({ behavior:'smooth', block:'start' })
+  }, [tab])
 
   const toastTimer = useRef(null)
   const showToast = useCallback((msg, color) => {
@@ -2018,7 +2022,7 @@ export default function Kitchen({ currentUser }) {
         onCookAtt={()=>setShowCookAtt(v=>!v)}
       />
 
-      <div style={{ maxWidth:1080, margin:'0 auto', padding:'24px 28px' }}>
+      <div ref={contentRef} style={{ maxWidth:1080, margin:'0 auto', padding:'24px 28px' }}>
         {loading && <LoadingBar />}
 
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:16 }} className="stagger">
