@@ -1,115 +1,116 @@
-// Kitchen.jsx — GNSI Portal v3.3 — Production UI (Clean + Tab Fix)
-// ─────────────────────────────────────────────────────────────────────────────
-//  Fixes applied in v3.3:
-//  1. Tab switching: conditional rendering instead of display:none
-//  2. Simplified tab button onClick handlers (removed unnecessary preventDefault/stopPropagation)
-//  3. Added type="button" to WhatsApp button
-//  4. Added key props to tab content containers for proper React reconciliation
-//  5. All previous v3.2 fixes retained
+// Kitchen.jsx — Tailwind CSS Redesign v4.0
+// Complete utility-first redesign preserving all v3.3 functionality
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase.js'
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
-const C = {
-  terra:  { 50:'#FFF5F0',100:'#FFE8DC',200:'#FFD0BA',300:'#FFAD8A',400:'#FF8A5C',500:'#E8622A',600:'#C44E1C',700:'#A03A12',800:'#7A2A0A',900:'#521A04' },
-  saffron:{ 50:'#FFFBEB',100:'#FEF3C7',200:'#FDE68A',300:'#FCD34D',400:'#FBBF24',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#78350F' },
-  forest: { 50:'#F0FDF4',100:'#DCFCE7',200:'#BBF7D0',300:'#86EFAC',400:'#4ADE80',500:'#22C55E',600:'#16A34A',700:'#15803D',800:'#166534',900:'#14532D' },
-  teal:   { 50:'#F0FDFA',100:'#CCFBF1',200:'#99F6E4',300:'#5EEAD4',400:'#2DD4BF',500:'#14B8A6',600:'#0D9488',700:'#0F766E',800:'#115E59',900:'#134E4A' },
-  ink:    { 50:'#FDFAF7',100:'#F5EDE4',200:'#E8D9CA',300:'#D2B99F',400:'#B59478',500:'#8C6A50',600:'#6E5038',700:'#523A26',800:'#382618',900:'#20140A' },
-  slate:  { 50:'#F8FAFC',100:'#F1F5F9',200:'#E2E8F0',300:'#CBD5E1',400:'#94A3B8',500:'#64748B',600:'#475569',700:'#334155',800:'#1E293B',900:'#0F172A' },
-  rose:   { 50:'#FFF1F2',100:'#FFE4E6',200:'#FECDD3',300:'#FDA4AF',500:'#F43F5E',600:'#E11D48',700:'#BE123C' },
-  sky:    { 50:'#F0F9FF',100:'#E0F2FE',200:'#BAE6FD',400:'#38BDF8',500:'#0EA5E9',600:'#0284C7',700:'#0369A1' },
-  violet: { 50:'#F5F3FF',100:'#EDE9FE',200:'#DDD6FE',400:'#A78BFA',500:'#8B5CF6',600:'#7C3AED',700:'#6D28D9' },
-  parchment: '#FAF6F1',
-  surface: '#FFFFFF',
-  divider: '#EDE5DA',
+// ─── Design Tokens (mapped to Tailwind classes) ───────────────────────────────
+const THEME = {
+  terra: {
+    50: 'bg-orange-50', 100: 'bg-orange-100', 200: 'bg-orange-200',
+    300: 'bg-orange-300', 400: 'bg-orange-400', 500: 'bg-orange-500',
+    600: 'bg-orange-600', 700: 'bg-orange-700', 800: 'bg-orange-800', 900: 'bg-orange-900',
+    text50: 'text-orange-50', text100: 'text-orange-100', text200: 'text-orange-200',
+    text300: 'text-orange-300', text400: 'text-orange-400', text500: 'text-orange-500',
+    text600: 'text-orange-600', text700: 'text-orange-700', text800: 'text-orange-800', text900: 'text-orange-900',
+    border50: 'border-orange-50', border100: 'border-orange-100', border200: 'border-orange-200',
+    border300: 'border-orange-300', border400: 'border-orange-400', border500: 'border-orange-500',
+    border600: 'border-orange-600', border700: 'border-orange-700', border800: 'border-orange-800', border900: 'border-orange-900',
+  },
+  saffron: {
+    50: 'bg-amber-50', 100: 'bg-amber-100', 200: 'bg-amber-200',
+    300: 'bg-amber-300', 400: 'bg-amber-400', 500: 'bg-amber-500',
+    600: 'bg-amber-600', 700: 'bg-amber-700', 800: 'bg-amber-800', 900: 'bg-amber-900',
+    text50: 'text-amber-50', text100: 'text-amber-100', text200: 'text-amber-200',
+    text300: 'text-amber-300', text400: 'text-amber-400', text500: 'text-amber-500',
+    text600: 'text-amber-600', text700: 'text-amber-700', text800: 'text-amber-800', text900: 'text-amber-900',
+    border50: 'border-amber-50', border100: 'border-amber-100', border200: 'border-amber-200',
+    border300: 'border-amber-300', border400: 'border-amber-400', border500: 'border-amber-500',
+    border600: 'border-amber-600', border700: 'border-amber-700', border800: 'border-amber-800', border900: 'border-amber-900',
+  },
+  forest: {
+    50: 'bg-green-50', 100: 'bg-green-100', 200: 'bg-green-200',
+    300: 'bg-green-300', 400: 'bg-green-400', 500: 'bg-green-500',
+    600: 'bg-green-600', 700: 'bg-green-700', 800: 'bg-green-800', 900: 'bg-green-900',
+    text50: 'text-green-50', text100: 'text-green-100', text200: 'text-green-200',
+    text300: 'text-green-300', text400: 'text-green-400', text500: 'text-green-500',
+    text600: 'text-green-600', text700: 'text-green-700', text800: 'text-green-800', text900: 'text-green-900',
+    border50: 'border-green-50', border100: 'border-green-100', border200: 'border-green-200',
+    border300: 'border-green-300', border400: 'border-green-400', border500: 'border-green-500',
+    border600: 'border-green-600', border700: 'border-green-700', border800: 'border-green-800', border900: 'border-green-900',
+  },
+  teal: {
+    50: 'bg-teal-50', 100: 'bg-teal-100', 200: 'bg-teal-200',
+    300: 'bg-teal-300', 400: 'bg-teal-400', 500: 'bg-teal-500',
+    600: 'bg-teal-600', 700: 'bg-teal-700', 800: 'bg-teal-800', 900: 'bg-teal-900',
+    text50: 'text-teal-50', text100: 'text-teal-100', text200: 'text-teal-200',
+    text300: 'text-teal-300', text400: 'text-teal-400', text500: 'text-teal-500',
+    text600: 'text-teal-600', text700: 'text-teal-700', text800: 'text-teal-800', text900: 'text-teal-900',
+    border50: 'border-teal-50', border100: 'border-teal-100', border200: 'border-teal-200',
+    border300: 'border-teal-300', border400: 'border-teal-400', border500: 'border-teal-500',
+    border600: 'border-teal-600', border700: 'border-teal-700', border800: 'border-teal-800', border900: 'border-teal-900',
+  },
+  ink: {
+    50: 'bg-stone-50', 100: 'bg-stone-100', 200: 'bg-stone-200',
+    300: 'bg-stone-300', 400: 'bg-stone-400', 500: 'bg-stone-500',
+    600: 'bg-stone-600', 700: 'bg-stone-700', 800: 'bg-stone-800', 900: 'bg-stone-900',
+    text50: 'text-stone-50', text100: 'text-stone-100', text200: 'text-stone-200',
+    text300: 'text-stone-300', text400: 'text-stone-400', text500: 'text-stone-500',
+    text600: 'text-stone-600', text700: 'text-stone-700', text800: 'text-stone-800', text900: 'text-stone-900',
+    border50: 'border-stone-50', border100: 'border-stone-100', border200: 'border-stone-200',
+    border300: 'border-stone-300', border400: 'border-stone-400', border500: 'border-stone-500',
+    border600: 'border-stone-600', border700: 'border-stone-700', border800: 'border-stone-800', border900: 'border-stone-900',
+  },
+  slate: {
+    50: 'bg-slate-50', 100: 'bg-slate-100', 200: 'bg-slate-200',
+    300: 'bg-slate-300', 400: 'bg-slate-400', 500: 'bg-slate-500',
+    600: 'bg-slate-600', 700: 'bg-slate-700', 800: 'bg-slate-800', 900: 'bg-slate-900',
+    text50: 'text-slate-50', text100: 'text-slate-100', text200: 'text-slate-200',
+    text300: 'text-slate-300', text400: 'text-slate-400', text500: 'text-slate-500',
+    text600: 'text-slate-600', text700: 'text-slate-700', text800: 'text-slate-800', text900: 'text-slate-900',
+    border50: 'border-slate-50', border100: 'border-slate-100', border200: 'border-slate-200',
+    border300: 'border-slate-300', border400: 'border-slate-400', border500: 'border-slate-500',
+    border600: 'border-slate-600', border700: 'border-slate-700', border800: 'border-slate-800', border900: 'border-slate-900',
+  },
+  rose: {
+    50: 'bg-rose-50', 100: 'bg-rose-100', 200: 'bg-rose-200',
+    300: 'bg-rose-300', 400: 'bg-rose-400', 500: 'bg-rose-500',
+    600: 'bg-rose-600', 700: 'bg-rose-700', 800: 'bg-rose-800', 900: 'bg-rose-900',
+    text50: 'text-rose-50', text100: 'text-rose-100', text200: 'text-rose-200',
+    text300: 'text-rose-300', text400: 'text-rose-400', text500: 'text-rose-500',
+    text600: 'text-rose-600', text700: 'text-rose-700', text800: 'text-rose-800', text900: 'text-rose-900',
+    border50: 'border-rose-50', border100: 'border-rose-100', border200: 'border-rose-200',
+    border300: 'border-rose-300', border400: 'border-rose-400', border500: 'border-rose-500',
+    border600: 'border-rose-600', border700: 'border-rose-700', border800: 'border-rose-800', border900: 'border-rose-900',
+  },
+  sky: {
+    50: 'bg-sky-50', 100: 'bg-sky-100', 200: 'bg-sky-200',
+    300: 'bg-sky-300', 400: 'bg-sky-400', 500: 'bg-sky-500',
+    600: 'bg-sky-600', 700: 'bg-sky-700', 800: 'bg-sky-800', 900: 'bg-sky-900',
+    text50: 'text-sky-50', text100: 'text-sky-100', text200: 'text-sky-200',
+    text300: 'text-sky-300', text400: 'text-sky-400', text500: 'text-sky-500',
+    text600: 'text-sky-600', text700: 'text-sky-700', text800: 'text-sky-800', text900: 'text-sky-900',
+    border50: 'border-sky-50', border100: 'border-sky-100', border200: 'border-sky-200',
+    border300: 'border-sky-300', border400: 'border-sky-400', border500: 'border-sky-500',
+    border600: 'border-sky-600', border700: 'border-sky-700', border800: 'border-sky-800', border900: 'border-sky-900',
+  },
+  violet: {
+    50: 'bg-violet-50', 100: 'bg-violet-100', 200: 'bg-violet-200',
+    300: 'bg-violet-300', 400: 'bg-violet-400', 500: 'bg-violet-500',
+    600: 'bg-violet-600', 700: 'bg-violet-700', 800: 'bg-violet-800', 900: 'bg-violet-900',
+    text50: 'text-violet-50', text100: 'text-violet-100', text200: 'text-violet-200',
+    text300: 'text-violet-300', text400: 'text-violet-400', text500: 'text-violet-500',
+    text600: 'text-violet-600', text700: 'text-violet-700', text800: 'text-violet-800', text900: 'text-violet-900',
+    border50: 'border-violet-50', border100: 'border-violet-100', border200: 'border-violet-200',
+    border300: 'border-violet-300', border400: 'border-violet-400', border500: 'border-violet-500',
+    border600: 'border-violet-600', border700: 'border-violet-700', border800: 'border-violet-800', border900: 'border-violet-900',
+  },
 }
 
-// ─── Global CSS ───────────────────────────────────────────────────────────────
-const GLOBAL_CSS = `
+// ─── Tailwind Global Styles (injected via <style>) ───────────────────────────
+const TAILWIND_GLOBAL = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --font-display: 'Playfair Display', 'Georgia', serif;
-    --font-body: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
-    --font-mono: 'DM Mono', 'Courier New', monospace;
-    --terra-600: #C44E1C;
-    --terra-50:  #FFF5F0;
-    --ink-900:   #20140A;
-    --parchment: #FAF6F1;
-    --surface:   #FFFFFF;
-    --shadow-xs:  0 1px 2px rgba(56,38,24,.06);
-    --shadow-sm:  0 2px 8px rgba(56,38,24,.08), 0 1px 2px rgba(56,38,24,.04);
-    --shadow-md:  0 4px 16px rgba(56,38,24,.10), 0 2px 4px rgba(56,38,24,.06);
-    --shadow-lg:  0 12px 32px rgba(56,38,24,.14), 0 4px 8px rgba(56,38,24,.06);
-    --shadow-xl:  0 24px 64px rgba(56,38,24,.18), 0 8px 16px rgba(56,38,24,.08);
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 14px;
-    --radius-xl: 20px;
-    --radius-full: 9999px;
-  }
-
-  body { background: var(--parchment); }
-  .gnsi-kitchen { font-family: var(--font-body); background: var(--parchment); min-height: 100vh; color: var(--ink-900); }
-
-  .k-input {
-    width: 100%; padding: 10px 14px; border-radius: var(--radius-md);
-    border: 1.5px solid ${C.ink[200]}; font-size: 13px; font-family: var(--font-body);
-    outline: none; background: #fff; color: ${C.ink[900]};
-    transition: border-color .15s, box-shadow .15s; line-height: 1.5;
-  }
-  .k-input:focus { border-color: ${C.terra[500]}; box-shadow: 0 0 0 3px ${C.terra[100]}; }
-  .k-input::placeholder { color: ${C.ink[300]}; }
-  select.k-input { cursor: pointer; }
-  textarea.k-input { resize: vertical; }
-
-  .k-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-family: var(--font-body); font-weight: 600; cursor: pointer; border: none; transition: all .15s; white-space: nowrap; }
-  .k-btn:disabled { opacity: .45; cursor: not-allowed; }
-
-  .k-btn-primary {
-    padding: 10px 22px; border-radius: var(--radius-md); font-size: 13px;
-    background: linear-gradient(160deg, ${C.terra[500]} 0%, ${C.terra[700]} 100%);
-    color: #fff; box-shadow: 0 2px 8px rgba(196,78,28,.35), inset 0 1px 0 rgba(255,255,255,.15);
-  }
-  .k-btn-primary:hover:not(:disabled) {
-    background: linear-gradient(160deg, ${C.terra[400]} 0%, ${C.terra[600]} 100%);
-    box-shadow: 0 4px 14px rgba(196,78,28,.4), inset 0 1px 0 rgba(255,255,255,.15);
-    transform: translateY(-1px);
-  }
-  .k-btn-primary:active { transform: translateY(0); }
-
-  .k-btn-ghost {
-    padding: 9px 16px; border-radius: var(--radius-md); font-size: 12px;
-    background: #fff; color: ${C.ink[600]}; border: 1.5px solid ${C.ink[200]};
-    box-shadow: var(--shadow-xs);
-  }
-  .k-btn-ghost:hover { background: ${C.ink[50]}; border-color: ${C.ink[300]}; }
-
-  .k-btn-icon {
-    padding: 8px; border-radius: var(--radius-md); font-size: 14px;
-    background: #fff; color: ${C.ink[500]}; border: 1.5px solid ${C.ink[200]};
-    box-shadow: var(--shadow-xs); width: 34px; height: 34px;
-  }
-  .k-btn-icon:hover { background: ${C.ink[50]}; }
-
-  .k-card { background: #fff; border-radius: var(--radius-lg); border: 1.5px solid ${C.divider}; box-shadow: var(--shadow-sm); }
-  .k-card-section { padding: 20px 24px; }
-  .k-card-section + .k-card-section { border-top: 1px solid ${C.divider}; }
-
-  .k-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--radius-full); font-size: 10.5px; font-weight: 700; letter-spacing: .02em; }
-
-  .k-label { display: block; font-size: 10.5px; font-weight: 700; color: ${C.ink[500]}; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .07em; font-family: var(--font-body); }
-
-  .k-number { font-family: var(--font-display); }
-
-  .k-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: ${C.terra[400]}; }
-  .k-divider::before, .k-divider::after { content: ''; flex: 1; height: 1px; background: linear-gradient(to right, ${C.terra[100]}, transparent); }
-  .k-divider::after { background: linear-gradient(to left, ${C.terra[100]}, transparent); }
 
   @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
   @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
@@ -118,9 +119,12 @@ const GLOBAL_CSS = `
   @keyframes spin { to { transform:rotate(360deg) } }
   @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
 
-  .fade-up { animation: fadeUp .3s ease both; }
-  .fade-in { animation: fadeIn .2s ease both; }
-  .slide-down { animation: slideDown .25s ease both; }
+  .animate-fade-up { animation: fadeUp .3s ease both; }
+  .animate-fade-in { animation: fadeIn .2s ease both; }
+  .animate-slide-down { animation: slideDown .25s ease both; }
+  .animate-blink { animation: blink 1.4s ease-in-out infinite; }
+  .animate-shimmer { animation: shimmer 1.2s ease-in-out infinite; }
+  .animate-spin-slow { animation: spin 1s linear infinite; }
 
   .stagger > * { animation: fadeUp .3s ease both; }
   .stagger > *:nth-child(1) { animation-delay: .03s; }
@@ -129,24 +133,27 @@ const GLOBAL_CSS = `
   .stagger > *:nth-child(4) { animation-delay: .15s; }
   .stagger > *:nth-child(5) { animation-delay: .19s; }
 
+  .font-display { font-family: 'Playfair Display', 'Georgia', serif; }
+  .font-body { font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif; }
+  .font-mono { font-family: 'DM Mono', 'Courier New', monospace; }
+
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: ${C.ink[200]}; border-radius: 99px; }
-  ::-webkit-scrollbar-thumb:hover { background: ${C.ink[300]}; }
+  ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
 
   @media print {
     .no-print { display: none !important; }
     .gnsi-kitchen { background: #fff; }
-    .k-card { box-shadow: none; border: 1px solid #ddd; }
   }
 `
 
 // ─── Meal Config ──────────────────────────────────────────────────────────────
 const MEALS = {
-  lunch:             { label:'Morning Lunch',       short:'Lunch',   emoji:'🍱', time:'12:30', bg:C.forest[600],  soft:C.forest[50],  border:C.forest[200],  text:C.forest[800], accent:'#166534' },
-  morning_breakfast: { label:'Afternoon Breakfast', short:'A.Bfast', emoji:'☕', time:'14:30', bg:C.saffron[500], soft:C.saffron[50], border:C.saffron[200], text:C.saffron[800],accent:'#92400E' },
-  evening_breakfast: { label:'Evening Breakfast',   short:'E.Bfast', emoji:'🌇', time:'16:30', bg:C.terra[500],   soft:C.terra[50],   border:C.terra[200],   text:C.terra[800],  accent:'#7A2A0A' },
-  dinner:            { label:'Dinner',              short:'Dinner',  emoji:'🌙', time:'19:30', bg:C.teal[700],    soft:C.teal[50],    border:C.teal[200],    text:C.teal[800],   accent:'#134E4A' },
+  lunch:             { label:'Morning Lunch',       short:'Lunch',   emoji:'🍱', time:'12:30', twBg:'bg-green-600', twSoft:'bg-green-50', twBorder:'border-green-200', twText:'text-green-800', accent:'#166534' },
+  morning_breakfast: { label:'Afternoon Breakfast', short:'A.Bfast', emoji:'☕', time:'14:30', twBg:'bg-amber-500', twSoft:'bg-amber-50', twBorder:'border-amber-200', twText:'text-amber-800', accent:'#92400E' },
+  evening_breakfast: { label:'Evening Breakfast',   short:'E.Bfast', emoji:'🌇', time:'16:30', twBg:'bg-orange-500', twSoft:'bg-orange-50', twBorder:'border-orange-200', twText:'text-orange-800', accent:'#7A2A0A' },
+  dinner:            { label:'Dinner',              short:'Dinner',  emoji:'🌙', time:'19:30', twBg:'bg-teal-700', twSoft:'bg-teal-50', twBorder:'border-teal-200', twText:'text-teal-800', accent:'#134E4A' },
 }
 const MEAL_KEYS = ['lunch','morning_breakfast','evening_breakfast','dinner']
 
@@ -157,8 +164,8 @@ const COOKS = [
   'Khundrakpam Premabati Devi',
 ]
 const COOK_SHIFTS = {
-  morning: { label:'Morning Shift', short:'Morning', emoji:'🌅', time:'06:30–09:00 AM', defaultIn:'06:30', defaultOut:'09:00', bg:C.saffron[50],  border:C.saffron[200], text:C.saffron[800] },
-  evening: { label:'Evening Shift', short:'Evening', emoji:'🌇', time:'06:00–09:00 PM', defaultIn:'18:00', defaultOut:'21:00', bg:C.terra[50],    border:C.terra[200],   text:C.terra[800]   },
+  morning: { label:'Morning Shift', short:'Morning', emoji:'🌅', time:'06:30–09:00 AM', defaultIn:'06:30', defaultOut:'09:00', twSoft:'bg-amber-50', twBorder:'border-amber-200', twText:'text-amber-800' },
+  evening: { label:'Evening Shift', short:'Evening', emoji:'🌇', time:'06:00–09:00 PM', defaultIn:'18:00', defaultOut:'21:00', twSoft:'bg-orange-50', twBorder:'border-orange-200', twText:'text-orange-800' },
 }
 const MANIPURI_PRESETS = {
   lunch:             ['Chak (Rice)','Kangsoi','Eromba','Nga Thongba','Hawai Thongba','Alu Kangmet','Khichdi','Papad','Pickle','Sabzi'],
@@ -168,13 +175,13 @@ const MANIPURI_PRESETS = {
 }
 const LOCAL_VENDORS = ['Khangabok Market','Thoubal Bazaar','Ima Keithel','Wangjing Market','Chandani Shop','Imphal Market','Thangal Bazaar','Lamlong Bazaar','Local Farmer','Daily Supplier']
 const ITEM_CATEGORIES = {
-  grain:     { label:'Grain / Cereal', emoji:'🌾', color:C.saffron },
-  vegetable: { label:'Vegetable',      emoji:'🥦', color:C.forest  },
-  protein:   { label:'Protein',        emoji:'🍗', color:C.terra   },
-  dairy:     { label:'Dairy',          emoji:'🥛', color:C.sky     },
-  spice:     { label:'Spice / Masala', emoji:'🌶️', color:C.rose    },
-  oil:       { label:'Oil / Fat',      emoji:'🫙', color:C.ink     },
-  other:     { label:'Other',          emoji:'📦', color:C.slate   },
+  grain:     { label:'Grain / Cereal', emoji:'🌾', twSoft:'bg-amber-50', twBorder:'border-amber-200', twText:'text-amber-800' },
+  vegetable: { label:'Vegetable',      emoji:'🥦', twSoft:'bg-green-50', twBorder:'border-green-200', twText:'text-green-800' },
+  protein:   { label:'Protein',        emoji:'🍗', twSoft:'bg-orange-50', twBorder:'border-orange-200', twText:'text-orange-800' },
+  dairy:     { label:'Dairy',          emoji:'🥛', twSoft:'bg-sky-50', twBorder:'border-sky-200', twText:'text-sky-800' },
+  spice:     { label:'Spice / Masala', emoji:'🌶️', twSoft:'bg-rose-50', twBorder:'border-rose-200', twText:'text-rose-800' },
+  oil:       { label:'Oil / Fat',      emoji:'🫙', twSoft:'bg-stone-50', twBorder:'border-stone-200', twText:'text-stone-800' },
+  other:     { label:'Other',          emoji:'📦', twSoft:'bg-slate-50', twBorder:'border-slate-200', twText:'text-slate-800' },
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -192,20 +199,23 @@ const weekStart= () => {
 const nowHHMM  = () => { const n=new Date(); return n.getHours()*100+n.getMinutes() }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PRIMITIVES
+// TAILWIND PRIMITIVES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function Toast({ msg, color=C.forest[600] }) {
+function Toast({ msg, color = 'bg-green-600' }) {
+  const colorMap = {
+    'bg-green-600': '#22c55e',
+    'bg-rose-600': '#e11d48',
+    'bg-amber-600': '#d97706',
+    'bg-orange-600': '#ea580c',
+    'bg-teal-600': '#0d9488',
+    'bg-sky-600': '#0284c7',
+    'bg-stone-600': '#78716c',
+  }
   return (
-    <div className="no-print fade-in" style={{
-      position:'fixed', top:20, right:20, zIndex:999999,
-      background:'#fff', borderRadius:12, padding:'14px 20px',
-      fontSize:13, fontWeight:600, fontFamily:'var(--font-body)',
-      boxShadow:'0 8px 32px rgba(56,38,24,.16), 0 2px 8px rgba(56,38,24,.08)',
-      border:`1px solid ${C.ink[100]}`, borderLeft:`4px solid ${color}`,
-      maxWidth:360, color:C.ink[800], display:'flex', alignItems:'center', gap:10,
-    }}>
-      <span style={{ width:8,height:8,borderRadius:'50%',background:color,flexShrink:0,display:'inline-block' }} />
+    <div className="no-print animate-fade-in fixed top-5 right-5 z-[999999] bg-white rounded-xl px-5 py-3.5 text-sm font-semibold font-body shadow-lg border border-stone-100 border-l-4 max-w-sm text-stone-800 flex items-center gap-2.5"
+      style={{ borderLeftColor: colorMap[color] || color }}>
+      <span className={`w-2 h-2 rounded-full ${color}`} />
       {msg}
     </div>
   )
@@ -213,21 +223,21 @@ function Toast({ msg, color=C.forest[600] }) {
 
 function Field({ label, sub, children, span }) {
   return (
-    <div style={span ? { gridColumn:`span ${span}` } : {}}>
-      <label className="k-label">
+    <div className={span ? `col-span-${span}` : ''}>
+      <label className="block text-[10.5px] font-bold text-stone-500 mb-1.5 uppercase tracking-wider font-body">
         {label}
-        {sub && <span style={{ fontWeight:400, color:C.ink[400], marginLeft:5, textTransform:'none', letterSpacing:0 }}>{sub}</span>}
+        {sub && <span className="font-normal text-stone-400 ml-1.5 normal-case tracking-normal">{sub}</span>}
       </label>
       {children}
     </div>
   )
 }
 
-function MealBadge({ type, size='sm' }) {
+function MealBadge({ type, size = 'sm' }) {
   const m = MEALS[type]; if (!m) return null
-  const sizes = { sm:{fontSize:10,padding:'3px 9px'}, md:{fontSize:11.5,padding:'4px 12px'} }
+  const sizeClasses = size === 'sm' ? 'text-[10px] px-2.5 py-0.5' : 'text-[11.5px] px-3 py-1'
   return (
-    <span className="k-badge" style={{ ...sizes[size], background:m.soft, color:m.text, border:`1px solid ${m.border}` }}>
+    <span className={`inline-flex items-center gap-1 rounded-full font-bold tracking-wide ${sizeClasses} ${m.twSoft} ${m.twText} ${m.twBorder} border`}>
       {m.emoji} {m.short}
     </span>
   )
@@ -235,64 +245,64 @@ function MealBadge({ type, size='sm' }) {
 
 function StarRating({ value, onChange }) {
   return (
-    <div style={{ display:'flex', gap:2 }}>
+    <div className="flex gap-0.5">
       {[1,2,3,4,5].map(n => (
         <span key={n} onClick={() => onChange && onChange(n===value?0:n)}
-          style={{ fontSize:18, cursor:onChange?'pointer':'default',
-            color:n<=value?C.saffron[500]:C.ink[200], transition:'color .1s, transform .1s', display:'inline-block' }}
-          onMouseEnter={e=>{if(onChange)e.currentTarget.style.transform='scale(1.2)'}}
-          onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)'}}>★</span>
+          className={`text-lg transition-all duration-100 inline-block cursor-${onChange ? 'pointer' : 'default'} hover:scale-125`}
+          style={{ color: n <= value ? '#f59e0b' : '#e7e5e4' }}>★</span>
       ))}
     </div>
   )
 }
 
 function SectionDivider({ label }) {
-  return <div className="k-divider">{label}</div>
+  return (
+    <div className="flex items-center gap-3 my-5 text-[10px] font-bold uppercase tracking-widest text-orange-400">
+      <div className="flex-1 h-px bg-gradient-to-r from-orange-100 to-transparent" />
+      {label}
+      <div className="flex-1 h-px bg-gradient-to-l from-orange-100 to-transparent" />
+    </div>
+  )
 }
 
 function LoadingBar() {
   return (
-    <div style={{ height:3, borderRadius:99, background:C.ink[100], overflow:'hidden', marginBottom:20, position:'relative' }}>
-      <div style={{ position:'absolute', top:0, left:0, height:'100%', width:'40%', borderRadius:99,
-        background:`linear-gradient(90deg, ${C.terra[300]}, ${C.terra[500]})`,
-        animation:'shimmer 1.2s ease-in-out infinite' }} />
+    <div className="h-0.5 rounded-full bg-stone-100 overflow-hidden mb-5 relative">
+      <div className="absolute top-0 left-0 h-full w-2/5 rounded-full bg-gradient-to-r from-orange-300 to-orange-500 animate-shimmer" />
     </div>
   )
 }
 
 function StatPill({ label, value, color }) {
   return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:6,
-      padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:600,
-      background:`${color}18`, color:color, border:`1px solid ${color}30` }}>
-      <span style={{ fontWeight:700 }}>{value}</span>
-      <span style={{ opacity:.7, fontWeight:400, fontSize:10 }}>{label}</span>
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+      style={{ backgroundColor: `${color}18`, color: color, border: `1px solid ${color}30` }}>
+      <span className="font-bold">{value}</span>
+      <span className="opacity-70 font-normal text-[10px]">{label}</span>
     </span>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// KPI SYSTEM
+// KPI SYSTEM (Tailwind)
 // ═══════════════════════════════════════════════════════════════════════════════
 function KpiCard({ label, value, accent, subtitle, icon, pulse, trend }) {
   return (
-    <div className="k-card fade-up" style={{ flex:1, minWidth:140, padding:'18px 20px', position:'relative', overflow:'hidden' }}>
-      <div style={{ position:'absolute', right:-10, top:-10, width:64, height:64, borderRadius:'50%', background:`${accent}10`, pointerEvents:'none' }} />
-      {icon && <div style={{ position:'absolute', right:16, top:14, fontSize:22, opacity:.12 }}>{icon}</div>}
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 relative overflow-hidden flex-1 min-w-[140px] animate-fade-up">
+      <div className="absolute -right-2.5 -top-2.5 w-16 h-16 rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: accent }} />
+      {icon && <div className="absolute right-4 top-3.5 text-[22px] opacity-10">{icon}</div>}
       {pulse && (
-        <div style={{ position:'absolute', top:12, right:12, width:7, height:7, borderRadius:'50%',
-          background:C.terra[500], animation:'blink 1.4s ease-in-out infinite', boxShadow:`0 0 6px ${C.terra[400]}` }} />
+        <div className="absolute top-3 right-3 w-1.5 h-1.5 rounded-full bg-orange-500 animate-blink shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
       )}
-      <div className="k-number" style={{ fontSize:24, fontWeight:700, color:accent||C.ink[800], lineHeight:1, letterSpacing:'-.01em' }}>
+      <div className="font-display text-2xl font-bold leading-none tracking-tight" style={{ color: accent || '#1c1917' }}>
         {value}
       </div>
-      <div style={{ fontSize:10.5, fontWeight:700, color:C.ink[400], marginTop:6, textTransform:'uppercase', letterSpacing:'.07em', fontFamily:'var(--font-body)' }}>
+      <div className="text-[10.5px] font-bold text-stone-400 mt-1.5 uppercase tracking-wider font-body">
         {label}
       </div>
-      {subtitle && <div style={{ fontSize:10, color:C.ink[300], marginTop:3, fontFamily:'var(--font-mono)' }}>{subtitle}</div>}
+      {subtitle && <div className="text-[10px] text-stone-300 mt-1 font-mono">{subtitle}</div>}
       {trend !== undefined && (
-        <div style={{ marginTop:8, fontSize:11, fontWeight:600, color: trend >= 0 ? C.rose[600] : C.forest[600] }}>
+        <div className={`mt-2 text-[11px] font-semibold ${trend >= 0 ? 'text-rose-600' : 'text-green-600'}`}>
           {trend >= 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
         </div>
       )}
@@ -303,7 +313,7 @@ function KpiCard({ label, value, accent, subtitle, icon, pulse, trend }) {
 function MealKpiStrip({ entries, dateFilter }) {
   const dayEntries = entries.filter(e => e.expense_date === dateFilter)
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
+    <div className="grid grid-cols-4 gap-2 mb-4">
       {MEAL_KEYS.map(mk => {
         const m   = MEALS[mk]
         const mEntries = dayEntries.filter(e=>e.meal_type===mk)
@@ -313,18 +323,15 @@ function MealKpiStrip({ entries, dateFilter }) {
         const isPast  = h*100+min < nowHHMM()
         const isMissing = !hasEntry && isPast && dateFilter === today()
         return (
-          <div key={mk} className="k-card" style={{
-            padding:'14px 16px', position:'relative', overflow:'hidden',
-            border:`1.5px solid ${isMissing ? C.rose[200] : hasEntry ? m.border : C.ink[100]}`,
-            background: isMissing ? C.rose[50] : hasEntry ? m.soft : '#fff',
-            opacity: !hasEntry && !isPast ? .65 : 1,
-          }}>
-            <div style={{ position:'absolute', right:8, top:8, fontSize:20, opacity:.13 }}>{m.emoji}</div>
-            <div style={{ fontSize:10, fontWeight:700, color: isMissing ? C.rose[600] : m.text, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:3 }}>{m.short}</div>
-            <div className="k-number" style={{ fontSize:18, fontWeight:700, color: isMissing ? C.rose[500] : m.text, lineHeight:1 }}>
-              {hasEntry ? moneyFmt(amt) : <span style={{ fontSize:12, opacity:.5 }}>{isMissing ? '⚠ Missing' : 'Upcoming'}</span>}
+          <div key={mk} className={`rounded-xl p-3.5 relative overflow-hidden border-[1.5px] ${
+            isMissing ? 'bg-rose-50 border-rose-200' : hasEntry ? m.twSoft : 'bg-white border-stone-100'
+          } ${!hasEntry && !isPast ? 'opacity-65' : 'opacity-100'}`}>
+            <div className="absolute right-2 top-2 text-xl opacity-[0.13]">{m.emoji}</div>
+            <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isMissing ? 'text-rose-600' : m.twText}`}>{m.short}</div>
+            <div className={`font-display text-lg font-bold leading-none ${isMissing ? 'text-rose-500' : m.twText}`}>
+              {hasEntry ? moneyFmt(amt) : <span className="text-xs opacity-50">{isMissing ? '⚠ Missing' : 'Upcoming'}</span>}
             </div>
-            <div style={{ fontSize:9, color: isMissing?C.rose[400]:m.text, opacity:.6, marginTop:3 }}>{m.time}</div>
+            <div className={`text-[9px] mt-1 ${isMissing ? 'text-rose-400' : m.twText} opacity-60`}>{m.time}</div>
           </div>
         )
       })}
@@ -336,22 +343,22 @@ function BudgetBar({ spent, budget }) {
   if (!budget) return null
   const pct   = Math.min((spent/budget)*100, 100)
   const over  = spent > budget
-  const color = pct > 90 ? C.rose[500] : pct > 70 ? C.saffron[500] : C.forest[500]
+  const colorClass = pct > 90 ? 'bg-rose-500' : pct > 70 ? 'bg-amber-500' : 'bg-green-500'
   return (
-    <div className="k-card" style={{ padding:'16px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:16 }}>
-      <div style={{ fontSize:20, flexShrink:0 }}>📊</div>
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8 }}>
-          <span style={{ fontSize:12, fontWeight:700, color:C.ink[600] }}>Monthly Budget</span>
-          <span className="k-number" style={{ fontSize:14, fontWeight:700, color:over?C.rose[600]:C.ink[700] }}>
-            {moneyFmt(spent)} <span style={{ color:C.ink[300], fontWeight:400, fontSize:11 }}>/ {moneyFmt(budget)}</span>
-            {over && <span style={{ marginLeft:8, padding:'2px 8px', borderRadius:99, background:C.rose[100], color:C.rose[700], fontSize:10, fontWeight:700 }}>OVER</span>}
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-4 mb-4 flex items-center gap-4">
+      <div className="text-xl flex-shrink-0">📊</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-baseline mb-2">
+          <span className="text-xs font-bold text-stone-600">Monthly Budget</span>
+          <span className="font-display text-sm font-bold text-stone-700">
+            {moneyFmt(spent)} <span className="text-stone-300 font-normal text-[11px]">/ {moneyFmt(budget)}</span>
+            {over && <span className="ml-2 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold">OVER</span>}
           </span>
         </div>
-        <div style={{ height:8, borderRadius:99, background:C.ink[100], overflow:'hidden' }}>
-          <div style={{ height:'100%', width:`${pct}%`, borderRadius:99, background:color, transition:'width .6s cubic-bezier(.4,0,.2,1)' }} />
+        <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-[600ms] ease-[cubic-bezier(.4,0,.2,1)] ${colorClass}`} style={{ width: `${pct}%` }} />
         </div>
-        <div style={{ fontSize:11, color:C.ink[400], marginTop:5, fontFamily:'var(--font-mono)' }}>
+        <div className="text-[11px] text-stone-400 mt-1.5 font-mono">
           {over ? `${moneyFmt(spent-budget)} over limit` : `${moneyFmt(budget-spent)} remaining · ${(100-pct).toFixed(1)}% left`}
         </div>
       </div>
@@ -372,43 +379,40 @@ function MonthlyChart({ entries }) {
   const avg = Object.values(byDay).reduce((a,b)=>a+b,0) / days.length
 
   return (
-    <div className="k-card" style={{ padding:'20px 24px', marginBottom:16 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
+      <div className="flex justify-between items-center mb-4">
         <div>
-          <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], fontFamily:'var(--font-body)' }}>Daily Spend</div>
-          <div style={{ fontSize:11, color:C.ink[400], marginTop:1 }}>This month</div>
+          <div className="text-sm font-bold text-stone-700 font-body">Daily Spend</div>
+          <div className="text-[11px] text-stone-400 mt-0.5">This month</div>
         </div>
-        <div style={{ textAlign:'right' }}>
-          <div className="k-number" style={{ fontSize:15, fontWeight:700, color:C.ink[700] }}>{moneyFmt(avg)}</div>
-          <div style={{ fontSize:10, color:C.ink[400] }}>daily avg</div>
+        <div className="text-right">
+          <div className="font-display text-[15px] font-bold text-stone-700">{moneyFmt(avg)}</div>
+          <div className="text-[10px] text-stone-400">daily avg</div>
         </div>
       </div>
-      <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:100, overflowX:'auto', paddingBottom:4 }}>
+      <div className="flex items-end gap-1 h-[100px] overflow-x-auto pb-1">
         {days.map((d, i) => {
           const v = byDay[d]
           const h = Math.max((v/max)*84, 4)
           const isToday  = d === today()
           const isPeak   = v === max
-          const color    = isPeak ? C.rose[500] : isToday ? C.terra[500] : C.terra[200]
-          const hoverCol = isPeak ? C.rose[400] : isToday ? C.terra[400] : C.terra[300]
+          const color    = isPeak ? '#f43f5e' : isToday ? '#ea580c' : '#fed7aa'
           return (
             <div key={d} title={`${dateFmt(d)}: ${moneyFmt(v)}`}
-              style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flexShrink:0, cursor:'pointer' }}
-              onMouseEnter={e=>e.currentTarget.querySelector('.bar').style.background=hoverCol}
-              onMouseLeave={e=>e.currentTarget.querySelector('.bar').style.background=color}>
-              <div className="bar" style={{ width:18, height:h, borderRadius:'4px 4px 0 0', background:color,
-                transition:'height .4s cubic-bezier(.4,0,.2,1)', animationDelay:`${i*.02}s` }} />
-              <span style={{ fontSize:8, color:C.ink[300], transform:'rotate(-45deg)', transformOrigin:'center', display:'block', width:14, textAlign:'center' }}>
+              className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group">
+              <div className="w-[18px] rounded-t transition-all duration-[400ms] ease-[cubic-bezier(.4,0,.2,1)] group-hover:brightness-110"
+                style={{ height: h, backgroundColor: color, animationDelay: `${i*.02}s` }} />
+              <span className="text-[8px] text-stone-300 -rotate-45 origin-center block w-3.5 text-center">
                 {new Date(d+'T00:00:00').getDate()}
               </span>
             </div>
           )
         })}
       </div>
-      <div style={{ display:'flex', gap:10, marginTop:10, fontSize:10 }}>
-        {[['Today',C.terra[500]],['Peak',C.rose[500]],['Other',C.terra[200]]].map(([l,col])=>(
-          <span key={l} style={{ display:'flex', alignItems:'center', gap:4, color:C.ink[400] }}>
-            <span style={{ width:8, height:8, borderRadius:2, background:col, display:'inline-block' }} />{l}
+      <div className="flex gap-2.5 mt-2.5 text-[10px]">
+        {[['Today','#ea580c'],['Peak','#f43f5e'],['Other','#fed7aa']].map(([l,col])=>(
+          <span key={l} className="flex items-center gap-1.5 text-stone-400">
+            <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: col }} />{l}
           </span>
         ))}
       </div>
@@ -425,26 +429,27 @@ function MealPieBreakdown({ entries }) {
   const grand = Object.values(totals).reduce((a,b)=>a+b,0)
   if (!grand) return null
   return (
-    <div className="k-card" style={{ padding:'20px 24px', marginBottom:16 }}>
-      <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:16 }}>Meal-wise Breakdown</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
+      <div className="text-sm font-bold text-stone-700 mb-4">Meal-wise Breakdown</div>
+      <div className="flex flex-col gap-2.5">
         {MEAL_KEYS.map(mk => {
           const m   = MEALS[mk]
           const amt = totals[mk]
           const pct = grand ? ((amt/grand)*100) : 0
           return (
             <div key={mk}>
-              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:C.ink[600], marginBottom:5 }}>
-                <span style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ width:8, height:8, borderRadius:'50%', background:m.bg, display:'inline-block' }} />
+              <div className="flex justify-between text-xs text-stone-600 mb-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: m.accent }} />
                   {m.label}
                 </span>
-                <span style={{ fontWeight:700, fontFamily:'var(--font-mono)', fontSize:11 }}>
-                  {moneyFmt(amt)} <span style={{ color:C.ink[400], fontWeight:400 }}>({pct.toFixed(1)}%)</span>
+                <span className="font-bold font-mono text-[11px]">
+                  {moneyFmt(amt)} <span className="text-stone-400 font-normal">({pct.toFixed(1)}%)</span>
                 </span>
               </div>
-              <div style={{ height:6, borderRadius:99, background:C.ink[100], overflow:'hidden' }}>
-                <div style={{ height:'100%', width:`${pct}%`, borderRadius:99, background:m.bg, transition:'width .6s cubic-bezier(.4,0,.2,1)' }} />
+              <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-[600ms] ease-[cubic-bezier(.4,0,.2,1)]"
+                  style={{ width: `${pct}%`, backgroundColor: m.accent }} />
               </div>
             </div>
           )
@@ -469,12 +474,12 @@ function CalendarHeatmap({ entries, onDayClick }) {
   const firstDOW= new Date(year, month, 1).getDay()
 
   const getColor = amt => {
-    if (!amt) return C.ink[100]
+    if (!amt) return '#e7e5e4'
     const i = amt/max
-    if (i > .75) return C.rose[500]
-    if (i > .5)  return C.terra[400]
-    if (i > .25) return C.saffron[400]
-    return C.saffron[200]
+    if (i > .75) return '#f43f5e'
+    if (i > .5)  return '#f97316'
+    if (i > .25) return '#f59e0b'
+    return '#fde68a'
   }
 
   const cells = []
@@ -485,35 +490,32 @@ function CalendarHeatmap({ entries, onDayClick }) {
   }
 
   return (
-    <div className="k-card" style={{ padding:'20px 24px', marginBottom:16 }}>
-      <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:12 }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
+      <div className="text-sm font-bold text-stone-700 mb-3">
         Spend Heatmap — {now.toLocaleString('en-IN',{month:'long',year:'numeric'})}
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:5 }}>
+      <div className="grid grid-cols-7 gap-1.5">
         {['Su','Mo','Tu','We','Th','Fr','Sa'].map((d,i)=>(
-          <div key={i} style={{ textAlign:'center', fontSize:9, fontWeight:700, color:C.ink[400], paddingBottom:3 }}>{d}</div>
+          <div key={i} className="text-center text-[9px] font-bold text-stone-400 pb-1">{d}</div>
         ))}
         {cells.map((c,i) => c===null
           ? <div key={`e${i}`} />
           : <div key={c.iso} onClick={() => onDayClick(c.iso)}
               title={`${dateFmt(c.iso)}: ${moneyFmt(c.amt)}`}
+              className="aspect-square rounded-md cursor-pointer flex items-center justify-center text-[9px] font-bold transition-all duration-100 hover:scale-125 hover:z-10 hover:shadow-md"
               style={{
-                aspectRatio:'1', borderRadius:6, background:getColor(c.amt),
-                cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-                fontSize:9, fontWeight:700, color:c.amt?'#fff':C.ink[400],
-                border:c.iso===today()?`2px solid ${C.terra[600]}`:'2px solid transparent',
-                transition:'transform .1s, box-shadow .1s',
-              }}
-              onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.2)';e.currentTarget.style.zIndex='2';e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,.2)'}}
-              onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.zIndex='1';e.currentTarget.style.boxShadow='none'}}>
+                backgroundColor: getColor(c.amt),
+                color: c.amt ? '#fff' : '#a8a29e',
+                border: c.iso===today() ? '2px solid #ea580c' : '2px solid transparent',
+              }}>
               {c.d}
             </div>
         )}
       </div>
-      <div style={{ display:'flex', gap:10, marginTop:12, fontSize:10, color:C.ink[400] }}>
-        {[['None',C.ink[100]],['Low',C.saffron[200]],['Mid',C.saffron[400]],['High',C.terra[400]],['Peak',C.rose[500]]].map(([l,col])=>(
-          <span key={l} style={{ display:'flex', alignItems:'center', gap:4 }}>
-            <span style={{ width:10, height:10, borderRadius:3, background:col, display:'inline-block' }} />{l}
+      <div className="flex gap-2.5 mt-3 text-[10px] text-stone-400">
+        {[['None','#e7e5e4'],['Low','#fde68a'],['Mid','#f59e0b'],['High','#f97316'],['Peak','#f43f5e']].map(([l,col])=>(
+          <span key={l} className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: col }} />{l}
           </span>
         ))}
       </div>
@@ -533,21 +535,21 @@ function VendorSummary({ entries }) {
   if (!vendors.length) return null
   const maxT = vendors[0][1].total
   return (
-    <div className="k-card" style={{ padding:'20px 24px', marginBottom:16 }}>
-      <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:14 }}>Top Vendors</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
+      <div className="text-sm font-bold text-stone-700 mb-3.5">Top Vendors</div>
+      <div className="flex flex-col gap-2.5">
         {vendors.map(([name, { count, total }], i) => (
           <div key={name}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:4 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:11, fontWeight:700, color:C.ink[400], fontFamily:'var(--font-mono)', width:14 }}>{i+1}</span>
-                <span style={{ fontSize:12, fontWeight:600, color:C.ink[700] }}>{name}</span>
-                <span style={{ fontSize:10, color:C.ink[400] }}>{count}×</span>
+            <div className="flex justify-between items-baseline mb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-stone-400 font-mono w-3.5">{i+1}</span>
+                <span className="text-xs font-semibold text-stone-700">{name}</span>
+                <span className="text-[10px] text-stone-400">{count}×</span>
               </div>
-              <span className="k-number" style={{ fontSize:13, fontWeight:700, color:C.teal[700] }}>{moneyFmt(total)}</span>
+              <span className="font-display text-[13px] font-bold text-teal-700">{moneyFmt(total)}</span>
             </div>
-            <div style={{ height:4, borderRadius:99, background:C.ink[100], overflow:'hidden' }}>
-              <div style={{ height:'100%', width:`${(total/maxT)*100}%`, borderRadius:99, background:C.teal[400], transition:'width .5s' }} />
+            <div className="h-1 rounded-full bg-stone-100 overflow-hidden">
+              <div className="h-full rounded-full bg-teal-400 transition-all duration-500" style={{ width: `${(total/maxT)*100}%` }} />
             </div>
           </div>
         ))}
@@ -567,18 +569,13 @@ function ItemFrequency({ entries }) {
   }, [entries])
   if (!freq.length) return null
   return (
-    <div className="k-card" style={{ padding:'20px 24px', marginBottom:16 }}>
-      <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:12 }}>Most Used Items</div>
-      <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
+      <div className="text-sm font-bold text-stone-700 mb-3">Most Used Items</div>
+      <div className="flex flex-wrap gap-1.5">
         {freq.map(([item,count]) => (
-          <span key={item} style={{
-            padding:'5px 12px', borderRadius:99,
-            background:C.saffron[50], border:`1px solid ${C.saffron[200]}`,
-            fontSize:11, fontWeight:600, color:C.saffron[800],
-            display:'inline-flex', alignItems:'center', gap:5,
-          }}>
+          <span key={item} className="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 inline-flex items-center gap-1">
             {item}
-            <span style={{ fontSize:10, fontWeight:700, color:C.saffron[500], fontFamily:'var(--font-mono)' }}>×{count}</span>
+            <span className="text-[10px] font-bold text-amber-500 font-mono">×{count}</span>
           </span>
         ))}
       </div>
@@ -593,14 +590,11 @@ function CostPerStudentCard({ entries, dateFilter }) {
   const avgPax   = dayEntries.reduce((s,e)=>s+Number(e.pax_count),0)/dayEntries.length
   const cps      = avgPax > 0 ? totalAmt/avgPax : 0
   return (
-    <div className="k-card" style={{ padding:'16px 20px', marginBottom:12,
-      background:`linear-gradient(135deg, ${C.sky[50]}, #fff)`, border:`1.5px solid ${C.sky[200]}`,
-      display:'flex', alignItems:'center', gap:16 }}>
-      <div style={{ width:48, height:48, borderRadius:12, background:C.sky[100],
-        display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>👤</div>
+    <div className="bg-white rounded-xl border border-sky-200 p-4 mb-3 bg-gradient-to-br from-sky-50 to-white flex items-center gap-4">
+      <div className="w-12 h-12 rounded-xl bg-sky-100 flex items-center justify-center text-[22px] flex-shrink-0">👤</div>
       <div>
-        <div className="k-number" style={{ fontSize:22, fontWeight:700, color:C.sky[700], lineHeight:1 }}>{moneyFmt(cps)}</div>
-        <div style={{ fontSize:11, color:C.sky[600], marginTop:3 }}>
+        <div className="font-display text-[22px] font-bold text-sky-700 leading-none">{moneyFmt(cps)}</div>
+        <div className="text-[11px] text-sky-600 mt-1">
           per student · {Math.round(avgPax)} served today
         </div>
       </div>
@@ -624,24 +618,24 @@ function PettyCashWidget({ entries, dateFilter }) {
   }
 
   return (
-    <div className="k-card" style={{ padding:'18px 22px', marginBottom:16 }}>
-      <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
+      <div className="text-sm font-bold text-stone-700 mb-3 flex items-center gap-1.5">
         💵 Petty Cash Ledger
-        <span style={{ fontSize:10, color:C.ink[400], fontWeight:400, marginLeft:4 }}>— {dateFmt(dateFilter)}</span>
+        <span className="text-[10px] text-stone-400 font-normal ml-1">— {dateFmt(dateFilter)}</span>
       </div>
-      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
-        <input className="k-input" type="number" style={{ flex:1 }} placeholder="Amount given (₹)"
-          value={given} onChange={e=>setGiven(e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&addCash()} />
-        <button type="button" className="k-btn k-btn-ghost" onClick={addCash}>+ Add</button>
+      <div className="flex gap-2 mb-3">
+        <input className="flex-1 px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+          type="number" placeholder="Amount given (₹)" value={given} onChange={e=>setGiven(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addCash()} />
+        <button type="button" className="px-4 py-2 rounded-lg bg-white text-stone-600 border-[1.5px] border-stone-200 text-xs font-semibold hover:bg-stone-50 transition-all shadow-sm"
+          onClick={addCash}>+ Add</button>
       </div>
-      <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
-        <StatPill label="given" value={moneyFmt(totalGiven)} color={C.forest[600]} />
-        <StatPill label="spent" value={moneyFmt(daySpend)} color={C.rose[600]} />
-        <StatPill label={balance<0?'short':'balance'} value={moneyFmt(Math.abs(balance))} color={balance>=0?C.teal[600]:C.rose[600]} />
+      <div className="flex gap-4 flex-wrap">
+        <StatPill label="given" value={moneyFmt(totalGiven)} color="#16a34a" />
+        <StatPill label="spent" value={moneyFmt(daySpend)} color="#e11d48" />
+        <StatPill label={balance<0?'short':'balance'} value={moneyFmt(Math.abs(balance))} color={balance>=0?'#0d9488':'#e11d48'} />
       </div>
       {cashLog.filter(c=>c.date===dateFilter).map((c,i)=>(
-        <div key={i} style={{ fontSize:11, color:C.ink[400], marginTop:6, fontFamily:'var(--font-mono)' }}>
+        <div key={i} className="text-[11px] text-stone-400 mt-1.5 font-mono">
           ✓ {moneyFmt(c.amount)} added at {c.at}
         </div>
       ))}
@@ -659,13 +653,11 @@ function MissingMealAlert({ entries, dateFilter }) {
   })
   if (!overdue.length) return null
   return (
-    <div className="fade-up" style={{ marginBottom:14, padding:'14px 18px', borderRadius:10,
-      background:C.rose[50], border:`1.5px solid ${C.rose[200]}`,
-      display:'flex', alignItems:'flex-start', gap:12 }}>
-      <span style={{ fontSize:18, marginTop:1 }}>⚠️</span>
+    <div className="animate-fade-up mb-3.5 p-3.5 rounded-xl bg-rose-50 border-[1.5px] border-rose-200 flex items-start gap-3">
+      <span className="text-lg mt-0.5">⚠️</span>
       <div>
-        <div style={{ fontSize:12, fontWeight:700, color:C.rose[700], marginBottom:6 }}>Missing meal entries — past scheduled time</div>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        <div className="text-xs font-bold text-rose-700 mb-1.5">Missing meal entries — past scheduled time</div>
+        <div className="flex gap-1.5 flex-wrap">
           {overdue.map(mk => <MealBadge key={mk} type={mk} />)}
         </div>
       </div>
@@ -680,31 +672,31 @@ function ReceiptViewer({ url, onClose, onDelete }) {
   const [zoom, setZoom] = useState(1)
   const isPDF = url?.toLowerCase().includes('.pdf')
   return (
-    <div className="fade-in" style={{ position:'fixed', inset:0, background:'rgba(12,6,3,.92)', zIndex:99999,
-      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}
+    <div className="animate-fade-in fixed inset-0 bg-[rgba(12,6,3,0.92)] z-[99999] flex flex-col items-center justify-center"
       onClick={onClose}>
-      <div style={{ position:'absolute', top:16, right:16, display:'flex', gap:8 }} onClick={e=>e.stopPropagation()}>
+      <div className="absolute top-4 right-4 flex gap-2" onClick={e=>e.stopPropagation()}>
         {!isPDF && <>
-          <button type="button" className="k-btn k-btn-ghost" onClick={()=>setZoom(z=>Math.min(z+.25,3))}
-            style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)' }}>🔍+</button>
-          <button type="button" className="k-btn k-btn-ghost" onClick={()=>setZoom(z=>Math.max(z-.25,.5))}
-            style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)' }}>🔍−</button>
+          <button type="button" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all"
+            onClick={()=>setZoom(z=>Math.min(z+.25,3))}>🔍+</button>
+          <button type="button" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all"
+            onClick={()=>setZoom(z=>Math.max(z-.25,.5))}>🔍−</button>
         </>}
-        <a href={url} target="_blank" rel="noreferrer" className="k-btn k-btn-ghost"
-          style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)', textDecoration:'none' }}>⬇ Download</a>
-        {onDelete && <button type="button" className="k-btn k-btn-ghost" onClick={onDelete}
-          style={{ background:'rgba(220,38,38,.2)', color:'#fca5a5', border:'1px solid rgba(220,38,38,.3)' }}>🗑 Delete</button>}
-        <button type="button" className="k-btn k-btn-ghost" onClick={onClose}
-          style={{ background:'rgba(255,255,255,.12)', color:'#fff', border:'1px solid rgba(255,255,255,.2)' }}>✕ Close</button>
+        <a href={url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all no-underline inline-flex items-center">
+          ⬇ Download
+        </a>
+        {onDelete && <button type="button" className="px-3 py-2 rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-semibold hover:bg-red-500/30 transition-all"
+          onClick={onDelete}>🗑 Delete</button>}
+        <button type="button" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all"
+          onClick={onClose}>✕ Close</button>
       </div>
-      <div onClick={e=>e.stopPropagation()} style={{ maxWidth:'90vw', maxHeight:'85vh', overflow:'auto' }}>
+      <div onClick={e=>e.stopPropagation()} className="max-w-[90vw] max-h-[85vh] overflow-auto">
         {isPDF
-          ? <iframe src={url} style={{ width:'80vw', height:'80vh', border:'none', borderRadius:12 }} title="Receipt PDF" />
-          : <img src={url} alt="Receipt" style={{ transform:`scale(${zoom})`, transformOrigin:'top center',
-              maxWidth:'85vw', borderRadius:12, boxShadow:'0 24px 80px rgba(0,0,0,.6)', transition:'transform .2s' }} />
+          ? <iframe src={url} className="w-[80vw] h-[80vh] border-none rounded-xl" title="Receipt PDF" />
+          : <img src={url} alt="Receipt" className="rounded-xl shadow-2xl transition-transform duration-200 max-w-[85vw]"
+              style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} />
         }
       </div>
-      {!isPDF && <div style={{ marginTop:10, fontSize:10, color:'rgba(255,255,255,.3)' }}>Zoom: {Math.round(zoom*100)}% · Click outside to close</div>}
+      {!isPDF && <div className="mt-2.5 text-[10px] text-white/30">Zoom: {Math.round(zoom*100)}% · Click outside to close</div>}
     </div>
   )
 }
@@ -732,10 +724,10 @@ function ItemSetupPanel({ onClose, showToast }) {
     const row = { name:form.name, name_meitei:form.name_meitei||null, category:form.category, unit:form.unit, default_price:Number(form.default_price)||null, is_active:true }
     if (editId) {
       await supabase.from('kitchen_items').update(row).eq('id',editId)
-      showToast('Item updated ✓', C.saffron[600])
+      showToast('Item updated ✓', 'bg-amber-600')
     } else {
       await supabase.from('kitchen_items').insert(row)
-      showToast('Item added ✓', C.forest[600])
+      showToast('Item added ✓', 'bg-green-600')
     }
     setForm({ name:'', name_meitei:'', category:'vegetable', unit:'kg', default_price:'' })
     setEditId(null); loadItems()
@@ -756,85 +748,93 @@ function ItemSetupPanel({ onClose, showToast }) {
   )
 
   return (
-    <div className="k-card slide-down" style={{ marginBottom:16, overflow:'hidden' }}>
-      <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.divider}`,
-        display:'flex', justifyContent:'space-between', alignItems:'center',
-        background:`linear-gradient(135deg, ${C.saffron[50]}, #fff)` }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm mb-4 overflow-hidden animate-slide-down">
+      <div className="px-5 py-4 border-b border-stone-200 flex justify-between items-center bg-gradient-to-br from-amber-50 to-white">
         <div>
-          <div style={{ fontSize:15, fontWeight:700, color:C.terra[700], fontFamily:'var(--font-display)' }}>Item Setup</div>
-          <div style={{ fontSize:11, color:C.ink[500], marginTop:2 }}>Manage kitchen item master list</div>
+          <div className="text-[15px] font-bold text-orange-800 font-display">Item Setup</div>
+          <div className="text-[11px] text-stone-500 mt-0.5">Manage kitchen item master list</div>
         </div>
-        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
+          onClick={onClose}>✕</button>
       </div>
-      <div style={{ padding:'20px 22px' }}>
-        <div style={{ background:C.saffron[50], border:`1.5px solid ${C.saffron[200]}`, borderRadius:12, padding:'16px 18px', marginBottom:18 }}>
-          <div style={{ fontSize:12, fontWeight:700, color:C.saffron[800], marginBottom:12 }}>
+      <div className="p-5">
+        <div className="bg-amber-50 border-[1.5px] border-amber-200 rounded-xl p-4 mb-4">
+          <div className="text-xs font-bold text-amber-800 mb-3">
             {editId ? '✏️ Edit Item' : '➕ New Item'}
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          <div className="grid grid-cols-2 gap-2.5">
             <Field label="Name (English)">
-              <input className="k-input" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Rice" />
+              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Rice" />
             </Field>
             <Field label="Local Name">
-              <input className="k-input" value={form.name_meitei} onChange={e=>setForm(f=>({...f,name_meitei:e.target.value}))} placeholder="Alternate name" />
+              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.name_meitei} onChange={e=>setForm(f=>({...f,name_meitei:e.target.value}))} placeholder="Alternate name" />
             </Field>
             <Field label="Category">
-              <select className="k-input" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
+                value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
                 {Object.entries(ITEM_CATEGORIES).map(([k,v])=>(
                   <option key={k} value={k}>{v.emoji} {v.label}</option>
                 ))}
               </select>
             </Field>
             <Field label="Unit">
-              <select className="k-input" value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>
+              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
+                value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>
                 {['kg','g','litre','ml','piece','dozen','packet','bundle'].map(u=><option key={u} value={u}>{u}</option>)}
               </select>
             </Field>
             <Field label="Default Price (₹/unit)">
-              <input type="number" className="k-input" value={form.default_price} onChange={e=>setForm(f=>({...f,default_price:e.target.value}))} placeholder="0.00" />
+              <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.default_price} onChange={e=>setForm(f=>({...f,default_price:e.target.value}))} placeholder="0.00" />
             </Field>
           </div>
-          <div style={{ display:'flex', gap:8, marginTop:14 }}>
-            <button type="button" className="k-btn k-btn-primary" onClick={handleSave}>{editId ? 'Update' : '+ Add'}</button>
-            {editId && <button type="button" className="k-btn k-btn-ghost" onClick={()=>{setEditId(null);setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })}}>Cancel</button>}
+          <div className="flex gap-2 mt-3.5">
+            <button type="button" className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              onClick={handleSave}>{editId ? 'Update' : '+ Add'}</button>
+            {editId && <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+              onClick={()=>{setEditId(null);setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })}}>Cancel</button>}
           </div>
         </div>
-        <div style={{ display:'flex', gap:8, marginBottom:12 }}>
-          <input className="k-input" style={{ flex:1 }} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items…" />
-          <select className="k-input" style={{ width:'auto', minWidth:140 }} value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
+        <div className="flex gap-2 mb-3">
+          <input className="flex-1 px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+            value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items…" />
+          <select className="px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white w-auto min-w-[140px]"
+            value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
             <option value="all">All Categories</option>
             {Object.entries(ITEM_CATEGORIES).map(([k,v])=><option key={k} value={k}>{v.emoji} {v.label}</option>)}
           </select>
         </div>
-        {loading ? <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>Loading…</div> : (
-          <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:320, overflowY:'auto' }}>
-            {!filtered.length && <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>No items found</div>}
+        {loading ? <div className="text-center text-stone-400 py-5 text-xs">Loading…</div> : (
+          <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
+            {!filtered.length && <div className="text-center text-stone-400 py-5 text-xs">No items found</div>}
             {filtered.map(it => {
               const cat = ITEM_CATEGORIES[it.category]||ITEM_CATEGORIES.other
               return (
-                <div key={it.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
-                  padding:'10px 14px', borderRadius:9,
-                  background:it.is_active?'#fff':C.ink[50],
-                  border:`1.5px solid ${it.is_active?cat.color[200]:C.ink[100]}`,
-                  opacity:it.is_active?1:.55, transition:'all .15s' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <span style={{ fontSize:18, width:24, textAlign:'center' }}>{cat.emoji}</span>
+                <div key={it.id} className={`flex justify-between items-center px-3.5 py-2.5 rounded-lg transition-all duration-150 ${
+                  it.is_active ? 'bg-white' : 'bg-stone-50'
+                } border-[1.5px] ${it.is_active ? cat.twBorder : 'border-stone-100'} ${it.is_active ? 'opacity-100' : 'opacity-55'}`}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-lg w-6 text-center">{cat.emoji}</span>
                     <div>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.ink[800] }}>
-                        {it.name} {it.name_meitei && <span style={{ color:C.ink[400], fontWeight:400 }}>· {it.name_meitei}</span>}
+                      <div className="text-xs font-bold text-stone-800">
+                        {it.name} {it.name_meitei && <span className="text-stone-400 font-normal">· {it.name_meitei}</span>}
                       </div>
-                      <div style={{ fontSize:10, color:C.ink[400], marginTop:1 }}>
+                      <div className="text-[10px] text-stone-400 mt-0.5">
                         {cat.label} · {it.unit}{it.default_price?` · ₹${it.default_price}/${it.unit}`:''}
                       </div>
                     </div>
                   </div>
-                  <div style={{ display:'flex', gap:6 }}>
-                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>startEdit(it)} style={{ fontSize:11, padding:'4px 10px' }}>Edit</button>
-                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>toggleActive(it.id,it.is_active)}
-                      style={{ fontSize:11, padding:'4px 10px',
-                        color:it.is_active?C.rose[600]:C.forest[600],
-                        background:it.is_active?C.rose[50]:C.forest[50],
-                        borderColor:it.is_active?C.rose[200]:C.forest[200] }}>
+                  <div className="flex gap-1.5">
+                    <button type="button" className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+                      onClick={()=>startEdit(it)}>Edit</button>
+                    <button type="button" className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border-[1.5px] ${
+                      it.is_active
+                        ? 'text-rose-600 bg-rose-50 border-rose-200 hover:bg-rose-100'
+                        : 'text-green-600 bg-green-50 border-green-200 hover:bg-green-100'
+                    }`}
+                      onClick={()=>toggleActive(it.id,it.is_active)}>
                       {it.is_active?'Disable':'Enable'}
                     </button>
                   </div>
@@ -871,71 +871,69 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
   })
 
   return (
-    <div className="k-card slide-down" style={{ marginBottom:16, overflow:'hidden' }}>
-      <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.divider}`,
-        display:'flex', justifyContent:'space-between', alignItems:'center',
-        background:`linear-gradient(135deg, ${C.terra[50]}, #fff)` }}>
+    <div className="bg-white rounded-xl border border-stone-200 shadow-sm mb-4 overflow-hidden animate-slide-down">
+      <div className="px-5 py-4 border-b border-stone-200 flex justify-between items-center bg-gradient-to-br from-orange-50 to-white">
         <div>
-          <div style={{ fontSize:15, fontWeight:700, color:C.terra[700], fontFamily:'var(--font-display)' }}>Admin Monitor</div>
-          <div style={{ fontSize:11, color:C.ink[500], marginTop:2 }}>Live kitchen oversight · {dateFmt(today())}</div>
+          <div className="text-[15px] font-bold text-orange-800 font-display">Admin Monitor</div>
+          <div className="text-[11px] text-stone-500 mt-0.5">Live kitchen oversight · {dateFmt(today())}</div>
         </div>
-        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
+          onClick={onClose}>✕</button>
       </div>
-      <div style={{ padding:'20px 22px' }}>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }} className="stagger">
-          <KpiCard label="Today" value={moneyFmt(todayTotal)} accent={C.terra[600]} icon="💸" pulse />
-          <KpiCard label="Month" value={moneyFmt(monthTotal)} accent={C.ink[700]} icon="🗓" />
-          {budget && <KpiCard label="Budget Used" value={`${budgetPct.toFixed(1)}%`} accent={budgetPct>90?C.rose[600]:C.saffron[600]} icon="📊" />}
-          <KpiCard label="Meals Today" value={`${presentMeals.length}/4`} accent={presentMeals.length===4?C.forest[600]:C.rose[600]} icon="🍽" />
+      <div className="p-5">
+        <div className="flex gap-2 flex-wrap mb-4 stagger">
+          <KpiCard label="Today" value={moneyFmt(todayTotal)} accent="#ea580c" icon="💸" pulse />
+          <KpiCard label="Month" value={moneyFmt(monthTotal)} accent="#1c1917" icon="🗓" />
+          {budget && <KpiCard label="Budget Used" value={`${budgetPct.toFixed(1)}%`} accent={budgetPct>90?'#e11d48':'#f59e0b'} icon="📊" />}
+          <KpiCard label="Meals Today" value={`${presentMeals.length}/4`} accent={presentMeals.length===4?'#16a34a':'#e11d48'} icon="🍽" />
         </div>
         {budgetPct > 90 && (
-          <div style={{ padding:'12px 16px', borderRadius:10, background:C.rose[50], border:`1.5px solid ${C.rose[200]}`, marginBottom:12 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:C.rose[700] }}>🚨 Budget Breach — {budgetPct.toFixed(1)}% consumed</div>
-            <div style={{ fontSize:11, color:C.rose[500], marginTop:3 }}>Spent {moneyFmt(monthTotal)} of {moneyFmt(budget)}</div>
+          <div className="p-3 rounded-xl bg-rose-50 border-[1.5px] border-rose-200 mb-3">
+            <div className="text-xs font-bold text-rose-700">🚨 Budget Breach — {budgetPct.toFixed(1)}% consumed</div>
+            <div className="text-[11px] text-rose-500 mt-1">Spent {moneyFmt(monthTotal)} of {moneyFmt(budget)}</div>
           </div>
         )}
         {overdueAlerts.length > 0 && (
-          <div style={{ padding:'12px 16px', borderRadius:10, background:C.saffron[50], border:`1.5px solid ${C.saffron[300]}`, marginBottom:14 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:C.saffron[800], marginBottom:6 }}>⏰ Missing Past-Due Entries</div>
-            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          <div className="p-3 rounded-xl bg-amber-50 border-[1.5px] border-amber-300 mb-3.5">
+            <div className="text-xs font-bold text-amber-800 mb-1.5">⏰ Missing Past-Due Entries</div>
+            <div className="flex gap-1.5 flex-wrap">
               {overdueAlerts.map(mk=><MealBadge key={mk} type={mk} />)}
             </div>
           </div>
         )}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:18 }}>
+        <div className="grid grid-cols-2 gap-2 mb-4">
           {mealStatus.map(({ mk, amt, isDue, isLogged, entries:me }) => {
             const m = MEALS[mk]
-            const statusColor = isLogged ? C.forest[600] : isDue ? C.rose[600] : C.ink[400]
+            const statusColor = isLogged ? 'text-green-600' : isDue ? 'text-rose-600' : 'text-stone-400'
             const statusLabel = isLogged ? '✓ Logged' : isDue ? '⚠ Missing' : '⏳ Upcoming'
             return (
-              <div key={mk} style={{ padding:'12px 16px', borderRadius:10, background:m.soft, border:`1.5px solid ${m.border}` }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5 }}>
-                  <span style={{ fontSize:13 }}>{m.emoji} <strong style={{ fontFamily:'var(--font-body)' }}>{m.short}</strong></span>
-                  <span style={{ fontSize:9, fontWeight:700, color:statusColor, padding:'2px 7px', borderRadius:99, background:'rgba(255,255,255,.7)' }}>{statusLabel}</span>
+              <div key={mk} className={`p-3 rounded-xl ${m.twSoft} ${m.twBorder} border-[1.5px]`}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[13px]">{m.emoji} <strong className="font-body">{m.short}</strong></span>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white/70 ${statusColor}`}>{statusLabel}</span>
                 </div>
-                <div className="k-number" style={{ fontSize:16, fontWeight:700, color:m.text }}>{moneyFmt(amt)}</div>
-                <div style={{ fontSize:10, color:m.text, opacity:.7, marginTop:2 }}>Scheduled: {m.time}</div>
-                {me.length>0 && me[0].prepared_by && <div style={{ fontSize:10, color:m.text, opacity:.8, marginTop:2 }}>👨‍🍳 {me[0].prepared_by}</div>}
+                <div className="font-display text-base font-bold text-stone-800">{moneyFmt(amt)}</div>
+                <div className="text-[10px] text-stone-500 mt-0.5 opacity-70">Scheduled: {m.time}</div>
+                {me.length>0 && me[0].prepared_by && <div className="text-[10px] text-stone-500 mt-0.5 opacity-80">👨‍🍳 {me[0].prepared_by}</div>}
               </div>
             )
           })}
         </div>
-        <div style={{ borderTop:`1px solid ${C.divider}`, paddingTop:16 }}>
-          <div style={{ fontSize:12, fontWeight:700, color:C.ink[600], marginBottom:10 }}>Cook Activity — Today</div>
+        <div className="border-t border-stone-200 pt-4">
+          <div className="text-xs font-bold text-stone-600 mb-2.5">Cook Activity — Today</div>
           {!todayCookLog.length
-            ? <div style={{ fontSize:11, color:C.ink[400], textAlign:'center', padding:'12px 0' }}>No cook log entries today</div>
+            ? <div className="text-[11px] text-stone-400 text-center py-3">No cook log entries today</div>
             : todayCookLog.map(log => (
-              <div key={log.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
-                padding:'8px 12px', borderRadius:8, background:C.ink[50], border:`1px solid ${C.ink[100]}`, marginBottom:6 }}>
+              <div key={log.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-stone-50 border border-stone-100 mb-1.5">
                 <div>
-                  <div style={{ fontSize:12, fontWeight:700, color:C.ink[700] }}>{log.staff_name}</div>
-                  <div style={{ fontSize:10, color:C.ink[400], marginTop:2, display:'flex', gap:8, alignItems:'center' }}>
+                  <div className="text-xs font-bold text-stone-700">{log.staff_name}</div>
+                  <div className="text-[10px] text-stone-400 mt-0.5 flex gap-2 items-center">
                     <MealBadge type={log.meal_type} />
                     {log.arrived_at&&<span>In: {log.arrived_at}</span>}
                     {log.left_at&&<span>Out: {log.left_at}</span>}
                   </div>
                 </div>
-                {log.notes && <div style={{ fontSize:10, color:C.ink[400], maxWidth:150, textAlign:'right' }}>{log.notes}</div>}
+                {log.notes && <div className="text-[10px] text-stone-400 max-w-[150px] text-right">{log.notes}</div>}
               </div>
             ))
           }
@@ -950,36 +948,42 @@ function CookLogForm({ onSave, onClose }) {
   const [form, setForm] = useState({ staff_name:'', meal_type:'lunch', arrived_at:'', left_at:'', notes:'' })
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   return (
-    <div className="k-card slide-down" style={{ marginBottom:14, overflow:'hidden', border:`1.5px solid ${C.forest[200]}` }}>
-      <div style={{ padding:'14px 20px', borderBottom:`1px solid ${C.forest[100]}`,
-        display:'flex', justifyContent:'space-between', alignItems:'center',
-        background:`linear-gradient(135deg, ${C.forest[50]}, #fff)` }}>
-        <div style={{ fontSize:14, fontWeight:700, color:C.forest[700], fontFamily:'var(--font-display)' }}>Log Cook Activity</div>
-        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+    <div className="bg-white rounded-xl border-[1.5px] border-green-200 mb-3.5 overflow-hidden animate-slide-down">
+      <div className="px-5 py-3.5 border-b border-green-100 flex justify-between items-center bg-gradient-to-br from-green-50 to-white">
+        <div className="text-sm font-bold text-green-700 font-display">Log Cook Activity</div>
+        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
+          onClick={onClose}>✕</button>
       </div>
-      <div style={{ padding:'18px 20px' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+      <div className="p-5">
+        <div className="grid grid-cols-2 gap-2.5">
           <Field label="Staff / Cook Name">
-            <input className="k-input" value={form.staff_name} onChange={e=>set('staff_name',e.target.value)} placeholder="Name" />
+            <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+              value={form.staff_name} onChange={e=>set('staff_name',e.target.value)} placeholder="Name" />
           </Field>
           <Field label="Meal">
-            <select className="k-input" value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
+            <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
+              value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
               {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
             </select>
           </Field>
           <Field label="Arrived At">
-            <input type="time" className="k-input" value={form.arrived_at} onChange={e=>set('arrived_at',e.target.value)} />
+            <input type="time" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
+              value={form.arrived_at} onChange={e=>set('arrived_at',e.target.value)} />
           </Field>
           <Field label="Left At">
-            <input type="time" className="k-input" value={form.left_at} onChange={e=>set('left_at',e.target.value)} />
+            <input type="time" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
+              value={form.left_at} onChange={e=>set('left_at',e.target.value)} />
           </Field>
           <Field label="Notes" span={2}>
-            <input className="k-input" value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
+            <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+              value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
           </Field>
         </div>
-        <div style={{ display:'flex', gap:8, marginTop:14 }}>
-          <button type="button" className="k-btn k-btn-primary" onClick={()=>form.staff_name&&onSave(form)}>Save Log</button>
-          <button type="button" className="k-btn k-btn-ghost" onClick={onClose}>Cancel</button>
+        <div className="flex gap-2 mt-3.5">
+          <button type="button" className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+            onClick={()=>form.staff_name&&onSave(form)}>Save Log</button>
+          <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+            onClick={onClose}>Cancel</button>
         </div>
       </div>
     </div>
@@ -1052,12 +1056,12 @@ function CookAttendancePanel({ onClose, showToast }) {
     })
 
     const { error: delErr } = await supabase.from('kitchen_cook_attendance').delete().eq('att_date', attDate)
-    if (delErr) { setLoading(false); showToast('Save failed: '+delErr.message, C.rose[600]); return }
+    if (delErr) { setLoading(false); showToast('Save failed: '+delErr.message, 'bg-rose-600'); return }
 
     const { error } = await supabase.from('kitchen_cook_attendance').insert(rows)
     setLoading(false)
-    if (error) { showToast('Save failed: '+error.message, C.rose[600]); return }
-    showToast('Attendance saved ✓', C.forest[600])
+    if (error) { showToast('Save failed: '+error.message, 'bg-rose-600'); return }
+    showToast('Attendance saved ✓', 'bg-green-600')
     loadDay(attDate)
   }
 
@@ -1077,66 +1081,64 @@ function CookAttendancePanel({ onClose, showToast }) {
 
   const statusBtn = (status, selected) => {
     const configs = {
-      present:  { bg:selected?C.forest[600]:C.forest[50],  color:selected?'#fff':C.forest[700], border:selected?C.forest[600]:C.forest[200] },
-      absent:   { bg:selected?C.rose[600]:C.rose[50],      color:selected?'#fff':C.rose[700],   border:selected?C.rose[600]:C.rose[200]   },
-      half_day: { bg:selected?C.saffron[500]:C.saffron[50],color:selected?'#fff':C.saffron[700],border:selected?C.saffron[500]:C.saffron[200] },
+      present:  { bg:selected?'bg-green-600':'bg-green-50',  color:selected?'text-white':'text-green-700', border:selected?'border-green-600':'border-green-200' },
+      absent:   { bg:selected?'bg-rose-600':'bg-rose-50',      color:selected?'text-white':'text-rose-700',   border:selected?'border-rose-600':'border-rose-200'   },
+      half_day: { bg:selected?'bg-amber-500':'bg-amber-50',color:selected?'text-white':'text-amber-700',border:selected?'border-amber-500':'border-amber-200' },
     }
     const c = configs[status]
-    return { padding:'5px 11px', borderRadius:7, fontSize:11, fontWeight:700, cursor:'pointer',
-      background:c.bg, color:c.color, border:`1.5px solid ${c.border}`, transition:'all .12s',
-      fontFamily:'var(--font-body)' }
+    return `px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer font-body transition-all border-[1.5px] ${c.bg} ${c.color} ${c.border}`
   }
 
   return (
-    <div className="k-card slide-down" style={{ marginBottom:16, overflow:'hidden', border:`1.5px solid ${C.teal[200]}` }}>
-      <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.teal[100]}`,
-        display:'flex', justifyContent:'space-between', alignItems:'center',
-        background:`linear-gradient(135deg, ${C.teal[50]}, #fff)` }}>
+    <div className="bg-white rounded-xl border-[1.5px] border-teal-200 mb-4 overflow-hidden animate-slide-down">
+      <div className="px-5 py-4 border-b border-teal-100 flex justify-between items-center bg-gradient-to-br from-teal-50 to-white">
         <div>
-          <div style={{ fontSize:15, fontWeight:700, color:C.teal[700], fontFamily:'var(--font-display)' }}>Cook Attendance</div>
-          <div style={{ fontSize:11, color:C.ink[500], marginTop:2 }}>Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
+          <div className="text-[15px] font-bold text-teal-700 font-display">Cook Attendance</div>
+          <div className="text-[11px] text-stone-500 mt-0.5">Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
         </div>
-        <button type="button" className="k-btn k-btn-icon" onClick={onClose}>✕</button>
+        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
+          onClick={onClose}>✕</button>
       </div>
-      <div style={{ padding:'18px 22px' }}>
-        <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:18, flexWrap:'wrap' }}>
-          <div style={{ display:'flex', borderRadius:9, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
+      <div className="p-5">
+        <div className="flex gap-2.5 items-center mb-4 flex-wrap">
+          <div className="flex rounded-lg overflow-hidden border-[1.5px] border-stone-200">
             {[['mark','📋 Mark'],['monthly','📊 Monthly']].map(([k,l]) => (
               <button key={k} type="button" onClick={()=>setView(k)}
-                style={{ padding:'7px 16px', background:view===k?C.teal[600]:'#fff', color:view===k?'#fff':C.ink[600],
-                  border:'none', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'var(--font-body)', transition:'all .15s' }}>
+                className={`px-4 py-1.5 text-xs font-bold cursor-pointer font-body transition-all border-none ${
+                  view===k ? 'bg-teal-600 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'
+                }`}>
                 {l}
               </button>
             ))}
           </div>
           {view==='mark' && (
-            <input type="date" className="k-input" style={{ width:'auto', padding:'7px 12px' }} value={attDate} onChange={e=>setAttDate(e.target.value)} />
+            <input type="date" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
+              value={attDate} onChange={e=>setAttDate(e.target.value)} />
           )}
           {view==='monthly' && (
-            <input type="month" className="k-input" style={{ width:'auto', padding:'7px 12px' }} value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
+            <input type="month" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
+              value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
           )}
         </div>
 
-        {loading && <div style={{ textAlign:'center', color:C.ink[400], padding:'20px 0', fontSize:12 }}>Loading…</div>}
+        {loading && <div className="text-center text-stone-400 py-5 text-xs">Loading…</div>}
 
         {!loading && view==='mark' && Object.entries(COOK_SHIFTS).map(([shift, sh]) => (
-          <div key={shift} style={{ marginBottom:20 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', borderRadius:10,
-              background:sh.bg, border:`1.5px solid ${sh.border}`, marginBottom:10 }}>
-              <span style={{ fontSize:18 }}>{sh.emoji}</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:12, fontWeight:800, color:sh.text }}>{sh.label}</div>
-                <div style={{ fontSize:10, color:sh.text, opacity:.7 }}>{sh.time}</div>
+          <div key={shift} className="mb-5">
+            <div className={`flex items-center gap-2.5 px-4 py-2 rounded-xl ${sh.twSoft} ${sh.twBorder} border-[1.5px] mb-2.5`}>
+              <span className="text-lg">{sh.emoji}</span>
+              <div className="flex-1">
+                <div className={`text-xs font-extrabold ${sh.twText}`}>{sh.label}</div>
+                <div className={`text-[10px] ${sh.twText} opacity-70`}>{sh.time}</div>
               </div>
-              <div style={{ display:'flex', gap:5 }}>
+              <div className="flex gap-1">
                 {['present','absent','half_day'].map(st => {
                   const cnt = COOKS.filter(c=>draft[draftKey(c,shift)]?.status===st).length
                   if (!cnt) return null
-                  const colors={present:C.forest,absent:C.rose,half_day:C.saffron}
+                  const colors={present:'green',absent:'rose',half_day:'amber'}
                   const col=colors[st]
                   return (
-                    <span key={st} style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:99,
-                      background:col[50], color:col[700], border:`1px solid ${col[200]}` }}>
+                    <span key={st} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-${col}-50 text-${col}-700 border border-${col}-200`}>
                       {st==='present'?'✓':st==='absent'?'✗':'½'} {cnt}
                     </span>
                   )
@@ -1148,43 +1150,40 @@ function CookAttendancePanel({ onClose, showToast }) {
               const rec = draft[dk] || {}
               const isAbsent = rec.status==='absent'
               return (
-                <div key={cook} style={{ marginBottom:8, padding:'12px 16px', borderRadius:10,
-                  background:isAbsent?C.rose[50]:'#fff',
-                  border:`1.5px solid ${isAbsent?C.rose[200]:C.ink[100]}`,
-                  transition:'all .15s' }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:isAbsent?0:10 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ width:32, height:32, borderRadius:'50%', background:sh.bg,
-                        border:`1.5px solid ${sh.border}`, display:'flex', alignItems:'center', justifyContent:'center',
-                        fontSize:13, fontWeight:800, color:sh.text, fontFamily:'var(--font-display)' }}>
+                <div key={cook} className={`mb-2 px-4 py-3 rounded-xl transition-all duration-150 ${
+                  isAbsent ? 'bg-rose-50 border-rose-200' : 'bg-white border-stone-100'
+                } border-[1.5px]`}>
+                  <div className={`flex items-center justify-between flex-wrap gap-2 ${isAbsent ? 'mb-0' : 'mb-2.5'}`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-8 h-8 rounded-full ${sh.twSoft} ${sh.twBorder} border-[1.5px] flex items-center justify-center text-[13px] font-extrabold ${sh.twText} font-display`}>
                         {cook[0]}
                       </div>
                       <div>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.ink[800] }}>{cook}</div>
-                        <div style={{ fontSize:10, color:C.ink[400] }}>Cook #{ci+1}</div>
+                        <div className="text-xs font-bold text-stone-800">{cook}</div>
+                        <div className="text-[10px] text-stone-400">Cook #{ci+1}</div>
                       </div>
                     </div>
-                    <div style={{ display:'flex', gap:5 }}>
+                    <div className="flex gap-1">
                       {['present','absent','half_day'].map(st => (
-                        <button key={st} type="button" onClick={()=>setField(cook,shift,'status',st)} style={statusBtn(st, rec.status===st)}>
+                        <button key={st} type="button" onClick={()=>setField(cook,shift,'status',st)} className={statusBtn(st, rec.status===st)}>
                           {st==='present'?'✓ Present':st==='absent'?'✗ Absent':'½ Half'}
                         </button>
                       ))}
                     </div>
                   </div>
                   {!isAbsent && (
-                    <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <span className="k-label" style={{ marginBottom:0, fontSize:10 }}>IN</span>
-                        <input type="time" className="k-input" style={{ width:'auto', padding:'5px 10px', fontSize:12 }}
+                    <div className="flex gap-2.5 items-center flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-0">IN</span>
+                        <input type="time" className="px-2.5 py-1 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
                           value={rec.check_in||''} onChange={e=>setField(cook,shift,'check_in',e.target.value)} />
                       </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <span className="k-label" style={{ marginBottom:0, fontSize:10 }}>OUT</span>
-                        <input type="time" className="k-input" style={{ width:'auto', padding:'5px 10px', fontSize:12 }}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-0">OUT</span>
+                        <input type="time" className="px-2.5 py-1 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
                           value={rec.check_out||''} onChange={e=>setField(cook,shift,'check_out',e.target.value)} />
                       </div>
-                      <input className="k-input" style={{ flex:1, minWidth:120, padding:'5px 10px', fontSize:11 }}
+                      <input className="flex-1 min-w-[120px] px-2.5 py-1 rounded-lg border-[1.5px] border-stone-200 text-[11px] font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
                         value={rec.notes||''} onChange={e=>setField(cook,shift,'notes',e.target.value)} placeholder="Notes…" />
                     </div>
                   )}
@@ -1195,58 +1194,56 @@ function CookAttendancePanel({ onClose, showToast }) {
         ))}
 
         {!loading && view==='mark' && (
-          <button type="button" className="k-btn k-btn-primary" onClick={saveAll} disabled={loading}
-            style={{ background:`linear-gradient(160deg, ${C.teal[600]}, ${C.teal[800]})`, boxShadow:`0 2px 8px rgba(13,148,136,.35)` }}>
+          <button type="button" className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-teal-600 to-teal-800 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50"
+            onClick={saveAll} disabled={loading}>
             {loading ? 'Saving…' : '💾 Save All Attendance'}
           </button>
         )}
 
         {!loading && view==='monthly' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div className="flex flex-col gap-2.5">
             {monthlySummary.map(({ cook, present, absent, half, pct, mPresent, ePresent, totalDays }) => {
-              const pctColor = pct>=90?C.forest[600]:pct>=70?C.saffron[600]:C.rose[600]
+              const pctColor = pct>=90?'text-green-600':pct>=70?'text-amber-600':'text-rose-600'
               return (
-                <div key={cook} className="k-card" style={{ padding:'14px 18px' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ width:38, height:38, borderRadius:'50%', background:C.teal[50],
-                        border:`1.5px solid ${C.teal[200]}`, display:'flex', alignItems:'center', justifyContent:'center',
-                        fontSize:14, fontWeight:800, color:C.teal[700], fontFamily:'var(--font-display)' }}>
+                <div key={cook} className="bg-white rounded-xl border border-stone-200 shadow-sm p-3.5">
+                  <div className="flex justify-between items-center mb-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-full bg-teal-50 border-[1.5px] border-teal-200 flex items-center justify-center text-sm font-extrabold text-teal-700 font-display">
                         {cook[0]}
                       </div>
                       <div>
-                        <div style={{ fontSize:13, fontWeight:700, color:C.ink[800] }}>{cook}</div>
-                        <div style={{ fontSize:10, color:C.ink[400] }}>{totalDays} shifts · {viewMonth}</div>
+                        <div className="text-[13px] font-bold text-stone-800">{cook}</div>
+                        <div className="text-[10px] text-stone-400">{totalDays} shifts · {viewMonth}</div>
                       </div>
                     </div>
-                    <div className="k-number" style={{ fontSize:22, fontWeight:700, color:pctColor }}>{pct}%</div>
+                    <div className={`font-display text-[22px] font-bold ${pctColor}`}>{pct}%</div>
                   </div>
-                  <div style={{ height:6, borderRadius:99, background:C.ink[100], overflow:'hidden', marginBottom:10 }}>
-                    <div style={{ height:'100%', width:`${pct}%`, borderRadius:99,
-                      background:pct>=90?C.forest[500]:pct>=70?C.saffron[500]:C.rose[500], transition:'width .6s' }} />
+                  <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden mb-2.5">
+                    <div className="h-full rounded-full transition-all duration-[600ms]"
+                      style={{ width: `${pct}%`, backgroundColor: pct>=90?'#22c55e':pct>=70?'#f59e0b':'#f43f5e' }} />
                   </div>
-                  <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-                    <StatPill label="present" value={present} color={C.forest[600]} />
-                    <StatPill label="absent"  value={absent}  color={C.rose[600]}   />
-                    <StatPill label="half"    value={half}    color={C.saffron[600]}/>
-                    <StatPill label="morning" value={mPresent} color={C.teal[600]} />
-                    <StatPill label="evening" value={ePresent} color={C.terra[600]}/>
+                  <div className="flex gap-3 flex-wrap">
+                    <StatPill label="present" value={present} color="#16a34a" />
+                    <StatPill label="absent"  value={absent}  color="#e11d48"   />
+                    <StatPill label="half"    value={half}    color="#d97706"/>
+                    <StatPill label="morning" value={mPresent} color="#0d9488" />
+                    <StatPill label="evening" value={ePresent} color="#ea580c"/>
                   </div>
                 </div>
               )
             })}
 
             {monthly.length > 0 && (
-              <div className="k-card" style={{ padding:'18px 20px', marginTop:4, overflowX:'auto' }}>
-                <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], marginBottom:14 }}>Day-wise Detail — {viewMonth}</div>
-                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, minWidth:600 }}>
+              <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mt-1 overflow-x-auto">
+                <div className="text-sm font-bold text-stone-700 mb-3.5">Day-wise Detail — {viewMonth}</div>
+                <table className="w-full border-collapse text-[11px] min-w-[600px]">
                   <thead>
                     <tr>
-                      <th style={{ padding:'6px 10px', textAlign:'left', background:C.ink[50], color:C.ink[600], fontWeight:700, borderBottom:`2px solid ${C.ink[100]}`, whiteSpace:'nowrap', fontSize:10 }}>Cook</th>
+                      <th className="px-2.5 py-1.5 text-left bg-stone-50 text-stone-600 font-bold border-b-2 border-stone-100 whitespace-nowrap text-[10px]">Cook</th>
                       {[...new Set(monthly.map(r=>r.att_date))].sort().map(d=>(
-                        <th key={d} style={{ padding:'5px 4px', textAlign:'center', background:C.ink[50], color:C.ink[600], fontWeight:700, borderBottom:`2px solid ${C.ink[100]}`, whiteSpace:'nowrap', fontSize:9 }}>
+                        <th key={d} className="px-1 py-1 text-center bg-stone-50 text-stone-600 font-bold border-b-2 border-stone-100 whitespace-nowrap text-[9px]">
                           {new Date(d+'T00:00:00').getDate()}<br/>
-                          <span style={{ fontWeight:400, color:C.ink[400] }}>{new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span>
+                          <span className="font-normal text-stone-400">{new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span>
                         </th>
                       ))}
                     </tr>
@@ -1255,25 +1252,25 @@ function CookAttendancePanel({ onClose, showToast }) {
                     {COOKS.map(cook => {
                       const dates = [...new Set(monthly.map(r=>r.att_date))].sort()
                       const cell = (row) => {
-                        if (!row) return <span style={{ color:C.ink[300] }}>—</span>
-                        if (row.status==='present')  return <span style={{ color:C.forest[600], fontWeight:800 }}>✓</span>
-                        if (row.status==='absent')   return <span style={{ color:C.rose[600],   fontWeight:800 }}>✗</span>
-                        if (row.status==='half_day') return <span style={{ color:C.saffron[600],fontWeight:800 }}>½</span>
+                        if (!row) return <span className="text-stone-300">—</span>
+                        if (row.status==='present')  return <span className="text-green-600 font-extrabold">✓</span>
+                        if (row.status==='absent')   return <span className="text-rose-600 font-extrabold">✗</span>
+                        if (row.status==='half_day') return <span className="text-amber-600 font-extrabold">½</span>
                         return null
                       }
                       return (
-                        <tr key={cook} style={{ borderBottom:`1px solid ${C.ink[100]}` }}>
-                          <td style={{ padding:'7px 10px', fontWeight:700, color:C.ink[700], whiteSpace:'nowrap', fontSize:10 }}>
+                        <tr key={cook} className="border-b border-stone-100">
+                          <td className="px-2.5 py-1.5 font-bold text-stone-700 whitespace-nowrap text-[10px]">
                             {cook.split(' ').slice(0,2).join(' ')}
                           </td>
                           {dates.map(d => {
                             const mRow = monthly.find(r=>r.cook_name===cook&&r.att_date===d&&r.shift==='morning')
                             const eRow = monthly.find(r=>r.cook_name===cook&&r.att_date===d&&r.shift==='evening')
                             return (
-                              <td key={d} style={{ padding:'4px 5px', textAlign:'center', verticalAlign:'middle' }}>
-                                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:1 }}>
+                              <td key={d} className="px-1 py-1 text-center align-middle">
+                                <div className="flex flex-col items-center gap-px">
                                   <span>{cell(mRow)}</span>
-                                  <span style={{ opacity:.6, fontSize:9 }}>{cell(eRow)}</span>
+                                  <span className="opacity-60 text-[9px]">{cell(eRow)}</span>
                                 </div>
                               </td>
                             )
@@ -1283,7 +1280,7 @@ function CookAttendancePanel({ onClose, showToast }) {
                     })}
                   </tbody>
                 </table>
-                <div style={{ fontSize:10, color:C.ink[400], marginTop:8 }}>
+                <div className="text-[10px] text-stone-400 mt-2">
                   Top = 🌅 Morning · Bottom = 🌇 Evening &nbsp;·&nbsp; ✓ Present · ✗ Absent · ½ Half Day
                 </div>
               </div>
@@ -1351,134 +1348,135 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
         <ReceiptViewer url={form.receipt_url} onClose={()=>setViewReceipt(false)}
           onDelete={()=>{ set('receipt_url',''); setViewReceipt(false) }} />
       )}
-      <div className="k-card fade-up" style={{ marginBottom:16, overflow:'hidden', border:`1.5px solid ${m.border}` }}>
-        <div style={{ background:m.soft, borderBottom:`1px solid ${m.border}`, padding:'14px 22px',
-          display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <div className={`bg-white rounded-xl border-[1.5px] ${m.twBorder} mb-4 overflow-hidden animate-fade-up shadow-sm`}>
+        <div className={`${m.twSoft} border-b ${m.twBorder} px-5 py-3.5 flex justify-between items-center`}>
           <div>
-            <div style={{ fontSize:15, fontWeight:700, color:m.text, fontFamily:'var(--font-display)' }}>
+            <div className={`text-[15px] font-bold ${m.twText} font-display`}>
               {editing ? `✏️ Edit — ${m.label}` : `➕ Add ${m.label}`}
             </div>
-            <div style={{ fontSize:11, color:m.text, opacity:.7, marginTop:2 }}>
+            <div className={`text-[11px] ${m.twText} opacity-70 mt-0.5`}>
               {form.expense_date ? dateFmt(form.expense_date) : 'Select date'}
             </div>
           </div>
-          <button type="button" className="k-btn k-btn-icon" onClick={onCancel} style={{ borderColor:m.border }}>✕</button>
+          <button type="button" className={`w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] ${m.twBorder} text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center`}
+            onClick={onCancel}>✕</button>
         </div>
 
-        <div style={{ padding:'22px' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div className="p-5">
+          <div className="grid grid-cols-2 gap-3.5">
             <Field label="Meal *">
-              <select className="k-input" value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
+              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
+                value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
                 {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
               </select>
             </Field>
             <Field label="Date *">
-              <input type="date" className="k-input" value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
+              <input type="date" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
+                value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
             </Field>
             <Field label="Amount (₹) *">
-              <input type="number" className="k-input" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
+              <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
             </Field>
             <Field label="Serving Time">
-              <input type="time" className="k-input" value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
+              <input type="time" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
+                value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
             </Field>
 
             <Field label="Items / Ingredients" span={2}>
-              <input className="k-input" value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
-              <div style={{ marginTop:10 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:C.terra[600], marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>🍛 Manipuri Dishes</div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
+              <div className="mt-2.5">
+                <div className="text-[10px] font-bold text-orange-600 mb-1.5 uppercase tracking-wider">🍛 Manipuri Dishes</div>
+                <div className="flex flex-wrap gap-1">
                   {presets.map(item=>(
                     <button key={item} type="button" onClick={()=>addItem(item)}
-                      style={{ padding:'3px 10px', borderRadius:99, border:`1px solid ${C.saffron[200]}`,
-                        background:C.saffron[50], fontSize:10, fontWeight:600, cursor:'pointer', color:C.saffron[800],
-                        fontFamily:'var(--font-body)', transition:'all .12s' }}
-                      onMouseEnter={e=>{e.currentTarget.style.background=C.saffron[100]}}
-                      onMouseLeave={e=>{e.currentTarget.style.background=C.saffron[50]}}>
+                      className="px-2.5 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-semibold cursor-pointer text-amber-800 font-body transition-all hover:bg-amber-100">
                       + {item}
                     </button>
                   ))}
                 </div>
               </div>
               {dbItems.length > 0 && (
-                <div style={{ marginTop:10 }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:C.teal[700], marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>🧺 Item List</div>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                <div className="mt-2.5">
+                  <div className="text-[10px] font-bold text-teal-700 mb-1.5 uppercase tracking-wider">🧺 Item List</div>
+                  <div className="flex flex-wrap gap-1">
                     {dbItems.map(it=>(
                       <button key={it.id} type="button" onClick={()=>addItem(it.name)}
-                        style={{ padding:'3px 10px', borderRadius:99, border:`1px solid ${C.teal[200]}`,
-                          background:C.teal[50], fontSize:10, fontWeight:600, cursor:'pointer', color:C.teal[800],
-                          fontFamily:'var(--font-body)' }}>
+                        className="px-2.5 py-0.5 rounded-full border border-teal-200 bg-teal-50 text-[10px] font-semibold cursor-pointer text-teal-800 font-body transition-all hover:bg-teal-100">
                         + {it.name}{it.name_meitei?` / ${it.name_meitei}`:''}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              <div style={{ display:'flex', gap:8, marginTop:10 }}>
-                <input className="k-input" style={{ flex:1, fontSize:12 }} value={customItem}
-                  onChange={e=>setCustomItem(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addCustomItem()}
-                  placeholder="Type custom item + Enter" />
-                <button type="button" className="k-btn k-btn-ghost" onClick={addCustomItem}>+ Add</button>
+              <div className="flex gap-2 mt-2.5">
+                <input className="flex-1 px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                  value={customItem} onChange={e=>setCustomItem(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addCustomItem()} placeholder="Type custom item + Enter" />
+                <button type="button" className="px-3 py-1.5 rounded-lg bg-white text-stone-600 border-[1.5px] border-stone-200 text-xs font-semibold hover:bg-stone-50 transition-all shadow-sm"
+                  onClick={addCustomItem}>+ Add</button>
               </div>
             </Field>
 
             <Field label="Prepared By">
-              <input className="k-input" value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
+              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
             </Field>
 
             <Field label="Vendor / Supplier">
-              <select className="k-input" style={{ marginBottom:7 }}
+              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white mb-1.5"
                 value={vendorIsPreset ? form.vendor : ''}
                 onChange={e => { if (e.target.value) set('vendor', e.target.value) }}>
                 <option value="">— Select preset vendor —</option>
                 {LOCAL_VENDORS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
-              <input className="k-input" style={{ fontSize:12 }} value={form.vendor}
-                onChange={e=>set('vendor',e.target.value)}
-                placeholder="Or type custom vendor name…" />
+              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.vendor} onChange={e=>set('vendor',e.target.value)} placeholder="Or type custom vendor name…" />
             </Field>
 
             <Field label="Students Served">
-              <input type="number" className="k-input" value={form.pax_count} onChange={e=>set('pax_count',e.target.value)} placeholder="0" min="0" />
+              <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+                value={form.pax_count} onChange={e=>set('pax_count',e.target.value)} placeholder="0" min="0" />
             </Field>
 
             <Field label="Meal Quality">
-              <div style={{ paddingTop:4 }}>
+              <div className="pt-1">
                 <StarRating value={form.meal_rating} onChange={v=>set('meal_rating',v)} />
               </div>
             </Field>
 
             <Field label="Notes" span={2}>
-              <textarea className="k-input" rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
+              <textarea className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300 resize-y"
+                rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
             </Field>
 
             <Field label="📎 Receipt / Bill Photo" span={2}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', padding:'10px 14px',
-                borderRadius:9, background:C.ink[50], border:`1.5px dashed ${C.ink[200]}` }}>
-                <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} style={{ fontSize:11, flex:1 }} />
-                {uploading && <span style={{ fontSize:11, color:C.ink[400] }}>Uploading…</span>}
+              <div className="flex items-center gap-2.5 flex-wrap px-3.5 py-2.5 rounded-lg bg-stone-50 border-[1.5px] border-dashed border-stone-200">
+                <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} className="text-[11px] flex-1" />
+                {uploading && <span className="text-[11px] text-stone-400">Uploading…</span>}
                 {form.receipt_url && (
-                  <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap' }}>
-                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>setViewReceipt(true)}
-                      style={{ fontSize:11, padding:'5px 12px', color:C.sky[700], borderColor:C.sky[200], background:C.sky[50] }}>👁 View</button>
-                    <button type="button" className="k-btn k-btn-ghost" onClick={()=>set('receipt_url','')}
-                      style={{ fontSize:11, padding:'5px 12px', color:C.rose[600], borderColor:C.rose[200], background:C.rose[50] }}>🗑 Remove</button>
-                    <span style={{ fontSize:10, color:C.forest[600], fontWeight:700 }}>✓ Uploaded</span>
+                  <div className="flex gap-1.5 items-center flex-wrap">
+                    <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-sky-700 border border-sky-200 bg-sky-50 hover:bg-sky-100 transition-all"
+                      onClick={()=>setViewReceipt(true)}>👁 View</button>
+                    <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-all"
+                      onClick={()=>set('receipt_url','')}>🗑 Remove</button>
+                    <span className="text-[10px] text-green-600 font-bold">✓ Uploaded</span>
                   </div>
                 )}
               </div>
             </Field>
           </div>
 
-          <div style={{ display:'flex', gap:10, marginTop:20, paddingTop:18, borderTop:`1px solid ${C.divider}` }}>
-            <button type="button" className="k-btn k-btn-primary"
-              onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}
-              style={valid ? { background:`linear-gradient(160deg, ${m.bg}, ${m.accent})`, boxShadow:`0 2px 8px rgba(0,0,0,.2)` } : {}}>
+          <div className="flex gap-2.5 mt-5 pt-4 border-t border-stone-200">
+            <button type="button" className={`px-5 py-2.5 rounded-lg text-sm font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+              valid ? 'bg-gradient-to-br from-orange-500 to-orange-700' : 'bg-stone-400'
+            }`}
+              onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}>
               {editing ? 'Update Entry' : 'Save Entry'}
             </button>
-            <button type="button" className="k-btn k-btn-ghost" onClick={onCancel}>Cancel</button>
-            {!valid && <span style={{ fontSize:11, color:C.ink[400], alignSelf:'center' }}>Fill required fields *</span>}
+            <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+              onClick={onCancel}>Cancel</button>
+            {!valid && <span className="text-[11px] text-stone-400 self-center">Fill required fields *</span>}
           </div>
         </div>
       </div>
@@ -1495,51 +1493,47 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
       {viewReceipt && e.receipt_url && (
         <ReceiptViewer url={e.receipt_url} onClose={()=>setViewReceipt(false)} />
       )}
-      <div className="k-card" style={{ padding:'14px 18px',
-        border:`1.5px solid ${m?.border||C.ink[200]}`,
-        display:'grid', gridTemplateColumns:'1fr auto', gap:12, alignItems:'start',
-        background: m ? `linear-gradient(135deg, ${m.soft} 0%, #fff 40%)` : '#fff',
-      }}>
-        <div style={{ minWidth:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, flexWrap:'wrap' }}>
+      <div className={`bg-white rounded-xl border-[1.5px] ${m?.twBorder || 'border-stone-200'} p-3.5 grid grid-cols-[1fr_auto] gap-3 items-start shadow-sm ${
+        m ? `bg-gradient-to-br ${m.twSoft} to-white` : 'bg-white'
+      }`}>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <MealBadge type={e.meal_type} size="sm" />
-            <span className="k-number" style={{ fontSize:20, fontWeight:700, color:m?.text||C.ink[800], lineHeight:1 }}>
+            <span className="font-display text-xl font-bold text-stone-800 leading-none">
               {moneyFmt(e.amount)}
             </span>
             {e.meal_rating>0 && <StarRating value={e.meal_rating} />}
             {e.pax_count>0 && (
-              <span style={{ fontSize:10, color:C.teal[700], fontWeight:700, fontFamily:'var(--font-mono)',
-                padding:'2px 8px', borderRadius:99, background:C.teal[50], border:`1px solid ${C.teal[200]}` }}>
+              <span className="text-[10px] text-teal-700 font-bold font-mono px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200">
                 ₹{(e.amount/e.pax_count).toFixed(2)}/student
               </span>
             )}
             {e.receipt_url && (
               <button type="button" onClick={()=>setViewReceipt(true)}
-                style={{ padding:'2px 9px', borderRadius:99, background:C.sky[50], border:`1px solid ${C.sky[200]}`,
-                  color:C.sky[700], fontSize:10, fontWeight:700, cursor:'pointer', fontFamily:'var(--font-body)' }}>
+                className="px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[10px] font-bold cursor-pointer font-body hover:bg-sky-100 transition-all">
                 📎 Receipt
               </button>
             )}
           </div>
-          <div style={{ display:'flex', gap:10, fontSize:11, color:C.ink[500], flexWrap:'wrap' }}>
+          <div className="flex gap-2.5 text-[11px] text-stone-500 flex-wrap">
             {e.item_details  && <span>🥦 {e.item_details}</span>}
             {e.prepared_by   && <span>👨‍🍳 {e.prepared_by}</span>}
             {e.vendor        && <span>🏪 {e.vendor}</span>}
             {e.pax_count     && <span>👥 {e.pax_count} students</span>}
-            {e.serving_time  && <span style={{ fontFamily:'var(--font-mono)' }}>🕐 {e.serving_time}</span>}
+            {e.serving_time  && <span className="font-mono">🕐 {e.serving_time}</span>}
           </div>
           {e.notes && (
-            <div style={{ marginTop:7, fontSize:11, color:C.ink[500], padding:'5px 10px',
-              background:C.ink[50], borderRadius:7, borderLeft:`3px solid ${C.ink[200]}` }}>
+            <div className="mt-1.5 text-[11px] text-stone-500 px-2.5 py-1 bg-stone-50 rounded-lg border-l-[3px] border-stone-200">
               {e.notes}
             </div>
           )}
         </div>
         {!locked && (
-          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-            <button type="button" className="k-btn k-btn-ghost" onClick={()=>onEdit(e)} style={{ fontSize:11, padding:'5px 12px' }}>Edit</button>
-            <button type="button" className="k-btn k-btn-ghost" onClick={()=>onDelete(e.id)}
-              style={{ fontSize:11, padding:'5px 12px', color:C.rose[600], borderColor:C.rose[200], background:C.rose[50] }}>Del</button>
+          <div className="flex flex-col gap-1">
+            <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+              onClick={()=>onEdit(e)}>Edit</button>
+            <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-rose-600 border-[1.5px] border-rose-200 bg-rose-50 hover:bg-rose-100 transition-all shadow-sm"
+              onClick={()=>onDelete(e.id)}>Del</button>
           </div>
         )}
       </div>
@@ -1556,40 +1550,36 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
   const [collapsed, setCollapsed] = useState(!isToday)
 
   return (
-    <div style={{ marginBottom:14 }} className="fade-up">
-      <div onClick={()=>setCollapsed(c=>!c)} style={{ cursor:'pointer',
-        display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding:'10px 16px', borderRadius:10, marginBottom:collapsed?0:8,
-        background: isToday ? `linear-gradient(135deg, ${C.terra[50]}, #fff)` : C.ink[50],
-        border:`1.5px solid ${isToday?C.terra[200]:C.ink[200]}`,
-        userSelect:'none' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <span style={{ fontSize:12, fontWeight:700, color:isToday?C.terra[700]:C.ink[600] }}>
-            {isToday && <span style={{ color:C.terra[500], marginRight:4 }}>📌</span>}
+    <div className="mb-3.5 animate-fade-up">
+      <div onClick={()=>setCollapsed(c=>!c)} className={`cursor-pointer flex items-center justify-between px-4 py-2.5 rounded-xl mb-2 select-none transition-all ${
+        isToday ? 'bg-gradient-to-br from-orange-50 to-white border-[1.5px] border-orange-200' : 'bg-stone-50 border-[1.5px] border-stone-200'
+      }`}>
+        <div className="flex items-center gap-2.5">
+          <span className={`text-xs font-bold ${isToday ? 'text-orange-700' : 'text-stone-600'}`}>
+            {isToday && <span className="text-orange-500 mr-1">📌</span>}
             {dateFmt(dateStr)}
           </span>
-          {isToday && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:C.terra[100], color:C.terra[700], fontWeight:700 }}>Today</span>}
-          {locked  && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:99, background:C.rose[100],  color:C.rose[700],  fontWeight:700 }}>🔒 Locked</span>}
-          <span style={{ fontSize:11, color:C.ink[400] }}>{dayE.length} entries</span>
+          {isToday && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">Today</span>}
+          {locked  && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold">🔒 Locked</span>}
+          <span className="text-[11px] text-stone-400">{dayE.length} entries</span>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <span className="k-number" style={{ fontSize:16, fontWeight:700, color:C.ink[800] }}>{moneyFmt(total)}</span>
+        <div className="flex items-center gap-2.5">
+          <span className="font-display text-base font-bold text-stone-800">{moneyFmt(total)}</span>
           {!locked
             ? <button type="button" onClick={e=>{e.stopPropagation();onLockDay(dateStr)}}
-                className="k-btn k-btn-ghost" style={{ fontSize:10, padding:'4px 10px', color:C.rose[600], borderColor:C.rose[200], background:C.rose[50] }}>
+                className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-rose-600 border-[1.5px] border-rose-200 bg-rose-50 hover:bg-rose-100 transition-all shadow-sm">
                 🔒 Lock
               </button>
             : <button type="button" onClick={e=>{e.stopPropagation();onUnlockDay(dateStr)}}
-                className="k-btn k-btn-ghost" style={{ fontSize:10, padding:'4px 10px', color:C.saffron[700], borderColor:C.saffron[200], background:C.saffron[50] }}>
+                className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-amber-700 border-[1.5px] border-amber-200 bg-amber-50 hover:bg-amber-100 transition-all shadow-sm">
                 🔓 Unlock
               </button>
           }
-          <span style={{ fontSize:12, color:C.ink[400], transition:'transform .2s', display:'inline-block',
-            transform:collapsed?'rotate(-90deg)':'rotate(0)' }}>▾</span>
+          <span className={`text-xs text-stone-400 transition-transform duration-200 inline-block ${collapsed ? '-rotate-90' : 'rotate-0'}`}>▾</span>
         </div>
       </div>
       {!collapsed && (
-        <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+        <div className="flex flex-col gap-1.5">
           {dayE.map(e=><EntryCard key={e.id} e={e} locked={locked} onEdit={onEdit} onDelete={onDelete} />)}
         </div>
       )}
@@ -1606,26 +1596,27 @@ function BudgetModal({ current, month, onSave, onClose }) {
     onSave(amt)
   }
   return (
-    <div className="fade-in" style={{ position:'fixed', inset:0, background:'rgba(32,20,10,.45)', zIndex:9999,
-      display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(2px)' }}>
-      <div className="k-card" style={{ width:400, padding:0, overflow:'hidden', boxShadow:'var(--shadow-xl)' }}>
-        <div style={{ padding:'20px 24px', borderBottom:`1px solid ${C.divider}`,
-          background:`linear-gradient(135deg, ${C.teal[50]}, #fff)` }}>
-          <div style={{ fontSize:17, fontWeight:700, color:C.teal[700], fontFamily:'var(--font-display)' }}>Set Monthly Budget</div>
-          <div style={{ fontSize:12, color:C.ink[400], marginTop:2 }}>For {month}</div>
+    <div className="animate-fade-in fixed inset-0 bg-[rgba(32,20,10,0.45)] z-[9999] flex items-center justify-center backdrop-blur-sm"
+      onClick={onClose}>
+      <div className="bg-white rounded-xl border border-stone-200 shadow-xl w-[400px] overflow-hidden" onClick={e=>e.stopPropagation()}>
+        <div className="px-6 py-5 border-b border-stone-200 bg-gradient-to-br from-teal-50 to-white">
+          <div className="text-[17px] font-bold text-teal-700 font-display">Set Monthly Budget</div>
+          <div className="text-xs text-stone-400 mt-0.5">For {month}</div>
         </div>
-        <div style={{ padding:'22px 24px' }}>
+        <div className="px-6 py-5">
           <Field label="Budget Amount (₹)">
-            <input type="number" className="k-input" value={val} onChange={e=>setVal(e.target.value)}
-              placeholder="e.g. 50000" min="1"
+            <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
+              value={val} onChange={e=>setVal(e.target.value)} placeholder="e.g. 50000" min="1"
               onKeyDown={e=>e.key==='Enter'&&handleSave()} />
           </Field>
           {val && Number(val) <= 0 && (
-            <div style={{ fontSize:11, color:C.rose[600], marginTop:6 }}>Enter a valid amount</div>
+            <div className="text-[11px] text-rose-600 mt-1.5">Enter a valid amount</div>
           )}
-          <div style={{ display:'flex', gap:10, marginTop:18 }}>
-            <button type="button" className="k-btn k-btn-primary" onClick={handleSave} style={{ flex:1 }}>Save Budget</button>
-            <button type="button" className="k-btn k-btn-ghost" onClick={onClose}>Cancel</button>
+          <div className="flex gap-2.5 mt-4">
+            <button type="button" className="flex-1 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+              onClick={handleSave}>Save Budget</button>
+            <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+              onClick={onClose}>Cancel</button>
           </div>
         </div>
       </div>
@@ -1652,22 +1643,22 @@ function generatePrintReport(entries, budget, monthLabel) {
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=DM+Mono&display=swap" rel="stylesheet">
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:'DM Sans',sans-serif; color:#20140A; background:#FAF6F1; padding:36px 48px; }
-  .header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:18px; margin-bottom:28px; border-bottom:3px solid #C44E1C; }
-  .institute { font-family:'Playfair Display',serif; font-size:22px; font-weight:800; color:#C44E1C; }
-  .sub { font-size:11px; color:#8C6A50; margin-top:3px; }
-  .title-area { text-align:right; font-size:12px; color:#6E5038; font-family:'DM Mono',monospace; }
+  body { font-family:'DM Sans',sans-serif; color:#1c1917; background:#fafaf9; padding:36px 48px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:18px; margin-bottom:28px; border-bottom:3px solid #ea580c; }
+  .institute { font-family:'Playfair Display',serif; font-size:22px; font-weight:800; color:#ea580c; }
+  .sub { font-size:11px; color:#78716c; margin-top:3px; }
+  .title-area { text-align:right; font-size:12px; color:#57534e; font-family:'DM Mono',monospace; }
   .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:28px; }
-  .kpi { padding:16px 18px; border-radius:10px; background:#fff; border:1.5px solid #FFD0BA; }
-  .kpi-val { font-family:'Playfair Display',serif; font-size:22px; font-weight:700; color:#C44E1C; }
-  .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#8C6A50; margin-top:4px; }
-  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; color:#C44E1C; margin:24px 0 12px; padding-left:12px; border-left:3px solid #C44E1C; }
+  .kpi { padding:16px 18px; border-radius:10px; background:#fff; border:1.5px solid #fed7aa; }
+  .kpi-val { font-family:'Playfair Display',serif; font-size:22px; font-weight:700; color:#ea580c; }
+  .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#78716c; margin-top:4px; }
+  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; color:#ea580c; margin:24px 0 12px; padding-left:12px; border-left:3px solid #ea580c; }
   table { width:100%; border-collapse:collapse; font-size:11px; }
-  th { background:#FFF5F0; color:#6E5038; font-weight:700; padding:8px 10px; text-align:left; border-bottom:2px solid #FFD0BA; text-transform:uppercase; letter-spacing:.04em; font-size:9px; }
-  td { padding:7px 10px; border-bottom:1px solid #EDE5DA; color:#20140A; font-family:'DM Mono',monospace; font-size:10px; }
+  th { background:#fff7ed; color:#57534e; font-weight:700; padding:8px 10px; text-align:left; border-bottom:2px solid #fed7aa; text-transform:uppercase; letter-spacing:.04em; font-size:9px; }
+  td { padding:7px 10px; border-bottom:1px solid #e7e5e4; color:#1c1917; font-family:'DM Mono',monospace; font-size:10px; }
   td:first-child { font-family:'DM Sans',sans-serif; font-size:11px; }
-  .total-row td { font-weight:800; color:#C44E1C; border-top:2px solid #C44E1C; border-bottom:none; font-family:'DM Sans',sans-serif; }
-  .footer { margin-top:32px; padding-top:14px; border-top:1px solid #EDE5DA; font-size:10px; color:#A88870; display:flex; justify-content:space-between; font-family:'DM Mono',monospace; }
+  .total-row td { font-weight:800; color:#ea580c; border-top:2px solid #ea580c; border-bottom:none; font-family:'DM Sans',sans-serif; }
+  .footer { margin-top:32px; padding-top:14px; border-top:1px solid #e7e5e4; font-size:10px; color:#a8a29e; display:flex; justify-content:space-between; font-family:'DM Mono',monospace; }
   @media print { body { background:#fff; padding:20px; } }
 </style></head><body>
   <div class="header">
@@ -1742,68 +1733,64 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
   const dateStr = now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
 
   return (
-    <div className="no-print" style={{ background:'#fff', borderBottom:`1px solid ${C.divider}`,
-      boxShadow:'0 1px 8px rgba(56,38,24,.06)', position:'sticky', top:0, zIndex:100 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
-        padding:'10px 28px', borderBottom:`1px solid ${C.ink[50]}` }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-          <div style={{ width:36, height:36, borderRadius:10,
-            background:`linear-gradient(135deg, ${C.terra[600]}, ${C.terra[800]})`,
-            display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>
+    <div className="no-print bg-white border-b border-stone-200 shadow-sm sticky top-0 z-[100]">
+      <div className="flex justify-between items-center px-7 py-2.5 border-b border-stone-50">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-600 to-orange-800 flex items-center justify-center text-lg flex-shrink-0">
             🍽
           </div>
           <div>
-            <div style={{ fontSize:16, fontWeight:700, color:C.ink[900], fontFamily:'var(--font-display)', lineHeight:1.1 }}>Kitchen Ledger</div>
-            <div style={{ fontSize:10, color:C.ink[400], marginTop:1 }}>GNSI · Khangabok, Thoubal</div>
+            <div className="text-base font-bold text-stone-900 font-display leading-tight">Kitchen Ledger</div>
+            <div className="text-[10px] text-stone-400 mt-0.5">GNSI · Khangabok, Thoubal</div>
           </div>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          {/* Tab pills */}
-          <div style={{ display:'flex', borderRadius:9, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
+        <div className="flex items-center gap-2.5">
+          <div className="flex rounded-lg overflow-hidden border-[1.5px] border-stone-200">
             {[['ledger','📋 Ledger'],['analytics','📊 Analytics']].map(([k,l])=>(
               <button key={k} type="button"
                 onClick={() => setTab(k)}
-                style={{
-                  padding:'7px 18px',
-                  background: tab===k ? C.terra[600] : '#fff',
-                  color: tab===k ? '#fff' : C.ink[600],
-                  border:'none', fontSize:12, fontWeight:700,
-                  cursor:'pointer', fontFamily:'var(--font-body)', transition:'all .15s',
-                }}>
+                className={`px-4 py-1.5 text-xs font-bold cursor-pointer font-body transition-all border-none ${
+                  tab===k ? 'bg-orange-600 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'
+                }`}>
                 {l}
               </button>
             ))}
           </div>
-          <div style={{ textAlign:'right' }}>
-            <div style={{ fontSize:13, fontWeight:700, color:C.ink[700], fontFamily:'var(--font-mono)' }}>{timeStr}</div>
-            <div style={{ fontSize:10, color:C.ink[400] }}>{dateStr}</div>
+          <div className="text-right">
+            <div className="text-[13px] font-bold text-stone-700 font-mono">{timeStr}</div>
+            <div className="text-[10px] text-stone-400">{dateStr}</div>
           </div>
-          <button type="button" className="k-btn k-btn-primary" onClick={onAdd} style={{ fontSize:13, padding:'9px 18px' }}>
-            <span style={{ fontSize:15, lineHeight:1 }}>+</span> Add Entry
+          <button type="button" className="px-4 py-2 rounded-lg text-[13px] font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-1"
+            onClick={onAdd}>
+            <span className="text-[15px] leading-none">+</span> Add Entry
           </button>
         </div>
       </div>
 
-      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 28px', flexWrap:'wrap' }}>
-        <input type="month" className="k-input" style={{ width:'auto', padding:'6px 12px', fontSize:12 }}
+      <div className="flex items-center gap-2 px-7 py-2 flex-wrap">
+        <input type="month" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
           value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
 
-        <div style={{ flex:1 }} />
+        <div className="flex-1" />
 
-        <button type="button" className="k-btn k-btn-ghost" onClick={onItemSetup} style={{ fontSize:12 }}>🧺 Items</button>
+        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+          onClick={onItemSetup}>🧺 Items</button>
         {isAdmin && <>
-          <button type="button" className="k-btn k-btn-ghost" onClick={onMonitor}  style={{ fontSize:12 }}>🛡 Monitor</button>
-          <button type="button" className="k-btn k-btn-ghost" onClick={onCookLog}  style={{ fontSize:12 }}>👨‍🍳 Cook Log</button>
-          <button type="button" className="k-btn k-btn-ghost" onClick={onCookAtt}  style={{ fontSize:12 }}>👩‍🍳 Attendance</button>
+          <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+            onClick={onMonitor}>🛡 Monitor</button>
+          <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+            onClick={onCookLog}>👨‍🍳 Cook Log</button>
+          <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+            onClick={onCookAtt}>👩‍🍳 Attendance</button>
         </>}
-        <button type="button" className="k-btn k-btn-ghost" onClick={onBudget} style={{ fontSize:12 }}>💰 Budget</button>
-        <button type="button" className="k-btn k-btn-ghost" onClick={onReport} style={{ fontSize:12 }}>🖨 Report</button>
-        <button type="button" className="k-btn k-btn-ghost" onClick={onCSV}    style={{ fontSize:12 }}>⬇ CSV</button>
+        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+          onClick={onBudget}>💰 Budget</button>
+        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+          onClick={onReport}>🖨 Report</button>
+        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
+          onClick={onCSV}>⬇ CSV</button>
         <button type="button" onClick={onWhatsApp}
-          style={{ padding:'7px 14px', borderRadius:9, background:'linear-gradient(135deg,#25D366,#128C7E)',
-            color:'#fff', border:'none', fontSize:12, fontWeight:700, cursor:'pointer',
-            display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--font-body)',
-            boxShadow:'0 2px 8px rgba(37,211,102,.3)' }}>
+          className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-br from-[#25D366] to-[#128C7E] cursor-pointer inline-flex items-center gap-1 font-body shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all">
           📲 WhatsApp
         </button>
       </div>
@@ -1898,12 +1885,12 @@ export default function Kitchen({ currentUser }) {
     }
     if (eid) {
       const { error } = await supabase.from('kitchen_expenditure').update(row).eq('id',eid)
-      if (error) { showToast('Update failed: '+error.message, C.rose[600]); return }
-      showToast('Entry updated ✓', C.saffron[600])
+      if (error) { showToast('Update failed: '+error.message, 'bg-rose-600'); return }
+      showToast('Entry updated ✓', 'bg-amber-600')
     } else {
       const { error } = await supabase.from('kitchen_expenditure').insert(row)
-      if (error) { showToast('Save failed: '+error.message, C.rose[600]); return }
-      showToast('Entry saved ✓', C.forest[600])
+      if (error) { showToast('Save failed: '+error.message, 'bg-rose-600'); return }
+      showToast('Entry saved ✓', 'bg-green-600')
     }
     setFormOpen(false); setEditing(null); load()
   }
@@ -1911,24 +1898,24 @@ export default function Kitchen({ currentUser }) {
   const handleDelete = async id => {
     if (!window.confirm('Delete this entry?')) return
     const { error } = await supabase.from('kitchen_expenditure').delete().eq('id',id)
-    if (error) { showToast('Delete failed', C.rose[600]); return }
-    showToast('Deleted', C.rose[600]); load()
+    if (error) { showToast('Delete failed', 'bg-rose-600'); return }
+    showToast('Deleted', 'bg-rose-600'); load()
   }
 
   const handleLockDay = async dateStr => {
     if (!window.confirm(`Lock all entries for ${dateFmt(dateStr)}?`)) return
     await supabase.from('kitchen_daily_locks').insert({ lock_date:dateStr })
-    showToast(`🔒 ${dateFmt(dateStr)} locked`, C.rose[500]); load()
+    showToast(`🔒 ${dateFmt(dateStr)} locked`, 'bg-rose-500'); load()
   }
 
   const handleUnlockDay = async dateStr => {
     await supabase.from('kitchen_daily_locks').delete().eq('lock_date',dateStr)
-    showToast(`🔓 ${dateFmt(dateStr)} unlocked`, C.saffron[600]); load()
+    showToast(`🔓 ${dateFmt(dateStr)} unlocked`, 'bg-amber-600'); load()
   }
 
   const handleBudgetSave = async amount => {
     await supabase.from('kitchen_budgets').upsert({ month:viewMonth, budget_amount:amount },{ onConflict:'month' })
-    setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', C.forest[600])
+    setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', 'bg-green-600')
   }
 
   const handleCookLogSave = async form => {
@@ -1940,8 +1927,8 @@ export default function Kitchen({ currentUser }) {
       left_at:    form.left_at    || null,
       notes:      form.notes      || null,
     })
-    if (error) { showToast('Cook log save failed: '+error.message, C.rose[600]); return }
-    showToast('Cook log saved ✓', C.forest[600])
+    if (error) { showToast('Cook log save failed: '+error.message, 'bg-rose-600'); return }
+    showToast('Cook log saved ✓', 'bg-green-600')
     setShowCookLog(false)
     load()
   }
@@ -1960,31 +1947,27 @@ export default function Kitchen({ currentUser }) {
   )
 
   return (
-    <div className="gnsi-kitchen">
-      <style>{GLOBAL_CSS}</style>
+    <div className="gnsi-kitchen bg-[#faf6f1] min-h-screen text-stone-900 font-body">
+      <style>{TAILWIND_GLOBAL}</style>
 
       {/* Overlays */}
       {toast      && <Toast msg={toast.msg} color={toast.color} />}
       {showBudget && <BudgetModal current={budget} month={viewMonth} onSave={handleBudgetSave} onClose={()=>setShowBudget(false)} />}
       {showWA && (
-        <div className="fade-in" style={{ position:'fixed', inset:0, background:'rgba(32,20,10,.5)', zIndex:9999,
-          display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(3px)' }}
+        <div className="animate-fade-in fixed inset-0 bg-[rgba(32,20,10,0.5)] z-[9999] flex items-center justify-center backdrop-blur-sm"
           onClick={()=>setShowWA(null)}>
-          <div className="k-card" style={{ width:420, overflow:'hidden', boxShadow:'var(--shadow-xl)' }} onClick={e=>e.stopPropagation()}>
-            <div style={{ padding:'16px 22px', borderBottom:`1px solid ${C.divider}`,
-              background:`linear-gradient(135deg, ${C.forest[50]}, #fff)`, display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ fontSize:20 }}>📲</span>
+          <div className="bg-white rounded-xl border border-stone-200 shadow-xl w-[420px] overflow-hidden" onClick={e=>e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-stone-200 bg-gradient-to-br from-green-50 to-white flex items-center gap-2">
+              <span className="text-xl">📲</span>
               <div>
-                <div style={{ fontSize:14, fontWeight:700, color:C.forest[700] }}>WhatsApp Message — Copied!</div>
-                <div style={{ fontSize:11, color:C.ink[400], marginTop:1 }}>Paste in any chat</div>
+                <div className="text-sm font-bold text-green-700">WhatsApp Message — Copied!</div>
+                <div className="text-[11px] text-stone-400 mt-0.5">Paste in any chat</div>
               </div>
             </div>
-            <div style={{ padding:'16px 22px' }}>
-              <pre style={{ fontSize:12, color:C.ink[600], whiteSpace:'pre-wrap',
-                background:C.ink[50], borderRadius:8, padding:'12px 14px', border:`1px solid ${C.ink[100]}`,
-                maxHeight:250, overflowY:'auto', fontFamily:'var(--font-mono)', lineHeight:1.7 }}>{showWA}</pre>
-              <button type="button" className="k-btn k-btn-primary" onClick={()=>setShowWA(null)}
-                style={{ marginTop:14, width:'100%', justifyContent:'center' }}>Close</button>
+            <div className="px-5 py-4">
+              <pre className="text-xs text-stone-600 whitespace-pre-wrap bg-stone-50 rounded-lg p-3 border border-stone-100 max-h-[250px] overflow-y-auto font-mono leading-relaxed">{showWA}</pre>
+              <button type="button" className="mt-3.5 w-full px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex justify-center"
+                onClick={()=>setShowWA(null)}>Close</button>
             </div>
           </div>
         </div>
@@ -2005,16 +1988,15 @@ export default function Kitchen({ currentUser }) {
         onCookAtt={()=>setShowCookAtt(v=>!v)}
       />
 
-      <div ref={contentRef} style={{ maxWidth:1080, margin:'0 auto', padding:'24px 28px',
-      height:'calc(100vh - 120px)', overflowY:'auto' }}>
+      <div ref={contentRef} className="max-w-[1080px] mx-auto px-7 py-6 h-[calc(100vh-120px)] overflow-y-auto">
         {loading && <LoadingBar />}
 
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:16 }} className="stagger">
-          <KpiCard label="Today"     value={moneyFmt(todayTotal)} accent={C.terra[600]}  icon="🌅" subtitle={today()} pulse />
-          <KpiCard label="This Week" value={moneyFmt(weekTotal)}  accent={C.ink[700]}    icon="📅" />
-          <KpiCard label="Month"     value={moneyFmt(monthTotal)} accent={C.teal[600]}   icon="🗓" subtitle={viewMonth} />
-          <KpiCard label="Daily Avg" value={moneyFmt(avgPerDay)}  accent={C.forest[600]} icon="📈" />
-          <KpiCard label="Peak Day"  value={highDay.d?dateFmt(highDay.d):'—'} accent={C.rose[600]} icon="🔺" subtitle={highDay.d?moneyFmt(highDay.sum):''} />
+        <div className="flex gap-2.5 flex-wrap mb-4 stagger">
+          <KpiCard label="Today"     value={moneyFmt(todayTotal)} accent="#ea580c"  icon="🌅" subtitle={today()} pulse />
+          <KpiCard label="This Week" value={moneyFmt(weekTotal)}  accent="#1c1917"    icon="📅" />
+          <KpiCard label="Month"     value={moneyFmt(monthTotal)} accent="#0d9488"   icon="🗓" subtitle={viewMonth} />
+          <KpiCard label="Daily Avg" value={moneyFmt(avgPerDay)}  accent="#16a34a" icon="📈" />
+          <KpiCard label="Peak Day"  value={highDay.d?dateFmt(highDay.d):'—'} accent="#e11d48" icon="🔺" subtitle={highDay.d?moneyFmt(highDay.sum):''} />
         </div>
 
         <BudgetBar spent={monthTotal} budget={budget} />
@@ -2036,18 +2018,17 @@ export default function Kitchen({ currentUser }) {
         )}
 
         {/* ── TAB CONTENT ── */}
-        {/* FIX: Use conditional rendering with key props instead of display:none */}
         {tab === 'ledger' && (
           <div key="ledger-tab">
-            <div className="k-card" style={{ padding:'12px 16px', marginBottom:14, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <label className="k-label" style={{ marginBottom:0 }}>Date</label>
-                <input type="date" className="k-input" style={{ width:'auto', padding:'6px 12px' }}
+            <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3 mb-3.5 flex gap-3 items-center flex-wrap">
+              <div className="flex items-center gap-2">
+                <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Date</label>
+                <input type="date" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
                   value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
               </div>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <label className="k-label" style={{ marginBottom:0 }}>Meal</label>
-                <select className="k-input" style={{ width:'auto', padding:'6px 12px' }}
+              <div className="flex items-center gap-2">
+                <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Meal</label>
+                <select className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white w-auto"
                   value={filterMeal} onChange={e=>setFilterMeal(e.target.value)}>
                   <option value="all">All Meals</option>
                   {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
@@ -2061,17 +2042,16 @@ export default function Kitchen({ currentUser }) {
             <PettyCashWidget entries={entries} dateFilter={filterDate} />
 
             {!uniqueDates.length ? (
-              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'70px 20px', textAlign:'center' }} className="fade-up">
-                <div style={{ width:80, height:80, borderRadius:22,
-                  background:`linear-gradient(135deg, ${C.terra[50]}, ${C.saffron[50]})`,
-                  border:`2px dashed ${C.terra[200]}`,
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:38, marginBottom:20 }}>🍽</div>
-                <div style={{ fontSize:18, fontWeight:700, color:C.ink[700], fontFamily:'var(--font-display)', marginBottom:8 }}>No entries yet</div>
-                <p style={{ fontSize:13, color:C.ink[400], maxWidth:'36ch', lineHeight:1.7, marginBottom:24 }}>
+              <div className="flex flex-col items-center py-16 text-center animate-fade-up">
+                <div className="w-20 h-20 rounded-[22px] bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-dashed border-orange-200 flex items-center justify-center text-[38px] mb-5">
+                  🍽
+                </div>
+                <div className="text-lg font-bold text-stone-700 font-display mb-2">No entries yet</div>
+                <p className="text-[13px] text-stone-400 max-w-[36ch] leading-relaxed mb-6">
                   Start tracking your kitchen expenses — add your first meal entry for {viewMonth}.
                 </p>
-                <button type="button" className="k-btn k-btn-primary" onClick={()=>setFormOpen(true)} style={{ fontSize:14, padding:'12px 28px' }}>
+                <button type="button" className="px-7 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                  onClick={()=>setFormOpen(true)}>
                   + Add First Entry
                 </button>
               </div>
@@ -2092,7 +2072,7 @@ export default function Kitchen({ currentUser }) {
         )}
 
         {tab === 'analytics' && (
-          <div key="analytics-tab" className="fade-up">
+          <div key="analytics-tab" className="animate-fade-up">
             <MonthlyChart entries={entries} />
             <MealPieBreakdown entries={entries} />
             <CalendarHeatmap entries={entries} onDayClick={d=>{ setFilterDate(d); setTab('ledger') }} />
