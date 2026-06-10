@@ -1866,7 +1866,7 @@ export default function Kitchen({ currentUser }) {
     setShowCookLog(false)
     setShowCookAtt(false)
     setFormOpen(false)
-    contentRef.current?.scrollIntoView({ behavior:'smooth', block:'start' })
+    contentRef.current?.scrollTo({ top:0, behavior:'smooth' })
   }, [tab])
 
   const toastTimer = useRef(null)
@@ -2028,7 +2028,8 @@ export default function Kitchen({ currentUser }) {
         onCookAtt={()=>setShowCookAtt(v=>!v)}
       />
 
-      <div ref={contentRef} style={{ maxWidth:1080, margin:'0 auto', padding:'24px 28px' }}>
+      <div ref={contentRef} style={{ maxWidth:1080, margin:'0 auto', padding:'24px 28px',
+      height:'calc(100vh - 120px)', overflowY:'auto' }}>
         {loading && <LoadingBar />}
 
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:16 }} className="stagger">
@@ -2057,8 +2058,9 @@ export default function Kitchen({ currentUser }) {
           />
         )}
 
-        {/* ── LEDGER TAB ── */}
-        {tab==='ledger' && (
+        {/* ── TAB CONTENT ── */}
+        <div style={{ display: tab==='ledger' ? 'block' : 'none' }}>
+          {/* LEDGER */}
           <>
             <div className="k-card" style={{ padding:'12px 16px', marginBottom:14, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -2110,10 +2112,9 @@ export default function Kitchen({ currentUser }) {
               </>
             )}
           </>
-        )}
+        </div>
 
-        {/* ── ANALYTICS TAB ── */}
-        {tab==='analytics' && (
+        <div style={{ display: tab==='analytics' ? 'block' : 'none' }}>
           <div className="fade-up">
             <MonthlyChart entries={entries} />
             <MealPieBreakdown entries={entries} />
@@ -2122,7 +2123,7 @@ export default function Kitchen({ currentUser }) {
             <VendorSummary entries={entries} />
             <ItemFrequency entries={entries} />
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
