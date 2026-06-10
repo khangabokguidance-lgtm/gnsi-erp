@@ -1860,6 +1860,12 @@ export default function Kitchen({ currentUser }) {
 
   const contentRef = useRef(null)
   useEffect(() => {
+    // Close all panels and scroll to top on tab switch
+    setShowItemSetup(false)
+    setShowMonitor(false)
+    setShowCookLog(false)
+    setShowCookAtt(false)
+    setFormOpen(false)
     contentRef.current?.scrollIntoView({ behavior:'smooth', block:'start' })
   }, [tab])
 
