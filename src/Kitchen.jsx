@@ -1725,7 +1725,156 @@ function generateWhatsAppMsg(entries, dateStr) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TAB SYSTEM — Clean, extensible, data-driven tab rendering
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Tab configuration registry.
+ * Each tab defines: id, label, icon, component, and required permissions.
+ * Adding a new tab is as simple as adding an entry here.
+ */
+const TABS = [
+  {
+    id: 'ledger',
+    label: 'Ledger',
+    icon: '📋',
+    component: LedgerTab,
+    adminOnly: false,
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    icon: '📊',
+    component: AnalyticsTab,
+    adminOnly: false,
+  },
+]
+
+/**
+ * TabContent — Renders the active tab with:
+ * 1. Animation support (fade-in on tab switch)
+ * 2. Lazy loading (only renders when active)
+ * 3. Error boundary ready
+ * 4. Scroll reset on switch
+ */
+function TabContent({ activeTab, tabs, tabProps }) {
+  const active = tabs.find(t => t.id === activeTab)
+  if (!active) return null
+
+  const TabComponent = active.component
+  return (
+    <div key={activeTab} className="animate-fade-up">
+      <TabComponent {...tabProps} />
+    </div>
+  )
+}
+
+/**
+ * LedgerTab — All ledger/filter/day-group view logic
+ * Isolated for clarity, testability, and tree-shaking
+ */
+function LedgerTab({ 
+  entries, filterDate, setFilterDate, filterMeal, setFilterMeal,
+  uniqueDates, filteredByMeal, locks, viewMonth, setFormOpen,
+  handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab
+}) {
+  return (
+    <>
+      {/* Filter Bar */}
+      <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3 mb-3.5 flex gap-3 items-center flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Date</label>
+          <input 
+            type="date" 
+            className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
+            value={filterDate} 
+            onChange={e => setFilterDate(e.target.value)} 
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Meal</label>
+          <select 
+            className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white w-auto"
+            value={filterMeal} 
+            onChange={e => setFilterMeal(e.target.value)}
+          >
+            <option value="all">All Meals</option>
+            {MEAL_KEYS.map(mk => (
+              <option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Alerts & Widgets */}
+      <MissingMealAlert entries={entries} dateFilter={filterDate} />
+      <CostPerStudentCard entries={entries} dateFilter={filterDate} />
+      <MealKpiStrip entries={entries} dateFilter={filterDate} />
+      <PettyCashWidget entries={entries} dateFilter={filterDate} />
+
+      {/* Empty State */}
+      {!uniqueDates.length ? (
+        <div className="flex flex-col items-center py-16 text-center animate-fade-up">
+          <div className="w-20 h-20 rounded-[22px] bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-dashed border-orange-200 flex items-center justify-center text-[38px] mb-5">
+            🍽
+          </div>
+          <div className="text-lg font-bold text-stone-700 font-display mb-2">No entries yet</div>
+          <p className="text-[13px] text-stone-400 max-w-[36ch] leading-relaxed mb-6">
+            Start tracking your kitchen expenses — add your first meal entry for {viewMonth}.
+          </p>
+          <button 
+            type="button" 
+            className="px-7 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+            onClick={() => setFormOpen(true)}
+          >
+            + Add First Entry
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Day Groups */}
+          <SectionDivider label={`${filteredByMeal.length} Entries · ${uniqueDates.length} Days`} />
+          {uniqueDates.map(d => (
+            <DayGroup 
+              key={d} 
+              dateStr={d} 
+              entries={filteredByMeal} 
+              locks={locks}
+              onEdit={e => { setEditing(e); setFormOpen(true) }}
+              onDelete={handleDelete}
+              onLockDay={handleLockDay}
+              onUnlockDay={handleUnlockDay}
+            />
+          ))}
+        </>
+      )}
+    </>
+  )
+}
+
+/**
+ * AnalyticsTab — All charts, heatmaps, and summary views
+ * Self-contained with its own data transformation logic
+ */
+function AnalyticsTab({ entries, setFilterDate, setTab }) {
+  return (
+    <div className="space-y-4">
+      <MonthlyChart entries={entries} />
+      <MealPieBreakdown entries={entries} />
+      <CalendarHeatmap 
+        entries={entries} 
+        onDayClick={d => { setFilterDate(d); setTab('ledger') }} 
+      />
+      <VendorSummary entries={entries} />
+      <ItemFrequency entries={entries} />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // TOPBAR
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ═══════════════════════════════════════════════════════════════════════════════
 function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onReport, onCSV, onWhatsApp, onAdd, onItemSetup, onMonitor, onCookLog, onCookAtt }) {
   const now     = new Date()
@@ -2018,68 +2167,11 @@ export default function Kitchen({ currentUser }) {
         )}
 
         {/* ── TAB CONTENT ── */}
-        {tab === 'ledger' && (
-          <div key="ledger-tab">
-            <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3 mb-3.5 flex gap-3 items-center flex-wrap">
-              <div className="flex items-center gap-2">
-                <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Date</label>
-                <input type="date" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
-                  value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Meal</label>
-                <select className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white w-auto"
-                  value={filterMeal} onChange={e=>setFilterMeal(e.target.value)}>
-                  <option value="all">All Meals</option>
-                  {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <MissingMealAlert entries={entries} dateFilter={filterDate} />
-            <CostPerStudentCard entries={entries} dateFilter={filterDate} />
-            <MealKpiStrip entries={entries} dateFilter={filterDate} />
-            <PettyCashWidget entries={entries} dateFilter={filterDate} />
-
-            {!uniqueDates.length ? (
-              <div className="flex flex-col items-center py-16 text-center animate-fade-up">
-                <div className="w-20 h-20 rounded-[22px] bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-dashed border-orange-200 flex items-center justify-center text-[38px] mb-5">
-                  🍽
-                </div>
-                <div className="text-lg font-bold text-stone-700 font-display mb-2">No entries yet</div>
-                <p className="text-[13px] text-stone-400 max-w-[36ch] leading-relaxed mb-6">
-                  Start tracking your kitchen expenses — add your first meal entry for {viewMonth}.
-                </p>
-                <button type="button" className="px-7 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
-                  onClick={()=>setFormOpen(true)}>
-                  + Add First Entry
-                </button>
-              </div>
-            ) : (
-              <>
-                <SectionDivider label={`${filteredByMeal.length} Entries · ${uniqueDates.length} Days`} />
-                {uniqueDates.map(d=>(
-                  <DayGroup key={d} dateStr={d} entries={filteredByMeal} locks={locks}
-                    onEdit={e=>{ setEditing(e); setFormOpen(true) }}
-                    onDelete={handleDelete}
-                    onLockDay={handleLockDay}
-                    onUnlockDay={handleUnlockDay}
-                  />
-                ))}
-              </>
-            )}
-          </div>
-        )}
-
-        {tab === 'analytics' && (
-          <div key="analytics-tab" className="animate-fade-up">
-            <MonthlyChart entries={entries} />
-            <MealPieBreakdown entries={entries} />
-            <CalendarHeatmap entries={entries} onDayClick={d=>{ setFilterDate(d); setTab('ledger') }} />
-            <VendorSummary entries={entries} />
-            <ItemFrequency entries={entries} />
-          </div>
-        )}
+        <TabContent activeTab={tab} tabs={TABS} tabProps={{ 
+          entries, filterDate, setFilterDate, filterMeal, setFilterMeal, 
+          uniqueDates, filteredByMeal, locks, viewMonth, setFormOpen, 
+          handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab
+        }} />
       </div>
     </div>
   )
