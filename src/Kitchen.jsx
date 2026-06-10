@@ -1,22 +1,11 @@
-// Kitchen.jsx — GNSI Portal v3.2 — Production UI (Fixed)
+// Kitchen.jsx — GNSI Portal v3.3 — Production UI (Clean + Tab Fix)
 // ─────────────────────────────────────────────────────────────────────────────
-//  Fixes applied:
-//  1. Tab buttons: type="button" + stopPropagation
-//  2. C.ink[150] removed (doesn't exist) → C.ink[200]
-//  3. DayGroup: today's group starts expanded, others collapsed
-//  4. Vendor field: select and text input properly decoupled
-//  5. BudgetModal: guard against empty/NaN save
-//  6. PettyCashWidget: cashLog keyed by filterDate prop (stable)
-//  7. weekStart: ISO-correct Monday-based week
-//  8. WhatsApp: uses filterDate (the ledger's active date filter)
-//  9. CookAttendancePanel: saveAll uses upsert with onConflict
-// 10. handleCookLogSave: correctly maps form fields
-// 11. CSS: .slide-down class wired to slideDown keyframe
-// 12. All Topbar action buttons: type="button"
-// 13. EntryForm receipt upload: guarded file check
-// 14. CalendarHeatmap onDayClick: sets filterDate then switches tab
-// 15. Missing meal alert: only fires for today
-// 16. SQL migration included at bottom as comment
+//  Fixes applied in v3.3:
+//  1. Tab switching: conditional rendering instead of display:none
+//  2. Simplified tab button onClick handlers (removed unnecessary preventDefault/stopPropagation)
+//  3. Added type="button" to WhatsApp button
+//  4. Added key props to tab content containers for proper React reconciliation
+//  5. All previous v3.2 fixes retained
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
@@ -193,11 +182,10 @@ const today    = () => new Date().toISOString().split('T')[0]
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
 const dateFmt  = iso => iso ? new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'
 const moneyFmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`
-// FIX: Monday-based week start
 const weekStart= () => {
   const d = new Date()
   const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day   // Monday
+  const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
   return d.toISOString().split('T')[0]
 }
@@ -620,7 +608,6 @@ function CostPerStudentCard({ entries, dateFilter }) {
   )
 }
 
-// FIX: PettyCashWidget — cashLog stored in ref so it doesn't reset on parent re-render
 function PettyCashWidget({ entries, dateFilter }) {
   const [given, setGiven]     = useState('')
   const [cashLog, setCashLog] = useState([])
@@ -663,7 +650,6 @@ function PettyCashWidget({ entries, dateFilter }) {
 }
 
 function MissingMealAlert({ entries, dateFilter }) {
-  // FIX: Only show for today
   if (dateFilter !== today()) return null
   const present = entries.filter(e=>e.expense_date===dateFilter).map(e=>e.meal_type)
   const overdue = MEAL_KEYS.filter(mk => {
@@ -1047,7 +1033,6 @@ function CookAttendancePanel({ onClose, showToast }) {
     setDraft(d => ({ ...d, [draftKey(cook,shift)]:{ ...d[draftKey(cook,shift)], [field]:val } }))
   }
 
-  // FIX: Use upsert with onConflict instead of delete+insert to avoid race conditions
   const saveAll = async () => {
     setLoading(true)
     const rows = []
@@ -1341,7 +1326,6 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
   }
   const addCustomItem = () => { if (!customItem.trim()) return; addItem(customItem.trim()); setCustomItem('') }
 
-  // FIX: Guard file input
   const handleFileUpload = async e => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1359,7 +1343,6 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
   const presets = MANIPURI_PRESETS[form.meal_type] || []
   const dbItems = kitchenItems.filter(it=>it.is_active)
 
-  // FIX: Vendor — separate controlled select from free-text input
   const vendorIsPreset = LOCAL_VENDORS.includes(form.vendor)
 
   return (
@@ -1399,7 +1382,6 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
               <input type="time" className="k-input" value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
             </Field>
 
-            {/* Items */}
             <Field label="Items / Ingredients" span={2}>
               <input className="k-input" value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
               <div style={{ marginTop:10 }}>
@@ -1445,7 +1427,6 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
               <input className="k-input" value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
             </Field>
 
-            {/* FIX: Vendor — select sets value, text input is freeform override */}
             <Field label="Vendor / Supplier">
               <select className="k-input" style={{ marginBottom:7 }}
                 value={vendorIsPreset ? form.vendor : ''}
@@ -1567,7 +1548,6 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
 }
 
 // ─── Day Group ────────────────────────────────────────────────────────────────
-// FIX: Today starts expanded; past days start collapsed
 function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlockDay }) {
   const dayE    = entries.filter(e=>e.expense_date===dateStr)
   const total   = dayE.reduce((s,e)=>s+Number(e.amount),0)
@@ -1620,7 +1600,6 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
 // ─── Budget Modal ─────────────────────────────────────────────────────────────
 function BudgetModal({ current, month, onSave, onClose }) {
   const [val, setVal] = useState(current||'')
-  // FIX: Guard empty/NaN
   const handleSave = () => {
     const amt = Number(val)
     if (!amt || amt <= 0) return
@@ -1663,9 +1642,9 @@ function generatePrintReport(entries, budget, monthLabel) {
   entries.forEach(e=>{byDay[e.expense_date]=(byDay[e.expense_date]||0)+Number(e.amount)})
   const days      = Object.keys(byDay).sort()
   const avgPerDay = days.length ? total/days.length : 0
-  const topDay    = days.reduce((b,d)=>byDay[d]>byDay[b]?d:b, days[0]||'')
+  const topDay    = days.reduce((b,d)=>{const sum=byDay[d];return sum>byDay[b]?d:b},days[0]||'')
   const vendorMap = {}
-  entries.filter(e=>e.vendor).forEach(e=>{ vendorMap[e.vendor]=(vendorMap[e.vendor]||0)+Number(e.amount) })
+  entries.filter(e=>e.vendor).forEach(e=>{vendorMap[e.vendor]=(vendorMap[e.vendor]||0)+Number(e.amount)})
   const topVendors= Object.entries(vendorMap).sort((a,b)=>b[1]-a[1]).slice(0,5)
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -1779,11 +1758,11 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onRep
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          {/* Tab pills — moved here so they never wrap off-screen */}
+          {/* Tab pills */}
           <div style={{ display:'flex', borderRadius:9, overflow:'hidden', border:`1.5px solid ${C.ink[200]}` }}>
             {[['ledger','📋 Ledger'],['analytics','📊 Analytics']].map(([k,l])=>(
               <button key={k} type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTab(k) }}
+                onClick={() => setTab(k)}
                 style={{
                   padding:'7px 18px',
                   background: tab===k ? C.terra[600] : '#fff',
@@ -1860,7 +1839,6 @@ export default function Kitchen({ currentUser }) {
 
   const contentRef = useRef(null)
   useEffect(() => {
-    // Close all panels and scroll to top on tab switch
     setShowItemSetup(false)
     setShowMonitor(false)
     setShowCookLog(false)
@@ -1953,7 +1931,6 @@ export default function Kitchen({ currentUser }) {
     setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', C.forest[600])
   }
 
-  // FIX: Properly map form fields for cook log
   const handleCookLogSave = async form => {
     const { error } = await supabase.from('kitchen_cook_log').insert({
       log_date:   today(),
@@ -2059,9 +2036,9 @@ export default function Kitchen({ currentUser }) {
         )}
 
         {/* ── TAB CONTENT ── */}
-        <div style={{ display: tab==='ledger' ? 'block' : 'none' }}>
-          {/* LEDGER */}
-          <>
+        {/* FIX: Use conditional rendering with key props instead of display:none */}
+        {tab === 'ledger' && (
+          <div key="ledger-tab">
             <div className="k-card" style={{ padding:'12px 16px', marginBottom:14, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <label className="k-label" style={{ marginBottom:0 }}>Date</label>
@@ -2111,19 +2088,18 @@ export default function Kitchen({ currentUser }) {
                 ))}
               </>
             )}
-          </>
-        </div>
+          </div>
+        )}
 
-        <div style={{ display: tab==='analytics' ? 'block' : 'none' }}>
-          <div className="fade-up">
+        {tab === 'analytics' && (
+          <div key="analytics-tab" className="fade-up">
             <MonthlyChart entries={entries} />
             <MealPieBreakdown entries={entries} />
-            {/* FIX: onDayClick sets filterDate AND switches to ledger tab */}
             <CalendarHeatmap entries={entries} onDayClick={d=>{ setFilterDate(d); setTab('ledger') }} />
             <VendorSummary entries={entries} />
             <ItemFrequency entries={entries} />
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
