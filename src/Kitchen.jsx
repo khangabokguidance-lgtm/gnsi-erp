@@ -1404,7 +1404,7 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
                     {dbItems.map(it=>(
                       <button key={it.id} type="button" onClick={()=>addItem(it.name)}
                         className="px-2.5 py-0.5 rounded-full border border-teal-200 bg-teal-50 text-[10px] font-semibold cursor-pointer text-teal-800 font-body transition-all hover:bg-teal-100">
-                        + {it.name}{it.name_meitei?` / ${it.name_meitei}`:''}
+                        + {it.name}
                       </button>
                     ))}
                   </div>
@@ -1872,76 +1872,115 @@ function AnalyticsTab({ entries, setFilterDate, setTab }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TOPBAR
 // ═══════════════════════════════════════════════════════════════════════════════
+// TOPBAR — Grid action bar
+// ═══════════════════════════════════════════════════════════════════════════════
+function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
+  onBudget, onReport, onCSV, onWhatsApp, onAdd,
+  onItemSetup, onMonitor, onCookLog, onCookAtt, activePanel }) {
 
-// ═══════════════════════════════════════════════════════════════════════════════
-function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin, onBudget, onReport, onCSV, onWhatsApp, onAdd, onItemSetup, onMonitor, onCookLog, onCookAtt }) {
   const now     = new Date()
-  const timeStr = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})
-  const dateStr = now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  const dateStr = now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+
+  const ACTIONS = [
+    { id: 'items',      label: 'Items',      emoji: '🧺', fn: onItemSetup, toggle: true,  adminOnly: false },
+    { id: 'monitor',    label: 'Monitor',    emoji: '🛡',  fn: onMonitor,   toggle: true,  adminOnly: true  },
+    { id: 'cooklog',    label: 'Cook Log',   emoji: '👨‍🍳', fn: onCookLog,   toggle: true,  adminOnly: true  },
+    { id: 'attendance', label: 'Attendance', emoji: '📋', fn: onCookAtt,   toggle: true,  adminOnly: true  },
+    { id: 'budget',     label: 'Budget',     emoji: '💰', fn: onBudget,    toggle: false, adminOnly: false },
+    { id: 'report',     label: 'Report',     emoji: '🖨',  fn: onReport,    toggle: false, adminOnly: false },
+    { id: 'csv',        label: 'CSV',        emoji: '⬇',  fn: onCSV,       toggle: false, adminOnly: false },
+    { id: 'whatsapp',   label: 'WhatsApp',   emoji: '📲', fn: onWhatsApp,  toggle: false, adminOnly: false, green: true },
+    { id: 'add',        label: 'Add Entry',  emoji: '+',  fn: onAdd,       toggle: false, adminOnly: false, orange: true },
+  ].filter(a => !a.adminOnly || isAdmin)
+
+  const cols = ACTIONS.length
 
   return (
-    <div className="no-print bg-white border-b border-stone-200 shadow-sm sticky top-0 z-[100]">
-      <div className="flex justify-between items-center px-7 py-2.5 border-b border-stone-50">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-600 to-orange-800 flex items-center justify-center text-lg flex-shrink-0">
-            🍽
-          </div>
-          <div>
-            <div className="text-base font-bold text-stone-900 font-display leading-tight">Kitchen Ledger</div>
-            <div className="text-[10px] text-stone-400 mt-0.5">GNSI · Khangabok, Thoubal</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="flex rounded-lg overflow-hidden border-[1.5px] border-stone-200">
-            {[['ledger','📋 Ledger'],['analytics','📊 Analytics']].map(([k,l])=>(
-              <button key={k} type="button"
-                onClick={() => setTab(k)}
-                className={`px-4 py-1.5 text-xs font-bold cursor-pointer font-body transition-all border-none ${
-                  tab===k ? 'bg-orange-600 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'
-                }`}>
-                {l}
-              </button>
-            ))}
-          </div>
-          <div className="text-right">
-            <div className="text-[13px] font-bold text-stone-700 font-mono">{timeStr}</div>
-            <div className="text-[10px] text-stone-400">{dateStr}</div>
-          </div>
-          <button type="button" className="px-4 py-2 rounded-lg text-[13px] font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-1"
-            onClick={onAdd}>
-            <span className="text-[15px] leading-none">+</span> Add Entry
-          </button>
-        </div>
-      </div>
+    <div className="no-print bg-white border-b border-stone-200 sticky top-0 z-[100]">
 
-      <div className="flex items-center gap-2 px-7 py-2 flex-wrap">
-        <input type="month" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
-          value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
+      {/* ── Brand row ── */}
+      <div className="flex items-center gap-3 px-5 py-2 border-b border-stone-100">
+        <div className="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center text-sm flex-shrink-0">🍽</div>
+        <div>
+          <div className="text-[14px] font-bold text-stone-900 font-display leading-tight">Kitchen Ledger</div>
+          <div className="text-[10px] text-stone-400">GNSI · Khangabok, Thoubal</div>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="flex rounded-lg overflow-hidden border border-stone-200 ml-2 flex-shrink-0">
+          {[['ledger', '📋 Ledger'], ['analytics', '📊 Analytics']].map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setTab(k)}
+              className={`px-3.5 py-1.5 text-[11px] font-semibold border-none cursor-pointer transition-all ${
+                tab === k ? 'bg-orange-600 text-white' : 'bg-white text-stone-500 hover:bg-stone-50'
+              }`}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* Month picker */}
+        <input type="month"
+          className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-[11px] font-body outline-none focus:border-orange-400 transition-all"
+          value={viewMonth} onChange={e => setViewMonth(e.target.value)} />
 
         <div className="flex-1" />
 
-        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-          onClick={onItemSetup}>🧺 Items</button>
-        {isAdmin && <>
-          <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-            onClick={onMonitor}>🛡 Monitor</button>
-          <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-            onClick={onCookLog}>👨‍🍳 Cook Log</button>
-          <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-            onClick={onCookAtt}>👩‍🍳 Attendance</button>
-        </>}
-        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-          onClick={onBudget}>💰 Budget</button>
-        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-          onClick={onReport}>🖨 Report</button>
-        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-          onClick={onCSV}>⬇ CSV</button>
-        <button type="button" onClick={onWhatsApp}
-          className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-br from-[#25D366] to-[#128C7E] cursor-pointer inline-flex items-center gap-1 font-body shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all">
-          📲 WhatsApp
-        </button>
+        {/* Clock */}
+        <div className="text-right flex-shrink-0">
+          <div className="text-[13px] font-bold text-stone-700 font-mono">{timeStr}</div>
+          <div className="text-[10px] text-stone-400">{dateStr}</div>
+        </div>
+      </div>
+
+      {/* ── Action grid ── */}
+      <div
+        className="grid border-b border-stone-100"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        {ACTIONS.map(a => {
+          const isActive = a.toggle && activePanel === a.id
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={a.fn}
+              className={[
+                'relative flex flex-col items-center justify-center gap-[3px] py-2 px-1',
+                'border-r border-stone-100 last:border-r-0',
+                'cursor-pointer select-none transition-colors duration-100',
+                a.orange ? 'bg-orange-600 hover:bg-orange-700' :
+                a.green  ? 'hover:bg-green-50' :
+                isActive ? 'bg-orange-50' : 'hover:bg-stone-50',
+              ].join(' ')}>
+
+              {/* Icon */}
+              <span className={[
+                'text-[17px] leading-none',
+                a.orange ? 'text-white' :
+                a.green  ? 'text-green-600' :
+                isActive ? 'text-orange-600' : 'text-stone-400',
+              ].join(' ')}>
+                {a.emoji}
+              </span>
+
+              {/* Label */}
+              <span className={[
+                'text-[9.5px] font-semibold leading-none whitespace-nowrap',
+                a.orange ? 'text-orange-100' :
+                a.green  ? 'text-green-700' :
+                isActive ? 'text-orange-700' : 'text-stone-400',
+              ].join(' ')}>
+                {a.label}
+              </span>
+
+              {/* Active underline indicator */}
+              {isActive && (
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-[2px] bg-orange-500 rounded-t" />
+              )}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -2083,6 +2122,11 @@ export default function Kitchen({ currentUser }) {
   }
 
   // ─── Derived ──────────────────────────────────────────────────────────────
+  const activePanel =
+  showItemSetup ? 'items'      :
+  showMonitor   ? 'monitor'    :
+  showCookLog   ? 'cooklog'    :
+  showCookAtt   ? 'attendance' : null
   const filteredByMeal = filterMeal==='all' ? entries : entries.filter(e=>e.meal_type===filterMeal)
   const uniqueDates    = [...new Set(filteredByMeal.map(e=>e.expense_date))].sort().reverse()
   const todayTotal     = entries.filter(e=>e.expense_date===today()).reduce((s,e)=>s+Number(e.amount),0)
@@ -2123,21 +2167,22 @@ export default function Kitchen({ currentUser }) {
       )}
 
       <Topbar
-        viewMonth={viewMonth}   setViewMonth={setViewMonth}
-        tab={tab}               setTab={setTab}
-        isAdmin={isAdmin}
-        onBudget={()=>setShowBudget(true)}
-        onReport={()=>generatePrintReport(entries,budget,viewMonth)}
-        onCSV={()=>exportToCSV(entries,viewMonth)}
-        onWhatsApp={()=>setShowWA(generateWhatsAppMsg(entries,filterDate))}
-        onAdd={()=>{ setEditing(null); setFormOpen(true) }}
-        onItemSetup={()=>setShowItemSetup(v=>!v)}
-        onMonitor={()=>setShowMonitor(v=>!v)}
-        onCookLog={()=>setShowCookLog(v=>!v)}
-        onCookAtt={()=>setShowCookAtt(v=>!v)}
-      />
+  viewMonth={viewMonth}   setViewMonth={setViewMonth}
+  tab={tab}               setTab={setTab}
+  isAdmin={isAdmin}
+  activePanel={activePanel}          
+  onBudget={()=>setShowBudget(true)}
+  onReport={()=>generatePrintReport(entries,budget,viewMonth)}
+  onCSV={()=>exportToCSV(entries,viewMonth)}
+  onWhatsApp={()=>setShowWA(generateWhatsAppMsg(entries,filterDate))}
+  onAdd={()=>{ setEditing(null); setFormOpen(true) }}
+  onItemSetup={()=>setShowItemSetup(v=>!v)}
+  onMonitor={()=>setShowMonitor(v=>!v)}
+  onCookLog={()=>setShowCookLog(v=>!v)}
+  onCookAtt={()=>setShowCookAtt(v=>!v)}
+/>
 
-      <div ref={contentRef} className="max-w-[1080px] mx-auto px-7 py-6 h-[calc(100vh-120px)] overflow-y-auto">
+      <div ref={contentRef} className="max-w-[1080px] mx-auto px-7 py-6 h-[calc(100vh-88px)] overflow-y-auto">
         {loading && <LoadingBar />}
 
         <div className="flex gap-2.5 flex-wrap mb-4 stagger">
