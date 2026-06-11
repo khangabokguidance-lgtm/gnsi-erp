@@ -1724,51 +1724,6 @@ function generateWhatsAppMsg(entries, dateStr) {
   return msg
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TAB SYSTEM — Clean, extensible, data-driven tab rendering
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Tab configuration registry.
- * Each tab defines: id, label, icon, component, and required permissions.
- * Adding a new tab is as simple as adding an entry here.
- */
-const TABS = [
-  {
-    id: 'ledger',
-    label: 'Ledger',
-    icon: '📋',
-    component: LedgerTab,
-    adminOnly: false,
-  },
-  {
-    id: 'analytics',
-    label: 'Analytics',
-    icon: '📊',
-    component: AnalyticsTab,
-    adminOnly: false,
-  },
-]
-
-/**
- * TabContent — Renders the active tab with:
- * 1. Animation support (fade-in on tab switch)
- * 2. Lazy loading (only renders when active)
- * 3. Error boundary ready
- * 4. Scroll reset on switch
- */
-function TabContent({ activeTab, tabs, tabProps }) {
-  const active = tabs.find(t => t.id === activeTab)
-  if (!active) return null
-
-  const TabComponent = active.component
-  return (
-    <div key={activeTab} className="animate-fade-up">
-      <TabComponent {...tabProps} />
-    </div>
-  )
-}
-
 /**
  * LedgerTab — All ledger/filter/day-group view logic
  * Isolated for clarity, testability, and tree-shaking
@@ -2212,100 +2167,33 @@ export default function Kitchen({ currentUser }) {
         )}
 
         {/* ── TAB CONTENT ── */}
-        <TabContent activeTab={tab} tabs={TABS} tabProps={{ 
-          entries, filterDate, setFilterDate, filterMeal, setFilterMeal, 
-          uniqueDates, filteredByMeal, locks, viewMonth, setFormOpen, 
-          handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab
-        }} />
+<div key={tab} className="animate-fade-up">
+  {tab === 'ledger' && (
+    <LedgerTab
+      entries={entries}
+      filterDate={filterDate}         setFilterDate={setFilterDate}
+      filterMeal={filterMeal}         setFilterMeal={setFilterMeal}
+      uniqueDates={uniqueDates}
+      filteredByMeal={filteredByMeal}
+      locks={locks}
+      viewMonth={viewMonth}
+      setFormOpen={setFormOpen}
+      handleDelete={handleDelete}
+      handleLockDay={handleLockDay}
+      handleUnlockDay={handleUnlockDay}
+      setEditing={setEditing}
+      setTab={setTab}
+    />
+  )}
+  {tab === 'analytics' && (
+    <AnalyticsTab
+      entries={entries}
+      setFilterDate={setFilterDate}
+      setTab={setTab}
+    />
+  )}
+</div>
       </div>
     </div>
   )
 }
-
-/*
-═══════════════════════════════════════════════════════════════════════════════
- SUPABASE MIGRATION SQL
- Run this in your Supabase SQL editor if you haven't already
-═══════════════════════════════════════════════════════════════════════════════
-
--- Core expenditure table
-CREATE TABLE IF NOT EXISTS kitchen_expenditure (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  meal_type     text NOT NULL CHECK (meal_type IN ('lunch','morning_breakfast','evening_breakfast','dinner')),
-  expense_date  date NOT NULL DEFAULT CURRENT_DATE,
-  amount        numeric(10,2) NOT NULL DEFAULT 0,
-  item_details  text,
-  prepared_by   text,
-  pax_count     int,
-  vendor        text,
-  meal_rating   int CHECK (meal_rating BETWEEN 0 AND 5),
-  serving_time  time,
-  receipt_url   text,
-  notes         text,
-  created_at    timestamptz DEFAULT now(),
-  updated_at    timestamptz DEFAULT now()
-);
-
--- Monthly budgets
-CREATE TABLE IF NOT EXISTS kitchen_budgets (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  month          text NOT NULL UNIQUE,
-  budget_amount  numeric(10,2) NOT NULL,
-  created_at     timestamptz DEFAULT now()
-);
-
--- Daily locks
-CREATE TABLE IF NOT EXISTS kitchen_daily_locks (
-  id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  lock_date date NOT NULL UNIQUE,
-  locked_by text,
-  locked_at timestamptz DEFAULT now()
-);
-
--- Item master list
-CREATE TABLE IF NOT EXISTS kitchen_items (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name          text NOT NULL,
-  name_meitei   text,
-  category      text DEFAULT 'other',
-  unit          text DEFAULT 'kg',
-  default_price numeric(10,2),
-  is_active     boolean DEFAULT true,
-  created_at    timestamptz DEFAULT now()
-);
-
--- Cook activity log (per meal)
-CREATE TABLE IF NOT EXISTS kitchen_cook_log (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  log_date   date NOT NULL DEFAULT CURRENT_DATE,
-  staff_name text NOT NULL,
-  meal_type  text NOT NULL,
-  arrived_at time,
-  left_at    time,
-  notes      text,
-  created_at timestamptz DEFAULT now()
-);
-
--- Cook attendance (per shift per day)
-CREATE TABLE IF NOT EXISTS kitchen_cook_attendance (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  att_date   date NOT NULL,
-  cook_name  text NOT NULL,
-  shift      text NOT NULL CHECK (shift IN ('morning','evening')),
-  status     text NOT NULL DEFAULT 'present' CHECK (status IN ('present','absent','half_day')),
-  check_in   time,
-  check_out  time,
-  notes      text,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE(att_date, cook_name, shift)
-);
-
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_kitchen_exp_date  ON kitchen_expenditure(expense_date);
-CREATE INDEX IF NOT EXISTS idx_kitchen_exp_meal  ON kitchen_expenditure(meal_type);
-CREATE INDEX IF NOT EXISTS idx_cook_att_date     ON kitchen_cook_attendance(att_date);
-CREATE INDEX IF NOT EXISTS idx_cook_log_date     ON kitchen_cook_log(log_date);
-
--- Storage bucket (run in Supabase Dashboard → Storage, not SQL)
--- Create a PUBLIC bucket named: kitchen-receipts
-*/
