@@ -457,222 +457,170 @@ function PipelineBar({ steps, stepData, compact = false, light = false }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // STEP ROW
 // ═══════════════════════════════════════════════════════════════════════════════
-function StepRow({ step, stepState, isActive, isLocked, currentUser, onSubmitStep, onApproveStep, onRejectStep }) {
+function StepRow({ step, stepState, isActive, isLocked, currentUser, onSubmitStep, onApproveStep, onRejectStep, stepIndex, totalSteps }) {
   const [expanded, setExpanded] = useState(false);
   const [note,     setNote]     = useState("");
   const [feedback, setFeedback] = useState("");
   const [saving,   setSaving]   = useState(false);
 
   const st = stepState?.status || "pending";
-  const m  = STEP_META[st];
-
   const canSubmit  = PERMS.canSubmitStep(currentUser, step, st) && isActive;
   const canApprove = PERMS.canApprove(currentUser) && st === "submitted";
 
+  const STATUS_PILL = {
+    pending:     { label: "Pending",         cls: "pill-pending"   },
+    in_progress: { label: "In progress",     cls: "pill-pending"   },
+    submitted:   { label: "Awaiting review", cls: "pill-submitted" },
+    approved:    { label: "Approved",        cls: "pill-approved"  },
+    rejected:    { label: "Rejected",        cls: "pill-rejected"  },
+  };
+  const pill = STATUS_PILL[st] || STATUS_PILL.pending;
+
+  const numBg = st === "approved" ? { bg: C.successSoft, border: "#86efac", color: C.success }
+    : isActive ? { bg: C.infoSoft, border: "#7dd3fc", color: C.info }
+    : { bg: C.surface2, border: C.border, color: C.textDim };
+
+  const iconBg = st === "approved" ? C.successSoft
+    : isActive ? C.infoSoft : C.surface2;
+
   const doSubmit = async () => {
-    if (!note.trim()) { alert("Add a completion note before submitting."); return; }
+    if (!note.trim()) { alert("Add a completion note."); return; }
     setSaving(true);
     try { await onSubmitStep(step.key, note); setNote(""); setExpanded(false); }
-    catch (e) { alert(e.message); }
-    finally { setSaving(false); }
+    catch (e) { alert(e.message); } finally { setSaving(false); }
   };
-
   const doApprove = async () => {
     setSaving(true);
     try { await onApproveStep(step.key, feedback); setFeedback(""); setExpanded(false); }
-    catch (e) { alert(e.message); }
-    finally { setSaving(false); }
+    catch (e) { alert(e.message); } finally { setSaving(false); }
   };
-
   const doReject = async () => {
     if (!feedback.trim()) { alert("Provide a rejection reason."); return; }
     setSaving(true);
     try { await onRejectStep(step.key, feedback); setFeedback(""); setExpanded(false); }
-    catch (e) { alert(e.message); }
-    finally { setSaving(false); }
+    catch (e) { alert(e.message); } finally { setSaving(false); }
   };
 
-  const borderColor = st === "approved" ? "#bbf7d0"
-    : st === "rejected" ? "#fecaca"
-    : st === "submitted" ? "#fde68a"
-    : isActive ? `${C.brand}55`
-    : C.border;
-
-  const headerBg = st === "approved" ? "#f0fdf4"
-    : st === "submitted" ? "#fffbeb"
-    : isActive ? `${C.brand}06`
-    : "transparent";
-
   return (
-    <div style={{
-      border: `1.5px solid ${borderColor}`, borderRadius: 11,
-      overflow: "hidden",
-      background: isLocked ? "#fafafa" : C.surface,
-      opacity: isLocked ? 0.5 : 1,
-      transition: "opacity .15s",
-    }}>
-      {/* Header */}
+    <div style={{ borderBottom: `0.5px solid ${C.border}` }}>
+      {/* Header row */}
       <div
         onClick={() => !isLocked && setExpanded(v => !v)}
         style={{
-          display: "flex", alignItems: "center", gap: 11,
-          padding: "11px 14px", cursor: isLocked ? "default" : "pointer",
-          background: headerBg,
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "12px 20px", cursor: isLocked ? "default" : "pointer",
+          background: expanded ? C.surface2 : "transparent",
+          transition: "background .1s",
+          opacity: isLocked ? 0.4 : 1,
         }}
       >
-        {/* Step icon */}
+        {/* Step number circle */}
         <div style={{
-          width: 34, height: 34, borderRadius: 9,
-          background: m.soft, border: `1.5px solid ${m.color}30`,
+          width: 24, height: 24, borderRadius: "50%",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 17, flexShrink: 0,
+          fontSize: 11, fontWeight: 600, flexShrink: 0,
+          background: numBg.bg, border: `0.5px solid ${numBg.border}`, color: numBg.color,
+        }}>
+          {st === "approved" ? "✓" : stepIndex + 1}
+        </div>
+
+        {/* Step icon box */}
+        <div style={{
+          width: 32, height: 32, borderRadius: 8,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 15, flexShrink: 0,
+          background: iconBg, border: `0.5px solid ${C.border}`,
         }}>
           {step.icon}
         </div>
 
         {/* Label + desc */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-            <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{step.label}</span>
-            {isActive && st !== "approved" && (
-              <span style={{
-                fontSize: F.xs, color: C.brand, fontWeight: 700,
-                background: `${C.brand}12`, padding: "2px 8px", borderRadius: 99,
-              }}>Active</span>
-            )}
+          <div style={{ fontSize: 13, fontWeight: 600, color: isLocked ? C.textDim : C.text, marginBottom: 1 }}>
+            {step.label}
           </div>
-          <div style={{ fontSize: F.xs, color: C.textMid, marginTop: 1 }}>{step.desc}</div>
+          <div style={{ fontSize: 11, color: C.textDim }}>{step.desc}</div>
         </div>
 
-        {/* Status + chevron */}
+        {/* Right: active badge + status pill + chevron */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+          {isActive && st !== "approved" && (
+            <span style={{ fontSize: 10, fontWeight: 600, color: C.info, background: C.infoSoft, padding: "2px 8px", borderRadius: 99, border: `0.5px solid #7dd3fc` }}>
+              Active
+            </span>
+          )}
           <StatusBadge status={st} />
           {!isLocked && (
-            <span style={{ fontSize: 11, color: C.textDim, flexShrink: 0 }}>
-              {expanded ? "▲" : "▼"}
-            </span>
+            <span style={{ fontSize: 11, color: C.textDim, transform: expanded ? "rotate(180deg)" : "none", transition: "transform .2s", display: "inline-block" }}>▾</span>
           )}
         </div>
       </div>
 
       {/* Expanded body */}
       {expanded && !isLocked && (
-        <div style={{
-          padding: "13px 14px 15px",
-          borderTop: `1px solid ${C.border}`,
-          display: "flex", flexDirection: "column", gap: 11,
-          background: C.surface,
-        }}>
+        <div style={{ padding: "0 20px 16px", background: C.surface2, borderTop: `0.5px solid ${C.border}` }}>
           {/* Staff note */}
           {stepState?.note && (
-            <div style={{
-              background: `${C.info}08`, border: `1px solid ${C.info}25`,
-              borderRadius: 9, padding: "10px 13px",
-            }}>
-              <div style={{ fontSize: F.xs, color: C.textMid, fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
-                Staff Note
-              </div>
-              <div style={{ fontSize: F.base, color: C.text, lineHeight: 1.65 }}>
-                "{stepState.note}"
-              </div>
-              {stepState.submitted_at && (
-                <div style={{ fontSize: F.xs, color: C.textDim, marginTop: 5 }}>
-                  Submitted {fmtTime(stepState.submitted_at)} by {stepState.submitted_by}
-                </div>
-              )}
+            <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 10, padding: "11px 13px", marginTop: 12, marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: C.textDim, marginBottom: 5 }}>Staff note</div>
+              <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>"{stepState.note}"</div>
+              {stepState.submitted_at && <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>Submitted {fmtTime(stepState.submitted_at)} by {stepState.submitted_by}</div>}
             </div>
           )}
 
-          {/* Feedback note */}
+          {/* Feedback */}
           {stepState?.feedback && (
-            <div style={{
-              background: st === "rejected" ? C.dangerSoft : C.successSoft,
-              border: `1px solid ${st === "rejected" ? "#fecaca" : "#bbf7d0"}`,
-              borderRadius: 9, padding: "10px 13px",
-            }}>
-              <div style={{ fontSize: F.xs, color: C.textMid, fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
-                {st === "rejected" ? "Rejection Reason" : "Approval Note"}
+            <div style={{ background: C.surface, border: `0.5px solid ${st==="rejected"?"#fca5a5":C.border}`, borderRadius: 10, padding: "11px 13px", marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: C.textDim, marginBottom: 5 }}>
+                {st === "rejected" ? "Rejection reason" : "Approval note"}
               </div>
-              <div style={{ fontSize: F.base, color: st === "rejected" ? C.danger : C.success, lineHeight: 1.65 }}>
-                {stepState.feedback}
-              </div>
-              {stepState.reviewed_at && (
-                <div style={{ fontSize: F.xs, color: C.textDim, marginTop: 5 }}>
-                  by {stepState.reviewed_by} · {fmtTime(stepState.reviewed_at)}
-                </div>
-              )}
+              <div style={{ fontSize: 13, color: st === "rejected" ? C.danger : C.success, lineHeight: 1.6 }}>{stepState.feedback}</div>
+              {stepState.reviewed_at && <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>by {stepState.reviewed_by} · {fmtTime(stepState.reviewed_at)}</div>}
             </div>
           )}
 
-          {/* Staff: submit */}
+          {/* Submit */}
           {canSubmit && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div>
-                <label style={s.label}>Completion note *</label>
-                <textarea
-                  style={{ ...s.input, resize: "vertical", minHeight: 70 }}
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
-                  placeholder={`Describe what was completed for "${step.label}"…`}
-                />
-              </div>
-              <button
-                onClick={doSubmit}
-                disabled={saving || !note.trim()}
-                style={{ ...s.btn("#059669"), opacity: saving || !note.trim() ? 0.55 : 1 }}
-              >
-                {saving ? "Submitting…" : "📤 Submit for Approval"}
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.textMid, textTransform: "uppercase", letterSpacing: ".06em" }}>Completion note</div>
+              <textarea style={{ width: "100%", padding: "9px 12px", border: `0.5px solid ${C.border}`, borderRadius: 9, background: C.surface, color: C.text, fontSize: 13, fontFamily: "inherit", resize: "vertical", minHeight: 70, lineHeight: 1.6, outline: "none", boxSizing: "border-box" }}
+                value={note} onChange={e => setNote(e.target.value)} placeholder={`Describe what was completed for "${step.label}"…`} />
+              <button onClick={doSubmit} disabled={saving || !note.trim()} style={{ padding: "9px 18px", borderRadius: 9, background: C.brand, color: "white", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: saving || !note.trim() ? 0.5 : 1 }}>
+                {saving ? "Submitting…" : "Submit for review →"}
               </button>
             </div>
           )}
 
-          {/* Admin/Incharge: approve or reject */}
+          {/* Approve / Reject */}
           {canApprove && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div>
-                <label style={s.label}>
-                  Feedback
-                  <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, marginLeft: 5 }}>
-                    (optional for approval, required for rejection)
-                  </span>
-                </label>
-                <textarea
-                  style={{ ...s.input, resize: "vertical", minHeight: 58 }}
-                  value={feedback}
-                  onChange={e => setFeedback(e.target.value)}
-                  placeholder="Add feedback or rejection reason…"
-                />
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.textMid, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                Feedback <span style={{ fontWeight: 400, textTransform: "none" }}>(optional for approval)</span>
               </div>
+              <textarea style={{ width: "100%", padding: "9px 12px", border: `0.5px solid ${C.border}`, borderRadius: 9, background: C.surface, color: C.text, fontSize: 13, fontFamily: "inherit", resize: "vertical", minHeight: 54, lineHeight: 1.6, outline: "none", boxSizing: "border-box" }}
+                value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Add feedback or rejection reason…" />
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={doApprove} disabled={saving} style={{ flex: 1, ...s.btn("#059669") }}>
-                  ✅ Approve
+                <button onClick={doApprove} disabled={saving} style={{ flex: 1, padding: "9px 14px", borderRadius: 9, background: C.successSoft, color: C.success, border: `0.5px solid #86efac`, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  ✓ Approve
                 </button>
-                <button onClick={doReject} disabled={saving} style={{ flex: 1, ...s.btn(C.danger) }}>
+                <button onClick={doReject} disabled={saving} style={{ flex: 1, padding: "9px 14px", borderRadius: 9, background: C.dangerSoft, color: C.danger, border: `0.5px solid #fca5a5`, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
                   ✕ Reject
                 </button>
               </div>
             </div>
           )}
 
-          {/* Waiting state */}
+          {/* Waiting */}
           {currentUser.role === "staff" && st === "submitted" && (
-            <div style={{
-              fontSize: F.sm, color: C.warn, fontWeight: 600,
-              background: C.warnSoft, border: `1px solid #fde68a`,
-              borderRadius: 8, padding: "9px 12px",
-            }}>
-              ⏳ Awaiting approval from in-charge / admin…
+            <div style={{ marginTop: 12, padding: "9px 12px", borderRadius: 9, background: C.warnSoft, border: `0.5px solid #fde68a`, fontSize: 12, color: C.warn }}>
+              ⏳ Awaiting review from in-charge / admin
             </div>
           )}
 
-          {/* Approved summary */}
+          {/* Approved */}
           {st === "approved" && (
-            <div style={{
-              fontSize: F.sm, color: C.success, fontWeight: 700,
-              background: C.successSoft, border: "1px solid #bbf7d0",
-              borderRadius: 8, padding: "9px 12px",
-            }}>
-              ✅ Approved by {stepState?.reviewed_by} · {fmtTime(stepState?.reviewed_at)}
+            <div style={{ marginTop: 12, padding: "9px 12px", borderRadius: 9, background: C.successSoft, border: `0.5px solid #86efac`, fontSize: 12, color: C.success }}>
+              ✓ Approved by {stepState?.reviewed_by} · {fmtTime(stepState?.reviewed_at)}
             </div>
           )}
         </div>
@@ -821,9 +769,11 @@ function ChecklistDetailModal({ checklist, currentUser, onClose, onUpdate, isMob
               onSubmitStep={handleSubmitStep}
               onApproveStep={handleApproveStep}
               onRejectStep={handleRejectStep}
+              stepIndex={idx}
+              totalSteps={steps.length}
             />
           ))}
-        </div>
+        </div>  {/* ← closes the overflowY scroll container */}
 
         {/* Footer */}
         {!isFinalized && PERMS.canFinalize(currentUser) && (
