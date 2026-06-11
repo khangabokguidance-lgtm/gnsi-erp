@@ -202,9 +202,7 @@ function PipelineBar({ steps, stepData, compact=false }) {
             const st = stepData?.[s.key]?.status || "pending";
             const m  = STEP_META[st];
             return (
-              <div key={s.key} title={s.label} style={{ width:22, height:22, borderRadius:"50%", background:m.bg, border:`1.5px solid ${m.color}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, color:m.color, fontWeight:700, flexShrink:0 }}>
-                {m.icon}
-              </div>
+              <div key={s.key} title={`${s.label}: ${m.label}`} style={{ width:16, height:16, borderRadius:"50%", background:m.color, flexShrink:0, opacity: st==="pending" ? 0.25 : 1 }} />
             );
           })}
         </div>
@@ -265,11 +263,11 @@ function StepRow({ step, stepState, isActive, isLocked, currentUser, onSubmitSte
           </div>
           <div style={{ fontSize:F.xs, color:T.textMid, marginTop:2 }}>{step.desc}</div>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:9, flexShrink:0 }}>
-          <Badge label={m.label} color={m.color} bg={m.bg} icon={m.icon} />
-          {!isLocked && <span style={{ fontSize:16, color:T.textMid }}>{expanded?"▲":"▼"}</span>}
+        <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, minWidth:0 }}>
+          <Badge label={m.label} color={m.color} bg={m.bg} />
+          {!isLocked && <span style={{ fontSize:13, color:T.textMid, flexShrink:0 }}>{expanded?"▲":"▼"}</span>}
         </div>
-      </div>
+      </div>  {/* ← closes the step header div */}
 
       {/* Expanded body */}
       {expanded && !isLocked && (
@@ -401,9 +399,9 @@ function ChecklistDetailModal({ checklist, currentUser, onClose, onUpdate, isMob
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,.5)", backdropFilter:"blur(4px)", zIndex:2000, display:"flex", alignItems:isMobile?"flex-end":"center", justifyContent:"center" }}
       onClick={e => e.target===e.currentTarget && onClose()}>
-      <div style={{ ...G.card, width:"100%", maxWidth:680, maxHeight:isMobile?"95vh":"92vh", display:"flex", flexDirection:"column", borderRadius:isMobile?"18px 18px 0 0":"18px", boxShadow:"0 20px 60px rgba(0,0,0,.2)" }}>
-        {/* Header */}
-        <div style={{ background:`linear-gradient(135deg,${examMeta.color},${examMeta.color}cc)`, padding:"18px 20px" }}>
+      <div style={{ ...G.card, width:"100%", maxWidth:680, maxHeight:isMobile?"95vh":"90vh", display:"flex", flexDirection:"column", borderRadius:isMobile?"18px 18px 0 0":"18px", boxShadow:"0 20px 60px rgba(0,0,0,.2)" }}>
+  {/* Header */}
+  <div style={{ background:`linear-gradient(135deg,${examMeta.color},${examMeta.color}cc)`, padding:"14px 16px", flexShrink:0 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
             <div>
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
