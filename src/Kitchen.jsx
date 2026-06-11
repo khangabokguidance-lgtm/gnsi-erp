@@ -1974,6 +1974,7 @@ export default function Kitchen({ currentUser }) {
     setShowCookLog(false)
     setShowCookAtt(false)
     setFormOpen(false)
+    setEditing(null)
     contentRef.current?.scrollTo({ top:0, behavior:'smooth' })
   }, [tab])
 
@@ -2131,10 +2132,10 @@ export default function Kitchen({ currentUser }) {
   onCSV={()=>exportToCSV(entries,viewMonth)}
   onWhatsApp={()=>setShowWA(generateWhatsAppMsg(entries,filterDate))}
   onAdd={()=>{ setEditing(null); setFormOpen(true) }}
-  onItemSetup={()=>setShowItemSetup(v=>!v)}
-  onMonitor={()=>setShowMonitor(v=>!v)}
-  onCookLog={()=>setShowCookLog(v=>!v)}
-  onCookAtt={()=>setShowCookAtt(v=>!v)}
+  onItemSetup={()=>{ setShowMonitor(false); setShowCookLog(false); setShowCookAtt(false); setShowItemSetup(v=>!v) }}
+onMonitor={()=>{ setShowItemSetup(false); setShowCookLog(false); setShowCookAtt(false); setShowMonitor(v=>!v) }}
+onCookLog={()=>{ setShowItemSetup(false); setShowMonitor(false); setShowCookAtt(false); setShowCookLog(v=>!v) }}
+onCookAtt={()=>{ setShowItemSetup(false); setShowMonitor(false); setShowCookLog(false); setShowCookAtt(v=>!v) }}
 />
 
       <div ref={contentRef} className="max-w-[1080px] mx-auto px-7 py-6 h-[calc(100vh-88px)] overflow-y-auto">
