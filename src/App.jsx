@@ -163,6 +163,9 @@ const LS = {
   set: (k, v)  => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} },
 }
 
+const SIDEBAR_FULL = 262
+const SIDEBAR_MINI = 62
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(() => window.innerWidth <= 768)
   useEffect(() => {
@@ -172,6 +175,40 @@ function useIsMobile() {
     return () => mq.removeEventListener('change', h)
   }, [])
   return mobile
+}
+
+// ── Collapsed icon-only nav ──────────────────────────────
+function CollapsedNav({ activePage, onNavigate, allowedModules }) {
+  return (
+    <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '6px 0',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+      scrollbarWidth: 'none' }}>
+      {ALL_ITEMS.filter(i => allowedModules.has(i.id)).map(item => {
+        const isActive = activePage === item.id
+        const badge = BADGES[item.id]
+        return (
+          <button key={item.id} onClick={() => onNavigate(item.id)} title={item.label}
+            style={{ width: 44, height: 40, borderRadius: 9, flexShrink: 0,
+              border: isActive ? `1px solid ${D.accentBorder}` : '1px solid transparent',
+              background: isActive ? D.bgActive : 'transparent',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 18, position: 'relative', transition: 'all .12s' }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = D.bgHover }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
+            {item.icon}
+            {isActive && (
+              <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                width: 3, height: 16, borderRadius: '0 3px 3px 0', background: D.accent }} />
+            )}
+            {badge && (
+              <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7,
+                borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />
+            )}
+          </button>
+        )
+      })}
+    </nav>
+  )
 }
 
 function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) {
@@ -234,16 +271,47 @@ function LogoutButton({ onLogout }) {
   )
 }
 
-function LogoHeader({ isMobile, onClose }) {
+// ── Logo header — shows toggle button on desktop ─────────
+function LogoHeader({ isMobile, onClose, collapsed, onToggleCollapse }) {
+  const [hov, setHov] = useState(false)
   return (
-    <div style={{ padding: '0 14px', height: 60, display: 'flex', alignItems: 'center', gap: 11, borderBottom: `1px solid ${D.border}`, flexShrink: 0, background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`, position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1, background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
-      <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em', lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
-        <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>School Management</div>
-      </div>
-      {isMobile && <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`, borderRadius: 6, cursor: 'pointer', color: D.textMuted, fontSize: 14, lineHeight: 1, padding: '5px 8px' }} aria-label="Close menu">✕</button>}
+    <div style={{ padding: '0 10px 0 14px', height: 60, display: 'flex', alignItems: 'center',
+      gap: collapsed ? 0 : 11, borderBottom: `1px solid ${D.border}`, flexShrink: 0,
+      background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`,
+      position: 'relative', overflow: 'hidden', justifyContent: collapsed ? 'center' : 'flex-start' }}>
+      <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1,
+        background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
+      <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI"
+        style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
+      {!collapsed && (
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em',
+            lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
+            GNSI <span style={{ color: D.accent }}>ERP</span>
+          </div>
+          <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase',
+            marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>School Management</div>
+        </div>
+      )}
+      {isMobile
+        ? <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`,
+            borderRadius: 6, cursor: 'pointer', color: D.textMuted, fontSize: 14, lineHeight: 1,
+            padding: '5px 8px', flexShrink: 0 }} aria-label="Close menu">✕</button>
+        : (
+          <button onClick={onToggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+            style={{ flexShrink: 0, marginLeft: collapsed ? 0 : 'auto',
+              background: hov ? D.accentGlow : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${hov ? D.accentBorder : D.border}`,
+              borderRadius: 6, cursor: 'pointer',
+              color: hov ? D.accentLight : D.textMuted,
+              fontSize: 13, lineHeight: 1, padding: '5px 7px',
+              transition: 'all .15s', zIndex: 1 }}>
+            {collapsed ? '»' : '«'}
+          </button>
+        )
+      }
     </div>
   )
 }
@@ -350,10 +418,38 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   )
 }
 
-function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) {
+// ── Collapsed mini logout (icon only) ───────────────────
+function MiniLogout({ onLogout }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div style={{ padding: '8px 0 12px', borderTop: `1px solid ${D.border}`, display: 'flex', justifyContent: 'center' }}>
+      <button onClick={onLogout} title="Sign Out"
+        onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+        style={{ width: 40, height: 36, borderRadius: 8, border: `1px solid ${hov ? D.accentBorder : D.border}`,
+          cursor: 'pointer', background: hov ? D.accentGlow : D.bgSurface,
+          color: hov ? D.accentLight : D.textMuted, fontSize: 16, transition: 'all .15s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        🚪
+      </button>
+    </div>
+  )
+}
+
+function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, collapsed, onToggleCollapse }) {
   const isMobile    = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const totalBadges = Object.values(BADGES).reduce((s, b) => s + b.count, 0)
+
+  // Compute allowedModules here so CollapsedNav can use it
+  const role    = currentUser?.role || 'Teacher'
+  const isAdmin = role === 'Admin'
+  const allowedModules = useMemo(() => {
+    if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
+    const set = new Set(['dashboard'])
+    if ((currentUser?.role || '') === 'Manager') set.add('invitation')
+    Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
+    return set
+  }, [permMap, isAdmin, currentUser?.role])
 
   useEffect(() => { setDrawerOpen(false) }, [activePage])
   useEffect(() => {
@@ -367,36 +463,63 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) 
     borderRight: `1px solid ${D.border}`,
   }
 
+  // ── Desktop sidebar ──────────────────────────────────
   if (!isMobile) {
+    const w = collapsed ? SIDEBAR_MINI : SIDEBAR_FULL
     return (
-      <div style={{ ...sidebarStyles, width: 262, height: '100vh', position: 'fixed', left: 0, top: 0, zIndex: 100 }}>
-        <LogoHeader isMobile={false} />
-        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} permMap={permMap} />
+      <div style={{ ...sidebarStyles, width: w, height: '100vh', position: 'fixed', left: 0, top: 0,
+        zIndex: 100, overflow: 'hidden',
+        transition: 'width 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
+        <LogoHeader isMobile={false} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
+        {collapsed
+          ? <>
+              <CollapsedNav activePage={activePage} onNavigate={setActivePage} allowedModules={allowedModules} />
+              <MiniLogout onLogout={onLogout} />
+            </>
+          : <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout}
+              currentUser={currentUser} permMap={permMap} />
+        }
       </div>
     )
   }
 
+  // ── Mobile sidebar (drawer) ──────────────────────────
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg, borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-        <button onClick={() => setDrawerOpen(true)} aria-label="Open menu" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg,
+        borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10,
+        padding: '0 12px', zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
+        <button onClick={() => setDrawerOpen(true)} aria-label="Open menu"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex',
+            flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
         </button>
-        <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
+        <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI"
+          style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1 }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
           <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>School Management</div>
         </div>
-        <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {ALL_ITEMS.find(i => i.id === active)?.icon}{' '}{ALL_ITEMS.find(i => i.id === active)?.label || active}
+        <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow,
+          border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px',
+          maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
-        <button onClick={onLogout} title="Sign Out" style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5', fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
+        <button onClick={onLogout} title="Sign Out"
+          style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)',
+            borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5',
+            fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
       </div>
-      {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
-      <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh', zIndex: 299, overflowY: 'hidden', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
-        <LogoHeader isMobile onClose={() => setDrawerOpen(false)} />
-        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} onNavClick={() => setDrawerOpen(false)} permMap={permMap} />
+      {drawerOpen && <div onClick={() => setDrawerOpen(false)}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
+      <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh',
+        zIndex: 299, overflowY: 'hidden',
+        transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
+        <LogoHeader isMobile onClose={() => setDrawerOpen(false)} collapsed={false} onToggleCollapse={() => {}} />
+        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout}
+          currentUser={currentUser} onNavClick={() => setDrawerOpen(false)} permMap={permMap} />
       </div>
     </>
   )
@@ -626,13 +749,19 @@ export default function App() {
       return p.user
     } catch { return null }
   })
-  const [active,      setActive]      = useState('dashboard')
-  const [showLogin,   setShowLogin]   = useState(false)
-  const [permMap,     setPermMap]     = useState({})
-  const [permLoading, setPermLoading] = useState(false)
+  const [active,           setActive]           = useState('dashboard')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => LS.get('gnsi_sidebar_collapsed', false))
+  const [showLogin,        setShowLogin]        = useState(false)
+  const [permMap,          setPermMap]          = useState({})
+  const [permLoading,      setPermLoading]      = useState(false)
   const isMobile = useIsMobile()
   const [sharedStaff, setSharedStaff] = useState([])
   const isAdmin = currentUser?.role === 'Admin'
+
+  // Persist sidebar collapse state
+  useEffect(() => { LS.set('gnsi_sidebar_collapsed', sidebarCollapsed) }, [sidebarCollapsed])
+
+  const sidebarW = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_MINI : SIDEBAR_FULL)
 
   const fetchSharedStaff = useCallback(async () => {
     const columns = isAdmin ? '*' : 'id, name, designation, department, role, phone, joining_date, status'
@@ -750,16 +879,35 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: '100vh', background: '#f8fafc' }}>
-      <Sidebar activePage={active} setActivePage={setActive} onLogout={handleLogout} currentUser={currentUser} permMap={permMap} />
+      <Sidebar
+        activePage={active}
+        setActivePage={setActive}
+        onLogout={handleLogout}
+        currentUser={currentUser}
+        permMap={permMap}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(p => !p)}
+      />
 
+      {/* Top bar — offset matches sidebar width with smooth transition */}
       {!isMobile && (
-        <div style={{ position: 'fixed', top: 0, left: 262, right: 0, height: 48, background: '#021e2e', borderBottom: '1px solid #1a3347', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 99 }}>
+        <div style={{
+          position: 'fixed', top: 0, right: 0,
+          left: sidebarW,
+          height: 48, background: '#021e2e', borderBottom: '1px solid #1a3347',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 20px', zIndex: 99,
+          transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)',
+        }}>
           <span style={{ fontSize: 12, color: '#4a6b82', fontFamily: 'monospace' }}>
             {ALL_ITEMS.find(i => i.id === active)?.icon}{' '}{ALL_ITEMS.find(i => i.id === active)?.label || 'Dashboard'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 13, color: '#94afc4' }}>{currentUser?.name}</span>
-            <button onClick={handleLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+            <button onClick={handleLogout}
+              style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)',
+                borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5',
+                fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(220,38,38,.22)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(220,38,38,.12)'}>
               🚪 Sign Out
@@ -768,7 +916,12 @@ export default function App() {
         </div>
       )}
 
-      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : 262, paddingTop: isMobile ? 56 : 48 }}>
+      <main style={{
+        flex: 1, overflowY: 'auto', minHeight: '100vh',
+        paddingLeft: isMobile ? 0 : sidebarW,
+        paddingTop: isMobile ? 56 : 48,
+        transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)',
+      }}>
         {renderContent()}
       </main>
     </div>
