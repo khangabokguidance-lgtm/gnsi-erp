@@ -484,6 +484,7 @@ export default function InvitationGenerator({ currentUser }) {
   const canAccess = role === 'admin' || role === 'manager'
 
   const [fullscreen, setFullscreen] = useState(false)
+  const [toolbarMinimized, setToolbarMinimized] = useState(false)
   const [tab, setTab]         = useState('p1')
   const [p1, setP1]           = useState(DEFAULT_P1)
   const [p2, setP2]           = useState(DEFAULT_P2)
@@ -903,6 +904,65 @@ export default function InvitationGenerator({ currentUser }) {
     )
   }
 
+  // ── Minimized strip shown when toolbar is hidden ──
+  if (toolbarMinimized) {
+    return (
+      <div style={{
+        display:'flex', flexDirection:'column',
+        height: fullscreen ? '100vh' : 'calc(100vh - 60px)',
+        background:'#0a0d14', overflow:'hidden',
+        position: fullscreen ? 'fixed' : 'relative',
+        inset: fullscreen ? 0 : 'auto',
+        zIndex: fullscreen ? 9999 : 'auto',
+      }}>
+        {/* Thin restore strip */}
+        <div
+          onClick={() => setToolbarMinimized(false)}
+          title="Restore editor toolbar"
+          style={{
+            height: 6, flexShrink:0, cursor:'pointer',
+            background:'linear-gradient(90deg,transparent,#C4962A55,#C4962A,#C4962A55,transparent)',
+            transition:'height .15s',
+            display:'flex', alignItems:'center', justifyContent:'center',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.height = '28px'
+            e.currentTarget.querySelector('span').style.opacity = '1'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.height = '6px'
+            e.currentTarget.querySelector('span').style.opacity = '0'
+          }}
+        >
+          <span style={{
+            fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px',
+            letterSpacing:'3px', textTransform:'uppercase', color:'#E0BC6A',
+            opacity:0, transition:'opacity .15s', whiteSpace:'nowrap',
+          }}>▼ ✉ INVITATION STUDIO — CLICK TO RESTORE EDITOR ▼</span>
+        </div>
+
+        {/* Full preview */}
+        <div style={{...T.preview, paddingTop:16}}>
+          <style>{`:root{${cssVarsStyle}} ${PRINT_CARD_CSS} ${lessInk ? LESS_INK_CSS : ''}`}</style>
+          <div style={cardsWrapStyle} ref={previewRef}>
+            <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
+            <ProgCard p2={p2} progs={progs} colors={colors} lessInk={lessInk}/>
+          </div>
+        </div>
+
+        {toast && (
+          <div style={{
+            position:'fixed', bottom:24, right:24, zIndex:99999,
+            background:'#1e293b', border:'1px solid rgba(196,150,42,0.3)',
+            color:'#f1f5f9', padding:'10px 18px', borderRadius:8,
+            fontFamily:'sans-serif', fontSize:13, fontWeight:500,
+            boxShadow:'0 8px 32px rgba(0,0,0,0.5)',
+          }}>{toast}</div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div style={T.wrap}>
 
@@ -940,6 +1000,22 @@ export default function InvitationGenerator({ currentUser }) {
         )}
 
         <div style={T.spacer}/>
+
+        {/* ── Minimize toolbar ── */}
+        <button
+          onClick={() => setToolbarMinimized(true)}
+          title="Minimize editor — maximum preview space"
+          style={{
+            width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center',
+            background:'rgba(196,150,42,0.08)',
+            border:'1px solid rgba(196,150,42,0.2)',
+            borderRadius:5, cursor:'pointer', color:'#E0BC6A',
+            transition:'all .15s', flexShrink:0,
+          }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <line x1="4" y1="12" x2="20" y2="12"/>
+          </svg>
+        </button>
 
         {/* ── Fullscreen toggle ── */}
         <button
