@@ -74,14 +74,9 @@ const DEFAULT_P1 = {
   callig: 'Invitation',
   cord:   'You are cordially invited for the pleasure of your kind presence at',
   evt:    "Fresher's Meet cum Felicitation Programme",
-  yr:     '– 2026',
-  mon:    'June',
-  day:    '14',
-  ord:    'th',
-  year:   '2026',
+  yr:     '– 2026', mon: 'June', day: '14', ord: 'th', year: '2026',
   venue:  'Khangabok Sorok Wangma\nCommunity Hall',
-  vnote:  'Thoubal District, Manipur',
-  anni:   '10',
+  vnote:  'Thoubal District, Manipur', anni: '10',
   quote:  '"Your esteemed presence will highly grace and inspire our Institute."',
   fsub:   'Programme Overleaf',
   aname:  'Moirangthem Manglemjao Singh',
@@ -89,15 +84,11 @@ const DEFAULT_P1 = {
 }
 
 const DEFAULT_P2 = {
-  inst:    'Guidance Navodaya & Sainik Institute',
-  acc:     'Navodaya',
-  addr:    'Khangabok Sorok Wangma · Thoubal District · Manipur – 795138',
-  progTtl: 'Programme',
-  date:    'Friday, 15th May 2026',
-  time:    '09:00 AM',
-  venue:   'Premises of the Institute',
-  ftrl:    'Organising Committee · Guidance, Khangabok',
-  ftrr:    'R.S.V.P.',
+  inst: 'Guidance Navodaya & Sainik Institute', acc: 'Navodaya',
+  addr: 'Khangabok Sorok Wangma · Thoubal District · Manipur – 795138',
+  progTtl: 'Programme', date: 'Friday, 15th May 2026', time: '09:00 AM',
+  venue: 'Premises of the Institute',
+  ftrl: 'Organising Committee · Guidance, Khangabok', ftrr: 'R.S.V.P.',
 }
 
 const DEFAULT_MEMBERS = [
@@ -123,11 +114,7 @@ const SLOT_LABELS = ['Slot A', 'Slot B', 'Slot C']
 function buildName(inst, acc, goldColor = '#C4962A') {
   if (!acc || !inst.includes(acc)) return inst
   const idx = inst.indexOf(acc)
-  return (
-    inst.slice(0, idx) +
-    `<span style="color:${goldColor}">${acc}</span>` +
-    inst.slice(idx + acc.length)
-  )
+  return inst.slice(0, idx) + `<span style="color:${goldColor}">${acc}</span>` + inst.slice(idx + acc.length)
 }
 
 function buildCssVars(fs, colors) {
@@ -138,14 +125,7 @@ function buildCssVars(fs, colors) {
 const PRINT_CARD_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&family=Cinzel:wght@400;600;700;900&family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=Raleway:wght@300;400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --navy:#0B1730;--gold:#C4962A;--gold2:#E0BC6A;--gold3:#F5DFA0;--cream:#FEFCF5;
-  --fs-inst:17px;--fs-addr:8px;--fs-scr:9px;--fs-callig:44px;--fs-cord:10px;--fs-evt:13px;
-  --fs-mon:11px;--fs-day:50px;--fs-yr:12px;--fs-vname:13px;--fs-vnote:9px;--fs-aname:15px;
-  --fs-dname:12px;--fs-drole:7px;--fs-quote:9px;
-  --fs-p2inst:13px;--fs-p2addr:7px;--fs-p2ttl:9px;--fs-p2date:10px;
-  --fs-p2itime:7px;--fs-p2iname:12px;--fs-p2isub:6px;--fs-p2ftr:7px;
-}
+:root{--navy:#0B1730;--gold:#C4962A;--gold2:#E0BC6A;--gold3:#F5DFA0;--cream:#FEFCF5;--fs-inst:17px;--fs-addr:8px;--fs-scr:9px;--fs-callig:44px;--fs-cord:10px;--fs-evt:13px;--fs-mon:11px;--fs-day:50px;--fs-yr:12px;--fs-vname:13px;--fs-vnote:9px;--fs-aname:15px;--fs-dname:12px;--fs-drole:7px;--fs-quote:9px;--fs-p2inst:13px;--fs-p2addr:7px;--fs-p2ttl:9px;--fs-p2date:10px;--fs-p2itime:7px;--fs-p2iname:12px;--fs-p2isub:6px;--fs-p2ftr:7px;}
 body{background:#fff;display:flex;gap:0}
 .page-shell,.page2-shell{width:148mm;height:210mm;position:relative;flex-shrink:0;overflow:hidden}
 .inv-card,.p2-card{position:absolute;inset:0;background:var(--cream);display:flex;flex-direction:column;overflow:hidden}
@@ -204,7 +184,6 @@ body{background:#fff;display:flex;gap:0}
 .dig-list{display:table;flex-shrink:0;margin:0 auto;min-width:260px;max-width:100%}
 .dig-item{display:flex;align-items:center;padding:5px 4px;gap:8px;border-bottom:.8px solid rgba(196,150,42,.2)}
 .dig-item:last-child{border-bottom:none}
-.dig-num{width:16px;height:16px;border-radius:50%;border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-weight:700;font-size:6px;color:var(--gold);flex-shrink:0}
 .dig-txt{display:flex;flex-direction:column;justify-content:center;gap:1px}
 .d-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:700;font-size:var(--fs-dname);color:#07102a;line-height:1.25}
 .d-name.anchor{font-size:var(--fs-aname)}
@@ -244,11 +223,7 @@ body{background:#fff;display:flex;gap:0}
 .p2-ftr::after{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.04) 18px,rgba(196,150,42,.04) 19px)}
 .p2-ftr-l{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-p2ftr);letter-spacing:3px;text-transform:uppercase;color:var(--gold2);position:relative;z-index:1}
 .p2-ftr-r{font-family:'EB Garamond',serif;font-style:italic;font-size:10px;color:rgba(255,255,255,0.9);position:relative;z-index:1}
-@media print{
-  @page{size:A4 landscape;margin:0}
-  body{width:297mm;height:210mm;overflow:hidden}
-  .page-shell,.page2-shell{width:148.5mm;height:210mm}
-}
+@media print{@page{size:A4 landscape;margin:0}body{width:297mm;height:210mm;overflow:hidden}.page-shell,.page2-shell{width:148.5mm;height:210mm}}
 `
 
 const LESS_INK_CSS = `
@@ -278,9 +253,9 @@ const CornerSVG = () => (
     <circle cx="16" cy="16" r="7" stroke="#C4962A" strokeWidth="1" fill="rgba(196,150,42,0.08)"/>
     <circle cx="16" cy="16" r="4.5" stroke="#E0BC6A" strokeWidth="0.7" fill="none"/>
     <circle cx="16" cy="16" r="2" fill="#C4962A"/>
-    <line x1="16" y1="9"  x2="16" y2="7"  stroke="#C4962A" strokeWidth="0.8"/>
+    <line x1="16" y1="9" x2="16" y2="7" stroke="#C4962A" strokeWidth="0.8"/>
     <line x1="16" y1="23" x2="16" y2="25" stroke="#C4962A" strokeWidth="0.8"/>
-    <line x1="9"  y1="16" x2="7"  y2="16" stroke="#C4962A" strokeWidth="0.8"/>
+    <line x1="9" y1="16" x2="7" y2="16" stroke="#C4962A" strokeWidth="0.8"/>
     <line x1="23" y1="16" x2="25" y2="16" stroke="#C4962A" strokeWidth="0.8"/>
     <path d="M28,4 Q34,4 36,10 Q38,16 36,22" stroke="#C4962A" strokeWidth="0.7" fill="none"/>
     <path d="M4,28 Q4,34 10,36 Q16,38 22,36" stroke="#C4962A" strokeWidth="0.7" fill="none"/>
@@ -293,35 +268,24 @@ function AnniSVG({ num }) {
       <circle cx="28" cy="28" r="26" fill="rgba(196,150,42,0.08)"/>
       <circle cx="28" cy="28" r="26" stroke="#C4962A" strokeWidth="1.2" fill="none"/>
       <circle cx="28" cy="28" r="21" stroke="#E0BC6A" strokeWidth="0.6" fill="none"/>
-      <path d="M28,4 C36,10 46,18 46,28 C46,38 36,46 28,52 C20,46 10,38 10,28 C10,18 20,10 28,4Z"
-        stroke="rgba(196,150,42,0.3)" strokeWidth="0.5" fill="none"/>
-      <text x="28" y="24" textAnchor="middle"
-        fontFamily="Playfair Display,serif" fontWeight="900" fontSize="18" fill="#E0BC6A">{num}</text>
-      <text x="28" y="34" textAnchor="middle"
-        fontFamily="Cinzel,serif" fontWeight="600" fontSize="5.5" fill="rgba(255,255,255,0.85)" letterSpacing="2">YEARS</text>
-      <text x="28" y="42" textAnchor="middle"
-        fontFamily="EB Garamond,serif" fontStyle="italic" fontSize="5" fill="rgba(255,255,255,0.65)">of Excellence</text>
-      <polygon points="28,3 29.2,6.8 33.2,6.8 30,9.2 31.2,13 28,10.7 24.8,13 26,9.2 22.8,6.8 26.8,6.8"
-        fill="#C4962A" opacity="0.7"/>
+      <path d="M28,4 C36,10 46,18 46,28 C46,38 36,46 28,52 C20,46 10,38 10,28 C10,18 20,10 28,4Z" stroke="rgba(196,150,42,0.3)" strokeWidth="0.5" fill="none"/>
+      <text x="28" y="24" textAnchor="middle" fontFamily="Playfair Display,serif" fontWeight="900" fontSize="18" fill="#E0BC6A">{num}</text>
+      <text x="28" y="34" textAnchor="middle" fontFamily="Cinzel,serif" fontWeight="600" fontSize="5.5" fill="rgba(255,255,255,0.85)" letterSpacing="2">YEARS</text>
+      <text x="28" y="42" textAnchor="middle" fontFamily="EB Garamond,serif" fontStyle="italic" fontSize="5" fill="rgba(255,255,255,0.65)">of Excellence</text>
+      <polygon points="28,3 29.2,6.8 33.2,6.8 30,9.2 31.2,13 28,10.7 24.8,13 26,9.2 22.8,6.8 26.8,6.8" fill="#C4962A" opacity="0.7"/>
     </svg>
   )
 }
 
 function InvCard({ p1, members, colors, lessInk }) {
   const instHtml = buildName(p1.inst, p1.acc, colors.gold2)
-  const allMembers = [
-    { name: p1.aname, role: p1.arole, anchor: true },
-    ...members,
-  ].filter(m => m.name)
-
+  const allMembers = [{ name: p1.aname, role: p1.arole, anchor: true }, ...members].filter(m => m.name)
   return (
     <div className="page-shell">
       <div className={`inv-card${lessInk ? ' less-ink' : ''}`}>
         <div className="bdr-o"/><div className="bdr-m"/><div className="bdr-i"/>
-        <div className="cor cor-tl"><CornerSVG/></div>
-        <div className="cor cor-tr"><CornerSVG/></div>
-        <div className="cor cor-bl"><CornerSVG/></div>
-        <div className="cor cor-br"><CornerSVG/></div>
+        <div className="cor cor-tl"><CornerSVG/></div><div className="cor cor-tr"><CornerSVG/></div>
+        <div className="cor cor-bl"><CornerSVG/></div><div className="cor cor-br"><CornerSVG/></div>
         <div className="hdr">
           <div className="hdr-gl t"/><div className="hdr-gl b"/>
           <div className="h-script">{p1.script}</div>
@@ -339,11 +303,7 @@ function InvCard({ p1, members, colors, lessInk }) {
           <div className="inv-callig">{p1.callig}</div>
           <div className="inv-cord">{p1.cord}</div>
         </div>
-        <div className="evt-band">
-          <div className="evt-inner">
-            <div className="evt-ttl">{p1.evt} <span className="yr">{p1.yr}</span></div>
-          </div>
-        </div>
+        <div className="evt-band"><div className="evt-inner"><div className="evt-ttl">{p1.evt} <span className="yr">{p1.yr}</span></div></div></div>
         <div className="dv-panel">
           <div className="date-col">
             <div className="dt-meta">
@@ -351,10 +311,7 @@ function InvCard({ p1, members, colors, lessInk }) {
               <div className="dt-mon">{p1.mon}</div>
               <div className="dt-yr">{p1.year}</div>
             </div>
-            <div className="dt-row">
-              <span className="dt-day">{p1.day}</span>
-              <span className="dt-sup">{p1.ord}</span>
-            </div>
+            <div className="dt-row"><span className="dt-day">{p1.day}</span><span className="dt-sup">{p1.ord}</span></div>
           </div>
           <div className="dv-divider"/>
           <div className="venue-col">
@@ -364,13 +321,7 @@ function InvCard({ p1, members, colors, lessInk }) {
           </div>
         </div>
         <div className="dig-sec">
-          <div className="dig-hd-wrap">
-            <div className="dig-hd-row">
-              <div className="dig-hd-line l"/>
-              <div className="dig-hd-lbl">Presidium Members</div>
-              <div className="dig-hd-line r"/>
-            </div>
-          </div>
+          <div className="dig-hd-wrap"><div className="dig-hd-row"><div className="dig-hd-line l"/><div className="dig-hd-lbl">Presidium Members</div><div className="dig-hd-line r"/></div></div>
           <div className="dig-list">
             {allMembers.map((m, i) => (
               <div className="dig-item" key={i}>
@@ -382,10 +333,7 @@ function InvCard({ p1, members, colors, lessInk }) {
             ))}
           </div>
         </div>
-        <div className="ftr">
-          <div className="ftr-q">{p1.quote}</div>
-          <div className="ftr-s">{p1.fsub}</div>
-        </div>
+        <div className="ftr"><div className="ftr-q">{p1.quote}</div><div className="ftr-s">{p1.fsub}</div></div>
       </div>
     </div>
   )
@@ -397,53 +345,32 @@ function ProgCard({ p2, progs, colors, lessInk }) {
     <div className="page2-shell">
       <div className={`p2-card${lessInk ? ' less-ink' : ''}`}>
         <div className="bdr-o"/><div className="bdr-m"/><div className="bdr-i"/>
-        <div className="cor cor-tl"><CornerSVG/></div>
-        <div className="cor cor-tr"><CornerSVG/></div>
-        <div className="cor cor-bl"><CornerSVG/></div>
-        <div className="cor cor-br"><CornerSVG/></div>
+        <div className="cor cor-tl"><CornerSVG/></div><div className="cor cor-tr"><CornerSVG/></div>
+        <div className="cor cor-bl"><CornerSVG/></div><div className="cor cor-br"><CornerSVG/></div>
         <div className="p2-hdr">
           <div className="p2-hdr-gl t"/><div className="p2-hdr-gl b"/>
           <div className="p2-inst" dangerouslySetInnerHTML={{__html: instHtml}}/>
           <div className="p2-addr">{p2.addr}</div>
         </div>
         <div className="gold-rule"/>
-        <div className="p2-prog-hd">
-          <div className="p2-prog-hd-row">
-            <div className="p2-prog-hl l"/>
-            <div className="p2-prog-ttl">{p2.progTtl}</div>
-            <div className="p2-prog-hl r"/>
-          </div>
-        </div>
-        <div className="p2-date-bar">
-          <div className="p2-date-txt">
-            <strong>{p2.date}</strong> &nbsp;·&nbsp; Commencing at <strong>{p2.time}</strong> &nbsp;·&nbsp; {p2.venue}
-          </div>
-        </div>
-        <div className="p2-body">
-          <div className="p2-items">
-            {progs.map((pg, i) => (
-              <div className="p2-item" key={i}>
-                <div className="p2-time">{pg.time}</div>
-                <div className="p2-divider"/>
-                <div className="p2-dot"/>
-                <div>
-                  <div className="p2-prog-name">{pg.name}</div>
-                  {pg.sub && <div className="p2-prog-sub">{pg.sub}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="p2-ftr">
-          <div className="p2-ftr-l">{p2.ftrl}</div>
-          <div className="p2-ftr-r">{p2.ftrr}</div>
-        </div>
+        <div className="p2-prog-hd"><div className="p2-prog-hd-row"><div className="p2-prog-hl l"/><div className="p2-prog-ttl">{p2.progTtl}</div><div className="p2-prog-hl r"/></div></div>
+        <div className="p2-date-bar"><div className="p2-date-txt"><strong>{p2.date}</strong> &nbsp;·&nbsp; Commencing at <strong>{p2.time}</strong> &nbsp;·&nbsp; {p2.venue}</div></div>
+        <div className="p2-body"><div className="p2-items">
+          {progs.map((pg, i) => (
+            <div className="p2-item" key={i}>
+              <div className="p2-time">{pg.time}</div>
+              <div className="p2-divider"/><div className="p2-dot"/>
+              <div><div className="p2-prog-name">{pg.name}</div>{pg.sub && <div className="p2-prog-sub">{pg.sub}</div>}</div>
+            </div>
+          ))}
+        </div></div>
+        <div className="p2-ftr"><div className="p2-ftr-l">{p2.ftrl}</div><div className="p2-ftr-r">{p2.ftrr}</div></div>
       </div>
     </div>
   )
 }
 
-// ── Shared input primitives ───────────────────
+// ── Input primitives ──────────────────────────
 const iBase = {
   width:'100%', background:'rgba(196,150,42,0.06)', border:'1px solid rgba(196,150,42,0.18)',
   borderRadius:4, padding:'5px 8px', fontFamily:"'Cormorant Garamond',serif", fontSize:12,
@@ -471,10 +398,285 @@ function FsRow({ label, fsKey, value, min, max, onChange }) {
         <input type="range" min={min} max={max} value={value}
           onChange={e => onChange(fsKey, Number(e.target.value))}
           style={{ flex:1, height:2, accentColor:'#C4962A', cursor:'pointer' }}/>
-        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px',
-          color:'#E0BC6A', minWidth:28, textAlign:'right' }}>{value}px</span>
+        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px', color:'#E0BC6A', minWidth:28, textAlign:'right' }}>{value}px</span>
       </div>
     </Field>
+  )
+}
+
+// ── Draggable floating panel (Photoshop style) ─
+function FloatPanel({ id, title, icon, children, open, onClose, initialPos, zIndex, onFocus }) {
+  const [pos, setPos] = useState(initialPos)
+  const [minimized, setMinimized] = useState(false)
+  const [size, setSize] = useState({ w: 260, h: 420 })
+  const dragging = useRef(false)
+  const dragOffset = useRef({ x: 0, y: 0 })
+  const resizing = useRef(false)
+  const resizeStart = useRef({ x: 0, y: 0, w: 0, h: 0 })
+  const panelRef = useRef(null)
+
+  const onMouseDownHeader = (e) => {
+    if (e.target.closest('button')) return
+    dragging.current = true
+    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }
+    onFocus()
+    e.preventDefault()
+  }
+  const onMouseDownResize = (e) => {
+    resizing.current = true
+    resizeStart.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h }
+    onFocus()
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (dragging.current) {
+        setPos({ x: Math.max(0, e.clientX - dragOffset.current.x), y: Math.max(0, e.clientY - dragOffset.current.y) })
+      }
+      if (resizing.current) {
+        const dx = e.clientX - resizeStart.current.x
+        const dy = e.clientY - resizeStart.current.y
+        setSize({ w: Math.max(200, resizeStart.current.w + dx), h: Math.max(120, resizeStart.current.h + dy) })
+      }
+    }
+    const onUp = () => { dragging.current = false; resizing.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+
+  if (!open) return null
+
+  return (
+    <div
+      ref={panelRef}
+      onMouseDown={onFocus}
+      style={{
+        position:'fixed', left: pos.x, top: pos.y, zIndex,
+        width: size.w, minWidth:200,
+        background:'#13110e',
+        border:'1px solid rgba(196,150,42,0.35)',
+        borderRadius:6,
+        boxShadow:'0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(196,150,42,0.1)',
+        display:'flex', flexDirection:'column',
+        userSelect:'none',
+        overflow:'hidden',
+      }}>
+      {/* Title bar */}
+      <div
+        onMouseDown={onMouseDownHeader}
+        style={{
+          height:28, flexShrink:0,
+          background:'linear-gradient(90deg,#07102a,#0d1e45,#07102a)',
+          borderBottom:'1px solid rgba(196,150,42,0.25)',
+          display:'flex', alignItems:'center', padding:'0 8px', gap:6,
+          cursor:'move',
+        }}>
+        <span style={{ fontSize:10 }}>{icon}</span>
+        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px',
+          letterSpacing:'2px', textTransform:'uppercase', color:'#E0BC6A', flex:1,
+          pointerEvents:'none' }}>{title}</span>
+        {/* Minimize */}
+        <button onClick={() => setMinimized(m => !m)}
+          title={minimized ? 'Restore' : 'Minimize'}
+          style={{ width:16, height:16, borderRadius:2, border:'1px solid rgba(196,150,42,0.3)',
+            background: minimized ? 'rgba(196,150,42,0.3)' : 'rgba(196,150,42,0.08)',
+            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+            color:'#E0BC6A', fontSize:9, lineHeight:1, flexShrink:0 }}>
+          {minimized ? '▸' : '▾'}
+        </button>
+        {/* Close */}
+        <button onClick={onClose}
+          style={{ width:16, height:16, borderRadius:2, border:'1px solid rgba(220,38,38,0.3)',
+            background:'rgba(220,38,38,0.12)', cursor:'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            color:'#fca5a5', fontSize:9, lineHeight:1, flexShrink:0 }}>
+          ✕
+        </button>
+      </div>
+
+      {/* Content */}
+      {!minimized && (
+        <div style={{ height: size.h, overflowY:'auto', overflowX:'hidden',
+          padding:'10px 12px 14px', scrollbarWidth:'thin',
+          scrollbarColor:'rgba(196,150,42,0.2) transparent' }}>
+          {children}
+        </div>
+      )}
+
+      {/* Resize handle */}
+      {!minimized && (
+        <div
+          onMouseDown={onMouseDownResize}
+          style={{ position:'absolute', bottom:0, right:0, width:14, height:14,
+            cursor:'nwse-resize', zIndex:10,
+            background:'linear-gradient(135deg,transparent 50%,rgba(196,150,42,0.4) 50%)',
+            borderRadius:'0 0 5px 0' }}/>
+      )}
+    </div>
+  )
+}
+
+// ── Menubar Editor button group ───────────────
+function EditorMenuBtn({ label, icon, active, onClick }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display:'flex', alignItems:'center', gap:5,
+        padding:'4px 10px', cursor:'pointer',
+        fontFamily:"'Cinzel',serif", fontWeight:600, fontSize:'7px',
+        letterSpacing:'1.5px', textTransform:'uppercase',
+        borderRadius:3, border:'1px solid',
+        background: active ? 'rgba(196,150,42,0.22)' : hov ? 'rgba(196,150,42,0.12)' : 'transparent',
+        color: active ? '#fbbf24' : hov ? '#E0BC6A' : 'rgba(196,150,42,0.5)',
+        borderColor: active ? 'rgba(196,150,42,0.5)' : hov ? 'rgba(196,150,42,0.3)' : 'rgba(196,150,42,0.12)',
+        transition:'all .12s',
+      }}>
+      <span style={{ fontSize:11 }}>{icon}</span>
+      {label}
+    </button>
+  )
+}
+
+// ── Shared panel content renderers ────────────
+function P1Content({ p1, sp1, members, updMember, addMember, delMember, T }) {
+  return (
+    <>
+      <div style={T.sh}>Institute</div>
+      <Field label="Name"><Inp value={p1.inst} onChange={v => sp1('inst',v)}/></Field>
+      <Field label="Accent"><Inp value={p1.acc} onChange={v => sp1('acc',v)}/></Field>
+      <Field label="Address"><Inp value={p1.addr} onChange={v => sp1('addr',v)}/></Field>
+      <Field label="Script"><Inp value={p1.script} onChange={v => sp1('script',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Invitation</div>
+      <Field label="Calligraphy"><Inp value={p1.callig} onChange={v => sp1('callig',v)}/></Field>
+      <Field label="Opening Line"><Inp textarea value={p1.cord} onChange={v => sp1('cord',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Event</div>
+      <Field label="Event Title"><Inp textarea value={p1.evt} onChange={v => sp1('evt',v)}/></Field>
+      <Field label="Year / Suffix"><Inp value={p1.yr} onChange={v => sp1('yr',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Date &amp; Venue</div>
+      <Field label="Month"><Inp value={p1.mon} onChange={v => sp1('mon',v)}/></Field>
+      <Field label="Day"><Inp value={p1.day} onChange={v => sp1('day',v)}/></Field>
+      <Field label="Ord"><Inp value={p1.ord} onChange={v => sp1('ord',v)}/></Field>
+      <Field label="Year"><Inp value={p1.year} onChange={v => sp1('year',v)}/></Field>
+      <Field label="Venue"><Inp textarea value={p1.venue} onChange={v => sp1('venue',v)}/></Field>
+      <Field label="Note"><Inp value={p1.vnote} onChange={v => sp1('vnote',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Chair / President</div>
+      <Field label="Name"><Inp value={p1.aname} onChange={v => sp1('aname',v)}/></Field>
+      <Field label="Role"><Inp value={p1.arole} onChange={v => sp1('arole',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Other Members</div>
+      {members.map((m, i) => (
+        <div key={i} style={T.dc}>
+          <div style={T.dcLbl}>Member {i+2}</div>
+          <button style={T.remBtn} onClick={() => delMember(i)}>✕</button>
+          <Inp value={m.name} onChange={v => updMember(i,'name',v)}/>
+          <div style={{marginTop:4}}/>
+          <Inp value={m.role} onChange={v => updMember(i,'role',v)}/>
+        </div>
+      ))}
+      <button style={T.addBtn} onClick={addMember}>+ Add Member</button>
+      <div style={{...T.sh, marginTop:12}}>Footer</div>
+      <Field label="Quote"><Inp textarea value={p1.quote} onChange={v => sp1('quote',v)}/></Field>
+      <Field label="Sub Label"><Inp value={p1.fsub} onChange={v => sp1('fsub',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Anniversary</div>
+      <Field label="Years"><Inp value={p1.anni} onChange={v => sp1('anni',v)}/></Field>
+    </>
+  )
+}
+
+function P2Content({ p2, sp2, progs, updProg, addProg, delProg, T }) {
+  return (
+    <>
+      <div style={T.sh}>Header</div>
+      <Field label="Name"><Inp value={p2.inst} onChange={v => sp2('inst',v)}/></Field>
+      <Field label="Accent"><Inp value={p2.acc} onChange={v => sp2('acc',v)}/></Field>
+      <Field label="Address"><Inp value={p2.addr} onChange={v => sp2('addr',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Programme</div>
+      <Field label="Section Title"><Inp value={p2.progTtl} onChange={v => sp2('progTtl',v)}/></Field>
+      <Field label="Date"><Inp value={p2.date} onChange={v => sp2('date',v)}/></Field>
+      <Field label="Start Time"><Inp value={p2.time} onChange={v => sp2('time',v)}/></Field>
+      <Field label="Venue Note"><Inp value={p2.venue} onChange={v => sp2('venue',v)}/></Field>
+      <div style={{...T.sh, marginTop:12}}>Programme Items</div>
+      {progs.map((pg, i) => (
+        <div key={i} style={T.dc}>
+          <div style={T.dcLbl}>Item {i+1}</div>
+          <button style={T.remBtn} onClick={() => delProg(i)}>✕</button>
+          <div style={{display:'flex', gap:5, marginBottom:4}}>
+            <div style={{flex:'0 0 70px'}}><Inp value={pg.time} onChange={v => updProg(i,'time',v)}/></div>
+            <div style={{flex:1}}><Inp value={pg.name} onChange={v => updProg(i,'name',v)}/></div>
+          </div>
+          <Inp value={pg.sub} onChange={v => updProg(i,'sub',v)}/>
+        </div>
+      ))}
+      <button style={T.addBtn} onClick={addProg}>+ Add Item</button>
+      <div style={{...T.sh, marginTop:12}}>Footer</div>
+      <Field label="Footer Left"><Inp value={p2.ftrl} onChange={v => sp2('ftrl',v)}/></Field>
+      <Field label="Footer Right"><Inp value={p2.ftrr} onChange={v => sp2('ftrr',v)}/></Field>
+    </>
+  )
+}
+
+function FontsContent({ fs, setFsKey }) {
+  return (
+    <>
+      {FS_CONFIG.map(group => (
+        <div key={group.section}>
+          <div style={{
+            fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px',
+            letterSpacing:'3px', textTransform:'uppercase', color:'#C4962A',
+            marginBottom:6, marginTop:14, paddingBottom:4,
+            borderBottom:'1px solid rgba(196,150,42,0.15)',
+          }}>{group.section}</div>
+          {group.items.map(item => (
+            <FsRow key={item.key} label={item.label} fsKey={item.key}
+              value={fs[item.key]} min={item.min} max={item.max} onChange={setFsKey}/>
+          ))}
+        </div>
+      ))}
+    </>
+  )
+}
+
+function ColorsContent({ colors, setColor, lessInk, setLessInk }) {
+  return (
+    <>
+      <div style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px', letterSpacing:'3px', textTransform:'uppercase', color:'#C4962A', marginBottom:8, paddingBottom:4, borderBottom:'1px solid rgba(196,150,42,0.15)' }}>Theme Colors</div>
+      {[
+        { key:'navy', label:'Background / Navy', desc:'Headers & bands' },
+        { key:'gold', label:'Primary Gold',      desc:'Borders & accents' },
+        { key:'gold2',label:'Light Gold',        desc:'Highlights & labels' },
+      ].map(c => (
+        <Field key={c.key} label={c.label}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <input type="color" value={colors[c.key]} onChange={e => setColor(c.key, e.target.value)}
+              style={{ width:30, height:28, padding:2, borderRadius:4, border:'1px solid rgba(196,150,42,0.2)', background:'#0e0c09', cursor:'pointer' }}/>
+            <span style={{ fontFamily:"'Raleway',sans-serif", fontSize:9, color:'rgba(196,150,42,0.45)' }}>{c.desc}</span>
+          </div>
+        </Field>
+      ))}
+      <button onClick={() => setColor('reset')}
+        style={{ marginTop:4, padding:'5px 10px', fontFamily:"'Cinzel',serif", fontWeight:600,
+          fontSize:'7px', letterSpacing:'1.5px', textTransform:'uppercase',
+          borderRadius:3, cursor:'pointer', border:'1px solid rgba(196,150,42,0.25)',
+          background:'rgba(196,150,42,0.1)', color:'#E0BC6A' }}>Reset Colors</button>
+      <div style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px', letterSpacing:'3px', textTransform:'uppercase', color:'#C4962A', margin:'14px 0 8px', paddingBottom:4, borderBottom:'1px solid rgba(196,150,42,0.15)' }}>Print Mode</div>
+      <label style={{ display:'flex', alignItems:'center', gap:10, background:'rgba(196,150,42,0.05)', border:'1px solid rgba(196,150,42,0.12)', borderRadius:5, padding:'9px 10px', cursor:'pointer' }}>
+        <div style={{ position:'relative', width:36, height:18, flexShrink:0 }}>
+          <input type="checkbox" checked={lessInk} onChange={e => setLessInk(e.target.checked)} style={{ opacity:0, width:0, height:0, position:'absolute' }}/>
+          <div style={{ position:'absolute', inset:0, borderRadius:9, background: lessInk ? '#C4962A' : 'rgba(196,150,42,0.15)', transition:'background .2s' }}/>
+          <div style={{ position:'absolute', top:3, left: lessInk ? 21 : 3, width:12, height:12, background:'#fff', borderRadius:'50%', transition:'left .2s' }}/>
+        </div>
+        <div>
+          <div style={{ fontFamily:"'Raleway',sans-serif", fontWeight:700, fontSize:'9px', color:'rgba(245,237,200,0.8)' }}>Less Ink Mode</div>
+          <div style={{ fontFamily:"'Raleway',sans-serif", fontSize:'8px', color:'rgba(196,150,42,0.45)' }}>White backgrounds for toner saving</div>
+        </div>
+      </label>
+    </>
   )
 }
 
@@ -483,262 +685,103 @@ export default function InvitationGenerator({ currentUser }) {
   const role = (currentUser?.role || '').toLowerCase()
   const canAccess = role === 'admin' || role === 'manager'
 
-  const [fullscreen, setFullscreen] = useState(false)
-  const [toolbarMinimized, setToolbarMinimized] = useState(false)
-  const [tab, setTab]         = useState('p1')
-  const [p1, setP1]           = useState(DEFAULT_P1)
-  const [p2, setP2]           = useState(DEFAULT_P2)
-  const [members, setMembers] = useState(DEFAULT_MEMBERS)
-  const [progs, setProgs]     = useState(DEFAULT_PROGS)
-  const [fs, setFs]           = useState(DEFAULT_FS)
-  const [colors, setColors]   = useState(DEFAULT_COLORS)
-  const [lessInk, setLessInk] = useState(false)
-  const [slot, setSlot]       = useState(0)
-  const [toast, setToast]     = useState('')
-  const [previewZoom, setPreviewZoom] = useState(0.72)
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [fullscreen, setFullscreen]       = useState(false)
+  const [toolbarMin, setToolbarMin]       = useState(false)
+  const [p1, setP1]                       = useState(DEFAULT_P1)
+  const [p2, setP2]                       = useState(DEFAULT_P2)
+  const [members, setMembers]             = useState(DEFAULT_MEMBERS)
+  const [progs, setProgs]                 = useState(DEFAULT_PROGS)
+  const [fs, setFs]                       = useState(DEFAULT_FS)
+  const [colors, setColors]               = useState(DEFAULT_COLORS)
+  const [lessInk, setLessInk]             = useState(false)
+  const [slot, setSlot]                   = useState(0)
+  const [toast, setToast]                 = useState('')
+  const [previewZoom, setPreviewZoom]     = useState(0.72)
+  const [panelZOrder, setPanelZOrder]     = useState({ p1:1001, p2:1002, fonts:1003, colors:1004 })
+  const [panelOpen, setPanelOpen]         = useState({ p1:false, p2:false, fonts:false, colors:false })
   const previewRef = useRef(null)
+  const zTop = useRef(1010)
 
   useEffect(() => { injectFonts() }, [])
-
-  // ESC key exits fullscreen
   useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape' && fullscreen) setFullscreen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    const fn = e => { if (e.key === 'Escape' && fullscreen) setFullscreen(false) }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
   }, [fullscreen])
 
-  const showToast = useCallback(msg => {
-    setToast(msg); setTimeout(() => setToast(''), 2500)
-  }, [])
+  const bringToFront = (id) => {
+    zTop.current += 1
+    setPanelZOrder(prev => ({ ...prev, [id]: zTop.current }))
+  }
+  const togglePanel = (id) => {
+    setPanelOpen(prev => ({ ...prev, [id]: !prev[id] }))
+    bringToFront(id)
+  }
+
+  const showToast = useCallback(msg => { setToast(msg); setTimeout(() => setToast(''), 2500) }, [])
 
   const saveSlot = () => {
-    localStorage.setItem('gnsi_inv_' + SLOT_KEYS[slot],
-      JSON.stringify({ p1, p2, members, progs, fs, colors, lessInk }))
+    localStorage.setItem('gnsi_inv_' + SLOT_KEYS[slot], JSON.stringify({ p1, p2, members, progs, fs, colors, lessInk }))
     showToast(`✅ Saved to ${SLOT_LABELS[slot]}`)
   }
   const loadSlot = () => {
     const raw = localStorage.getItem('gnsi_inv_' + SLOT_KEYS[slot])
     if (!raw) { showToast('⚠️ No data in this slot'); return }
     const d = JSON.parse(raw)
-    if (d.p1)      setP1(d.p1)
-    if (d.p2)      setP2(d.p2)
-    if (d.members) setMembers(d.members)
-    if (d.progs)   setProgs(d.progs)
-    if (d.fs)      setFs(d.fs)
-    if (d.colors)  setColors(d.colors)
+    if (d.p1) setP1(d.p1); if (d.p2) setP2(d.p2)
+    if (d.members) setMembers(d.members); if (d.progs) setProgs(d.progs)
+    if (d.fs) setFs(d.fs); if (d.colors) setColors(d.colors)
     if (d.lessInk !== undefined) setLessInk(d.lessInk)
     showToast(`📂 Loaded from ${SLOT_LABELS[slot]}`)
   }
   const exportHTML = () => {
     const html = previewRef.current?.innerHTML || ''
     const vars = buildCssVars(fs, colors)
-    const lessInkStyle = lessInk ? LESS_INK_CSS : ''
-    const blob = new Blob([`<!DOCTYPE html><html><head>
-<meta charset="UTF-8"><title>GNSI Invitation</title>
-<style>:root{${vars}}${PRINT_CARD_CSS}${lessInkStyle}</style>
-</head><body style="display:flex;gap:0">${html}</body></html>`], {type:'text/html'})
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = 'gnsi_invitation_export.html'
-    a.click()
-    URL.revokeObjectURL(a.href)
+    const blob = new Blob([`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>GNSI Invitation</title><style>:root{${vars}}${PRINT_CARD_CSS}${lessInk ? LESS_INK_CSS : ''}</style></head><body style="display:flex;gap:0">${html}</body></html>`], {type:'text/html'})
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'gnsi_invitation.html'; a.click(); URL.revokeObjectURL(a.href)
     showToast('⬇ HTML exported')
   }
   const handlePrint = () => {
     const html = previewRef.current?.innerHTML || ''
     const vars = buildCssVars(fs, colors)
-    const lessInkStyle = lessInk ? LESS_INK_CSS : ''
     const win = window.open('', '_blank')
-    win.document.write(`<!DOCTYPE html><html><head>
-<meta charset="UTF-8"><title>GNSI Invitation</title>
-<style>:root{${vars}}${PRINT_CARD_CSS}${lessInkStyle}</style>
-</head><body style="display:flex;gap:0">${html}</body></html>`)
-    win.document.close()
-    setTimeout(() => { win.focus(); win.print() }, 800)
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>GNSI Invitation</title><style>:root{${vars}}${PRINT_CARD_CSS}${lessInk ? LESS_INK_CSS : ''}</style></head><body style="display:flex;gap:0">${html}</body></html>`)
+    win.document.close(); setTimeout(() => { win.focus(); win.print() }, 800)
   }
 
-  const sp1 = (k, v) => setP1(prev => ({ ...prev, [k]: v }))
-  const sp2 = (k, v) => setP2(prev => ({ ...prev, [k]: v }))
-  const setFsKey = (k, v) => setFs(prev => ({ ...prev, [k]: v }))
-  const setColor = (k, v) => setColors(prev => ({ ...prev, [k]: v }))
-
+  const sp1 = (k, v) => setP1(p => ({ ...p, [k]: v }))
+  const sp2 = (k, v) => setP2(p => ({ ...p, [k]: v }))
+  const setFsKey = (k, v) => setFs(p => ({ ...p, [k]: v }))
+  const setColor = (k, v) => {
+    if (k === 'reset') { setColors(DEFAULT_COLORS); return }
+    setColors(p => ({ ...p, [k]: v }))
+  }
   const updMember = (i, k, v) => setMembers(prev => prev.map((m, idx) => idx===i ? {...m,[k]:v} : m))
   const addMember = () => setMembers(prev => [...prev, { name:'', role:'' }])
   const delMember = i => setMembers(prev => prev.filter((_,idx) => idx!==i))
-
   const updProg = (i, k, v) => setProgs(prev => prev.map((p, idx) => idx===i ? {...p,[k]:v} : p))
   const addProg = () => setProgs(prev => [...prev, { time:'', name:'', sub:'' }])
   const delProg = i => setProgs(prev => prev.filter((_,idx) => idx!==i))
 
   if (!canAccess) return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
-      justifyContent:'center', height:'60vh', gap:16, color:'#94a3b8' }}>
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <rect x="3" y="11" width="18" height="11" rx="2"/>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-      </svg>
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:16, color:'#94a3b8' }}>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       <p style={{ fontSize:18, fontWeight:600, color:'#64748b' }}>Admin / Manager Access Only</p>
     </div>
   )
 
   const cssVarsStyle = buildCssVars(fs, colors)
 
-  const TABS = [
-    { id:'p1',     label:'Page 1'  },
-    { id:'p2',     label:'Page 2'  },
-    { id:'fonts',  label:'Fonts'   },
-    { id:'colors', label:'Colors'  },
-  ]
-
-  const TOP_BAR_H = 44
-  const TAB_BAR_H = 36
-  const PANEL_H   = 220
-
-  // ── Fullscreen expand icon (two-arrows SVG) ──
-  const ExpandIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      {fullscreen
-        ? <><path d="M8 3v5H3"/><path d="M21 8h-5V3"/><path d="M3 16h5v5"/><path d="M16 21v-5h5"/></>
-        : <><path d="M3 8V3h5"/><path d="M16 3h5v5"/><path d="M21 16v5h-5"/><path d="M8 21H3v-5"/></>
-      }
-    </svg>
-  )
-
-  const T = {
-    wrap: {
-      display:'flex', flexDirection:'column',
-      height: fullscreen ? '100vh' : 'calc(100vh - 60px)',
-      background:'#0a0d14', overflow:'hidden',
-      position: fullscreen ? 'fixed' : 'relative',
-      inset: fullscreen ? 0 : 'auto',
-      zIndex: fullscreen ? 9999 : 'auto',
-      top: fullscreen ? 0 : 'auto',
-      left: fullscreen ? 0 : 'auto',
-    },
-    actionBar: {
-      height: TOP_BAR_H,
-      background:'linear-gradient(90deg,#07102a 0%,#0d1e45 60%,#07102a 100%)',
-      borderBottom:'1px solid rgba(196,150,42,0.2)',
-      display:'flex', alignItems:'center',
-      padding:'0 16px', gap:12, flexShrink:0,
-      position:'relative', zIndex:10,
-    },
-    brandLabel: {
-      fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px',
-      letterSpacing:'3px', textTransform:'uppercase', color:'#E0BC6A',
-      whiteSpace:'nowrap', marginRight:4,
-    },
-    divBar: {
-      width:1, height:22, background:'rgba(196,150,42,0.2)', flexShrink:0,
-    },
-    slotSel: {
-      background:'rgba(196,150,42,0.07)', border:'1px solid rgba(196,150,42,0.18)',
-      borderRadius:4, padding:'4px 8px', color:'rgba(245,237,200,0.85)',
-      fontFamily:"'Cinzel',serif", fontSize:'8px', letterSpacing:'1.5px',
-      cursor:'pointer', outline:'none',
-    },
-    actionBtn: (variant) => ({
-      padding:'5px 12px', fontFamily:"'Cinzel',serif", fontWeight:600,
-      fontSize:'7px', letterSpacing:'1.5px', textTransform:'uppercase',
-      borderRadius:3, cursor:'pointer', transition:'all .15s', border:'1px solid',
-      ...(variant==='save'    ? { background:'rgba(196,150,42,0.15)', color:'#E0BC6A',     borderColor:'rgba(196,150,42,0.3)'  } :
-          variant==='load'    ? { background:'rgba(30,60,140,0.2)',   color:'#90b4f0',     borderColor:'rgba(50,100,220,0.25)' } :
-          variant==='export'  ? { background:'rgba(20,90,50,0.2)',    color:'#7ddeaa',     borderColor:'rgba(40,180,90,0.25)'  } :
-          variant==='print'   ? { background:'linear-gradient(135deg,#C4962A,#8a6518)', color:'#FEFCF5', borderColor:'#C4962A', fontWeight:700 } :
-                                { background:'rgba(196,150,42,0.08)', color:'rgba(196,150,42,0.5)', borderColor:'rgba(196,150,42,0.15)' }),
-    }),
-    spacer: { flex:1 },
-    zoomWrap: {
-      display:'flex', alignItems:'center', gap:8,
-      background:'rgba(196,150,42,0.06)', border:'1px solid rgba(196,150,42,0.14)',
-      borderRadius:5, padding:'4px 10px',
-    },
-    zoomLbl: {
-      fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'6.5px',
-      letterSpacing:'2px', textTransform:'uppercase', color:'#C4962A', whiteSpace:'nowrap',
-    },
-    zoomVal: {
-      fontFamily:'monospace', fontSize:10, color:'#E0BC6A', minWidth:30, textAlign:'right',
-    },
-    tabBar: {
-      height: TAB_BAR_H,
-      background:'#0a0806',
-      borderBottom: panelOpen ? '1px solid rgba(196,150,42,0.18)' : '2px solid rgba(196,150,42,0.12)',
-      display:'flex', alignItems:'stretch', flexShrink:0,
-      position:'relative', zIndex:9,
-    },
-    tabBtn: (active) => ({
-      padding:'0 20px', fontFamily:"'Cinzel',serif", fontWeight:600,
-      fontSize:'7.5px', letterSpacing:'1.5px', textTransform:'uppercase',
-      border:'none', background:'none', cursor:'pointer',
-      color: active ? '#E0BC6A' : 'rgba(196,150,42,0.35)',
-      borderBottom: active ? '2px solid #C4962A' : '2px solid transparent',
-      transition:'color .15s',
-    }),
-    collapseBtn: {
-      marginLeft:'auto', padding:'0 16px', border:'none', background:'none',
-      color:'rgba(196,150,42,0.35)', cursor:'pointer',
-      fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px',
-      letterSpacing:'1px', display:'flex', alignItems:'center', gap:5,
-      transition:'color .15s',
-    },
-    editorPanel: {
-      height: panelOpen ? PANEL_H : 0,
-      overflow: 'hidden',
-      transition:'height .25s ease',
-      background:'#0e0c09',
-      borderBottom: panelOpen ? '2px solid rgba(196,150,42,0.18)' : 'none',
-      flexShrink:0,
-    },
-    editorScroll: {
-      height: PANEL_H,
-      overflowY:'auto', overflowX:'auto',
-      padding:'12px 20px 16px',
-      display:'flex', gap:24, flexWrap:'nowrap',
-      alignItems:'flex-start',
-    },
-    preview: {
-      flex:1, overflow:'auto',
-      padding:24, display:'flex', flexDirection:'column', alignItems:'center',
-      background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)',
-    },
-    chip: {
-      fontFamily:"'Raleway',sans-serif", fontSize:'7.5px', fontWeight:700,
-      letterSpacing:'3px', textTransform:'uppercase',
-      color:'rgba(196,150,42,0.4)', background:'rgba(196,150,42,0.06)',
-      border:'1px solid rgba(196,150,42,0.12)', borderRadius:20,
-      padding:'5px 16px', marginBottom:12,
-    },
-    col:     { minWidth:200, maxWidth:240, flex:'0 0 auto' },
-    colWide: { minWidth:240, maxWidth:280, flex:'0 0 auto' },
-    dcard: {
-      background:'rgba(196,150,42,0.05)', border:'1px solid rgba(196,150,42,0.12)',
-      borderRadius:5, padding:'8px', marginBottom:7, position:'relative',
-    },
-    dcLbl: {
-      fontFamily:"'Cinzel',serif", fontSize:'7px', color:'#C4962A',
-      fontWeight:600, letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:4,
-    },
-    remBtn: {
-      position:'absolute', top:6, right:6, background:'none', border:'none',
-      color:'rgba(196,150,42,0.3)', fontSize:11, cursor:'pointer', padding:'2px 4px',
-    },
-    addBtn: {
-      width:'100%', background:'transparent', border:'1px dashed rgba(196,150,42,0.2)',
-      borderRadius:4, padding:'6px', fontFamily:"'Cinzel',serif", fontSize:'7px',
-      fontWeight:600, letterSpacing:'1.5px', textTransform:'uppercase',
-      color:'rgba(196,150,42,0.4)', cursor:'pointer', marginTop:4,
-    },
-    colorRow:  { display:'flex', alignItems:'center', gap:8 },
-    colorDesc: { fontFamily:"'Raleway',sans-serif", fontSize:9, color:'rgba(196,150,42,0.45)' },
-    sectionHdr: {
-      fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7.5px',
-      letterSpacing:'3px', textTransform:'uppercase', color:'#C4962A',
-      marginBottom:8, paddingBottom:4, borderBottom:'1px solid rgba(196,150,42,0.15)',
-    },
+  // Shared panel style tokens
+  const PT = {
+    sh: { fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px', letterSpacing:'3px', textTransform:'uppercase', color:'#C4962A', marginBottom:6, paddingBottom:4, borderBottom:'1px solid rgba(196,150,42,0.15)' },
+    dc: { background:'rgba(196,150,42,0.05)', border:'1px solid rgba(196,150,42,0.12)', borderRadius:5, padding:'8px', marginBottom:7, position:'relative' },
+    dcLbl: { fontFamily:"'Cinzel',serif", fontSize:'7px', color:'#C4962A', fontWeight:600, letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:4 },
+    remBtn: { position:'absolute', top:6, right:6, background:'none', border:'none', color:'rgba(196,150,42,0.3)', fontSize:11, cursor:'pointer', padding:'2px 4px' },
+    addBtn: { width:'100%', background:'transparent', border:'1px dashed rgba(196,150,42,0.2)', borderRadius:4, padding:'6px', fontFamily:"'Cinzel',serif", fontSize:'7px', fontWeight:600, letterSpacing:'1.5px', textTransform:'uppercase', color:'rgba(196,150,42,0.4)', cursor:'pointer', marginTop:4 },
   }
 
+  const MENU_H = 44
   const cardsWrapStyle = {
     display:'flex', flexDirection:'row', alignItems:'flex-start', flexShrink:0,
     transform:`scale(${previewZoom})`, transformOrigin:'top center',
@@ -746,318 +789,141 @@ export default function InvitationGenerator({ currentUser }) {
     filter:'drop-shadow(0 30px 80px rgba(0,0,0,0.8))',
   }
 
-  const renderPanelContent = () => {
-    if (tab === 'p1') return (
-      <>
-        <div style={T.col}>
-          <div style={T.sectionHdr}>Institute</div>
-          <Field label="Name"><Inp value={p1.inst}   onChange={v => sp1('inst',v)}/></Field>
-          <Field label="Accent"><Inp value={p1.acc}   onChange={v => sp1('acc',v)}/></Field>
-          <Field label="Address"><Inp value={p1.addr}  onChange={v => sp1('addr',v)}/></Field>
-          <Field label="Script (Meitei Mayek)"><Inp value={p1.script} onChange={v => sp1('script',v)}/></Field>
-          <div style={{...T.sectionHdr, marginTop:14}}>Invitation</div>
-          <Field label="Calligraphy"><Inp value={p1.callig} onChange={v => sp1('callig',v)}/></Field>
-          <Field label="Opening Line"><Inp textarea value={p1.cord} onChange={v => sp1('cord',v)}/></Field>
-        </div>
-        <div style={T.col}>
-          <div style={T.sectionHdr}>Event</div>
-          <Field label="Event Title"><Inp textarea value={p1.evt} onChange={v => sp1('evt',v)}/></Field>
-          <Field label="Year / Suffix"><Inp value={p1.yr} onChange={v => sp1('yr',v)}/></Field>
-          <div style={{...T.sectionHdr, marginTop:14}}>Date &amp; Venue</div>
-          <Field label="Month"><Inp value={p1.mon}   onChange={v => sp1('mon',v)}/></Field>
-          <Field label="Day">  <Inp value={p1.day}   onChange={v => sp1('day',v)}/></Field>
-          <Field label="Ord">  <Inp value={p1.ord}   onChange={v => sp1('ord',v)}/></Field>
-          <Field label="Year"> <Inp value={p1.year}  onChange={v => sp1('year',v)}/></Field>
-          <Field label="Venue"><Inp textarea value={p1.venue} onChange={v => sp1('venue',v)}/></Field>
-          <Field label="Note"> <Inp value={p1.vnote} onChange={v => sp1('vnote',v)}/></Field>
-        </div>
-        <div style={T.colWide}>
-          <div style={T.sectionHdr}>President / Chair</div>
-          <Field label="Name"><Inp value={p1.aname} onChange={v => sp1('aname',v)}/></Field>
-          <Field label="Role"><Inp value={p1.arole} onChange={v => sp1('arole',v)}/></Field>
-          <div style={{...T.sectionHdr, marginTop:14}}>Other Presidium Members</div>
-          {members.map((m, i) => (
-            <div key={i} style={T.dcard}>
-              <div style={T.dcLbl}>Member {i+2}</div>
-              <button style={T.remBtn} onClick={() => delMember(i)}>✕</button>
-              <Inp value={m.name} onChange={v => updMember(i,'name',v)}/>
-              <div style={{marginTop:4}}/>
-              <Inp value={m.role} onChange={v => updMember(i,'role',v)}/>
-            </div>
-          ))}
-          <button style={T.addBtn} onClick={addMember}>+ Add Member</button>
-        </div>
-        <div style={T.col}>
-          <div style={T.sectionHdr}>Footer</div>
-          <Field label="Quote"><Inp textarea value={p1.quote} onChange={v => sp1('quote',v)}/></Field>
-          <Field label="Sub Label"><Inp value={p1.fsub} onChange={v => sp1('fsub',v)}/></Field>
-          <div style={{...T.sectionHdr, marginTop:14}}>Anniversary</div>
-          <Field label="Years Number"><Inp value={p1.anni} onChange={v => sp1('anni',v)}/></Field>
-        </div>
-      </>
-    )
+  const PANELS = [
+    { id:'p1',     title:'Page 1',  icon:'📄', initX:20,  initY:80  },
+    { id:'p2',     title:'Page 2',  icon:'📋', initX:300, initY:80  },
+    { id:'fonts',  title:'Fonts',   icon:'🔤', initX:580, initY:80  },
+    { id:'colors', title:'Colors',  icon:'🎨', initX:860, initY:80  },
+  ]
 
-    if (tab === 'p2') return (
-      <>
-        <div style={T.col}>
-          <div style={T.sectionHdr}>Header (Page 2)</div>
-          <Field label="Name">   <Inp value={p2.inst}    onChange={v => sp2('inst',v)}/></Field>
-          <Field label="Accent"> <Inp value={p2.acc}     onChange={v => sp2('acc',v)}/></Field>
-          <Field label="Address"><Inp value={p2.addr}    onChange={v => sp2('addr',v)}/></Field>
-          <div style={{...T.sectionHdr, marginTop:14}}>Programme</div>
-          <Field label="Section Title"><Inp value={p2.progTtl} onChange={v => sp2('progTtl',v)}/></Field>
-          <div style={{...T.sectionHdr, marginTop:14}}>Date / Time Bar</div>
-          <Field label="Date">      <Inp value={p2.date}  onChange={v => sp2('date',v)}/></Field>
-          <Field label="Start Time"><Inp value={p2.time}  onChange={v => sp2('time',v)}/></Field>
-          <Field label="Venue Note"><Inp value={p2.venue} onChange={v => sp2('venue',v)}/></Field>
-        </div>
-        <div style={{...T.colWide, maxWidth:360}}>
-          <div style={T.sectionHdr}>Programme Items</div>
-          {progs.map((pg, i) => (
-            <div key={i} style={T.dcard}>
-              <div style={T.dcLbl}>Item {i+1}</div>
-              <button style={T.remBtn} onClick={() => delProg(i)}>✕</button>
-              <div style={{display:'flex', gap:6, marginBottom:4}}>
-                <div style={{flex:'0 0 80px'}}><Inp value={pg.time} onChange={v => updProg(i,'time',v)}/></div>
-                <div style={{flex:1}}><Inp value={pg.name} onChange={v => updProg(i,'name',v)}/></div>
-              </div>
-              <Inp value={pg.sub} onChange={v => updProg(i,'sub',v)}/>
-            </div>
-          ))}
-          <button style={T.addBtn} onClick={addProg}>+ Add Item</button>
-        </div>
-        <div style={T.col}>
-          <div style={T.sectionHdr}>Footer (Page 2)</div>
-          <Field label="Footer Left"> <Inp value={p2.ftrl} onChange={v => sp2('ftrl',v)}/></Field>
-          <Field label="Footer Right"><Inp value={p2.ftrr} onChange={v => sp2('ftrr',v)}/></Field>
-        </div>
-      </>
-    )
+  const ExpandIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      {fullscreen
+        ? <><path d="M8 3v5H3"/><path d="M21 8h-5V3"/><path d="M3 16h5v5"/><path d="M16 21v-5h5"/></>
+        : <><path d="M3 8V3h5"/><path d="M16 3h5v5"/><path d="M21 16v5h-5"/><path d="M8 21H3v-5"/></>
+      }
+    </svg>
+  )
 
-    if (tab === 'fonts') return (
-      <>
-        {FS_CONFIG.map(group => (
-          <div key={group.section} style={{...T.col, minWidth:180, maxWidth:210}}>
-            <div style={T.sectionHdr}>{group.section}</div>
-            {group.items.map(item => (
-              <FsRow key={item.key} label={item.label} fsKey={item.key}
-                value={fs[item.key]} min={item.min} max={item.max} onChange={setFsKey}/>
-            ))}
-          </div>
-        ))}
-      </>
-    )
-
-    if (tab === 'colors') return (
-      <>
-        <div style={T.col}>
-          <div style={T.sectionHdr}>Theme Colors</div>
-          <Field label="Background / Navy">
-            <div style={T.colorRow}>
-              <input type="color" value={colors.navy} onChange={e => setColor('navy', e.target.value)}
-                style={{ width:30, height:30, padding:2, borderRadius:4, border:'1px solid rgba(196,150,42,0.2)', background:'#0e0c09', cursor:'pointer' }}/>
-              <span style={T.colorDesc}>Headers &amp; bands</span>
-            </div>
-          </Field>
-          <Field label="Primary Gold">
-            <div style={T.colorRow}>
-              <input type="color" value={colors.gold} onChange={e => setColor('gold', e.target.value)}
-                style={{ width:30, height:30, padding:2, borderRadius:4, border:'1px solid rgba(196,150,42,0.2)', background:'#0e0c09', cursor:'pointer' }}/>
-              <span style={T.colorDesc}>Borders &amp; accents</span>
-            </div>
-          </Field>
-          <Field label="Light Gold">
-            <div style={T.colorRow}>
-              <input type="color" value={colors.gold2} onChange={e => setColor('gold2', e.target.value)}
-                style={{ width:30, height:30, padding:2, borderRadius:4, border:'1px solid rgba(196,150,42,0.2)', background:'#0e0c09', cursor:'pointer' }}/>
-              <span style={T.colorDesc}>Highlights &amp; labels</span>
-            </div>
-          </Field>
-          <button onClick={() => setColors(DEFAULT_COLORS)}
-            style={{ marginTop:8, padding:'5px 12px', fontFamily:"'Cinzel',serif", fontWeight:600,
-              fontSize:'7px', letterSpacing:'1.5px', textTransform:'uppercase',
-              borderRadius:3, cursor:'pointer', border:'1px solid rgba(196,150,42,0.25)',
-              background:'rgba(196,150,42,0.1)', color:'#E0BC6A' }}>
-            Reset Colors
-          </button>
-          <div style={{...T.sectionHdr, marginTop:14}}>Print Mode</div>
-          <label style={{ display:'flex', alignItems:'center', gap:10,
-            background:'rgba(196,150,42,0.05)', border:'1px solid rgba(196,150,42,0.12)',
-            borderRadius:5, padding:'9px 10px', cursor:'pointer' }}>
-            <div style={{ position:'relative', width:36, height:18, flexShrink:0 }}>
-              <input type="checkbox" checked={lessInk} onChange={e => setLessInk(e.target.checked)}
-                style={{ opacity:0, width:0, height:0, position:'absolute' }}/>
-              <div style={{ position:'absolute', inset:0, borderRadius:9,
-                background: lessInk ? '#C4962A' : 'rgba(196,150,42,0.15)', transition:'background .2s' }}/>
-              <div style={{ position:'absolute', top:3, left: lessInk ? 21 : 3, width:12, height:12,
-                background:'#fff', borderRadius:'50%', transition:'left .2s' }}/>
-            </div>
-            <div>
-              <div style={{ fontFamily:"'Raleway',sans-serif", fontWeight:700, fontSize:'9px',
-                color:'rgba(245,237,200,0.8)' }}>Less Ink Mode</div>
-              <div style={{ fontFamily:"'Raleway',sans-serif", fontSize:'8px',
-                color:'rgba(196,150,42,0.45)' }}>White backgrounds for toner saving</div>
-            </div>
-          </label>
-        </div>
-      </>
-    )
-  }
-
-  // ── Minimized strip shown when toolbar is hidden ──
-  if (toolbarMinimized) {
-    return (
-      <div style={{
-        display:'flex', flexDirection:'column',
-        height: fullscreen ? '100vh' : 'calc(100vh - 60px)',
-        background:'#0a0d14', overflow:'hidden',
-        position: fullscreen ? 'fixed' : 'relative',
-        inset: fullscreen ? 0 : 'auto',
-        zIndex: fullscreen ? 9999 : 'auto',
-      }}>
-        {/* Thin restore strip */}
-        <div
-          onClick={() => setToolbarMinimized(false)}
-          title="Restore editor toolbar"
-          style={{
-            height: 6, flexShrink:0, cursor:'pointer',
-            background:'linear-gradient(90deg,transparent,#C4962A55,#C4962A,#C4962A55,transparent)',
-            transition:'height .15s',
-            display:'flex', alignItems:'center', justifyContent:'center',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.height = '28px'
-            e.currentTarget.querySelector('span').style.opacity = '1'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.height = '6px'
-            e.currentTarget.querySelector('span').style.opacity = '0'
-          }}
-        >
-          <span style={{
-            fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px',
-            letterSpacing:'3px', textTransform:'uppercase', color:'#E0BC6A',
-            opacity:0, transition:'opacity .15s', whiteSpace:'nowrap',
-          }}>▼ ✉ INVITATION STUDIO — CLICK TO RESTORE EDITOR ▼</span>
-        </div>
-
-        {/* Full preview */}
-        <div style={{...T.preview, paddingTop:16}}>
-          <style>{`:root{${cssVarsStyle}} ${PRINT_CARD_CSS} ${lessInk ? LESS_INK_CSS : ''}`}</style>
-          <div style={cardsWrapStyle} ref={previewRef}>
-            <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
-            <ProgCard p2={p2} progs={progs} colors={colors} lessInk={lessInk}/>
-          </div>
-        </div>
-
-        {toast && (
-          <div style={{
-            position:'fixed', bottom:24, right:24, zIndex:99999,
-            background:'#1e293b', border:'1px solid rgba(196,150,42,0.3)',
-            color:'#f1f5f9', padding:'10px 18px', borderRadius:8,
-            fontFamily:'sans-serif', fontSize:13, fontWeight:500,
-            boxShadow:'0 8px 32px rgba(0,0,0,0.5)',
-          }}>{toast}</div>
-        )}
+  // Minimized strip
+  if (toolbarMin) return (
+    <div style={{ display:'flex', flexDirection:'column', height: fullscreen ? '100vh' : 'calc(100vh - 60px)', background:'#0a0d14', position: fullscreen ? 'fixed' : 'relative', inset: fullscreen ? 0 : 'auto', zIndex: fullscreen ? 9999 : 'auto' }}>
+      <div onClick={() => setToolbarMin(false)} title="Restore menubar"
+        style={{ height:6, flexShrink:0, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+          background:'linear-gradient(90deg,transparent,#C4962A55,#C4962A,#C4962A55,transparent)' }}
+        onMouseEnter={e => { e.currentTarget.style.height='28px'; e.currentTarget.querySelector('span').style.opacity='1' }}
+        onMouseLeave={e => { e.currentTarget.style.height='6px'; e.currentTarget.querySelector('span').style.opacity='0' }}>
+        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px', letterSpacing:'3px', textTransform:'uppercase', color:'#E0BC6A', opacity:0, transition:'opacity .15s', whiteSpace:'nowrap' }}>
+          ▼ ✉ INVITATION STUDIO — CLICK TO RESTORE ▼
+        </span>
       </div>
-    )
-  }
+      <div style={{ flex:1, overflow:'auto', padding:24, display:'flex', flexDirection:'column', alignItems:'center', background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)' }}>
+        <style>{`:root{${cssVarsStyle}} ${PRINT_CARD_CSS} ${lessInk ? LESS_INK_CSS : ''}`}</style>
+        <div style={cardsWrapStyle} ref={previewRef}>
+          <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
+          <ProgCard p2={p2} progs={progs} colors={colors} lessInk={lessInk}/>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
-    <div style={T.wrap}>
+    <div style={{
+      display:'flex', flexDirection:'column',
+      height: fullscreen ? '100vh' : 'calc(100vh - 60px)',
+      background:'#0a0d14', overflow:'hidden',
+      position: fullscreen ? 'fixed' : 'relative',
+      inset: fullscreen ? 0 : 'auto',
+      zIndex: fullscreen ? 9999 : 'auto',
+    }}>
 
-      {/* ══ ACTION BAR ══ */}
-      <div style={T.actionBar}>
-        <span style={T.brandLabel}>✉ Invitation Studio</span>
-        <div style={T.divBar}/>
+      {/* ══ MENUBAR ══ */}
+      <div style={{
+        height: MENU_H, flexShrink:0,
+        background:'linear-gradient(90deg,#07102a 0%,#0d1e45 60%,#07102a 100%)',
+        borderBottom:'1px solid rgba(196,150,42,0.25)',
+        display:'flex', alignItems:'center', padding:'0 14px', gap:10, zIndex:100,
+      }}>
+        {/* Brand */}
+        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px', letterSpacing:'3px', textTransform:'uppercase', color:'#E0BC6A', whiteSpace:'nowrap', marginRight:2 }}>
+          ✉ Invitation Studio
+        </span>
 
-        <select style={T.slotSel} value={slot} onChange={e => setSlot(Number(e.target.value))}>
+        <div style={{ width:1, height:22, background:'rgba(196,150,42,0.2)', flexShrink:0 }}/>
+
+        {/* ── Editor panels menu group ── */}
+        <div style={{ display:'flex', alignItems:'center', gap:4,
+          background:'rgba(196,150,42,0.05)', border:'1px solid rgba(196,150,42,0.15)',
+          borderRadius:5, padding:'3px 6px' }}>
+          <span style={{ fontFamily:"'Cinzel',serif", fontSize:'6px', letterSpacing:'2px', textTransform:'uppercase', color:'rgba(196,150,42,0.4)', marginRight:3 }}>Editor</span>
+          {PANELS.map(p => (
+            <EditorMenuBtn key={p.id} label={p.title} icon={p.icon}
+              active={panelOpen[p.id]} onClick={() => togglePanel(p.id)}/>
+          ))}
+        </div>
+
+        <div style={{ width:1, height:22, background:'rgba(196,150,42,0.2)', flexShrink:0 }}/>
+
+        {/* File ops */}
+        <select value={slot} onChange={e => setSlot(Number(e.target.value))}
+          style={{ background:'rgba(196,150,42,0.07)', border:'1px solid rgba(196,150,42,0.18)', borderRadius:4, padding:'4px 8px', color:'rgba(245,237,200,0.85)', fontFamily:"'Cinzel',serif", fontSize:'8px', letterSpacing:'1.5px', cursor:'pointer', outline:'none' }}>
           {SLOT_LABELS.map((l,i) => <option key={i} value={i}>{l}</option>)}
         </select>
-        <button style={T.actionBtn('save')}   onClick={saveSlot}>💾 Save</button>
-        <button style={T.actionBtn('load')}   onClick={loadSlot}>📂 Load</button>
-        <button style={T.actionBtn('export')} onClick={exportHTML}>⬇ Export</button>
-
-        <div style={T.divBar}/>
-
-        <div style={T.zoomWrap}>
-          <span style={T.zoomLbl}>Zoom</span>
-          <input type="range" min={0.3} max={1.2} step={0.02} value={previewZoom}
-            onChange={e => setPreviewZoom(Number(e.target.value))}
-            style={{ width:90, height:2, accentColor:'#C4962A', cursor:'pointer' }}/>
-          <span style={T.zoomVal}>{Math.round(previewZoom * 100)}%</span>
-          <button onClick={() => setPreviewZoom(0.72)}
-            style={{ background:'none', border:'none', color:'rgba(196,150,42,0.4)',
-              cursor:'pointer', fontFamily:"'Cinzel',serif", fontSize:'6.5px',
-              letterSpacing:'1px', textTransform:'uppercase', padding:'2px 4px' }}>Reset</button>
-        </div>
-
-        {lessInk && (
-          <span style={{ fontFamily:"'Raleway',sans-serif", fontSize:'7px', fontWeight:700,
-            letterSpacing:'2px', textTransform:'uppercase', padding:'3px 9px',
-            borderRadius:10, background:'rgba(46,125,50,0.25)', color:'#81c784',
-            border:'1px solid rgba(46,125,50,0.3)' }}>◆ Less Ink</span>
-        )}
-
-        <div style={T.spacer}/>
-
-        {/* ── Minimize toolbar ── */}
-        <button
-          onClick={() => setToolbarMinimized(true)}
-          title="Minimize editor — maximum preview space"
-          style={{
-            width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center',
-            background:'rgba(196,150,42,0.08)',
-            border:'1px solid rgba(196,150,42,0.2)',
-            borderRadius:5, cursor:'pointer', color:'#E0BC6A',
-            transition:'all .15s', flexShrink:0,
-          }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <line x1="4" y1="12" x2="20" y2="12"/>
-          </svg>
-        </button>
-
-        {/* ── Fullscreen toggle ── */}
-        <button
-          onClick={() => setFullscreen(f => !f)}
-          title={fullscreen ? 'Exit Fullscreen (Esc)' : 'Expand to Fullscreen'}
-          style={{
-            width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center',
-            background: fullscreen ? 'rgba(196,150,42,0.25)' : 'rgba(196,150,42,0.08)',
-            border:`1px solid ${fullscreen ? 'rgba(196,150,42,0.55)' : 'rgba(196,150,42,0.2)'}`,
-            borderRadius:5, cursor:'pointer',
-            color: fullscreen ? '#fbbf24' : '#E0BC6A',
-            transition:'all .15s', marginRight:8, flexShrink:0,
-          }}>
-          <ExpandIcon/>
-        </button>
-
-        <button style={T.actionBtn('print')} onClick={handlePrint}>⎙ Print / PDF</button>
-      </div>
-      {/* ── END ACTION BAR ── */}
-
-      {/* ══ TAB BAR ══ */}
-      <div style={T.tabBar}>
-        {TABS.map(t => (
-          <button key={t.id} style={T.tabBtn(tab===t.id)} onClick={() => setTab(t.id)}>
-            {t.label}
+        {[
+          { label:'💾 Save',    fn: saveSlot,   bg:'rgba(196,150,42,0.15)', color:'#E0BC6A',   border:'rgba(196,150,42,0.3)'  },
+          { label:'📂 Load',   fn: loadSlot,   bg:'rgba(30,60,140,0.2)',   color:'#90b4f0',   border:'rgba(50,100,220,0.25)' },
+          { label:'⬇ Export', fn: exportHTML, bg:'rgba(20,90,50,0.2)',    color:'#7ddeaa',   border:'rgba(40,180,90,0.25)'  },
+        ].map(b => (
+          <button key={b.label} onClick={b.fn}
+            style={{ padding:'5px 11px', fontFamily:"'Cinzel',serif", fontWeight:600, fontSize:'7px', letterSpacing:'1.5px', textTransform:'uppercase', borderRadius:3, cursor:'pointer', border:`1px solid ${b.border}`, background:b.bg, color:b.color }}>
+            {b.label}
           </button>
         ))}
-        <button style={T.collapseBtn} onClick={() => setPanelOpen(o => !o)}>
-          {panelOpen ? '▲ Collapse' : '▼ Edit'}
+
+        <div style={{ width:1, height:22, background:'rgba(196,150,42,0.2)', flexShrink:0 }}/>
+
+        {/* Zoom */}
+        <div style={{ display:'flex', alignItems:'center', gap:7, background:'rgba(196,150,42,0.06)', border:'1px solid rgba(196,150,42,0.14)', borderRadius:5, padding:'4px 10px' }}>
+          <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'6.5px', letterSpacing:'2px', textTransform:'uppercase', color:'#C4962A', whiteSpace:'nowrap' }}>Zoom</span>
+          <input type="range" min={0.3} max={1.2} step={0.02} value={previewZoom}
+            onChange={e => setPreviewZoom(Number(e.target.value))}
+            style={{ width:80, height:2, accentColor:'#C4962A', cursor:'pointer' }}/>
+          <span style={{ fontFamily:'monospace', fontSize:10, color:'#E0BC6A', minWidth:30, textAlign:'right' }}>{Math.round(previewZoom * 100)}%</span>
+          <button onClick={() => setPreviewZoom(0.72)}
+            style={{ background:'none', border:'none', color:'rgba(196,150,42,0.4)', cursor:'pointer', fontFamily:"'Cinzel',serif", fontSize:'6.5px', letterSpacing:'1px', textTransform:'uppercase', padding:'2px 4px' }}>Reset</button>
+        </div>
+
+        {lessInk && <span style={{ fontFamily:"'Raleway',sans-serif", fontSize:'7px', fontWeight:700, letterSpacing:'2px', textTransform:'uppercase', padding:'3px 9px', borderRadius:10, background:'rgba(46,125,50,0.25)', color:'#81c784', border:'1px solid rgba(46,125,50,0.3)' }}>◆ Less Ink</span>}
+
+        <div style={{ flex:1 }}/>
+
+        {/* Window controls */}
+        {/* Minimize bar */}
+        <button onClick={() => setToolbarMin(true)} title="Minimize — full preview"
+          style={{ width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(196,150,42,0.08)', border:'1px solid rgba(196,150,42,0.2)', borderRadius:4, cursor:'pointer', color:'#E0BC6A', flexShrink:0 }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="4" y1="12" x2="20" y2="12"/></svg>
+        </button>
+        {/* Fullscreen */}
+        <button onClick={() => setFullscreen(f => !f)} title={fullscreen ? 'Exit Fullscreen (Esc)' : 'Fullscreen'}
+          style={{ width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', background: fullscreen ? 'rgba(196,150,42,0.25)' : 'rgba(196,150,42,0.08)', border:`1px solid ${fullscreen ? 'rgba(196,150,42,0.55)' : 'rgba(196,150,42,0.2)'}`, borderRadius:4, cursor:'pointer', color: fullscreen ? '#fbbf24' : '#E0BC6A', flexShrink:0, marginRight:6 }}>
+          <ExpandIcon/>
+        </button>
+        {/* Print */}
+        <button onClick={handlePrint}
+          style={{ padding:'6px 14px', fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px', letterSpacing:'1.5px', textTransform:'uppercase', borderRadius:3, cursor:'pointer', border:'1px solid #C4962A', background:'linear-gradient(135deg,#C4962A,#8a6518)', color:'#FEFCF5' }}>
+          ⎙ Print / PDF
         </button>
       </div>
+      {/* ── END MENUBAR ── */}
 
-      {/* ══ EDITOR PANEL ══ */}
-      <div style={T.editorPanel}>
-        <div style={T.editorScroll}>
-          {renderPanelContent()}
-        </div>
-      </div>
-
-      {/* ══ PREVIEW ══ */}
-      <div style={T.preview}>
-        <div style={T.chip}>
+      {/* ══ CANVAS / PREVIEW ══ */}
+      <div style={{
+        flex:1, overflow:'auto', padding:32,
+        display:'flex', flexDirection:'column', alignItems:'center',
+        background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)',
+        position:'relative',
+      }}>
+        <div style={{ fontFamily:"'Raleway',sans-serif", fontSize:'7.5px', fontWeight:700, letterSpacing:'3px', textTransform:'uppercase', color:'rgba(196,150,42,0.4)', background:'rgba(196,150,42,0.06)', border:'1px solid rgba(196,150,42,0.12)', borderRadius:20, padding:'5px 16px', marginBottom:16 }}>
           A4 Landscape · 297 × 210 mm · Two A5 Cards
         </div>
 
@@ -1069,15 +935,38 @@ export default function InvitationGenerator({ currentUser }) {
         </div>
       </div>
 
+      {/* ══ FLOATING PANELS ══ */}
+      <FloatPanel id="p1" title="Page 1" icon="📄"
+        open={panelOpen.p1} onClose={() => setPanelOpen(p => ({...p, p1:false}))}
+        initialPos={{ x:20, y:90 }} zIndex={panelZOrder.p1}
+        onFocus={() => bringToFront('p1')}>
+        <P1Content p1={p1} sp1={sp1} members={members} updMember={updMember} addMember={addMember} delMember={delMember} T={PT}/>
+      </FloatPanel>
+
+      <FloatPanel id="p2" title="Page 2" icon="📋"
+        open={panelOpen.p2} onClose={() => setPanelOpen(p => ({...p, p2:false}))}
+        initialPos={{ x:300, y:90 }} zIndex={panelZOrder.p2}
+        onFocus={() => bringToFront('p2')}>
+        <P2Content p2={p2} sp2={sp2} progs={progs} updProg={updProg} addProg={addProg} delProg={delProg} T={PT}/>
+      </FloatPanel>
+
+      <FloatPanel id="fonts" title="Fonts" icon="🔤"
+        open={panelOpen.fonts} onClose={() => setPanelOpen(p => ({...p, fonts:false}))}
+        initialPos={{ x:580, y:90 }} zIndex={panelZOrder.fonts}
+        onFocus={() => bringToFront('fonts')}>
+        <FontsContent fs={fs} setFsKey={setFsKey}/>
+      </FloatPanel>
+
+      <FloatPanel id="colors" title="Colors & Print" icon="🎨"
+        open={panelOpen.colors} onClose={() => setPanelOpen(p => ({...p, colors:false}))}
+        initialPos={{ x:20, y:480 }} zIndex={panelZOrder.colors}
+        onFocus={() => bringToFront('colors')}>
+        <ColorsContent colors={colors} setColor={setColor} lessInk={lessInk} setLessInk={setLessInk}/>
+      </FloatPanel>
+
       {/* ══ TOAST ══ */}
       {toast && (
-        <div style={{
-          position:'fixed', bottom:24, right:24, zIndex:99999,
-          background:'#1e293b', border:'1px solid rgba(196,150,42,0.3)',
-          color:'#f1f5f9', padding:'10px 18px', borderRadius:8,
-          fontFamily:'sans-serif', fontSize:13, fontWeight:500,
-          boxShadow:'0 8px 32px rgba(0,0,0,0.5)',
-        }}>
+        <div style={{ position:'fixed', bottom:24, right:24, zIndex:99999, background:'#1e293b', border:'1px solid rgba(196,150,42,0.3)', color:'#f1f5f9', padding:'10px 18px', borderRadius:8, fontFamily:'sans-serif', fontSize:13, fontWeight:500, boxShadow:'0 8px 32px rgba(0,0,0,0.5)' }}>
           {toast}
         </div>
       )}
