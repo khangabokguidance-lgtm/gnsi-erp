@@ -125,9 +125,9 @@ body{background:#fff;display:flex;gap:0}
 .hdr-gl{position:absolute;left:0;right:0;height:3px;z-index:2;
   background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%);}
 .hdr-gl.t{top:0}.hdr-gl.b{bottom:0}
-.h-script{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-scr);color:var(--gold3);letter-spacing:3px;margin-bottom:4px;position:relative;z-index:1}
-.h-name{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-inst);color:#fff;letter-spacing:1.2px;line-height:1.22;position:relative;z-index:1;text-shadow:0 1px 12px rgba(196,150,42,0.2)}
-.h-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-addr);color:rgba(224,188,106,0.75);letter-spacing:3px;text-transform:uppercase;margin-top:5px;position:relative;z-index:1}
+.h-script{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-scr);color:#ffffff;letter-spacing:3px;margin-bottom:4px;position:relative;z-index:1}
+.h-name{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-inst);color:#ffffff;letter-spacing:1.2px;line-height:1.22;position:relative;z-index:1;text-shadow:0 1px 12px rgba(196,150,42,0.2)}
+.h-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-addr);color:#ffffff;letter-spacing:3px;text-transform:uppercase;margin-top:5px;position:relative;z-index:1}
 .anni{position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:10}
 
 /* ─ Gold rule ─ */
@@ -169,18 +169,17 @@ body{background:#fff;display:flex;gap:0}
 .vn-note{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-vnote);color:#1a1208;margin-top:3px}
 
 /* ─ Presidium Members ─ */
-.dig-sec{padding:0 22px;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dig-sec{padding:0 14px;flex:1;display:flex;flex-direction:column;justify-content:center}
 .dig-hd-wrap{text-align:center;margin-bottom:8px;flex-shrink:0;width:100%}
 .dig-hd-row{display:inline-flex;align-items:center;gap:10px}
 .dig-hd-line{width:38px;height:.8px}
 .dig-hd-line.l{background:linear-gradient(90deg,transparent,#C4962A)}
 .dig-hd-line.r{background:linear-gradient(90deg,#C4962A,transparent)}
 .dig-hd-lbl{font-family:'Cinzel',serif;font-weight:700;font-size:7px;letter-spacing:4px;text-transform:uppercase;color:var(--navy);border:1px solid var(--gold);padding:3px 14px;background:var(--cream)}
-.dig-list{display:flex;flex-direction:column;flex-shrink:0;width:fit-content;min-width:320px;max-width:100%;align-self:center}
-.dig-item{display:flex;align-items:center;padding:6px 4px;gap:12px;border-bottom:.8px solid rgba(196,150,42,.2)}
+.dig-list{display:table;flex-shrink:0;margin:0 auto;min-width:260px;max-width:100%}
+.dig-item{display:flex;align-items:center;padding:5px 4px;gap:10px;border-bottom:.8px solid rgba(196,150,42,.2);white-space:nowrap}
 .dig-item:last-child{border-bottom:none}
-.dig-num{flex-shrink:0;width:20px;height:20px;border:1px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-weight:700;font-size:7px;color:var(--gold);background:rgba(196,150,42,.08)}
-.dig-txt{flex:1;display:flex;flex-direction:column;justify-content:center;gap:1px}
+.dig-txt{display:flex;flex-direction:column;justify-content:center;gap:1px}
 .d-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:700;font-size:var(--fs-dname);color:#07102a;line-height:1.25}
 .d-role{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-drole);color:#7a4e08;letter-spacing:1px;text-transform:uppercase;line-height:1.3}
 
@@ -188,16 +187,16 @@ body{background:#fff;display:flex;gap:0}
 .ftr{background:linear-gradient(160deg,#060e22 0%,#0a1835 40%,#0d1e45 70%,#07102a 100%);padding:9px 36px;text-align:center;position:relative;flex-shrink:0;overflow:hidden}
 .ftr::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .ftr::after{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.04) 18px,rgba(196,150,42,.04) 19px),radial-gradient(ellipse 70% 150% at 50% 50%,rgba(196,150,42,.07) 0%,transparent 70%)}
-.ftr-q{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-quote);color:#fff;line-height:1.65;position:relative;z-index:1}
-.ftr-s{font-family:'Cinzel',serif;font-weight:600;font-size:6.5px;letter-spacing:4.5px;text-transform:uppercase;color:var(--gold2);margin-top:4px;position:relative;z-index:1}
+.ftr-q{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-quote);color:#ffffff;line-height:1.65;position:relative;z-index:1}
+.ftr-s{font-family:'Cinzel',serif;font-weight:600;font-size:6.5px;letter-spacing:4.5px;text-transform:uppercase;color:#ffffff;margin-top:4px;position:relative;z-index:1}
 
 /* ─ Page 2 Header ─ */
 .p2-hdr{background:linear-gradient(160deg,#07102a 0%,#0d1e45 40%,#0a1835 70%,#060e22 100%);padding:13px 20px 11px;text-align:center;position:relative;overflow:hidden;flex-shrink:0}
 .p2-hdr::before{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.045) 18px,rgba(196,150,42,.045) 19px),radial-gradient(ellipse 70% 120% at 50% 50%,rgba(196,150,42,.08) 0%,transparent 70%)}
 .p2-hdr-gl{position:absolute;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .p2-hdr-gl.t{top:0}.p2-hdr-gl.b{bottom:0}
-.p2-inst{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-p2inst);color:#fff;letter-spacing:1px;line-height:1.2;position:relative;z-index:1;text-shadow:0 1px 10px rgba(196,150,42,.2)}
-.p2-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-p2addr);color:rgba(224,188,106,.75);letter-spacing:3px;text-transform:uppercase;margin-top:4px;position:relative;z-index:1}
+.p2-inst{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-p2inst);color:#ffffff;letter-spacing:1px;line-height:1.2;position:relative;z-index:1;text-shadow:0 1px 10px rgba(196,150,42,.2)}
+.p2-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-p2addr);color:#ffffff;letter-spacing:3px;text-transform:uppercase;margin-top:4px;position:relative;z-index:1}
 
 /* ─ P2 Programme heading ─ */
 .p2-prog-hd{text-align:center;padding:8px 20px 5px;flex-shrink:0}
@@ -228,8 +227,8 @@ body{background:#fff;display:flex;gap:0}
 .p2-ftr{background:linear-gradient(160deg,#060e22 0%,#0a1835 40%,#0d1e45 70%,#07102a 100%);padding:9px 28px;display:flex;align-items:center;justify-content:space-between;position:relative;flex-shrink:0;overflow:hidden}
 .p2-ftr::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .p2-ftr::after{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.04) 18px,rgba(196,150,42,.04) 19px)}
-.p2-ftr-l{font-family:'Cinzel',serif;font-weight:600;font-size:7px;letter-spacing:3px;text-transform:uppercase;color:var(--gold2);position:relative;z-index:1}
-.p2-ftr-r{font-family:'EB Garamond',serif;font-style:italic;font-size:10px;color:rgba(255,255,255,.9);position:relative;z-index:1}
+.p2-ftr-l{font-family:'Cinzel',serif;font-weight:600;font-size:7px;letter-spacing:3px;text-transform:uppercase;color:#ffffff;position:relative;z-index:1}
+.p2-ftr-r{font-family:'EB Garamond',serif;font-style:italic;font-size:10px;color:#ffffff;position:relative;z-index:1}
 
 @media print{
   @page{size:A4 landscape;margin:0}
@@ -351,7 +350,6 @@ function InvCard({ p1, members }) {
           <div className="dig-list">
             {members.map((m, i) => (
               <div className="dig-item" key={i}>
-                <div className="dig-num">{i+1}</div>
                 <div className="dig-txt">
                   <div className="d-name">{m.name}</div>
                   <div className="d-role">{m.role}</div>
@@ -462,8 +460,9 @@ function Inp({ value, onChange, textarea, rows=2 }) {
 
 // ── Main Component ────────────────────────────
 export default function InvitationGenerator({ currentUser }) {
-  // ── Admin guard ────────────────────────────
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  // ── Role guard — Admin + Manager ──────────
+  const role = (currentUser?.role || '').toLowerCase()
+  const canAccess = role === 'admin' || role === 'manager'
 
   // ── State ──────────────────────────────────
   const [tab, setTab]       = useState('p1')     // p1 | p2 | members | progs | print
@@ -526,7 +525,7 @@ export default function InvitationGenerator({ currentUser }) {
   const delProg  = i => setProgs(prev => prev.filter((_,idx) => idx!==i))
 
   // ── Admin block ────────────────────────────
-  if (!isAdmin) {
+  if (!canAccess) {
     return (
       <div style={{
         display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
@@ -536,8 +535,8 @@ export default function InvitationGenerator({ currentUser }) {
           <rect x="3" y="11" width="18" height="11" rx="2"/>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
-        <p style={{ fontSize:18, fontWeight:600, color:'#64748b' }}>Admin Access Only</p>
-        <p style={{ fontSize:13, color:'#475569' }}>The Invitation Generator is restricted to administrators.</p>
+        <p style={{ fontSize:18, fontWeight:600, color:'#64748b' }}>Admin / Manager Access Only</p>
+        <p style={{ fontSize:13, color:'#475569' }}>The Invitation Generator is restricted to Admins and Managers.</p>
       </div>
     )
   }
@@ -657,7 +656,7 @@ export default function InvitationGenerator({ currentUser }) {
         {/* Top brand */}
         <div style={S.sTop}>
           <div style={S.sTitle}>✉ Invitation Studio</div>
-          <div style={S.sSub}>GNSI · Admin Only · A5 Live Editor</div>
+          <div style={S.sSub}>GNSI · Admin & Manager · A5 Live Editor</div>
         </div>
 
         {/* Tabs */}

@@ -260,9 +260,10 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
+    if ((currentUser?.role || '') === 'Manager') set.add('invitation')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
-  }, [permMap, isAdmin])
+  }, [permMap, isAdmin, currentUser?.role])
 
   useEffect(() => {
     const handler = e => { if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); searchRef.current?.focus() } }
@@ -727,7 +728,7 @@ export default function App() {
     feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}        />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
     entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}          />,
-    invitation:        isAdmin ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
+    invitation:        (isAdmin || currentUser?.role === 'Manager') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
   }
