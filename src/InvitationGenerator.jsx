@@ -379,7 +379,6 @@ function InvCard({ p1, members, colors, lessInk }) {
           <div className="dig-list">
             {allMembers.map((m, i) => (
               <div className="dig-item" key={i}>
-                <div className="dig-num">{i + 1}</div>
                 <div className="dig-txt">
                   <div className={`d-name${m.anchor ? ' anchor' : ''}`}>{m.name}</div>
                   <div className="d-role">{m.role}</div>
