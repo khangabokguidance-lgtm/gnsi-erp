@@ -109,6 +109,19 @@ const DEFAULT_PROGS = [
   { time: '01:00 PM', name: 'Lunch & Fellowship',                    sub: '' },
 ]
 
+const DEFAULT_FC = {
+  inst:    '#ffffff', addr:    'rgba(224,188,106,0.75)', scr:     '#F5DFA0',
+  callig:  '#C4962A', cord:    '#1a1208',                evt:     '#0B1730',
+  mon:     '#0B1730', day:     '#0B1730',                yr:      '#C4962A',
+  vname:   '#0B1730', vnote:   '#1a1208',
+  aname:   '#07102a', dname:   '#07102a',                drole:   '#7a4e08',
+  quote:   '#ffffff',
+  p2inst:  '#ffffff', p2addr:  'rgba(224,188,106,0.75)',
+  p2ttl:   '#0B1730', p2date:  '#0B1730',
+  p2itime: '#6b4608', p2iname: '#07102a',                p2isub:  '#1a1208',
+  p2ftr:   '#E0BC6A',
+}
+
 const SLOT_KEYS   = ['slot_A', 'slot_B', 'slot_C']
 const SLOT_LABELS = ['Slot A', 'Slot B', 'Slot C']
 
@@ -118,9 +131,10 @@ function buildName(inst, acc, goldColor = '#C4962A') {
   return inst.slice(0, idx) + `<span style="color:${goldColor}">${acc}</span>` + inst.slice(idx + acc.length)
 }
 
-function buildCssVars(fs, colors) {
+function buildCssVars(fs, colors, fc) {
   const fvars = Object.entries(fs).map(([k, v]) => `--fs-${k}:${v}px`).join(';')
-  return `${fvars};--navy:${colors.navy};--gold:${colors.gold};--gold2:${colors.gold2};--gold3:#F5DFA0;--cream:#FEFCF5`
+  const cvars = fc ? Object.entries(fc).map(([k, v]) => `--fc-${k}:${v}`).join(';') : ''
+  return `${fvars};${cvars};--navy:${colors.navy};--gold:${colors.gold};--gold2:${colors.gold2};--gold3:#F5DFA0;--cream:#FEFCF5`
 }
 
 const PRINT_CARD_CSS = `
@@ -140,9 +154,9 @@ body{background:#fff;display:flex;gap:0}
 .hdr::before{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,0.045) 18px,rgba(196,150,42,0.045) 19px),radial-gradient(ellipse 70% 120% at 50% 50%,rgba(196,150,42,0.08) 0%,transparent 70%)}
 .hdr-gl{position:absolute;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .hdr-gl.t{top:0}.hdr-gl.b{bottom:0}
-.h-script{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-scr);color:var(--gold3);letter-spacing:3px;margin-bottom:5px;position:relative;z-index:1}
-.h-name{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-inst);color:#ffffff;letter-spacing:1.2px;line-height:1.22;position:relative;z-index:1;text-shadow:0 1px 12px rgba(196,150,42,0.2)}
-.h-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-addr);color:rgba(224,188,106,0.75);letter-spacing:3px;text-transform:uppercase;margin-top:6px;position:relative;z-index:1}
+.h-script{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-scr);color:var(--fc-scr,var(--gold3));letter-spacing:3px;margin-bottom:5px;position:relative;z-index:1}
+.h-name{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-inst);color:var(--fc-inst,#ffffff);letter-spacing:1.2px;line-height:1.22;position:relative;z-index:1;text-shadow:0 1px 12px rgba(196,150,42,0.2)}
+.h-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-addr);color:var(--fc-addr,rgba(224,188,106,0.75));letter-spacing:3px;text-transform:uppercase;margin-top:6px;position:relative;z-index:1}
 .anni{position:absolute;right:9px;top:50%;transform:translateY(-50%);z-index:10}
 .gold-rule{flex-shrink:0;height:1.5px;background:linear-gradient(90deg,transparent,var(--gold),var(--gold2),var(--gold),transparent);margin:0 18px}
 .inv-blk{text-align:center;padding:7px 50px 4px;flex-shrink:0}
@@ -151,29 +165,29 @@ body{background:#fff;display:flex;gap:0}
 .orn-gems{display:flex;gap:4px;align-items:center}
 .orn-gems span{width:5px;height:5px;background:#C4962A;transform:rotate(45deg);display:block}
 .orn-gems span.s{width:3px;height:3px;opacity:.45}
-.inv-callig{font-family:'Great Vibes',cursive;font-size:var(--fs-callig);color:var(--gold);line-height:.9;text-shadow:0 1px 18px rgba(196,150,42,.4)}
-.inv-cord{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-cord);color:#1a1208;margin-top:4px;line-height:1.5}
+.inv-callig{font-family:'Great Vibes',cursive;font-size:var(--fs-callig);color:var(--fc-callig,var(--gold));line-height:.9;text-shadow:0 1px 18px rgba(196,150,42,.4)}
+.inv-cord{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-cord);color:var(--fc-cord,#1a1208);margin-top:4px;line-height:1.5}
 .evt-band{margin:4px 16px;position:relative;flex-shrink:0}
 .evt-band::before,.evt-band::after{content:'';position:absolute;left:0;right:0;height:.8px;background:linear-gradient(90deg,transparent,#C4962A,transparent)}
 .evt-band::before{top:0}.evt-band::after{bottom:0}
 .evt-inner{background:#fff;margin:.8px 0;padding:8px 18px;text-align:center;position:relative}
 .evt-inner::before{content:'';position:absolute;inset:4px;border:.8px solid rgba(196,150,42,.35);pointer-events:none}
-.evt-ttl{font-family:'Playfair Display',serif;font-weight:700;font-style:italic;font-size:var(--fs-evt);color:var(--navy);letter-spacing:.3px;line-height:1.35}
+.evt-ttl{font-family:'Playfair Display',serif;font-weight:700;font-style:italic;font-size:var(--fs-evt);color:var(--fc-evt,var(--navy));letter-spacing:.3px;line-height:1.35}
 .evt-ttl .yr{font-style:normal;color:var(--gold);font-weight:400;font-size:11px}
 .dv-panel{display:flex;align-items:center;margin:4px 28px 2px;flex-shrink:0;gap:0}
 .dv-divider{width:1px;align-self:stretch;background:linear-gradient(180deg,transparent,var(--gold) 20%,var(--gold) 80%,transparent);flex-shrink:0;margin:0 16px}
 .date-col{flex:0 0 auto;padding:4px 0;text-align:center;display:flex;flex-direction:row;align-items:center;gap:8px}
 .dt-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .dt-lbl{font-family:'Cinzel',serif;font-weight:700;font-size:6px;letter-spacing:3.5px;text-transform:uppercase;color:var(--gold)}
-.dt-mon{font-family:'Cinzel',serif;font-weight:600;font-size:8px;letter-spacing:3px;color:#0B1730;text-transform:uppercase}
+.dt-mon{font-family:'Cinzel',serif;font-weight:600;font-size:8px;letter-spacing:3px;color:var(--fc-mon,#0B1730);text-transform:uppercase}
 .dt-yr{font-family:'Playfair Display',serif;font-weight:500;font-size:9px;letter-spacing:3px;color:#2a3a5a}
 .dt-row{display:flex;align-items:flex-start}
-.dt-day{font-family:'Playfair Display',serif;font-weight:900;font-size:var(--fs-day);color:var(--navy);line-height:1}
+.dt-day{font-family:'Playfair Display',serif;font-weight:900;font-size:var(--fs-day);color:var(--fc-day,var(--navy));line-height:1}
 .dt-sup{font-family:'Cinzel',serif;font-weight:600;font-size:9px;color:var(--gold);margin-top:7px;margin-left:1px}
 .venue-col{flex:1;padding:4px 0;display:flex;flex-direction:column;justify-content:center}
 .vn-lbl{font-family:'Cinzel',serif;font-weight:700;font-size:6px;letter-spacing:3.5px;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
-.vn-name{font-family:'Playfair Display',serif;font-weight:700;font-size:var(--fs-vname);color:var(--navy);line-height:1.3}
-.vn-note{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-vnote);color:#1a1208;margin-top:3px}
+.vn-name{font-family:'Playfair Display',serif;font-weight:700;font-size:var(--fs-vname);color:var(--fc-vname,var(--navy));line-height:1.3}
+.vn-note{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-vnote);color:var(--fc-vnote,#1a1208);margin-top:3px}
 .dig-sec{padding:0 14px;flex:1;display:flex;flex-direction:column;justify-content:center}
 .dig-hd-wrap{text-align:center;margin-bottom:8px;flex-shrink:0;width:100%}
 .dig-hd-row{display:inline-flex;align-items:center;gap:10px}
@@ -185,20 +199,20 @@ body{background:#fff;display:flex;gap:0}
 .dig-item{display:flex;align-items:center;padding:5px 4px;gap:8px;border-bottom:.8px solid rgba(196,150,42,.2)}
 .dig-item:last-child{border-bottom:none}
 .dig-txt{display:flex;flex-direction:column;justify-content:center;gap:1px}
-.d-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:700;font-size:var(--fs-dname);color:#07102a;line-height:1.25}
+.d-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:700;font-size:var(--fs-dname);color:var(--fc-dname,#07102a);line-height:1.25}
 .d-name.anchor{font-size:var(--fs-aname)}
-.d-role{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-drole);color:#7a4e08;letter-spacing:1px;text-transform:uppercase;line-height:1.3}
+.d-role{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-drole);color:var(--fc-drole,#7a4e08);letter-spacing:1px;text-transform:uppercase;line-height:1.3}
 .ftr{background:linear-gradient(160deg,#060e22 0%,#0a1835 40%,#0d1e45 70%,#07102a 100%);padding:9px 36px;text-align:center;position:relative;flex-shrink:0;overflow:hidden}
 .ftr::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .ftr::after{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.04) 18px,rgba(196,150,42,.04) 19px),radial-gradient(ellipse 70% 150% at 50% 50%,rgba(196,150,42,.07) 0%,transparent 70%)}
-.ftr-q{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-quote);color:#ffffff;line-height:1.65;position:relative;z-index:1}
+.ftr-q{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-quote);color:var(--fc-quote,#ffffff);line-height:1.65;position:relative;z-index:1}
 .ftr-s{font-family:'Cinzel',serif;font-weight:600;font-size:6.5px;letter-spacing:4.5px;text-transform:uppercase;color:#ffffff;margin-top:4px;position:relative;z-index:1}
 .p2-hdr{background:linear-gradient(160deg,#07102a 0%,#0d1e45 40%,#0a1835 70%,#060e22 100%);padding:15px 22px 13px;text-align:center;position:relative;overflow:hidden;flex-shrink:0}
 .p2-hdr::before{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.045) 18px,rgba(196,150,42,.045) 19px),radial-gradient(ellipse 70% 120% at 50% 50%,rgba(196,150,42,.08) 0%,transparent 70%)}
 .p2-hdr-gl{position:absolute;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .p2-hdr-gl.t{top:0}.p2-hdr-gl.b{bottom:0}
-.p2-inst{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-p2inst);color:#ffffff;letter-spacing:1px;line-height:1.2;position:relative;z-index:1;text-shadow:0 1px 10px rgba(196,150,42,.2)}
-.p2-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-p2addr);color:rgba(224,188,106,0.75);letter-spacing:3px;text-transform:uppercase;margin-top:4px;position:relative;z-index:1}
+.p2-inst{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-p2inst);color:var(--fc-p2inst,#ffffff);letter-spacing:1px;line-height:1.2;position:relative;z-index:1;text-shadow:0 1px 10px rgba(196,150,42,.2)}
+.p2-addr{font-family:'Raleway',sans-serif;font-weight:500;font-size:var(--fs-p2addr);color:var(--fc-p2addr,rgba(224,188,106,0.75));letter-spacing:3px;text-transform:uppercase;margin-top:4px;position:relative;z-index:1}
 .p2-prog-hd{text-align:center;padding:9px 22px 6px;flex-shrink:0}
 .p2-prog-hd-row{display:inline-flex;align-items:center;gap:14px}
 .p2-prog-hl{width:55px;height:.8px}
@@ -213,15 +227,15 @@ body{background:#fff;display:flex;gap:0}
 .p2-items{flex:1;display:flex;flex-direction:column}
 .p2-item{flex:0 0 auto;display:flex;align-items:center;padding:5.5px 7px;border-bottom:.8px solid rgba(196,150,42,.25)}
 .p2-item:last-child{border-bottom:none}
-.p2-time{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-p2itime);color:#6b4608;letter-spacing:.5px;min-width:58px;flex-shrink:0;text-align:right;padding-right:11px}
+.p2-time{font-family:'Cinzel',serif;font-weight:700;font-size:var(--fs-p2itime);color:var(--fc-p2itime,#6b4608);letter-spacing:.5px;min-width:58px;flex-shrink:0;text-align:right;padding-right:11px}
 .p2-divider{width:1px;height:60%;background:rgba(196,150,42,.6);flex-shrink:0}
 .p2-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);flex-shrink:0;margin:0 9px}
-.p2-prog-name{font-family:'Cormorant Garamond',serif;font-weight:700;font-size:var(--fs-p2iname);color:#07102a;line-height:1.2;flex:1}
-.p2-prog-sub{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-p2isub);color:#1a1208;letter-spacing:.3px;margin-top:1px}
+.p2-prog-name{font-family:'Cormorant Garamond',serif;font-weight:700;font-size:var(--fs-p2iname);color:var(--fc-p2iname,#07102a);line-height:1.2;flex:1}
+.p2-prog-sub{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-p2isub);color:var(--fc-p2isub,#1a1208);letter-spacing:.3px;margin-top:1px}
 .p2-ftr{background:linear-gradient(160deg,#060e22 0%,#0a1835 40%,#0d1e45 70%,#07102a 100%);padding:9px 32px;display:flex;align-items:center;justify-content:space-between;position:relative;flex-shrink:0;overflow:hidden}
 .p2-ftr::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .p2-ftr::after{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.04) 18px,rgba(196,150,42,.04) 19px)}
-.p2-ftr-l{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-p2ftr);letter-spacing:3px;text-transform:uppercase;color:var(--gold2);position:relative;z-index:1}
+.p2-ftr-l{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-p2ftr);letter-spacing:3px;text-transform:uppercase;color:var(--fc-p2ftr,var(--gold2));position:relative;z-index:1}
 .p2-ftr-r{font-family:'EB Garamond',serif;font-style:italic;font-size:10px;color:rgba(255,255,255,0.9);position:relative;z-index:1}
 @media print{@page{size:A4 landscape;margin:0}body{width:297mm;height:210mm;overflow:hidden}.page-shell,.page2-shell{width:148.5mm;height:210mm}}
 `
@@ -391,16 +405,32 @@ function Field({ label, children }) {
     </div>
   )
 }
-function FsRow({ label, fsKey, value, min, max, onChange }) {
+function FsRow({ label, fsKey, value, min, max, onChange, colorValue, onColorChange }) {
   return (
-    <Field label={`${label} — ${value}px`}>
-      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-        <input type="range" min={min} max={max} value={value}
-          onChange={e => onChange(fsKey, Number(e.target.value))}
-          style={{ flex:1, height:2, accentColor:'#C4962A', cursor:'pointer' }}/>
-        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px', color:'#E0BC6A', minWidth:28, textAlign:'right' }}>{value}px</span>
+    <div style={{ marginBottom:10 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+        {/* Color swatch */}
+        <label title={`${label} color`} style={{ position:'relative', flexShrink:0, cursor:'pointer' }}>
+          <div style={{
+            width:18, height:18, borderRadius:3,
+            background: colorValue || '#ffffff',
+            border:'1.5px solid rgba(196,150,42,0.4)',
+            cursor:'pointer', flexShrink:0,
+          }}/>
+          <input type="color" value={colorValue || '#ffffff'}
+            onChange={e => onColorChange && onColorChange(fsKey, e.target.value)}
+            style={{ opacity:0, position:'absolute', inset:0, width:'100%', height:'100%', cursor:'pointer', padding:0, border:'none' }}/>
+        </label>
+        <span style={{ fontFamily:"'Raleway',sans-serif", fontWeight:600, fontSize:'7.5px',
+          letterSpacing:'0.8px', textTransform:'uppercase', color:'rgba(196,150,42,0.5)',
+          flex:1 }}>{label}</span>
+        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px',
+          color:'#E0BC6A', minWidth:28, textAlign:'right' }}>{value}px</span>
       </div>
-    </Field>
+      <input type="range" min={min} max={max} value={value}
+        onChange={e => onChange(fsKey, Number(e.target.value))}
+        style={{ width:'100%', height:2, accentColor:'#C4962A', cursor:'pointer', display:'block' }}/>
+    </div>
   )
 }
 
@@ -624,9 +654,14 @@ function P2Content({ p2, sp2, progs, updProg, addProg, delProg, T }) {
   )
 }
 
-function FontsContent({ fs, setFsKey }) {
+function FontsContent({ fs, setFsKey, fc, setFcKey }) {
   return (
     <>
+      <div style={{ fontFamily:"'Raleway',sans-serif", fontSize:'8px', color:'rgba(196,150,42,0.4)',
+        marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+        <span style={{ width:14, height:14, borderRadius:2, border:'1.5px solid rgba(196,150,42,0.4)', display:'inline-block', background:'linear-gradient(135deg,#C4962A,#0B1730)', flexShrink:0 }}/>
+        Click colour swatch to change text colour
+      </div>
       {FS_CONFIG.map(group => (
         <div key={group.section}>
           <div style={{
@@ -637,7 +672,8 @@ function FontsContent({ fs, setFsKey }) {
           }}>{group.section}</div>
           {group.items.map(item => (
             <FsRow key={item.key} label={item.label} fsKey={item.key}
-              value={fs[item.key]} min={item.min} max={item.max} onChange={setFsKey}/>
+              value={fs[item.key]} min={item.min} max={item.max} onChange={setFsKey}
+              colorValue={fc[item.key]} onColorChange={setFcKey}/>
           ))}
         </div>
       ))}
@@ -695,6 +731,7 @@ export default function InvitationGenerator({ currentUser }) {
   const [members, setMembers]             = useState(DEFAULT_MEMBERS)
   const [progs, setProgs]                 = useState(DEFAULT_PROGS)
   const [fs, setFs]                       = useState(DEFAULT_FS)
+  const [fc, setFc]                       = useState(DEFAULT_FC)
   const [colors, setColors]               = useState(DEFAULT_COLORS)
   const [lessInk, setLessInk]             = useState(false)
   const [slot, setSlot]                   = useState(0)
@@ -724,7 +761,7 @@ export default function InvitationGenerator({ currentUser }) {
   const showToast = useCallback(msg => { setToast(msg); setTimeout(() => setToast(''), 2500) }, [])
 
   const saveSlot = () => {
-    localStorage.setItem('gnsi_inv_' + SLOT_KEYS[slot], JSON.stringify({ p1, p2, members, progs, fs, colors, lessInk }))
+    localStorage.setItem('gnsi_inv_' + SLOT_KEYS[slot], JSON.stringify({ p1, p2, members, progs, fs, fc, colors, lessInk }))
     showToast(`✅ Saved to ${SLOT_LABELS[slot]}`)
   }
   const loadSlot = () => {
@@ -733,7 +770,7 @@ export default function InvitationGenerator({ currentUser }) {
     const d = JSON.parse(raw)
     if (d.p1) setP1(d.p1); if (d.p2) setP2(d.p2)
     if (d.members) setMembers(d.members); if (d.progs) setProgs(d.progs)
-    if (d.fs) setFs(d.fs); if (d.colors) setColors(d.colors)
+    if (d.fs) setFs(d.fs); if (d.fc) setFc(d.fc); if (d.colors) setColors(d.colors)
     if (d.lessInk !== undefined) setLessInk(d.lessInk)
     showToast(`📂 Loaded from ${SLOT_LABELS[slot]}`)
   }
@@ -755,6 +792,7 @@ export default function InvitationGenerator({ currentUser }) {
   const sp1 = (k, v) => setP1(p => ({ ...p, [k]: v }))
   const sp2 = (k, v) => setP2(p => ({ ...p, [k]: v }))
   const setFsKey = (k, v) => setFs(p => ({ ...p, [k]: v }))
+  const setFcKey = (k, v) => setFc(p => ({ ...p, [k]: v }))
   const setColor = (k, v) => {
     if (k === 'reset') { setColors(DEFAULT_COLORS); return }
     setColors(p => ({ ...p, [k]: v }))
@@ -773,7 +811,7 @@ export default function InvitationGenerator({ currentUser }) {
     </div>
   )
 
-  const cssVarsStyle = buildCssVars(fs, colors)
+  const cssVarsStyle = buildCssVars(fs, colors, fc)
 
   // Shared panel style tokens
   const PT = {
@@ -957,7 +995,7 @@ export default function InvitationGenerator({ currentUser }) {
         open={panelOpen.fonts} onClose={() => setPanelOpen(p => ({...p, fonts:false}))}
         initialPos={{ x:860, y:110 }} zIndex={panelZOrder.fonts}
         onFocus={() => bringToFront('fonts')}>
-        <FontsContent fs={fs} setFsKey={setFsKey}/>
+        <FontsContent fs={fs} setFsKey={setFsKey} fc={fc} setFcKey={setFcKey}/>
       </FloatPanel>
 
       <FloatPanel title="Colors & Print" icon="🎨"
