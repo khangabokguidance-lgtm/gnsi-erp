@@ -126,7 +126,6 @@ function buildCssVars(fs, colors) {
 const PRINT_CARD_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&family=Cinzel:wght@400;600;700;900&family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=Raleway:wght@300;400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--navy:#0B1730;--gold:#C4962A;--gold2:#E0BC6A;--gold3:#F5DFA0;--cream:#FEFCF5;--fs-inst:17px;--fs-addr:8px;--fs-scr:9px;--fs-callig:44px;--fs-cord:10px;--fs-evt:13px;--fs-mon:11px;--fs-day:50px;--fs-yr:12px;--fs-vname:13px;--fs-vnote:9px;--fs-aname:15px;--fs-dname:12px;--fs-drole:7px;--fs-quote:9px;--fs-p2inst:13px;--fs-p2addr:7px;--fs-p2ttl:9px;--fs-p2date:10px;--fs-p2itime:7px;--fs-p2iname:12px;--fs-p2isub:6px;--fs-p2ftr:7px;}
 body{background:#fff;display:flex;gap:0}
 .page-shell,.page2-shell{width:148mm;height:210mm;position:relative;flex-shrink:0;overflow:hidden}
 .inv-card,.p2-card{position:absolute;inset:0;background:var(--cream);display:flex;flex-direction:column;overflow:hidden}
@@ -822,7 +821,7 @@ export default function InvitationGenerator({ currentUser }) {
         </span>
       </div>
       <div style={{ flex:1, overflow:'auto', padding:24, display:'flex', flexDirection:'column', alignItems:'center', background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)' }}>
-        <style>{`:root{${cssVarsStyle}} ${PRINT_CARD_CSS} ${lessInk ? LESS_INK_CSS : ''}`}</style>
+        <style>{`${PRINT_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
         <div style={cardsWrapStyle} ref={previewRef}>
           <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
           <ProgCard p2={p2} progs={progs} colors={colors} lessInk={lessInk}/>
@@ -931,7 +930,7 @@ export default function InvitationGenerator({ currentUser }) {
           A4 Landscape · 297 × 210 mm · Two A5 Cards
         </div>
 
-        <style>{`:root{${cssVarsStyle}} ${PRINT_CARD_CSS} ${lessInk ? LESS_INK_CSS : ''}`}</style>
+        <style>{`${PRINT_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
 
         <div style={cardsWrapStyle} ref={previewRef}>
           <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
