@@ -41,6 +41,7 @@ import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff from './AdminLinkStaff'
 import StudyMaterial from './StudyMaterial'
 import StudyLockers from './StudyLockers'
+import InvitationGenerator from './InvitationGenerator'
 
 
 const ALL_GROUPS = [
@@ -65,15 +66,15 @@ const ALL_GROUPS = [
   {
     group: 'ACADEMIC',
     items: [
-      { id: 'attendance',   label: 'Attendance',    icon: '📅' },
-      { id: 'exams',        label: 'Exams',         icon: '📝' },
-      { id: 'timetable',    label: 'Timetable',     icon: '🕐' },
-      { id: 'teaching',     label: 'Teaching',      icon: '📚' },
-      { id: 'courses',      label: 'Courses',       icon: '🎓' },
-      { id: 'questionbank', label: 'Question Bank', icon: '❓' },
-      { id: 'entrance',     label: 'Entrance Exam', icon: '🏆' },
-      { id: 'studymaterial', label: 'Study Materials',  icon: '📖' },
-      { id: 'studylockers',  label: 'Study Lockers',    icon: '🗃️' },
+      { id: 'attendance',    label: 'Attendance',      icon: '📅' },
+      { id: 'exams',         label: 'Exams',           icon: '📝' },
+      { id: 'timetable',     label: 'Timetable',       icon: '🕐' },
+      { id: 'teaching',      label: 'Teaching',        icon: '📚' },
+      { id: 'courses',       label: 'Courses',         icon: '🎓' },
+      { id: 'questionbank',  label: 'Question Bank',   icon: '❓' },
+      { id: 'entrance',      label: 'Entrance Exam',   icon: '🏆' },
+      { id: 'studymaterial', label: 'Study Materials', icon: '📖' },
+      { id: 'studylockers',  label: 'Study Lockers',   icon: '🗃️' },
     ],
   },
   {
@@ -98,11 +99,12 @@ const ALL_GROUPS = [
   {
     group: 'MANAGEMENT',
     items: [
-      { id: 'reports',   label: 'Reports',   icon: '📊' },
-      { id: 'checklist', label: 'Checklist', icon: '✅' },
-      { id: 'admin',     label: 'Admin',     icon: '🔐' },
-      { id: 'system',    label: 'System',    icon: '⚙️' },
-      { id: 'adminlink', label: 'Link Staff', icon: '🔗' },
+      { id: 'reports',     label: 'Reports',     icon: '📊' },
+      { id: 'checklist',   label: 'Checklist',   icon: '✅' },
+      { id: 'invitation',  label: 'Invitation',  icon: '✉️' },
+      { id: 'admin',       label: 'Admin',       icon: '🔐' },
+      { id: 'system',      label: 'System',      icon: '⚙️' },
+      { id: 'adminlink',   label: 'Link Staff',  icon: '🔗' },
     ],
   },
 ]
@@ -375,7 +377,6 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) 
 
   return (
     <>
-      {/* ── Mobile top bar with logout button ── */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg, borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
         <button onClick={() => setDrawerOpen(true)} aria-label="Open menu" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
@@ -387,29 +388,10 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap }) 
           <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>School Management</div>
         </div>
         <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
+          {ALL_ITEMS.find(i => i.id === active)?.icon}{' '}{ALL_ITEMS.find(i => i.id === active)?.label || active}
         </div>
-        {/* ── Logout button in mobile header ── */}
-        <button
-          onClick={onLogout}
-          title="Sign Out"
-          style={{
-            background: 'rgba(220,38,38,.12)',
-            border: '1px solid rgba(220,38,38,.25)',
-            borderRadius: 8,
-            padding: '7px 10px',
-            cursor: 'pointer',
-            color: '#fca5a5',
-            fontSize: 16,
-            flexShrink: 0,
-            lineHeight: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >🚪</button>
+        <button onClick={onLogout} title="Sign Out" style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5', fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
       </div>
-
       {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
       <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh', zIndex: 299, overflowY: 'hidden', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
         <LogoHeader isMobile onClose={() => setDrawerOpen(false)} />
@@ -570,6 +552,7 @@ function AdminDashboard({ onNavigate }) {
             { label: '🔔 Send Notice',    color: '#ea580c', module: 'notice'       },
             { label: '❓ Question Bank',  color: '#7c3aed', module: 'questionbank' },
             { label: '📈 Reports',        color: '#4f46e5', module: 'reports'      },
+            { label: '✉️ Invitation',     color: '#C4962A', module: 'invitation'   },
           ].map(a => (
             <button key={a.label} onClick={() => onNavigate(a.module)} style={{ background: a.color, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               onMouseEnter={e => e.currentTarget.style.opacity = '.85'} onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
@@ -634,32 +617,29 @@ function AccessDenied() {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
-  try {
-    const s = localStorage.getItem('gnsi_session')
-    if (!s) return null
-    const p = JSON.parse(s)
-    if (p.expiry < Date.now()) { localStorage.removeItem('gnsi_session'); return null }
-    return p.user
-  } catch { return null }
-})
+    try {
+      const s = localStorage.getItem('gnsi_session')
+      if (!s) return null
+      const p = JSON.parse(s)
+      if (p.expiry < Date.now()) { localStorage.removeItem('gnsi_session'); return null }
+      return p.user
+    } catch { return null }
+  })
   const [active,      setActive]      = useState('dashboard')
-  const [showLogin, setShowLogin] = useState(false)
+  const [showLogin,   setShowLogin]   = useState(false)
   const [permMap,     setPermMap]     = useState({})
   const [permLoading, setPermLoading] = useState(false)
   const isMobile = useIsMobile()
   const [sharedStaff, setSharedStaff] = useState([])
-const isAdmin = currentUser?.role === 'Admin'
-const fetchSharedStaff = useCallback(async () => {
-  const columns = isAdmin
-    ? '*'
-    : 'id, name, designation, department, role, phone, joining_date, status'
-  const { data } = await supabase
-    .from('staff_profiles')
-    .select(columns)
-    .order('name')
-  if (data) setSharedStaff(data)
-}, [currentUser?.role])
-useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
+  const isAdmin = currentUser?.role === 'Admin'
+
+  const fetchSharedStaff = useCallback(async () => {
+    const columns = isAdmin ? '*' : 'id, name, designation, department, role, phone, joining_date, status'
+    const { data } = await supabase.from('staff_profiles').select(columns).order('name')
+    if (data) setSharedStaff(data)
+  }, [currentUser?.role])
+
+  useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
 
   const loadPermissions = async (role) => {
     if (role === 'Admin') { setPermMap({}); return }
@@ -670,116 +650,107 @@ useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
   }
 
   const handleLogin = async (user) => {
-  // fetch fresh staff_profile_id from DB
-  const { data } = await supabase
-    .from('portal_users')
-    .select('staff_profile_id')
-    .eq('id', user.id)
-    .maybeSingle()
-  const enriched = { ...user, staff_profile_id: data?.staff_profile_id ?? null }
-  localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + 8*60*60*1000 }))
-  setCurrentUser(enriched); setActive('dashboard'); loadPermissions(user.role)
-}
+    const { data } = await supabase.from('portal_users').select('staff_profile_id').eq('id', user.id).maybeSingle()
+    const enriched = { ...user, staff_profile_id: data?.staff_profile_id ?? null }
+    localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + 8*60*60*1000 }))
+    setCurrentUser(enriched); setActive('dashboard'); loadPermissions(user.role)
+  }
+
   const handleLogout = () => {
-  localStorage.removeItem('gnsi_session')
-  setCurrentUser(null); setActive('dashboard'); setPermMap({})
-}
-useEffect(() => {
-  if (currentUser) loadPermissions(currentUser.role)
-}, [currentUser])
-
-useEffect(() => {
-  if (currentUser) {
-    crossModuleSync.init()
-    return () => crossModuleSync.destroy()
+    localStorage.removeItem('gnsi_session')
+    setCurrentUser(null); setActive('dashboard'); setPermMap({})
   }
-}, [currentUser])
-useEffect(() => {
-  window.history.pushState({ page: active }, '', window.location.href)
-}, [active])
 
-useEffect(() => {
-  const handleBack = (e) => {
-    if (e.state?.page && e.state.page !== active) {
-      setActive(e.state.page)
-      window.history.pushState({ page: e.state.page }, '', window.location.href)
-    } else {
-      window.history.pushState(null, '', window.location.href)
+  useEffect(() => { if (currentUser) loadPermissions(currentUser.role) }, [currentUser])
+
+  useEffect(() => {
+    if (currentUser) {
+      crossModuleSync.init()
+      return () => crossModuleSync.destroy()
     }
-  }
-  window.addEventListener('popstate', handleBack)
-  return () => window.removeEventListener('popstate', handleBack)
-}, [active])
+  }, [currentUser])
 
-if (!currentUser) {
-  if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} />
-  return <LandingPage onLogin={() => setShowLogin(true)} />
-}
-  if (permLoading)  return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
+  useEffect(() => { window.history.pushState({ page: active }, '', window.location.href) }, [active])
+
+  useEffect(() => {
+    const handleBack = (e) => {
+      if (e.state?.page && e.state.page !== active) {
+        setActive(e.state.page)
+        window.history.pushState({ page: e.state.page }, '', window.location.href)
+      } else {
+        window.history.pushState(null, '', window.location.href)
+      }
+    }
+    window.addEventListener('popstate', handleBack)
+    return () => window.removeEventListener('popstate', handleBack)
+  }, [active])
+
+  if (!currentUser) {
+    if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} />
+    return <LandingPage onLogin={() => setShowLogin(true)} />
+  }
+  if (permLoading) return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
 
   const canAccess = (key) => { if (key === 'dashboard') return true; if (isAdmin) return true; return permMap[key]?.read === true }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
   const moduleMap = {
-  students:          <Students          currentUser={currentUser} perms={perms('students')}         />,
-  admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}       />,
-  sessions:          <Sessions          currentUser={currentUser} perms={perms('sessions')}         />,
-  admissionsessions: <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')}/>,
-  bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}    />,
-  fees:              <Fees              currentUser={currentUser} perms={perms('fees')}             />,
-  accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
-  salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-  staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-  hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} />,
-  leave:             <Leave             currentUser={currentUser} perms={perms('leave')}            />,
-  hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}           />,
-  reception:         <Reception         currentUser={currentUser} perms={perms('reception')}        />,
-  notice:            <Notice            currentUser={currentUser} perms={perms('notice')}           />,
-  social:            <Social            currentUser={currentUser} perms={perms('social')}           />,
-  questionbank: <QuestionBank currentUser={currentUser} perms={perms('questionbank')} onNavigate={setActive} />,
-studymaterial: <StudyMaterial currentUser={currentUser} perms={perms('studymaterial')} onNavigate={setActive} />,
-studylockers:  <StudyLockers  currentUser={currentUser} perms={perms('studylockers')}  onNavigate={setActive} />,
-  connect:           <Connect           currentUser={currentUser} perms={perms('connect')}          />,
-  reports:           <Reports           currentUser={currentUser} perms={perms('reports')}          />,
-  checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}        />,
-  system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}           />,
-  studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')} />,
-  feeledger:         <StudentFeeLedger  currentUser={currentUser} perms={perms('feeledger')}        />,
-  courses:           <Courses           currentUser={currentUser} perms={perms('courses')}          />,
-  teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}         />,
-  attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} />,
-  exams:             <Exams             currentUser={currentUser} perms={perms('exams')}            />,
-  timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}        />,
-  feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}       />,
-  kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}          />,
-  admin: isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
-  adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
-  entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}         />,
-}
+    students:          <Students          currentUser={currentUser} perms={perms('students')}          />,
+    admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}        />,
+    sessions:          <Sessions          currentUser={currentUser} perms={perms('sessions')}          />,
+    admissionsessions: <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')} />,
+    bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}     />,
+    fees:              <Fees              currentUser={currentUser} perms={perms('fees')}              />,
+    accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
+    salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+    staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+    hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} />,
+    leave:             <Leave             currentUser={currentUser} perms={perms('leave')}             />,
+    hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
+    reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
+    notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
+    social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
+    questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={setActive} />,
+    studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={setActive} />,
+    studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={setActive} />,
+    connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
+    reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
+    checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}         />,
+    system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}            />,
+    studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')}  />,
+    feeledger:         <StudentFeeLedger  currentUser={currentUser} perms={perms('feeledger')}         />,
+    courses:           <Courses           currentUser={currentUser} perms={perms('courses')}           />,
+    teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}          />,
+    attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} />,
+    exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,
+    timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}         />,
+    feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}        />,
+    kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
+    entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}          />,
+    invitation:        isAdmin ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
+    admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
+    adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
+  }
 
   const renderContent = () => {
-  if (active === 'student-leave') return <StudentSelfService />
-  if (active === 'verify')        return <GatePassVerifyPage />
-  
-  if (active === 'dashboard') return isAdmin
-    ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
-    : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
-  
-  if (!canAccess(active)) return <AccessDenied />
-  
-  return moduleMap[active] || (
-    <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
-      <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
-      <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>
-    </div>
-  )
-}
+    if (active === 'student-leave') return <StudentSelfService />
+    if (active === 'verify')        return <GatePassVerifyPage />
+    if (active === 'dashboard') return isAdmin
+      ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
+      : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
+    if (!canAccess(active)) return <AccessDenied />
+    return moduleMap[active] || (
+      <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
+        <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: '100vh', background: '#f8fafc' }}>
       <Sidebar activePage={active} setActivePage={setActive} onLogout={handleLogout} currentUser={currentUser} permMap={permMap} />
 
-      {/* Desktop top bar */}
       {!isMobile && (
         <div style={{ position: 'fixed', top: 0, left: 262, right: 0, height: 48, background: '#021e2e', borderBottom: '1px solid #1a3347', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 99 }}>
           <span style={{ fontSize: 12, color: '#4a6b82', fontFamily: 'monospace' }}>
@@ -787,12 +758,9 @@ studylockers:  <StudyLockers  currentUser={currentUser} perms={perms('studylocke
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 13, color: '#94afc4' }}>{currentUser?.name}</span>
-            <button
-              onClick={handleLogout}
-              style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+            <button onClick={handleLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(220,38,38,.22)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(220,38,38,.12)'}
-            >
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(220,38,38,.12)'}>
               🚪 Sign Out
             </button>
           </div>
