@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 const FONT_URL =
   'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600;1,700&family=Cinzel:wght@400;600;700;900&family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=Raleway:wght@300;400;500;600;700;800&family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap'
@@ -404,119 +405,122 @@ function FsRow({ label, fsKey, value, min, max, onChange }) {
   )
 }
 
-// ── Draggable floating panel (Photoshop style) ─
-function FloatPanel({ id, title, icon, children, open, onClose, initialPos, zIndex, onFocus }) {
-  const [pos, setPos] = useState(initialPos)
-  const [minimized, setMinimized] = useState(false)
-  const [size, setSize] = useState({ w: 260, h: 420 })
-  const dragging = useRef(false)
-  const dragOffset = useRef({ x: 0, y: 0 })
-  const resizing = useRef(false)
-  const resizeStart = useRef({ x: 0, y: 0, w: 0, h: 0 })
-  const panelRef = useRef(null)
+// ── Draggable floating panel — portaled to body (Photoshop style) ─
+function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, onFocus }) {
+  const [pos, setPos]           = useState(initialPos)
+  const [minimized, setMin]     = useState(false)
+  const [size, setSize]         = useState({ w: 270, h: 440 })
+  const dragging   = useRef(false)
+  const dragOffset = useRef({ x:0, y:0 })
+  const resizing   = useRef(false)
+  const resizeStart= useRef({ x:0, y:0, w:0, h:0 })
 
-  const onMouseDownHeader = (e) => {
+  // Reset position when panel is re-opened
+  useEffect(() => { if (open) setMin(false) }, [open])
+
+  const onHeaderDown = (e) => {
     if (e.target.closest('button')) return
     dragging.current = true
     dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }
-    onFocus()
-    e.preventDefault()
+    onFocus(); e.preventDefault()
   }
-  const onMouseDownResize = (e) => {
+  const onResizeDown = (e) => {
     resizing.current = true
     resizeStart.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h }
-    onFocus()
-    e.preventDefault()
-    e.stopPropagation()
+    onFocus(); e.preventDefault(); e.stopPropagation()
   }
 
   useEffect(() => {
-    const onMove = (e) => {
-      if (dragging.current) {
+    const move = (e) => {
+      if (dragging.current)
         setPos({ x: Math.max(0, e.clientX - dragOffset.current.x), y: Math.max(0, e.clientY - dragOffset.current.y) })
-      }
       if (resizing.current) {
         const dx = e.clientX - resizeStart.current.x
         const dy = e.clientY - resizeStart.current.y
-        setSize({ w: Math.max(200, resizeStart.current.w + dx), h: Math.max(120, resizeStart.current.h + dy) })
+        setSize({ w: Math.max(220, resizeStart.current.w + dx), h: Math.max(140, resizeStart.current.h + dy) })
       }
     }
-    const onUp = () => { dragging.current = false; resizing.current = false }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    const up = () => { dragging.current = false; resizing.current = false }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
   }, [])
 
   if (!open) return null
 
-  return (
+  const panel = (
     <div
-      ref={panelRef}
       onMouseDown={onFocus}
       style={{
         position:'fixed', left: pos.x, top: pos.y, zIndex,
-        width: size.w, minWidth:200,
+        width: size.w, minWidth:220,
         background:'#13110e',
-        border:'1px solid rgba(196,150,42,0.35)',
+        border:'1px solid rgba(196,150,42,0.4)',
         borderRadius:6,
-        boxShadow:'0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(196,150,42,0.1)',
+        boxShadow:'0 12px 48px rgba(0,0,0,0.85), 0 0 0 1px rgba(196,150,42,0.08)',
         display:'flex', flexDirection:'column',
         userSelect:'none',
-        overflow:'hidden',
+        fontFamily:"'Trebuchet MS',sans-serif",
       }}>
-      {/* Title bar */}
-      <div
-        onMouseDown={onMouseDownHeader}
-        style={{
-          height:28, flexShrink:0,
-          background:'linear-gradient(90deg,#07102a,#0d1e45,#07102a)',
-          borderBottom:'1px solid rgba(196,150,42,0.25)',
-          display:'flex', alignItems:'center', padding:'0 8px', gap:6,
-          cursor:'move',
-        }}>
-        <span style={{ fontSize:10 }}>{icon}</span>
-        <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px',
-          letterSpacing:'2px', textTransform:'uppercase', color:'#E0BC6A', flex:1,
-          pointerEvents:'none' }}>{title}</span>
-        {/* Minimize */}
-        <button onClick={() => setMinimized(m => !m)}
-          title={minimized ? 'Restore' : 'Minimize'}
-          style={{ width:16, height:16, borderRadius:2, border:'1px solid rgba(196,150,42,0.3)',
-            background: minimized ? 'rgba(196,150,42,0.3)' : 'rgba(196,150,42,0.08)',
+
+      {/* ── Title bar ── */}
+      <div onMouseDown={onHeaderDown} style={{
+        height:30, flexShrink:0,
+        background:'linear-gradient(90deg,#07102a,#0d1e45,#07102a)',
+        borderBottom:'1px solid rgba(196,150,42,0.3)',
+        borderRadius:'6px 6px 0 0',
+        display:'flex', alignItems:'center', padding:'0 8px', gap:7,
+        cursor:'move',
+      }}>
+        <span style={{ fontSize:11 }}>{icon}</span>
+        <span style={{
+          fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7.5px',
+          letterSpacing:'2.5px', textTransform:'uppercase', color:'#E0BC6A',
+          flex:1, pointerEvents:'none',
+        }}>{title}</span>
+        <button onClick={() => setMin(m => !m)} title={minimized ? 'Restore' : 'Minimize'}
+          style={{ width:18, height:18, borderRadius:3,
+            border:'1px solid rgba(196,150,42,0.35)',
+            background: minimized ? 'rgba(196,150,42,0.35)' : 'rgba(196,150,42,0.1)',
             cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-            color:'#E0BC6A', fontSize:9, lineHeight:1, flexShrink:0 }}>
-          {minimized ? '▸' : '▾'}
+            color:'#E0BC6A', fontSize:10, lineHeight:1, flexShrink:0 }}>
+          {minimized ? '+' : '−'}
         </button>
-        {/* Close */}
-        <button onClick={onClose}
-          style={{ width:16, height:16, borderRadius:2, border:'1px solid rgba(220,38,38,0.3)',
-            background:'rgba(220,38,38,0.12)', cursor:'pointer',
+        <button onClick={onClose} title="Close"
+          style={{ width:18, height:18, borderRadius:3,
+            border:'1px solid rgba(220,38,38,0.4)',
+            background:'rgba(220,38,38,0.15)', cursor:'pointer',
             display:'flex', alignItems:'center', justifyContent:'center',
-            color:'#fca5a5', fontSize:9, lineHeight:1, flexShrink:0 }}>
+            color:'#fca5a5', fontSize:10, lineHeight:1, flexShrink:0 }}>
           ✕
         </button>
       </div>
 
-      {/* Content */}
+      {/* ── Content ── */}
       {!minimized && (
-        <div style={{ height: size.h, overflowY:'auto', overflowX:'hidden',
-          padding:'10px 12px 14px', scrollbarWidth:'thin',
-          scrollbarColor:'rgba(196,150,42,0.2) transparent' }}>
+        <div style={{
+          height: size.h, overflowY:'auto', overflowX:'hidden',
+          padding:'10px 12px 16px',
+          scrollbarWidth:'thin',
+          scrollbarColor:'rgba(196,150,42,0.25) transparent',
+        }}>
           {children}
         </div>
       )}
 
-      {/* Resize handle */}
+      {/* ── Resize grip ── */}
       {!minimized && (
-        <div
-          onMouseDown={onMouseDownResize}
-          style={{ position:'absolute', bottom:0, right:0, width:14, height:14,
-            cursor:'nwse-resize', zIndex:10,
-            background:'linear-gradient(135deg,transparent 50%,rgba(196,150,42,0.4) 50%)',
-            borderRadius:'0 0 5px 0' }}/>
+        <div onMouseDown={onResizeDown} style={{
+          position:'absolute', bottom:0, right:0,
+          width:16, height:16, cursor:'nwse-resize', zIndex:10,
+          background:'linear-gradient(135deg,transparent 40%,rgba(196,150,42,0.5) 40%)',
+          borderRadius:'0 0 5px 0',
+        }}/>
       )}
     </div>
   )
+
+  return createPortal(panel, document.body)
 }
 
 // ── Menubar Editor button group ───────────────
@@ -935,31 +939,31 @@ export default function InvitationGenerator({ currentUser }) {
         </div>
       </div>
 
-      {/* ══ FLOATING PANELS ══ */}
-      <FloatPanel id="p1" title="Page 1" icon="📄"
+      {/* ══ FLOATING PANELS — portaled to body ══ */}
+      <FloatPanel title="Page 1" icon="📄"
         open={panelOpen.p1} onClose={() => setPanelOpen(p => ({...p, p1:false}))}
-        initialPos={{ x:20, y:90 }} zIndex={panelZOrder.p1}
+        initialPos={{ x:280, y:110 }} zIndex={panelZOrder.p1}
         onFocus={() => bringToFront('p1')}>
         <P1Content p1={p1} sp1={sp1} members={members} updMember={updMember} addMember={addMember} delMember={delMember} T={PT}/>
       </FloatPanel>
 
-      <FloatPanel id="p2" title="Page 2" icon="📋"
+      <FloatPanel title="Page 2" icon="📋"
         open={panelOpen.p2} onClose={() => setPanelOpen(p => ({...p, p2:false}))}
-        initialPos={{ x:300, y:90 }} zIndex={panelZOrder.p2}
+        initialPos={{ x:570, y:110 }} zIndex={panelZOrder.p2}
         onFocus={() => bringToFront('p2')}>
         <P2Content p2={p2} sp2={sp2} progs={progs} updProg={updProg} addProg={addProg} delProg={delProg} T={PT}/>
       </FloatPanel>
 
-      <FloatPanel id="fonts" title="Fonts" icon="🔤"
+      <FloatPanel title="Fonts" icon="🔤"
         open={panelOpen.fonts} onClose={() => setPanelOpen(p => ({...p, fonts:false}))}
-        initialPos={{ x:580, y:90 }} zIndex={panelZOrder.fonts}
+        initialPos={{ x:860, y:110 }} zIndex={panelZOrder.fonts}
         onFocus={() => bringToFront('fonts')}>
         <FontsContent fs={fs} setFsKey={setFsKey}/>
       </FloatPanel>
 
-      <FloatPanel id="colors" title="Colors & Print" icon="🎨"
+      <FloatPanel title="Colors & Print" icon="🎨"
         open={panelOpen.colors} onClose={() => setPanelOpen(p => ({...p, colors:false}))}
-        initialPos={{ x:20, y:480 }} zIndex={panelZOrder.colors}
+        initialPos={{ x:280, y:460 }} zIndex={panelZOrder.colors}
         onFocus={() => bringToFront('colors')}>
         <ColorsContent colors={colors} setColor={setColor} lessInk={lessInk} setLessInk={setLessInk}/>
       </FloatPanel>
