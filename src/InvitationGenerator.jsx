@@ -1,10 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-/* ─────────────────────────────────────────────
-   InvitationGenerator.jsx  — Top-Bar Editor Layout
-   Editor panel moved from left sidebar → top bar.
-───────────────────────────────────────────── */
-
 const FONT_URL =
   'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600;1,700&family=Cinzel:wght@400;600;700;900&family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=Raleway:wght@300;400;500;600;700;800&family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap'
 
@@ -469,20 +464,6 @@ function Field({ label, children }) {
     </div>
   )
 }
-function SectionLbl({ children }) {
-  return (
-    <div style={{
-      fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7px',
-      letterSpacing:'3px', textTransform:'uppercase', color:'#C4962A',
-      margin:'14px 0 7px', paddingBottom:4,
-      borderBottom:'1px solid rgba(196,150,42,0.15)',
-      display:'flex', alignItems:'center', gap:8,
-    }}>
-      {children}
-      <span style={{ flex:1, height:'0.5px', background:'linear-gradient(90deg,rgba(196,150,42,0.3),transparent)' }}/>
-    </div>
-  )
-}
 function FsRow({ label, fsKey, value, min, max, onChange }) {
   return (
     <Field label={`${label} — ${value}px`}>
@@ -502,6 +483,7 @@ export default function InvitationGenerator({ currentUser }) {
   const role = (currentUser?.role || '').toLowerCase()
   const canAccess = role === 'admin' || role === 'manager'
 
+  const [fullscreen, setFullscreen] = useState(false)
   const [tab, setTab]         = useState('p1')
   const [p1, setP1]           = useState(DEFAULT_P1)
   const [p2, setP2]           = useState(DEFAULT_P2)
@@ -517,6 +499,13 @@ export default function InvitationGenerator({ currentUser }) {
   const previewRef = useRef(null)
 
   useEffect(() => { injectFonts() }, [])
+
+  // ESC key exits fullscreen
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape' && fullscreen) setFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen])
 
   const showToast = useCallback(msg => {
     setToast(msg); setTimeout(() => setToast(''), 2500)
@@ -594,7 +583,6 @@ export default function InvitationGenerator({ currentUser }) {
 
   const cssVarsStyle = buildCssVars(fs, colors)
 
-  // ── Tab definitions ───────────────────────
   const TABS = [
     { id:'p1',     label:'Page 1'  },
     { id:'p2',     label:'Page 2'  },
@@ -602,20 +590,31 @@ export default function InvitationGenerator({ currentUser }) {
     { id:'colors', label:'Colors'  },
   ]
 
-  // ── Top bar heights ───────────────────────
-  const TOP_BAR_H = 44    // action bar
-  const TAB_BAR_H = 36    // tab row
-  const PANEL_H   = 220   // scrollable panel
-  const TOTAL_TOOLBAR = panelOpen ? TOP_BAR_H + TAB_BAR_H + PANEL_H : TOP_BAR_H + TAB_BAR_H
+  const TOP_BAR_H = 44
+  const TAB_BAR_H = 36
+  const PANEL_H   = 220
 
-  // ── Inline styles ─────────────────────────
+  // ── Fullscreen expand icon (two-arrows SVG) ──
+  const ExpandIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      {fullscreen
+        ? <><path d="M8 3v5H3"/><path d="M21 8h-5V3"/><path d="M3 16h5v5"/><path d="M16 21v-5h5"/></>
+        : <><path d="M3 8V3h5"/><path d="M16 3h5v5"/><path d="M21 16v5h-5"/><path d="M8 21H3v-5"/></>
+      }
+    </svg>
+  )
+
   const T = {
     wrap: {
       display:'flex', flexDirection:'column',
-      height:'calc(100vh - 60px)', background:'#0a0d14', overflow:'hidden',
+      height: fullscreen ? '100vh' : 'calc(100vh - 60px)',
+      background:'#0a0d14', overflow:'hidden',
+      position: fullscreen ? 'fixed' : 'relative',
+      inset: fullscreen ? 0 : 'auto',
+      zIndex: fullscreen ? 9999 : 'auto',
+      top: fullscreen ? 0 : 'auto',
+      left: fullscreen ? 0 : 'auto',
     },
-
-    // ── TOP ACTION BAR ──
     actionBar: {
       height: TOP_BAR_H,
       background:'linear-gradient(90deg,#07102a 0%,#0d1e45 60%,#07102a 100%)',
@@ -649,8 +648,6 @@ export default function InvitationGenerator({ currentUser }) {
                                 { background:'rgba(196,150,42,0.08)', color:'rgba(196,150,42,0.5)', borderColor:'rgba(196,150,42,0.15)' }),
     }),
     spacer: { flex:1 },
-
-    // zoom inline in action bar
     zoomWrap: {
       display:'flex', alignItems:'center', gap:8,
       background:'rgba(196,150,42,0.06)', border:'1px solid rgba(196,150,42,0.14)',
@@ -663,17 +660,6 @@ export default function InvitationGenerator({ currentUser }) {
     zoomVal: {
       fontFamily:'monospace', fontSize:10, color:'#E0BC6A', minWidth:30, textAlign:'right',
     },
-    toggleBtn: (active) => ({
-      padding:'4px 10px', fontFamily:"'Cinzel',serif", fontWeight:600,
-      fontSize:'7px', letterSpacing:'1px', textTransform:'uppercase',
-      borderRadius:3, cursor:'pointer', border:'1px solid',
-      background: active ? 'rgba(196,150,42,0.2)' : 'transparent',
-      color: active ? '#E0BC6A' : 'rgba(196,150,42,0.35)',
-      borderColor: active ? 'rgba(196,150,42,0.4)' : 'rgba(196,150,42,0.12)',
-      transition:'all .15s',
-    }),
-
-    // ── TAB BAR ──
     tabBar: {
       height: TAB_BAR_H,
       background:'#0a0806',
@@ -696,11 +682,9 @@ export default function InvitationGenerator({ currentUser }) {
       letterSpacing:'1px', display:'flex', alignItems:'center', gap:5,
       transition:'color .15s',
     },
-
-    // ── EDITOR PANEL ──
     editorPanel: {
       height: panelOpen ? PANEL_H : 0,
-      overflow: panelOpen ? 'hidden' : 'hidden',
+      overflow: 'hidden',
       transition:'height .25s ease',
       background:'#0e0c09',
       borderBottom: panelOpen ? '2px solid rgba(196,150,42,0.18)' : 'none',
@@ -708,13 +692,11 @@ export default function InvitationGenerator({ currentUser }) {
     },
     editorScroll: {
       height: PANEL_H,
-      overflowY:'auto', overflowX:'hidden',
+      overflowY:'auto', overflowX:'auto',
       padding:'12px 20px 16px',
       display:'flex', gap:24, flexWrap:'nowrap',
       alignItems:'flex-start',
     },
-
-    // ── PREVIEW AREA ──
     preview: {
       flex:1, overflow:'auto',
       padding:24, display:'flex', flexDirection:'column', alignItems:'center',
@@ -727,14 +709,8 @@ export default function InvitationGenerator({ currentUser }) {
       border:'1px solid rgba(196,150,42,0.12)', borderRadius:20,
       padding:'5px 16px', marginBottom:12,
     },
-
-    // ── Panel columns ──
-    col: {
-      minWidth:200, maxWidth:240, flex:'0 0 auto',
-    },
-    colWide: {
-      minWidth:240, maxWidth:280, flex:'0 0 auto',
-    },
+    col:     { minWidth:200, maxWidth:240, flex:'0 0 auto' },
+    colWide: { minWidth:240, maxWidth:280, flex:'0 0 auto' },
     dcard: {
       background:'rgba(196,150,42,0.05)', border:'1px solid rgba(196,150,42,0.12)',
       borderRadius:5, padding:'8px', marginBottom:7, position:'relative',
@@ -753,9 +729,8 @@ export default function InvitationGenerator({ currentUser }) {
       fontWeight:600, letterSpacing:'1.5px', textTransform:'uppercase',
       color:'rgba(196,150,42,0.4)', cursor:'pointer', marginTop:4,
     },
-    colorRow: { display:'flex', alignItems:'center', gap:8 },
+    colorRow:  { display:'flex', alignItems:'center', gap:8 },
     colorDesc: { fontFamily:"'Raleway',sans-serif", fontSize:9, color:'rgba(196,150,42,0.45)' },
-
     sectionHdr: {
       fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7.5px',
       letterSpacing:'3px', textTransform:'uppercase', color:'#C4962A',
@@ -770,11 +745,9 @@ export default function InvitationGenerator({ currentUser }) {
     filter:'drop-shadow(0 30px 80px rgba(0,0,0,0.8))',
   }
 
-  // ── Panel column renderer ────────────────
   const renderPanelContent = () => {
     if (tab === 'p1') return (
       <>
-        {/* Col 1: Institute + Invitation */}
         <div style={T.col}>
           <div style={T.sectionHdr}>Institute</div>
           <Field label="Name"><Inp value={p1.inst}   onChange={v => sp1('inst',v)}/></Field>
@@ -785,7 +758,6 @@ export default function InvitationGenerator({ currentUser }) {
           <Field label="Calligraphy"><Inp value={p1.callig} onChange={v => sp1('callig',v)}/></Field>
           <Field label="Opening Line"><Inp textarea value={p1.cord} onChange={v => sp1('cord',v)}/></Field>
         </div>
-        {/* Col 2: Event + Date */}
         <div style={T.col}>
           <div style={T.sectionHdr}>Event</div>
           <Field label="Event Title"><Inp textarea value={p1.evt} onChange={v => sp1('evt',v)}/></Field>
@@ -798,7 +770,6 @@ export default function InvitationGenerator({ currentUser }) {
           <Field label="Venue"><Inp textarea value={p1.venue} onChange={v => sp1('venue',v)}/></Field>
           <Field label="Note"> <Inp value={p1.vnote} onChange={v => sp1('vnote',v)}/></Field>
         </div>
-        {/* Col 3: Presidium + Footer */}
         <div style={T.colWide}>
           <div style={T.sectionHdr}>President / Chair</div>
           <Field label="Name"><Inp value={p1.aname} onChange={v => sp1('aname',v)}/></Field>
@@ -815,7 +786,6 @@ export default function InvitationGenerator({ currentUser }) {
           ))}
           <button style={T.addBtn} onClick={addMember}>+ Add Member</button>
         </div>
-        {/* Col 4: Footer + Anniversary */}
         <div style={T.col}>
           <div style={T.sectionHdr}>Footer</div>
           <Field label="Quote"><Inp textarea value={p1.quote} onChange={v => sp1('quote',v)}/></Field>
@@ -828,7 +798,6 @@ export default function InvitationGenerator({ currentUser }) {
 
     if (tab === 'p2') return (
       <>
-        {/* Col 1: Header */}
         <div style={T.col}>
           <div style={T.sectionHdr}>Header (Page 2)</div>
           <Field label="Name">   <Inp value={p2.inst}    onChange={v => sp2('inst',v)}/></Field>
@@ -841,7 +810,6 @@ export default function InvitationGenerator({ currentUser }) {
           <Field label="Start Time"><Inp value={p2.time}  onChange={v => sp2('time',v)}/></Field>
           <Field label="Venue Note"><Inp value={p2.venue} onChange={v => sp2('venue',v)}/></Field>
         </div>
-        {/* Col 2: Programme items */}
         <div style={{...T.colWide, maxWidth:360}}>
           <div style={T.sectionHdr}>Programme Items</div>
           {progs.map((pg, i) => (
@@ -857,7 +825,6 @@ export default function InvitationGenerator({ currentUser }) {
           ))}
           <button style={T.addBtn} onClick={addProg}>+ Add Item</button>
         </div>
-        {/* Col 3: Footer */}
         <div style={T.col}>
           <div style={T.sectionHdr}>Footer (Page 2)</div>
           <Field label="Footer Left"> <Inp value={p2.ftrl} onChange={v => sp2('ftrl',v)}/></Field>
@@ -912,7 +879,6 @@ export default function InvitationGenerator({ currentUser }) {
               background:'rgba(196,150,42,0.1)', color:'#E0BC6A' }}>
             Reset Colors
           </button>
-
           <div style={{...T.sectionHdr, marginTop:14}}>Print Mode</div>
           <label style={{ display:'flex', alignItems:'center', gap:10,
             background:'rgba(196,150,42,0.05)', border:'1px solid rgba(196,150,42,0.12)',
@@ -945,7 +911,6 @@ export default function InvitationGenerator({ currentUser }) {
         <span style={T.brandLabel}>✉ Invitation Studio</span>
         <div style={T.divBar}/>
 
-        {/* Slot */}
         <select style={T.slotSel} value={slot} onChange={e => setSlot(Number(e.target.value))}>
           {SLOT_LABELS.map((l,i) => <option key={i} value={i}>{l}</option>)}
         </select>
@@ -955,7 +920,6 @@ export default function InvitationGenerator({ currentUser }) {
 
         <div style={T.divBar}/>
 
-        {/* Zoom */}
         <div style={T.zoomWrap}>
           <span style={T.zoomLbl}>Zoom</span>
           <input type="range" min={0.3} max={1.2} step={0.02} value={previewZoom}
@@ -976,8 +940,25 @@ export default function InvitationGenerator({ currentUser }) {
         )}
 
         <div style={T.spacer}/>
+
+        {/* ── Fullscreen toggle ── */}
+        <button
+          onClick={() => setFullscreen(f => !f)}
+          title={fullscreen ? 'Exit Fullscreen (Esc)' : 'Expand to Fullscreen'}
+          style={{
+            width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center',
+            background: fullscreen ? 'rgba(196,150,42,0.25)' : 'rgba(196,150,42,0.08)',
+            border:`1px solid ${fullscreen ? 'rgba(196,150,42,0.55)' : 'rgba(196,150,42,0.2)'}`,
+            borderRadius:5, cursor:'pointer',
+            color: fullscreen ? '#fbbf24' : '#E0BC6A',
+            transition:'all .15s', marginRight:8, flexShrink:0,
+          }}>
+          <ExpandIcon/>
+        </button>
+
         <button style={T.actionBtn('print')} onClick={handlePrint}>⎙ Print / PDF</button>
       </div>
+      {/* ── END ACTION BAR ── */}
 
       {/* ══ TAB BAR ══ */}
       <div style={T.tabBar}>
@@ -1015,7 +996,7 @@ export default function InvitationGenerator({ currentUser }) {
       {/* ══ TOAST ══ */}
       {toast && (
         <div style={{
-          position:'fixed', bottom:24, right:24, zIndex:9999,
+          position:'fixed', bottom:24, right:24, zIndex:99999,
           background:'#1e293b', border:'1px solid rgba(196,150,42,0.3)',
           color:'#f1f5f9', padding:'10px 18px', borderRadius:8,
           fontFamily:'sans-serif', fontSize:13, fontWeight:500,
