@@ -339,11 +339,81 @@ html, body { background: #080604; font-family: 'Raleway', sans-serif; min-height
 .motto { font-family: 'Cinzel', serif; font-weight: 600; font-size: 10px; color: #5A3A10; letter-spacing: 3px; text-transform: uppercase; text-align: center; margin-top: 6px; flex-shrink: 0; opacity: 0.85; }
 .sigs { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; margin-top: auto; padding-bottom: 52px; flex-shrink: 0; }
 .sig-block { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 220px; }
-.sig-img-box { width: 140px; height: 44px; border-bottom: 1.5px solid rgba(26,15,4,0.4); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; position: relative; cursor: pointer; }
+.sig-img-box {
+  width: 160px; height: 54px; border-bottom: 1.5px solid rgba(26,15,4,0.4);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: 4px; position: relative; cursor: pointer;
+}
 .sig-img-box::before, .sig-img-box::after { content: ''; position: absolute; bottom: -1px; height: 1px; width: 18px; background: rgba(26,15,4,0.4); }
 .sig-img-box::before { left: -2px; transform-origin: left bottom; transform: rotate(-45deg); }
 .sig-img-box::after  { right: -2px; transform-origin: right bottom; transform: rotate(45deg); }
 .sig-img-box img { max-height: 100%; max-width: 100%; object-fit: contain; }
+/* Signature modal */
+.sig-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+  z-index: 9000; display: flex; align-items: center; justify-content: center;
+}
+.sig-modal {
+  background: linear-gradient(160deg,#1A1208,#0E0A06);
+  border: 1px solid rgba(194,153,42,0.35); border-radius: 12px;
+  padding: 20px; width: 480px; max-width: 95vw;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+}
+.sig-modal-title {
+  font-family: 'Cinzel',serif; font-weight: 700; font-size: 11px;
+  letter-spacing: 3px; color: var(--g2); text-transform: uppercase; margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sig-mode-tabs {
+  display: flex; gap: 2px; margin-bottom: 12px;
+  background: rgba(0,0,0,0.3); border-radius: 6px; padding: 3px;
+}
+.sig-mode-tab {
+  flex: 1; padding: 6px; border: none; border-radius: 4px; cursor: pointer;
+  font-family: 'Cinzel',serif; font-size: 8px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: #604820; background: transparent; transition: all 0.15s;
+}
+.sig-mode-tab.active { background: rgba(194,153,42,0.15); color: var(--g3); }
+.sig-canvas-wrap {
+  border: 1px solid rgba(194,153,42,0.25); border-radius: 6px;
+  background: #FEFAF0; overflow: hidden; cursor: crosshair; position: relative;
+}
+.sig-canvas-wrap canvas { display: block; }
+.sig-canvas-hint {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: 'EB Garamond',serif; font-style: italic; font-size: 13px;
+  color: rgba(139,105,20,0.3); pointer-events: none;
+}
+.sig-type-input {
+  width: 100%; border: none; outline: none; background: #FEFAF0;
+  font-family: 'Great Vibes',cursive; font-size: 36px; color: #1A0F04;
+  padding: 8px 14px; text-align: center; border-radius: 6px;
+  border: 1px solid rgba(194,153,42,0.25);
+}
+.sig-pen-controls {
+  display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap;
+}
+.sig-pen-color { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: border-color 0.15s; }
+.sig-pen-color.active { border-color: var(--g2); }
+.sig-pen-size { cursor: pointer; width: 22px; height: 22px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(194,153,42,0.2); display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+.sig-pen-size:hover { background: rgba(194,153,42,0.1); }
+.sig-actions {
+  display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; flex-wrap: wrap;
+}
+.sig-btn {
+  font-family: 'Cinzel',serif; font-size: 8px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; padding: 7px 16px; border-radius: 5px; cursor: pointer; border: none;
+}
+.sig-btn-clear { background: rgba(180,40,40,0.1); color: #E09090; border: 1px solid rgba(180,40,40,0.25); }
+.sig-btn-cancel { background: rgba(255,255,255,0.05); color: #705840; border: 1px solid rgba(194,153,42,0.15); }
+.sig-btn-apply { background: linear-gradient(135deg,#1E5C1E,#0F3A0F); color: #8FE88F; border: 1px solid rgba(80,180,80,0.3); }
+.sig-font-btn {
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(194,153,42,0.2);
+  border-radius: 4px; padding: 4px 12px; color: #1A0F04; cursor: pointer;
+  transition: all 0.15s; line-height: 1.3;
+}
+.sig-font-btn:hover { background: rgba(194,153,42,0.08); border-color: var(--g2); }
+.sig-font-btn.active { background: rgba(194,153,42,0.12); border-color: var(--g2); box-shadow: 0 0 8px rgba(194,153,42,0.2); }
 .sig-name { font-family: 'Great Vibes', cursive; font-size: 19px; color: var(--ink); text-align: center; line-height: 1.2; }
 .sig-title { font-family: 'Raleway', sans-serif; font-weight: 700; font-size: 9px; color: #5A4020; letter-spacing: 1.5px; text-transform: uppercase; text-align: center; }
 .sig-center { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 120px; overflow: hidden; }
@@ -1393,8 +1463,8 @@ img.logo-uploaded { object-fit: contain; }
 
             <div class="sigs">
               <div class="sig-block">
-                <div class="sig-img-box" id="sigbox-1" onclick="document.getElementById('sigfile-1').click()" title="Click to upload signature">
-                  <span style="font-size:11px;color:#B0905A;opacity:0.4;font-family:'Raleway',sans-serif;">signature</span>
+                <div class="sig-img-box" id="sigbox-1" onclick="openSigModal(1)" title="Click to sign">
+                  <span style="font-size:10px;color:#B0905A;opacity:0.4;font-family:'Raleway',sans-serif;letter-spacing:1px;">✎ sign here</span>
                 </div>
                 <input type="file" id="sigfile-1" class="file-inp" accept="image/*" onchange="handleSig(1,this)">
                 <div class="sig-name" contenteditable="true" data-field="sig1_name">Th. Ibomcha Singh</div>
@@ -1610,8 +1680,8 @@ img.logo-uploaded { object-fit: contain; }
               </div>
 
               <div class="sig-block">
-                <div class="sig-img-box" id="sigbox-2" onclick="document.getElementById('sigfile-2').click()" title="Click to upload signature">
-                  <span style="font-size:11px;color:#B0905A;opacity:0.4;font-family:'Raleway',sans-serif;">signature</span>
+                <div class="sig-img-box" id="sigbox-2" onclick="openSigModal(2)" title="Click to sign">
+                  <span style="font-size:10px;color:#B0905A;opacity:0.4;font-family:'Raleway',sans-serif;letter-spacing:1px;">✎ sign here</span>
                 </div>
                 <input type="file" id="sigfile-2" class="file-inp" accept="image/*" onchange="handleSig(2,this)">
                 <div class="sig-name" contenteditable="true" data-field="sig2_name">Th. Bimola Devi</div>
@@ -2793,6 +2863,402 @@ function copyHTML(){
   navigator.clipboard.writeText(html).then(()=>alert('✓ Certificate HTML copied!')).catch(()=>alert('Please manually copy from DevTools.'));
 }
 
+// ═══════════════════════════════════════════════════════
+// SIGNATURE PAD — full rebuild
+// ═══════════════════════════════════════════════════════
+(function() {
+  let sigSlot    = 1;
+  let sigMode    = 'draw';
+  let sigColor   = '#1A0F04';
+  let sigSize    = 2.5;
+  let sigFont    = 'Great Vibes';
+  let sigSmooth  = true;
+  let sigPressure= false;
+  let undoStack  = [];
+  let isDrawing  = false;
+  let lastX = 0, lastY = 0;
+  let points = [];  // for smooth bezier
+
+  // ── Open / Close ─────────────────────────────────────
+  window.openSigModal = function(slot) {
+    sigSlot = slot;
+    document.getElementById('sigModalBackdrop').style.display = 'flex';
+    setMode('draw');
+    setTimeout(initCanvas, 60); // wait for display:flex to render
+  };
+
+  window.closeSigModal = function() {
+    document.getElementById('sigModalBackdrop').style.display = 'none';
+  };
+
+  // ── Mode switching ────────────────────────────────────
+  window.setSigMode = function(mode, btn) {
+    setMode(mode);
+  };
+
+  function setMode(mode) {
+    sigMode = mode;
+    document.querySelectorAll('.sig-mode-tab').forEach(t => t.classList.remove('active'));
+    const tab = document.querySelector(`.sig-mode-tab[data-mode="${mode}"]`);
+    if (tab) tab.classList.add('active');
+    document.getElementById('sigDrawPanel').style.display   = mode==='draw'   ? '' : 'none';
+    document.getElementById('sigTypePanel').style.display   = mode==='type'   ? '' : 'none';
+    document.getElementById('sigUploadPanel').style.display = mode==='upload' ? '' : 'none';
+    if (mode === 'draw') setTimeout(initCanvas, 60);
+  }
+
+  // ── Canvas init ───────────────────────────────────────
+  function getCanvas() { return document.getElementById('sigCanvas'); }
+
+  function initCanvas() {
+    const canvas = getCanvas();
+    if (!canvas) return;
+
+    // Set actual pixel dimensions matching CSS size
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width > 0) {
+      canvas.width  = rect.width  * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.fillStyle = '#FEFAF0';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    undoStack = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+
+    // Remove old listeners by replacing canvas
+    const newCanvas = canvas.cloneNode(true);
+    canvas.parentNode.replaceChild(newCanvas, canvas);
+    newCanvas.id = 'sigCanvas';
+
+    const c2 = newCanvas.getContext('2d');
+    c2.scale(window.devicePixelRatio, window.devicePixelRatio);
+    c2.fillStyle = '#FEFAF0';
+    c2.fillRect(0, 0, newCanvas.width, newCanvas.height);
+
+    function getXY(e) {
+      const r = newCanvas.getBoundingClientRect();
+      const src = e.touches ? e.touches[0] : e;
+      return {
+        x: (src.clientX - r.left),
+        y: (src.clientY - r.top)
+      };
+    }
+
+    function startDraw(e) {
+      e.preventDefault();
+      isDrawing = true;
+      points = [];
+      const p = getXY(e);
+      lastX = p.x; lastY = p.y;
+      points.push(p);
+      document.getElementById('sigCanvasHint').style.display = 'none';
+      // draw a dot on click
+      c2.beginPath();
+      c2.arc(p.x, p.y, sigSize / 2, 0, Math.PI * 2);
+      c2.fillStyle = sigColor;
+      c2.fill();
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      const p = getXY(e);
+      points.push(p);
+
+      c2.beginPath();
+      c2.moveTo(lastX, lastY);
+
+      if (sigSmooth && points.length >= 3) {
+        // Bezier curve for smooth strokes
+        const prev = points[points.length - 2];
+        const curr = points[points.length - 1];
+        const midX = (prev.x + curr.x) / 2;
+        const midY = (prev.y + curr.y) / 2;
+        c2.quadraticCurveTo(prev.x, prev.y, midX, midY);
+      } else {
+        c2.lineTo(p.x, p.y);
+      }
+
+      c2.strokeStyle = sigColor;
+      c2.lineWidth   = sigSize;
+      c2.lineCap     = 'round';
+      c2.lineJoin    = 'round';
+      c2.shadowColor = sigColor;
+      c2.shadowBlur  = sigSize > 3 ? 1 : 0;
+      c2.stroke();
+      c2.shadowBlur  = 0;
+
+      lastX = p.x; lastY = p.y;
+    }
+
+    function endDraw(e) {
+      if (!isDrawing) return;
+      isDrawing = false;
+      points = [];
+      // Save to undo stack
+      undoStack.push(c2.getImageData(0, 0, newCanvas.width, newCanvas.height));
+      if (undoStack.length > 20) undoStack.shift();
+    }
+
+    newCanvas.addEventListener('mousedown',  startDraw);
+    newCanvas.addEventListener('mousemove',  draw);
+    newCanvas.addEventListener('mouseup',    endDraw);
+    newCanvas.addEventListener('mouseleave', endDraw);
+    newCanvas.addEventListener('touchstart', startDraw, { passive: false });
+    newCanvas.addEventListener('touchmove',  draw,      { passive: false });
+    newCanvas.addEventListener('touchend',   endDraw);
+  }
+
+  // ── Draw controls ─────────────────────────────────────
+  window.clearSigCanvas = function() {
+    const c = getCanvas();
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#FEFAF0';
+    ctx.fillRect(0, 0, c.width, c.height);
+    undoStack = [ctx.getImageData(0, 0, c.width, c.height)];
+    document.getElementById('sigCanvasHint').style.display = 'flex';
+  };
+
+  window.undoSig = function() {
+    if (undoStack.length <= 1) return;
+    undoStack.pop();
+    const c = getCanvas();
+    if (!c) return;
+    c.getContext('2d').putImageData(undoStack[undoStack.length - 1], 0, 0);
+  };
+
+  window.setSigColor = function(color, el) {
+    sigColor = color;
+    document.querySelectorAll('.sig-pen-color').forEach(e => e.classList.remove('active'));
+    if (el) el.classList.add('active');
+  };
+
+  window.setSigColorCustom = function(input) {
+    sigColor = input.value;
+    document.querySelectorAll('.sig-pen-color').forEach(e => e.classList.remove('active'));
+  };
+
+  window.setSigSize = function(sz, el) {
+    sigSize = sz;
+    document.querySelectorAll('.sig-pen-size').forEach(e => e.classList.remove('active'));
+    if (el) el.classList.add('active');
+  };
+
+  window.toggleSmooth = function(cb) {
+    sigSmooth = cb.checked;
+  };
+
+  // ── Type mode ─────────────────────────────────────────
+  window.setSigFont = function(font, el) {
+    sigFont = font;
+    document.querySelectorAll('.sig-font-btn').forEach(e => e.classList.remove('active'));
+    if (el) el.classList.add('active');
+    window.renderTypedSig();
+  };
+
+  window.renderTypedSig = function() {
+    const text   = document.getElementById('sigTypeInput')?.value || '';
+    const canvas = document.getElementById('sigTypeCanvas');
+    if (!canvas) return;
+    canvas.style.display = text ? 'block' : 'none';
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#FEFAF0';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!text) return;
+    ctx.font         = `54px '${sigFont}', cursive, serif`;
+    ctx.fillStyle    = sigColor;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  };
+
+  window.setSigSlant = function(val) {
+    window.renderTypedSig();
+  };
+
+  // ── Upload mode ───────────────────────────────────────
+  window.handleSigUploadModal = function(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.getElementById('sigUploadCanvas');
+        canvas.style.display = 'block';
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#FEFAF0';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const scale = Math.min(canvas.width / img.width, canvas.height / img.height, 1);
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ── Apply ─────────────────────────────────────────────
+  window.applySigFromModal = function() {
+    let canvas;
+    if      (sigMode === 'draw')   canvas = getCanvas();
+    else if (sigMode === 'type')   canvas = document.getElementById('sigTypeCanvas');
+    else if (sigMode === 'upload') canvas = document.getElementById('sigUploadCanvas');
+    if (!canvas || canvas.style.display === 'none' && sigMode !== 'draw') {
+      window.closeSigModal(); return;
+    }
+
+    // Crop to content bounds for clean output
+    const dataUrl = cropCanvas(canvas);
+    const box = document.getElementById('sigbox-' + sigSlot);
+    if (box) {
+      box.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.cssText = 'max-height:52px;max-width:155px;object-fit:contain;';
+      box.appendChild(img);
+      box.title = 'Click to re-sign';
+      box.onclick = () => window.openSigModal(sigSlot);
+    }
+    window.closeSigModal();
+  };
+
+  function cropCanvas(canvas) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const data = ctx.getImageData(0, 0, w, h).data;
+    let minX=w, minY=h, maxX=0, maxY=0;
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+      const a = data[(y*w+x)*4+3];
+      const r = data[(y*w+x)*4], g = data[(y*w+x)*4+1], b = data[(y*w+x)*4+2];
+      // skip near-white pixels
+      if (a > 10 && !(r>240 && g>230 && b>200)) {
+        if (x<minX) minX=x; if (x>maxX) maxX=x;
+        if (y<minY) minY=y; if (y>maxY) maxY=y;
+      }
+    }
+    if (maxX<=minX || maxY<=minY) return canvas.toDataURL();
+    const pad=8;
+    minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad);
+    maxX=Math.min(w,maxX+pad); maxY=Math.min(h,maxY+pad);
+    const out = document.createElement('canvas');
+    out.width=maxX-minX; out.height=maxY-minY;
+    out.getContext('2d').drawImage(canvas,minX,minY,out.width,out.height,0,0,out.width,out.height);
+    return out.toDataURL('image/png');
+  }
+
+  // Re-init canvas when modal opens (handles resize)
+  window.addEventListener('resize', () => {
+    if (document.getElementById('sigModalBackdrop')?.style.display === 'flex') initCanvas();
+  });
+
+})();
 </script>
+
+<!-- ═══ SIGNATURE MODAL ═══ -->
+<div id="sigModalBackdrop" class="sig-modal-backdrop" style="display:none;" onclick="if(event.target===this)closeSigModal()">
+  <div class="sig-modal">
+    <div class="sig-modal-title">
+      ✎ Signature Pad
+      <button onclick="closeSigModal()" style="background:none;border:none;color:#705840;cursor:pointer;font-size:18px;line-height:1;padding:0;">✕</button>
+    </div>
+
+    <!-- Mode tabs -->
+    <div class="sig-mode-tabs">
+      <button class="sig-mode-tab active" data-mode="draw"   onclick="setSigMode('draw',this)">✎ Draw</button>
+      <button class="sig-mode-tab"        data-mode="type"   onclick="setSigMode('type',this)">Aa Type</button>
+      <button class="sig-mode-tab"        data-mode="upload" onclick="setSigMode('upload',this)">↑ Upload</button>
+    </div>
+
+    <!-- ── DRAW MODE ── -->
+    <div id="sigDrawPanel">
+      <div class="sig-canvas-wrap" style="position:relative;border-radius:8px;overflow:hidden;">
+        <canvas id="sigCanvas" style="width:100%;height:150px;display:block;touch-action:none;cursor:crosshair;"></canvas>
+        <div class="sig-canvas-hint" id="sigCanvasHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-family:'Great Vibes',cursive;font-size:22px;color:rgba(139,105,20,0.25);">Sign here…</div>
+      </div>
+
+      <!-- Pen controls row 1: color -->
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <span style="font-size:8px;color:#604820;font-family:'Raleway',sans-serif;font-weight:700;letter-spacing:1px;">INK:</span>
+        <div class="sig-pen-color active" style="background:#1A0F04;"  onclick="setSigColor('#1A0F04',this)"  title="Black Ink"></div>
+        <div class="sig-pen-color"        style="background:#0A1830;"  onclick="setSigColor('#0A1830',this)"  title="Navy Blue"></div>
+        <div class="sig-pen-color"        style="background:#7A1824;"  onclick="setSigColor('#7A1824',this)"  title="Crimson"></div>
+        <div class="sig-pen-color"        style="background:#1B5E20;"  onclick="setSigColor('#1B5E20',this)"  title="Forest Green"></div>
+        <div class="sig-pen-color"        style="background:#6B4A00;"  onclick="setSigColor('#6B4A00',this)"  title="Sepia"></div>
+        <!-- custom colour picker -->
+        <label style="width:22px;height:22px;border-radius:50%;border:2px solid rgba(194,153,42,0.4);cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;" title="Custom colour">
+          <span style="font-size:12px;">🎨</span>
+          <input type="color" value="#1A0F04" oninput="setSigColorCustom(this)" style="opacity:0;position:absolute;width:1px;height:1px;">
+        </label>
+
+        <span style="font-size:8px;color:#604820;font-family:'Raleway',sans-serif;font-weight:700;letter-spacing:1px;margin-left:8px;">SIZE:</span>
+        <button class="sig-pen-size" onclick="setSigSize(1,this)"   title="Extra thin" style="font-size:7px;">XS</button>
+        <button class="sig-pen-size active" onclick="setSigSize(2.5,this)" title="Medium"     style="font-size:7px;">M</button>
+        <button class="sig-pen-size" onclick="setSigSize(4,this)"   title="Thick"      style="font-size:7px;">L</button>
+        <button class="sig-pen-size" onclick="setSigSize(7,this)"   title="Bold"       style="font-size:7px;">XL</button>
+
+        <span style="flex:1;"></span>
+        <button class="sig-btn" style="background:rgba(60,60,160,0.15);color:#A8A8F8;border:1px solid rgba(80,80,200,0.3);font-size:7px;padding:4px 10px;" onclick="undoSig()" title="Undo last stroke">↩ Undo</button>
+        <button class="sig-btn sig-btn-clear" onclick="clearSigCanvas()">✕ Clear</button>
+      </div>
+
+      <!-- Pen controls row 2: smoothing -->
+      <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-family:'Raleway',sans-serif;font-size:9px;color:#604820;">
+          <input type="checkbox" id="sigSmoothCheck" checked onchange="toggleSmooth(this)">
+          Smooth strokes
+        </label>
+        <span style="font-size:9px;color:#403020;opacity:0.5;font-family:'Raleway',sans-serif;">Tip: draw slowly for best curves</span>
+      </div>
+    </div>
+
+    <!-- ── TYPE MODE ── -->
+    <div id="sigTypePanel" style="display:none;">
+      <input class="sig-type-input" id="sigTypeInput" type="text" placeholder="Type your name…" oninput="renderTypedSig()">
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:8px;color:#604820;font-family:'Raleway',sans-serif;font-weight:700;letter-spacing:1px;">STYLE:</span>
+        <button class="sig-font-btn active" style="font-family:'Great Vibes',cursive;font-size:20px;" onclick="setSigFont('Great Vibes',this)">Signature</button>
+        <button class="sig-font-btn" style="font-family:'Dancing Script',cursive;font-size:20px;" onclick="setSigFont('Dancing Script',this)">Signature</button>
+        <button class="sig-font-btn" style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:20px;" onclick="setSigFont('Cormorant Garamond',this)">Signature</button>
+        <button class="sig-font-btn" style="font-family:'Cinzel',serif;font-size:16px;" onclick="setSigFont('Cinzel',this)">SIGNATURE</button>
+        <button class="sig-font-btn" style="font-family:'EB Garamond',serif;font-style:italic;font-size:18px;" onclick="setSigFont('EB Garamond',this)">Signature</button>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:8px;color:#604820;font-family:'Raleway',sans-serif;font-weight:700;letter-spacing:1px;">INK:</span>
+        <div class="sig-pen-color active" style="background:#1A0F04;" onclick="setSigColor('#1A0F04',this);renderTypedSig()"></div>
+        <div class="sig-pen-color" style="background:#0A1830;" onclick="setSigColor('#0A1830',this);renderTypedSig()"></div>
+        <div class="sig-pen-color" style="background:#7A1824;" onclick="setSigColor('#7A1824',this);renderTypedSig()"></div>
+      </div>
+      <canvas id="sigTypeCanvas" width="440" height="120" style="display:none;width:100%;margin-top:8px;border-radius:6px;border:1px solid rgba(194,153,42,0.2);"></canvas>
+    </div>
+
+    <!-- ── UPLOAD MODE ── -->
+    <div id="sigUploadPanel" style="display:none;">
+      <div onclick="document.getElementById('sigModalFile').click()"
+        style="border:2px dashed rgba(194,153,42,0.3);border-radius:8px;padding:28px;text-align:center;cursor:pointer;background:rgba(194,153,42,0.03);transition:background 0.2s;"
+        onmouseenter="this.style.background='rgba(194,153,42,0.08)'" onmouseleave="this.style.background='rgba(194,153,42,0.03)'">
+        <div style="font-size:32px;margin-bottom:8px;">↑</div>
+        <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--g2);">CLICK OR DROP FILE</div>
+        <div style="font-size:10px;color:#604820;margin-top:6px;">PNG with transparent background works best<br>JPG also supported</div>
+      </div>
+      <input type="file" id="sigModalFile" class="file-inp" accept="image/*" onchange="handleSigUploadModal(this)">
+      <canvas id="sigUploadCanvas" width="440" height="120" style="display:none;width:100%;margin-top:10px;border-radius:6px;border:1px solid rgba(194,153,42,0.15);"></canvas>
+    </div>
+
+    <!-- Actions -->
+    <div class="sig-actions">
+      <button class="sig-btn sig-btn-cancel" onclick="closeSigModal()">Cancel</button>
+      <button class="sig-btn sig-btn-apply" onclick="applySigFromModal()">✓ Apply to Certificate</button>
+    </div>
+  </div>
+</div>
+
+
+
+
 </body>
-</html            <div class="logo-block" id="logo-left">            <div class="logo-block" id="logo-center">>
+</html>
