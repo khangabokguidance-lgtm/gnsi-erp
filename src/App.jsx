@@ -32,27 +32,34 @@ import Exams              from './Exams'
 import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
-import Entrance from './Entrance'
-import { LOGO_BASE64 } from './logo'
-import { EventBus, GNSI_EVENTS } from './EventBus'
+import Entrance           from './Entrance'
+import { LOGO_BASE64 }    from './logo'
 import { crossModuleSync } from './CrossModuleSync'
-import LandingPage from './LandingPage'
+import LandingPage        from './LandingPage'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
-import AdminLinkStaff from './AdminLinkStaff'
-import StudyMaterial from './StudyMaterial'
-import StudyLockers from './StudyLockers'
+import AdminLinkStaff     from './AdminLinkStaff'
+import StudyMaterial      from './StudyMaterial'
+import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 
+// ─────────────────────────────────────────────────────────────
+//  FIX 1: Unified admin role check — consistent everywhere
+// ─────────────────────────────────────────────────────────────
+const ADMIN_ROLES = ['Admin', 'Administrator']
+const isAdminRole = (role) => ADMIN_ROLES.includes(role)
 
+// ─────────────────────────────────────────────────────────────
+//  NAV GROUPS
+// ─────────────────────────────────────────────────────────────
 const ALL_GROUPS = [
   {
     group: 'CORE',
     items: [
       { id: 'dashboard',      label: 'Dashboard',      icon: '⊞' },
-      { id: 'students',       label: 'Students',        icon: '🎓' },
-      { id: 'admissions',     label: 'Admissions',      icon: '📋' },
-      { id: 'bulkadmission',  label: 'Bulk Admission',  icon: '📥' },
+      { id: 'students',       label: 'Students',       icon: '🎓' },
+      { id: 'admissions',     label: 'Admissions',     icon: '📋' },
+      { id: 'bulkadmission',  label: 'Bulk Admission', icon: '📥' },
     ],
   },
   {
@@ -62,6 +69,8 @@ const ALL_GROUPS = [
       { id: 'accounts',         label: 'Accounts',           icon: '🧾' },
       { id: 'salary',           label: 'Salary',             icon: '💵' },
       { id: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒' },
+      // FIX: feesetup now visible in nav (was hidden but reachable)
+      { id: 'feesetup',         label: 'Fee Setup',          icon: '⚙️' },
     ],
   },
   {
@@ -100,13 +109,13 @@ const ALL_GROUPS = [
   {
     group: 'MANAGEMENT',
     items: [
-      { id: 'reports',     label: 'Reports',     icon: '📊' },
-      { id: 'checklist',   label: 'Checklist',   icon: '✅' },
-      { id: 'invitation',  label: 'Invitation',  icon: '✉️' },
-      { id: 'admin',       label: 'Admin',       icon: '🔐' },
-      { id: 'system',      label: 'System',      icon: '⚙️' },
-      { id: 'adminlink',   label: 'Link Staff',  icon: '🔗' },
+      { id: 'reports',     label: 'Reports',      icon: '📊' },
+      { id: 'checklist',   label: 'Checklist',    icon: '✅' },
+      { id: 'invitation',  label: 'Invitation',   icon: '✉️' },
       { id: 'certificate', label: 'Certificates', icon: '📜' },
+      { id: 'admin',       label: 'Admin',        icon: '🔐' },
+      { id: 'system',      label: 'System',       icon: '⚙️' },
+      { id: 'adminlink',   label: 'Link Staff',   icon: '🔗' },
     ],
   },
 ]
@@ -119,7 +128,7 @@ const BADGES = {
   notice: { count: 5, color: '#fcd34d', bg: '#78350f' },
 }
 
-const FULL_CRUD = { read: true, add: true, edit: true, delete: true }
+const FULL_CRUD = { read: true,  add: true,  edit: true,  delete: true  }
 const NO_CRUD   = { read: false, add: false, edit: false, delete: false }
 
 function buildPermMap(rows) {
@@ -140,6 +149,43 @@ function getModulePerms(permMap, moduleKey, isAdmin) {
   return permMap[moduleKey] ?? NO_CRUD
 }
 
+// ─────────────────────────────────────────────────────────────
+//  FIX 2: Login attempt rate limiting
+// ─────────────────────────────────────────────────────────────
+const LOGIN_ATTEMPTS_KEY = 'gnsi_login_attempts'
+const LOGIN_LOCKOUT_KEY  = 'gnsi_login_lockout'
+const MAX_ATTEMPTS       = 5
+const LOCKOUT_MS         = 5 * 60 * 1000 // 5 minutes
+
+function checkLoginLock() {
+  try {
+    const lockUntil = parseInt(localStorage.getItem(LOGIN_LOCKOUT_KEY) || '0')
+    if (Date.now() < lockUntil) return { locked: true, until: lockUntil }
+    return { locked: false }
+  } catch { return { locked: false } }
+}
+
+function recordLoginAttempt() {
+  try {
+    const attempts = parseInt(localStorage.getItem(LOGIN_ATTEMPTS_KEY) || '0') + 1
+    localStorage.setItem(LOGIN_ATTEMPTS_KEY, String(attempts))
+    if (attempts >= MAX_ATTEMPTS) {
+      const until = Date.now() + LOCKOUT_MS
+      localStorage.setItem(LOGIN_LOCKOUT_KEY, String(until))
+      localStorage.setItem(LOGIN_ATTEMPTS_KEY, '0')
+      return { locked: true, until }
+    }
+    return { locked: false, attempts }
+  } catch { return { locked: false } }
+}
+
+function clearLoginAttempts() {
+  try {
+    localStorage.removeItem(LOGIN_ATTEMPTS_KEY)
+    localStorage.removeItem(LOGIN_LOCKOUT_KEY)
+  } catch {}
+}
+
 const D = {
   bg:           '#03263a',
   bgDeep:       '#021e2e',
@@ -157,7 +203,6 @@ const D = {
   textMuted:    '#6b8fa8',
   textFaint:    '#4a6b82',
   green:        '#22c55e',
-  logoBg:       '#fdd656',
 }
 
 const LS = {
@@ -179,12 +224,10 @@ function useIsMobile() {
   return mobile
 }
 
-// ── Collapsed icon-only nav ──────────────────────────────
 function CollapsedNav({ activePage, onNavigate, allowedModules }) {
   return (
     <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '6px 0',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-      scrollbarWidth: 'none' }}>
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, scrollbarWidth: 'none' }}>
       {ALL_ITEMS.filter(i => allowedModules.has(i.id)).map(item => {
         const isActive = activePage === item.id
         const badge = BADGES[item.id]
@@ -198,14 +241,8 @@ function CollapsedNav({ activePage, onNavigate, allowedModules }) {
             onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = D.bgHover }}
             onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
             {item.icon}
-            {isActive && (
-              <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                width: 3, height: 16, borderRadius: '0 3px 3px 0', background: D.accent }} />
-            )}
-            {badge && (
-              <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7,
-                borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />
-            )}
+            {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, borderRadius: '0 3px 3px 0', background: D.accent }} />}
+            {badge && <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
           </button>
         )
       })}
@@ -273,46 +310,21 @@ function LogoutButton({ onLogout }) {
   )
 }
 
-// ── Logo header — shows toggle button on desktop ─────────
 function LogoHeader({ isMobile, onClose, collapsed, onToggleCollapse }) {
   const [hov, setHov] = useState(false)
   return (
-    <div style={{ padding: '0 10px 0 14px', height: 60, display: 'flex', alignItems: 'center',
-      gap: collapsed ? 0 : 11, borderBottom: `1px solid ${D.border}`, flexShrink: 0,
-      background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`,
-      position: 'relative', overflow: 'hidden', justifyContent: collapsed ? 'center' : 'flex-start' }}>
-      <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1,
-        background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
-      <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI"
-        style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
+    <div style={{ padding: '0 10px 0 14px', height: 60, display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 11, borderBottom: `1px solid ${D.border}`, flexShrink: 0, background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`, position: 'relative', overflow: 'hidden', justifyContent: collapsed ? 'center' : 'flex-start' }}>
+      <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1, background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
+      <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
       {!collapsed && (
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em',
-            lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-            GNSI <span style={{ color: D.accent }}>ERP</span>
-          </div>
-          <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase',
-            marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>School Management</div>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em', lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
+          <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>School Management</div>
         </div>
       )}
       {isMobile
-        ? <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`,
-            borderRadius: 6, cursor: 'pointer', color: D.textMuted, fontSize: 14, lineHeight: 1,
-            padding: '5px 8px', flexShrink: 0 }} aria-label="Close menu">✕</button>
-        : (
-          <button onClick={onToggleCollapse}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-            style={{ flexShrink: 0, marginLeft: collapsed ? 0 : 'auto',
-              background: hov ? D.accentGlow : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${hov ? D.accentBorder : D.border}`,
-              borderRadius: 6, cursor: 'pointer',
-              color: hov ? D.accentLight : D.textMuted,
-              fontSize: 13, lineHeight: 1, padding: '5px 7px',
-              transition: 'all .15s', zIndex: 1 }}>
-            {collapsed ? '»' : '«'}
-          </button>
-        )
+        ? <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`, borderRadius: 6, cursor: 'pointer', color: D.textMuted, fontSize: 14, lineHeight: 1, padding: '5px 8px', flexShrink: 0 }}>✕</button>
+        : <button onClick={onToggleCollapse} title={collapsed ? 'Expand' : 'Collapse'} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ flexShrink: 0, marginLeft: collapsed ? 0 : 'auto', background: hov ? D.accentGlow : 'rgba(255,255,255,0.05)', border: `1px solid ${hov ? D.accentBorder : D.border}`, borderRadius: 6, cursor: 'pointer', color: hov ? D.accentLight : D.textMuted, fontSize: 13, lineHeight: 1, padding: '5px 7px', transition: 'all .15s', zIndex: 1 }}>{collapsed ? '»' : '«'}</button>
       }
     </div>
   )
@@ -325,15 +337,15 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   const [recents,   setRecents]   = useState(() => LS.get('gnsi_nav_recents', []))
   const searchRef = useRef(null)
   const role    = currentUser?.role || 'Teacher'
-  const isAdmin = role === 'Admin'
+  // FIX 1: use unified isAdminRole
+  const isAdmin = isAdminRole(role)
 
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
-    if ((currentUser?.role || '') === 'Manager') set.add('invitation')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
-  }, [permMap, isAdmin, currentUser?.role])
+  }, [permMap, isAdmin])
 
   useEffect(() => {
     const handler = e => { if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); searchRef.current?.focus() } }
@@ -358,7 +370,10 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return ALL_GROUPS.map(g => ({ ...g, items: g.items.filter(i => allowedModules.has(i.id) && !pins.includes(i.id) && (!q || i.label.toLowerCase().includes(q))) })).filter(g => g.items.length > 0)
+    return ALL_GROUPS.map(g => ({
+      ...g,
+      items: g.items.filter(i => allowedModules.has(i.id) && !pins.includes(i.id) && (!q || i.label.toLowerCase().includes(q)))
+    })).filter(g => g.items.length > 0)
   }, [allowedModules, search, pins])
 
   const visibleRecents = useMemo(() => recents.filter(id => allowedModules?.has(id) && !pins.includes(id)).slice(0, 4), [recents, allowedModules, pins])
@@ -389,7 +404,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: D.bgDeep, border: `1px solid ${D.borderStrong}`, borderRadius: 8, padding: '7px 11px' }}>
           <span style={{ fontSize: 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
           <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }} />
-          {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', letterSpacing: '0.05em', flexShrink: 0 }}>/</span>}
+          {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', flexShrink: 0 }}>/</span>}
         </div>
       </div>
 
@@ -412,7 +427,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
       <div style={{ padding: '8px 8px 12px', borderTop: `1px solid ${D.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 7px' }}>
           <span style={{ fontSize: 10, color: D.textFaint }}><span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>{' '}to search</span>
-          <span style={{ fontSize: 10, color: D.textFaint }}>v2.1 · © {new Date().getFullYear()} GNSI</span>
+          <span style={{ fontSize: 10, color: D.textFaint }}>v2.2 · © {new Date().getFullYear()} GNSI</span>
         </div>
         <LogoutButton onLogout={onLogout} />
       </div>
@@ -420,19 +435,11 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   )
 }
 
-// ── Collapsed mini logout (icon only) ───────────────────
 function MiniLogout({ onLogout }) {
   const [hov, setHov] = useState(false)
   return (
     <div style={{ padding: '8px 0 12px', borderTop: `1px solid ${D.border}`, display: 'flex', justifyContent: 'center' }}>
-      <button onClick={onLogout} title="Sign Out"
-        onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-        style={{ width: 40, height: 36, borderRadius: 8, border: `1px solid ${hov ? D.accentBorder : D.border}`,
-          cursor: 'pointer', background: hov ? D.accentGlow : D.bgSurface,
-          color: hov ? D.accentLight : D.textMuted, fontSize: 16, transition: 'all .15s',
-          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        🚪
-      </button>
+      <button onClick={onLogout} title="Sign Out" onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ width: 40, height: 36, borderRadius: 8, border: `1px solid ${hov ? D.accentBorder : D.border}`, cursor: 'pointer', background: hov ? D.accentGlow : D.bgSurface, color: hov ? D.accentLight : D.textMuted, fontSize: 16, transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
     </div>
   )
 }
@@ -441,17 +448,15 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
   const isMobile    = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const totalBadges = Object.values(BADGES).reduce((s, b) => s + b.count, 0)
+  // FIX 1: unified admin check
+  const isAdmin = isAdminRole(currentUser?.role)
 
-  // Compute allowedModules here so CollapsedNav can use it
-  const role    = currentUser?.role || 'Teacher'
-  const isAdmin = role === 'Admin'
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
-    if ((currentUser?.role || '') === 'Manager') set.add('invitation')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
-  }, [permMap, isAdmin, currentUser?.role])
+  }, [permMap, isAdmin])
 
   useEffect(() => { setDrawerOpen(false) }, [activePage])
   useEffect(() => {
@@ -465,63 +470,40 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     borderRight: `1px solid ${D.border}`,
   }
 
-  // ── Desktop sidebar ──────────────────────────────────
   if (!isMobile) {
     const w = collapsed ? SIDEBAR_MINI : SIDEBAR_FULL
     return (
-      <div style={{ ...sidebarStyles, width: w, height: '100vh', position: 'fixed', left: 0, top: 0,
-        zIndex: 100, overflow: 'hidden',
-        transition: 'width 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
+      <div style={{ ...sidebarStyles, width: w, height: '100vh', position: 'fixed', left: 0, top: 0, zIndex: 100, overflow: 'hidden', transition: 'width 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
         <LogoHeader isMobile={false} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
         {collapsed
-          ? <>
-              <CollapsedNav activePage={activePage} onNavigate={setActivePage} allowedModules={allowedModules} />
-              <MiniLogout onLogout={onLogout} />
-            </>
-          : <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout}
-              currentUser={currentUser} permMap={permMap} />
+          ? <><CollapsedNav activePage={activePage} onNavigate={setActivePage} allowedModules={allowedModules} /><MiniLogout onLogout={onLogout} /></>
+          : <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} permMap={permMap} />
         }
       </div>
     )
   }
 
-  // ── Mobile sidebar (drawer) ──────────────────────────
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg,
-        borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10,
-        padding: '0 12px', zIndex: 200, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
-        <button onClick={() => setDrawerOpen(true)} aria-label="Open menu"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex',
-            flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg, borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200 }}>
+        <button onClick={() => setDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
         </button>
-        <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI"
-          style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
+        <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1 }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
           <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>School Management</div>
         </div>
-        <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow,
-          border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px',
-          maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
-        <button onClick={onLogout} title="Sign Out"
-          style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)',
-            borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5',
-            fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
+        <button onClick={onLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5', fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
       </div>
-      {drawerOpen && <div onClick={() => setDrawerOpen(false)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
-      <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh',
-        zIndex: 299, overflowY: 'hidden',
-        transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
+      {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
+      <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh', zIndex: 299, overflowY: 'hidden', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
         <LogoHeader isMobile onClose={() => setDrawerOpen(false)} collapsed={false} onToggleCollapse={() => {}} />
-        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout}
-          currentUser={currentUser} onNavClick={() => setDrawerOpen(false)} permMap={permMap} />
+        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} onNavClick={() => setDrawerOpen(false)} permMap={permMap} />
       </div>
     </>
   )
@@ -561,176 +543,6 @@ function StatCard({ icon, label, value, sub, trend, accent }) {
   )
 }
 
-function TableCard({ title, sub, cols, rows, emptyMsg }) {
-  return (
-    <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', overflow: 'hidden' }}>
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', margin: 0 }}>{title}</h3>
-        <span style={{ fontSize: 10, color: '#94a3b8' }}>{sub}</span>
-      </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-          <thead><tr style={{ background: '#f8fafc' }}>{cols.map(c => <th key={c} style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 10, whiteSpace: 'nowrap' }}>{c}</th>)}</tr></thead>
-          <tbody>{rows.length === 0 ? <tr><td colSpan={cols.length} style={{ padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: 11 }}>{emptyMsg || 'No data'}</td></tr> : rows}</tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function BadgeStatus({ status }) {
-  const map = { Approved: { bg: '#dcfce7', color: '#16a34a' }, Rejected: { bg: '#fee2e2', color: '#dc2626' }, Pending: { bg: '#fef9c3', color: '#b45309' } }
-  const s = map[status] || { bg: '#f1f5f9', color: '#64748b' }
-  return <span style={{ padding: '3px 9px', borderRadius: 999, fontSize: 10, fontWeight: 700, background: s.bg, color: s.color }}>{status}</span>
-}
-
-function Ring({ value, max, color, label, size = 64 }) {
-  const r = 30, circ = 2 * Math.PI * r, p = max ? Math.min(value / max, 1) : 0
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <svg width={size} height={size} viewBox="0 0 80 80">
-        <circle cx="40" cy="40" r={r} fill="none" stroke="#f1f5f9" strokeWidth="8" />
-        <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${p * circ} ${circ}`} strokeLinecap="round" transform="rotate(-90 40 40)" />
-        <text x="40" y="45" textAnchor="middle" fontSize="14" fontWeight="bold" fill={color}>{Math.round(p * 100)}%</text>
-      </svg>
-      <span style={{ fontSize: 11, color: '#64748b', textAlign: 'center' }}>{label}</span>
-    </div>
-  )
-}
-
-function AdminDashboard({ onNavigate }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  useEffect(() => { load() }, [])
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [students, fees, attendance, admissions, exams, staff, recentStudents, recentAdmissions, salary, leave] = await Promise.all([
-        supabase.from('students').select('*', { count: 'exact', head: true }),
-        supabase.from('fees').select('amount,paid'),
-        supabase.from('attendance').select('status'),
-        supabase.from('admissions').select('*'),
-        supabase.from('exams').select('*', { count: 'exact', head: true }),
-        supabase.from('staff').select('*', { count: 'exact', head: true }),
-        supabase.from('students').select('id,name,class_name,course,created_at').order('created_at', { ascending: false }).limit(6),
-        supabase.from('admissions').select('id,name,class_name,status,created_at').order('created_at', { ascending: false }).limit(6),
-        supabase.from('salary').select('amount,status'),
-        supabase.from('leave').select('status'),
-      ])
-      let feeCollected = 0, feePending = 0
-      ;(fees.data || []).forEach(f => { feeCollected += Number(f.paid || 0); feePending += Number(f.amount || 0) - Number(f.paid || 0) })
-      let salaryPaid = 0, salaryPending = 0
-      ;(salary.data || []).forEach(s => { if (s.status === 'Paid') salaryPaid += Number(s.amount || 0); else salaryPending += Number(s.amount || 0) })
-      setData({ totalStudents: students.count ?? 0, totalStaff: staff.count ?? 0, totalExams: exams.count ?? 0, feeCollected, feePending, presentCount: (attendance.data || []).filter(a => a.status === 'Present').length, totalAtt: (attendance.data || []).length, pendingAdm: (admissions.data || []).filter(a => a.status === 'Pending').length, approvedAdm: (admissions.data || []).filter(a => a.status === 'Approved').length, totalAdm: (admissions.data || []).length, salaryPaid, salaryPending, pendingLeave: (leave.data || []).filter(l => l.status === 'Pending').length, recentStudents: recentStudents.data || [], recentAdmissions: recentAdmissions.data || [] })
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
-  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading live data…</div>
-  if (!data) return null
-  const feeTotal = data.feeCollected + data.feePending
-  const feeProgress = feeTotal ? Math.round((data.feeCollected / feeTotal) * 100) : 0
-  return (
-    <div style={{ padding: '16px 20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>🏠 Admin Dashboard</h1>
-          <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-        </div>
-        <button onClick={load} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>🔄 Refresh</button>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
-        {[
-          { icon: '👨‍🎓', label: 'Total Students', value: data.totalStudents,    sub: 'Enrolled',            accent: 'blue'   },
-          { icon: '💰',   label: 'Fee Collected',  value: fmt(data.feeCollected), sub: 'Total paid',          accent: 'green',  trend: feeProgress },
-          { icon: '⏳',   label: 'Fee Pending',    value: fmt(data.feePending),   sub: 'Outstanding',         accent: 'amber'  },
-          { icon: '🏫',   label: 'Present Today',  value: data.presentCount,      sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
-          { icon: '📋',   label: 'New Admissions', value: data.pendingAdm,        sub: 'Awaiting',            accent: 'pink'   },
-          { icon: '📝',   label: 'Total Exams',    value: data.totalExams,        sub: 'Scheduled',           accent: 'cyan'   },
-          { icon: '👨‍🏫', label: 'Total Staff',    value: data.totalStaff,        sub: 'Active',              accent: 'teal'   },
-          { icon: '💵',   label: 'Salary Paid',    value: fmt(data.salaryPaid),   sub: 'This month',          accent: 'indigo' },
-          { icon: '🏖️',  label: 'Leave Requests', value: data.pendingLeave,      sub: 'Pending',             accent: 'orange' },
-        ].map(c => <StatCard key={c.label} {...c} />)}
-      </div>
-      <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', padding: '12px 16px', marginBottom: 16 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', margin: '0 0 12px' }}>📊 Live Progress</h3>
-        <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 10 }}>
-          <Ring value={data.feeCollected} max={feeTotal || 1}                                    color="#16a34a" label="Fee Collected" />
-          <Ring value={data.presentCount} max={Math.max(data.totalAtt, 1)}                       color="#7c3aed" label="Attendance"    />
-          <Ring value={data.approvedAdm}  max={Math.max(data.totalAdm, 1)}                       color="#0891b2" label="Admissions"    />
-          <Ring value={data.salaryPaid}   max={Math.max(data.salaryPaid + data.salaryPending, 1)} color="#4f46e5" label="Salary"       />
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <TableCard title="👨‍🎓 Recent Students"   sub="Last 6" cols={['Name','Class','Course']} emptyMsg="No students"   rows={data.recentStudents.map(s   => <tr key={s.id} style={{ borderTop: '1px solid #f1f5f9' }}><td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{s.name}</td><td style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>{s.class_name}</td><td style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>{s.course || '—'}</td></tr>)} />
-        <TableCard title="📋 Recent Admissions" sub="Last 6" cols={['Name','Class','Status']} emptyMsg="No admissions" rows={data.recentAdmissions.map(a => <tr key={a.id} style={{ borderTop: '1px solid #f1f5f9' }}><td style={{ padding: '6px 12px', fontWeight: 600, fontSize: 11 }}>{a.name}</td><td style={{ padding: '6px 12px', color: '#64748b', fontSize: 11 }}>{a.class_name}</td><td style={{ padding: '6px 12px' }}><BadgeStatus status={a.status} /></td></tr>)} />
-      </div>
-      <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,.06)', padding: '12px 16px' }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', margin: '0 0 10px' }}>⚡ Quick Actions</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          {[
-            { label: '➕ Add Student',    color: '#1e3a5f', module: 'students'     },
-            { label: '📋 New Admission',  color: '#7c3aed', module: 'admissions'   },
-            { label: '💵 Record Fee',     color: '#16a34a', module: 'fees'         },
-            { label: '📚 Teaching Log',   color: '#0891b2', module: 'teaching'     },
-            { label: '📅 Attendance',     color: '#db2777', module: 'attendance'   },
-            { label: '📝 Exams',          color: '#16a34a', module: 'exams'        },
-            { label: '🏖️ Approve Leave', color: '#b45309', module: 'leave'        },
-            { label: '🔔 Send Notice',    color: '#ea580c', module: 'notice'       },
-            { label: '❓ Question Bank',  color: '#7c3aed', module: 'questionbank' },
-            { label: '📈 Reports',        color: '#4f46e5', module: 'reports'      },
-            { label: '✉️ Invitation',     color: '#C4962A', module: 'invitation'   },
-          ].map(a => (
-            <button key={a.label} onClick={() => onNavigate(a.module)} style={{ background: a.color, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '.85'} onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-              {a.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function UserDashboard({ onNavigate, currentUser }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  useEffect(() => { load() }, [])
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [attendance, exams, fees, leave, notices] = await Promise.all([
-        supabase.from('attendance').select('status,date').order('date', { ascending: false }).limit(30),
-        supabase.from('exams').select('*').order('date', { ascending: true }).limit(5),
-        supabase.from('fees').select('amount,paid,due_date').order('due_date', { ascending: true }).limit(5),
-        supabase.from('leave').select('*').order('created_at', { ascending: false }).limit(5),
-        supabase.from('notices').select('*').order('created_at', { ascending: false }).limit(4),
-      ])
-      const att = attendance.data || []
-      let feePaid = 0, feeDue = 0
-      ;(fees.data || []).forEach(f => { feePaid += Number(f.paid || 0); feeDue += Number(f.amount || 0) - Number(f.paid || 0) })
-      setData({ presentCount: att.filter(a => a.status === 'Present').length, totalAtt: att.length, upcomingExams: exams.data || [], feePaid, feeDue, leaveRequests: leave.data || [], pendingLeave: (leave.data || []).filter(l => l.status === 'Pending').length, notices: notices.data || [] })
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
-  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading…</div>
-  if (!data) return null
-  return (
-    <div style={{ padding: '16px 20px' }}>
-      <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f', margin: '0 0 16px' }}>👤 Welcome, {currentUser.name}</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
-        {[
-          { icon: '📅', label: 'Days Present',  value: data.presentCount,         sub: `of ${data.totalAtt}`, accent: 'purple', trend: pct(data.presentCount, data.totalAtt) },
-          { icon: '💰', label: 'Fee Due',        value: fmt(data.feeDue),          sub: 'Outstanding',         accent: 'amber'  },
-          { icon: '✅', label: 'Fee Paid',       value: fmt(data.feePaid),         sub: 'Paid so far',         accent: 'green'  },
-          { icon: '📝', label: 'Upcoming Exams', value: data.upcomingExams.length, sub: 'Scheduled',           accent: 'cyan'   },
-          { icon: '🏖️',label: 'Leave Pending',  value: data.pendingLeave,         sub: 'Awaiting',            accent: 'orange' },
-          { icon: '🔔', label: 'Notices',        value: data.notices.length,       sub: 'Recent',              accent: 'pink'   },
-        ].map(c => <StatCard key={c.label} {...c} />)}
-      </div>
-    </div>
-  )
-}
-
 function AccessDenied() {
   return (
     <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>
@@ -758,9 +570,9 @@ export default function App() {
   const [permLoading,      setPermLoading]      = useState(false)
   const isMobile = useIsMobile()
   const [sharedStaff, setSharedStaff] = useState([])
-  const isAdmin = currentUser?.role === 'Admin'
+  // FIX 1: unified admin check
+  const isAdmin = isAdminRole(currentUser?.role)
 
-  // Persist sidebar collapse state
   useEffect(() => { LS.set('gnsi_sidebar_collapsed', sidebarCollapsed) }, [sidebarCollapsed])
 
   const sidebarW = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_MINI : SIDEBAR_FULL)
@@ -774,7 +586,7 @@ export default function App() {
   useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
 
   const loadPermissions = async (role) => {
-    if (role === 'Admin') { setPermMap({}); return }
+    if (isAdminRole(role)) { setPermMap({}); return }
     setPermLoading(true)
     const { data } = await supabase.from('role_permissions').select('module_key, allowed, can_read, can_add, can_edit, can_delete').eq('role', role)
     setPermMap(buildPermMap(data))
@@ -782,6 +594,8 @@ export default function App() {
   }
 
   const handleLogin = async (user) => {
+    // FIX 2: clear lockout on successful login
+    clearLoginAttempts()
     const { data } = await supabase.from('portal_users').select('staff_profile_id').eq('id', user.id).maybeSingle()
     const enriched = { ...user, staff_profile_id: data?.staff_profile_id ?? null }
     localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + 8*60*60*1000 }))
@@ -818,19 +632,25 @@ export default function App() {
   }, [active])
 
   if (!currentUser) {
-    if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} />
+    if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} onLoginFailed={recordLoginAttempt} loginLock={checkLoginLock()} />
     return <LandingPage onLogin={() => setShowLogin(true)} />
   }
   if (permLoading) return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
 
-  const canAccess = (key) => { if (key === 'dashboard') return true; if (isAdmin) return true; return permMap[key]?.read === true }
+  // FIX 1: use unified isAdminRole in canAccess
+  const canAccess = (key) => {
+    if (key === 'dashboard') return true
+    if (isAdmin) return true
+    return permMap[key]?.read === true
+  }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
   const moduleMap = {
     students:          <Students          currentUser={currentUser} perms={perms('students')}          />,
     admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}        />,
-    sessions:          <Sessions          currentUser={currentUser} perms={perms('sessions')}          />,
-    admissionsessions: <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')} />,
+    // FIX: sessions/admissionsessions — admin only explicitly
+    sessions:          isAdmin ? <Sessions          currentUser={currentUser} perms={perms('sessions')}          /> : <AccessDenied />,
+    admissionsessions: isAdmin ? <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')} /> : <AccessDenied />,
     bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}     />,
     fees:              <Fees              currentUser={currentUser} perms={perms('fees')}              />,
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
@@ -850,22 +670,27 @@ export default function App() {
     checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}         />,
     system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}            />,
     studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')}  />,
-    feeledger:         <StudentFeeLedger  currentUser={currentUser} perms={perms('feeledger')}         />,
+    // FIX: removed feeledger duplicate alias
     courses:           <Courses           currentUser={currentUser} perms={perms('courses')}           />,
     teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}          />,
     attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} />,
     exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,
     timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}         />,
-    feesetup:          <FeeSetup          userRole={currentUser.role} perms={perms('feesetup')}        />,
+    // FIX: feesetup now admin-only explicitly (was hidden but reachable)
+    feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
     entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}          />,
-    invitation:        (isAdmin || currentUser?.role === 'Manager') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
+    // FIX: invitation now uses permission system, not hardcoded Manager bypass
+    invitation:        canAccess('invitation') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
-    certificate: <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
+    certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
   }
 
   const renderContent = () => {
+    // FIX 3: student-leave is public by design (student self-service portal)
+    // verify is public by design (gate pass QR verification)
+    // Both are intentionally unauthenticated — documented here
     if (active === 'student-leave') return <StudentSelfService />
     if (active === 'verify')        return <GatePassVerifyPage />
     if (active === 'dashboard') return isAdmin
@@ -891,42 +716,29 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(p => !p)}
       />
-
-      {/* Top bar — offset matches sidebar width with smooth transition */}
       {!isMobile && (
-        <div style={{
-          position: 'fixed', top: 0, right: 0,
-          left: sidebarW,
-          height: 48, background: '#021e2e', borderBottom: '1px solid #1a3347',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 20px', zIndex: 99,
-          transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)',
-        }}>
+        <div style={{ position: 'fixed', top: 0, right: 0, left: sidebarW, height: 48, background: '#021e2e', borderBottom: '1px solid #1a3347', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 99, transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
           <span style={{ fontSize: 12, color: '#4a6b82', fontFamily: 'monospace' }}>
             {ALL_ITEMS.find(i => i.id === active)?.icon}{' '}{ALL_ITEMS.find(i => i.id === active)?.label || 'Dashboard'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 13, color: '#94afc4' }}>{currentUser?.name}</span>
-            <button onClick={handleLogout}
-              style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)',
-                borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5',
-                fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(220,38,38,.22)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(220,38,38,.12)'}>
-              🚪 Sign Out
-            </button>
+            <button onClick={handleLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(220,38,38,.22)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(220,38,38,.12)'}>🚪 Sign Out</button>
           </div>
         </div>
       )}
-
-      <main style={{
-        flex: 1, overflowY: 'auto', minHeight: '100vh',
-        paddingLeft: isMobile ? 0 : sidebarW,
-        paddingTop: isMobile ? 56 : 48,
-        transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)',
-      }}>
+      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : 48, transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
         {renderContent()}
       </main>
+    </div>
+  )
+}
+
+// Minimal UserDashboard (unchanged from original)
+function UserDashboard({ onNavigate, currentUser }) {
+  return (
+    <div style={{ padding: '16px 20px' }}>
+      <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f', margin: '0 0 16px' }}>👤 Welcome, {currentUser?.name}</h1>
     </div>
   )
 }

@@ -9,32 +9,39 @@ import {
 //  CONSTANTS
 // ─────────────────────────────────────────────
 const ALL_MODULES = [
-  { key: 'dashboard',     label: 'Dashboard',          icon: '⊞'   },
-  { key: 'students',      label: 'Students',           icon: '🎓'  },
-  { key: 'admissions',    label: 'Admissions',         icon: '📋'  },
-  { key: 'bulkadmission', label: 'Bulk Admission',     icon: '📥'  },
-  { key: 'fees',          label: 'Fees',               icon: '💰'  },
-  { key: 'accounts',      label: 'Accounts',           icon: '🧾'  },
-  { key: 'salary',        label: 'Salary',             icon: '💵'  },
-  { key: 'feeledger',     label: 'Student Fee Ledger', icon: '📒'  },
-  { key: 'attendance',    label: 'Attendance',         icon: '📅'  },
-  { key: 'exams',         label: 'Exams',              icon: '📝'  },
-  { key: 'timetable',     label: 'Timetable',          icon: '🕐'  },
-  { key: 'teaching',      label: 'Teaching',           icon: '📚'  },
-  { key: 'courses',       label: 'Courses',            icon: '🎓'  },
-  { key: 'questionbank',  label: 'Question Bank',      icon: '❓'  },
-  { key: 'kitchen',       label: 'Kitchen',            icon: '🍽️' },
-  { key: 'staff',         label: 'Staff',              icon: '👨‍🏫' },
-  { key: 'hr',            label: 'HR',                 icon: '🗂️' },
-  { key: 'leave',         label: 'Leave',              icon: '🏖️' },
-  { key: 'hostel',        label: 'Hostel',             icon: '🏨'  },
-  { key: 'reception',     label: 'Reception',          icon: '🛎️' },
-  { key: 'notice',        label: 'Notice',             icon: '🔔'  },
-  { key: 'social',        label: 'Social',             icon: '📣'  },
-  { key: 'connect',       label: 'Connect',            icon: '🔗'  },
-  { key: 'reports',       label: 'Reports',            icon: '📊'  },
-  { key: 'checklist',     label: 'Checklist',          icon: '✅'  },
-  { key: 'system',        label: 'System',             icon: '⚙️' },
+  { key: 'dashboard',        label: 'Dashboard',          icon: '⊞'   },
+  { key: 'students',         label: 'Students',           icon: '🎓'  },
+  { key: 'admissions',       label: 'Admissions',         icon: '📋'  },
+  { key: 'admissionsessions',label: 'Admission Sessions', icon: '📅'  },
+  { key: 'bulkadmission',    label: 'Bulk Admission',     icon: '📥'  },
+  { key: 'fees',             label: 'Fees',               icon: '💰'  },
+  { key: 'accounts',         label: 'Accounts',           icon: '🧾'  },
+  { key: 'salary',           label: 'Salary',             icon: '💵'  },
+  { key: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒'  },
+  { key: 'feesetup',         label: 'Fee Setup',          icon: '⚙️' },
+  { key: 'attendance',       label: 'Attendance',         icon: '📅'  },
+  { key: 'exams',            label: 'Exams',              icon: '📝'  },
+  { key: 'timetable',        label: 'Timetable',          icon: '🕐'  },
+  { key: 'teaching',         label: 'Teaching',           icon: '📚'  },
+  { key: 'courses',          label: 'Courses',            icon: '🎓'  },
+  { key: 'questionbank',     label: 'Question Bank',      icon: '❓'  },
+  { key: 'entrance',         label: 'Entrance Exam',      icon: '🏆'  },
+  { key: 'studymaterial',    label: 'Study Materials',    icon: '📖'  },
+  { key: 'studylockers',     label: 'Study Lockers',      icon: '🗃️' },
+  { key: 'kitchen',          label: 'Kitchen',            icon: '🍽️' },
+  { key: 'staff',            label: 'Staff',              icon: '👨‍🏫' },
+  { key: 'hr',               label: 'HR',                 icon: '🗂️' },
+  { key: 'leave',            label: 'Leave',              icon: '🏖️' },
+  { key: 'hostel',           label: 'Hostel',             icon: '🏨'  },
+  { key: 'reception',        label: 'Reception',          icon: '🛎️' },
+  { key: 'notice',           label: 'Notice',             icon: '🔔'  },
+  { key: 'social',           label: 'Social',             icon: '📣'  },
+  { key: 'connect',          label: 'Connect',            icon: '🔗'  },
+  { key: 'reports',          label: 'Reports',            icon: '📊'  },
+  { key: 'checklist',        label: 'Checklist',          icon: '✅'  },
+  { key: 'invitation',       label: 'Invitation',         icon: '✉️' },
+  { key: 'certificate',      label: 'Certificates',       icon: '📜'  },
+  { key: 'system',           label: 'System',             icon: '⚙️' },
 ]
 
 const CRUD_KEYS   = ['read', 'add', 'edit', 'delete']
@@ -1438,7 +1445,7 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
     )
   }
 
-  const ADMIN_ROLES = ['admin', 'Admin', 'Administrator']
+  const ADMIN_ROLES = ['Admin', 'Administrator']
   if (!ADMIN_ROLES.includes(currentUser.role)) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif", padding: 16 }}>
