@@ -702,8 +702,36 @@ img.logo-uploaded { object-fit: contain; }
 
 /* ── @page MUST be top-level — Chrome ignores it inside @media print ── */
 @page {
-  size: 297mm 210mm;
-  margin: 0mm;
+  size: A4 landscape;  /* or: 297mm 210mm */
+  margin: 0;
+}
+
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 297mm !important;
+    height: 210mm !important;
+    overflow: hidden !important;
+    background: white !important;
+  }
+  
+  /* Your certificate container */
+  .cert-outer {
+    width: 277mm !important;   /* 297mm - 10mm left - 10mm right */
+    height: 190mm !important;  /* 210mm - 10mm top - 10mm bottom */
+    margin: 10mm auto !important;
+    box-sizing: border-box !important;
+    filter: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
+  
+  .cert {
+    width: 100% !important;
+    height: 100% !important;
+    transform: none !important; /* Remove any scaling */
+  }
 }
 
 @media print {
