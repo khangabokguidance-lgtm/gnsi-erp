@@ -42,6 +42,7 @@ import AdminLinkStaff from './AdminLinkStaff'
 import StudyMaterial from './StudyMaterial'
 import StudyLockers from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
+import CertificateGenerator from './CertificateGenerator'
 
 
 const ALL_GROUPS = [
@@ -105,6 +106,7 @@ const ALL_GROUPS = [
       { id: 'admin',       label: 'Admin',       icon: '🔐' },
       { id: 'system',      label: 'System',      icon: '⚙️' },
       { id: 'adminlink',   label: 'Link Staff',  icon: '🔗' },
+      { id: 'certificate', label: 'Certificates', icon: '📜' },
     ],
   },
 ]
@@ -860,6 +862,7 @@ export default function App() {
     invitation:        (isAdmin || currentUser?.role === 'Manager') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
+    certificate: <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
   }
 
   const renderContent = () => {
