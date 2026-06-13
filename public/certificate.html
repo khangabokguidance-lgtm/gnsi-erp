@@ -708,57 +708,84 @@ img.logo-uploaded { object-fit: contain; }
 
 @media print {
   html, body {
-    background: transparent !important; margin: 0 !important; padding: 0 !important;
+    background: transparent !important;
+    margin: 0 !important; padding: 0 !important;
     width: 297mm !important; height: 210mm !important;
     overflow: hidden !important;
   }
-  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .top-bar, .left-panel, .print-corner, .bulk-overlay,
+  .panel-toggle-btn, .sig-modal-backdrop { display: none !important; }
+
   .workspace, .layout, .preview-panel {
-    display: block !important; padding: 0 !important; margin: 0 !important;
-    background: transparent !important; border: none !important;
+    display: block !important;
+    padding: 0 !important; margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
     width: 297mm !important; height: 210mm !important;
     min-height: 0 !important; overflow: hidden !important;
     zoom: 1 !important;
   }
-  .top-bar, .left-panel, .print-corner, .bulk-overlay,
-  .panel-toggle-btn { display: none !important; }
+
   .cert-outer {
-    /* Fill the full A4 landscape page — no scaling tricks needed */
     position: fixed !important;
     top: 0 !important; left: 0 !important;
     width: 297mm !important; height: 210mm !important;
     filter: none !important; animation: none !important;
     margin: 0 !important; padding: 0 !important;
-    box-shadow: none !important; overflow: hidden !important;
+    box-shadow: none !important;
     transform: none !important;
+    overflow: visible !important;
   }
-  .cert-outer::before, .cert-outer::after { display: none !important; }
+  .cert-outer::before { display: none !important; }
+
   .cert {
-    /* Scale the 1060×750 design up to exactly fill 297mm×210mm
-       297mm @96dpi = 1122.52px → scale = 1122.52/1060 = 1.05898
-       Use zoom instead of transform so layout actually expands   */
     position: absolute !important;
     top: 0 !important; left: 0 !important;
     width: 1060px !important; height: 750px !important;
-    transform: none !important;
-    zoom: calc(297mm / 1060px) !important;
+    transform: scale(1.0589) !important;
+    transform-origin: top left !important;
     overflow: hidden !important;
-  }
-  [contenteditable="true"] {
-    border: none !important; background: transparent !important;
-    box-shadow: none !important; padding: 0 !important; margin: 0 !important;
-  }
-  /* White paper — no dark header */
-  .cert {
     background: #ffffff !important;
   }
-  .cert::before { display: none !important; } /* remove grid texture */
-  .cert-header,
-  .gold-rule,
-  .gold-rule-thin { display: none !important; }
-  /* Logo strip moves to top; give cert-body the full remaining height */
-  .cert-logo-strip { padding-top: 22px !important; }
-  .cert-body { flex: 1 !important; }
+
+  /* Keep header visible — do NOT hide it */
+  .cert-header { display: block !important; }
+  .gold-rule, .gold-rule-thin { display: block !important; }
+
+  /* Fix signature section — margin-top:auto breaks in print */
+  .sigs {
+    position: absolute !important;
+    bottom: 52px !important;
+    left: 80px !important;
+    right: 80px !important;
+    margin-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Fix cert-body to fill available space */
+  .cert-body {
+    flex: 1 !important;
+    overflow: hidden !important;
+    padding-bottom: 120px !important;
+  }
+
+  .motto {
+    position: absolute !important;
+    bottom: 14px !important;
+    left: 0 !important; right: 0 !important;
+  }
+
+  [contenteditable="true"] {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
 }
 
 /* ── TEMPLATE CARDS ── */
