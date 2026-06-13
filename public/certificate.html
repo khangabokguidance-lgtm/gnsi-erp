@@ -22,7 +22,7 @@ html, body { background: #080604; font-family: 'Raleway', sans-serif; min-height
 /* TOP BAR */
 .top-bar {
   width: 100%; padding: 0 24px;
-  height: 0; display: none; align-items: center; justify-content: space-between;
+  height: 48px; display: flex; align-items: center; justify-content: space-between;
   background: linear-gradient(180deg, #181208 0%, #0E0B07 100%);
   border-bottom: 1px solid rgba(194,153,42,0.2);
   position: sticky; top: 0; z-index: 200;
@@ -748,6 +748,17 @@ img.logo-uploaded { object-fit: contain; }
     border: none !important; background: transparent !important;
     box-shadow: none !important; padding: 0 !important; margin: 0 !important;
   }
+  /* White paper — no dark header */
+  .cert {
+    background: #ffffff !important;
+  }
+  .cert::before { display: none !important; } /* remove grid texture */
+  .cert-header,
+  .gold-rule,
+  .gold-rule-thin { display: none !important; }
+  /* Logo strip moves to top; give cert-body the full remaining height */
+  .cert-logo-strip { padding-top: 22px !important; }
+  .cert-body { flex: 1 !important; }
 }
 
 /* ── TEMPLATE CARDS ── */
@@ -761,6 +772,7 @@ img.logo-uploaded { object-fit: contain; }
 .ps-hover-highlight { outline:2px dashed #7B68EE!important; outline-offset:2px; }
 .ps-selected { outline:2px solid #E74C3C!important; outline-offset:3px; }
 </style>
+<base target="_blank">
 </head>
 <body>
 
@@ -778,13 +790,13 @@ img.logo-uploaded { object-fit: contain; }
   </div>
 
     <!-- Panel toggle button (visible when panel is closed) -->
-  <button class="panel-toggle-btn" id="panelToggleBtn" onclick="toggleDrawer()" title="Open Editor" style="display:none;">✦</button>
+  <button class="panel-toggle-btn" id="panelToggleBtn" onclick="toggleDrawer()" title="Open Editor" style="display:flex;">✦</button>
 
 <div class="layout">
     <!-- FLOATING EDITOR DRAWER -->
-    <div class="left-panel" id="editorDrawer">
+    <div class="left-panel open" id="editorDrawer">
       <!-- SIDEBAR HEADER -->
-      <div class="drawer-handle">
+      <div class="drawer-handle" onclick="toggleDrawer()">
         <div class="drawer-title">✦ Editor</div>
         <div class="drawer-actions">
           <button class="btn btn-apply" style="font-size:7px;padding:2px 7px;letter-spacing:1px;" onclick="applyCert()">Apply</button>
@@ -1115,6 +1127,10 @@ img.logo-uploaded { object-fit: contain; }
                 <div class="fg"><label>Outer Border Color</label>
                   <input type="color" id="d_border" value="#C9992A" style="height:28px;width:100%;border-radius:4px;cursor:pointer;" onchange="liveDesign()">
                 </div>
+                                <div class="fg"><label>Border Width</label>
+                  <input type="range" id="d_bw" min="1" max="16" value="8" oninput="liveDesign();this.nextElementSibling.textContent=this.value+'px'">
+                  <span style="font-size:9px;color:var(--g2);">8px</span>
+                </div>
                 <!-- Border Width removed — fixed for print consistency -->
                 <div class="fg"><label>Corner Radius</label>
                   <input type="range" id="d_radius" min="0" max="24" value="0" oninput="liveDesign();this.nextElementSibling.textContent=this.value+'px'">
@@ -1131,7 +1147,10 @@ img.logo-uploaded { object-fit: contain; }
                   <input type="range" id="d_pad" min="16" max="80" value="40" oninput="liveDesign();this.nextElementSibling.textContent=this.value+'px'">
                   <span style="font-size:9px;color:var(--g2);">40px</span>
                 </div>
-                <!-- Certificate Width: fixed at 1060px for print consistency -->
+                                <div class="fg"><label>Certificate Width</label>
+                  <input type="range" id="d_width" min="800" max="1200" value="1060" oninput="liveDesign();this.nextElementSibling.textContent=this.value+'px'">
+                  <span style="font-size:9px;color:var(--g2);">1060px</span>
+                </div>
                 <div class="fg"><label>Watermark Opacity</label>
                   <input type="range" id="d_wm" min="0" max="20" value="5" oninput="liveDesign();this.nextElementSibling.textContent=this.value+'%'">
                   <span style="font-size:9px;color:var(--g2);">5%</span>
@@ -2762,7 +2781,7 @@ function liveDesign() {
   }
 
   // ── Title colour ──
-  const titleEl = cert.querySelector('.cert-title');
+  const titleEl = cert.querySelector('.cert-title-word');
   if (titleEl) titleEl.style.color = v('d_title') || '#7A1824';
 
   // ── Body text ──
