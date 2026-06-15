@@ -484,10 +484,40 @@ function StatGrid({ items, mobile }) {
   )
 }
 
-// ─── Status Cycle Cell ────────────────────────────────────────
+// ─── Instagram gradient rings per status ─────────────────────
+
+const STATUS_GRADIENT = {
+  Present: 'linear-gradient(135deg, #22c55e, #16a34a)',
+  Absent:  'linear-gradient(135deg, #f43f5e, #e11d48)',
+  Late:    'linear-gradient(135deg, #fbbf24, #f59e0b)',
+  Leave:   'linear-gradient(135deg, #a78bfa, #7c3aed)',
+}
+
+const AVATAR_GRAD = [
+  'linear-gradient(135deg,#f9a8d4,#c084fc)',
+  'linear-gradient(135deg,#93c5fd,#6366f1)',
+  'linear-gradient(135deg,#6ee7b7,#3b82f6)',
+  'linear-gradient(135deg,#fde68a,#fb923c)',
+  'linear-gradient(135deg,#a5f3fc,#818cf8)',
+  'linear-gradient(135deg,#fbcfe8,#f9a8d4)',
+  'linear-gradient(135deg,#bbf7d0,#34d399)',
+  'linear-gradient(135deg,#fca5a5,#f97316)',
+]
+
+function getAvatarGrad(name = '') {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff
+  return AVATAR_GRAD[h % AVATAR_GRAD.length]
+}
+
+// ─── Status Cycle Cell — Instagram Stories style ──────────────
 
 function StatusCycleCell({ student, status, onChange, isMobile }) {
-  const sm = STATUS_META[status] || STATUS_META.Present
+  const sm   = STATUS_META[status] || STATUS_META.Present
+  const ring = STATUS_GRADIENT[status] || STATUS_GRADIENT.Present
+  const initials = student.student_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  const avatarGrad = getAvatarGrad(student.student_name)
+
   return (
     <button
       onClick={() => {
@@ -495,44 +525,84 @@ function StatusCycleCell({ student, status, onChange, isMobile }) {
         onChange(STATUSES[(idx + 1) % STATUSES.length])
       }}
       style={{
-        borderRadius: 10,
-        padding: isMobile ? '10px 6px' : '12px 8px',
-        minHeight: isMobile ? 86 : 96,
-        textAlign: 'center',
+        background: 'white',
+        border: 'none',
+        borderRadius: 14,
+        padding: isMobile ? '10px 6px 10px' : '12px 8px 12px',
         cursor: 'pointer',
-        border: `1.5px solid ${sm.border}`,
-        background: sm.bg,
-        transition: 'all .12s',
         display: 'flex', flexDirection: 'column',
-        alignItems: 'center', gap: 5,
+        alignItems: 'center', gap: 6,
         fontFamily: font,
         WebkitTapHighlightColor: 'transparent',
         width: '100%',
+        transition: 'transform .12s, box-shadow .12s',
+        boxShadow: '0 1px 4px rgba(0,0,0,.07)',
+        position: 'relative',
       }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,.12)' }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)';  e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,.07)' }}
     >
-      <span style={{
-        fontSize: isMobile ? 14 : 16, fontWeight: 800,
-        color: sm.color, lineHeight: 1,
+      {/* Instagram-style ring + avatar */}
+      <div style={{
+        width: isMobile ? 44 : 50, height: isMobile ? 44 : 50,
+        borderRadius: '50%',
+        padding: 2.5,
+        background: ring,
+        flexShrink: 0,
+        transition: 'background .15s',
+      }}>
+        <div style={{
+          width: '100%', height: '100%',
+          borderRadius: '50%',
+          border: '2px solid white',
+          background: avatarGrad,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: isMobile ? 12 : 13, fontWeight: 700, color: 'white',
+          letterSpacing: '.01em',
+        }}>
+          {initials}
+        </div>
+      </div>
+
+      {/* Status badge — bottom of avatar */}
+      <div style={{
+        position: 'absolute',
+        top: isMobile ? 38 : 44, left: '50%',
+        transform: 'translateX(-50%)',
+        width: isMobile ? 16 : 18, height: isMobile ? 16 : 18,
+        borderRadius: '50%',
+        background: ring,
+        border: '2px solid white',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: isMobile ? 7 : 8, fontWeight: 800, color: 'white',
+        zIndex: 1,
       }}>
         {sm.icon}
-      </span>
+      </div>
+
+      {/* Name */}
       <div style={{
         fontSize: isMobile ? 9.5 : 10.5, fontWeight: 600,
-        color: T.gray700,
-        lineHeight: 1.35, width: '100%',
+        color: T.gray700, lineHeight: 1.3,
+        width: '100%', textAlign: 'center',
         wordBreak: 'break-word', overflowWrap: 'anywhere',
-        textAlign: 'center',
+        marginTop: 4,
       }}>
         {student.student_name}
       </div>
-      {student.gcc_no && (
-        <div style={{
-          fontSize: 8.5, color: T.gray400,
-          fontFamily: fontMono, fontWeight: 500,
-        }}>
-          {student.gcc_no}
-        </div>
-      )}
+
+      {/* Status label */}
+      <div style={{
+        fontSize: 8.5, fontWeight: 700,
+        color: sm.color,
+        background: sm.bg,
+        border: `1px solid ${sm.border}`,
+        borderRadius: 999,
+        padding: '1px 6px',
+        letterSpacing: '.03em',
+      }}>
+        {sm.label}
+      </div>
     </button>
   )
 }
@@ -1002,49 +1072,77 @@ function TabMark({ staff, prefill }) {
 
       {/* Swift grid */}
       {students.length > 0 && (
-        <Card>
-          <CardHeader
-            icon="✏️"
-            title="Mark attendance"
-            subtitle={`${form.course}${form.subtype ? ' · '+form.subtype : ''} — tap a cell to cycle status`}
-            accent={T.blue}
-            right={
-              <>
-                <Btn small variant="amber" onClick={copyLastSession} disabled={copying}>
-                  {copying ? '…' : '📋'} {isMobile ? 'Copy' : 'Copy last'}
-                </Btn>
-                {!isMobile && <Btn small variant="ghost" onClick={invertSelection}>⇄ Invert</Btn>}
-              </>
-            }
-          />
-
-          {/* Quick-mark pills */}
+        <Card style={{ overflow: 'visible' }}>
+          {/* Instagram-style gradient banner header */}
           <div style={{
-            padding: isMobile ? '10px 16px' : '12px 22px',
+            background: 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
+            padding: isMobile ? '16px 16px 14px' : '18px 22px 16px',
+            borderRadius: '14px 14px 0 0',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          }}>
+            <div>
+              <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, color: 'white', lineHeight: 1.3 }}>
+                📸 Roll Call
+              </div>
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.75)', marginTop: 2 }}>
+                {form.course}{form.subtype ? ' · ' + form.subtype : ''} — tap to cycle status
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={copyLastSession} disabled={copying} style={{
+                padding: '6px 13px', borderRadius: 999, border: '1.5px solid rgba(255,255,255,.4)',
+                background: 'rgba(255,255,255,.15)', color: 'white',
+                fontWeight: 700, fontSize: 12, cursor: copying ? 'not-allowed' : 'pointer',
+                fontFamily: font, backdropFilter: 'blur(4px)',
+                WebkitTapHighlightColor: 'transparent',
+              }}>
+                {copying ? '…' : '📋'} {isMobile ? 'Copy' : 'Copy last'}
+              </button>
+              {!isMobile && (
+                <button onClick={invertSelection} style={{
+                  padding: '6px 13px', borderRadius: 999, border: '1.5px solid rgba(255,255,255,.4)',
+                  background: 'rgba(255,255,255,.15)', color: 'white',
+                  fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: font,
+                  backdropFilter: 'blur(4px)', WebkitTapHighlightColor: 'transparent',
+                }}>
+                  ⇄ Invert
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Quick-mark pills — Instagram gradient style */}
+          <div style={{
+            padding: isMobile ? '12px 16px' : '14px 22px',
             borderBottom: `1.5px solid ${T.gray100}`,
-            display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center',
+            display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center',
+            background: 'linear-gradient(to right, #f8fafc, #f1f5f9)',
           }}>
             {STATUSES.map(s => {
               const sm = STATUS_META[s]
+              const grad = STATUS_GRADIENT[s]
               return (
                 <button key={s} onClick={() => markAll(s)} style={{
                   display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '6px 13px', borderRadius: 999,
-                  border: `1.5px solid ${sm.border}`,
-                  background: sm.bg, color: sm.color,
-                  fontWeight: 600, fontSize: 12, cursor: 'pointer',
+                  padding: '7px 15px', borderRadius: 999,
+                  border: 'none',
+                  background: grad,
+                  color: 'white',
+                  fontWeight: 700, fontSize: 12, cursor: 'pointer',
                   fontFamily: font, WebkitTapHighlightColor: 'transparent',
-                  transition: 'all .12s',
+                  transition: 'all .15s',
+                  boxShadow: `0 2px 8px ${sm.dot}55`,
+                  letterSpacing: '.01em',
                 }}>
-                  <StatusDot status={s} size={7} />
-                  <span style={{ fontFamily: fontMono, fontWeight: 700 }}>{counts[s]}</span>
+                  <span style={{ fontSize: 10, fontWeight: 800 }}>{sm.icon}</span>
+                  <span style={{ fontFamily: fontMono, fontSize: 13, fontWeight: 800 }}>{counts[s]}</span>
                   <span>{sm.label}</span>
                 </button>
               )
             })}
             {!isMobile && (
               <button onClick={invertSelection} style={{
-                padding: '6px 12px', borderRadius: 999,
+                padding: '7px 14px', borderRadius: 999,
                 border: `1.5px solid ${T.gray200}`,
                 background: T.white, color: T.gray500,
                 fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: font,
@@ -1069,12 +1167,13 @@ function TabMark({ staff, prefill }) {
             />
           </div>
 
-          {/* Grid */}
+          {/* Grid — Stories shelf */}
           <div style={{
-            padding: isMobile ? '0 14px 16px' : '0 20px 20px',
+            padding: isMobile ? '8px 12px 18px' : '10px 18px 22px',
             display: 'grid',
             gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(5,1fr)',
-            gap: isMobile ? 7 : 9,
+            gap: isMobile ? 8 : 10,
+            background: 'linear-gradient(180deg, #fafafa 0%, #fff 60%)',
           }}>
             {filteredStudents.map(s => {
               const key = s.student_id || s.student_name
@@ -1099,12 +1198,23 @@ function TabMark({ staff, prefill }) {
             borderTop: `1.5px solid ${T.gray100}`,
             background: T.gray50,
           }}>
-            <Btn
-              variant="success" disabled={saving} onClick={handleSave}
-              style={{ width: '100%', justifyContent: 'center', minHeight: 44, fontSize: 14 }}
+            <button
+              disabled={saving} onClick={handleSave}
+              style={{
+                width: '100%', minHeight: 46, fontSize: 14,
+                fontWeight: 700, fontFamily: font, cursor: saving ? 'not-allowed' : 'pointer',
+                border: 'none', borderRadius: 11,
+                background: saving
+                  ? T.gray200
+                  : 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
+                color: saving ? T.gray400 : 'white',
+                boxShadow: saving ? 'none' : '0 4px 14px rgba(131,58,180,.4)',
+                transition: 'all .15s',
+                letterSpacing: '.02em',
+              }}
             >
               {saving ? 'Saving…' : `Save attendance · ${students.length} students`}
-            </Btn>
+            </button>
           </div>
         </Card>
       )}
@@ -2144,7 +2254,11 @@ export default function Attendance({ currentUser, isAdmin }) {
         </div>
         <div style={{
           fontSize: isMobile ? 22 : 28, fontWeight: 700,
-          color: T.ink, letterSpacing: '-.02em', lineHeight: 1.2,
+          letterSpacing: '-.02em', lineHeight: 1.2,
+          background: 'linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
         }}>
           Attendance
         </div>
@@ -2155,36 +2269,43 @@ export default function Attendance({ currentUser, isAdmin }) {
         )}
       </div>
 
-      {/* Nav tabs — pill strip */}
+      {/* Nav tabs — Instagram gradient active style */}
       <div style={{
         display: 'flex',
         marginBottom: 20,
-        background: T.gray100,
-        borderRadius: 12,
+        background: T.white,
+        borderRadius: 14,
         padding: 4,
-        gap: 2,
+        gap: 3,
         overflowX: 'auto', WebkitOverflowScrolling: 'touch',
         scrollbarWidth: 'none', msOverflowStyle: 'none',
+        boxShadow: T.shadowSm,
+        border: `1.5px solid ${T.gray150}`,
       }}>
-        {NAV_TABS.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
-            flex: 1,
-            padding: isMobile ? '8px 4px' : '9px 14px',
-            fontWeight: 600, fontSize: isMobile ? 11 : 12.5,
-            cursor: 'pointer',
-            background: activeTab===t.key ? T.white : 'none',
-            border: 'none', borderRadius: 9, fontFamily: font,
-            color: activeTab===t.key ? T.ink : T.gray400,
-            transition: 'all .15s', flexShrink: 0,
-            WebkitTapHighlightColor: 'transparent',
-            minHeight: 38,
-            boxShadow: activeTab===t.key ? T.shadowSm : 'none',
-            letterSpacing: '.01em',
-            whiteSpace: 'nowrap',
-          }}>
-            {t.label}
-          </button>
-        ))}
+        {NAV_TABS.map(t => {
+          const isActive = activeTab === t.key
+          return (
+            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
+              flex: 1,
+              padding: isMobile ? '8px 4px' : '9px 14px',
+              fontWeight: 700, fontSize: isMobile ? 11 : 12.5,
+              cursor: 'pointer',
+              background: isActive
+                ? 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)'
+                : 'none',
+              border: 'none', borderRadius: 10, fontFamily: font,
+              color: isActive ? 'white' : T.gray400,
+              transition: 'all .18s', flexShrink: 0,
+              WebkitTapHighlightColor: 'transparent',
+              minHeight: 38,
+              boxShadow: isActive ? '0 2px 10px rgba(131,58,180,.35)' : 'none',
+              letterSpacing: '.01em',
+              whiteSpace: 'nowrap',
+            }}>
+              {t.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Content */}
