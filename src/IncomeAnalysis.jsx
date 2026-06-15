@@ -881,8 +881,8 @@ export default function IncomeAnalysis({ entries = [], today = '', isMobile = fa
                 { key: 'count', label: 'Entries', right: true },
                 { key: 'amount', label: 'Income', right: true, bold: true, render: v => fmt(v), color: () => '#16a34a' },
                 { key: 'prev', label: 'Prev Month', right: true },
-                { key: 'change', label: 'Change', right: true, color: (v, row) => row._diff >= 0 ? '#16a34a' : '#dc2626' },
-                { key: 'pctChange', label: '% Change', right: true, color: (v, row) => row._diff >= 0 ? '#16a34a' : '#dc2626' },
+                { key: 'change', label: 'Change', right: true, color: (v, row) => !row || row._diff === null ? '#94a3b8' : row._diff >= 0 ? '#16a34a' : '#dc2626' },
+{ key: 'pctChange', label: '% Change', right: true, color: (v, row) => !row || row._diff === null ? '#94a3b8' : row._diff >= 0 ? '#16a34a' : '#dc2626' },
               ]}
             />
           </Section>
