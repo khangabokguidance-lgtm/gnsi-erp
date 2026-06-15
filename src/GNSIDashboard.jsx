@@ -295,8 +295,8 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   const accountsExpense = (accountsRes.data || []).filter(r => r.type === "Expense")
   const totalFeeCollected = allIncome.reduce((s,r)=>s+(Number(r.amount)||0),0)
   const admFeeTotal    = allIncome.filter(r=>r.category==="Admission").reduce((s,r)=>s+(Number(r.amount)||0),0)
-  const flatFeeTotal   = allIncome.filter(r=>r.category==="Flat Fee").reduce((s,r)=>s+(Number(r.amount)||0),0)
-  const courseFeeTotal = allIncome.filter(r=>r.category==="Course Fee").reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const flatFeeTotal   = admFlatFeesData.reduce((s,r)=>s+(Number(r.amount)||0),0)
+const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const feePending = (defaultersRes.data||[]).reduce((s,r)=>s+(Number(r.amount_due)||0),0)
   const monthlyFees = ACADEMIC_MONTHS.map(m=>({month:m.label,collected:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),target:500000}))
   const feeAging=[{bucket:"0-30 days",amount:0,count:0,color:T.amber},{bucket:"31-60 days",amount:0,count:0,color:T.orange},{bucket:"60+ days",amount:0,count:0,color:T.rose}]
