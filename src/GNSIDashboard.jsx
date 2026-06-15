@@ -234,7 +234,7 @@ async function loadAllData() {
     connectGrievancesData, connectRepliesData, qbankData, syllabusTopicsData,
   ] = await Promise.all([
     supabase.from("students").select("*", {count:"exact", head:true}),
-supabase.from("students").select("gender, state, date_of_birth, created_at"),
+supabase.from("students").select("gender, state, date_of_birth, created_at, hostel_type, course, batch"),
 supabase.from("adm_applications").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
 supabase.from("adm_applications").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
     supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note"),
@@ -313,11 +313,11 @@ const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)|
   const admEnrolled=allAdm.filter(a=>a.status==="Enrolled").length
   const admRejected=allAdm.filter(a=>a.status==="Rejected").length
   const admWaitlisted=allAdm.filter(a=>a.status==="Waitlisted").length
-  const boarders=allAdm.filter(a=>a.hostel_type==="Boarder").length
-  const dayBoarders=allAdm.filter(a=>a.hostel_type==="Day Boarder").length
-  const dayScholars=allAdm.filter(a=>a.hostel_type==="Day Scholar").length
+  const boarders=allStudents.filter(s=>s.hostel_type==="Boarder").length
+const dayBoarders=allStudents.filter(s=>s.hostel_type==="Day Boarder").length
+const dayScholars=allStudents.filter(s=>s.hostel_type==="Day Scholar").length
   const courseCounts={}
-  allAdm.forEach(a=>{if(a.course)courseCounts[a.course]=(courseCounts[a.course]||0)+1})
+  allStudents.forEach(a=>{if(a.course)courseCounts[a.course]=(courseCounts[a.course]||0)+1})
   const courseBreakdown=Object.entries(courseCounts).sort((a,b)=>b[1]-a[1]).map(([name,students],i)=>({name,students,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const sourceCounts={}
   allAdm.forEach(a=>{const s=a.referral_source||"Unknown";sourceCounts[s]=(sourceCounts[s]||0)+1})
@@ -346,8 +346,8 @@ const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)|
   const allStudents=studentsRes.data||[]
   // FIX #1: keep raw DB count and enrolled count separate
   const totalStudentsCount = studentsCountRes.count || allStudents.length
-  const maleStudents=allAdm.filter(s=>s.gender==="Male"||s.gender==="male").length||allStudents.filter(s=>s.gender==="Male").length
-  const femaleStudents=allAdm.filter(s=>s.gender==="Female"||s.gender==="female").length||allStudents.filter(s=>s.gender==="Female").length
+  const maleStudents=allStudents.filter(s=>s.gender==="Male"||s.gender==="male").length
+const femaleStudents=allStudents.filter(s=>s.gender==="Female"||s.gender==="female").length
   const stateCounts={}
   allStudents.forEach(s=>{if(s.state)stateCounts[s.state]=(stateCounts[s.state]||0)+1})
   const stateData=Object.entries(stateCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([state,count])=>({state,count}))
