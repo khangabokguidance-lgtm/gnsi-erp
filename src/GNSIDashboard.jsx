@@ -297,7 +297,7 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   const admFeeTotal    = allIncome.filter(r=>r.category==="Admission").reduce((s,r)=>s+(Number(r.amount)||0),0)
   const flatFeeTotal   = admFlatFeesData.reduce((s,r)=>s+(Number(r.amount)||0),0)
 const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
-  const feePending = (defaultersRes.data||[]).reduce((s,r)=>s+(Number(r.amount_due)||0),0)
+  const feePending = 0 // fee_invoices not in use — pending calc requires fee structure setup
   const monthlyFees = ACADEMIC_MONTHS.map(m=>({month:m.label,collected:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),target:500000}))
   const feeAging=[{bucket:"0-30 days",amount:0,count:0,color:T.amber},{bucket:"31-60 days",amount:0,count:0,color:T.orange},{bucket:"60+ days",amount:0,count:0,color:T.rose}]
   ;(defaultersRes.data||[]).forEach(d=>{if(!d.invoice_month)return;const diff=Math.floor((nowD-new Date(d.invoice_month+"-01"))/86400000);const idx=diff<=30?0:diff<=60?1:2;feeAging[idx].amount+=Number(d.amount_due)||0;feeAging[idx].count++})
@@ -1001,7 +1001,7 @@ export default function GNSIDashboard({ scrollToSection }) {
           <SectionHeader icon="💰" title="Finance & Fee Analytics"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
-            <KPI icon="📌" label="Fee Pending" value={data.feePending} isMoney color={T.rose}/>
+            <KPI icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.emerald} sub="All fees cleared"/>
             <KPI icon="🎓" label="Admission Fee" value={data.admFeeTotal} isMoney color={T.violet}/>
             <KPI icon="📄" label="Flat Fee" value={data.flatFeeTotal} isMoney color={T.sky}/>
             <KPI icon="📚" label="Course Fee" value={data.courseFeeTotal} isMoney color={T.emerald}/>
