@@ -253,7 +253,7 @@ safeFetch(()=>supabase.from("attendance_logs").select("status,date").order("date
     safeFetch(()=>supabase.from("clubs").select("name,member_count")),
     safeFetch(()=>supabase.from("leave_requests").select("leave_type,staff_id,start_date")),
     safeFetch(()=>supabase.from("staff_recruitment").select("stage,candidate_name,applied_date")),
-    safeFetch(()=>supabase.from("student_scores").select("student_id,student_name,subject_name,score,max_score,test_date,gcc_no").order("test_date",{ascending:false}).limit(500)),
+    safeFetch(()=>supabase.from("student_scores").select("student_id,student_name,subject_name,score,max_score,test_date").order("test_date",{ascending:false}).limit(500)),
     safeFetch(()=>supabase.from("sports_participation").select("sport,student_count")),
     safeFetch(()=>supabase.from("house_service_hours").select("house_name,hours")),
     safeFetch(()=>supabase.from("achievements").select("title,house_name,achieved_date")),
@@ -411,7 +411,7 @@ const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)|
   examMarksData.forEach(t=>{const tp=t.gcc_no||"Unknown";testTypeMap[tp]=(testTypeMap[tp]||0)+1})
   const testByType=Object.entries(testTypeMap).map(([name,count],i)=>({name,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const studentScoreMap={}
-  examMarksData.forEach(t=>{const id=t.gcc_no||t.student_id;if(!studentScoreMap[id])studentScoreMap[id]={name:t.student_name||String(id),batch:t.gcc_no||"Unknown",total:0,max:0,count:0};studentScoreMap[id].total+=Number(t.score)||0;studentScoreMap[id].max+=Number(t.max_score)||0;studentScoreMap[id].count++})
+  examMarksData.forEach(t=>{const id=t.student_id;if(!studentScoreMap[id])studentScoreMap[id]={name:t.student_name||String(id),batch:"Unknown",total:0,max:0,count:0};studentScoreMap[id].total+=Number(t.score)||0;studentScoreMap[id].max+=Number(t.max_score)||0;studentScoreMap[id].count++})
   const topPerformers=Object.values(studentScoreMap).map(s=>({...s,avg:s.max>0?pct(s.total,s.max):0})).sort((a,b)=>b.avg-a.avg).slice(0,8)
   const atRiskStudents=Object.values(studentScoreMap).filter(s=>s.max>0&&pct(s.total,s.max)<40)
   const testSubjectScores=subjectScores.map((s,i)=>({...s,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
