@@ -313,11 +313,6 @@ const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)|
   const admEnrolled=allAdm.filter(a=>a.status==="Enrolled").length
   const admRejected=allAdm.filter(a=>a.status==="Rejected").length
   const admWaitlisted=allAdm.filter(a=>a.status==="Waitlisted").length
-  const boarders=allStudents.filter(s=>s.hostel_type==="Boarder").length
-const dayBoarders=allStudents.filter(s=>s.hostel_type==="Day Boarder").length
-const dayScholars=allStudents.filter(s=>s.hostel_type==="Day Scholar").length
-  const courseCounts={}
-  allStudents.forEach(a=>{if(a.course)courseCounts[a.course]=(courseCounts[a.course]||0)+1})
   const courseBreakdown=Object.entries(courseCounts).sort((a,b)=>b[1]-a[1]).map(([name,students],i)=>({name,students,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const sourceCounts={}
   allAdm.forEach(a=>{const s=a.referral_source||"Unknown";sourceCounts[s]=(sourceCounts[s]||0)+1})
@@ -344,10 +339,14 @@ const dayScholars=allStudents.filter(s=>s.hostel_type==="Day Scholar").length
 
   // ── Students ──
   const allStudents=studentsRes.data||[]
-  // FIX #1: keep raw DB count and enrolled count separate
   const totalStudentsCount = studentsCountRes.count || allStudents.length
   const maleStudents=allStudents.filter(s=>s.gender==="Male"||s.gender==="male").length
-const femaleStudents=allStudents.filter(s=>s.gender==="Female"||s.gender==="female").length
+  const femaleStudents=allStudents.filter(s=>s.gender==="Female"||s.gender==="female").length
+  const boarders=allStudents.filter(s=>s.hostel_type==="Boarder").length
+  const dayBoarders=allStudents.filter(s=>s.hostel_type==="Day Boarder").length
+  const dayScholars=allStudents.filter(s=>s.hostel_type==="Day Scholar").length
+  const courseCounts={}
+  allStudents.forEach(a=>{if(a.course)courseCounts[a.course]=(courseCounts[a.course]||0)+1})
   const stateCounts={}
   allStudents.forEach(s=>{if(s.state)stateCounts[s.state]=(stateCounts[s.state]||0)+1})
   const stateData=Object.entries(stateCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([state,count])=>({state,count}))
