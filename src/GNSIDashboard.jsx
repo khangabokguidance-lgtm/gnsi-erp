@@ -233,19 +233,19 @@ async function loadAllData() {
     socialLeadsData, socialPostsData, connectBroadcastsData,
     connectGrievancesData, connectRepliesData, qbankData, syllabusTopicsData,
   ] = await Promise.all([
-    supabase.from("Students").select("*", {count:"exact", head:true}),
-    supabase.from("Students").select("gender, state, date_of_birth, created_at"),
-    supabase.from("admissions").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
-    supabase.from("admissions").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
+    supabase.from("students").select("*", {count:"exact", head:true}),
+supabase.from("students").select("gender, state, date_of_birth, created_at"),
+supabase.from("adm_applications").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
+supabase.from("adm_applications").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
     supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note"),
     supabase.from("adm_fee_collections").select("amount_paid,fee_type,adm_app_id,student_name,pay_date,pay_mode,description").order("pay_date",{ascending:false}).limit(6),
-    safeFetch(()=>supabase.from("gnsi_staff_biodata").select("id,name,department,status,basic_salary,seniority_allowance,loyalty_bonus,role_bonus,designation")),
-    supabase.from("management_checklist").select("id,status,priority,section,task,owner,created_at,period"),
+    safeFetch(()=>supabase.from("staff_profiles").select("id,name,department,status,designation")),
+    safeFetch(()=>supabase.from("management_checklist").select("id,status,priority,section,task,assigned_to,created_at")),
     safeFetch(()=>supabase.from("staff_monthly_scores").select("staff_id,month,total_score,level").order("month",{ascending:false}).limit(50)),
-    supabase.from("attendance").select("status,date").eq("date",today),
-    supabase.from("attendance").select("status,date").order("date",{ascending:false}).limit(1500),
+    safeFetch(()=>supabase.from("attendance_logs").select("status,date").eq("date",today)),
+safeFetch(()=>supabase.from("attendance_logs").select("status,date").order("date",{ascending:false}).limit(1500)),
     supabase.from("houses").select("*"),
-    supabase.from("fee_invoices").select("gcc_no,student_name,course,amount_due,status,invoice_month").in("status",["Overdue","Pending","Partial"]).gt("amount_due",0).order("amount_due",{ascending:false}).limit(5),
+    safeFetch(()=>supabase.from("fee_invoices").select("gcc_no,student_name,course,amount_due,status,invoice_month").in("status",["Overdue","Pending","Partial"]).gt("amount_due",0).order("amount_due",{ascending:false}).limit(5)),
     safeFetch(()=>supabase.from("hostel_rooms").select("block,total_beds,occupied_beds")),
     safeFetch(()=>supabase.from("hostel_incidents").select("incident_date,type,severity")),
     safeFetch(()=>supabase.from("mess_consumption").select("meal_date,breakfast,lunch,dinner")),
@@ -253,21 +253,21 @@ async function loadAllData() {
     safeFetch(()=>supabase.from("clubs").select("name,member_count")),
     safeFetch(()=>supabase.from("leave_requests").select("leave_type,staff_id,start_date")),
     safeFetch(()=>supabase.from("staff_recruitment").select("stage,candidate_name,applied_date")),
-    safeFetch(()=>supabase.from("exam_marks").select("student_id,student_name,class_name,subject,marks,total_marks,exam_date,gcc_no")),
+    safeFetch(()=>supabase.from("student_scores").select("student_id,student_name,subject_name,score,max_score,test_date,gcc_no").order("test_date",{ascending:false}).limit(500)),
     safeFetch(()=>supabase.from("sports_participation").select("sport,student_count")),
     safeFetch(()=>supabase.from("house_service_hours").select("house_name,hours")),
     safeFetch(()=>supabase.from("achievements").select("title,house_name,achieved_date")),
     safeFetch(()=>supabase.from("fee_waivers").select("category,total_amount,student_count")),
     safeFetch(()=>supabase.from("scholarships").select("name,awarded_count,total_amount")),
-    safeFetch(()=>supabase.from("batches").select("id,name,course,teacher_name,strength,capacity,start_date,status,batch_type")),
-    safeFetch(()=>supabase.from("teaching_timetable").select("batch_id,subject_name,teacher_name,day_of_week,start_time,end_time,class_name")),
+    safeFetch(()=>supabase.from("course_batches").select("id,batch_name,course,subtype,class_name,hostel_type,session_year")),
+safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_name,teacher_name,day_name,period_name")),
     safeFetch(()=>supabase.from("enquiries").select("id,name,phone,course_interest,source,status,follow_up_date,created_at,converted")),
     safeFetch(()=>supabase.from("doubt_sessions").select("id,student_name,batch_name,subject,topic,raised_date,resolved_date,staff_name,status")),
     safeFetch(()=>supabase.from("sms_logs").select("id,recipient_type,message_type,sent_at,status,count")),
     safeFetch(()=>supabase.from("study_material").select("id,title,subject,batch_name,material_type,distributed_date,total_copies,distributed_copies")),
     safeFetch(()=>supabase.from("selections").select("id,student_name,exam_name,rank,year,batch_name,category,school_allotted")),
     safeFetch(()=>supabase.from("monthly_syllabus").select("teacher_name,subject,batch_name,total_topics,covered_topics,month")),
-    safeFetch(()=>supabase.from("gnsi_expenditure").select("id,category,amount,date,description,approved_by,created_at")),
+    safeFetch(()=>supabase.from("accounts").select("id,category,amount,entry_date,note,added_by,created_at").eq("type","Expense").order("entry_date",{ascending:false}).limit(200)),
     // FIX #4: single fetch with all needed columns (removed duplicate)
     safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
     safeFetch(()=>supabase.from("fee_structures").select("session_year,course,batch,hostel_type,flat_fee,course_fee,admission_fee")),
@@ -359,13 +359,13 @@ async function loadAllData() {
   const allStaff=staffRes||[]
   const totalStaff=allStaff.length
   const activeStaffCnt=allStaff.filter(s=>s.status==="Active").length
-  const totalSalaryBill=allStaff.reduce((s,st)=>s+(Number(st.basic_salary)||0)+(Number(st.seniority_allowance)||0)+(Number(st.loyalty_bonus)||0)+(Number(st.role_bonus)||0),0)
-  const allTasks=staffTasksRes.data||[]
+  const totalSalaryBill=0
+  const allTasks=staffTasksRes||[]
   const taskPending=allTasks.filter(t=>t.status==="Pending").length
   const taskDone=allTasks.filter(t=>t.status==="Done").length
   // FIX #6: taskOverdue — compare against start of today, not right now
   const startOfToday = new Date(today)
-  const taskOverdue=allTasks.filter(t=>t.status==="Pending"&&t.period==="daily"&&t.created_at&&new Date(t.created_at)<startOfToday).length
+  const taskOverdue=allTasks.filter(t=>t.status==="Pending"&&t.created_at&&new Date(t.created_at)<startOfToday).length
   const taskDeptMap={}
   allTasks.forEach(t=>{const d=(t.section||"Other").slice(0,8);if(!taskDeptMap[d])taskDeptMap[d]={dept:d,pending:0,done:0,overdue:0};if(t.status==="Done")taskDeptMap[d].done++;else taskDeptMap[d].pending++})
   const taskByDept=Object.values(taskDeptMap).slice(0,6)
@@ -379,47 +379,47 @@ async function loadAllData() {
   const salaryTrend=ACADEMIC_MONTHS.slice(0,9).map(m=>({month:m.label,bill:totalSalaryBill}))
 
   // ── Attendance ──
-  const todayAtt=attendanceTodayRes.data||[]
+  const todayAtt=attendanceTodayRes||[]
   const presentToday=todayAtt.filter(a=>a.status==="Present").length
   const absentToday=todayAtt.filter(a=>a.status==="Absent").length
   const lateToday=todayAtt.filter(a=>a.status==="Late").length
   const totalToday=todayAtt.length
   const weekMap={}
-  ;(attendanceAllRes.data||[]).forEach(a=>{if(!weekMap[a.date])weekMap[a.date]={present:0,absent:0,late:0};if(a.status==="Present")weekMap[a.date].present++;else if(a.status==="Late")weekMap[a.date].late++;else weekMap[a.date].absent++})
+  ;(attendanceAllRes||[]).forEach(a=>{if(!weekMap[a.date])weekMap[a.date]={present:0,absent:0,late:0};if(a.status==="Present")weekMap[a.date].present++;else if(a.status==="Late")weekMap[a.date].late++;else weekMap[a.date].absent++})
   const attendanceWeek=Object.entries(weekMap).sort((a,b)=>a[0].localeCompare(b[0])).slice(-7).map(([date,c])=>({day:new Date(date).toLocaleDateString("en-IN",{weekday:"short"}),...c}))
-  const monthlyAttTrend=ACADEMIC_MONTHS.map(m=>{const entries=(attendanceAllRes.data||[]).filter(a=>a.date?.startsWith(m.key));const total=entries.length;const present=entries.filter(a=>a.status==="Present").length;return{month:m.label,rate:total>0?pct(present,total):0}})
+  const monthlyAttTrend=ACADEMIC_MONTHS.map(m=>{const entries=(attendanceAllRes||[]).filter(a=>a.date?.startsWith(m.key));const total=entries.length;const present=entries.filter(a=>a.status==="Present").length;return{month:m.label,rate:total>0?pct(present,total):0}})
 
   // ── Academic ──
   const subjectMap={}
-  examMarksData.forEach(e=>{if(!e.subject)return;if(!subjectMap[e.subject])subjectMap[e.subject]={total:0,max:0,pass:0,count:0};const pctScore=pct(Number(e.marks),Number(e.total_marks));subjectMap[e.subject].total+=Number(e.marks)||0;subjectMap[e.subject].max+=Number(e.total_marks)||0;subjectMap[e.subject].count++;if(pctScore>=40)subjectMap[e.subject].pass++})
+  examMarksData.forEach(e=>{if(!e.subject_name)return;if(!subjectMap[e.subject_name])subjectMap[e.subject_name]={total:0,max:0,pass:0,count:0};const pctScore=pct(Number(e.score),Number(e.max_score));subjectMap[e.subject_name].total+=Number(e.score)||0;subjectMap[e.subject_name].max+=Number(e.max_score)||0;subjectMap[e.subject_name].count++;if(pctScore>=40)subjectMap[e.subject_name].pass++})
   const subjectScores=Object.entries(subjectMap).map(([subject,v])=>({subject:subject.slice(0,10),avg:v.max>0?Math.round(v.total/v.max*100):0,pass:v.count>0?pct(v.pass,v.count):0}))
   const gradeMap={"A+":0,"A":0,"B+":0,"B":0,"C":0,"D":0}
-  examMarksData.forEach(e=>{const p=pct(Number(e.marks),Number(e.total_marks));if(p>=95)gradeMap["A+"]++;else if(p>=80)gradeMap["A"]++;else if(p>=65)gradeMap["B+"]++;else if(p>=50)gradeMap["B"]++;else if(p>=35)gradeMap["C"]++;else gradeMap["D"]++})
+  examMarksData.forEach(e=>{const p=pct(Number(e.score),Number(e.max_score));if(p>=95)gradeMap["A+"]++;else if(p>=80)gradeMap["A"]++;else if(p>=65)gradeMap["B+"]++;else if(p>=50)gradeMap["B"]++;else if(p>=35)gradeMap["C"]++;else gradeMap["D"]++})
   const gradeCols=[T.emerald,T.sky,T.violet,T.amber,T.orange,T.rose]
   const gradeDistribution=Object.entries(gradeMap).map(([grade,count],i)=>({grade,count,color:gradeCols[i]}))
-  const avgScore_all=examMarksData.length>0?pct(examMarksData.reduce((s,e)=>s+(Number(e.marks)||0),0),examMarksData.reduce((s,e)=>s+(Number(e.total_marks)||0),0)):0
-  const passCount=examMarksData.filter(e=>pct(Number(e.marks),Number(e.total_marks))>=40).length
+  const avgScore_all=examMarksData.length>0?pct(examMarksData.reduce((s,e)=>s+(Number(e.score)||0),0),examMarksData.reduce((s,e)=>s+(Number(e.max_score)||0),0)):0
+  const passCount=examMarksData.filter(e=>pct(Number(e.score),Number(e.max_score))>=40).length
   const passRate=examMarksData.length>0?pct(passCount,examMarksData.length):0
   const aPlusCount=gradeMap["A+"]
   const atRisk=gradeMap["D"]
 
   // ── Tests ──
-  const totalTests=[...new Set(examMarksData.map(t=>t.exam_date))].length
+  const totalTests=[...new Set(examMarksData.map(t=>t.test_date))].length
   const totalTestEntries=examMarksData.length
   const avgTestScore=avgScore_all
   const testTypeMap={}
-  examMarksData.forEach(t=>{const tp=t.class_name||"Unknown";testTypeMap[tp]=(testTypeMap[tp]||0)+1})
+  examMarksData.forEach(t=>{const tp=t.gcc_no||"Unknown";testTypeMap[tp]=(testTypeMap[tp]||0)+1})
   const testByType=Object.entries(testTypeMap).map(([name,count],i)=>({name,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const studentScoreMap={}
-  examMarksData.forEach(t=>{const id=t.gcc_no||t.student_id;if(!studentScoreMap[id])studentScoreMap[id]={name:t.student_name||id,batch:t.class_name,total:0,max:0,count:0};studentScoreMap[id].total+=Number(t.marks)||0;studentScoreMap[id].max+=Number(t.total_marks)||0;studentScoreMap[id].count++})
+  examMarksData.forEach(t=>{const id=t.gcc_no||t.student_id;if(!studentScoreMap[id])studentScoreMap[id]={name:t.student_name||String(id),batch:t.gcc_no||"Unknown",total:0,max:0,count:0};studentScoreMap[id].total+=Number(t.score)||0;studentScoreMap[id].max+=Number(t.max_score)||0;studentScoreMap[id].count++})
   const topPerformers=Object.values(studentScoreMap).map(s=>({...s,avg:s.max>0?pct(s.total,s.max):0})).sort((a,b)=>b.avg-a.avg).slice(0,8)
   const atRiskStudents=Object.values(studentScoreMap).filter(s=>s.max>0&&pct(s.total,s.max)<40)
   const testSubjectScores=subjectScores.map((s,i)=>({...s,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const batchScoreMap={}
-  examMarksData.forEach(t=>{const b=t.class_name||"Unknown";if(!batchScoreMap[b])batchScoreMap[b]={total:0,max:0};batchScoreMap[b].total+=Number(t.marks)||0;batchScoreMap[b].max+=Number(t.total_marks)||0})
+  examMarksData.forEach(t=>{const b=t.gcc_no||"Unknown";if(!batchScoreMap[b])batchScoreMap[b]={total:0,max:0};batchScoreMap[b].total+=Number(t.score)||0;batchScoreMap[b].max+=Number(t.max_score)||0})
   const batchScores=Object.entries(batchScoreMap).map(([batch,v],i)=>({batch:batch.slice(0,10),avg:v.max>0?pct(v.total,v.max):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const testMonthMap={}
-  examMarksData.forEach(t=>{const mo=t.exam_date?.slice(0,7);if(!mo)return;if(!testMonthMap[mo])testMonthMap[mo]={total:0,max:0};testMonthMap[mo].total+=Number(t.marks)||0;testMonthMap[mo].max+=Number(t.total_marks)||0})
+  examMarksData.forEach(t=>{const mo=t.test_date?.slice(0,7);if(!mo)return;if(!testMonthMap[mo])testMonthMap[mo]={total:0,max:0};testMonthMap[mo].total+=Number(t.score)||0;testMonthMap[mo].max+=Number(t.max_score)||0})
   const testTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,avg:testMonthMap[m.key]?.max>0?pct(testMonthMap[m.key].total,testMonthMap[m.key].max):0}))
 
   // ── Hostel ──
@@ -447,16 +447,16 @@ async function loadAllData() {
 
   // ── Batches ──
   const totalBatches=batchesData.length
-  const activeBatches=batchesData.filter(b=>b.status==="Active").length
-  const totalCapacity=batchesData.reduce((s,b)=>s+(Number(b.capacity)||0),0)
-  const totalStrength=batchesData.reduce((s,b)=>s+(Number(b.strength)||0),0)
-  const batchFillRate=pct(totalStrength,totalCapacity)
-  const batchTypeMap={}
-  batchesData.forEach(b=>{const t=b.batch_type||"Regular";batchTypeMap[t]=(batchTypeMap[t]||0)+1})
+const activeBatches=batchesData.length
+const totalCapacity=0
+const totalStrength=admEnrolled
+const batchFillRate=0
+const batchTypeMap={}
+batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMap[t]||0)+1})
   const batchByType=Object.entries(batchTypeMap).map(([name,count],i)=>({name,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const DAY_ABBR={"Monday":"Mon","Tuesday":"Tue","Wednesday":"Wed","Thursday":"Thu","Friday":"Fri","Saturday":"Sat","Sunday":"Sun"}
   const timetableByDay={}
-  timetableData.forEach(t=>{const d=DAY_ABBR[t.day_of_week]||t.day_of_week||"Mon";if(!timetableByDay[d])timetableByDay[d]=0;timetableByDay[d]++})
+  timetableData.forEach(t=>{const d=DAY_ABBR[t.day_name]||t.day_name||"Mon";if(!timetableByDay[d])timetableByDay[d]=0;timetableByDay[d]++})
   const timetableChart=["Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>({day:d,classes:timetableByDay[d]||0}))
 
   // ── Enquiry ──
@@ -556,7 +556,7 @@ async function loadAllData() {
   const expenseByCategory=Object.entries(expenseCategoryMap).sort((a,b)=>b[1]-a[1]).map(([name,amount],i)=>({name,amount,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
 
   const expenseMonthMap={}
-  expensesData.forEach(e=>{const mo=(e.date||e.created_at)?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(e.amount)||0)})
+  expensesData.forEach(e=>{const mo=(e.entry_date||e.created_at)?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(e.amount)||0)})
   accountsExpense.forEach(r=>{const mo=r.entry_date?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(r.amount)||0)})
   const plTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,income:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),expense:expenseMonthMap[m.key]||0})).map(m=>({...m,pl:m.income-m.expense}))
   const recentExpenses=expensesData.slice(-6).reverse()
@@ -1188,7 +1188,7 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('staff')} className="dash-section">
           <SectionHeader icon="👨‍💼" title="Staff & HR"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="👥" label="Total Staff" value={data.totalStaff} color={T.sky} sub="From gnsi_staff_biodata"/>
+            <KPI icon="👥" label="Total Staff" value={data.totalStaff} color={T.sky} sub={`${data.activeStaffCnt} active`}/>
             <KPI icon="✅" label="Active" value={data.activeStaffCnt} color={T.emerald}/>
             <KPI icon="💵" label="Salary Bill" value={data.totalSalaryBill} color={T.gold} isMoney/>
             <KPI icon="📋" label="Tasks Pending" value={data.taskPending} color={T.amber}/>
@@ -1205,7 +1205,7 @@ export default function GNSIDashboard({ scrollToSection }) {
                         <span style={{fontSize:12,fontWeight:700,color:T.ink}}>{t.task||"—"}</span>
                         <Badge label={t.status||"Pending"} color={statusColor(t.status||"Pending")}/>
                       </div>
-                      <div style={{fontSize:10,color:T.inkSub}}>{t.section} · {t.owner} · {t.priority}</div>
+                      <div style={{fontSize:10,color:T.inkSub}}>{t.section} · {t.assigned_to} · {t.priority}</div>
                     </div>
                   ))}
                 </div>
@@ -1545,21 +1545,16 @@ export default function GNSIDashboard({ scrollToSection }) {
             <Panel title="All Batches">
               <TableWrap>
                 <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px",minWidth:480}}>
-                  <thead><tr>{["Batch","Course","Teacher","Fill","Status"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
-                  <tbody>{data.batchesData.map((b,i)=>(
-                    <tr key={i}>
-                      <td style={tdFirst}>{b.name||"—"}</td>
-                      <td style={td()}>{b.course||"—"}</td>
-                      <td style={td()}>{b.teacher_name||"—"}</td>
-                      <td style={{...td(),minWidth:130}}>
-                        <div style={{display:"flex",alignItems:"center",gap:7}}>
-                          <ProgressBar value={Number(b.strength)||0} max={Number(b.capacity)||1} color={T.sky} height={5}/>
-                          <span style={{fontSize:11,color:T.ink,whiteSpace:"nowrap"}}>{b.strength}/{b.capacity}</span>
-                        </div>
-                      </td>
-                      <td style={tdLast}><Badge label={b.status||"Active"} color={statusColor(b.status||"Active")}/></td>
-                    </tr>
-                  ))}</tbody>
+                <thead><tr>{["Batch","Course","Subtype","Class","Hostel"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+<tbody>{data.batchesData.map((b,i)=>(
+  <tr key={i}>
+    <td style={tdFirst}>{b.batch_name||"—"}</td>
+    <td style={td()}>{b.course||"—"}</td>
+    <td style={td()}>{b.subtype||"—"}</td>
+    <td style={td()}>{b.class_name||"—"}</td>
+    <td style={tdLast}>{b.hostel_type||"—"}</td>
+  </tr>
+))}</tbody>
                 </table>
               </TableWrap>
             </Panel>
