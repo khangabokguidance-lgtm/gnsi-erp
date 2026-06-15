@@ -313,7 +313,6 @@ const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)|
   const admEnrolled=allAdm.filter(a=>a.status==="Enrolled").length
   const admRejected=allAdm.filter(a=>a.status==="Rejected").length
   const admWaitlisted=allAdm.filter(a=>a.status==="Waitlisted").length
-  const courseBreakdown=Object.entries(courseCounts).sort((a,b)=>b[1]-a[1]).map(([name,students],i)=>({name,students,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const sourceCounts={}
   allAdm.forEach(a=>{const s=a.referral_source||"Unknown";sourceCounts[s]=(sourceCounts[s]||0)+1})
   const applicationSource=Object.entries(sourceCounts).map(([name,value],i)=>({name,value,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
@@ -347,6 +346,7 @@ const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)|
   const dayScholars=allStudents.filter(s=>s.hostel_type==="Day Scholar").length
   const courseCounts={}
   allStudents.forEach(a=>{if(a.course)courseCounts[a.course]=(courseCounts[a.course]||0)+1})
+  const courseBreakdown=Object.entries(courseCounts).sort((a,b)=>b[1]-a[1]).map(([name,students],i)=>({name,students,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const stateCounts={}
   allStudents.forEach(s=>{if(s.state)stateCounts[s.state]=(stateCounts[s.state]||0)+1})
   const stateData=Object.entries(stateCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([state,count])=>({state,count}))
