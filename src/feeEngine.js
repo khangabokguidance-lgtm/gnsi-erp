@@ -317,7 +317,7 @@ export const upsertAccount = async ({
     .from(TABLES.accounts)
     .upsert(
       {
-        entry_date: new Date().toISOString().slice(0, 10),
+        entry_date: entry_date || new Date().toISOString().slice(0, 10),
         type, category, amount, payment_mode, note,
         source_ref: sRef, source_type,
         is_recurring, receipt_url,

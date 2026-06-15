@@ -4,6 +4,7 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
+import IncomeAnalysis from './IncomeAnalysis'
 
 // ── constants ──────────────────────────────────────────────────────────────
 const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Donation', 'Registration', 'Other']
@@ -806,7 +807,8 @@ function Accounts({role,userId}){
         ...(isAdmin?[['fraud',totalFraudAlerts>0?`🕵️ Fraud (${totalFraudAlerts})`:'🕵️ Fraud']]:[] ),
         // PHASE 4: Balance Sheet tab (admin only)
         ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
-        ['timeline','🕐 Activity'],
+        ['income','💰 Income Analysis'],
+['timeline','🕐 Activity'],
       ].map(([id,label])=>(
         <button key={id} style={{
           ...tabStyle(id),
@@ -1399,6 +1401,10 @@ function Accounts({role,userId}){
       </div>
     )}
 
+    {/* ══ TAB: INCOME ANALYSIS ══ */}
+    {activeTab==='income'&&(
+      <IncomeAnalysis entries={entries} today={today} isMobile={isMobile}/>
+    )}
     {/* ══ TAB: TIMELINE ══ */}
     {activeTab==='timeline'&&(
       <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
