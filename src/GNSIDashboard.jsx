@@ -862,6 +862,29 @@ export default function GNSIDashboard({ scrollToSection }) {
             <p style={{color:T.inkSub,fontSize:12,margin:"3px 0 0"}}>
               {now.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · AY {CURRENT_YEAR}–{CURRENT_YEAR+1}
             </p>
+            <button onClick={async()=>{
+              try{
+                const reg=await navigator.serviceWorker.ready
+                const existing=await reg.pushManager.getSubscription()
+                if(existing){alert("✅ Already subscribed to notifications!");return}
+                const sub=await reg.pushManager.subscribe({
+                  userVisibleOnly:true,
+                  applicationServerKey:import.meta.env.VITE_VAPID_PUBLIC_KEY
+                })
+                const {error}=await supabase.from("push_subscriptions").insert({
+                  subscription:JSON.stringify(sub),
+                  user_agent:navigator.userAgent,
+                  created_at:new Date().toISOString()
+                })
+                if(error)throw new Error(error.message)
+                alert("✅ Push notifications enabled! You'll get alerts for payments, students, and tasks.")
+              }catch(e){alert("❌ Failed: "+e.message)}
+            }} style={{
+              marginTop:8,padding:"5px 14px",borderRadius:8,
+              border:`1px solid ${T.gold}40`,background:`${T.gold}10`,
+              color:T.gold,fontSize:11,fontWeight:700,
+              cursor:"pointer",fontFamily:"inherit"
+            }}>🔔 Enable Notifications</button>
           </div>
 
           <div className="fee-banner">
