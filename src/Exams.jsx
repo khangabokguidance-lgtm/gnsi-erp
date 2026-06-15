@@ -4576,11 +4576,18 @@ function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigS
       supabase.from("system_settings").select("value").eq("key","exam_configs").single(),
       supabase.from("system_settings").select("value").eq("key","active_exam_config").single(),
     ]).then(([{ data: cfgData }, { data: actData }]) => {
-      if (cfgData?.value) {
-        try { setConfigs([...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]); } catch(_) {}
-      }
-      if (actData?.value) setActiveId(actData.value);
-      setLoading(false);
+      let allConfigs = [...EXAM_CONFIG_PRESETS];
+if (cfgData?.value) {
+  try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch(_) {}
+}
+setConfigs(allConfigs);
+const savedId = actData?.value || "default";
+setActiveId(savedId);
+const activeCfg = allConfigs.find(c => c.id === savedId);
+if (activeCfg?.courseMaxMarks) {
+  window.__gnsiCourseMaxMarks = activeCfg.courseMaxMarks;
+}
+setLoading(false);
     });
   }, []);
 
@@ -4594,6 +4601,7 @@ function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigS
     setSwitching(true);
     await supabase.from("system_settings").upsert({ key:"active_exam_config", value:cfg.id }, { onConflict:"key" });
     await supabase.from("system_settings").upsert({ key:"course_subjects", value:JSON.stringify(cfg.courseSubjects) }, { onConflict:"key" });
+    window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {};
     setActiveId(cfg.id);
     onUpdate(cfg.courseSubjects);
     onConfigSwitch && onConfigSwitch(cfg);
@@ -4625,9 +4633,9 @@ function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigS
     setEditingConfig(null);
     // If we just edited the active config, propagate the change immediately
     if (isEditing && cfg.id === activeId) {
+      window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {};
       onUpdate(cfg.courseSubjects);
       onConfigSwitch && onConfigSwitch(cfg);
-      window.__gnsiCourseMaxMarks = cfg.courseMaxMarks;
     }
   };
 
@@ -5004,7 +5012,7 @@ export default function Exams({ currentUser, perms }) {
     studentsmgr:    <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
     coursesubjects: <CourseSubjectsManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} />,
     examtypes:      <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
-    examconfig: <ExamConfigManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks; }} />,
+    examconfig: <ExamConfigManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; }} />,
     settings:       <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
     progress:       <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     compare:        <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
