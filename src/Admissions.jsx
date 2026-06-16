@@ -588,7 +588,7 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
         <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:`1px solid ${T.slate[200]}`, background:'#fff', cursor:'pointer', fontSize:14 }}>✕</button>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:16 }}>
         <div>
           <div style={{ fontSize:10, fontWeight:700, color:T.slate[400], textTransform:'uppercase', marginBottom:8 }}>Personal</div>
           {[['Religion', a.religion],['Mother Tongue',a.motherTongue],['DOB',dateFmt(a.dob)],['Blood',a.blood],['Gender',a.gender],['Category',a.category],['Quota',a.quota],['Disability',a.disabilityFlag?'Yes':'No']].map(([k,v])=>v&&v!=='--'&&(
@@ -788,7 +788,7 @@ function AdvancedSearch({ filters, onChange, onClose, apps }) {
           </select>
         </FieldRow>
       </div>
-      <div style={{ display:'flex', gap:10, marginTop:14 }}>
+      <div style={{ display:'flex', gap:10, marginTop:14, flexWrap:'wrap' }}>
         <button onClick={() => onChange(f)}
           style={{ padding:'9px 20px', borderRadius:9, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>Apply Filters</button>
         <button onClick={() => { const empty={}; setF(empty); onChange(empty) }}
@@ -1011,7 +1011,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
           <Avatar name={form.name} size={56} photoUrl={form.photoUrl} />
           <div>
             <div style={{ fontSize:12, fontWeight:700, color:T.slate[600], marginBottom:4 }}>Passport Photo URL</div>
-            <input style={{ ...styles.inp, width:280 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https://… or Supabase Storage URL" />
+            <input style={{ ...styles.inp, width:'100%', maxWidth:280 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https://… or Supabase Storage URL" />
           </div>
         </div>
 
@@ -1077,7 +1077,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
         </div>
 
         <SectionDivider label="Course & Class" />
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:12, marginBottom:4 }}>
           <FieldRow label="Course">
             <select style={styles.inp} value={form.course} onChange={e=>set('course',e.target.value)}>
               <option value="">— Course —</option>
@@ -1246,7 +1246,7 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
     actionBtn = (
       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
         <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'5px 12px', borderRadius:7, background:T.amber[500], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Fee Account</button>
-        <button onClick={e=>{e.stopPropagation();onEnroll(a.id)}} style={{ padding:'5px 12px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Enroll → Student</button>
+        <button onClick={e=>{e.stopPropagation();onEnroll(a.id)}} style={{ padding:'5px 8px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:10, fontWeight:700, cursor:'pointer', width:'100%' }}>Enroll →</button>
       </div>
     )
   } else if (a.status === 'Enrolled') {
@@ -1587,7 +1587,7 @@ function Dashboard({ apps, cols, darkMode }) {
   return (
     <div style={{ background: bg, border: `1px solid ${bd}`, borderRadius: 14, padding: '18px 20px', marginBottom: 16 }}>
       {/* Tab strip */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 18, background: T.slate[100], borderRadius: 9, padding: 3, width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 18, background: T.slate[100], borderRadius: 9, padding: 3, width: 'fit-content', maxWidth:'100%', overflowX:'auto' }}>
         {tabs.map(t => (
           <button key={t} onClick={() => setActiveTab(t.toLowerCase().replace(/[^a-z]/g, ''))}
             style={{ padding: '5px 14px', borderRadius: 7, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -1609,7 +1609,7 @@ function Dashboard({ apps, cols, darkMode }) {
           {metric('Rejected', byStatus('Rejected'), T.rose[600])}
           {metric('Waitlisted', byStatus('Waitlisted'), T.slate[400])}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(260px,100%),1fr))', gap: 12 }}>
           <div style={{ padding: 14, border: `1px solid ${bd}`, borderRadius: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', marginBottom: 10 }}>By Course</div>
             {Object.keys(COURSE_STRUCTURE).map(c =>
@@ -1644,7 +1644,7 @@ function Dashboard({ apps, cols, darkMode }) {
 
       {/* ── Hostel & House ── */}
       {activeTab === 'hostelhouseandhouse' && <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap: 12, marginBottom: 14 }}>
           {HOSTEL_TYPES.map(h => {
             const count = apps.filter(a => a.hostel_type === h).length
             const rev   = apps.filter(a => a.status === 'Enrolled' && a.hostel_type === h).reduce((s) => s + getFlatFeeAmt(h), 0)
