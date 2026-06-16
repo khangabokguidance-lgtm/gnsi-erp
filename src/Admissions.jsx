@@ -36,6 +36,36 @@ const T = {
   orange:  { 50:'#FFF7ED',100:'#FFEDD5',400:'#FB923C',500:'#F97316',600:'#EA580C',700:'#C2410C' },
 }
 
+// ─── Neomorphism Design System ────────────────────────────────────────────────
+const N = {
+  bg:       '#f0f2f8',
+  bg2:      '#e8eaf2',
+  bg3:      '#dde0ec',
+  surface:  '#f5f6fa',
+  shLight:  'rgba(255,255,255,0.92)',
+  shDark:   'rgba(174,179,208,0.65)',
+  text:     '#1e1b4b',
+  text2:    '#4b5280',
+  muted:    '#8b8fb0',
+  muted2:   '#6b6f96',
+  indigo:   '#4f46e5',
+  violet:   '#7c3aed',
+  emerald:  '#059669',
+  amber:    '#d97706',
+  rose:     '#e11d48',
+  sky:      '#0284c7',
+  shadow:   (size='md') => {
+    const s = { sm:'4px 4px 10px', md:'6px 6px 14px', lg:'8px 8px 20px' }[size]
+    const si = { sm:'-4px -4px 10px', md:'-6px -6px 14px', lg:'-8px -8px 20px' }[size]
+    return `${s} rgba(174,179,208,0.65), ${si} rgba(255,255,255,0.92)`
+  },
+  inset: (size='md') => {
+    const s = { sm:'3px 3px 6px', md:'4px 4px 10px', lg:'5px 5px 12px' }[size]
+    const si = { sm:'-3px -3px 6px', md:'-4px -4px 10px', lg:'-5px -5px 12px' }[size]
+    return `inset ${s} rgba(174,179,208,0.65), inset ${si} rgba(255,255,255,0.92)`
+  },
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ADM_STATUSES = ['Applied','Under Review','Admitted','Enrolled','Rejected','Waitlisted']
 const STAT_META = {
@@ -249,15 +279,17 @@ const sbApps = {
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = {
   inp: {
-    width:'100%', padding:'9px 12px', borderRadius:8,
-    border:`1.5px solid ${T.slate[200]}`, fontSize:13,
-    outline:'none', boxSizing:'border-box', backgroundColor:'#fff',
-    color:T.slate[800], fontFamily:'system-ui,sans-serif',
-    transition:'border-color .15s',
+    width:'100%', padding:'10px 14px', borderRadius:12,
+    border:'none', fontSize:13,
+    outline:'none', boxSizing:'border-box',
+    backgroundColor:N.bg,
+    color:N.text, fontFamily:'system-ui,sans-serif',
+    boxShadow:N.inset('md'),
+    transition:'box-shadow .15s',
   },
   label: {
-    display:'block', fontSize:11, fontWeight:700, color:T.slate[500],
-    marginBottom:5, textTransform:'uppercase', letterSpacing:'.07em',
+    display:'block', fontSize:10, fontWeight:700, color:N.muted,
+    marginBottom:5, textTransform:'uppercase', letterSpacing:'.09em',
   },
 }
 
@@ -313,10 +345,10 @@ function HostelTypeBadge({ type }) {
 
 function KpiCard({ label, value, accent, onClick, active, subtitle }) {
   return (
-    <div onClick={onClick} style={{ flex:1, minWidth:80, padding:'12px 14px', borderRadius:10, background:active?accent+'18':'#fff', border:`1.5px solid ${active?accent:T.slate[200]}`, cursor:'pointer', transition:'all .15s' }}>
-      <div style={{ fontSize:22, fontWeight:800, color:active?accent:T.slate[800], lineHeight:1 }}>{value}</div>
-      <div style={{ fontSize:10, fontWeight:700, color:active?accent:T.slate[500], marginTop:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
-      {subtitle && <div style={{ fontSize:10, color:T.slate[400], marginTop:2 }}>{subtitle}</div>}
+    <div onClick={onClick} style={{ flex:1, minWidth:80, padding:'13px 14px', borderRadius:16, background:N.bg, boxShadow:active?N.inset('md'):N.shadow('md'), cursor:'pointer', transition:'all .2s' }}>
+      <div style={{ fontSize:22, fontWeight:900, color:active?(accent||N.indigo):N.text, lineHeight:1 }}>{value}</div>
+      <div style={{ fontSize:9, fontWeight:700, color:active?(accent||N.indigo):N.muted, marginTop:4, textTransform:'uppercase', letterSpacing:'.1em' }}>{label}</div>
+      {subtitle && <div style={{ fontSize:10, color:N.muted2, marginTop:2 }}>{subtitle}</div>}
     </div>
   )
 }
@@ -353,17 +385,19 @@ function SectionDivider({ label }) {
 
 function PillStrip({ label, options, value, onChange, colorFn, countFn }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-      <span style={{ fontSize:11, fontWeight:700, color:T.slate[400], textTransform:'uppercase', letterSpacing:'.06em', whiteSpace:'nowrap' }}>{label}</span>
+    <div className="neo-filter-row" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+      <span style={{ fontSize:9, fontWeight:800, color:N.muted, textTransform:'uppercase', letterSpacing:'.12em', whiteSpace:'nowrap', minWidth:52 }}>{label}</span>
       {['All', ...options].map(opt => {
         const active = value === opt
-        const accent = colorFn ? colorFn(opt) : T.indigo[600]
+        const accent = colorFn ? colorFn(opt) : N.indigo
         const count  = countFn ? countFn(opt) : null
         return (
-          <button key={opt} onClick={() => onChange(active ? 'All' : opt)}
-            style={{ padding:'4px 12px', borderRadius:99, fontSize:12, fontWeight:600, cursor:'pointer', border:`1.5px solid ${active?accent:T.slate[200]}`, background:active?accent+'18':'#fff', color:active?accent:T.slate[500], transition:'all .12s', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4 }}>
+          <button key={opt} onClick={() => onChange(active ? 'All' : opt)} className="neo-pill"
+            style={{ padding:'5px 13px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', border:'none', background:N.bg, boxShadow:active?N.inset('sm'):N.shadow('sm'), color:active?accent:N.muted2, transition:'all .15s', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4 }}>
             {opt}
-            {count !== null && opt !== 'All' && <span style={{ fontSize:10, background:active?accent+'30':T.slate[100], color:active?accent:T.slate[400], borderRadius:99, padding:'0 5px', fontWeight:700 }}>{count}</span>}
+            {count !== null && opt !== 'All' && (
+              <span style={{ fontSize:9, background:active?accent+'20':N.bg2, color:active?accent:N.muted, borderRadius:99, padding:'0 5px', fontWeight:800, boxShadow:active?'none':N.shadow('sm') }}>{count}</span>
+            )}
           </button>
         )
       })}
@@ -1236,25 +1270,22 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
   // ── Grid card mode ──────────────────────────────────────────────────────────
   return (
     <div style={{
-      background: bg,
-      border: `1px solid ${selected ? T.indigo[400] : bd}`,
-      borderRadius: 14,
+      background: N.bg,
+      borderRadius: 22,
       overflow: 'hidden',
-      outline: selected ? `2px solid ${T.indigo[300]}` : 'none',
-      boxShadow: '0 1px 4px rgba(0,0,0,.06)',
-      transition: 'box-shadow .15s, transform .15s',
+      boxShadow: selected ? N.inset('md') : N.shadow('lg'),
+      transition: 'box-shadow .2s, transform .2s',
       display: 'flex',
       flexDirection: 'column',
       position: 'relative',
     }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,.10)'; e.currentTarget.style.transform='translateY(-2px)' }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.06)'; e.currentTarget.style.transform='translateY(0)' }}
+      onMouseEnter={e => { if(!selected){ e.currentTarget.style.boxShadow='8px 8px 20px rgba(174,179,208,0.7), -8px -8px 20px rgba(255,255,255,0.95)'; e.currentTarget.style.transform='translateY(-4px)' } }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow=selected?N.inset('md'):N.shadow('lg'); e.currentTarget.style.transform='translateY(0)' }}
     >
-      {/* Status accent bar */}
-      <div style={{ height: 4, background: STAT_META[a.status]?.color || T.slate[300], borderRadius: '14px 14px 0 0' }} />
+      <div style={{ height:4, background: STAT_META[a.status]?.color || N.muted, borderRadius:'22px 22px 0 0' }} />
 
       {/* Card body */}
-      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+      <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:12, flex:1 }}>
 
         {/* Row 1: checkbox + avatar + name + status */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -1313,13 +1344,21 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
         </div>
 
         {/* Row 4: action row */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: `1px solid ${T.slate[100]}`, paddingTop: 10 }}>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', borderTop:`2px solid ${N.bg2}`, paddingTop:10 }}>
           {actionBtn && <div style={{ marginRight: 'auto' }}>{actionBtn}</div>}
-          <button onClick={e=>{e.stopPropagation();onDetail(a)}}    style={{ padding:'5px 10px', borderRadius:6, background:T.sky[50],    color:T.sky[600],    border:`1px solid ${T.sky[200]}`,    fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
-          <button onClick={e=>{e.stopPropagation();onQuickEdit(a)}} style={{ padding:'5px 10px', borderRadius:6, background:T.amber[50],  color:T.amber[700],  border:`1px solid ${T.amber[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>QEdit</button>
-          <button onClick={e=>{e.stopPropagation();onEdit(a)}}      style={{ padding:'5px 10px', borderRadius:6, background:T.slate[50],  color:T.slate[600],  border:`1px solid ${T.slate[200]}`,  fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
-          <button onClick={e=>{e.stopPropagation();onWAMsg(a)}}     style={{ padding:'5px 10px', borderRadius:6, background:'#E7FBE9',    color:'#128C7E',     border:'1px solid #A7F0BA',         fontSize:11, fontWeight:700, cursor:'pointer' }}>WA</button>
-          <button onClick={e=>{e.stopPropagation();onDelete(a.id)}} style={{ padding:'5px 10px', borderRadius:6, background:T.rose[50],   color:T.rose[600],   border:`1px solid ${T.rose[200]}`,   fontSize:11, fontWeight:700, cursor:'pointer' }}>Del</button>
+          {[
+  { label:'View',  color:N.sky,    fn:e=>{e.stopPropagation();onDetail(a)} },
+  { label:'QEdit', color:N.amber,  fn:e=>{e.stopPropagation();onQuickEdit(a)} },
+  { label:'Edit',  color:N.text2,  fn:e=>{e.stopPropagation();onEdit(a)} },
+  { label:'WA',    color:'#059669',fn:e=>{e.stopPropagation();onWAMsg(a)} },
+  { label:'Del',   color:N.rose,   fn:e=>{e.stopPropagation();onDelete(a.id)} },
+].map(b=>(
+  <button key={b.label} onClick={b.fn}
+    style={{ padding:'6px 10px', borderRadius:9, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:b.color, fontSize:10, fontWeight:700, cursor:'pointer', flex:1, textAlign:'center', transition:'box-shadow .12s' }}
+    onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
+    onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
+  >{b.label}</button>
+))}
         </div>
       </div>
     </div>
@@ -1333,7 +1372,7 @@ function BulkBar({ selected, total, onClear, onBulkStatus, onBulkHouse, onBulkDe
 
   if (selected.length === 0) return null
   return (
-    <div style={{ position:'sticky', bottom:16, zIndex:100, background:T.slate[900], color:'#fff', borderRadius:12, padding:'10px 16px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', boxShadow:'0 8px 32px rgba(0,0,0,.3)', margin:'12px 0' }}>
+    <div className="neo-bulk-bar" style={{ position:'sticky', bottom:16, zIndex:100, background:N.text, color:'#fff', borderRadius:16, padding:'12px 18px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', boxShadow:`0 12px 40px rgba(30,27,75,.35), ${N.shadow('lg')}`, margin:'14px 0' }}>
       <span style={{ fontSize:12, fontWeight:700 }}>{selected.length} selected</span>
       <button onClick={onClear} style={{ padding:'4px 10px', borderRadius:6, background:'transparent', color:T.slate[300], border:`1px solid ${T.slate[600]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>✕ Clear</button>
       <div style={{ width:1, height:24, background:T.slate[600] }} />
@@ -2009,16 +2048,39 @@ export default function Admissions() {
       {waBlastApps && <WABlastModal apps={waBlastApps} onClose={()=>setWABlastApps(null)} />}
       {showCSVImport && <CSVImportModal onClose={()=>setShowCSVImport(false)} onImport={handleCSVImport} />}
 
-      <div style={{ padding:'0 24px 32px', fontFamily:'system-ui,sans-serif', background:bg, minHeight:'100vh', color:tx, transition:'background .2s' }}>
+      <div style={{ padding:'0 16px 40px', fontFamily:"'Inter',system-ui,sans-serif", background:N.bg, minHeight:'100vh', color:N.text, transition:'background .2s' }}>
         <style>{`
-          @keyframes spin { to { transform:rotate(360deg) } }
-          select:focus, input:focus, textarea:focus { border-color:${T.indigo[400]} !important; box-shadow:0 0 0 3px ${T.indigo[100]}; }
-        `}</style>
+  @keyframes spin { to { transform:rotate(360deg) } }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(5,150,105,.18)} 50%{box-shadow:0 0 0 7px rgba(5,150,105,.06)} }
+  * { box-sizing:border-box; }
+  select:focus, input:focus, textarea:focus {
+    box-shadow: ${N.inset('md')}, 0 0 0 3px rgba(79,70,229,.12) !important;
+    outline:none;
+  }
+  ::-webkit-scrollbar { width:4px; height:4px; }
+  ::-webkit-scrollbar-track { background:${N.bg2}; }
+  ::-webkit-scrollbar-thumb { background:rgba(79,70,229,.25); border-radius:99px; }
+  @media (max-width:640px) {
+    .neo-header { flex-direction:column !important; gap:14px !important; }
+    .neo-header-actions { flex-wrap:wrap !important; width:100% !important; }
+    .neo-header-actions button { flex:1 !important; min-width:calc(50% - 4px) !important; }
+    .neo-kpi-grid { grid-template-columns:repeat(3,1fr) !important; }
+    .neo-cards-grid { grid-template-columns:1fr !important; }
+    .neo-filter-row { gap:6px !important; }
+    .neo-pill { padding:4px 10px !important; font-size:10px !important; }
+    .neo-bulk-bar { flex-direction:column !important; align-items:stretch !important; }
+    .neo-bulk-bar button { width:100% !important; }
+    .neo-select-bar { flex-wrap:wrap !important; }
+  }
+  @media (max-width:400px) {
+    .neo-kpi-grid { grid-template-columns:repeat(2,1fr) !important; }
+  }
+`}</style>
 
         {toast && <Toast msg={toast.msg} color={toast.color} onUndo={toast.undoFn} />}
 
         {/* Header */}
-        <div style={{ padding:'28px 0 16px', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:14 }}>
+        <div className="neo-header" style={{ padding:'24px 0 18px', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:14 }}>
           <div>
             <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:T.slate[400], marginBottom:5 }}>GNSI Portal</div>
             <div style={{ fontSize:26, fontWeight:800, color:tx, letterSpacing:'-.03em', lineHeight:1.1 }}>Admissions</div>
@@ -2044,32 +2106,65 @@ export default function Admissions() {
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>Esc</kbd> Close
             </div>
           </div>
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'flex-start' }}>
-            <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)" style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, fontSize:14, cursor:'pointer' }}>{darkMode?'☀️':'🌙'}</button>
-            <button onClick={()=>setTableMode(v=>!v)} title="Toggle view (V)" style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, fontSize:14, cursor:'pointer' }}>{tableMode?'🃏':'📋'}</button>
-            <button onClick={()=>setShowAnalytics(v=>!v)} style={{ padding:'9px 14px', borderRadius:9, border:`1.5px solid ${showAnalytics?T.indigo[400]:T.slate[200]}`, background:showAnalytics?T.indigo[50]:card, color:showAnalytics?T.indigo[700]:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }}>📊 Analytics</button>
-            <button onClick={()=>setShowCSVImport(true)} style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, color:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }}>📥 Import</button>
-            <button onClick={()=>downloadCSV(toCSV(filtered), `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)} style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, color:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }}>📤 Export CSV</button>
-            <button onClick={handleAutoAssignHouse} style={{ padding:'9px 14px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:card, color:T.slate[600], fontSize:12, fontWeight:700, cursor:'pointer' }} title="Auto-assign houses to unassigned boarders">🏠 Auto-Assign</button>
-            <button onClick={()=>{ setEditing(null); setFormOpen(true) }}
-              style={{ padding:'10px 20px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:'0 4px 12px rgba(79,70,229,.3)' }}>
-              <span style={{ fontSize:18, lineHeight:1 }}>+</span> New Application
-            </button>
+          <div className="neo-header-actions" style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'flex-start' }}>
+           <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)"
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), fontSize:14, cursor:'pointer', color:N.text2, transition:'box-shadow .15s' }}
+  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
+  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
+>{darkMode?'☀️':'🌙'}</button>
+
+<button onClick={()=>setTableMode(v=>!v)} title="Toggle view (V)"
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:tableMode?N.inset('sm'):N.shadow('sm'), fontSize:14, cursor:'pointer', color:N.text2, transition:'box-shadow .15s' }}
+>{tableMode?'🃏':'📋'}</button>
+
+<button onClick={()=>setShowAnalytics(v=>!v)}
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:showAnalytics?N.inset('sm'):N.shadow('sm'), color:showAnalytics?N.indigo:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s' }}>
+  📊 Analytics
+</button>
+
+<button onClick={()=>setShowCSVImport(true)}
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
+  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
+  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
+>📥 Import</button>
+
+<button onClick={()=>downloadCSV(toCSV(filtered), `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
+  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
+  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
+>📤 Export</button>
+
+<button onClick={handleAutoAssignHouse}
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
+  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
+  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
+>🏠 Auto-Assign</button>
+
+<button onClick={()=>{ setEditing(null); setFormOpen(true) }}
+  style={{ padding:'10px 22px', borderRadius:13, background:`linear-gradient(135deg,${N.indigo},${N.violet})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:`4px 4px 14px rgba(79,70,229,.35), -2px -2px 8px rgba(255,255,255,.8)`, transition:'all .2s' }}
+  onMouseEnter={e=>{ e.currentTarget.style.boxShadow=`6px 6px 18px rgba(79,70,229,.45), -2px -2px 8px rgba(255,255,255,.9)`; e.currentTarget.style.transform='translateY(-2px)' }}
+  onMouseLeave={e=>{ e.currentTarget.style.boxShadow=`4px 4px 14px rgba(79,70,229,.35), -2px -2px 8px rgba(255,255,255,.8)`; e.currentTarget.style.transform='translateY(0)' }}
+>
+  <span style={{ fontSize:18, lineHeight:1 }}>+</span> New Application
+</button>
           </div>
         </div>
 
         {/* Active session banner */}
-        {activeSession && (
-          <div style={{ marginBottom:16, padding:'10px 16px', borderRadius:10, background:activeSession.is_locked?T.rose[50]:T.emerald[50], border:`1px solid ${activeSession.is_locked?T.rose[200]:T.emerald[300]}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <span style={{ fontSize:16 }}>{activeSession.is_locked?'🔒':'✅'}</span>
-              <span style={{ fontSize:13, fontWeight:700, color:activeSession.is_locked?T.rose[600]:T.emerald[700] }}>
-                {activeSession.is_locked?'Session Locked':'Active Session'}: <strong>{activeSession.session_name}</strong>
-              </span>
-            </div>
-            {activeSession.is_locked && <span style={{ fontSize:12, color:T.rose[600], fontWeight:600 }}>New applications are blocked. Go to Sessions to unlock.</span>}
-          </div>
-        )}
+       {activeSession && (
+  <div style={{ marginBottom:18, padding:'12px 20px', borderRadius:16, background:N.bg, boxShadow:N.shadow('sm'), display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+      <div style={{ width:9, height:9, borderRadius:'50%', background:activeSession.is_locked?N.rose:N.emerald, boxShadow:`0 0 0 3px ${activeSession.is_locked?'rgba(225,29,72,.18)':'rgba(5,150,105,.18)'}`, animation:'pulse 2s ease-in-out infinite', flexShrink:0 }} />
+      <span style={{ fontSize:13, fontWeight:700, color:activeSession.is_locked?N.rose:N.emerald }}>
+        {activeSession.is_locked?'Session Locked':'Active Session'}: <strong>{activeSession.session_name}</strong>
+      </span>
+    </div>
+    {activeSession.is_locked
+      ? <span style={{ fontSize:12, color:N.rose, fontWeight:600 }}>New applications are blocked. Go to Sessions to unlock.</span>
+      : <span style={{ fontSize:12, color:N.muted }}>Revenue (enrolled): <strong style={{ color:N.emerald }}>₹{fmt(monthlyRevenue)}/mo</strong></span>
+    }
+  </div>
+)}
 
         {/* Analytics Dashboard */}
         {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
@@ -2078,12 +2173,31 @@ export default function Admissions() {
         <Dashboard apps={apps} cols={cols} darkMode={darkMode} />
 
         {/* KPI Strip */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(110px, 1fr))', gap:10, marginBottom:16 }}>
-          <KpiCard label="Total" value={apps.length} active={filterStatus==='All'} accent={T.indigo[600]} onClick={()=>setFilter('All')} subtitle={`₹${fmt(monthlyRevenue)}/mo`} />
-          {ADM_STATUSES.map(s => (
-            <KpiCard key={s} label={s} value={byStatus[s]||0} active={filterStatus===s} accent={STAT_META[s]?.color} onClick={()=>setFilter(filterStatus===s?'All':s)} />
-          ))}
-        </div>
+        <div className="neo-kpi-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:12, marginBottom:18 }}>
+  {[
+    { label:'Total', value:apps.length, color:N.indigo, accent:`linear-gradient(90deg,${N.indigo},${N.violet})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
+    { label:'Applied',      value:byStatus['Applied']||0,      color:'#6366f1', accent:'#6366f1', filter:'Applied' },
+    { label:'Under Review', value:byStatus['Under Review']||0, color:N.amber,   accent:N.amber,   filter:'Under Review' },
+    { label:'Admitted',     value:byStatus['Admitted']||0,     color:N.violet,  accent:N.violet,  filter:'Admitted' },
+    { label:'Enrolled',     value:byStatus['Enrolled']||0,     color:N.emerald, accent:N.emerald, filter:'Enrolled' },
+    { label:'Rejected',     value:byStatus['Rejected']||0,     color:N.rose,    accent:N.rose,    filter:'Rejected' },
+    { label:'Waitlisted',   value:byStatus['Waitlisted']||0,   color:N.muted2,  accent:N.muted2,  filter:'Waitlisted' },
+  ].map(k => {
+    const isActive = filterStatus === k.filter
+    return (
+      <div key={k.label} onClick={()=>setFilter(isActive?'All':k.filter)}
+        style={{ borderRadius:18, padding:'14px 14px 12px', background:N.bg, boxShadow:isActive?N.inset('md'):N.shadow('md'), cursor:'pointer', transition:'all .2s', position:'relative', overflow:'hidden' }}
+        onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.boxShadow=N.shadow('lg') }}
+        onMouseLeave={e=>{ e.currentTarget.style.boxShadow=isActive?N.inset('md'):N.shadow('md') }}
+      >
+        <div style={{ position:'absolute', top:0, left:'14px', right:'14px', height:'3px', borderRadius:'0 0 3px 3px', background:k.accent }} />
+        <div style={{ fontSize:24, fontWeight:900, color:k.color, lineHeight:1, marginTop:4, marginBottom:4 }}>{k.value}</div>
+        <div style={{ fontSize:9, fontWeight:700, color:N.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>{k.label}</div>
+        {k.sub && <div style={{ fontSize:10, color:N.muted2, marginTop:3 }}>{k.sub}</div>}
+      </div>
+    )
+  })}
+</div>
 
         {/* Form */}
         {formOpen && (
@@ -2106,7 +2220,7 @@ export default function Admissions() {
         )}
 
         {/* Filter Panel */}
-        <div style={{ background:card, border:`1px solid ${darkMode?T.slate[700]:T.slate[200]}`, borderRadius:12, padding:'14px 18px', marginBottom:14, display:'flex', flexDirection:'column', gap:10 }}>
+        <div style={{ background:N.bg, borderRadius:20, boxShadow:N.shadow('md'), padding:'16px 20px', marginBottom:16, display:'flex', flexDirection:'column', gap:12 }}>
           {sessionOptions.length > 0 && (
             <PillStrip label="Session" options={sessionOptions} value={filterSession} onChange={setSession} colorFn={()=>T.indigo[600]} />
           )}
@@ -2121,15 +2235,15 @@ export default function Admissions() {
             countFn={h => houseCounts[h]||0} />
 
           <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-            <div style={{ flex:1, minWidth:220, position:'relative' }}>
-              <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:T.slate[400], fontSize:14 }}>🔍</span>
-              <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)}
-                placeholder="Search name, phone, GCC, house… (/ to focus)"
-                style={{ ...styles.inp, paddingLeft:36 }} />
-            </div>
-            <button onClick={()=>setShowAdvSearch(v=>!v)}
-              style={{ padding:'8px 14px', borderRadius:8, border:`1.5px solid ${Object.keys(advFilters).filter(k=>advFilters[k]).length>0?T.violet[400]:T.slate[200]}`, background:Object.keys(advFilters).filter(k=>advFilters[k]).length>0?T.violet[50]:card, color:T.violet[600], fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>
-              🔎 Advanced{Object.keys(advFilters).filter(k=>advFilters[k]).length>0?` (${Object.keys(advFilters).filter(k=>advFilters[k]).length})`:''}</button>
+            <div style={{ flex:1, minWidth:200, position:'relative' }}>
+  <span style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', color:N.muted, fontSize:13, pointerEvents:'none' }}>🔍</span>
+  <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)}
+    placeholder="Search name, GCC, phone, house…"
+    style={{ ...styles.inp, paddingLeft:38 }} />
+</div>
+<button onClick={()=>setShowAdvSearch(v=>!v)}
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:Object.keys(advFilters).filter(k=>advFilters[k]).length>0?N.inset('sm'):N.shadow('sm'), color:Object.keys(advFilters).filter(k=>advFilters[k]).length>0?N.violet:N.muted2, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}>
+  🔎 Advanced{Object.keys(advFilters).filter(k=>advFilters[k]).length>0?` (${Object.keys(advFilters).filter(k=>advFilters[k]).length})`:''}</button>
 
             <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(k,d)=>{setSortBy(k);setSortDir(d)}} />
 
@@ -2171,7 +2285,7 @@ export default function Admissions() {
 
         {/* Select-all bar */}
         {filtered.length > 0 && (
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8, fontSize:12, color:T.slate[500] }}>
+  <div className="neo-select-bar" style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, fontSize:12, color:N.muted2 }}>
             <input type="checkbox" checked={selectedIds.size===filtered.length&&filtered.length>0} onChange={toggleSelectAll} style={{ cursor:'pointer' }} />
             <span onClick={toggleSelectAll} style={{ cursor:'pointer' }}>Select all {filtered.length}</span>
             {selectedIds.size>0 && <span style={{ color:T.indigo[600], fontWeight:700 }}>{selectedIds.size} selected</span>}
@@ -2227,7 +2341,7 @@ export default function Admissions() {
               </table>
             </div>
           ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(380px, 100%), 1fr))', gap:16, alignItems:'start' }}>
+            <div className="neo-cards-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(360px,100%),1fr))', gap:14, alignItems:'start' }}>
               {filtered.map(a => (
                 <div key={a.id}>
                   {duplicateGCCs.has(a.gcc) && (
@@ -2248,13 +2362,13 @@ export default function Admissions() {
           )
         ) : (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'80px 20px', textAlign:'center' }}>
-            <div style={{ width:64, height:64, borderRadius:16, background:T.slate[100], display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, marginBottom:16 }}>📭</div>
-            <div style={{ fontSize:16, fontWeight:700, color:T.slate[700], marginBottom:6 }}>{apps.length===0?'No applications yet':'No results found'}</div>
-            <p style={{ fontSize:13, color:T.slate[400], maxWidth:'36ch', lineHeight:1.6, margin:'0 0 20px' }}>
+  <div style={{ width:72, height:72, borderRadius:20, background:N.bg, boxShadow:N.shadow('lg'), display:'flex', alignItems:'center', justifyContent:'center', fontSize:32, marginBottom:18 }}>📭</div>
+  <div style={{ fontSize:16, fontWeight:800, color:N.text, marginBottom:6 }}>{apps.length===0?'No applications yet':'No results found'}</div>
+  <p style={{ fontSize:13, color:N.muted2, maxWidth:'36ch', lineHeight:1.6, margin:'0 0 20px' }}>
               {apps.length===0?'Click "+ New Application" to add your first applicant.':'Try adjusting your search or clearing the filters.'}
             </p>
-            {activeFilters>0 && <button onClick={clearAll} style={{ padding:'10px 22px', borderRadius:10, background:T.slate[800], color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>✕ Clear all filters</button>}
-            {apps.length===0 && <button onClick={()=>setFormOpen(true)} style={{ padding:'10px 22px', borderRadius:10, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>+ New Application</button>}
+            {activeFilters>0 && <button onClick={clearAll} style={{ padding:'11px 24px', borderRadius:13, background:N.bg, boxShadow:N.shadow('md'), color:N.rose, border:'none', fontSize:13, fontWeight:800, cursor:'pointer', transition:'box-shadow .15s' }} onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('md')} onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('md')}>✕ Clear all filters</button>}
+{apps.length===0 && <button onClick={()=>setFormOpen(true)} style={{ padding:'11px 24px', borderRadius:13, background:`linear-gradient(135deg,${N.indigo},${N.violet})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', boxShadow:`4px 4px 14px rgba(79,70,229,.35)` }}>+ New Application</button>}
           </div>
         )}
 
