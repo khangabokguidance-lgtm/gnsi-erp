@@ -4619,25 +4619,27 @@ setLoading(false);
 
   // NEW: handles both create-new and save-after-edit
   const handleSaveNew = async (cfg) => {
-    const isEditing = !!editingConfig;
-    let updated;
-    if (isEditing) {
-      // Replace in-place
-      updated = configs.map(c => c.id === cfg.id ? cfg : c);
-    } else {
-      updated = [...configs, cfg];
-    }
-    setConfigs(updated);
-    await saveCustomConfigs(updated);
-    setShowBuilder(false);
-    setEditingConfig(null);
-    // If we just edited the active config, propagate the change immediately
-    if (isEditing && cfg.id === activeId) {
-      window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {};
-      onUpdate(cfg.courseSubjects);
-      onConfigSwitch && onConfigSwitch(cfg);
-    }
-  };
+  const isEditing = !!editingConfig;
+  const existsInList = configs.some(c => c.id === cfg.id);
+  let updated;
+  if (isEditing && existsInList) {
+    // update in-place (custom config edited)
+    updated = configs.map(c => c.id === cfg.id ? cfg : c);
+  } else {
+    // new config OR built-in was cloned+edited → append
+    updated = [...configs, cfg];
+  }
+  setConfigs(updated);
+  await saveCustomConfigs(updated);
+  setShowBuilder(false);
+  setEditingConfig(null);
+  // propagate immediately if this was the active config
+  if (cfg.id === activeId) {
+    window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {};
+    onUpdate(cfg.courseSubjects);
+    onConfigSwitch && onConfigSwitch(cfg);
+  }
+};
 
   // NEW: Duplicate
   const handleDuplicate = async (cfg) => {
@@ -4859,13 +4861,17 @@ setLoading(false);
                   ⎘ Clone
                 </button>
 
-                {/* Edit (NEW — only for custom configs) */}
-                {!isPreset && (
-                  <button onClick={() => { setEditingConfig(cfg); setShowBuilder(true); }}
-                    style={{ ...css.btn, padding:"7px 10px", background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE", fontSize:12 }}>
-                    ✏️ Edit
-                  </button>
-                )}
+                {/* Edit — all configs; built-ins are cloned before editing */}
+<button onClick={() => {
+  const target = isPreset
+    ? { ...cloneConfig(cfg), name: cfg.name }
+    : cfg;
+  setEditingConfig(target);
+  setShowBuilder(true);
+}}
+  style={{ ...css.btn, padding:"7px 10px", background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE", fontSize:12 }}>
+  ✏️ Edit
+</button>
 
                 {/* Activate / active label */}
                 {isActive
