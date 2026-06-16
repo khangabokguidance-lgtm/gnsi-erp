@@ -22,6 +22,21 @@ import FeeCollectionModal from './FeeCollectionModal'
 import { promoteToStudent, getFlatFeeAmt } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 
+function useWindowWidth() {
+  const [width, setWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  )
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return width
+}
+
+function useMobile() { return useWindowWidth() < 768 }
+function useTablet() { return useWindowWidth() < 1024 }
+
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const T = {
   navy:    { 50:'#EEF2FF',100:'#C7D2FE',300:'#818CF8',500:'#3730A3',700:'#1E1B4B',900:'#0F0D26' },
@@ -110,7 +125,7 @@ const WARDEN_CONTACTS = {
   'Kangla':    { name:'Mr. Praveen Kumar',  phone:'9876500006' },
   'Sangai':    { name:'Mrs. Bimola Devi',   phone:'9876500007' },
   'Takhelei':  { name:'Mr. Hemanta Singh',  phone:'9876500008' },
-  'Block-B':   { name:'Mr. James Haokip',   phone:'9876500009' },
+  'Nongin':   { name:'Mr. James Haokip',   phone:'9876500009' },
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -384,9 +399,10 @@ function SectionDivider({ label }) {
 }
 
 function PillStrip({ label, options, value, onChange, colorFn, countFn }) {
+  const isMobile = useMobile()
   return (
-    <div className="neo-filter-row" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-      <span style={{ fontSize:9, fontWeight:800, color:N.muted, textTransform:'uppercase', letterSpacing:'.12em', whiteSpace:'nowrap', minWidth:52 }}>{label}</span>
+    <div style={{ display:'flex', alignItems:'center', gap:isMobile?6:8, flexWrap:'wrap' }}>
+      <span style={{ fontSize:9, fontWeight:800, color:N.muted, textTransform:'uppercase', letterSpacing:'.12em', whiteSpace:'nowrap', minWidth:isMobile?40:52 }}>{label}</span>
       {['All', ...options].map(opt => {
         const active = value === opt
         const accent = colorFn ? colorFn(opt) : N.indigo
@@ -1367,12 +1383,13 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
 
 // ─── Bulk Action Bar ───────────────────────────────────────────────────────────
 function BulkBar({ selected, total, onClear, onBulkStatus, onBulkHouse, onBulkDelete, onBulkEnroll, onBulkExport, onBulkPrint, onBulkWA }) {
+  const isMobile = useMobile()
   const [statusVal, setStatusVal] = useState('Under Review')
   const [houseVal,  setHouseVal]  = useState('')
 
   if (selected.length === 0) return null
   return (
-    <div className="neo-bulk-bar" style={{ position:'sticky', bottom:16, zIndex:100, background:N.text, color:'#fff', borderRadius:16, padding:'12px 18px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', boxShadow:`0 12px 40px rgba(30,27,75,.35), ${N.shadow('lg')}`, margin:'14px 0' }}>
+    <div style={{ position:'sticky', bottom:isMobile?6:16, zIndex:100, background:N.text, color:'#fff', borderRadius:isMobile?12:16, padding:isMobile?'10px 12px':'12px 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'center', gap:isMobile?8:10, flexWrap:'wrap', boxShadow:'0 12px 40px rgba(30,27,75,.35)', margin:isMobile?'8px 0':'14px 0' }}>
       <span style={{ fontSize:12, fontWeight:700 }}>{selected.length} selected</span>
       <button onClick={onClear} style={{ padding:'4px 10px', borderRadius:6, background:'transparent', color:T.slate[300], border:`1px solid ${T.slate[600]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>✕ Clear</button>
       <div style={{ width:1, height:24, background:T.slate[600] }} />
@@ -1679,6 +1696,8 @@ function Dashboard({ apps, cols, darkMode }) {
 }
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function Admissions() {
+  const isMobile = useMobile()
+  const isTablet = useTablet()
   const [apps,           setApps]          = useState([])
   const [cols,           setCols]          = useState([])
   const [loading,        setLoading]       = useState(true)
@@ -2054,33 +2073,18 @@ export default function Admissions() {
   @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(5,150,105,.18)} 50%{box-shadow:0 0 0 7px rgba(5,150,105,.06)} }
   * { box-sizing:border-box; }
   select:focus, input:focus, textarea:focus {
-    box-shadow: ${N.inset('md')}, 0 0 0 3px rgba(79,70,229,.12) !important;
+    box-shadow: inset 4px 4px 10px rgba(174,179,208,0.65), inset -4px -4px 10px rgba(255,255,255,0.92), 0 0 0 3px rgba(79,70,229,.12) !important;
     outline:none;
   }
   ::-webkit-scrollbar { width:4px; height:4px; }
   ::-webkit-scrollbar-track { background:${N.bg2}; }
   ::-webkit-scrollbar-thumb { background:rgba(79,70,229,.25); border-radius:99px; }
-  @media (max-width:640px) {
-    .neo-header { flex-direction:column !important; gap:14px !important; }
-    .neo-header-actions { flex-wrap:wrap !important; width:100% !important; }
-    .neo-header-actions button { flex:1 !important; min-width:calc(50% - 4px) !important; }
-    .neo-kpi-grid { grid-template-columns:repeat(3,1fr) !important; }
-    .neo-cards-grid { grid-template-columns:1fr !important; }
-    .neo-filter-row { gap:6px !important; }
-    .neo-pill { padding:4px 10px !important; font-size:10px !important; }
-    .neo-bulk-bar { flex-direction:column !important; align-items:stretch !important; }
-    .neo-bulk-bar button { width:100% !important; }
-    .neo-select-bar { flex-wrap:wrap !important; }
-  }
-  @media (max-width:400px) {
-    .neo-kpi-grid { grid-template-columns:repeat(2,1fr) !important; }
-  }
 `}</style>
 
         {toast && <Toast msg={toast.msg} color={toast.color} onUndo={toast.undoFn} />}
 
         {/* Header */}
-        <div className="neo-header" style={{ padding:'24px 0 18px', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:14 }}>
+        <div style={{ padding: isMobile?'14px 0 12px':'24px 0 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'flex-start', justifyContent:'space-between', gap:isMobile?12:14 }}>
           <div>
             <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:T.slate[400], marginBottom:5 }}>GNSI Portal</div>
             <div style={{ fontSize:26, fontWeight:800, color:tx, letterSpacing:'-.03em', lineHeight:1.1 }}>Admissions</div>
@@ -2106,7 +2110,7 @@ export default function Admissions() {
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>Esc</kbd> Close
             </div>
           </div>
-          <div className="neo-header-actions" style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'flex-start' }}>
+          <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr 1fr':'repeat(7,auto)', gap:8, alignItems:'center' }}>
            <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)"
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), fontSize:14, cursor:'pointer', color:N.text2, transition:'box-shadow .15s' }}
   onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
@@ -2173,7 +2177,7 @@ export default function Admissions() {
         <Dashboard apps={apps} cols={cols} darkMode={darkMode} />
 
         {/* KPI Strip */}
-        <div className="neo-kpi-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:12, marginBottom:18 }}>
+        <div style={{ display:'grid', gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)', gap:isMobile?10:12, marginBottom:18 }}>
   {[
     { label:'Total', value:apps.length, color:N.indigo, accent:`linear-gradient(90deg,${N.indigo},${N.violet})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
     { label:'Applied',      value:byStatus['Applied']||0,      color:'#6366f1', accent:'#6366f1', filter:'Applied' },
@@ -2220,7 +2224,7 @@ export default function Admissions() {
         )}
 
         {/* Filter Panel */}
-        <div style={{ background:N.bg, borderRadius:20, boxShadow:N.shadow('md'), padding:'16px 20px', marginBottom:16, display:'flex', flexDirection:'column', gap:12 }}>
+        <div style={{ background:N.bg, borderRadius:isMobile?14:20, boxShadow:N.shadow('md'), padding:isMobile?'12px 14px':'16px 20px', marginBottom:16, display:'flex', flexDirection:'column', gap:isMobile?8:12 }}>
           {sessionOptions.length > 0 && (
             <PillStrip label="Session" options={sessionOptions} value={filterSession} onChange={setSession} colorFn={()=>T.indigo[600]} />
           )}
@@ -2234,7 +2238,7 @@ export default function Admissions() {
           <PillStrip label="House" options={HOUSES_LIST} value={filterHouse} onChange={setFilterHouse} colorFn={()=>T.sky[600]}
             countFn={h => houseCounts[h]||0} />
 
-          <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+          <div style={{ display:'flex', flexDirection:isMobile?'column':'row', gap:isMobile?8:10, alignItems:isMobile?'stretch':'center', flexWrap:isMobile?'nowrap':'wrap' }}>
             <div style={{ flex:1, minWidth:200, position:'relative' }}>
   <span style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', color:N.muted, fontSize:13, pointerEvents:'none' }}>🔍</span>
   <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)}
@@ -2245,7 +2249,16 @@ export default function Admissions() {
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:Object.keys(advFilters).filter(k=>advFilters[k]).length>0?N.inset('sm'):N.shadow('sm'), color:Object.keys(advFilters).filter(k=>advFilters[k]).length>0?N.violet:N.muted2, fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}>
   🔎 Advanced{Object.keys(advFilters).filter(k=>advFilters[k]).length>0?` (${Object.keys(advFilters).filter(k=>advFilters[k]).length})`:''}</button>
 
-            <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(k,d)=>{setSortBy(k);setSortDir(d)}} />
+            {isMobile ? (
+  <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ ...styles.inp, fontSize:12 }}>
+    <option value="gcc">Sort: GCC No.</option>
+    <option value="name">Sort: Name</option>
+    <option value="created_at">Sort: Date</option>
+    <option value="status">Sort: Status</option>
+  </select>
+) : (
+  <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(k,d)=>{setSortBy(k);setSortDir(d)}} />
+)}
 
             <div style={{ position:'relative' }}>
               <button onClick={()=>setShowPresets(v=>!v)}
@@ -2285,7 +2298,7 @@ export default function Admissions() {
 
         {/* Select-all bar */}
         {filtered.length > 0 && (
-  <div className="neo-select-bar" style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, fontSize:12, color:N.muted2 }}>
+  <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:isMobile?6:10, marginBottom:10, fontSize:12, color:N.muted2 }}>
             <input type="checkbox" checked={selectedIds.size===filtered.length&&filtered.length>0} onChange={toggleSelectAll} style={{ cursor:'pointer' }} />
             <span onClick={toggleSelectAll} style={{ cursor:'pointer' }}>Select all {filtered.length}</span>
             {selectedIds.size>0 && <span style={{ color:T.indigo[600], fontWeight:700 }}>{selectedIds.size} selected</span>}
@@ -2318,7 +2331,7 @@ export default function Admissions() {
         {/* List / Table */}
         {filtered.length > 0 ? (
           tableMode ? (
-            <div style={{ background:card, border:`1px solid ${darkMode?T.slate[700]:T.slate[200]}`, borderRadius:12, overflow:'hidden' }}>
+            <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead>
                   <tr style={{ background:darkMode?T.slate[700]:T.slate[50] }}>
@@ -2341,7 +2354,7 @@ export default function Admissions() {
               </table>
             </div>
           ) : (
-            <div className="neo-cards-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(360px,100%),1fr))', gap:14, alignItems:'start' }}>
+            <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':isTablet?'repeat(2,1fr)':'repeat(auto-fill,minmax(340px,1fr))', gap:isMobile?12:14, alignItems:'start' }}>
               {filtered.map(a => (
                 <div key={a.id}>
                   {duplicateGCCs.has(a.gcc) && (
