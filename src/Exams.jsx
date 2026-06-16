@@ -3901,6 +3901,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
   );
   const [subInput, setSubInput]   = useState("");
   const [markInput, setMarkInput] = useState("");
+  const markRef = useRef("");
   const [editingSub, setEditingSub] = useState(null);
 
   // Step 4
@@ -3984,11 +3985,12 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
   };
 
   // FIX: add subject + set mark atomically in one setState call, no setTimeout
-  const addSubjectWithMark = () => {
-  const sub = subInput.trim();
-  if (!sub || !activeCourse) return;
-  const parsed = parseInt(markInput, 10);
-  const markVal = (!isNaN(parsed) && parsed > 0) ? parsed : undefined;
+  const addSubjectWithMark = (overrideMark) => {
+    const sub = subInput.trim();
+    if (!sub || !activeCourse) return;
+    const raw = overrideMark !== undefined ? overrideMark : markRef.current;
+    const parsed = parseInt(String(raw), 10);
+    const markVal = (!isNaN(parsed) && parsed > 0) ? parsed : undefined;
     setCourseData(prev => {
       const existing = prev[activeCourse] || { subjects: [], marks: {} };
       if (existing.subjects.includes(sub)) return prev;
@@ -4240,8 +4242,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
             <input
   type="number"
   value={markInput}
-  onChange={e => setMarkInput(e.target.value)}
-  onBlur={e => setMarkInput(e.target.value)}
+  onChange={e => { setMarkInput(e.target.value); markRef.current = e.target.value; }}
   placeholder="Max"
   min="0"
   style={{ ...css.input, width: 70, MozAppearance: "textfield" }}
