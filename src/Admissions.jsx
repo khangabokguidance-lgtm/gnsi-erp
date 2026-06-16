@@ -773,7 +773,8 @@ function WABlastModal({ apps, onClose }) {
           {previewMsg}
         </div>
         <div style={{ fontSize:12, color:T.slate[500], marginBottom:12 }}>
-          Will open {apps.length} WhatsApp chat(s). Browsers may block popups after the first.
+          Will open {Math.min(apps.length,5)} WhatsApp chat(s).
+          {apps.length>5 && <span style={{ color:T.rose[600], fontWeight:700 }}> ⚠ Only first 5 of {apps.length} will open — browsers block bulk popups.</span>}
         </div>
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={() => {
@@ -1177,7 +1178,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
 // ─── Application Card ──────────────────────────────────────────────────────────
 function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode }) {
   const gcc     = String(a.gcc || a.id)
-  const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(gcc)) && col.fee_type === 'admission')
+  const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission')
   const cs      = COURSE_STRUCTURE[a.course]
   const today   = new Date().toISOString().slice(0,10)
   const followupOverdue = a.followupDate && a.followupDate < today
@@ -1579,7 +1580,7 @@ function Dashboard({ apps, cols, darkMode }) {
       </div>}
 
       {/* ── Hostel & House ── */}
-      {activeTab === 'hostelhouseandhouse'.slice(0,11) && <>
+      {activeTab === 'hostelhouseandhouse' && <>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           {HOSTEL_TYPES.map(h => {
             const count = apps.filter(a => a.hostel_type === h).length
@@ -1819,7 +1820,7 @@ export default function Admissions() {
   const handleSave = async (eid, obj) => {
     if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return }
     if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return }
-    if (!eid && activeSession?.is_locked) { showToast('🔒 Session locked. No new applications.', T.rose[600]); return }
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
 
     const sessionName = (!eid && activeSession) ? activeSession.session_name : obj.session
     const dbRow = mapToDB({ ...obj, session: sessionName })
@@ -1860,7 +1861,7 @@ export default function Admissions() {
   const handleEnroll = async id => {
     const a = apps.find(x => String(x.id)===String(id))
     if (!a) return
-    const admPaid = cols.some(c=>String(parseInt(c.adm_app_id))===String(parseInt(a.gcc||a.id))&&c.fee_type==='admission')
+    const admPaid = cols.some(c=>String(parseInt(c.adm_app_id))===String(parseInt(a.gcc))&&c.fee_type==='admission')
     if (!admPaid) { showToast('⚠ Collect admission fee first', T.rose[600]); setFeePanel(a); return }
     if (!confirm(`Enroll ${a.name} as a student?`)) return
     try {
@@ -1938,37 +1939,49 @@ export default function Admissions() {
   }
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Delete ${selectedIds.size} selected applicants? Cannot be undone.`)) return
+    if (!confirm(`Delete ${selectedIds.size} selected applicants? You will have 5 seconds to undo.`)) return
     const ids = [...selectedIds]
-    const { error } = await supabase.from('admissions').delete().in('gcc_no', ids.map(Number))
-    if (error) { showToast('Bulk delete failed', T.rose[600]); return }
+    const snapshots = apps.filter(a => selectedIds.has(a.id))
     setApps(prev => prev.filter(a => !selectedIds.has(a.id)))
-    showToast(`${ids.length} records deleted`, T.rose[600])
     clearSelection()
+    let cancelled = false
+    showToast(`${ids.length} records deleted`, T.rose[600], () => {
+      cancelled = true
+      setApps(prev => [...snapshots, ...prev])
+    })
+    setTimeout(async () => {
+      if (cancelled) return
+      const { error } = await supabase.from('admissions').delete().in('gcc_no', ids.map(Number))
+      if (error) { setApps(prev => [...snapshots, ...prev]); showToast('Bulk delete failed: '+error.message, T.rose[600]) }
+    }, 5000)
   }
 
   const handleCSVImport = async rows => {
     setShowCSVImport(false)
-    let ok=0, fail=0
+    let ok=0, fail=0, skipped=0
+    const existingGCCs = new Set(apps.map(a=>String(a.gcc)))
     for (const r of rows) {
+      if (existingGCCs.has(String(r.gcc))) { skipped++; continue }
       const dbRow = mapToDB(r)
       const { error } = await supabase.from('admissions').insert(dbRow)
       if (error) fail++; else ok++
     }
     await loadAll()
-    showToast(`Imported ${ok} rows${fail>0?`, ${fail} failed`:''}`, ok>0?T.emerald[600]:T.rose[600])
+    showToast(`Imported ${ok}${skipped>0?`, ${skipped} skipped (duplicate GCC)`:''}${fail>0?`, ${fail} failed`:''}`, ok>0?T.emerald[600]:T.rose[600])
   }
 
-  const handleAutoAssignHouse = () => {
+  const handleAutoAssignHouse = async () => {
     const unassigned = filtered.filter(a=>!a.house||a.house==='Day Scholar')
     if (!unassigned.length) { showToast('No unassigned boarder records', T.amber[600]); return }
     const boarderHouses = HOUSES_LIST.filter(h=>!DAY_SCHOLAR_HOUSES.includes(h))
-    unassigned.forEach(async (a,i) => {
+    let ok=0, fail=0
+    for (let i=0; i<unassigned.length; i++) {
       const house = boarderHouses[i % boarderHouses.length]
-      await supabase.from('admissions').update({ house, hostel_type:'Boarder' }).eq('gcc_no', parseInt(a.id))
-    })
-    loadAll()
-    showToast(`Auto-assigned houses for ${unassigned.length} students`, T.emerald[600])
+      const { error } = await supabase.from('admissions').update({ house, hostel_type:'Boarder' }).eq('gcc_no', parseInt(unassigned[i].id))
+      if (error) fail++; else ok++
+    }
+    await loadAll()
+    showToast(fail>0 ? `Auto-assigned ${ok}, failed ${fail}` : `Auto-assigned houses for ${ok} students`, fail>0?T.rose[600]:T.emerald[600])
   }
 
   const byStatus = {}
