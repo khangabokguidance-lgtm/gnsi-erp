@@ -3782,9 +3782,8 @@ const EXAM_CONFIG_PRESETS = [
   },
   {
     id: "monthly_june_2026",
-    name: "1st Monthly Test — June 2026",
-    description: "OMR-based · 9th June 2026",
-    examDate: "2026-06-09",
+name: "Monthly Test",
+description: "OMR-based",
     examMode: "OMR",
     sessions: [
       { label: "Session I",  time: "10:15 AM – 12:45 PM" },
