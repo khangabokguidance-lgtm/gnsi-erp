@@ -13,7 +13,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "./lib/supabase";
+import { supabase } from './supabase'
 
 // ── shared colours matching GNSI portal design system ──────
 const C = {
