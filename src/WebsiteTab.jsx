@@ -50,7 +50,7 @@ const toast = (msg, type = "success") => {
 
 // ── styles ──────────────────────────────────────────────────
 const s = {
-  wrap:    { padding: "1.5rem", fontFamily: "'Source Sans 3', sans-serif" },
+  wrap: { padding: "1.5rem", fontFamily: "'Source Sans 3', sans-serif", background: "#0B1F3A", minHeight: "100vh", color: "#F8F3E8" },
   subNav:  { display: "flex", gap: ".4rem", marginBottom: "1.5rem", borderBottom: `1px solid rgba(184,146,42,.15)`, paddingBottom: "1rem", flexWrap: "wrap" },
   subBtn:  (active) => ({ background: active ? C.gold : "transparent", color: active ? C.navy : "rgba(248,243,232,.5)", border: `1px solid ${active ? C.gold : "rgba(184,146,42,.2)"}`, padding: ".4rem .9rem", fontFamily: "'Rajdhani',sans-serif", fontWeight: 700, fontSize: ".72rem", letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", transition: ".2s", display: "flex", alignItems: "center", gap: ".4rem" }),
   card:    { background: "rgba(21,53,97,.4)", border: "1px solid rgba(184,146,42,.18)", marginBottom: "1rem" },
@@ -691,7 +691,7 @@ export default function WebsiteTab() {
   };
 
   return (
-    <div style={s.wrap}>
+    <div style={{ ...s.wrap, background: '#0B1F3A', minHeight: '100vh', margin: '-0px' }}>
       {/* Header */}
       <div style={{ marginBottom: "1.4rem", paddingBottom: "1rem", borderBottom: "1px solid rgba(184,146,42,.15)" }}>
         <h2 style={{ fontFamily: "'EB Garamond', serif", color: "#F8F3E8", fontSize: "1.6rem", marginBottom: ".3rem" }}>🌐 Website Manager</h2>
