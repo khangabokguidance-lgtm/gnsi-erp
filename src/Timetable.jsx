@@ -4,7 +4,6 @@ import { staffDB } from './staffDB'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
-  // Ink scale
   ink900: '#0c0f1a',
   ink700: '#1e2235',
   ink500: '#4a5068',
@@ -12,14 +11,10 @@ const C = {
   ink100: '#d4d8e8',
   ink50:  '#f0f2f8',
   ink20:  '#f8f9fc',
-
-  // Brand
   indigo:    '#3d4dff',
   indigoDim: '#2433cc',
   indigoLt:  '#eef0ff',
   indigoMid: '#c7cbff',
-
-  // Semantic
   emerald:    '#059669',
   emeraldLt:  '#d1fae5',
   amber:      '#d97706',
@@ -39,18 +34,17 @@ const C = {
 }
 
 const FONT = `'DM Sans', 'Outfit', system-ui, sans-serif`
-
 const ADMIN_PIN = '1950'
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 
 const BATCH_PALETTE = {
-  Achiever: { bg: C.indigoLt, border: C.indigoMid, text: C.indigoDim, dot: C.indigo },
-  Leader:   { bg: C.emeraldLt, border: '#6ee7b7', text: '#065f46', dot: C.emerald },
-  Champion: { bg: C.violetLt, border: '#c4b5fd', text: '#5b21b6', dot: C.violet },
-  Lakshya:  { bg: C.orangeLt, border: '#fdba74', text: '#9a3412', dot: C.orange },
-  Umeed:    { bg: C.pinkLt, border: '#f9a8d4', text: '#9d174d', dot: C.pink },
-  Elite:    { bg: C.tealLt, border: '#5eead4', text: '#134e4a', dot: C.teal },
-  Prime:    { bg: C.amberLt, border: '#fcd34d', text: '#92400e', dot: C.amber },
+  Achiever: { bg: C.indigoLt,  border: C.indigoMid,  text: C.indigoDim, dot: C.indigo  },
+  Leader:   { bg: C.emeraldLt, border: '#6ee7b7',     text: '#065f46',   dot: C.emerald },
+  Champion: { bg: C.violetLt,  border: '#c4b5fd',     text: '#5b21b6',   dot: C.violet  },
+  Lakshya:  { bg: C.orangeLt,  border: '#fdba74',     text: '#9a3412',   dot: C.orange  },
+  Umeed:    { bg: C.pinkLt,    border: '#f9a8d4',     text: '#9d174d',   dot: C.pink    },
+  Elite:    { bg: C.tealLt,    border: '#5eead4',     text: '#134e4a',   dot: C.teal    },
+  Prime:    { bg: C.amberLt,   border: '#fcd34d',     text: '#92400e',   dot: C.amber   },
 }
 const BREAK_TYPES = ['LUNCH','TEA BREAK','DINNER','CLASS OFF','RECREATION','DOUBT SESSION','BREAK']
 
@@ -78,7 +72,6 @@ function fmt(dateStr) {
 
 const emptyForm = { class_name:'', section:'', day_name:'Monday', period_name:'', subject_name:'', teacher_name:'', room_name:'' }
 
-// ── Shared Style Primitives ───────────────────────────────────────────────────
 const baseInput = {
   width:'100%', padding:'9px 13px', borderRadius:8, border:`1px solid ${C.ink100}`,
   fontSize:13, outline:'none', fontFamily:FONT, color:C.ink900, background:'white',
@@ -89,11 +82,11 @@ const S = {
   lbl: { display:'block', fontSize:11, fontWeight:600, color:C.ink300, marginBottom:5, textTransform:'uppercase', letterSpacing:'.08em' },
   pill: (bg, text) => ({ background:bg, color:text, padding:'2px 9px', borderRadius:999, fontSize:11, fontWeight:600 }),
   btn: {
-    primary:   { background:C.indigo, color:'white', border:'none', borderRadius:8, padding:'9px 20px', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:FONT, transition:'background .15s' },
-    ghost:     { background:'transparent', color:C.ink500, border:`1px solid ${C.ink100}`, borderRadius:8, padding:'9px 16px', fontWeight:500, cursor:'pointer', fontSize:13, fontFamily:FONT, transition:'all .15s' },
-    danger:    { background:C.rose, color:'white', border:'none', borderRadius:8, padding:'9px 20px', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:FONT },
-    icon:      { background:C.ink50, color:C.ink500, border:`1px solid ${C.ink100}`, borderRadius:7, padding:'5px 9px', fontWeight:500, cursor:'pointer', fontSize:12, fontFamily:FONT },
-    iconDanger:{ background:C.roseLt, color:C.rose, border:`1px solid #fecdd3`, borderRadius:7, padding:'5px 9px', fontWeight:500, cursor:'pointer', fontSize:12, fontFamily:FONT },
+    primary:    { background:C.indigo,  color:'white',  border:'none',                   borderRadius:8, padding:'9px 20px', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:FONT, transition:'background .15s' },
+    ghost:      { background:'transparent', color:C.ink500, border:`1px solid ${C.ink100}`, borderRadius:8, padding:'9px 16px', fontWeight:500, cursor:'pointer', fontSize:13, fontFamily:FONT, transition:'all .15s' },
+    danger:     { background:C.rose,    color:'white',  border:'none',                   borderRadius:8, padding:'9px 20px', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:FONT },
+    icon:       { background:C.ink50,   color:C.ink500, border:`1px solid ${C.ink100}`,  borderRadius:7, padding:'5px 9px',  fontWeight:500, cursor:'pointer', fontSize:12, fontFamily:FONT },
+    iconDanger: { background:C.roseLt,  color:C.rose,   border:`1px solid #fecdd3`,      borderRadius:7, padding:'5px 9px',  fontWeight:500, cursor:'pointer', fontSize:12, fontFamily:FONT },
   },
 }
 
@@ -142,7 +135,7 @@ function StatCard({ icon, label, value, color = C.indigo, sub }) {
   )
 }
 
-// ── Conflicts Banner ──────────────────────────────────────────────────────────
+// ── Conflicts ─────────────────────────────────────────────────────────────────
 function findConflicts(entries) {
   const conflicts = []
   const bySlot = {}
@@ -195,7 +188,6 @@ function AdminPinModal({ onSuccess, onClose }) {
   )
 }
 
-// ── Overlay utility ───────────────────────────────────────────────────────────
 function Overlay({ children, zIndex=1000 }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(12,15,26,.55)', zIndex, display:'flex', alignItems:'center', justifyContent:'center', padding:16, backdropFilter:'blur(2px)' }}>
@@ -251,9 +243,9 @@ function EditEntryModal({ entry, staffList=[], onClose, onSaved }) {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             {[
               { label:'Batch / Class *', key:'class_name', ph:'Achiever' },
-              { label:'Section', key:'section', ph:'A / B / Combined' },
-              { label:'Period / Time *', key:'period_name', ph:'7:00–7:45 AM' },
-              { label:'Subject', key:'subject_name', ph:'Mathematics' },
+              { label:'Section',         key:'section',    ph:'A / B / Combined' },
+              { label:'Period / Time *', key:'period_name',ph:'7:00–7:45 AM' },
+              { label:'Subject',         key:'subject_name',ph:'Mathematics' },
             ].map(f=>(
               <div key={f.key}><label style={S.lbl}>{f.label}</label><Input value={form[f.key]} onChange={e=>set(f.key,e.target.value)} placeholder={f.ph} /></div>
             ))}
@@ -316,7 +308,6 @@ function SubstituteModal({ entry, date, staffList, allEntries, onClose, onSaved,
   return (
     <Overlay zIndex={2000}>
       <div style={{ background:'white', borderRadius:16, width:'100%', maxWidth:520, boxShadow:'0 32px 80px rgba(0,0,0,.25)', overflow:'hidden', fontFamily:FONT }}>
-        {/* Header */}
         <div style={{ padding:'22px 28px', background:C.indigoLt, borderBottom:`1px solid ${C.indigoMid}` }}>
           <div style={{ fontSize:11, fontWeight:600, color:C.indigo, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:4 }}>Assign Substitute</div>
           <div style={{ fontSize:18, fontWeight:700, color:C.ink900 }}>{entry.subject_name} — {entry.class_name}</div>
@@ -408,6 +399,194 @@ function EditCell({ value, onSave, type='text', options=[] }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// CARD VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+function CardView({ entries, staffList, isAdmin, onEdit, onDelete, onSubstitute }) {
+  const [substitutions, setSubstitutions] = useState([])
+  const [subModal, setSubModal] = useState(null)
+  const todayName = new Date().toLocaleDateString('en-US', { weekday:'long' })
+  const todayDate = formatDate(new Date())
+
+  const loadSubs = useCallback(async () => {
+    const from = formatDate(addDays(new Date(), -1))
+    const to   = formatDate(addDays(new Date(), 6))
+    const { data } = await supabase.from('timetable_substitutions').select('*').gte('sub_date', from).lte('sub_date', to)
+    setSubstitutions(data || [])
+  }, [])
+
+  useEffect(() => { loadSubs() }, [loadSubs])
+
+  const getSub = (className, dayName, periodName) => {
+    const dateMap = { Monday:0, Tuesday:1, Wednesday:2, Thursday:3, Friday:4, Saturday:5 }
+    const weekMon = getWeekStart()
+    const entryDate = formatDate(addDays(weekMon, dateMap[dayName] || 0))
+    return substitutions.find(s =>
+      s.class_name === className && s.period_name === periodName && s.sub_date === entryDate
+    )
+  }
+
+  const isBreak = subj => BREAK_TYPES.includes((subj || '').toUpperCase().trim())
+
+  return (
+    <div style={{ fontFamily:FONT }}>
+      {subModal && (
+        <SubstituteModal
+          entry={subModal.entry} date={subModal.date} staffList={staffList}
+          allEntries={entries} onClose={()=>setSubModal(null)}
+          onSaved={loadSubs} showToast={()=>{}}
+        />
+      )}
+
+      {DAYS.map(day => {
+        const dayEntries = entries.filter(e => e.day_name === day)
+        const isToday = day === todayName
+        const periods = [...new Set(dayEntries.map(e => e.period_name).filter(Boolean))].sort()
+
+        // Compute this day's date for substitution lookup
+        const dateMap = { Monday:0, Tuesday:1, Wednesday:2, Thursday:3, Friday:4, Saturday:5 }
+        const weekMon = getWeekStart()
+        const dayDate = formatDate(addDays(weekMon, dateMap[day] || 0))
+
+        return (
+          <div key={day} style={{ marginBottom:32 }}>
+            {/* Day header */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+              <div style={{ width:3, height:22, background:isToday?C.indigo:C.ink100, borderRadius:2, flexShrink:0 }}/>
+              <span style={{ fontSize:15, fontWeight:700, color:isToday?C.indigo:C.ink900 }}>{day}</span>
+              <span style={{ fontSize:12, color:C.ink400, background:C.ink50, padding:'2px 9px', borderRadius:999, border:`1px solid ${C.ink100}` }}>
+                {fmt(dayDate)}
+              </span>
+              {isToday && <span style={{ ...S.pill(C.indigoLt, C.indigo) }}>Today</span>}
+              <span style={{ fontSize:11, color:C.ink300 }}>{dayEntries.length} classes</span>
+            </div>
+
+            {!dayEntries.length && (
+              <div style={{ padding:'24px', textAlign:'center', color:C.ink300, fontSize:13,
+                background:'white', borderRadius:12, border:`1px solid ${C.ink50}` }}>
+                No classes scheduled
+              </div>
+            )}
+
+            {periods.map(period => {
+              const pEntries = dayEntries.filter(e => e.period_name === period)
+              const breakEntry = pEntries.find(e => isBreak(e.subject_name))
+
+              // Shared break row spanning all batches
+              if (breakEntry) return (
+                <div key={period} style={{ display:'flex', alignItems:'center', gap:10,
+                  padding:'9px 16px', background:'#fffbf0',
+                  border:`1px solid #fcd34d`, borderRadius:10, marginBottom:10 }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:C.amber, minWidth:90 }}>{period}</span>
+                  <span style={{ ...S.pill(C.amberLt, C.amber), textTransform:'uppercase', letterSpacing:'.06em' }}>
+                    {breakEntry.subject_name}
+                  </span>
+                </div>
+              )
+
+              return (
+                <div key={period} style={{ marginBottom:10 }}>
+                  {/* Period label row */}
+                  <div style={{ fontSize:11, fontWeight:600, color:C.ink300, letterSpacing:'.06em',
+                    textTransform:'uppercase', marginBottom:6, paddingLeft:2 }}>
+                    {period}
+                  </div>
+                  {/* Cards grid */}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:10 }}>
+                    {pEntries.map(e => {
+                      const bs  = getBatchStyle(e.class_name)
+                      const sub = substitutions.find(s =>
+                        s.class_name === e.class_name &&
+                        s.period_name === e.period_name &&
+                        s.sub_date === dayDate
+                      )
+                      const cardBg     = sub ? C.emeraldLt : 'white'
+                      const cardBorder = sub ? '#6ee7b7'   : C.ink50
+
+                      return (
+                        <div key={e.id} style={{
+                          background: cardBg,
+                          border: `1px solid ${cardBorder}`,
+                          borderRadius: 12,
+                          padding: '14px 16px',
+                          transition: 'box-shadow .15s, transform .15s',
+                          cursor: isAdmin ? 'default' : 'default',
+                        }}
+                          onMouseEnter={el => { el.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.07)'; el.currentTarget.style.transform = 'translateY(-1px)' }}
+                          onMouseLeave={el => { el.currentTarget.style.boxShadow = ''; el.currentTarget.style.transform = '' }}
+                        >
+                          {/* Batch pill */}
+                          <div style={{ marginBottom:8 }}>
+                            <span style={{
+                              display:'inline-flex', alignItems:'center', gap:5,
+                              background:bs.bg, color:bs.text, border:`1px solid ${bs.border}`,
+                              padding:'2px 9px', borderRadius:999, fontSize:11, fontWeight:600,
+                            }}>
+                              <span style={{ width:5, height:5, borderRadius:'50%', background:bs.dot, flexShrink:0 }}/>
+                              {e.class_name}
+                              {e.section ? ` · ${e.section}` : ''}
+                            </span>
+                          </div>
+
+                          {/* Subject */}
+                          <div style={{ fontSize:14, fontWeight:700, color:C.ink900, marginBottom:6, lineHeight:1.3 }}>
+                            {e.subject_name || '—'}
+                          </div>
+
+                          {/* Teacher */}
+                          <div style={{ fontSize:12, color:C.ink400, marginBottom: e.room_name ? 3 : 0 }}>
+                            {sub ? (
+                              <>
+                                <span style={{ textDecoration:'line-through', marginRight:4 }}>{e.teacher_name}</span>
+                                <span style={{ color:C.emerald, fontWeight:600 }}>→ {sub.substitute_teacher}</span>
+                                <span style={{ marginLeft:6, ...S.pill(C.emerald,'white'), fontSize:9, letterSpacing:'.04em' }}>SUB</span>
+                              </>
+                            ) : (
+                              e.teacher_name || <span style={{ fontStyle:'italic', color:C.ink200 }}>No teacher</span>
+                            )}
+                          </div>
+
+                          {/* Room */}
+                          {e.room_name && (
+                            <div style={{ fontSize:11, color:C.ink300 }}>{e.room_name}</div>
+                          )}
+
+                          {/* Admin actions */}
+                          {isAdmin && (
+                            <div style={{ display:'flex', gap:5, marginTop:12, paddingTop:10, borderTop:`1px solid ${C.ink50}` }}>
+                              <button
+                                onClick={() => onEdit(e)}
+                                style={{ ...S.btn.icon, flex:1, textAlign:'center', fontSize:11 }}>
+                                ✏ Edit
+                              </button>
+                              {!sub && (
+                                <button
+                                  onClick={() => setSubModal({ entry:e, date:dayDate })}
+                                  style={{ ...S.btn.icon, flex:1, textAlign:'center', fontSize:11, color:C.amber, borderColor:'#fcd34d', background:C.amberLt }}>
+                                  ⇄ Sub
+                                </button>
+                              )}
+                              <button
+                                onClick={() => onDelete(e.id)}
+                                style={{ ...S.btn.iconDanger, fontSize:11 }}>
+                                🗑
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // WEEKLY VIEW
 // ══════════════════════════════════════════════════════════════════════════════
 function WeeklyView({ entries, staffList, weekStart, showToast, onSubstituteSaved, isAdmin }) {
@@ -424,7 +603,6 @@ function WeeklyView({ entries, staffList, weekStart, showToast, onSubstituteSave
   }, [weekStart])
   useEffect(()=>{ loadSubs() },[loadSubs])
 
-  const allPeriods = [...new Set(entries.map(e=>e.period_name).filter(Boolean))].sort()
   const allBatches = [...new Set(entries.map(e=>e.class_name).filter(Boolean))].sort()
   const getSub = (date, className, periodName) =>
     substitutions.find(s=>s.sub_date===date&&s.class_name===className&&s.period_name===periodName)
@@ -445,7 +623,6 @@ function WeeklyView({ entries, staffList, weekStart, showToast, onSubstituteSave
 
           return (
             <div key={day}>
-              {/* Day header */}
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <div style={{ width:3, height:20, background:isToday?C.indigo:C.ink200, borderRadius:2 }}/>
@@ -584,7 +761,6 @@ function MonitorPanel({ staffList, entries }) {
 
   return (
     <div style={{ fontFamily:FONT }}>
-      {/* Controls */}
       <div style={{ display:'flex', alignItems:'flex-end', gap:12, marginBottom:24, flexWrap:'wrap' }}>
         <div>
           <label style={S.lbl}>Month</label>
@@ -593,7 +769,6 @@ function MonitorPanel({ staffList, entries }) {
         <button onClick={loadData} style={{ ...S.btn.ghost, marginBottom:1 }}>{loading?'Loading…':'Refresh'}</button>
       </div>
 
-      {/* KPI row */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:24 }}>
         {[
           { label:'Total Absences',   val:totalAbsences,           icon:'🔴', color:C.rose },
@@ -607,7 +782,6 @@ function MonitorPanel({ staffList, entries }) {
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
-        {/* Most Absent */}
         <div style={{ background:'white', borderRadius:12, padding:20, border:`1px solid ${C.ink50}`, boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.rose, marginBottom:3 }}>Most Absent</div>
           <div style={{ fontSize:11, color:C.ink300, marginBottom:16 }}>Sorted by absence days this month</div>
@@ -629,7 +803,6 @@ function MonitorPanel({ staffList, entries }) {
           }
         </div>
 
-        {/* Most Substituted */}
         <div style={{ background:'white', borderRadius:12, padding:20, border:`1px solid ${C.ink50}`, boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.amber, marginBottom:3 }}>Most Substituted</div>
           <div style={{ fontSize:11, color:C.ink300, marginBottom:16 }}>Teachers who needed replacement most</div>
@@ -652,7 +825,6 @@ function MonitorPanel({ staffList, entries }) {
         </div>
       </div>
 
-      {/* Leaderboard */}
       <div style={{ background:'white', borderRadius:12, border:`1px solid ${C.ink50}`, overflow:'hidden', boxShadow:'0 1px 4px rgba(0,0,0,.04)', marginBottom:16 }}>
         <div style={{ padding:'18px 22px', borderBottom:`1px solid ${C.ink50}` }}>
           <div style={{ fontSize:14, fontWeight:700, color:C.ink900 }}>Attendance Leaderboard</div>
@@ -810,10 +982,7 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
     { id:'swap',  label:'Swap Periods' },
     { id:'delete',label:'Bulk Delete' },
   ]
-
-  const sectionCard = {
-    background:'white', borderRadius:12, padding:24, border:`1px solid ${C.ink50}`, boxShadow:'0 1px 4px rgba(0,0,0,.04)'
-  }
+  const sectionCard = { background:'white', borderRadius:12, padding:24, border:`1px solid ${C.ink50}`, boxShadow:'0 1px 4px rgba(0,0,0,.04)' }
 
   return (
     <div style={{ fontFamily:FONT }}>
@@ -822,7 +991,6 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
         <span style={{ fontSize:12, fontWeight:600, color:C.amber }}>Admin access granted — full timetable setup</span>
       </div>
 
-      {/* Sub-tabs */}
       <div style={{ display:'flex', gap:0, marginBottom:22, borderBottom:`1px solid ${C.ink100}` }}>
         {adminTabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
@@ -845,7 +1013,6 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
             <div><label style={S.lbl}>Section</label><Input value={batchForm.section} onChange={e=>setBatchForm(f=>({...f,section:e.target.value}))} placeholder="A / B / Combined" /></div>
             <div><label style={S.lbl}>Day *</label><Select value={batchForm.day_name} onChange={e=>setBatchForm(f=>({...f,day_name:e.target.value}))}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</Select></div>
           </div>
-
           <div style={{ marginBottom:16 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
               <div style={{ fontSize:13, fontWeight:600, color:C.ink700 }}>Time Slots ({slots.length})</div>
@@ -1072,6 +1239,7 @@ export default function Timetable({ currentUser }) {
 
   const navTabs = [
     { id:'week',    label:'Weekly' },
+    { id:'cards',   label:'Cards' },
     { id:'table',   label:'Table' },
     { id:'teacher', label:'Teachers' },
     { id:'monitor', label:'Monitor' },
@@ -1082,7 +1250,6 @@ export default function Timetable({ currentUser }) {
     <div style={{ padding:'24px 28px', fontFamily:FONT, background:'#f5f6fa', minHeight:'100vh', color:C.ink900 }}>
       <Toast toast={toast} />
 
-      {/* Delete confirm */}
       {deleteId && (
         <Overlay>
           <div style={{ background:'white', borderRadius:14, padding:'32px 28px', maxWidth:340, width:'90%', textAlign:'center', fontFamily:FONT }}>
@@ -1100,7 +1267,6 @@ export default function Timetable({ currentUser }) {
       {showPinModal && <AdminPinModal onSuccess={()=>{ setAdminUnlocked(true); setShowPinModal(false); setViewMode('admin') }} onClose={()=>setShowPinModal(false)} />}
       {editingEntry && <EditEntryModal entry={editingEntry} staffList={staffList} onClose={()=>setEditingEntry(null)} onSaved={()=>{ loadData(); setEditingEntry(null) }} />}
 
-      {/* Bulk action bar */}
       {bulkMode && selectedIds.size > 0 && (
         <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:100, background:C.ink900, color:'white', padding:'12px 22px', borderRadius:12, display:'flex', alignItems:'center', gap:14, boxShadow:'0 8px 40px rgba(0,0,0,.3)', fontFamily:FONT }}>
           <span style={{ fontWeight:600, fontSize:13 }}>{selectedIds.size} selected</span>
@@ -1109,7 +1275,7 @@ export default function Timetable({ currentUser }) {
         </div>
       )}
 
-      {/* ── PAGE HEADER ────────────────────────────────────────────── */}
+      {/* PAGE HEADER */}
       <div style={{ marginBottom:24 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16 }}>
           <div>
@@ -1146,7 +1312,6 @@ export default function Timetable({ currentUser }) {
         </div>
       </div>
 
-      {/* Conflicts */}
       {showConflicts && conflicts.length > 0 && (
         <div style={{ background:C.roseLt, borderRadius:10, padding:16, marginBottom:20, border:`1px solid #fecdd3` }}>
           <div style={{ fontWeight:700, color:C.rose, fontSize:13, marginBottom:8 }}>Scheduling Conflicts</div>
@@ -1159,27 +1324,27 @@ export default function Timetable({ currentUser }) {
         </div>
       )}
 
-      {/* ── STAT CARDS ─────────────────────────────────────────────── */}
+      {/* STAT CARDS */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:20 }}>
-        <StatCard icon="📋" label="Total Entries"    value={entries.length}        color={C.indigo} />
-        <StatCard icon="🏫" label="Batches"           value={uniqueClasses.length}  color={C.emerald} />
-        <StatCard icon="👥" label="Teachers"          value={uniqueTeachers.length} color={C.violet} />
-        <StatCard icon="📅" label="Classes Today"     value={todayEntries.length}   color={C.amber} />
-        <StatCard icon="⚠" label="Conflicts"         value={conflicts.length}      color={conflicts.length?C.rose:C.emerald} />
+        <StatCard icon="📋" label="Total Entries"  value={entries.length}        color={C.indigo} />
+        <StatCard icon="🏫" label="Batches"         value={uniqueClasses.length}  color={C.emerald} />
+        <StatCard icon="👥" label="Teachers"        value={uniqueTeachers.length} color={C.violet} />
+        <StatCard icon="📅" label="Classes Today"   value={todayEntries.length}   color={C.amber} />
+        <StatCard icon="⚠" label="Conflicts"       value={conflicts.length}      color={conflicts.length?C.rose:C.emerald} />
       </div>
 
-      {/* ── ADD FORM ───────────────────────────────────────────────── */}
+      {/* ADD FORM */}
       {showForm && isAdmin && (
         <div style={{ background:'white', borderRadius:12, padding:24, marginBottom:20, border:`1px solid ${C.ink50}`, boxShadow:'0 2px 12px rgba(0,0,0,.06)' }}>
           <div style={{ fontSize:15, fontWeight:700, color:C.ink900, marginBottom:18 }}>New Timetable Entry</div>
           <form onSubmit={handleAdd}>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:12 }}>
               {[
-                { label:'Batch / Class *', key:'class_name', ph:'Achiever' },
-                { label:'Section', key:'section', ph:'A / B / Combined' },
-                { label:'Subject *', key:'subject_name', ph:'Mathematics' },
-                { label:'Period / Time *', key:'period_name', ph:'7:00–7:45 AM' },
-                { label:'Room', key:'room_name', ph:'Room 101' },
+                { label:'Batch / Class *', key:'class_name',   ph:'Achiever' },
+                { label:'Section',         key:'section',       ph:'A / B / Combined' },
+                { label:'Subject *',       key:'subject_name',  ph:'Mathematics' },
+                { label:'Period / Time *', key:'period_name',   ph:'7:00–7:45 AM' },
+                { label:'Room',            key:'room_name',     ph:'Room 101' },
               ].map(f=>(
                 <div key={f.key}><label style={S.lbl}>{f.label}</label><Input value={form[f.key]} onChange={e=>setForm({...form,[f.key]:e.target.value})} placeholder={f.ph} /></div>
               ))}
@@ -1205,7 +1370,7 @@ export default function Timetable({ currentUser }) {
         </div>
       )}
 
-      {/* ── NAV + FILTERS ──────────────────────────────────────────── */}
+      {/* NAV + FILTERS */}
       <div style={{ background:'white', borderRadius:12, padding:'12px 16px', marginBottom:16, border:`1px solid ${C.ink50}`, boxShadow:'0 1px 4px rgba(0,0,0,.03)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
           <div style={{ display:'flex', alignItems:'center', gap:2, flexWrap:'wrap' }}>
@@ -1259,7 +1424,7 @@ export default function Timetable({ currentUser }) {
         </div>
       </div>
 
-      {/* ── VIEWS ──────────────────────────────────────────────────── */}
+      {/* VIEWS */}
       {loading ? (
         <div style={{ background:'white', borderRadius:12, padding:60, textAlign:'center', color:C.ink400 }}>
           <div style={{ fontSize:32, marginBottom:12 }}>⏳</div>
@@ -1268,6 +1433,16 @@ export default function Timetable({ currentUser }) {
 
       ) : viewMode==='week' ? (
         <WeeklyView entries={entries} staffList={staffList} weekStart={weekStart} showToast={showToast} onSubstituteSaved={loadData} isAdmin={isAdmin} />
+
+      ) : viewMode==='cards' ? (
+        <CardView
+          entries={filtered}
+          staffList={staffList}
+          isAdmin={isAdmin}
+          onEdit={setEditingEntry}
+          onDelete={setDeleteId}
+          onSubstitute={null}
+        />
 
       ) : viewMode==='monitor' ? (
         <MonitorPanel staffList={staffList} entries={entries} />
@@ -1379,7 +1554,7 @@ export default function Timetable({ currentUser }) {
       )}
 
       <div style={{ fontSize:11, color:C.ink300, textAlign:'center', marginTop:28, paddingBottom:8 }}>
-        Weekly view · click any class cell to assign substitute · Monitor tab shows live HR data · Admin PIN required for setup
+        Weekly view · Cards view with substitute support · Monitor tab shows live HR data · Admin PIN required for setup
       </div>
       <style>{`@media print { button { display:none!important; } }`}</style>
     </div>
