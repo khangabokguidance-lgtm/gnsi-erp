@@ -3985,9 +3985,10 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
 
   // FIX: add subject + set mark atomically in one setState call, no setTimeout
   const addSubjectWithMark = () => {
-    const sub = subInput.trim();
-    if (!sub || !activeCourse) return;
-    const markVal = markInput ? Number(markInput) : undefined;
+  const sub = subInput.trim();
+  if (!sub || !activeCourse) return;
+  const parsed = parseInt(markInput, 10);
+  const markVal = (!isNaN(parsed) && parsed > 0) ? parsed : undefined;
     setCourseData(prev => {
       const existing = prev[activeCourse] || { subjects: [], marks: {} };
       if (existing.subjects.includes(sub)) return prev;
@@ -4236,9 +4237,16 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
             <input value={subInput} onChange={e=>setSubInput(e.target.value)}
               placeholder="Subject name…" style={{ ...css.input, flex:2 }}
               onKeyDown={e=>{ if(e.key==="Enter") addSubjectWithMark(); }} />
-            <input type="number" value={markInput} onChange={e=>setMarkInput(e.target.value)}
-              placeholder="Max" style={{ ...css.input, width:70 }}
-              onKeyDown={e=>{ if(e.key==="Enter") addSubjectWithMark(); }} />
+            <input
+  type="number"
+  value={markInput}
+  onChange={e => setMarkInput(e.target.value)}
+  onBlur={e => setMarkInput(e.target.value)}
+  placeholder="Max"
+  min="0"
+  style={{ ...css.input, width: 70, MozAppearance: "textfield" }}
+  onKeyDown={e => { if (e.key === "Enter") addSubjectWithMark(); }}
+/>
             <button onClick={addSubjectWithMark}
               style={{ ...css.btn, background:"#1a3c2e", color:"white", whiteSpace:"nowrap" }}>+ Add</button>
           </div>
