@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis,
 } from 'recharts'
+import WebsiteTab from "./WebsiteTab";
 
 // ─────────────────────────────────────────────
 //  CONSTANTS
@@ -63,6 +64,7 @@ const NAV = [
   { id: 'accesslogs',  icon: '🗂️', label: 'Access Logs', badge: 'NEW' },
   { id: 'password',    icon: '🔑', label: 'Password'    },
   { id: 'audit',       icon: '📋', label: 'Audit'       },
+  { id: 'website',     icon: '🌐', label: 'Website'     },
 ]
 
 // FIX: session idle timeout — 30 minutes
@@ -1540,6 +1542,7 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
           {activeTab === 'accesslogs'  && <AccessLogsSection />}
           {activeTab === 'password'    && <ChangePasswordSection currentUser={currentUser} />}
           {activeTab === 'audit'       && <AuditSection />}
+          {activeTab === 'website'     && <WebsiteTab />} 
         </div>
       </div>
     </div>
