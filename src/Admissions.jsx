@@ -1294,6 +1294,8 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
       display: 'flex',
       flexDirection: 'column',
       position: 'relative',
+      minWidth: 0,
+      width: '100%',
     }}
       onMouseEnter={e => { if(!selected){ e.currentTarget.style.boxShadow='8px 8px 20px rgba(174,179,208,0.7), -8px -8px 20px rgba(255,255,255,0.95)'; e.currentTarget.style.transform='translateY(-4px)' } }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow=selected?N.inset('md'):N.shadow('lg'); e.currentTarget.style.transform='translateY(0)' }}
@@ -1301,15 +1303,15 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
       <div style={{ height:4, background: STAT_META[a.status]?.color || N.muted, borderRadius:'22px 22px 0 0' }} />
 
       {/* Card body */}
-      <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:12, flex:1 }}>
+      <div style={{ padding:'14px 14px', display:'flex', flexDirection:'column', gap:10, flex:1, minWidth:0 }}>
 
         {/* Row 1: checkbox + avatar + name + status */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth:0 }}>
           <input type="checkbox" checked={!!selected} onChange={() => onSelect(a.id)}
             style={{ cursor: 'pointer', flexShrink: 0, marginTop: 4 }} onClick={e => e.stopPropagation()} />
           <Avatar name={a.name} size={42} photoUrl={a.photoUrl} />
-          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onDetail(a)}>
-            <div style={{ fontWeight: 800, fontSize: 14, color: T.slate[900], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer', overflow:'hidden' }} onClick={() => onDetail(a)}>
+  <div style={{ fontWeight: 800, fontSize: 13, color: T.slate[900], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {a.name}
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
@@ -1360,24 +1362,29 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
         </div>
 
         {/* Row 4: action row */}
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', borderTop:`2px solid ${N.bg2}`, paddingTop:10 }}>
-          {actionBtn && <div style={{ marginRight: 'auto' }}>{actionBtn}</div>}
-          {[
-  { label:'View',  color:N.sky,    fn:e=>{e.stopPropagation();onDetail(a)} },
-  { label:'QEdit', color:N.amber,  fn:e=>{e.stopPropagation();onQuickEdit(a)} },
-  { label:'Edit',  color:N.text2,  fn:e=>{e.stopPropagation();onEdit(a)} },
-  { label:'WA',    color:'#059669',fn:e=>{e.stopPropagation();onWAMsg(a)} },
-  { label:'Del',   color:N.rose,   fn:e=>{e.stopPropagation();onDelete(a.id)} },
-].map(b=>(
-  <button key={b.label} onClick={b.fn}
-    style={{ padding:'6px 10px', borderRadius:9, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:b.color, fontSize:10, fontWeight:700, cursor:'pointer', flex:1, textAlign:'center', transition:'box-shadow .12s' }}
-    onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-    onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
-  >{b.label}</button>
-))}
+    
+<div style={{ borderTop:`2px solid ${N.bg2}`, paddingTop:8 }}>
+  {actionBtn && (
+    <div style={{ marginBottom:6 }}>{actionBtn}</div>
+  )}
+  <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:5 }}>
+    {[
+      { label:'View',  color:N.sky,    fn:e=>{e.stopPropagation();onDetail(a)} },
+      { label:'QEdit', color:N.amber,  fn:e=>{e.stopPropagation();onQuickEdit(a)} },
+      { label:'Edit',  color:N.text2,  fn:e=>{e.stopPropagation();onEdit(a)} },
+      { label:'WA',    color:'#059669',fn:e=>{e.stopPropagation();onWAMsg(a)} },
+      { label:'Del',   color:N.rose,   fn:e=>{e.stopPropagation();onDelete(a.id)} },
+    ].map(b=>(
+      <button key={b.label} onClick={b.fn}
+        style={{ padding:'6px 4px', borderRadius:8, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:b.color, fontSize:10, fontWeight:700, cursor:'pointer', textAlign:'center', transition:'box-shadow .12s', width:'100%' }}
+        onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
+        onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
+      >{b.label}</button>
+    ))}
+  </div>
+</div>
         </div>
       </div>
-    </div>
   )
 }
 
@@ -2067,7 +2074,7 @@ export default function Admissions() {
       {waBlastApps && <WABlastModal apps={waBlastApps} onClose={()=>setWABlastApps(null)} />}
       {showCSVImport && <CSVImportModal onClose={()=>setShowCSVImport(false)} onImport={handleCSVImport} />}
 
-      <div style={{ padding:'0 16px 40px', fontFamily:"'Inter',system-ui,sans-serif", background:N.bg, minHeight:'100vh', color:N.text, transition:'background .2s' }}>
+      <div style={{ padding:'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background:N.bg, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
         <style>{`
   @keyframes spin { to { transform:rotate(360deg) } }
   @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(5,150,105,.18)} 50%{box-shadow:0 0 0 7px rgba(5,150,105,.06)} }
@@ -2354,7 +2361,7 @@ export default function Admissions() {
               </table>
             </div>
           ) : (
-            <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':isTablet?'repeat(2,1fr)':'repeat(auto-fill,minmax(340px,1fr))', gap:isMobile?12:14, alignItems:'start' }}>
+            <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':isTablet?'repeat(2,1fr)':'repeat(auto-fill,minmax(340px,1fr))', gap:isMobile?12:14, alignItems:'start', minWidth:0, width:'100%' }}>
               {filtered.map(a => (
                 <div key={a.id}>
                   {duplicateGCCs.has(a.gcc) && (
