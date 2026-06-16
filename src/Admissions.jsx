@@ -1383,8 +1383,8 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
     ))}
   </div>
 </div>
-        </div>
       </div>
+    </div>
   )
 }
 
