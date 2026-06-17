@@ -1,4 +1,18 @@
-//  LandingPage.jsx — GNSI Premium v5
+//  LandingPage.jsx — GNSI Premium v5 (FIXED)
+//  ════════════════════════════════════════════════════════════
+//  BUG FIXES APPLIED (v5.1):
+//  FIX #1  — localStorage → in-memory _gnsiLang (blocked in sandboxed iframes)
+//  FIX #2  — fetchAdmitCard: removed .single() → array-safe lookup (avoids PGRST116 crash)
+//  FIX #3  — fetchResult: removed .single() → array-safe lookup (avoids PGRST116 crash)
+//  FIX #4  — ppLogin: robust phone normalization using regex (was stripping wrong chars)
+//  FIX #5  — Countdown timer now reads window._deadline from loadSettings() dynamically
+//  FIX #6  — const rbSlides → let rbSlides (allows loadBanners to reassign after inject)
+//  FIX #7  — submitEnquiry: early return after Supabase success (WA was always opening)
+//  FIX #8  — Result/Admit portals: null-safe class/course display via filter(Boolean)
+//  FIX #9  — loadGallery: grid-row span 2 only applied when data.length > 1
+//  FIX #10 — getYouTubeThumb: added /shorts/ URL pattern
+//  FIX #14 — rbSlide: guard against empty rbSlides array on early call
+//  ════════════════════════════════════════════════════════════
 //  NEW FEATURES v5 (NTA-parity):
 //  1. Bilingual Hindi/English toggle
 //  2. Admit Card download portal
@@ -2626,9 +2640,10 @@ const sb=supabase.createClient(SURL,SKEY);
 let ppStu=null;
 
 // ═══ COUNTDOWN TIMER ═══
+// FIX #5: Read window._deadline (set by loadSettings) if available, fall back to hardcoded
 (function(){
-  const deadline=new Date('2026-06-30T23:59:59');
   function tick(){
+    const deadline=window._deadline||new Date('2026-06-30T23:59:59');
     const now=new Date(),diff=deadline-now;
     if(diff<=0){document.querySelector('.countdown-bar').innerHTML='<div style="color:var(--goldL);font-family:Rajdhani,sans-serif;font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:clamp(.82rem,2.2vw,.92rem)">⚑ Admissions for 2026–27 are now closed. Contact us for next session.</div>';return}
     const d=Math.floor(diff/86400000),h=Math.floor(diff%86400000/3600000),m=Math.floor(diff%3600000/60000),s=Math.floor(diff%60000/1000);
@@ -2696,7 +2711,7 @@ async function loadGallery(){
     const{data}=await sb.from('website_gallery').select('image_url,caption,category').order('sort_order').limit(5);
     if(!data||!data.length)return;
     const grid=document.getElementById('galleryGrid');if(!grid)return;
-    grid.innerHTML=data.map((img,i)=>\`<div class="gcell\${i===0?' style="grid-row:span 2;aspect-ratio:auto;min-height:280px"':''}">\${img.image_url?'<img src="'+img.image_url+'" alt="'+img.caption+'" loading="lazy">':''}<div class="gcell-lbl">\${img.caption||img.category||'Campus'}</div></div>\`).join('');
+    grid.innerHTML=data.map((img,i)=>\`<div class="gcell\${i===0 && data.length>1?' style="grid-row:span 2;aspect-ratio:auto;min-height:280px"':''}">\${img.image_url?'<img src="'+img.image_url+'" alt="'+img.caption+'" loading="lazy">':''}<div class="gcell-lbl">\${img.caption||img.category||'Campus'}</div></div>\`).join('');
   }catch(e){}
 }
 loadGallery();
@@ -2731,6 +2746,248 @@ async function loadRankers(){
   }catch(e){}
 }
 loadRankers();
+
+
+// ═══════════════════════════════════════════════════════════
+//  DYNAMIC LOADERS — sync with WebsiteTab.jsx
+// ═══════════════════════════════════════════════════════════
+
+let siteConfig = {}; // Global settings cache
+
+async function loadSettings() {
+  try {
+    const { data } = await sb.from('website_settings').select('key,value');
+    if (!data || !data.length) return;
+    siteConfig = {};
+    data.forEach(r => siteConfig[r.key] = r.value);
+
+    // Update countdown deadline
+    if (siteConfig.admission_deadline) {
+      const parsed = new Date(siteConfig.admission_deadline);
+      if (!isNaN(parsed)) window._deadline = parsed;
+    }
+
+    // Update ribbon stats
+    updateRibbonStat('Years of Excellence', siteConfig.stat_years);
+    updateRibbonStat('Students Trained', siteConfig.stat_students);
+    updateRibbonStat('Selection Rate', siteConfig.stat_rate);
+    updateRibbonStat('Officers Produced', siteConfig.stat_officers);
+    updateRibbonStat('Selected 2025–26', siteConfig.stat_selected);
+
+    // Update contact info
+    if (siteConfig.contact_phone) updatePhoneLinks(siteConfig.contact_phone);
+    if (siteConfig.contact_email) updateEmailLinks(siteConfig.contact_email);
+    if (siteConfig.contact_address) updateAddress(siteConfig.contact_address);
+
+    // Update social links
+    if (siteConfig.social_facebook) updateSocialLinks('facebook.com', siteConfig.social_facebook);
+    if (siteConfig.social_youtube) updateSocialLinks('youtube.com', siteConfig.social_youtube);
+    if (siteConfig.social_instagram) updateSocialLinks('instagram.com', siteConfig.social_instagram);
+    if (siteConfig.social_whatsapp_channel) updateSocialLinks('whatsapp.com', siteConfig.social_whatsapp_channel);
+
+    // Update founder quote
+    if (siteConfig.founder_quote) {
+      const fq = document.querySelector('.founder-quote');
+      if (fq) fq.innerHTML = '"' + siteConfig.founder_quote + '"';
+    }
+
+    // Update brochure URL
+    if (siteConfig.brochure_url) {
+      document.querySelectorAll('a[download]').forEach(a => {
+        if (a.href.includes('GNSI-Brochure') || a.href.includes('brochure')) a.href = siteConfig.brochure_url;
+      });
+    }
+
+    // Update Google review score
+    if (siteConfig.google_review_score) {
+      const sc = document.querySelector('.score-num');
+      if (sc) sc.textContent = siteConfig.google_review_score;
+    }
+    if (siteConfig.google_review_count) {
+      const rc = document.querySelector('.score-count');
+      if (rc) rc.textContent = 'Based on ' + siteConfig.google_review_count + ' Reviews';
+    }
+
+  } catch (e) { console.warn('Settings load failed:', e.message); }
+}
+
+function updateRibbonStat(label, value) {
+  if (!value) return;
+  document.querySelectorAll('.ribbon-stat').forEach(stat => {
+    const lbl = stat.querySelector('span');
+    if (lbl && lbl.textContent.trim() === label) {
+      const num = stat.querySelector('strong');
+      if (num) num.innerHTML = '<span class="count-up" data-target="' + parseInt(value) + '" data-suffix="' + value.replace(/[0-9]/g, '') + '">' + value + '</span>';
+    }
+  });
+}
+
+function updatePhoneLinks(phone) {
+  const clean = phone.replace(/\s/g, '');
+  document.querySelectorAll('a[href^="tel:"]').forEach(a => { a.href = 'tel:' + clean; });
+  document.querySelectorAll('.top-bar-item').forEach(el => {
+    if (el.textContent.includes('89742') || el.textContent.includes('+91')) {
+      const span = el.querySelector('span:last-child');
+      if (span) span.textContent = phone;
+    }
+  });
+}
+
+function updateEmailLinks(email) {
+  document.querySelectorAll('a[href^="mailto:"]').forEach(a => { a.href = 'mailto:' + email; a.textContent = email; });
+}
+
+function updateAddress(addr) {
+  document.querySelectorAll('.top-bar-item').forEach(el => {
+    if (el.textContent.includes('Khangabok')) {
+      const spans = el.querySelectorAll('span');
+      spans.forEach(s => { if (s.dataset && (s.dataset.en || s.dataset.hi)) s.textContent = addr; });
+    }
+  });
+}
+
+function updateSocialLinks(oldDomain, newUrl) {
+  document.querySelectorAll('a[href*="' + oldDomain + '"]').forEach(a => a.href = newUrl);
+}
+
+async function loadBanners() {
+  try {
+    const { data } = await sb.from('website_result_banners').select('*').eq('is_active', true).order('sort_order').limit(5);
+    if (!data || !data.length) return;
+    const track = document.getElementById('rbTrack');
+    if (!track) return;
+
+    track.innerHTML = data.map(b => {
+      const hasImg = b.image_url && b.image_url.startsWith('http');
+      const bgStyle = !hasImg ? 'style="background:linear-gradient(135deg,var(--navy3),var(--navy))"' : '';
+      const imgTag = hasImg
+        ? '<img src="' + b.image_url + '" alt="' + b.title + '" onerror="this.style.display=\'none\';this.parentElement.style.background=\'linear-gradient(135deg,var(--navy3),var(--navy))\'">'
+        : '';
+      const overlayStyle = !hasImg ? 'style="background:linear-gradient(90deg,rgba(11,31,58,.98),rgba(11,31,58,.7))"' : '';
+      return \`<div class="result-banner-slide" \${bgStyle}>\`
+        + imgTag
+        + \`<div class="result-banner-overlay" \${overlayStyle}>
+            <div class="result-banner-content">
+              <div class="result-banner-year">\${b.year_label || '🏆 Result'}</div>
+              <div class="result-banner-title">\${b.title}</div>
+              <div class="result-banner-sub">\${b.subtitle || ''}</div>
+            </div>
+          </div>
+        </div>\`;
+    }).join('');
+
+    rbIdx = 0;
+    rbSlides = document.querySelectorAll('.result-banner-slide');
+    rbDots_();
+  } catch (e) { console.warn('Banners load failed:', e.message); }
+}
+
+async function loadBlog() {
+  try {
+    const { data } = await sb.from('website_blog').select('*').eq('is_published', true).order('published_date', { ascending: false }).limit(3);
+    if (!data || !data.length) return;
+    const grid = document.querySelector('.blog-grid');
+    if (!grid) return;
+
+    grid.innerHTML = data.map(p => {
+      const icons = { 'Results': '🏆', 'Admissions': '📋', 'Exam Tips': '📝', 'Events': '🎉', 'Announcements': '📢' };
+      const icon = icons[p.category] || '📰';
+      return \`<div class="blog-card reveal-scale">
+        <div class="blog-thumb">\${icon}<span class="blog-cat">\${p.category || 'News'}</span>\${p.image_url ? \`<img src="\${p.image_url}" alt="\${p.title}" loading="lazy">\` : ''}</div>
+        <div class="blog-body">
+          <div class="blog-date">\${fmtDate(p.published_date)}</div>
+          <h3>\${p.title}</h3>
+          <p>\${(p.body || '').slice(0, 120)}\${(p.body || '').length > 120 ? '…' : ''}</p>
+          <a href="#\${p.category === 'Admissions' ? 'enquiry' : 'blog'}" class="blog-read">Read More →</a>
+        </div>
+      </div>\`;
+    }).join('');
+
+    grid.querySelectorAll('.reveal-scale').forEach(el => ro.observe(el));
+  } catch (e) { console.warn('Blog load failed:', e.message); }
+}
+
+async function loadReviews() {
+  try {
+    const { data } = await sb.from('website_reviews').select('*').eq('is_featured', true).order('review_date', { ascending: false }).limit(4);
+    if (!data || !data.length) return;
+    const grid = document.querySelector('.reviews-grid');
+    if (!grid) return;
+
+    grid.innerHTML = data.map(r => {
+      const initial = (r.reviewer_name || 'G')[0].toUpperCase();
+      const stars = '★'.repeat(Math.max(1, Math.min(5, r.rating || 5)));
+      return \`<div class="review-card reveal">
+        <div class="review-top"><div class="review-av">\${initial}</div><div><div class="review-name">\${r.reviewer_name}</div><div class="review-date">\${fmtDate(r.review_date)}</div></div></div>
+        <div class="review-stars">\${stars}</div>
+        <p class="review-text">"\${(r.review_text || '').slice(0, 200)}\${(r.review_text || '').length > 200 ? '…' : ''}"</p>
+      </div>\`;
+    }).join('');
+
+    grid.querySelectorAll('.reveal').forEach(el => ro.observe(el));
+  } catch (e) { console.warn('Reviews load failed:', e.message); }
+}
+
+async function loadVideos() {
+  try {
+    const { data } = await sb.from('website_videos').select('*').order('sort_order').limit(5);
+    if (!data || !data.length) return;
+    const list = document.querySelector('.video-list');
+    if (!list) return;
+
+    const viewAllBtn = list.querySelector('div:last-child');
+    const items = data.map(v => {
+      const thumb = getYouTubeThumb(v.youtube_url);
+      return \`<div class="video-item" onclick="loadMainVideo('\${v.youtube_url || ''}')">
+        <div class="video-thumb">\${thumb ? \`<img src="\${thumb}" style="width:100%;height:100%;object-fit:cover" alt="">\` : '▶'}</div>
+        <div><div class="video-item-title">\${v.title}</div><div class="video-item-sub">\${v.description || v.category || 'Video'}</div></div>
+      </div>\`;
+    }).join('');
+
+    list.innerHTML = items + (viewAllBtn ? viewAllBtn.outerHTML : \`
+      <div style="margin-top:1rem">
+        <a href="https://youtube.com/@gnsikhangabok" target="_blank" class="btn btn-out" style="display:inline-flex;border-color:rgba(255,0,0,.5);color:#f87171;">▶ View All Videos on YouTube →</a>
+      </div>\`);
+  } catch (e) { console.warn('Videos load failed:', e.message); }
+}
+
+function getYouTubeThumb(url) {
+  if (!url) return null;
+  // FIX #10: Added /shorts/ URL pattern support
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&\n?#]+)/);
+  return m ? \`https://img.youtube.com/vi/\${m[1]}/mqdefault.jpg\` : null;
+}
+
+async function loadPapers() {
+  try {
+    const { data } = await sb.from('website_papers').select('*').order('exam_type').order('year', { ascending: false });
+    if (!data || !data.length) return;
+    const grid = document.querySelector('.papers-grid');
+    if (!grid) return;
+
+    const types = { 'NVS': 'nvs', 'Sainik': 'sainik', 'RMS': 'rms', 'GNSI Mock': 'nvs' };
+    const titles = { 'NVS': 'Navodaya Vidyalaya (NVS)', 'Sainik': 'Sainik School (AISSEE)', 'RMS': 'Rashtriya Military School (RMS)', 'GNSI Mock': 'GNSI Mock Tests' };
+    const subs = { 'NVS': 'JNVST · Class 6 & Class 9 entry', 'Sainik': 'All India Sainik Schools Entrance · Class 6 & 9', 'RMS': 'RMS CET · Class 6 & Class 9', 'GNSI Mock': 'Internal Practice Papers' };
+
+    const grouped = {};
+    data.forEach(p => { const k = p.exam_type || 'NVS'; if (!grouped[k]) grouped[k] = []; grouped[k].push(p); });
+
+    grid.innerHTML = Object.entries(grouped).map(([type, papers]) => {
+      const cls = types[type] || 'nvs';
+      return \`<div class="papers-card \${cls} reveal-scale">
+        <h3>\${titles[type] || type}</h3>
+        <div class="papers-sub">\${subs[type] || ''}</div>
+        \${papers.slice(0, 6).map(p => \`<a href="\${p.pdf_url || '#'}" class="paper-link" target="_blank" download>
+          <span class="paper-name">\${p.title}</span><span class="paper-dl">⬇</span>
+        </a>\`).join('')}
+        <button class="papers-cta" onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})">Get More Papers — Enquire →</button>
+        <p class="papers-note">Files activate once uploaded to Supabase Storage gnsi-public/papers/</p>
+      </div>\`;
+    }).join('');
+
+    grid.querySelectorAll('.reveal-scale').forEach(el => ro.observe(el));
+  } catch (e) { console.warn('Papers load failed:', e.message); }
+}
 
 function set(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
 function fmtDate(d){if(!d)return'—';return new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});}
@@ -2779,6 +3036,12 @@ document.querySelectorAll('.reveal,.reveal-left,.reveal-right,.reveal-scale,.bar
 
 window.addEventListener('load',()=>{
   document.querySelectorAll('.stats-bar .count-up').forEach(c=>{if(!c.dataset.done){c.dataset.done='1';animateCounter(c)}});
+  loadSettings();
+  loadBanners();
+  loadBlog();
+  loadReviews();
+  loadVideos();
+  loadPapers();
 });
 
 document.querySelectorAll('.faq-q').forEach(q=>{
@@ -2811,6 +3074,7 @@ async function submitEnquiry(){
     ['fStuName','fParName','fPhone','fClass','fMsg'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('fCourse').selectedIndex=0;
     btn.textContent='Submit Enquiry →';btn.disabled=false;
+    return; // FIX #7: Early return so WhatsApp fallback only fires on Supabase error
   }catch(e){
     const waMsg=\`Hello GNSI, I am enquiring about admission.\\nStudent: \${sn}\\nParent: \${pn}\\nPhone: \${ph}\\nCourse: \${co||'Not selected'}\\nMessage: \${ms}\`;
     window.open('https://wa.me/918974298074?text='+encodeURIComponent(waMsg),'_blank');
@@ -2830,7 +3094,8 @@ async function ppLogin(){
   if(!phone||!sid){err.textContent='Please enter both phone number and Student ID.';err.style.display='block';return}
   btn.disabled=true;btn.textContent='Verifying…';
   try{
-    const pn=phone.replace(/^\\+91/,'').replace(/^0/,'');
+    // FIX #4: Robust phone normalization — strip all spaces and non-digits, then remove 91/0 prefix
+    const pn=phone.replace(/\s/g,'').replace(/\D/g,'').replace(/^91(?=\d{10}$)/,'').replace(/^0(?=\d{10}$)/,'');
     const{data:rows,error}=await sb.from('students').select('*').or(\`student_code.eq.\${sid.toUpperCase()},roll.eq.\${sid}\`);
     if(error)throw error;
     const matched=(rows||[]).find(s=>{const sp=(s.parent_phone||'').replace(/\\s/g,'').replace(/^\\+91/,'').replace(/^0/,'');return sp===pn});
@@ -2928,21 +3193,17 @@ async function ppLoadAlerts(){
 }
 
 // ═══ LANGUAGE TOGGLE ═══
+// FIX #1: Use in-memory variable instead of localStorage (blocked in sandboxed iframes)
+let _gnsiLang = 'en';
 function setLang(lang, btn) {
+  _gnsiLang = lang;
   document.body.classList.toggle('hi', lang === 'hi');
   document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  localStorage.setItem('gnsi_lang', lang);
 }
-// Restore saved language
+// Default to English on init (in-memory only — no localStorage)
 (function() {
-  const saved = localStorage.getItem('gnsi_lang');
-  if (saved === 'hi') {
-    document.body.classList.add('hi');
-    const btns = document.querySelectorAll('.lang-btn');
-    if (btns[0]) btns[0].classList.remove('active');
-    if (btns[1]) btns[1].classList.add('active');
-  }
+  document.body.classList.remove('hi');
 })();
 
 // ═══ ADMIT CARD PORTAL ═══
@@ -2953,13 +3214,16 @@ async function fetchAdmitCard() {
   const data = document.getElementById('acData');
   if (!roll) { res.className = 'portal-result show err'; data.innerHTML = '<p style="color:#f87171;font-family:Rajdhani,sans-serif;font-size:.85rem">Please enter your roll number.</p>'; return; }
   try {
-    const { data: stu, error } = await sb.from('students').select('*').or(\`student_code.eq.\${roll.toUpperCase()},roll.eq.\${roll}\`).single();
+    // FIX #2: Removed .single() — it throws PGRST116 if 0 or 2+ rows found; handle array instead
+    const { data: rows_ac, error } = await sb.from('students').select('*').or(\`student_code.eq.\${roll.toUpperCase()},roll.eq.\${roll}\`);
+    const stu = rows_ac && rows_ac.length ? rows_ac[0] : null;
     if (error || !stu) { res.className = 'portal-result show err'; data.innerHTML = '<p style="color:#f87171;font-family:Rajdhani,sans-serif;font-size:.85rem">Student not found. Please check your roll number.</p>'; return; }
     res.className = 'portal-result show ok';
     data.innerHTML = [
       ['Student Name', stu.name || '—'],
       ['Roll Number', roll.toUpperCase()],
-      ['Class / Course', stu.class_name || stu.course || '—'],
+      // FIX #8: Filter nulls before joining to avoid 'Class 5 null'
+      ['Class / Course', [stu.class_name, stu.course].filter(Boolean).join(' · ') || '—'],
       ['Exam', exam || 'Sunday Mock Test'],
       ['Venue', 'GNSI Campus, Khangabok, Thoubal'],
       ['Reporting Time', '08:00 AM'],
@@ -3012,14 +3276,17 @@ async function fetchResult() {
   const data = document.getElementById('rcData');
   if (!roll) { res.className = 'portal-result show err'; data.innerHTML = '<p style="color:#f87171;font-family:Rajdhani,sans-serif;font-size:.85rem">Please enter your roll number.</p>'; return; }
   try {
-    const { data: stu } = await sb.from('students').select('*,exam_marks(marks_obtained,max_marks,exams(name,exam_date))').or(\`student_code.eq.\${roll.toUpperCase()},roll.eq.\${roll}\`).single();
+    // FIX #3: Removed .single() — handle array to avoid PGRST116 crash
+    const { data: rows_rc } = await sb.from('students').select('*,exam_marks(marks_obtained,max_marks,exams(name,exam_date))').or(\`student_code.eq.\${roll.toUpperCase()},roll.eq.\${roll}\`);
+    const stu = rows_rc && rows_rc.length ? rows_rc[0] : null;
     if (!stu) { res.className = 'portal-result show err'; data.innerHTML = '<p style="color:#f87171;font-family:Rajdhani,sans-serif;font-size:.85rem">Student not found. Please verify your roll number.</p>'; return; }
     const marks = stu.exam_marks || [];
     res.className = 'portal-result show ok';
     let html = [
       ['Student Name', stu.name || '—'],
       ['Roll Number', roll.toUpperCase()],
-      ['Class / Course', stu.class_name || stu.course || '—'],
+      // FIX #8: Filter nulls before joining to avoid 'Class 5 null'
+      ['Class / Course', [stu.class_name, stu.course].filter(Boolean).join(' · ') || '—'],
     ].map(([l, v]) => \`<div class="portal-row"><span>\${l}</span><strong>\${v}</strong></div>\`).join('');
     if (marks.length) {
       html += '<div style="margin-top:.8rem;font-family:Rajdhani,sans-serif;font-weight:700;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:rgba(184,146,42,.6);margin-bottom:.3rem">Recent Exam Results</div>';
@@ -3070,14 +3337,16 @@ async function submitGrievance() {
 
 // ═══ RESULT BANNER SLIDER ═══
 let rbIdx=0;
-const rbSlides=document.querySelectorAll('.result-banner-slide');
+// FIX #6: Changed const→let so loadBanners() can reassign after dynamic injection
+let rbSlides=document.querySelectorAll('.result-banner-slide');
 function rbDots_(){
   const c=document.getElementById('rbDots');if(!c)return;
   c.innerHTML='';
   rbSlides.forEach((_,i)=>{const d=document.createElement('div');d.className='rb-dot'+(i===rbIdx?' active':'');d.onclick=()=>rbGoTo(i);c.appendChild(d)});
 }
 function rbGoTo(i){rbIdx=i;const t=document.getElementById('rbTrack');if(t)t.style.transform=\`translateX(-\${i*100}%)\`;rbDots_();}
-function rbSlide(d){rbGoTo((rbIdx+d+rbSlides.length)%rbSlides.length)}
+// FIX #14: Guard against empty rbSlides (before loadBanners populates)
+function rbSlide(d){if(!rbSlides||!rbSlides.length)return;rbGoTo((rbIdx+d+rbSlides.length)%rbSlides.length)}
 rbDots_();setInterval(()=>rbSlide(1),5000);
 
 // ═══ SYLLABUS TABS ═══
