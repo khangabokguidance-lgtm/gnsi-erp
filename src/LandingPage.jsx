@@ -33,8 +33,8 @@
 // ============================================================
 import { useEffect, useRef } from 'react'
 
-const SUPA_URL = 'https://pwrldrngqxbvwfztxxrd.supabase.co'
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3cmxkcm5ncXhidndmenR4eHJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTA0MDYzNzQsImV4cCI6MjAyNTk4MjM3NH0.LPVvDkwRcFHGMXEcr_aDm_3J4Zwy0D4WxUwYAWCFUMs'
+const SUPA_URL = 'https://hiqaqdfhopuakaydfkgb.supabase.co'
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpcWFxZGZob3B1YWtheWRma2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1Mzc4MzMsImV4cCI6MjA5MDExMzgzM30.kJ7dL57alviRjOLc0BsEk9eS_90wwQahvQfYD2GLZ68'
 
 function getLandingHTML() {
   return `<!DOCTYPE html>
@@ -51,7 +51,7 @@ function getLandingHTML() {
 <meta property="og:description" content="Manipur's premier coaching for NVS, Sainik School & RMS. 95% selection rate. 200+ officers produced. Admissions open 2026–27."/>
 <meta property="og:type" content="website"/>
 <meta property="og:url" content="https://guidancekhangabok.in"/>
-<meta property="og:image" content="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"/>
+<meta property="og:image" content="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
 <meta property="og:site_name" content="GNSI Khangabok"/>
@@ -59,7 +59,7 @@ function getLandingHTML() {
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="GNSI — Guidance Navodaya & Sainik Institute"/>
 <meta name="twitter:description" content="Manipur's premier coaching for NVS, Sainik School & RMS. 95% selection rate."/>
-<meta name="twitter:image" content="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"/>
+<meta name="twitter:image" content="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"/>
 <meta name="theme-color" content="#0B1F3A"/>
 <link rel="canonical" href="https://guidancekhangabok.in"/>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230B1F3A'/><text y='.9em' font-size='60' x='50%' text-anchor='middle' fill='%23B8922A' font-family='Georgia'>G</text></svg>"/>
@@ -74,7 +74,7 @@ function getLandingHTML() {
   "name": "Guidance Navodaya & Sainik Institute",
   "alternateName": "GNSI Khangabok",
   "url": "https://guidancekhangabok.in",
-  "logo": "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg",
+  "logo": "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg",
   "description": "Manipur's premier residential coaching institute for NVS, Sainik School and RMS entrance examinations.",
   "address": {
     "@type": "PostalAddress",
@@ -1022,7 +1022,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
   <div class="result-banner-track" id="rbTrack">
     <!-- Slide 1 -->
     <div class="result-banner-slide">
-      <img src="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/result-banner-2025.jpg" alt="GNSI Result 2025" onerror="this.style.display='none'">
+      <img src="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/result-banner-2025.jpg" alt="GNSI Result 2025" onerror="this.style.display='none'">
       <div class="result-banner-overlay">
         <div class="result-banner-content">
           <div class="result-banner-year">🏆 Result 2025–26</div>
@@ -1033,7 +1033,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
     </div>
     <!-- Slide 2 -->
     <div class="result-banner-slide">
-      <img src="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/result-banner-sainik.jpg" alt="Sainik School Result" onerror="this.style.display='none'">
+      <img src="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/result-banner-sainik.jpg" alt="Sainik School Result" onerror="this.style.display='none'">
       <div class="result-banner-overlay">
         <div class="result-banner-content">
           <div class="result-banner-year">⭐ Sainik School 2025</div>
@@ -1044,7 +1044,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
     </div>
     <!-- Slide 3 -->
     <div class="result-banner-slide">
-      <img src="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/result-banner-nvs.jpg" alt="NVS Result" onerror="this.style.display='none'">
+      <img src="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/result-banner-nvs.jpg" alt="NVS Result" onerror="this.style.display='none'">
       <div class="result-banner-overlay">
         <div class="result-banner-content">
           <div class="result-banner-year">📚 NVS 2025</div>
@@ -1138,7 +1138,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
       </div>
       <!-- ② BROCHURE + FREE DEMO -->
       <div class="hero-quick">
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" class="btn-brochure" target="_blank" download>📄 Download Brochure</a>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" class="btn-brochure" target="_blank" download>📄 Download Brochure</a>
         <button class="btn-demo" onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})">🎯 Book Free Demo Class</button>
         <a href="#fee-payment" class="btn-fee btn" style="padding:.6rem 1.2rem;">💳 Pay Fee Online</a>
       </div>
@@ -1630,19 +1630,19 @@ footer a:hover{color:var(--goldL);padding-left:4px}
       <div class="papers-card nvs reveal-scale">
         <h3>Navodaya Vidyalaya (NVS)</h3>
         <div class="papers-sub">JNVST · Class 6 Entry</div>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">JNVST Class 6 — 2025</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2024.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2024.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">JNVST Class 6 — 2024</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2023.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2023.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">JNVST Class 6 — 2023</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2025.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2025.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">JNVST Class 9 — 2025</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2024.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2024.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">JNVST Class 9 — 2024</span><span class="paper-dl">⬇</span>
         </a>
         <button class="papers-cta" onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})">Get More Papers — Enquire →</button>
@@ -1652,19 +1652,19 @@ footer a:hover{color:var(--goldL);padding-left:4px}
       <div class="papers-card sainik reveal-scale">
         <h3>Sainik School (AISSEE)</h3>
         <div class="papers-sub">All India Sainik Schools Entrance · Class 6 & 9</div>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2025.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2025.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">AISSEE Class 6 — 2025</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2024.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2024.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">AISSEE Class 6 — 2024</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2023.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2023.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">AISSEE Class 6 — 2023</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2025.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2025.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">AISSEE Class 9 — 2025</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2024.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2024.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">AISSEE Class 9 — 2024</span><span class="paper-dl">⬇</span>
         </a>
         <button class="papers-cta" onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})">Get More Papers — Enquire →</button>
@@ -1674,16 +1674,16 @@ footer a:hover{color:var(--goldL);padding-left:4px}
       <div class="papers-card rms reveal-scale">
         <h3>Rashtriya Military School (RMS)</h3>
         <div class="papers-sub">RMS CET · Class 6 & Class 9</div>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2025.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2025.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">RMS CET Class 6 — 2025</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2024.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2024.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">RMS CET Class 6 — 2024</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2025.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2025.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">RMS CET Class 9 — 2025</span><span class="paper-dl">⬇</span>
         </a>
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2024.pdf" class="paper-link" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2024.pdf" class="paper-link" target="_blank" download>
           <span class="paper-name">RMS CET Class 9 — 2024</span><span class="paper-dl">⬇</span>
         </a>
         <button class="papers-cta" onclick="window.open('https://wa.me/918974298074?text=Hello%20GNSI%2C%20please%20send%20me%20RMS%20previous%20year%20papers.','_blank')">Request More via WhatsApp →</button>
@@ -1747,7 +1747,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
           </ul>
         </div>
       </div>
-      <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class6-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download NVS Class 6 Syllabus PDF</a>
+      <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class6-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download NVS Class 6 Syllabus PDF</a>
     </div>
 
     <!-- NVS Class 9 -->
@@ -1782,7 +1782,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
           </ul>
         </div>
       </div>
-      <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class9-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download NVS Class 9 Syllabus PDF</a>
+      <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class9-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download NVS Class 9 Syllabus PDF</a>
     </div>
 
     <!-- Sainik Class 6 -->
@@ -1830,7 +1830,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
           </ul>
         </div>
       </div>
-      <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class6-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download Sainik Class 6 Syllabus PDF</a>
+      <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class6-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download Sainik Class 6 Syllabus PDF</a>
     </div>
 
     <!-- Sainik Class 9 -->
@@ -1873,7 +1873,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
           </ul>
         </div>
       </div>
-      <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class9-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download Sainik Class 9 Syllabus PDF</a>
+      <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class9-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download Sainik Class 9 Syllabus PDF</a>
     </div>
 
     <!-- RMS -->
@@ -1916,7 +1916,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
           </ul>
         </div>
       </div>
-      <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/rms-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download RMS Syllabus PDF</a>
+      <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/rms-syllabus.pdf" class="syl-download" target="_blank" download>📥 Download RMS Syllabus PDF</a>
     </div>
   </div>
 </section>
@@ -2282,7 +2282,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
         </tbody>
       </table>
     </div>
-    <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Exam-Calendar-2026-27.pdf" class="cal-download" target="_blank" download>
+    <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Exam-Calendar-2026-27.pdf" class="cal-download" target="_blank" download>
       📥 <span data-en>Download Full Exam Calendar PDF</span><span data-hi>पूर्ण परीक्षा कैलेंडर PDF डाउनलोड करें</span>
     </a>
   </div>
@@ -2392,7 +2392,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
         <div class="app-feat">📰 <span data-en>Notice Board</span><span data-hi>सूचना पट्ट</span></div>
       </div>
       <div class="app-btns">
-        <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-app.apk" class="app-btn" target="_blank" download>
+        <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/gnsi-app.apk" class="app-btn" target="_blank" download>
           <span class="app-btn-icon">▲</span>
           <div class="app-btn-txt">
             <small>Download for</small>
@@ -2537,7 +2537,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
   <p>Join a disciplined, technology-enabled academic environment built to prepare students for elite school entrance success. Over 200 officers produced — yours could be the next name on that roll.</p>
   <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;position:relative">
     <a href="#enquiry" class="btn btn-gold">Apply / Enquire →</a>
-    <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" class="btn btn-out" download target="_blank">📄 Download Brochure</a>
+    <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" class="btn btn-out" download target="_blank">📄 Download Brochure</a>
     <button onclick="openPP()" class="btn btn-grn">Parents Portal →</button>
     <a href="#fee-payment" class="btn btn-fee">💳 Pay Fee →</a>
     <a href="https://wa.me/918974298074" class="btn btn-wa" target="_blank">WhatsApp →</a>
@@ -2576,7 +2576,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
       <a href="#courses">Foundation Programme</a>
       <a href="#courses">Combined Course</a>
       <a href="#enquiry">Apply Now</a>
-      <a href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" target="_blank" download>📄 Download Brochure</a>
+      <a href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" target="_blank" download>📄 Download Brochure</a>
     </div>
     <div>
       <h4>Contact</h4>
@@ -2661,7 +2661,8 @@ function loadMainVideo(url){
   const embed=document.getElementById('mainVideoEmbed');
   if(ph)ph.remove();
   const iframe=document.createElement('iframe');
-  iframe.src=url+'&autoplay=1';
+  const sep=url.includes('?')?'&':'?'; // FIX #15: avoid malformed URL when embed URL has no query string yet
+  iframe.src=url+sep+'autoplay=1';
   iframe.allow='accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture';
   iframe.allowFullscreen=true;
   iframe.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;border:0';
@@ -2806,6 +2807,45 @@ async function loadSettings() {
     if (siteConfig.google_review_count) {
       const rc = document.querySelector('.score-count');
       if (rc) rc.textContent = 'Based on ' + siteConfig.google_review_count + ' Reviews';
+    }
+    if (siteConfig.google_review_url) {
+      document.querySelectorAll('a[href*="g.page"]').forEach(a => a.href = siteConfig.google_review_url);
+    }
+
+    // App download links
+    if (siteConfig.app_apk_url) {
+      document.querySelectorAll('a[download][href*="gnsi-app.apk"], a[download][href*=".apk"]').forEach(a => a.href = siteConfig.app_apk_url);
+    }
+    if (siteConfig.play_store_url) {
+      document.querySelectorAll('a[href*="play.google.com"]').forEach(a => a.href = siteConfig.play_store_url);
+    }
+
+    // Batch start date (shown in scholarship test-dates card + events section, both currently hardcoded text — safest minimal wire-up is the data attribute consumers can opt into later)
+    if (siteConfig.batch_start_date) {
+      window._batchStartDate = siteConfig.batch_start_date;
+    }
+
+    // Founder bio (appends as a paragraph after the existing founder quote, only if provided)
+    if (siteConfig.founder_bio) {
+      const fb = document.querySelector('.founder-body') || document.querySelector('.founder-quote')?.parentElement;
+      if (fb && !document.getElementById('founderBioInjected')) {
+        const p = document.createElement('p');
+        p.id = 'founderBioInjected';
+        p.style.cssText = 'color:var(--slate);line-height:1.9;margin-bottom:1rem;font-size:clamp(0.9rem,2.4vw,0.95rem)';
+        p.textContent = siteConfig.founder_bio;
+        fb.appendChild(p);
+      }
+    }
+
+    // Fee payment details (UPI / bank) — populate the fee-payment section if elements with these IDs exist
+    if (siteConfig.upi_id) {
+      document.querySelectorAll('[data-upi-id]').forEach(el => el.textContent = siteConfig.upi_id);
+    }
+    if (siteConfig.bank_name || siteConfig.account_number || siteConfig.ifsc_code) {
+      const bankEl = document.querySelector('[data-bank-details]');
+      if (bankEl) {
+        bankEl.textContent = [siteConfig.bank_name, siteConfig.account_number, siteConfig.ifsc_code].filter(Boolean).join(' · ');
+      }
     }
 
   } catch (e) { console.warn('Settings load failed:', e.message); }
