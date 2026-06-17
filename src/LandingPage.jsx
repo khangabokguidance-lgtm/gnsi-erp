@@ -79,8 +79,8 @@ function getLandingHTML() {
   --red:#8B1A1A;--green:#1A5C2A;--wa:#25D366;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth;font-size:16px}
-body{font-family:'Source Sans 3',sans-serif;background:var(--white);color:var(--navy);overflow-x:hidden}
+html{scroll-behavior:smooth;font-size:clamp(15px,2.2vw,18px)}
+body{font-family:'Source Sans 3',sans-serif;background:var(--white);color:var(--navy);overflow-x:hidden;font-size:clamp(0.95rem,2.5vw,1.05rem)}
 h1,h2,h3,h4,h5{font-family:'EB Garamond',serif;line-height:1.1}
 a{text-decoration:none;color:inherit}
 img{max-width:100%;display:block}
@@ -520,6 +520,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 .pp-empty p{font-family:'Rajdhani',sans-serif;font-size:.75rem;letter-spacing:.1em;text-transform:uppercase}
 
 @media(max-width:900px){
+  html{font-size:clamp(14px,4vw,16px)}
   .hero-wrap,.about-grid,.enquiry-grid,.founder-grid{grid-template-columns:1fr}
   .footer-grid{grid-template-columns:1fr 1fr}
   .nav-links{display:none}
@@ -532,9 +533,13 @@ footer a:hover{color:var(--goldL);padding-left:4px}
   #stickyBar p{display:none}
 }
 @media(max-width:520px){
+  html{font-size:clamp(13px,4.5vw,15px)}
   .footer-grid{grid-template-columns:1fr}
   .hero-btns{flex-direction:column}
   .courses-grid{grid-template-columns:1fr}
+  .ribbon-grid{grid-template-columns:repeat(2,1fr)}
+  .stats-bar{gap:.6rem}
+  .stat-item{padding-right:1rem}
 }
 </style>
 </head>
