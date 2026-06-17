@@ -1,7 +1,5 @@
-javascript
-
 // ============================================================
-//  WebsiteTab.jsx — GNSI Website Manager v2
+//  LandingPage.jsx — GNSI Website Manager v2
 //  Manages ALL landing page v5 sections:
 //  ① Enquiries Inbox (with grievance tickets)
 //  ② Public Notices
