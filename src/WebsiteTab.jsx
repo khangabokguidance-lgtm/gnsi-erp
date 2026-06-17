@@ -1,5 +1,3 @@
-javascript
-
 // ============================================================
 //  WebsiteTab.jsx — GNSI Website Manager v2
 //  Manages ALL landing page v5 sections:
