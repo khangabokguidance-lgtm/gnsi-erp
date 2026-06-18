@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import {
   getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
-  getLiveKPIs, submitEnquiry, submitScholarRegistration, submitGrievance
+  getLiveKPIs, getEvents, submitEnquiry, submitScholarRegistration, submitGrievance
 } from './websiteApi';
 
 // TODO: consider moving to Supabase storage for consistency with other site assets
@@ -292,6 +292,36 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
       window.loadMainVideo(videos[0].youtube_url);
     }
   } catch (e) { console.error('Videos load failed:', e); }
+})();
+
+// ---- 7b. EVENTS & SCHEDULE (into #eventsListEl) ----
+(async () => {
+  const list = document.getElementById('eventsListEl');
+  if (!list) return;
+  try {
+    const events = await getEvents();
+    if (!events.length) {
+      list.innerHTML = '<p style="color:var(--mist);font-family:\'Rajdhani\',sans-serif;font-size:.85rem;letter-spacing:.04em;padding:.5rem 0">No upcoming events scheduled right now — check back soon.</p>';
+      return;
+    }
+    const monthAbbr = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    list.innerHTML = events.map(ev => {
+      const d = new Date(ev.event_date + 'T00:00:00');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = monthAbbr[d.getMonth()];
+      return `
+        <div class="event-card reveal">
+          <div class="event-date-block">
+            <div class="day">${day}</div>
+            <div class="month">${month}</div>
+          </div>
+          <div class="event-body">
+            <h3>${escapeHtml(ev.title)}</h3>
+            ${ev.description ? `<span>${escapeHtml(ev.description)}</span>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) { console.error('Events load failed:', e); }
 })();
 
 // ---- 8. QUESTION PAPERS (grouped by exam_type, into #papersGrid) ----
@@ -2337,6 +2367,7 @@ window.submitGrievance = async () => {
         <div className="rule-line" />
       </div>
       <div
+        id="eventsListEl"
         style={{
           display: "flex",
           flexDirection: "column",
@@ -2344,58 +2375,7 @@ window.submitGrievance = async () => {
           maxWidth: 680
         }}
       >
-        <div className="event-card reveal">
-          <div className="event-date-block">
-            <div className="day">01</div>
-            <div className="month">Jul</div>
-          </div>
-          <div className="event-body">
-            <h3>Summer Batch Begins</h3>
-            <span>
-              New session commencing — fresh admissions welcome. Hostel and day
-              scholar options available.
-            </span>
-          </div>
-        </div>
-        <div className="event-card reveal">
-          <div className="event-date-block">
-            <div className="day">22</div>
-            <div className="month">Jun</div>
-          </div>
-          <div className="event-body">
-            <h3>Sunday Mock Test</h3>
-            <span>
-              Weekly NVS &amp; Sainik School mock exam series. Open to all
-              enrolled students.
-            </span>
-          </div>
-        </div>
-        <div className="event-card reveal">
-          <div className="event-date-block">
-            <div className="day">29</div>
-            <div className="month">Jun</div>
-          </div>
-          <div className="event-body">
-            <h3>Parent–Teacher Briefing</h3>
-            <span>
-              Monthly progress review and guidance interaction for parents and
-              guardians.
-            </span>
-          </div>
-        </div>
-        <div className="event-card reveal">
-          <div className="event-date-block">
-            <div className="day">30</div>
-            <div className="month">Jun</div>
-          </div>
-          <div className="event-body">
-            <h3>Admission Deadline</h3>
-            <span>
-              Last date to submit applications for 2026–27. Contact the
-              institute immediately for seat availability.
-            </span>
-          </div>
-        </div>
+        {/* Populated dynamically from website_events via getEvents() — see EVENTS script block */}
       </div>
     </div>
   </section>

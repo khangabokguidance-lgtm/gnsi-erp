@@ -13,6 +13,7 @@
 //  ⑩ Question Papers (website_papers)
 //  ⑪ Scholarship Test Dates (website_settings)
 //  ⑫ Site Settings (deadline, brochure, UPI, social, stats)
+//  ⑬ Events & Schedule (website_events)
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
@@ -30,6 +31,7 @@ const C = {
 const SUB_TABS = [
   { id:"enquiries",  icon:"📬", label:"Enquiries" },
   { id:"notices",    icon:"📣", label:"Notices" },
+  { id:"events",     icon:"📅", label:"Events" },
   { id:"rankers",    icon:"🏆", label:"Ranker Wall" },
   { id:"gallery",    icon:"🖼️",  label:"Gallery" },
   { id:"videos",     icon:"▶️",  label:"Videos" },
@@ -461,6 +463,109 @@ function GallerySection() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+//  EVENTS & SCHEDULE
+// ════════════════════════════════════════════════════════════
+function EventsSection() {
+  const [rows,setRows]=useState([]);
+  const [load,setLoad]=useState(true);
+  const [form,setForm]=useState({title:"",description:"",event_date:new Date().toISOString().slice(0,10),sort_order:0,is_active:true});
+  const [editing,setEdit]=useState(null);
+  const [saving,setSave]=useState(false);
+
+  const SQL=`CREATE TABLE IF NOT EXISTS website_events (
+  id          bigserial primary key,
+  title       text not null,
+  description text,
+  event_date  date not null,
+  sort_order  int default 0,
+  is_active   boolean default true,
+  created_at  timestamptz default now()
+);`;
+
+  const load_=useCallback(async()=>{
+    setLoad(true);
+    const{data}=await supabase.from("website_events").select("*").order("event_date").order("sort_order");
+    if(data)setRows(data);
+    setLoad(false);
+  },[]);
+  useEffect(()=>{load_();},[load_]);
+
+  const save=async()=>{
+    if(!form.title||!form.event_date)return toast("Title and date required","error");
+    setSave(true);
+    const{error}=editing?await supabase.from("website_events").update(form).eq("id",editing):await supabase.from("website_events").insert(form);
+    setSave(false);
+    if(error)return toast("Error: "+error.message,"error");
+    toast(editing?"Event updated ✓":"Event added ✓");
+    setForm({title:"",description:"",event_date:new Date().toISOString().slice(0,10),sort_order:rows.length,is_active:true});
+    setEdit(null);load_();
+  };
+  const del=async id=>{if(!confirm("Delete this event?"))return;await supabase.from("website_events").delete().eq("id",id);toast("Deleted");load_();};
+  const toggleActive=async(id,cur)=>{await supabase.from("website_events").update({is_active:!cur}).eq("id",id);toast(cur?"Hidden from website":"Now visible on website");load_();};
+  const startEdit=ev=>{setEdit(ev.id);setForm({title:ev.title,description:ev.description||"",event_date:ev.event_date,sort_order:ev.sort_order||0,is_active:ev.is_active!==false});window.scrollTo({top:0,behavior:"smooth"});};
+
+  return (
+    <div>
+      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+        <div style={s.cardHd}><span style={s.cardTit}>📋 Setup — Create Table First</span></div>
+        <div style={s.cardBdy}>
+          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
+        </div>
+      </div>
+
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Event":"📅 Add Event"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm({title:"",description:"",event_date:new Date().toISOString().slice(0,10),sort_order:0,is_active:true})}}>Cancel</button>}</div>
+        <div style={s.cardBdy}>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Event Title *</label><input style={s.inp} placeholder="e.g. Summer Batch Begins" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
+            <div><label style={s.lbl}>Date *</label><input type="date" style={s.inp} value={form.event_date} onChange={e=>setForm(f=>({...f,event_date:e.target.value}))}/></div>
+          </div>
+          <label style={s.lbl}>Description (shown on website)</label>
+          <textarea style={s.ta} placeholder="e.g. New session commencing — fresh admissions welcome." value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={3}/>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Sort Order (for same-day events)</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
+            <div>
+              <label style={s.lbl}>Visible on Website</label>
+              <select style={s.sel} value={form.is_active?"yes":"no"} onChange={e=>setForm(f=>({...f,is_active:e.target.value==="yes"}))}>
+                <option value="yes">Yes — show on homepage</option>
+                <option value="no">No — hidden</option>
+              </select>
+            </div>
+          </div>
+          <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Event":"Add Event →"}</button>
+          <p style={{color:"rgba(248,243,232,.28)",fontSize:".72rem",fontFamily:"'Rajdhani',sans-serif",marginTop:".5rem"}}>Past events remain in the list but won't show on the homepage automatically — delete or mark inactive once they've passed.</p>
+        </div>
+      </div>
+
+      {load?<div style={s.loading}><Spin/>Loading events…</div>:!rows.length?<div style={s.empty}>No events yet — add your first event above</div>:(
+        rows.map(ev=>{
+          const isPast=ev.event_date<new Date().toISOString().slice(0,10);
+          return(
+            <div key={ev.id} style={{...s.card,opacity:(!ev.is_active||isPast)?.55:1}}>
+              <div style={s.cardHd}>
+                <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
+                  <span style={{color:C.goldLL,fontFamily:"'EB Garamond',serif",fontSize:"1.1rem",minWidth:"3.5rem"}}>{fmt(ev.event_date)}</span>
+                  <span style={{color:"#F8F3E8",fontFamily:"'EB Garamond',serif",fontSize:"1rem"}}>{ev.title}</span>
+                  {!ev.is_active&&<span style={{...s.badge("Low"),fontSize:".55rem"}}>Hidden</span>}
+                  {isPast&&<span style={{...s.badge("Medium"),fontSize:".55rem"}}>Past</span>}
+                </div>
+                <div style={{display:"flex",gap:".4rem"}}>
+                  <button style={s.btnG} onClick={()=>startEdit(ev)}>Edit</button>
+                  <button style={s.btnGrn} onClick={()=>toggleActive(ev.id,ev.is_active)}>{ev.is_active?"Hide":"Show"}</button>
+                  <button style={s.btnR} onClick={()=>del(ev.id)}>Delete</button>
+                </div>
+              </div>
+              {ev.description&&<div style={{padding:".7rem 1.1rem"}}><p style={{color:"rgba(248,243,232,.55)",fontSize:".83rem",lineHeight:1.7}}>{ev.description}</p></div>}
+            </div>
+          );
+        })
       )}
     </div>
   );
@@ -1089,7 +1194,8 @@ CREATE TABLE IF NOT EXISTS website_papers (id bigserial primary key, title text 
 CREATE TABLE IF NOT EXISTS website_settings (key text primary key, value text, updated_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS enquiries (id bigserial primary key, student_name text, parent_name text, phone text, class_grade text, course text, message text, replied boolean default false, replied_at timestamptz, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS website_gallery (id bigserial primary key, image_url text not null, caption text, category text default 'Campus', sort_order int default 0, created_at timestamptz default now());
-CREATE TABLE IF NOT EXISTS website_faculty (id bigserial primary key, name text not null, role text, subject text, experience text, photo_url text, sort_order int default 0);`;
+CREATE TABLE IF NOT EXISTS website_faculty (id bigserial primary key, name text not null, role text, subject text, experience text, photo_url text, sort_order int default 0);
+CREATE TABLE IF NOT EXISTS website_events (id bigserial primary key, title text not null, description text, event_date date not null, sort_order int default 0, is_active boolean default true, created_at timestamptz default now());`;
 
   if(load)return<div style={s.loading}><Spin/>Loading settings…</div>;
 
@@ -1144,6 +1250,7 @@ export default function WebsiteTab() {
   const SECTIONS={
     enquiries: <EnquiriesSection/>,
     notices:   <NoticesSection/>,
+    events:    <EventsSection/>,
     rankers:   <RankersSection/>,
     gallery:   <GallerySection/>,
     videos:    <VideosSection/>,

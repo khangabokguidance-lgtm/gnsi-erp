@@ -406,6 +406,53 @@ export async function deleteFaculty(id) {
   return supabase.from('website_faculty').delete().eq('id', id);
 }
 
+// ─── EVENTS (website_events) ─────────────────────────────────────────────────
+// Public landing page only ever needs active, upcoming events (soonest first).
+export async function getEvents(limit) {
+  const today = new Date().toISOString().slice(0, 10);
+  let query = supabase
+    .from('website_events')
+    .select('*')
+    .eq('is_active', true)
+    .gte('event_date', today)
+    .order('event_date', { ascending: true })
+    .order('sort_order', { ascending: true });
+
+  if (limit) query = query.limit(limit);
+
+  const { data, error } = await query;
+  if (error) return [];
+  return data || [];
+}
+
+// Admin view shows everything — past, hidden, future — for management.
+export async function getAllEvents() {
+  const { data, error } = await supabase
+    .from('website_events')
+    .select('*')
+    .order('event_date', { ascending: true })
+    .order('sort_order', { ascending: true });
+
+  if (error) return [];
+  return data || [];
+}
+
+export async function saveEvent(form, editingId = null) {
+  if (editingId) {
+    return supabase.from('website_events').update(form).eq('id', editingId);
+  }
+
+  return supabase.from('website_events').insert(form);
+}
+
+export async function toggleEventActive(id, current) {
+  return supabase.from('website_events').update({ is_active: !current }).eq('id', id);
+}
+
+export async function deleteEvent(id) {
+  return supabase.from('website_events').delete().eq('id', id);
+}
+
 // ─── LIVE KPI (Dashboard Panel on Landing Page) ────────────────────────────
 export async function getLiveKPIs() {
   const today = new Date().toISOString().slice(0, 10);
