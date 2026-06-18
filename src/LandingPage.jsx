@@ -5,7 +5,7 @@ import {
   getLiveKPIs, submitEnquiry, submitScholarRegistration, submitGrievance
 } from './websiteApi';
 
-export default function LandingPage() {
+export default function LandingPage({ onLogin }) {
   useEffect(() => {
     // Scroll reveal animation
     const reveals = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
@@ -1009,7 +1009,7 @@ window.submitGrievance = async () => {
         </li>
         <li>
           <button
-            onClick={() => window.parent.postMessage('gnsi-staff-login', '*')}
+            onClick={onLogin}
             className="nav-btn"
             style={{
               fontFamily: '"Rajdhani",sans-serif',
@@ -4545,7 +4545,7 @@ window.submitGrievance = async () => {
           Parents Portal
         </a>
         <button
-          onClick={() => window.parent.postMessage('gnsi-staff-login', '*')}
+          onClick={onLogin}
           style={{
             display: "block",
             marginBottom: ".55rem",
