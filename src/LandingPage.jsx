@@ -5,6 +5,9 @@ import {
   getLiveKPIs, submitEnquiry, submitScholarRegistration, submitGrievance
 } from './websiteApi';
 
+// TODO: consider moving to Supabase storage for consistency with other site assets
+const FOUNDER_PHOTO_URL = "https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg";
+
 export default function LandingPage({ onLogin }) {
   useEffect(() => {
     // Scroll reveal animation
@@ -1724,7 +1727,23 @@ window.submitGrievance = async () => {
     <div className="container founder-grid">
       <div className="reveal-left">
         <div className="founder-img">
-          <span style={{ letterSpacing: ".1em", fontSize: ".7rem" }}>
+          {FOUNDER_PHOTO_URL ? (
+            <img
+              src={FOUNDER_PHOTO_URL}
+              alt="Moirangthem Himan Singh"
+              onError={(e) => {
+                e.target.style.display = "none";
+                e.target.nextSibling.style.display = "flex";
+              }}
+            />
+          ) : null}
+          <span
+            style={{
+              letterSpacing: ".1em",
+              fontSize: ".7rem",
+              display: FOUNDER_PHOTO_URL ? "none" : "flex"
+            }}
+          >
             FOUNDER PHOTO
           </span>
           <div className="founder-img-badge">
