@@ -1,3 +1,295 @@
+import { useEffect } from 'react';
+
+export default function LandingPage() {
+  useEffect(() => {
+    // Scroll reveal animation
+    const reveals = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('vis');
+        }
+      });
+    }, { threshold: 0.1 });
+    reveals.forEach(el => observer.observe(el));
+
+    // Countdown timer
+    const deadline = new Date('2026-06-30T23:59:59').getTime();
+    const cdInterval = setInterval(() => {
+      const now = new Date().getTime();
+      const diff = deadline - now;
+      if (diff > 0) {
+        document.getElementById('cd-d').textContent = String(Math.floor(diff / (1000 * 60 * 60 * 24))).padStart(2, '0');
+        document.getElementById('cd-h').textContent = String(Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))).padStart(2, '0');
+        document.getElementById('cd-m').textContent = String(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
+        document.getElementById('cd-s').textContent = String(Math.floor((diff % (1000 * 60)) / 1000)).padStart(2, '0');
+      }
+    }, 1000);
+
+    // Sticky bar
+    const stickyBar = document.getElementById('stickyBar');
+    let stickyShown = false;
+    const stickyHandler = () => {
+      if (window.scrollY > 400 && !stickyShown) {
+        stickyBar?.classList.add('show');
+        stickyShown = true;
+      }
+    };
+    window.addEventListener('scroll', stickyHandler);
+
+    // Scroll progress
+    const sp = document.getElementById('sp');
+    const scrollHandler = () => {
+      const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      if (sp) sp.style.width = (scrollTop / scrollHeight * 100) + '%';
+    };
+    window.addEventListener('scroll', scrollHandler);
+
+    // Hamburger menu
+    const hbg = document.getElementById('hbg');
+    const mobMenu = document.getElementById('mobMenu');
+    const toggleMenu = () => {
+      hbg?.classList.toggle('open');
+      mobMenu?.classList.toggle('open');
+    };
+    hbg?.addEventListener('click', toggleMenu);
+
+    // Result banner slider
+    let rbIndex = 0;
+    const rbTrack = document.getElementById('rbTrack');
+    const rbDots = document.getElementById('rbDots');
+    const rbSlides = rbTrack?.children.length || 0;
+    if (rbDots && rbSlides > 0) {
+      for (let i = 0; i < rbSlides; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'rb-dot' + (i === 0 ? ' active' : '');
+        dot.onclick = () => { rbIndex = i; updateRB(); };
+        rbDots.appendChild(dot);
+      }
+    }
+    window.rbSlide = (dir) => {
+      rbIndex = (rbIndex + dir + rbSlides) % rbSlides;
+      updateRB();
+    };
+    const updateRB = () => {
+      if (rbTrack) rbTrack.style.transform = 'translateX(-' + (rbIndex * 100) + '%)';
+      rbDots?.querySelectorAll('.rb-dot').forEach((d, i) => d.classList.toggle('active', i === rbIndex));
+    };
+    const rbAuto = setInterval(() => { rbIndex = (rbIndex + 1) % rbSlides; updateRB(); }, 5000);
+
+    // Testimonials slider
+    let tIndex = 0;
+    const testiTrack = document.getElementById('testiTrack');
+    const testiDots = document.getElementById('testiDots');
+    const testiCards = testiTrack?.children.length || 0;
+    if (testiDots && testiCards > 0) {
+      for (let i = 0; i < testiCards; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'slider-dot' + (i === 0 ? ' active' : '');
+        dot.onclick = () => { tIndex = i; updateT(); };
+        testiDots.appendChild(dot);
+      }
+    }
+    window.tSlide = (dir) => {
+      tIndex = (tIndex + dir + testiCards) % testiCards;
+      updateT();
+    };
+    const updateT = () => {
+      if (testiTrack) testiTrack.style.transform = 'translateX(-' + (tIndex * 100) + '%)';
+      testiDots?.querySelectorAll('.slider-dot').forEach((d, i) => d.classList.toggle('active', i === tIndex));
+    };
+
+    // Bar fill animation
+    const bars = document.querySelectorAll('.bar-fill');
+    const barObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const w = entry.target.getAttribute('data-w');
+          if (w) entry.target.style.width = w + '%';
+        }
+      });
+    }, { threshold: 0.5 });
+    bars.forEach(b => barObserver.observe(b));
+
+    // Count up animation
+    const counters = document.querySelectorAll('.count-up');
+    const countObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          const target = parseInt(el.getAttribute('data-target'));
+          const suffix = el.getAttribute('data-suffix') || '';
+          let current = 0;
+          const step = Math.max(1, Math.floor(target / 50));
+          const timer = setInterval(() => {
+            current += step;
+            if (current >= target) { current = target; clearInterval(timer); }
+            el.textContent = current + suffix;
+          }, 30);
+          countObserver.unobserve(el);
+        }
+      });
+    }, { threshold: 0.5 });
+    counters.forEach(c => countObserver.observe(c));
+
+    // FAQ accordion
+    document.querySelectorAll('.faq-q').forEach(q => {
+      q.addEventListener('click', () => {
+        const a = q.nextElementSibling;
+        const icon = q.querySelector('.faq-icon');
+        if (a.style.display === 'block') {
+          a.style.display = 'none';
+          if (icon) icon.textContent = '+';
+        } else {
+          document.querySelectorAll('.faq-a').forEach(x => x.style.display = 'none');
+          document.querySelectorAll('.faq-icon').forEach(x => x.textContent = '+');
+          a.style.display = 'block';
+          if (icon) icon.textContent = String.fromCharCode(8722);
+        }
+      });
+    });
+
+    // Language toggle
+    window.setLang = (lang, btn) => {
+      document.body.classList.toggle('hi', lang === 'hi');
+      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+      btn?.classList.add('active');
+    };
+
+    // Syllabus tabs
+    window.sylTab = (id, btn) => {
+      document.querySelectorAll('.syl-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('syl-' + id)?.classList.add('active');
+      document.querySelectorAll('.syl-tab').forEach(b => b.classList.remove('active'));
+      btn?.classList.add('active');
+    };
+
+    // Map loader
+    window.loadMap = () => {
+      const wrap = document.getElementById('mapWrap');
+      if (wrap) {
+        wrap.innerHTML = '<iframe class="map-frame" src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14540.0!2d93.95!3d24.65!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x374927b!2sKhangabok%2C%20Manipur!5e0!3m2!1sen!2sin!4v1" allowfullscreen loading="lazy"></iframe>';
+      }
+    };
+
+    // Video loader
+    window.loadMainVideo = (url) => {
+      const embed = document.getElementById('mainVideoEmbed');
+      if (embed) {
+        embed.innerHTML = '<iframe src="' + url + '" allowfullscreen></iframe>';
+      }
+    };
+
+    // Mobile menu close
+    window.closeMob = () => {
+      hbg?.classList.remove('open');
+      mobMenu?.classList.remove('open');
+    };
+
+    // Parents Portal
+    window.openPP = () => {
+      document.getElementById('ppOverlay')?.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    };
+    window.closePP = () => {
+      document.getElementById('ppOverlay')?.classList.remove('open');
+      document.body.style.overflow = '';
+    };
+    window.ppTab = (id, btn) => {
+      document.querySelectorAll('.pp-sec').forEach(s => s.classList.remove('active'));
+      document.getElementById('sec-' + id)?.classList.add('active');
+      document.querySelectorAll('.pp-tab').forEach(b => b.classList.remove('active'));
+      btn?.classList.add('active');
+    };
+    window.ppLogin = () => {
+      const phone = document.getElementById('ppPhone')?.value;
+      const sid = document.getElementById('ppSid')?.value;
+      const err = document.getElementById('ppErr');
+      if (!phone || !sid) {
+        if (err) { err.style.display = 'block'; err.textContent = 'Please enter both phone number and student ID.'; }
+        return;
+      }
+      document.getElementById('ppLoginWrap').style.display = 'none';
+      document.getElementById('ppShell').classList.add('show');
+      document.getElementById('ppStuName').textContent = 'Student (' + sid + ')';
+      document.getElementById('ppDashName').textContent = 'Parents Portal';
+    };
+    window.ppLogout = () => {
+      document.getElementById('ppLoginWrap').style.display = 'flex';
+      document.getElementById('ppShell').classList.remove('show');
+    };
+
+    // Form submissions (mock)
+    window.submitEnquiry = () => {
+      const msg = document.getElementById('formMsg');
+      if (msg) {
+        msg.style.display = 'block';
+        msg.className = 'form-msg success';
+        msg.textContent = 'Thank you! We will contact you shortly.';
+      }
+    };
+    window.submitScholar = () => {
+      const msg = document.getElementById('scholarMsg');
+      if (msg) {
+        msg.style.display = 'block';
+        msg.className = 'scholar-msg ok';
+        msg.textContent = 'Registration successful! We will confirm your slot within 24 hours.';
+      }
+    };
+    window.submitGrievance = () => {
+      const msg = document.getElementById('grvMsg');
+      if (msg) {
+        msg.style.display = 'block';
+        msg.className = 'grv-msg ok';
+        msg.textContent = 'Grievance submitted! Ticket ID: GNSI-GRV-' + Date.now().toString().slice(-6);
+      }
+    };
+    window.fetchAdmitCard = () => {
+      const res = document.getElementById('acResult');
+      const data = document.getElementById('acData');
+      const roll = document.getElementById('acRoll')?.value || '—';
+      const exam = document.getElementById('acExam')?.value || '—';
+      if (res && data) {
+        res.classList.add('show', 'ok');
+        data.innerHTML = '<div class="portal-row"><span>Student</span><strong>GNSI Student</strong></div>' +
+          '<div class="portal-row"><span>Roll No</span><strong>' + roll + '</strong></div>' +
+          '<div class="portal-row"><span>Exam</span><strong>' + exam + '</strong></div>' +
+          '<div class="portal-row"><span>Date</span><strong>This Sunday</strong></div>' +
+          '<div class="portal-row"><span>Time</span><strong>10:00 AM</strong></div>' +
+          '<div class="portal-row"><span>Venue</span><strong>GNSI Campus, Khangabok</strong></div>';
+      }
+    };
+    window.fetchResult = () => {
+      const res = document.getElementById('rcResult');
+      const data = document.getElementById('rcData');
+      const roll = document.getElementById('rcRoll')?.value || '—';
+      if (res && data) {
+        res.classList.add('show', 'ok');
+        data.innerHTML = '<div class="portal-row"><span>Student</span><strong>GNSI Student</strong></div>' +
+          '<div class="portal-row"><span>Roll No</span><strong>' + roll + '</strong></div>' +
+          '<div class="portal-row"><span>Total Marks</span><strong>87 / 100</strong></div>' +
+          '<div class="portal-row"><span>Rank</span><strong>5th</strong></div>' +
+          '<div class="portal-row"><span>Status</span><strong style="color:#4AE382">Passed</strong></div>';
+      }
+    };
+    window.printAdmitCard = () => {
+      window.print();
+    };
+
+    return () => {
+      clearInterval(cdInterval);
+      clearInterval(rbAuto);
+      window.removeEventListener('scroll', stickyHandler);
+      window.removeEventListener('scroll', scrollHandler);
+      hbg?.removeEventListener('click', toggleMenu);
+      observer.disconnect();
+      barObserver.disconnect();
+      countObserver.disconnect();
+    };
+  }, []);
+
+  return (
 <>
   <meta charSet="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -4204,4 +4496,5 @@
       </div>
     </div>
   </div>
-</>
+</>  );
+}
