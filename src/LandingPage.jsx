@@ -1625,7 +1625,7 @@ window.submitGrievance = async () => {
   <section className="pad" id="facilities">
     <div className="container">
       <div className="eyebrow reveal">Campus Life</div>
-      <h2 className="st reveal">World-Class Facilities</h2>
+      <h2 className="st reveal">Why Guidance?</h2>
       <div className="rule reveal">
         <div className="rule-line" />
         <div className="rule-d" />
@@ -1653,37 +1653,34 @@ window.submitGrievance = async () => {
             Balanced, hygienic meals prepared daily to support growing students.
           </p>
           <ul>
-            <li>Three meals + evening snack</li>
-            <li>Regional &amp; balanced diet</li>
+            <li>Hygienic Foods</li>
+            <li>Proper balanced diet</li>
             <li>Clean kitchen standards</li>
             <li>Special occasion meals</li>
           </ul>
         </div>
         <div className="facility-card reveal-scale">
           <span className="facility-icon">📚</span>
-          <h3>Smart Classrooms</h3>
+          <h3>Well Furnished Classrooms</h3>
           <p>
             Well-equipped classrooms with focus on interactive, concept-based
             learning.
           </p>
           <ul>
-            <li>Small batch sizes</li>
+            <li>Knowledge based Learning</li>
             <li>Subject-specialist teachers</li>
-            <li>Daily test &amp; review sessions</li>
-            <li>Study materials provided</li>
+            <li>Regular Test &amp; review sessions</li>
+            <li>Latest Study materials provided</li>
           </ul>
         </div>
         <div className="facility-card reveal-scale">
           <span className="facility-icon">⚽</span>
           <h3>Sports &amp; PT</h3>
           <p>
-            Daily physical training and sports — essential for Sainik School
-            fitness standards.
+            Big Playground for daily Sport Activities 
           </p>
           <ul>
             <li>Morning PT schedule</li>
-            <li>Football, volleyball, athletics</li>
-            <li>Drill and parade practice</li>
             <li>Fitness assessment</li>
           </ul>
         </div>
@@ -1696,8 +1693,6 @@ window.submitGrievance = async () => {
           </p>
           <ul>
             <li>First aid on campus</li>
-            <li>Regular health check-ups</li>
-            <li>Tie-up with local clinic</li>
             <li>Parent alert for illness</li>
           </ul>
         </div>
