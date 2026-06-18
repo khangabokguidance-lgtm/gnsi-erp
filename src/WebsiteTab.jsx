@@ -436,7 +436,7 @@ function GallerySection() {
         <div style={s.cardHd}><span style={s.cardTit}>➕ Add Gallery Image</span></div>
         <div style={s.cardBdy}>
           <label style={s.lbl}>Image URL *</label>
-          <input style={s.inp} placeholder="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gallery/photo.jpg" value={form.image_url} onChange={e=>setForm(f=>({...f,image_url:e.target.value}))}/>
+          <input style={s.inp} placeholder="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/gallery/photo.jpg" value={form.image_url} onChange={e=>setForm(f=>({...f,image_url:e.target.value}))}/>
           {form.image_url&&<img src={form.image_url} alt="preview" style={{width:"100%",maxHeight:"180px",objectFit:"cover",marginBottom:"1rem",border:"1px solid rgba(184,146,42,.2)"}} onError={e=>e.target.style.display="none"}/>}
           <div style={s.g2}>
             <div><label style={s.lbl}>Caption</label><input style={s.inp} placeholder="e.g. Morning Assembly" value={form.caption} onChange={e=>setForm(f=>({...f,caption:e.target.value}))}/></div>
