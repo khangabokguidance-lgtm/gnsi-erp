@@ -362,7 +362,6 @@ export default function LandingPage() {
         "\n/* If JS fails, show content after 3 seconds */\n@media (prefers-reduced-motion: no-preference) {\n  .reveal, .reveal-left, .reveal-right, .reveal-scale {\n    animation: forceVisible 0.1s ease 3s forwards;\n  }\n  @keyframes forceVisible {\n    to { opacity: 1; transform: none; }\n  }\n}\n/* Immediate fallback for no-JS */\n.no-js .reveal, .no-js .reveal-left, .no-js .reveal-right, .no-js .reveal-scale {\n  opacity: 1 !important;\n  transform: none !important;\n}\n"
     }}
   />
-  <base target="_blank" />
   <div id="sp" />
   {/* LANGUAGE BAR */}
   <div id="langBar">
@@ -377,10 +376,10 @@ export default function LandingPage() {
     >
       Language:
     </span>
-    <button className="lang-btn active" onclick="setLang('en',this)">
+    <button className="lang-btn active" onClick={(e) => window.setLang('en', e.currentTarget)}>
       English
     </button>
-    <button className="lang-btn" onclick="setLang('hi',this)">
+    <button className="lang-btn" onClick={(e) => window.setLang('hi', e.currentTarget)}>
       हिंदी
     </button>
   </div>
@@ -460,7 +459,10 @@ export default function LandingPage() {
     <div className="sticky-btns">
       <button
         className="sb-btn sb-btn-gold"
-        onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'});document.getElementById('stickyBar').classList.remove('show')"
+        onClick={() => {
+          document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' });
+          document.getElementById('stickyBar').classList.remove('show');
+        }}
       >
         Apply Now →
       </button>
@@ -473,7 +475,11 @@ export default function LandingPage() {
       </a>
       <button
         className="sb-close"
-        onclick="this.parentElement.parentElement.classList.remove('show');this.parentElement.parentElement.style.display='none'"
+        onClick={(e) => {
+          const bar = e.currentTarget.parentElement.parentElement;
+          bar.classList.remove('show');
+          bar.style.display = 'none';
+        }}
         title="Dismiss"
       >
         ✕
@@ -486,7 +492,7 @@ export default function LandingPage() {
       ⚑ Admissions open 2026–27 — Limited seats. Apply before{" "}
       <strong>30 June 2026.</strong>
     </span>
-    <button onclick="document.getElementById('alertbar').style.display='none'">
+    <button onClick={() => { document.getElementById('alertbar').style.display = 'none'; }}>
       ✕
     </button>
   </div>
@@ -542,7 +548,7 @@ export default function LandingPage() {
     </div>
     <button
       className="countdown-cta"
-      onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+      onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
     >
       Apply Before Deadline →
     </button>
@@ -555,7 +561,7 @@ export default function LandingPage() {
         <img
           src="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/result-banner-2025.jpg"
           alt="GNSI Result 2025"
-          onerror="this.style.display='none'"
+          onError={(e) => { e.target.style.display = 'none'; }}
         />
         <div className="result-banner-overlay">
           <div className="result-banner-content">
@@ -574,7 +580,7 @@ export default function LandingPage() {
         <img
           src="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/result-banner-sainik.jpg"
           alt="Sainik School Result"
-          onerror="this.style.display='none'"
+          onError={(e) => { e.target.style.display = 'none'; }}
         />
         <div className="result-banner-overlay">
           <div className="result-banner-content">
@@ -593,7 +599,7 @@ export default function LandingPage() {
         <img
           src="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/result-banner-nvs.jpg"
           alt="NVS Result"
-          onerror="this.style.display='none'"
+          onError={(e) => { e.target.style.display = 'none'; }}
         />
         <div className="result-banner-overlay">
           <div className="result-banner-content">
@@ -634,10 +640,10 @@ export default function LandingPage() {
         </div>
       </div>
     </div>
-    <button className="rb-prev" onclick="rbSlide(-1)">
+    <button className="rb-prev" onClick={() => window.rbSlide(-1)}>
       ‹
     </button>
-    <button className="rb-next" onclick="rbSlide(1)">
+    <button className="rb-next" onClick={() => window.rbSlide(1)}>
       ›
     </button>
     <div className="result-banner-nav" id="rbDots" />
@@ -683,7 +689,7 @@ export default function LandingPage() {
           <a href="#enquiry">Enquire</a>
         </li>
         <li>
-          <a href="#" onclick="openPP();return false;" className="nav-par">
+          <a href="#" onClick={(e) => { e.preventDefault(); window.openPP(); }} className="nav-par">
             Parents →
           </a>
         </li>
@@ -707,7 +713,7 @@ export default function LandingPage() {
         </li>
         <li>
           <button
-            onclick="window.parent.postMessage('gnsi-staff-login','*')"
+            onClick={() => window.parent.postMessage('gnsi-staff-login', '*')}
             className="nav-btn"
             style={{
               fontFamily: '"Rajdhani",sans-serif',
@@ -723,7 +729,7 @@ export default function LandingPage() {
       </ul>
       <div style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
         <button
-          onclick="openPP()"
+          onClick={() => window.openPP()}
           style={{
             background: "rgba(37,211,102,.15)",
             border: "1px solid rgba(37,211,102,.3)",
@@ -749,41 +755,41 @@ export default function LandingPage() {
     </div>
   </nav>
   <div className="mob-menu" id="mobMenu">
-    <a href="#notices" onclick="closeMob()">
+    <a href="#notices" onClick={() => window.closeMob()}>
       Notices
     </a>
-    <a href="#courses" onclick="closeMob()">
+    <a href="#courses" onClick={() => window.closeMob()}>
       Courses
     </a>
-    <a href="#results" onclick="closeMob()">
+    <a href="#results" onClick={() => window.closeMob()}>
       Results
     </a>
-    <a href="#scholarship" onclick="closeMob()">
+    <a href="#scholarship" onClick={() => window.closeMob()}>
       Free Test / Scholarship
     </a>
-    <a href="#question-papers" onclick="closeMob()">
+    <a href="#question-papers" onClick={() => window.closeMob()}>
       Question Papers
     </a>
-    <a href="#syllabus" onclick="closeMob()">
+    <a href="#syllabus" onClick={() => window.closeMob()}>
       Syllabus
     </a>
-    <a href="#faculty" onclick="closeMob()">
+    <a href="#faculty" onClick={() => window.closeMob()}>
       Faculty
     </a>
-    <a href="#about" onclick="closeMob()">
+    <a href="#about" onClick={() => window.closeMob()}>
       About
     </a>
-    <a href="#enquiry" onclick="closeMob()">
+    <a href="#enquiry" onClick={() => window.closeMob()}>
       Enquire
     </a>
-    <a href="#fee-payment" onclick="closeMob()" className="mob-fee">
+    <a href="#fee-payment" onClick={() => window.closeMob()} className="mob-fee">
       Pay Fee →
     </a>
-    <a href="#" onclick="openPP();closeMob();return false;" className="mob-par">
+    <a href="#" onClick={(e) => { e.preventDefault(); window.openPP(); window.closeMob(); }} className="mob-par">
       Parents Portal →
     </a>
     <button
-      onclick="window.parent.postMessage('gnsi-staff-login','*');closeMob()"
+      onClick={() => { window.parent.postMessage('gnsi-staff-login', '*'); window.closeMob(); }}
       className="mob-cta"
       style={{
         background: "var(--gold)",
@@ -844,7 +850,7 @@ export default function LandingPage() {
           <a href="#enquiry" className="btn btn-gold">
             Enquire for Admission →
           </a>
-          <button onclick="openPP()" className="btn btn-grn">
+          <button onClick={() => window.openPP()} className="btn btn-grn">
             Parents Portal →
           </button>
           <a
@@ -867,7 +873,7 @@ export default function LandingPage() {
           </a>
           <button
             className="btn-demo"
-            onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
           >
             🎯 Book Free Demo Class
           </button>
@@ -1175,7 +1181,7 @@ export default function LandingPage() {
           </ul>
           <button
             className="course-enquire"
-            onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
           >
             Enquire for This Course →
           </button>
@@ -1195,7 +1201,7 @@ export default function LandingPage() {
           </ul>
           <button
             className="course-enquire"
-            onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
           >
             Enquire for This Course →
           </button>
@@ -1215,7 +1221,7 @@ export default function LandingPage() {
           </ul>
           <button
             className="course-enquire"
-            onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
           >
             Enquire for This Course →
           </button>
@@ -1235,7 +1241,7 @@ export default function LandingPage() {
           </ul>
           <button
             className="course-enquire"
-            onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
           >
             Enquire for This Course →
           </button>
@@ -1367,7 +1373,7 @@ export default function LandingPage() {
             <div
               className="video-placeholder"
               id="videoPlaceholder"
-              onclick="loadMainVideo('https://www.youtube.com/embed/?listType=user_uploads&list=gnsikhangabok')"
+              onClick={() => window.loadMainVideo('https://www.youtube.com/embed/?listType=user_uploads&list=gnsikhangabok')}
             >
               <div className="play-btn">▶</div>
               <p>GNSI Campus &amp; Classroom Tour</p>
@@ -1389,7 +1395,7 @@ export default function LandingPage() {
         <div className="video-list">
           <div
             className="video-item"
-            onclick="loadMainVideo('https://www.youtube.com/@gnsikhangabok')"
+            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
           >
             <div className="video-thumb">▶</div>
             <div>
@@ -1401,7 +1407,7 @@ export default function LandingPage() {
           </div>
           <div
             className="video-item"
-            onclick="loadMainVideo('https://www.youtube.com/@gnsikhangabok')"
+            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
           >
             <div className="video-thumb">▶</div>
             <div>
@@ -1411,7 +1417,7 @@ export default function LandingPage() {
           </div>
           <div
             className="video-item"
-            onclick="loadMainVideo('https://www.youtube.com/@gnsikhangabok')"
+            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
           >
             <div className="video-thumb">▶</div>
             <div>
@@ -1423,7 +1429,7 @@ export default function LandingPage() {
           </div>
           <div
             className="video-item"
-            onclick="loadMainVideo('https://www.youtube.com/@gnsikhangabok')"
+            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
           >
             <div className="video-thumb">▶</div>
             <div>
@@ -1779,11 +1785,11 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="slider-ctrl">
-          <button className="slider-btn" onclick="tSlide(-1)">
+          <button className="slider-btn" onClick={() => window.tSlide(-1)}>
             ‹
           </button>
           <div className="slider-dots" id="testiDots" />
-          <button className="slider-btn" onclick="tSlide(1)">
+          <button className="slider-btn" onClick={() => window.tSlide(1)}>
             ›
           </button>
         </div>
@@ -2204,7 +2210,7 @@ export default function LandingPage() {
           <option value="Scholarship Test">Scholarship Test (Sunday)</option>
           <option value="Both">Both — Demo + Scholarship Test</option>
         </select>
-        <button className="scholar-btn" onclick="submitScholar()">
+        <button className="scholar-btn" onClick={() => window.submitScholar()}>
           Register for Free →
         </button>
         <p
@@ -2299,7 +2305,7 @@ export default function LandingPage() {
           </a>
           <button
             className="papers-cta"
-            onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
           >
             Get More Papers — Enquire →
           </button>
@@ -2361,7 +2367,7 @@ export default function LandingPage() {
           </a>
           <button
             className="papers-cta"
-            onclick="document.getElementById('enquiry').scrollIntoView({behavior:'smooth'})"
+            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
           >
             Get More Papers — Enquire →
           </button>
@@ -2411,7 +2417,7 @@ export default function LandingPage() {
           </a>
           <button
             className="papers-cta"
-            onclick="window.open('https://wa.me/918974298074?text=Hello%20GNSI%2C%20please%20send%20me%20RMS%20previous%20year%20papers.','_blank')"
+            onClick={() => window.open('https://wa.me/918974298074?text=Hello%20GNSI%2C%20please%20send%20me%20RMS%20previous%20year%20papers.', '_blank')}
           >
             Request More via WhatsApp →
           </button>
@@ -2447,19 +2453,19 @@ export default function LandingPage() {
       </p>
       {/* Tab buttons */}
       <div className="syllabus-tabs reveal">
-        <button className="syl-tab active" onclick="sylTab('nvs6',this)">
+        <button className="syl-tab active" onClick={(e) => window.sylTab('nvs6', e.currentTarget)}>
           NVS Class 6
         </button>
-        <button className="syl-tab" onclick="sylTab('nvs9',this)">
+        <button className="syl-tab" onClick={(e) => window.sylTab('nvs9', e.currentTarget)}>
           NVS Class 9
         </button>
-        <button className="syl-tab" onclick="sylTab('sainik6',this)">
+        <button className="syl-tab" onClick={(e) => window.sylTab('sainik6', e.currentTarget)}>
           Sainik Class 6
         </button>
-        <button className="syl-tab" onclick="sylTab('sainik9',this)">
+        <button className="syl-tab" onClick={(e) => window.sylTab('sainik9', e.currentTarget)}>
           Sainik Class 9
         </button>
-        <button className="syl-tab" onclick="sylTab('rms',this)">
+        <button className="syl-tab" onClick={(e) => window.sylTab('rms', e.currentTarget)}>
           RMS
         </button>
       </div>
@@ -2919,7 +2925,7 @@ export default function LandingPage() {
             className="btn btn-gold"
             style={{ width: "100%", justifyContent: "center" }}
             id="fBtn"
-            onclick="submitEnquiry()"
+            onClick={() => window.submitEnquiry()}
           >
             Submit Enquiry →
           </button>
@@ -3001,7 +3007,7 @@ export default function LandingPage() {
             </a>
           </div>
         </div>
-        <div className="map-wrap reveal" id="mapWrap" onclick="loadMap()">
+        <div className="map-wrap reveal" id="mapWrap" onClick={() => window.loadMap()}>
           <div className="map-placeholder" id="mapPlaceholder">
             <span>📍 Khangabok, Thoubal District, Manipur</span>
             <button className="map-load-btn">View on Map →</button>
@@ -3071,7 +3077,7 @@ export default function LandingPage() {
         </div>
         <button
           className="pay-btn"
-          onclick="window.open('https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20pay%20fees%20online.%20Please%20share%20UPI%20and%20bank%20details.','_blank')"
+          onClick={() => window.open('https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20pay%20fees%20online.%20Please%20share%20UPI%20and%20bank%20details.', '_blank')}
         >
           💳 Pay Fee via WhatsApp →
         </button>
@@ -3165,14 +3171,14 @@ export default function LandingPage() {
             <option>NVS Practice Test</option>
             <option>Sainik School Practice Test</option>
           </select>
-          <button className="portal-btn" onclick="fetchAdmitCard()">
+          <button className="portal-btn" onClick={() => window.fetchAdmitCard()}>
             🪪 <span data-en="">Download Admit Card</span>
             <span data-hi="">प्रवेश पत्र डाउनलोड करें</span>
           </button>
           <div className="portal-result" id="acResult">
             <h4>✓ Admit Card Found</h4>
             <div id="acData" />
-            <button className="admit-download" onclick="printAdmitCard()">
+            <button className="admit-download" onClick={() => window.printAdmitCard()}>
               🖨 Print / Download Admit Card
             </button>
           </div>
@@ -3231,7 +3237,7 @@ export default function LandingPage() {
           <button
             className="portal-btn"
             style={{ background: "var(--navy3)" }}
-            onclick="fetchResult()"
+            onClick={() => window.fetchResult()}
           >
             📊 <span data-en="">Check My Result</span>
             <span data-hi="">मेरा परिणाम देखें</span>
@@ -4089,7 +4095,7 @@ export default function LandingPage() {
             placeholder="Please describe your concern or query in detail…"
             defaultValue={""}
           />
-          <button className="grv-btn" onclick="submitGrievance()">
+          <button className="grv-btn" onClick={() => window.submitGrievance()}>
             📨 <span data-en="">Submit Grievance →</span>
             <span data-hi="">शिकायत सबमिट करें →</span>
           </button>
@@ -4125,7 +4131,7 @@ export default function LandingPage() {
       >
         📄 Download Brochure
       </a>
-      <button onclick="openPP()" className="btn btn-grn">
+      <button onClick={() => window.openPP()} className="btn btn-grn">
         Parents Portal →
       </button>
       <a href="#fee-payment" className="btn btn-fee">
@@ -4237,13 +4243,13 @@ export default function LandingPage() {
         <a href="#enquiry">Admission Enquiry</a>
         <a
           href="#"
-          onclick="openPP();return false;"
+          onClick={(e) => { e.preventDefault(); window.openPP(); }}
           style={{ color: "#4AE382" }}
         >
           Parents Portal
         </a>
         <button
-          onclick="window.parent.postMessage('gnsi-staff-login','*')"
+          onClick={() => window.parent.postMessage('gnsi-staff-login', '*')}
           style={{
             display: "block",
             marginBottom: ".55rem",
@@ -4284,7 +4290,7 @@ export default function LandingPage() {
   {/* PARENTS PORTAL */}
   <div className="pp-overlay" id="ppOverlay">
     <div className="pp-login-wrap" id="ppLoginWrap">
-      <button className="pp-close" onclick="closePP()">
+      <button className="pp-close" onClick={() => window.closePP()}>
         ✕
       </button>
       <div className="pp-box">
@@ -4317,9 +4323,9 @@ export default function LandingPage() {
           className="pp-fi"
           id="ppSid"
           placeholder="e.g. GNSI-2024-001"
-          onkeydown="if(event.key==='Enter')ppLogin()"
+          onKeyDown={(e) => { if (e.key === 'Enter') window.ppLogin(); }}
         />
-        <button className="pp-lbtn" id="ppLbtn" onclick="ppLogin()">
+        <button className="pp-lbtn" id="ppLbtn" onClick={() => window.ppLogin()}>
           Login to Parents Portal →
         </button>
         <p
@@ -4355,24 +4361,24 @@ export default function LandingPage() {
             <p id="ppDashMeta">GNSI Parents Portal</p>
           </div>
         </div>
-        <button className="pp-lout" onclick="ppLogout()">
+        <button className="pp-lout" onClick={() => window.ppLogout()}>
           Logout ✕
         </button>
       </div>
       <div className="pp-tabs">
-        <button className="pp-tab active" onclick="ppTab('att',this)">
+        <button className="pp-tab active" onClick={(e) => window.ppTab('att', e.currentTarget)}>
           📊 Attendance
         </button>
-        <button className="pp-tab" onclick="ppTab('exams',this)">
+        <button className="pp-tab" onClick={(e) => window.ppTab('exams', e.currentTarget)}>
           📝 Exam Scores
         </button>
-        <button className="pp-tab" onclick="ppTab('notices',this)">
+        <button className="pp-tab" onClick={(e) => window.ppTab('notices', e.currentTarget)}>
           📣 Notices
         </button>
-        <button className="pp-tab" onclick="ppTab('leave',this)">
+        <button className="pp-tab" onClick={(e) => window.ppTab('leave', e.currentTarget)}>
           🏠 Hostel Leave
         </button>
-        <button className="pp-tab" onclick="ppTab('alerts',this)">
+        <button className="pp-tab" onClick={(e) => window.ppTab('alerts', e.currentTarget)}>
           🔔 Alerts
         </button>
       </div>
