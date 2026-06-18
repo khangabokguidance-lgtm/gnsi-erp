@@ -1,4 +1,9 @@
 import { useEffect } from 'react';
+import {
+  getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
+  getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
+  getLiveKPIs, submitEnquiry, submitScholarRegistration, submitGrievance
+} from './websiteApi';
 
 export default function LandingPage() {
   useEffect(() => {
@@ -132,6 +137,321 @@ export default function LandingPage() {
       });
     }, { threshold: 0.5 });
     counters.forEach(c => countObserver.observe(c));
+// helpers
+const escapeHtml = (str) =>
+  (str ?? '').toString()
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+
+// ---- 1. LIVE KPI DASHBOARD ----
+(async () => {
+  try {
+    const kpi = await getLiveKPIs();
+    const set = (id, val) => { const el = document.getElementById(id); if (el) { el.textContent = val; el.classList.remove('lpulse'); } };
+    set('kpi-staff', kpi.staff);
+    set('kpi-att', kpi.present);
+    set('kpi-exams', kpi.exams);
+    set('kpi-enq', kpi.enquiries);
+    set('kpi-notice', kpi.latestNotice);
+  } catch (e) { console.error('KPI load failed:', e); }
+})();
+
+// ---- 2. NOTICES (top 3 active, into #noticesGrid) ----
+(async () => {
+  const grid = document.getElementById('noticesGrid');
+  if (!grid) return; // add id="noticesGrid" to the .cards-row div in the Notices section
+  try {
+    const notices = await getActiveNotices(3);
+    if (!notices.length) return; // leave existing static cards as fallback
+    grid.innerHTML = notices.map(n => {
+      const cls = n.priority === 'High' ? 'urgent' : n.priority === 'Low' ? '' : 'success';
+      const badgeCls = n.priority === 'High' ? 'badge-limited' : n.priority === 'Low' ? 'badge-weekly' : 'badge-open';
+      return `
+        <div class="notice-card ${cls}">
+          <span class="notice-badge ${badgeCls}">${escapeHtml(n.priority || 'Notice')}</span>
+          <h3>${escapeHtml(n.title)}</h3>
+          <p>${escapeHtml(n.body)}</p>
+          <div class="notice-date">${fmtDate(n.notice_date)}</div>
+        </div>`;
+    }).join('');
+  } catch (e) { console.error('Notices load failed:', e); }
+})();
+
+// ---- 3. RANKER WALL (into #rankerGrid) ----
+(async () => {
+  const grid = document.getElementById('rankerGrid');
+  if (!grid) return;
+  try {
+    const rankers = await getRankers();
+    if (!rankers.length) return;
+    grid.innerHTML = rankers.map(r => `
+      <div class="ranker-card reveal-scale vis">
+        ${r.rank ? `<div class="ranker-badge">${escapeHtml(r.rank)}</div>` : ''}
+        <div class="ranker-photo">
+          ${r.photo_url ? `<img src="${escapeHtml(r.photo_url)}" alt="${escapeHtml(r.name)}" onerror="this.style.display='none'" />` : escapeHtml((r.name || 'S')[0])}
+        </div>
+        <h4>${escapeHtml(r.name)}</h4>
+        <div class="ranker-school">${escapeHtml(r.school || '')}</div>
+        <div class="ranker-batch">${escapeHtml(r.batch || '')}</div>
+      </div>`).join('');
+  } catch (e) { console.error('Rankers load failed:', e); }
+})();
+
+// ---- 4. GOOGLE REVIEWS (into #reviewsGrid) ----
+(async () => {
+  const grid = document.getElementById('reviewsGrid');
+  if (!grid) return;
+  try {
+    const reviews = await getFeaturedReviews(6);
+    if (!reviews.length) return;
+    grid.innerHTML = reviews.map(r => `
+      <div class="review-card">
+        <div class="review-top">
+          <div class="review-av">${escapeHtml((r.reviewer_name || 'A')[0])}</div>
+          <div>
+            <div class="review-name">${escapeHtml(r.reviewer_name)}</div>
+            <div class="review-date">${fmtDate(r.review_date)}</div>
+          </div>
+        </div>
+        <div class="review-stars">${'★'.repeat(r.rating || 5)}${'☆'.repeat(5 - (r.rating || 5))}</div>
+        <p class="review-text">"${escapeHtml(r.review_text)}"</p>
+      </div>`).join('');
+  } catch (e) { console.error('Reviews load failed:', e); }
+})();
+
+// ---- 5. BLOG / NEWS (into #blogGrid) ----
+(async () => {
+  const grid = document.getElementById('blogGrid');
+  if (!grid) return;
+  try {
+    const posts = await getPublishedPosts(6);
+    if (!posts.length) return;
+    grid.innerHTML = posts.map(p => `
+      <div class="blog-card">
+        <div class="blog-thumb">
+          ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" onerror="this.style.display='none'" />` : '📰'}
+          <span class="blog-cat">${escapeHtml(p.category || 'News')}</span>
+        </div>
+        <div class="blog-body">
+          <div class="blog-date">${fmtDate(p.published_date)}</div>
+          <h3>${escapeHtml(p.title)}</h3>
+          <p>${escapeHtml((p.body || '').slice(0, 140))}${(p.body || '').length > 140 ? '…' : ''}</p>
+        </div>
+      </div>`).join('');
+  } catch (e) { console.error('Blog load failed:', e); }
+})();
+
+// ---- 6. GALLERY (into #galleryGrid) ----
+(async () => {
+  const grid = document.getElementById('galleryGrid');
+  if (!grid) return;
+  try {
+    const images = await getGallery();
+    if (!images.length) return;
+    grid.innerHTML = images.map(img => `
+      <div class="gcell">
+        <img src="${escapeHtml(img.image_url)}" alt="${escapeHtml(img.caption || '')}" onerror="this.parentElement.style.display='none'" />
+        ${img.caption ? `<div class="gcell-lbl">${escapeHtml(img.caption)}</div>` : ''}
+      </div>`).join('');
+  } catch (e) { console.error('Gallery load failed:', e); }
+})();
+
+// ---- 7. VIDEOS (main embed into #mainVideoEmbed, list into #videoListEl) ----
+(async () => {
+  const list = document.getElementById('videoListEl');
+  if (!list) return;
+  try {
+    const videos = await getVideos();
+    if (!videos.length) return;
+    list.innerHTML = videos.map((v, i) => `
+      <div class="video-item" data-embed-url="${escapeHtml(v.youtube_url || '')}" data-index="${i}">
+        <div class="video-thumb">
+          ${getYouTubeThumb(v.youtube_url) ? `<img src="${getYouTubeThumb(v.youtube_url)}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" />` : '▶'}
+        </div>
+        <div>
+          <div class="video-item-title">${escapeHtml(v.title)}</div>
+          <div class="video-item-sub">${escapeHtml(v.category || '')}${v.description ? ' · ' + escapeHtml(v.description) : ''}</div>
+        </div>
+      </div>`).join('');
+
+    // Wire click handlers + load first video into the main embed automatically
+    list.querySelectorAll('.video-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const url = item.getAttribute('data-embed-url');
+        if (url && window.loadMainVideo) window.loadMainVideo(url);
+      });
+    });
+    if (videos[0]?.youtube_url && window.loadMainVideo) {
+      window.loadMainVideo(videos[0].youtube_url);
+    }
+  } catch (e) { console.error('Videos load failed:', e); }
+})();
+
+// ---- 8. QUESTION PAPERS (grouped by exam_type, into #papersGrid) ----
+(async () => {
+  const grid = document.getElementById('papersGrid');
+  if (!grid) return;
+  try {
+    const papers = await getPapers();
+    if (!papers.length) return;
+    const grouped = papers.reduce((acc, p) => {
+      const k = p.exam_type || 'NVS';
+      (acc[k] = acc[k] || []).push(p);
+      return acc;
+    }, {});
+    const examClass = { NVS: 'nvs', Sainik: 'sainik', RMS: 'rms' };
+    grid.innerHTML = Object.entries(grouped).map(([exam, papers]) => `
+      <div class="papers-card ${examClass[exam] || ''}">
+        <h3>${escapeHtml(exam)} Question Papers</h3>
+        <div class="papers-sub">${papers.length} paper${papers.length > 1 ? 's' : ''} available</div>
+        ${papers.map(p => `
+          <a class="paper-link" href="${p.pdf_url ? escapeHtml(p.pdf_url) : '#'}" target="_blank" rel="noopener noreferrer">
+            <span class="paper-name">${escapeHtml(p.title)} (${escapeHtml(p.class_level || '')})</span>
+            <span class="paper-dl">⬇</span>
+          </a>`).join('')}
+      </div>`).join('');
+  } catch (e) { console.error('Papers load failed:', e); }
+})();
+
+// ---- 9. RESULT BANNERS (into #rbTrack, replacing slider slides) ----
+(async () => {
+  const track = document.getElementById('rbTrack');
+  if (!track) return;
+  try {
+    const banners = await getActiveBanners();
+    if (!banners.length) return;
+    track.innerHTML = banners.map(b => `
+      <div class="result-banner-slide">
+        ${b.image_url ? `<img src="${escapeHtml(b.image_url)}" alt="${escapeHtml(b.title)}" onerror="this.style.display='none'" />` : ''}
+        <div class="result-banner-overlay">
+          <div class="result-banner-content">
+            <div class="result-banner-year">${escapeHtml(b.year_label || '')}</div>
+            <div class="result-banner-title">${escapeHtml(b.title)}</div>
+            <div class="result-banner-sub">${escapeHtml(b.subtitle || '')}</div>
+          </div>
+        </div>
+      </div>`).join('');
+
+    // Rebuild the dot navigation to match the new slide count
+    const dots = document.getElementById('rbDots');
+    if (dots) {
+      dots.innerHTML = '';
+      banners.forEach((_, i) => {
+        const dot = document.createElement('div');
+        dot.className = 'rb-dot' + (i === 0 ? ' active' : '');
+        dot.onclick = () => { if (window.rbSlide) { /* jump via repeated calls */ } };
+        dots.appendChild(dot);
+      });
+    }
+  } catch (e) { console.error('Banners load failed:', e); }
+})();
+
+// ---- 10. FACULTY (into #facultyGrid) ----
+(async () => {
+  const grid = document.getElementById('facultyGrid');
+  if (!grid) return;
+  try {
+    const faculty = await getFaculty();
+    if (!faculty.length) return;
+    grid.innerHTML = faculty.map(f => {
+      const initials = (f.name || 'F').split(' ').map(w => w[0]).join('').slice(0, 2);
+      return `
+        <div class="faculty-card">
+          <div class="faculty-photo">
+            ${f.photo_url ? `<img src="${escapeHtml(f.photo_url)}" alt="${escapeHtml(f.name)}" onerror="this.style.display='none'" />` : escapeHtml(initials)}
+          </div>
+          <h3>${escapeHtml(f.name)}</h3>
+          <div class="role">${escapeHtml(f.role || '')}</div>
+          ${f.subject ? `<div class="subj">${escapeHtml(f.subject)}</div>` : ''}
+          ${f.experience ? `<div class="exp">${escapeHtml(f.experience)}</div>` : ''}
+        </div>`;
+    }).join('');
+  } catch (e) { console.error('Faculty load failed:', e); }
+})();
+
+// ---- 11. LIVE FORM SUBMISSIONS (replaces the 3 mock window.submit* functions) ----
+window.submitEnquiry = async () => {
+  const msg = document.getElementById('formMsg');
+  const btn = document.getElementById('fBtn');
+  const studentName = document.getElementById('fStuName')?.value.trim();
+  const parentName = document.getElementById('fParName')?.value.trim();
+  const phone = document.getElementById('fPhone')?.value.trim();
+  const classGrade = document.getElementById('fClass')?.value.trim();
+  const course = document.getElementById('fCourse')?.value;
+  const message = document.getElementById('fMsg')?.value.trim();
+
+  if (!studentName || !phone) {
+    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg error'; msg.textContent = 'Please enter student name and phone number.'; }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+  try {
+    const { error } = await submitEnquiry({
+      student_name: studentName, parent_name: parentName, phone,
+      class_grade: classGrade, course, message,
+    });
+    if (error) throw error;
+    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg success'; msg.textContent = 'Thank you! We will contact you shortly.'; }
+    ['fStuName', 'fParName', 'fPhone', 'fClass', 'fMsg'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  } catch (e) {
+    console.error('Enquiry submit failed:', e);
+    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg error'; msg.textContent = 'Something went wrong. Please try again or call us directly.'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit Enquiry →'; }
+  }
+};
+
+window.submitScholar = async () => {
+  const msg = document.getElementById('scholarMsg');
+  const studentName = document.getElementById('scName')?.value.trim();
+  const phone = document.getElementById('scPhone')?.value.trim();
+  const classAge = document.getElementById('scClass')?.value.trim();
+  const type = document.getElementById('scType')?.value;
+
+  if (!studentName || !phone) {
+    if (msg) { msg.style.display = 'block'; msg.className = 'scholar-msg err'; msg.textContent = 'Please enter student name and phone number.'; }
+    return;
+  }
+
+  try {
+    const { error } = await submitScholarRegistration({ student_name: studentName, phone, class_age: classAge, type });
+    if (error) throw error;
+    if (msg) { msg.style.display = 'block'; msg.className = 'scholar-msg ok'; msg.textContent = 'Registration successful! We will confirm your slot within 24 hours.'; }
+    ['scName', 'scPhone', 'scClass'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  } catch (e) {
+    console.error('Scholar registration failed:', e);
+    if (msg) { msg.style.display = 'block'; msg.className = 'scholar-msg err'; msg.textContent = 'Something went wrong. Please try again or call us directly.'; }
+  }
+};
+
+window.submitGrievance = async () => {
+  const msg = document.getElementById('grvMsg');
+  const name = document.getElementById('grvName')?.value.trim();
+  const phone = document.getElementById('grvPhone')?.value.trim();
+  const category = document.getElementById('grvCat')?.value;
+  const description = document.getElementById('grvMsg2')?.value.trim();
+
+  if (!name || !phone || !description) {
+    if (msg) { msg.style.display = 'block'; msg.className = 'grv-msg err'; msg.textContent = 'Please fill in your name, phone, and concern.'; }
+    return;
+  }
+
+  try {
+    const { error } = await submitGrievance({
+      student_name: name, parent_name: name, phone,
+      message: `[${category}] ${description}`,
+    });
+    if (error) throw error;
+    const ticketId = 'GNSI-GRV-' + Date.now().toString().slice(-6);
+    if (msg) { msg.style.display = 'block'; msg.className = 'grv-msg ok'; msg.textContent = 'Grievance submitted! Ticket ID: ' + ticketId; }
+    ['grvName', 'grvPhone', 'grvMsg2'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  } catch (e) {
+    console.error('Grievance submit failed:', e);
+    if (msg) { msg.style.display = 'block'; msg.className = 'grv-msg err'; msg.textContent = 'Something went wrong. Please try again or call our helpdesk.'; }
+  }
+};
 
     // FAQ accordion
     document.querySelectorAll('.faq-q').forEach(q => {
@@ -220,31 +540,7 @@ export default function LandingPage() {
       document.getElementById('ppShell').classList.remove('show');
     };
 
-    // Form submissions (mock)
-    window.submitEnquiry = () => {
-      const msg = document.getElementById('formMsg');
-      if (msg) {
-        msg.style.display = 'block';
-        msg.className = 'form-msg success';
-        msg.textContent = 'Thank you! We will contact you shortly.';
-      }
-    };
-    window.submitScholar = () => {
-      const msg = document.getElementById('scholarMsg');
-      if (msg) {
-        msg.style.display = 'block';
-        msg.className = 'scholar-msg ok';
-        msg.textContent = 'Registration successful! We will confirm your slot within 24 hours.';
-      }
-    };
-    window.submitGrievance = () => {
-      const msg = document.getElementById('grvMsg');
-      if (msg) {
-        msg.style.display = 'block';
-        msg.className = 'grv-msg ok';
-        msg.textContent = 'Grievance submitted! Ticket ID: GNSI-GRV-' + Date.now().toString().slice(-6);
-      }
-    };
+    // Form submissions (mock) 
     window.fetchAdmitCard = () => {
       const res = document.getElementById('acResult');
       const data = document.getElementById('acData');
