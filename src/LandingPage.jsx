@@ -263,7 +263,10 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
   if (!list) return;
   try {
     const videos = await getVideos();
-    if (!videos.length) return;
+    if (!videos.length) {
+      list.innerHTML = '<p style="color:rgba(248,243,232,.35);font-family:\'Rajdhani\',sans-serif;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;padding:.5rem 0">Videos coming soon</p>';
+      return;
+    }
     list.innerHTML = videos.map((v, i) => `
       <div class="video-item" data-embed-url="${escapeHtml(v.youtube_url || '')}" data-index="${i}">
         <div class="video-thumb">
@@ -496,8 +499,15 @@ window.submitGrievance = async () => {
     // Video loader
     window.loadMainVideo = (url) => {
       const embed = document.getElementById('mainVideoEmbed');
-      if (embed) {
+      if (!embed) return;
+      // Only accept real youtube.com/embed/VIDEO_ID URLs — channel pages,
+      // playlist-only URLs, or missing URLs cannot be embedded in an iframe
+      // and previously left a broken-image icon in their place.
+      const valid = url && /^https:\/\/www\.youtube\.com\/embed\/[A-Za-z0-9_-]{6,}/.test(url);
+      if (valid) {
         embed.innerHTML = '<iframe src="' + url + '" allowfullscreen></iframe>';
+      } else {
+        embed.innerHTML = '<div class="video-placeholder" id="videoPlaceholder"><div class="play-btn">▶</div><p>Video unavailable</p></div>';
       }
     };
 
@@ -1669,7 +1679,6 @@ window.submitGrievance = async () => {
             <div
               className="video-placeholder"
               id="videoPlaceholder"
-              onClick={() => window.loadMainVideo('https://www.youtube.com/embed/?listType=user_uploads&list=gnsikhangabok')}
             >
               <div className="play-btn">▶</div>
               <p>GNSI Campus &amp; Classroom Tour</p>
@@ -1685,55 +1694,12 @@ window.submitGrievance = async () => {
               marginTop: ".7rem"
             }}
           >
-            Click to load video · Opens YouTube
+            Click a video to play
           </p>
         </div>
-        <div className="video-list">
-          <div
-            className="video-item"
-            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
-          >
-            <div className="video-thumb">▶</div>
-            <div>
-              <div className="video-item-title">
-                Morning Assembly &amp; PT Session
-              </div>
-              <div className="video-item-sub">Campus Life · 3 min</div>
-            </div>
-          </div>
-          <div
-            className="video-item"
-            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
-          >
-            <div className="video-thumb">▶</div>
-            <div>
-              <div className="video-item-title">Result Celebration 2025–26</div>
-              <div className="video-item-sub">Achievements · 5 min</div>
-            </div>
-          </div>
-          <div
-            className="video-item"
-            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
-          >
-            <div className="video-thumb">▶</div>
-            <div>
-              <div className="video-item-title">
-                Classroom &amp; Teaching Methods
-              </div>
-              <div className="video-item-sub">Academics · 4 min</div>
-            </div>
-          </div>
-          <div
-            className="video-item"
-            onClick={() => window.loadMainVideo('https://www.youtube.com/@gnsikhangabok')}
-          >
-            <div className="video-thumb">▶</div>
-            <div>
-              <div className="video-item-title">
-                Hostel Life &amp; Mess Tour
-              </div>
-              <div className="video-item-sub">Facilities · 3 min</div>
-            </div>
+        <div className="video-list-wrap">
+          <div className="video-list" id="videoListEl">
+            {/* Populated dynamically from website_videos via getVideos() — see VIDEOS script block */}
           </div>
           <div style={{ marginTop: "1rem" }}>
             <a
