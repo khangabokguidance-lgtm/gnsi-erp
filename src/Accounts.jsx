@@ -20,6 +20,7 @@ const RECEIPT_BUCKET     = 'account-receipts'
 
 const emptyRow = {
   entry_date   : new Date().toLocaleDateString('en-CA'),
+  payment_date : new Date().toLocaleDateString('en-CA'), // actual date money was received (Income only)
   type         : 'Income',
   category     : '',
   amount       : '',
@@ -89,9 +90,9 @@ function detectFrequencyAnomalies(entries, todayStr){
 }
 
 // ── daily expenditure helpers ──────────────────────────────────────────────
-function groupByDate(entries){
+function groupByDate(entries, getDate=(e)=>e.entry_date){
   const map={}
-  entries.forEach(e=>{if(!map[e.entry_date])map[e.entry_date]=[];map[e.entry_date].push(e)})
+  entries.forEach(e=>{const d=getDate(e);if(!map[d])map[d]=[];map[d].push(e)})
   return Object.entries(map).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0)
 }
 
@@ -193,6 +194,9 @@ function Accounts({role,userId}){
   const [voucherHead,      setVoucherHead]      = useState('')
   // PAYMENT-DATE FILTER FIX: Daily register can now show Income (payments) or Expense
   const [dailyTypeFilter,  setDailyTypeFilter]  = useState('Expense')
+  // ACTUAL PAYMENT DATE FIX: for Income, choose whether the date filter goes by when money was
+  // actually received (payment_date) or when the row was recorded (entry_date)
+  const [dailyDateMode,    setDailyDateMode]    = useState('payment') // 'payment' | 'entry'
 
   // admin extras
   const [deletedRows, setDeletedRows] = useState([])
@@ -316,14 +320,14 @@ function Accounts({role,userId}){
   // ── CRUD ──────────────────────────────────────────────────────────────
   const openAdd=()=>{
     setEditEntry(null)
-    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today}])
+    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today}])
     setReceiptFile(null);setShowForm(true)
   }
 
   const openEdit=(item)=>{
     setEditEntry(item)
     setRows([{
-      entry_date:item.entry_date,type:item.type,category:item.category,
+      entry_date:item.entry_date,payment_date:item.payment_date||item.entry_date,type:item.type,category:item.category,
       amount:String(item.amount),payment_mode:item.payment_mode,
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
@@ -337,7 +341,7 @@ function Accounts({role,userId}){
   const openDuplicate=(item)=>{
     setEditEntry(null)
     setRows([{
-      entry_date:today,type:item.type,category:item.category,
+      entry_date:today,payment_date:today,type:item.type,category:item.category,
       amount:String(item.amount),payment_mode:item.payment_mode,
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
@@ -370,7 +374,7 @@ function Accounts({role,userId}){
     if(editEntry){
       const r=rows[0],receiptUrl=await uploadReceipt(editEntry.id)
       const payload={
-        entry_date:r.entry_date,type:r.type,category:r.category,
+        entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:r.status,
@@ -381,7 +385,7 @@ function Accounts({role,userId}){
       else{await writeAuditLog({action:'update',role,targetId:editEntry.id,oldValues:editEntry,newValues:payload});setShowForm(false);setEditEntry(null);setReceiptFile(null);fetchEntries()}
     }else{
       const payloads=rows.filter(r=>canAddIncome||r.type==='Expense').map(r=>({
-        entry_date:r.entry_date,type:r.type,category:r.category,
+        entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:r.status,added_by:role,
@@ -426,8 +430,14 @@ function Accounts({role,userId}){
   const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
   const toggleSelectAll=()=>selected.size===pagedEntries.length?setSelected(new Set()):setSelected(new Set(pagedEntries.map(e=>e.id)))
 
-  const updateRow=(i,key,val)=>setRows(prev=>prev.map((r,idx)=>idx===i?{...r,[key]:val}:r))
-  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today}])
+  const updateRow=(i,key,val)=>setRows(prev=>prev.map((r,idx)=>{
+    if(idx!==i)return r
+    // ACTUAL PAYMENT DATE FIX: keep payment_date following entry_date until the user
+    // explicitly diverges them (i.e. payment_date currently still mirrors entry_date)
+    if(key==='entry_date'&&(r.payment_date===r.entry_date||!r.payment_date))return{...r,entry_date:val,payment_date:val}
+    return{...r,[key]:val}
+  }))
+  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today}])
   const removeRow=(i)=>setRows(prev=>prev.filter((_,idx)=>idx!==i))
 
   // PHASE 1 FIX: budget save confirmation to prevent silent overwrite
@@ -459,8 +469,12 @@ function Accounts({role,userId}){
 
   const exportDailyCSV=()=>{
     const filtered=dailyFilteredEntries
-    const header=['#','Date','Voucher Head','Account','Description','Payment Mode',`Amount (${dailyTypeFilter})`]
-    const rows_=filtered.map((e,i)=>[i+1,e.entry_date,e.voucher_head||'',e.account_type||'Cash A/c',e.note||e.category,e.payment_mode,e.amount])
+    const header=dailyIsIncome
+      ? ['#','Payment Date','Entry Date','Voucher Head','Account','Description','Payment Mode','Amount']
+      : ['#','Date','Voucher Head','Account','Description','Payment Mode','Amount']
+    const rows_=filtered.map((e,i)=>dailyIsIncome
+      ? [i+1,e.payment_date||e.entry_date,e.entry_date,e.voucher_head||'',e.account_type||'Cash A/c',e.note||e.category,e.payment_mode,e.amount]
+      : [i+1,e.entry_date,e.voucher_head||'',e.account_type||'Cash A/c',e.note||e.category,e.payment_mode,e.amount])
     const csv=[header,...rows_].map(r=>r.join(',')).join('\n')
     const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob)
     const a=Object.assign(document.createElement('a'),{href:url,download:`daily-${dailyTypeFilter.toLowerCase()}.csv`})
@@ -475,6 +489,7 @@ function Accounts({role,userId}){
     const bankAmt=filtered.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)
     const w=window.open('','_blank')
     const regTitle=`Daily ${dailyLabelWord} Register`
+    const dateModeLabel=dailyIsIncome?(dailyDateMode==='payment'?'Actual Payment Date':'Entry Date'):'Entry Date'
     let rowNum=0
     w.document.write(`<html><head><title>${regTitle}</title><style>
       body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
@@ -490,14 +505,14 @@ function Accounts({role,userId}){
       @page{margin:15mm}
     </style></head><body>
     <h1>📊 ${regTitle} — GNSI Portal</h1>
-    <p>Voucher Head: ${voucherHead||'All'} &nbsp;|&nbsp; Payment Date: ${dateFrom||'All'}–${dateTo||'present'} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')}</p>
-    <table><tr><th>#</th><th>Sl</th><th>Account</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount (${dailyDrCr})</th></tr>
+    <p>Grouped by: ${dateModeLabel} &nbsp;|&nbsp; Voucher Head: ${voucherHead||'All'} &nbsp;|&nbsp; Range: ${dateFrom||'All'}–${dateTo||'present'} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <table><tr><th>#</th><th>Sl</th><th>Account</th><th>Description</th><th>Pay Mode</th>${dailyIsIncome?'<th>Entry Date</th>':''}<th style="text-align:right">Amount (${dailyDrCr})</th></tr>
     ${groups.map(([date,rows])=>{
       const dayTotal=rows.reduce((s,e)=>s+Number(e.amount),0)
-      const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:11px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td><td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
-      return`<tr><td colspan="6" class="day-header">${date} — ${new Date(date).toLocaleDateString('en-IN',{weekday:'long'})} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="5">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
+      const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:11px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td>${dailyIsIncome?`<td style="font-size:11px;color:#888">${e.entry_date}</td>`:''}<td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
+      return`<tr><td colspan="${dailyIsIncome?7:6}" class="day-header">${date} — ${new Date(date).toLocaleDateString('en-IN',{weekday:'long'})} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="${dailyIsIncome?6:5}">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
     }).join('')}
-    <tr class="grand"><td colspan="4">GRAND TOTAL</td><td>Cash: ${fmt(cashAmt)} | Bank: ${fmt(bankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
+    <tr class="grand"><td colspan="4">GRAND TOTAL</td><td colspan="${dailyIsIncome?2:1}">Cash: ${fmt(cashAmt)} | Bank: ${fmt(bankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
     </table></body></html>`)
     w.document.close();w.print()
   }
@@ -557,6 +572,12 @@ function Accounts({role,userId}){
     return[...list].sort((a,b)=>{let av=a[sortField],bv=b[sortField];if(sortField==='amount'){av=Number(av);bv=Number(bv)};if(av<bv)return sortDir==='asc'?-1:1;if(av>bv)return sortDir==='asc'?1:-1;return 0})
   },[entries,search,typeFilter,modeFilter,statusFilter,acctFilter,dateFrom,dateTo,sortField,sortDir])
 
+  // ACTUAL PAYMENT DATE FIX: resolves which date field the Daily register filters/groups by
+  const getDailyDate = useCallback((e)=>{
+    if(dailyTypeFilter==='Income'&&dailyDateMode==='payment')return e.payment_date||e.entry_date
+    return e.entry_date
+  },[dailyTypeFilter,dailyDateMode])
+
   // PAYMENT-DATE FILTER FIX: now driven by dailyTypeFilter (Income or Expense) instead of being hard-locked to Expense
   const dailyFilteredEntries=useMemo(()=>{
     return entries.filter(e=>{
@@ -564,12 +585,13 @@ function Accounts({role,userId}){
       if(dailyAcctFilter!=='All'&&(e.account_type||'Cash A/c')!==dailyAcctFilter)return false
       if(dailyModeFilter!=='All'&&e.payment_mode!==dailyModeFilter)return false
       if(voucherHead&&!(e.voucher_head||'').toLowerCase().includes(voucherHead.toLowerCase()))return false
-      if(dateFrom&&e.entry_date<dateFrom)return false
-      if(dateTo&&e.entry_date>dateTo)return false
+      const d=getDailyDate(e)
+      if(dateFrom&&d<dateFrom)return false
+      if(dateTo&&d>dateTo)return false
       const q=dailySearch.toLowerCase()
       return!q||(e.note||'').toLowerCase().includes(q)||(e.category||'').toLowerCase().includes(q)
-    }).sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
-  },[entries,dailySearch,dailyAcctFilter,dailyModeFilter,voucherHead,dateFrom,dateTo,dailyTypeFilter])
+    }).sort((a,b)=>{const da=getDailyDate(a),db=getDailyDate(b);return da<db?-1:da>db?1:0})
+  },[entries,dailySearch,dailyAcctFilter,dailyModeFilter,voucherHead,dateFrom,dateTo,dailyTypeFilter,getDailyDate])
 
   // PAYMENT-DATE FILTER FIX: derived label/color for the Daily register, used across header, table, CSV, print
   const dailyIsIncome  = dailyTypeFilter==='Income'
@@ -657,7 +679,7 @@ function Accounts({role,userId}){
 
   const totalFraudAlerts=isAdmin?(fraudSummary.high||0)+(fraudSummary.medium||0):0
 
-  const dailyGroups=useMemo(()=>groupByDate(dailyFilteredEntries),[dailyFilteredEntries])
+  const dailyGroups=useMemo(()=>groupByDate(dailyFilteredEntries,getDailyDate),[dailyFilteredEntries,getDailyDate])
   const dailyTotalAmt=dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)
   const dailyCashAmt=dailyFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)
   const dailyBankAmt=dailyFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)
@@ -751,7 +773,8 @@ function Accounts({role,userId}){
             <div key={i} style={{border:rows.length>1?'1px solid #e2e8f0':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
               {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a5f'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
               <div style={{display:'grid',gridTemplateColumns:formCols,gap:14}}>
-                <div><label style={lStyle}>Date</label><input type="date" value={row.entry_date} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
+                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''}</label><input type="date" value={row.entry_date} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
+                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date</label><input type="date" value={row.payment_date||row.entry_date} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
                 <div><label style={lStyle}>Type</label>
                   <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#f8fafc':'white'}}>
                     {canAddIncome&&<option>Income</option>}<option>Expense</option>
@@ -975,7 +998,7 @@ function Accounts({role,userId}){
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
               <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📊 Daily {dailyLabelWord} Register</h2>
-              <p style={{fontSize:12,color:'rgba(255,255,255,0.5)',margin:'4px 0 0'}}>{dailyTypeFilter} entries grouped by date</p>
+              <p style={{fontSize:12,color:'rgba(255,255,255,0.5)',margin:'4px 0 0'}}>{dailyTypeFilter} entries grouped by {dailyIsIncome?(dailyDateMode==='payment'?'actual payment date':'entry date'):'entry date'}</p>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <button onClick={exportDailyCSV} style={{backgroundColor:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⬇ CSV</button>
@@ -997,6 +1020,14 @@ function Accounts({role,userId}){
           <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Showing:</span>
           <button onClick={()=>setDailyTypeFilter('Income')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyIsIncome?'#16a34a':'#bbf7d0',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyIsIncome?'#16a34a':'#f0fdf4',color:dailyIsIncome?'white':'#16a34a'}}>📈 Income / Payments</button>
           <button onClick={()=>setDailyTypeFilter('Expense')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:!dailyIsIncome?'#dc2626':'#fecaca',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:!dailyIsIncome?'#dc2626':'#fef2f2',color:!dailyIsIncome?'white':'#dc2626'}}>📉 Expense</button>
+          {dailyIsIncome&&(
+            <>
+              <span style={{width:1,height:20,backgroundColor:'#e2e8f0',margin:'0 4px'}}/>
+              <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Filter by:</span>
+              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a5f':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a5f':'#f1f5f9',color:dailyDateMode==='payment'?'white':'#64748b'}}>💰 Payment Date</button>
+              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a5f':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a5f':'#f1f5f9',color:dailyDateMode==='entry'?'white':'#64748b'}}>🗓 Entry Date</button>
+            </>
+          )}
           <span style={{width:1,height:20,backgroundColor:'#e2e8f0',margin:'0 4px'}}/>
           <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
           {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
@@ -1010,8 +1041,8 @@ function Accounts({role,userId}){
           <select value={dailyAcctFilter} onChange={e=>setDailyAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
           <select value={dailyModeFilter} onChange={e=>setDailyModeFilter(e.target.value)} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
           <input placeholder="Voucher head…" value={voucherHead} onChange={e=>setVoucherHead(e.target.value)} style={iStyle}/>
-          <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setActiveQuick('')}} title="Payment date from" style={iStyle}/>
-          <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveQuick('')}} title="Payment date to" style={iStyle}/>
+          <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setActiveQuick('')}} title={dailyIsIncome&&dailyDateMode==='payment'?'Payment date from':'Entry date from'} style={iStyle}/>
+          <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveQuick('')}} title={dailyIsIncome&&dailyDateMode==='payment'?'Payment date to':'Entry date to'} style={iStyle}/>
           {(dailySearch||dailyAcctFilter!=='All'||dailyModeFilter!=='All'||voucherHead||dateFrom||dateTo)&&
             <button onClick={()=>{setDailySearch('');setDailyAcctFilter('All');setDailyModeFilter('All');setVoucherHead('');setDateFrom('');setDateTo('');setActiveQuick('')}} style={{...smallBtn('#fee2e2','#dc2626'),padding:'9px 14px',fontSize:12, gridColumn: isMobile ? 'span 2' : 'auto'}}>✖ Clear</button>}
           <div style={{display:'flex',gap:6, gridColumn: isMobile ? 'span 2' : 'auto'}}>
@@ -1055,6 +1086,7 @@ function Accounts({role,userId}){
                               <span style={{fontSize:11,padding:'1px 6px',borderRadius:4,backgroundColor:item.account_type==='2026-27 A/c'?'#ffe8c2':'#e8f5ee',color:item.account_type==='2026-27 A/c'?'#8b5e00':'#1a7a4a',fontWeight:700}}>{item.account_type||'Cash A/c'}</span>
                               <span style={{fontSize:11,color:'#7c3aed',fontWeight:500}}>{item.voucher_head||''}</span>
                               <span style={{fontSize:11,color:'#64748b'}}>{item.payment_mode}</span>
+                              {dailyIsIncome&&item.payment_date&&item.payment_date!==item.entry_date&&<span style={{fontSize:10,color:'#f59e0b',fontWeight:600}}>{dailyDateMode==='payment'?`Entered ${item.entry_date}`:`Paid ${item.payment_date}`}</span>}
                               {canWrite&&<div style={{marginLeft:'auto',display:'flex',gap:4}}>
                                 <button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️</button>
                                 <button onClick={()=>handleDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button>
@@ -1084,7 +1116,7 @@ function Accounts({role,userId}){
                                   <td style={{padding:'9px 12px',fontFamily:'monospace',fontSize:11,color:'#8a9ab0'}}>{rowIdx+1}</td>
                                   <td style={{padding:'9px 12px'}}><span style={{display:'inline-block',padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:700,backgroundColor:acctColor.bg,color:acctColor.color}}>{item.account_type||'Cash A/c'}</span></td>
                                   <td style={{padding:'9px 12px',fontSize:12,color:'#7c3aed',fontWeight:500}}>{item.voucher_head||'—'}</td>
-                                  <td style={{padding:'9px 12px',color:'#1a2535',fontWeight:500,maxWidth:260}}>{item.note||item.category||'—'}</td>
+                                  <td style={{padding:'9px 12px',color:'#1a2535',fontWeight:500,maxWidth:260}}>{item.note||item.category||'—'}{dailyIsIncome&&item.payment_date&&item.payment_date!==item.entry_date&&<span style={{marginLeft:6,fontSize:10,color:'#f59e0b',fontWeight:600}}>({dailyDateMode==='payment'?`Entered ${item.entry_date}`:`Paid ${item.payment_date}`})</span>}</td>
                                   <td style={{padding:'9px 12px'}}><span style={{display:'inline-block',padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:700,backgroundColor:modeColor.bg,color:modeColor.color}}>{item.payment_mode}</span></td>
                                   <td style={{padding:'9px 12px',fontFamily:'monospace',fontSize:13,fontWeight:600,color:dailyAmtColor,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(item.amount)}</td>
                                   {canWrite&&<td style={{padding:'9px 12px',textAlign:'center'}}><div style={{display:'flex',gap:4,justifyContent:'center'}}><button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️</button><button onClick={()=>handleDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button></div></td>}
