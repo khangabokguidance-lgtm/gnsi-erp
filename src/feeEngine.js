@@ -309,15 +309,20 @@ export const checkCourseFeeExists = async (gcc, forMonth, year) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const upsertAccount = async ({
-  entry_date, type, category, amount,
+  entry_date, payment_date, type, category, amount,
   payment_mode, note, source_ref: sRef, source_type,
   is_recurring = false, receipt_url = null,
 }) => {
+  const resolvedEntryDate = entry_date || new Date().toISOString().slice(0, 10)
   const { error } = await supabase
     .from(TABLES.accounts)
     .upsert(
       {
-        entry_date: entry_date || new Date().toISOString().slice(0, 10),
+        entry_date: resolvedEntryDate,
+        // ACTUAL PAYMENT DATE FIX: every fee-driven income row must carry the
+        // real payment date too, not just entry_date — falls back to entry_date
+        // only if a caller forgets to pass it (should never happen going forward).
+        payment_date: payment_date || resolvedEntryDate,
         type, category, amount, payment_mode, note,
         source_ref: sRef, source_type,
         is_recurring, receipt_url,

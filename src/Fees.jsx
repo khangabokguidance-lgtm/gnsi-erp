@@ -699,7 +699,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         if (admErr) throw admErr
 
         await upsertAccount({
-          entry_date: payDate, type: 'Income', category: 'Admission',
+          entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
           amount: admFeeAmt, payment_mode: payMode,
           note: `${student.name} · Admission Fee · ${rNo}`,
           source_ref: sourceRef.admission(gcc), source_type: 'adm_fee',
@@ -717,7 +717,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           })
           if (dkErr) throw dkErr
           await upsertAccount({
-            entry_date: payDate, type: 'Income', category: 'Admission',
+            entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
             amount: item.price, payment_mode: payMode,
             note: `${student.name} · ${item.name} · ${rNo}`,
             source_ref: sourceRef.admItem(gcc, item.name), source_type: 'adm_fee',
@@ -733,7 +733,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           })
           if (pErr) throw pErr
           await upsertAccount({
-            entry_date: payDate, type: 'Income', category: 'Admission',
+            entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
             amount: PROSPECTUS_FEE, payment_mode: payMode,
             note: `${student.name} · Prospectus · ${rNo}`,
             source_ref: sourceRef.admItem(gcc, 'prospectus'), source_type: 'adm_fee',
@@ -756,7 +756,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         if (ffErr) throw ffErr
 
         await upsertAccount({
-          entry_date: payDate, type: 'Income', category: 'Hostel',
+          entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
           amount: ff.amount, payment_mode: payMode,
           note: `${student.name} · ${ff.month} ${ff.year} Flat Fee [${hostelType}] · ${rNo}`,
           source_ref: sourceRef.flatFee(gcc, ff.month, ff.year), source_type: 'flat_fee',
@@ -784,7 +784,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         if (cfErr) throw cfErr
 
         await upsertAccount({
-          entry_date: payDate, type: 'Income', category: 'Fees',
+          entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
           amount: Number(cf.amount), payment_mode: payMode,
           note: `${student.name} · ${cf.course} ${cf.for_month} · ${rNo}`,
           source_ref: sourceRef.courseFee(gcc, cf.for_month, CURRENT_YEAR), source_type: 'course_fee',
@@ -1234,7 +1234,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   {PAY_MODES.map(m => <option key={m}>{m}</option>)}
                 </select>
               </div>
-              <div><label style={lbl}>Date</label><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp} /></div>
+              <div><label style={lbl}>Payment date</label><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Transaction ref</label><input value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder="UPI / Cheque ref (optional)" style={inp} /></div>
               <div><label style={lbl}>Collected by</label><input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} style={inp} /></div>
             </div>

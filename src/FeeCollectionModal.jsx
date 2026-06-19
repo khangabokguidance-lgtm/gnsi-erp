@@ -316,7 +316,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         setPaidAdmItems(p => [...new Set([...p, item.label])])
       }
       await upsertAccount({
-        entry_date: payDate, type: 'Income', category: 'Admission',
+        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
         amount: total, payment_mode: payMode,
         note: `Admission fees — ${name} (GCC-${gcc})`,
         source_ref: sourceRef.admission(gcc), source_type: 'admission',
@@ -353,7 +353,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
         })
         if (e) throw e
         await upsertAccount({
-          entry_date: payDate, type: 'Income', category: 'Hostel',
+          entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
           amount: item.amount, payment_mode: payMode,
           note: `Flat fees [${hostelType}] — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
           source_ref: sourceRef.flatFee(gcc, item.month, item.year),
@@ -400,7 +400,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
       })
       if (e) throw e
       await upsertAccount({
-        entry_date: payDate, type: 'Income', category: 'Fees', amount: amt, payment_mode: payMode,
+        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees', amount: amt, payment_mode: payMode,
         note: `Course fee (${courseMonth} ${courseYear}) — ${name} (GCC-${gcc}) [${hostelType}]`,
         source_ref: sourceRef.courseFee(gcc, courseMonth, courseYear),
         source_type: 'course_fee',
@@ -783,7 +783,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Date</label>
+                <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Payment date</label>
                 <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp} />
               </div>
               <div>
