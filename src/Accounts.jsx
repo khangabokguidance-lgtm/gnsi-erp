@@ -211,9 +211,6 @@ function Accounts({role,userId}){
   const [balanceSheet,      setBalanceSheet]      = useState([])
   const [loadingFinancials, setLoadingFinancials] = useState(false)
 
-  // Realtime sync status — reflects whether the accounts table is live-subscribed
-  const [liveStatus, setLiveStatus] = useState('connecting') // 'connecting' | 'live' | 'offline'
-
   // ── fetch ─────────────────────────────────────────────────────────────
   // PHASE 3 FIX: fraud flags fetched from DB, not computed client-side
   const fetchEntries = useCallback(async()=>{
@@ -282,27 +279,6 @@ function Accounts({role,userId}){
     fetchEntries();fetchBudgets()
     if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials()}
   },[fetchEntries,fetchBudgets,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,isAdmin])
-
-  // ── REALTIME: any insert/update/delete on `accounts` — from this page,
-  // Fees, Hostel, anywhere — refetches automatically. Debounced because a
-  // single fee collection can write several account rows at once. ──────────
-  useEffect(()=>{
-    let debounceTimer=null
-    const channel=supabase
-      .channel('accounts-changes')
-      .on('postgres_changes',{event:'*',schema:'public',table:'accounts'},()=>{
-        clearTimeout(debounceTimer)
-        debounceTimer=setTimeout(()=>{fetchEntries()},400)
-      })
-      .subscribe((status)=>{
-        if(status==='SUBSCRIBED')setLiveStatus('live')
-        else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED')setLiveStatus('offline')
-      })
-    return ()=>{
-      clearTimeout(debounceTimer)
-      supabase.removeChannel(channel)
-    }
-  },[fetchEntries])
 
   // ── recurring ─────────────────────────────────────────────────────────
   // PHASE 2 FIX: DB-level unique constraint handles dupes; error code 23505 caught gracefully
@@ -747,16 +723,7 @@ function Accounts({role,userId}){
     }}>
       <div>
         <h1 style={{fontSize: isMobile ? 20 : 26, fontWeight:'bold',color:'#1e3a5f',margin:0}}>💼 Accounts</h1>
-        <p style={{color:'#64748b',fontSize:14,margin:'4px 0 0',display:'flex',alignItems:'center',gap:8}}>
-          Manage income &amp; expense transactions
-          <span style={{
-            fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,
-            background: liveStatus==='live' ? '#dcfce7' : liveStatus==='offline' ? '#fee2e2' : '#fef9c3',
-            color: liveStatus==='live' ? '#16a34a' : liveStatus==='offline' ? '#dc2626' : '#ca8a04',
-          }} title="Auto-updates when fees or other modules write to Accounts">
-            {liveStatus==='live' ? '🟢 Live' : liveStatus==='offline' ? '🔴 Offline — refresh page' : '🟡 Connecting…'}
-          </span>
-        </p>
+        <p style={{color:'#64748b',fontSize:14,margin:'4px 0 0'}}>Manage income &amp; expense transactions</p>
       </div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap', width: isMobile ? '100%' : 'auto'}}>
         <button onClick={()=>setShowPL(true)} style={{backgroundColor:'#f0f9ff',color:'#0369a1',border:'1px solid #bae6fd',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 16px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 13, flex: isMobile ? '1' : 'none'}}>📋 P&L</button>
