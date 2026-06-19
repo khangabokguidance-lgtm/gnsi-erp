@@ -300,6 +300,7 @@ export const checkCourseFeeExists = async (gcc, forMonth, year) => {
     .eq('adm_app_id', gcc)
     .eq('for_month', forMonth)
     .eq('year', year)
+    .eq('reverted', false)
     .maybeSingle()
   return !!data
 }
@@ -378,8 +379,72 @@ export const mirrorToFeeInvoice = async ({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 9. FEE SUMMARY
+// 8b. REVERT FEE COLLECTION — admin-only undo of a single collected item
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// Design: SOFT revert, not delete. The source row stays (reverted=true,
+// reverted_at/by/reason recorded) so there's a permanent audit trail of who
+// collected it and who undid it and why. It's filtered out of every "paid"
+// view and out of every total. The matching `accounts` income entry (the
+// double-entry bookkeeping row) IS hard-deleted, since a reverted fee should
+// not appear as income in the books.
+//
+// Requires these columns on adm_fee_collections / adm_flat_fees / adm_course_fees:
+//   reverted boolean DEFAULT false NOT NULL, reverted_at timestamptz,
+//   reverted_by text, revert_reason text
+// (see migration SQL provided alongside this change)
+//
+// NOTE: this does NOT roll back the `fee_invoices` mirror table. That table
+// aggregates by calendar month at save-time and doesn't store enough back-
+// reference to safely un-aggregate a single item without risking touching
+// the wrong month. It's a reporting mirror, not the source of truth — the
+// real ledger (`accounts`) and the source collection tables are both
+// corrected here.
+export const revertFeeCollection = async ({
+  table, id, accountSourceRef = null, accountSourceType = null,
+  revertedBy = 'Admin', reason = '',
+}) => {
+  if (!table || !id) throw new Error('revertFeeCollection: table and id are required')
+
+  const updates = {
+    reverted: true,
+    reverted_at: new Date().toISOString(),
+    reverted_by: revertedBy,
+    revert_reason: reason || null,
+  }
+  // Flat fees are also gated on `paid` everywhere else in the app —
+  // flip it so every existing filter keeps working with zero other changes.
+  if (table === TABLES.admFlatFees) updates.paid = false
+
+  const { error } = await supabase.from(table).update(updates).eq('id', id)
+  if (error) throw error
+
+  if (accountSourceRef && accountSourceType) {
+    await supabase.from(TABLES.accounts).delete()
+      .eq('source_ref', accountSourceRef)
+      .eq('source_type', accountSourceType)
+  }
+}
+
+// ─── Correct a mistakenly-entered payment date (admin) ───────────────────────
+// Fixes the date on the source row AND on the matching `accounts` entry, so
+// the books and the collection record never disagree. Does not touch
+// amount/mode/anything else — date-only correction.
+export const correctFeeCollectionDate = async ({
+  table, id, newDate, accountSourceRef = null, accountSourceType = null,
+}) => {
+  if (!table || !id || !newDate) throw new Error('correctFeeCollectionDate: table, id and newDate are required')
+
+  const { error } = await supabase.from(table).update({ pay_date: newDate }).eq('id', id)
+  if (error) throw error
+
+  if (accountSourceRef && accountSourceType) {
+    await supabase.from(TABLES.accounts)
+      .update({ entry_date: newDate, payment_date: newDate })
+      .eq('source_ref', accountSourceRef)
+      .eq('source_type', accountSourceType)
+  }
+}
 
 export const getStudentFeeSummary = async (studentId, sessionYear) => {
   const [invRes, payRes] = await Promise.all([

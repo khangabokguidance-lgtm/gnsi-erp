@@ -8,6 +8,7 @@ import {
   printReceipt, sourceRef,
   getFlatFees, getFeeRates,
   saveStudentFlatFeeOverride, clearFeeRateCache,
+  revertFeeCollection, correctFeeCollectionDate,
   COURSE_RATES, FLAT_RATES,
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
@@ -430,7 +431,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
 // ─── Tab: Fee Payment ─────────────────────────────────────────────────────────
 
-function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh }) {
+function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh, isAdmin, currentUser }) {
   const w        = useWindowWidth()
   const isMobile = w < 768
   const [step,    setStep]    = useState('select')
@@ -562,11 +563,86 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setTimeout(() => setToast(null), 3500)
   }
 
+  // ── Admin-only revert ───────────────────────────────────────────────────
+  const doRevert = async ({ table, id, label, accountSourceRef = null, accountSourceType = null }) => {
+    if (!isAdmin) return
+    const reason = window.prompt(`Revert "${label}"?\n\nThis removes it from the books and lets it be re-collected. Reason (optional):`)
+    if (reason === null) return // cancelled
+    setSaving(true)
+    try {
+      await revertFeeCollection({
+        table, id, accountSourceRef, accountSourceType,
+        revertedBy: currentUser?.name || 'Admin', reason,
+      })
+      showToast(`↩️ Reverted: ${label}`, '#dc2626')
+      onRefresh()
+    } catch (err) {
+      showToast('Revert failed: ' + err.message, '#dc2626')
+    }
+    setSaving(false)
+  }
+
+  const handleRevertAdmCollection = (c) => {
+    const { ref, type } = admCollectionAcct(c)
+    doRevert({ table: 'adm_fee_collections', id: c.id, label: `${c.description || 'Fee'} — ₹${Number(c.amount_paid || 0).toLocaleString('en-IN')}`, accountSourceRef: ref, accountSourceType: type })
+  }
+
+  const handleRevertFlat = (month) => {
+    const r = myFlatRecs.find(r => r.month === month)
+    if (!r) return
+    doRevert({ table: 'adm_flat_fees', id: r.id, label: `${r.month} ${r.year} flat fee — ₹${Number(r.amount || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee' })
+  }
+
+  const handleRevertCourseFee = (r) => {
+    doRevert({ table: 'adm_course_fees', id: r.id, label: `${r.course} ${r.for_month} course fee — ₹${Number(r.amount_paid || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee' })
+  }
+
+  // ── Admin-only: fix a mistakenly-entered payment date (without reverting) ──
+  function admCollectionAcct(c) {
+    return {
+      ref: c.fee_type === 'admission' ? sourceRef.admission(gcc)
+        : c.fee_type === 'item' ? sourceRef.admItem(gcc, c.description === 'Prospectus' ? 'prospectus' : (c.description || '').replace(/^Dress Kit — /, ''))
+        : null,
+      type: c.fee_type === 'advance' ? null : 'adm_fee',
+    }
+  }
+
+  const handleFixDate = async ({ table, id, accountSourceRef, accountSourceType, currentDate, label }) => {
+    if (!isAdmin) return
+    const newDate = window.prompt(`Correct date for "${label}"\nCurrent: ${currentDate || '—'}\n\nEnter correct date (YYYY-MM-DD):`, currentDate || today())
+    if (!newDate) return // cancelled
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { showToast('Invalid date — use YYYY-MM-DD', '#dc2626'); return }
+    setSaving(true)
+    try {
+      await correctFeeCollectionDate({ table, id, newDate, accountSourceRef, accountSourceType })
+      showToast(`📅 Date corrected to ${newDate}`, '#1e3a5f')
+      onRefresh()
+    } catch (err) {
+      showToast('Date fix failed: ' + err.message, '#dc2626')
+    }
+    setSaving(false)
+  }
+
+  const handleFixAdmDate = (c) => {
+    const { ref, type } = admCollectionAcct(c)
+    handleFixDate({ table: 'adm_fee_collections', id: c.id, accountSourceRef: ref, accountSourceType: type, currentDate: c.pay_date, label: c.description || 'Fee' })
+  }
+
+  const handleFixFlatDate = (month) => {
+    const r = myFlatRecs.find(r => r.month === month)
+    if (!r) return
+    handleFixDate({ table: 'adm_flat_fees', id: r.id, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee', currentDate: r.pay_date, label: `${r.month} ${r.year} flat fee` })
+  }
+
+  const handleFixCourseDate = (r) => {
+    handleFixDate({ table: 'adm_course_fees', id: r.id, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee', currentDate: r.pay_date, label: `${r.course} ${r.for_month} course fee` })
+  }
+
   const gcc = student ? gccStr(student.gcc_no) : null
 
-  const myAdmCols  = gcc ? adm_fee_collections.filter(c => gccStr(c.adm_app_id) === gcc) : []
+  const myAdmCols  = gcc ? adm_fee_collections.filter(c => gccStr(c.adm_app_id) === gcc && !c.reverted) : []
   const myFlatRecs = gcc ? adm_flat_fees.filter(r => gccStr(r.adm_app_id) === gcc && r.paid) : []
-  const myCrsfRecs = gcc ? adm_course_fees.filter(r => gccStr(r.adm_app_id) === gcc) : []
+  const myCrsfRecs = gcc ? adm_course_fees.filter(r => gccStr(r.adm_app_id) === gcc && !r.reverted) : []
 
   const admPaid      = myAdmCols.some(c => c.fee_type === 'admission')
   const paidMonths   = myFlatRecs.map(r => r.month)
@@ -747,12 +823,13 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         if (alreadyPaid) { showToast(`${ff.month} flat fee already recorded — skipped`, '#ca8a04'); continue }
 
         const flatId = `${gcc}_flat_${ff.month.slice(0, 3).toLowerCase()}_${ff.year}`
-        const { error: ffErr } = await supabase.from('adm_flat_fees').insert({
+        const { error: ffErr } = await supabase.from('adm_flat_fees').upsert({
           id: flatId, adm_app_id: gcc, month: ff.month, year: ff.year,
           amount: ff.amount, hostel_type: hostelType, paid: true,
           pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
           receipt_no: rNo, student_name: student.name, adm_no: admRec.adm_no || '--',
-        })
+          reverted: false, reverted_at: null, reverted_by: null, revert_reason: null,
+        }, { onConflict: 'id' })
         if (ffErr) throw ffErr
 
         await upsertAccount({
@@ -773,14 +850,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         if (alreadyPaid) { showToast(`Course fee for ${cf.for_month} already recorded — skipped`, '#ca8a04'); continue }
 
         const recId = `${gcc}_course_${cf.for_month.slice(0, 3).toLowerCase()}_${CURRENT_YEAR}`
-        const { error: cfErr } = await supabase.from('adm_course_fees').insert({
+        const { error: cfErr } = await supabase.from('adm_course_fees').upsert({
           id: recId, adm_app_id: gcc, course: cf.course,
           subtype: cf.subtype || '', hostel_type: cf.hostelType || hostelType,
           for_month: cf.for_month, year: CURRENT_YEAR,
           amount_paid: Number(cf.amount), pay_date: payDate, pay_mode: payMode,
           txn_ref: txnRef || null, receipt_no: rNo,
           student_name: student.name, adm_no: admRec.adm_no || '--',
-        })
+          reverted: false, reverted_at: null, reverted_by: null, revert_reason: null,
+        }, { onConflict: 'id' })
         if (cfErr) throw cfErr
 
         await upsertAccount({
@@ -1025,9 +1103,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             {admPaid ? (
               <div style={{ padding: '12px 16px' }}>
                 {myAdmCols.map((c, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', color: '#475569' }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '4px 0', color: '#475569' }}>
                     <span>{c.description || 'Fee'}</span>
-                    <span style={{ fontWeight: 700 }}>₹{Number(c.amount_paid || 0).toLocaleString('en-IN')}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 700 }}>₹{Number(c.amount_paid || 0).toLocaleString('en-IN')}</span>
+                      {isAdmin && (
+                        <>
+                          <button type="button" onClick={() => handleFixAdmDate(c)} title={`Fix date (currently ${c.pay_date || '—'})`}
+                            style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+                            📅
+                          </button>
+                          <button type="button" onClick={() => handleRevertAdmCollection(c)} title="Revert this item (admin)"
+                            style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+                            ↩ Revert
+                          </button>
+                        </>
+                      )}
+                    </span>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 800, color: '#3730a3', borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
@@ -1096,6 +1188,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                         <span style={{ fontSize: 14, fontWeight: 800, color: paid ? '#16a34a' : '#059669' }}>
                           ₹{ff.amount.toLocaleString('en-IN')}
                         </span>
+                        {paid && isAdmin && (
+                          <span style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+                            <button type="button" onClick={(e) => { e.preventDefault(); handleFixFlatDate(ff.month) }} title={`Fix date (currently ${myFlatRecs.find(r => r.month === ff.month)?.pay_date || '—'})`}
+                              style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+                              📅
+                            </button>
+                            <button type="button" onClick={(e) => { e.preventDefault(); handleRevertFlat(ff.month) }} title="Revert this month (admin)"
+                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+                              ↩ Revert
+                            </button>
+                          </span>
+                        )}
                       </label>
                     )
                   })
@@ -1123,9 +1227,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                 <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f5f3ff', borderRadius: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Previous</div>
                   {myCrsfRecs.map((r, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#475569', padding: '3px 0' }}>
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#475569', padding: '3px 0' }}>
                       <span>{r.course}{r.subtype ? ' · ' + r.subtype : ''} · {r.for_month}</span>
-                      <span style={{ fontWeight: 700, color: '#6d28d9' }}>₹{Number(r.amount_paid || 0).toLocaleString('en-IN')}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 700, color: '#6d28d9' }}>₹{Number(r.amount_paid || 0).toLocaleString('en-IN')}</span>
+                        {isAdmin && (
+                          <>
+                            <button type="button" onClick={() => handleFixCourseDate(r)} title={`Fix date (currently ${r.pay_date || '—'})`}
+                              style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+                              📅
+                            </button>
+                            <button type="button" onClick={() => handleRevertCourseFee(r)} title="Revert this month (admin)"
+                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+                              ↩ Revert
+                            </button>
+                          </>
+                        )}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -1282,6 +1400,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 export default function Fees() {
   const w        = useWindowWidth()
   const isMobile = w < 768
+  const currentUser = useMemo(() => {
+    try {
+      const s = localStorage.getItem('gnsi_session')
+      return s ? JSON.parse(s).user : {}
+    } catch {
+      return {}
+    }
+  }, [])
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [fees,                setFees]         = useState([])
   const [students,            setStudents]      = useState([])
   const [admissions,          setAdmissions]    = useState([])
@@ -1319,9 +1446,9 @@ export default function Fees() {
 
   const getLiveFees = s => {
     const gcc = gccStr(s.gcc_no)
-    const admTotal   = adm_fee_collections.filter(c => gccStr(c.adm_app_id) === gcc).reduce((a, c) => a + (Number(c.amount_paid) || 0), 0)
+    const admTotal   = adm_fee_collections.filter(c => gccStr(c.adm_app_id) === gcc && !c.reverted).reduce((a, c) => a + (Number(c.amount_paid) || 0), 0)
     const flatTotal  = adm_flat_fees.filter(r => gccStr(r.adm_app_id) === gcc && r.paid).reduce((a, r) => a + (r.amount || 0), 0)
-    const crsfTotal  = adm_course_fees.filter(r => gccStr(r.adm_app_id) === gcc).reduce((a, r) => a + (Number(r.amount_paid) || 0), 0)
+    const crsfTotal  = adm_course_fees.filter(r => gccStr(r.adm_app_id) === gcc && !r.reverted).reduce((a, r) => a + (Number(r.amount_paid) || 0), 0)
     const grandTotal = admTotal + flatTotal + crsfTotal
     return { admTotal, flatTotal, crsfTotal, grandTotal, hasFees: grandTotal > 0 }
   }
@@ -1431,6 +1558,7 @@ export default function Fees() {
           adm_flat_fees={adm_flat_fees}
           adm_course_fees={adm_course_fees}
           onRefresh={loadAll}
+          isAdmin={isAdmin} currentUser={currentUser}
         />
       )}
 
@@ -1581,7 +1709,7 @@ export default function Fees() {
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', gap: 6 }}>
                             {f.status !== 'Paid' && <button onClick={() => handleCollect(f.id, amt)} style={{ background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>💰</button>}
-                            <button onClick={() => handleDelete(f.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>🗑</button>
+                            {isAdmin && <button onClick={() => handleDelete(f.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>🗑</button>}
                           </div>
                         </td>
                       </tr>
