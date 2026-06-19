@@ -191,6 +191,8 @@ function Accounts({role,userId}){
   const [dailyModeFilter,  setDailyModeFilter]  = useState('All')
   const [dailyCollapsed,   setDailyCollapsed]   = useState({})
   const [voucherHead,      setVoucherHead]      = useState('')
+  // PAYMENT-DATE FILTER FIX: Daily register can now show Income (payments) or Expense
+  const [dailyTypeFilter,  setDailyTypeFilter]  = useState('Expense')
 
   // admin extras
   const [deletedRows, setDeletedRows] = useState([])
@@ -457,11 +459,11 @@ function Accounts({role,userId}){
 
   const exportDailyCSV=()=>{
     const filtered=dailyFilteredEntries
-    const header=['#','Date','Voucher Head','Account','Description','Payment Mode','Amount']
+    const header=['#','Date','Voucher Head','Account','Description','Payment Mode',`Amount (${dailyTypeFilter})`]
     const rows_=filtered.map((e,i)=>[i+1,e.entry_date,e.voucher_head||'',e.account_type||'Cash A/c',e.note||e.category,e.payment_mode,e.amount])
     const csv=[header,...rows_].map(r=>r.join(',')).join('\n')
     const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob)
-    const a=Object.assign(document.createElement('a'),{href:url,download:'daily-expenditure.csv'})
+    const a=Object.assign(document.createElement('a'),{href:url,download:`daily-${dailyTypeFilter.toLowerCase()}.csv`})
     a.click();URL.revokeObjectURL(url)
   }
 
@@ -472,8 +474,9 @@ function Accounts({role,userId}){
     const cashAmt=filtered.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)
     const bankAmt=filtered.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)
     const w=window.open('','_blank')
+    const regTitle=`Daily ${dailyLabelWord} Register`
     let rowNum=0
-    w.document.write(`<html><head><title>Daily Expenditure Register</title><style>
+    w.document.write(`<html><head><title>${regTitle}</title><style>
       body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
       h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
       table{width:100%;border-collapse:collapse;margin-bottom:20px}
@@ -482,13 +485,13 @@ function Accounts({role,userId}){
       .day-header{background:#e8f0fa;font-weight:bold;padding:6px 10px}
       .subtotal{background:#f7fafd;font-weight:bold}
       .grand{background:#1e3a5f;color:#fff;font-weight:bold}
-      .amt{text-align:right;color:#c0392b;font-weight:600}
+      .amt{text-align:right;color:${dailyAmtColor};font-weight:600}
       .total-amt{text-align:right;font-weight:bold}
       @page{margin:15mm}
     </style></head><body>
-    <h1>📊 Daily Expenditure Register — GNSI Portal</h1>
-    <p>Voucher Head: ${voucherHead||'All'} &nbsp;|&nbsp; Period: ${dateFrom||'All'}–${dateTo||'present'} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')}</p>
-    <table><tr><th>#</th><th>Sl</th><th>Account</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount (Dr.)</th></tr>
+    <h1>📊 ${regTitle} — GNSI Portal</h1>
+    <p>Voucher Head: ${voucherHead||'All'} &nbsp;|&nbsp; Payment Date: ${dateFrom||'All'}–${dateTo||'present'} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <table><tr><th>#</th><th>Sl</th><th>Account</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount (${dailyDrCr})</th></tr>
     ${groups.map(([date,rows])=>{
       const dayTotal=rows.reduce((s,e)=>s+Number(e.amount),0)
       const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:11px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td><td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
@@ -554,9 +557,10 @@ function Accounts({role,userId}){
     return[...list].sort((a,b)=>{let av=a[sortField],bv=b[sortField];if(sortField==='amount'){av=Number(av);bv=Number(bv)};if(av<bv)return sortDir==='asc'?-1:1;if(av>bv)return sortDir==='asc'?1:-1;return 0})
   },[entries,search,typeFilter,modeFilter,statusFilter,acctFilter,dateFrom,dateTo,sortField,sortDir])
 
+  // PAYMENT-DATE FILTER FIX: now driven by dailyTypeFilter (Income or Expense) instead of being hard-locked to Expense
   const dailyFilteredEntries=useMemo(()=>{
     return entries.filter(e=>{
-      if(e.type!=='Expense')return false
+      if(e.type!==dailyTypeFilter)return false
       if(dailyAcctFilter!=='All'&&(e.account_type||'Cash A/c')!==dailyAcctFilter)return false
       if(dailyModeFilter!=='All'&&e.payment_mode!==dailyModeFilter)return false
       if(voucherHead&&!(e.voucher_head||'').toLowerCase().includes(voucherHead.toLowerCase()))return false
@@ -565,7 +569,13 @@ function Accounts({role,userId}){
       const q=dailySearch.toLowerCase()
       return!q||(e.note||'').toLowerCase().includes(q)||(e.category||'').toLowerCase().includes(q)
     }).sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
-  },[entries,dailySearch,dailyAcctFilter,dailyModeFilter,voucherHead,dateFrom,dateTo])
+  },[entries,dailySearch,dailyAcctFilter,dailyModeFilter,voucherHead,dateFrom,dateTo,dailyTypeFilter])
+
+  // PAYMENT-DATE FILTER FIX: derived label/color for the Daily register, used across header, table, CSV, print
+  const dailyIsIncome  = dailyTypeFilter==='Income'
+  const dailyAmtColor  = dailyIsIncome ? '#16a34a' : '#c0392b'
+  const dailyLabelWord = dailyIsIncome ? 'Collection' : 'Expenditure'
+  const dailyDrCr       = dailyIsIncome ? 'Cr.' : 'Dr.'
 
   // PHASE 2 FIX: running balance computed from ALL entries, not filtered subset
   const runningBalanceMap=useMemo(()=>{
@@ -958,14 +968,14 @@ function Accounts({role,userId}){
       </>
     )}
 
-    {/* ══ TAB: DAILY EXPENDITURE REGISTER ══ */}
+    {/* ══ TAB: DAILY REGISTER (Income / Expense by date) ══ */}
     {activeTab==='daily'&&(
       <div>
         <div style={{backgroundColor:'#1e3a5f',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
-              <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📊 Daily Expenditure Register</h2>
-              <p style={{fontSize:12,color:'rgba(255,255,255,0.5)',margin:'4px 0 0'}}>Expense entries grouped by date</p>
+              <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📊 Daily {dailyLabelWord} Register</h2>
+              <p style={{fontSize:12,color:'rgba(255,255,255,0.5)',margin:'4px 0 0'}}>{dailyTypeFilter} entries grouped by date</p>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <button onClick={exportDailyCSV} style={{backgroundColor:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⬇ CSV</button>
@@ -973,7 +983,7 @@ function Accounts({role,userId}){
             </div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:dailySumCols,gap:12}}>
-            {[{label:'Total Days',value:dailyGroups.length,isCurrency:false},{label:'Total Entries',value:dailyFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:dailyCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:dailyBankAmt,color:'#f87171'}].map(c=>(
+            {[{label:'Total Days',value:dailyGroups.length,isCurrency:false},{label:dailyIsIncome?'Payments Received':'Total Entries',value:dailyFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:dailyCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:dailyBankAmt,color:'#f87171'}].map(c=>(
               <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'12px 14px'}}>
                 <p style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.6px',margin:'0 0 6px'}}>{c.label}</p>
                 <p style={{fontFamily:'monospace',fontSize: isMobile ? 16 : 20,fontWeight:600,color:c.color||'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
@@ -982,22 +992,35 @@ function Accounts({role,userId}){
           </div>
         </div>
 
+        {/* PAYMENT-DATE FILTER FIX: Income/Expense toggle + quick date range, so you can instantly see "how many paid on date X" */}
+        <div style={{display:'flex',gap: isMobile ? 6 : 8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
+          <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Showing:</span>
+          <button onClick={()=>setDailyTypeFilter('Income')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyIsIncome?'#16a34a':'#bbf7d0',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyIsIncome?'#16a34a':'#f0fdf4',color:dailyIsIncome?'white':'#16a34a'}}>📈 Income / Payments</button>
+          <button onClick={()=>setDailyTypeFilter('Expense')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:!dailyIsIncome?'#dc2626':'#fecaca',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:!dailyIsIncome?'#dc2626':'#fef2f2',color:!dailyIsIncome?'white':'#dc2626'}}>📉 Expense</button>
+          <span style={{width:1,height:20,backgroundColor:'#e2e8f0',margin:'0 4px'}}/>
+          <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
+          {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
+            <button key={k} style={qBtn(k)} onClick={()=>activeQuick===k?clearQuick():applyQuick(k)}>{l}</button>
+          ))}
+          {activeQuick&&<button onClick={clearQuick} style={{padding:'5px 8px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,backgroundColor:'#fee2e2',color:'#dc2626',fontWeight:600}}>✖</button>}
+        </div>
+
         <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'auto auto auto auto auto auto auto',gap:8,marginBottom:16,alignItems:'center'}}>
           <input placeholder="🔍 Search…" value={dailySearch} onChange={e=>setDailySearch(e.target.value)} style={{...iStyle, gridColumn: isMobile ? 'span 2' : 'auto'}}/>
           <select value={dailyAcctFilter} onChange={e=>setDailyAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
           <select value={dailyModeFilter} onChange={e=>setDailyModeFilter(e.target.value)} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
           <input placeholder="Voucher head…" value={voucherHead} onChange={e=>setVoucherHead(e.target.value)} style={iStyle}/>
-          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={iStyle}/>
-          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={iStyle}/>
+          <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setActiveQuick('')}} title="Payment date from" style={iStyle}/>
+          <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveQuick('')}} title="Payment date to" style={iStyle}/>
           {(dailySearch||dailyAcctFilter!=='All'||dailyModeFilter!=='All'||voucherHead||dateFrom||dateTo)&&
-            <button onClick={()=>{setDailySearch('');setDailyAcctFilter('All');setDailyModeFilter('All');setVoucherHead('');setDateFrom('');setDateTo('')}} style={{...smallBtn('#fee2e2','#dc2626'),padding:'9px 14px',fontSize:12, gridColumn: isMobile ? 'span 2' : 'auto'}}>✖ Clear</button>}
+            <button onClick={()=>{setDailySearch('');setDailyAcctFilter('All');setDailyModeFilter('All');setVoucherHead('');setDateFrom('');setDateTo('');setActiveQuick('')}} style={{...smallBtn('#fee2e2','#dc2626'),padding:'9px 14px',fontSize:12, gridColumn: isMobile ? 'span 2' : 'auto'}}>✖ Clear</button>}
           <div style={{display:'flex',gap:6, gridColumn: isMobile ? 'span 2' : 'auto'}}>
             <button onClick={()=>setDailyCollapsed(prev=>{const n={};dailyGroups.forEach(([d])=>{n[d]=true});return n})} style={{...smallBtn('#f1f5f9','#64748b'),padding:'9px 12px',fontSize:12,flex:1}}>Collapse</button>
             <button onClick={()=>setDailyCollapsed({})} style={{...smallBtn('#eff6ff','#1e3a5f'),padding:'9px 12px',fontSize:12,flex:1}}>Expand</button>
           </div>
         </div>
 
-        {dailyGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No expense entries found.</div>:(
+        {dailyGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
           <>
             {dailyGroups.map(([date,dayRows])=>{
               const dayTotal=dayRows.reduce((s,e)=>s+Number(e.amount),0)
@@ -1009,7 +1032,7 @@ function Accounts({role,userId}){
                     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                       <span style={{fontWeight:800,color:'white',fontSize: isMobile ? 13 : 15}}>{date}</span>
                       {!isMobile&&<span style={{fontSize:12,color:'rgba(255,255,255,0.5)',fontWeight:600}}>{dow}</span>}
-                      <span style={{backgroundColor:'rgba(255,255,255,0.15)',color:'rgba(255,255,255,0.8)',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:999}}>{dayRows.length}</span>
+                      <span style={{backgroundColor:'rgba(255,255,255,0.15)',color:'rgba(255,255,255,0.8)',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:999}}>{dayRows.length} {dailyIsIncome?'paid':'entries'}</span>
                     </div>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <span style={{fontFamily:'monospace',fontSize: isMobile ? 14 : 16,fontWeight:600,color:'white'}}>{fmt(dayTotal)}</span>
@@ -1026,7 +1049,7 @@ function Accounts({role,userId}){
                                 <span style={{fontSize:11,color:'#8a9ab0',fontFamily:'monospace'}}>{rowIdx+1}. </span>
                                 <span style={{fontWeight:600,fontSize:13,color:'#1a2535'}}>{item.note||item.category||'—'}</span>
                               </div>
-                              <span style={{fontFamily:'monospace',fontSize:13,fontWeight:700,color:'#c0392b'}}>{fmt(item.amount)}</span>
+                              <span style={{fontFamily:'monospace',fontSize:13,fontWeight:700,color:dailyAmtColor}}>{fmt(item.amount)}</span>
                             </div>
                             <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                               <span style={{fontSize:11,padding:'1px 6px',borderRadius:4,backgroundColor:item.account_type==='2026-27 A/c'?'#ffe8c2':'#e8f5ee',color:item.account_type==='2026-27 A/c'?'#8b5e00':'#1a7a4a',fontWeight:700}}>{item.account_type||'Cash A/c'}</span>
@@ -1049,7 +1072,7 @@ function Accounts({role,userId}){
                         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                           <thead>
                             <tr style={{backgroundColor:'#f7fafd'}}>
-                              {['#','Account','Voucher Head','Description','Pay Mode','Amount (Dr.)',canWrite&&'Actions'].filter(Boolean).map(h=><th key={h} style={{padding:'8px 12px',textAlign:h==='Amount (Dr.)'?'right':'left',fontFamily:'Outfit,sans-serif',fontSize:11,fontWeight:800,color:'#5a6a7e',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid #d8e3f0'}}>{h}</th>)}
+                              {['#','Account','Voucher Head','Description','Pay Mode',`Amount (${dailyDrCr})`,canWrite&&'Actions'].filter(Boolean).map(h=><th key={h} style={{padding:'8px 12px',textAlign:h.startsWith('Amount')?'right':'left',fontFamily:'Outfit,sans-serif',fontSize:11,fontWeight:800,color:'#5a6a7e',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid #d8e3f0'}}>{h}</th>)}
                             </tr>
                           </thead>
                           <tbody>
@@ -1063,13 +1086,13 @@ function Accounts({role,userId}){
                                   <td style={{padding:'9px 12px',fontSize:12,color:'#7c3aed',fontWeight:500}}>{item.voucher_head||'—'}</td>
                                   <td style={{padding:'9px 12px',color:'#1a2535',fontWeight:500,maxWidth:260}}>{item.note||item.category||'—'}</td>
                                   <td style={{padding:'9px 12px'}}><span style={{display:'inline-block',padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:700,backgroundColor:modeColor.bg,color:modeColor.color}}>{item.payment_mode}</span></td>
-                                  <td style={{padding:'9px 12px',fontFamily:'monospace',fontSize:13,fontWeight:600,color:'#c0392b',textAlign:'right',whiteSpace:'nowrap'}}>{fmt(item.amount)}</td>
+                                  <td style={{padding:'9px 12px',fontFamily:'monospace',fontSize:13,fontWeight:600,color:dailyAmtColor,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(item.amount)}</td>
                                   {canWrite&&<td style={{padding:'9px 12px',textAlign:'center'}}><div style={{display:'flex',gap:4,justifyContent:'center'}}><button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️</button><button onClick={()=>handleDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button></div></td>}
                                 </tr>
                               )
                             })}
                             <tr style={{backgroundColor:'#f7fafd',borderTop:'1.5px solid #d8e3f0'}}>
-                              <td colSpan={canWrite?5:4} style={{padding:'8px 12px',fontWeight:700,fontSize:13,color:'#1e3a5f'}}>Daily Total — {dayRows.length} transactions</td>
+                              <td colSpan={canWrite?5:4} style={{padding:'8px 12px',fontWeight:700,fontSize:13,color:'#1e3a5f'}}>Daily Total — {dayRows.length} {dailyIsIncome?'payments':'transactions'}</td>
                               <td style={{padding:'8px 12px',fontFamily:'monospace',fontSize:14,fontWeight:700,color:'#1e3a5f',textAlign:'right'}}>{fmt(dayTotal)}</td>
                               {canWrite&&<td/>}
                             </tr>
