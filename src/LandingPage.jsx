@@ -1120,7 +1120,7 @@ window.submitGrievance = async () => {
       Parents Portal →
     </a>
     <button
-      onClick={() => { window.parent.postMessage('gnsi-staff-login', '*'); window.closeMob(); }}
+      onClick={() => { onLogin(); window.closeMob(); }}
       className="mob-cta"
       style={{
         background: "var(--gold)",
