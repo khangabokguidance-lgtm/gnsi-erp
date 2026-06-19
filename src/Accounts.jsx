@@ -7,7 +7,7 @@ import {
 import IncomeAnalysis from './IncomeAnalysis'
 
 // ── constants ──────────────────────────────────────────────────────────────
-const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Donation', 'Registration', 'Other']
+const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Advance', 'Donation', 'Registration', 'Other']
 const EXPENSE_CATEGORIES = ['Salary', 'Electricity', 'Stationery', 'Maintenance', 'Transport', 'Event', 'Other']
 const PAYMENT_MODES      = ['Cash', 'Bank', 'UPI', 'Card']
 const ACCOUNT_TYPES      = ['Cash A/c', '2026-27 A/c', '2025-26 A/c']

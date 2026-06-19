@@ -602,8 +602,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     return {
       ref: c.fee_type === 'admission' ? sourceRef.admission(gcc)
         : c.fee_type === 'item' ? sourceRef.admItem(gcc, c.description === 'Prospectus' ? 'prospectus' : (c.description || '').replace(/^Dress Kit — /, ''))
+        : c.fee_type === 'advance' ? c.id
         : null,
-      type: c.fee_type === 'advance' ? null : 'adm_fee',
+      type: c.fee_type === 'advance' ? 'advance_fee' : 'adm_fee',
     }
   }
 
@@ -880,6 +881,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           receipt_no: rNo, student_name: student.name,
         })
         if (advErr) throw advErr
+
+        // LEDGER SYNC FIX: every other fee type mirrors into `accounts` right
+        // after its insert — advance was the one silently missing this, which
+        // is why Fees "Total Collected" and Accounts "Total Income" diverged.
+        await upsertAccount({
+          entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Advance',
+          amount: advThis, payment_mode: payMode,
+          note: `${student.name} · Advance (${advFor}) · ${rNo}`,
+          source_ref: advId, source_type: 'advance_fee',
+        })
       }
 
       // ── 5. Mirror into fee_invoices ───────────────────────────────────────
