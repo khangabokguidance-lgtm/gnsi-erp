@@ -6,6 +6,18 @@ import {
 } from 'recharts'
 import IncomeAnalysis from './IncomeAnalysis'
 import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
+import { AccountsDashboardBanking } from './AccountsDashboardBanking'
+
+<AccountsDashboardBanking
+  entries={entries}
+  fraudFlags={fraudFlags}
+  budgets={budgets}
+  canWrite={canWrite}
+  fmt={fmt}
+  isMobile={isMobile}
+  openEdit={openEdit}
+  handleDelete={handleDelete}
+/>
 
 // ── constants ──────────────────────────────────────────────────────────────
 const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Advance', 'Donation', 'Registration', 'Other']
