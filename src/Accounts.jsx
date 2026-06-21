@@ -99,16 +99,7 @@ function groupByDate(entries, getDate=(e)=>e.entry_date){
 }
 
 // ── sub-components ─────────────────────────────────────────────────────────
-function StatCard({label,value,color,bg,icon,isCurrency=true,sub}){
-  return(
-    <div style={{backgroundColor:bg,borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:`4px solid ${color}`}}>
-      <div style={{fontSize:22,marginBottom:6}}>{icon}</div>
-      <p style={{fontSize:13,color,fontWeight:600,margin:0}}>{label}</p>
-      <h2 style={{fontSize:22,fontWeight:'bold',color,marginTop:4,marginBottom:0}}>{isCurrency?fmt(value):value}</h2>
-      {sub&&<p style={{fontSize:11,color,opacity:0.7,marginTop:2,marginBottom:0}}>{sub}</p>}
-    </div>
-  )
-}
+
 
 function SeverityBadge({severity}){
   const map={high:{bg:'#fee2e2',color:'#dc2626',label:'High'},medium:{bg:'#fef3c7',color:'#d97706',label:'Med'},low:{bg:'#f1f5f9',color:'#64748b',label:'Low'}}
@@ -1361,12 +1352,13 @@ function Accounts({role,userId}){
   )
 }
 
-const iStyle    = {width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid #d1d5db',fontSize:13,backgroundColor:'white',boxSizing:'border-box'}
-const lStyle    = {display:'block',fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}
-const tdS       = {padding:'10px 12px',color:'#64748b'}
-const chartCard  = {backgroundColor:'white',borderRadius:12,padding:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}
-const chartTitle = {fontSize:15,fontWeight:600,color:'#1e3a5f',marginBottom:16,marginTop:0}
-const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:'none',borderRadius:6,padding:'4px 8px',fontSize:12,cursor:'pointer',fontWeight:500})
-const pgBtn      = (disabled)=>({padding:'4px 10px',borderRadius:6,border:'none',cursor:disabled?'not-allowed':'pointer',fontSize:12,fontWeight:600,backgroundColor:'#f1f5f9',color:disabled?'#cbd5e1':'#64748b'})
+// ── DESIGN SYSTEM: Polished styles with depth, contrast, and interactions ──
+const iStyle    = {width:'100%',padding:'11px 14px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,backgroundColor:'white',boxSizing:'border-box',transition:'all 0.2s cubic-bezier(0.4,0,0.2,1)'}
+const lStyle    = {display:'block',fontSize:12,fontWeight:700,color:'#374151',marginBottom:7,letterSpacing:'0.2px',textTransform:'capitalize'}
+const tdS       = {padding:'13px 14px',color:'#64748b',fontSize:'13px',fontWeight:500}
+const chartCard  = {backgroundColor:'white',borderRadius:14,padding:24,boxShadow:'0 4px 16px rgba(0,0,0,0.08)',border:'1px solid #f3f4f6',transition:'all 0.3s cubic-bezier(0.4,0,0.2,1)'}
+const chartTitle = {fontSize:17,fontWeight:800,color:'#1e3a5f',marginBottom:20,marginTop:0,letterSpacing:'-0.4px'}
+const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:'none',borderRadius:6,padding:'6px 11px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'all 0.25s ease',boxShadow:'0 2px 4px rgba(0,0,0,0.05)'})
+const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:7,border:'1px solid #e5e7eb',cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'#f8fafc',color:disabled?'#cbd5e1':'#64748b',transition:'all 0.2s ease',boxShadow:'0 1px 2px rgba(0,0,0,0.04)'})
 
 export default Accounts
