@@ -8,17 +8,6 @@ import IncomeAnalysis from './IncomeAnalysis'
 import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 import { AccountsDashboardBanking } from './AccountsDashboardBanking'
 
-<AccountsDashboardBanking
-  entries={entries}
-  fraudFlags={fraudFlags}
-  budgets={budgets}
-  canWrite={canWrite}
-  fmt={fmt}
-  isMobile={isMobile}
-  openEdit={openEdit}
-  handleDelete={handleDelete}
-/>
-
 // ── constants ──────────────────────────────────────────────────────────────
 const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Advance', 'Donation', 'Registration', 'Other']
 const EXPENSE_CATEGORIES = ['Salary', 'Electricity', 'Stationery', 'Maintenance', 'Transport', 'Event', 'Other']
@@ -889,143 +878,18 @@ function Accounts({role,userId}){
     </div>
 
     {/* ══ TAB: TRANSACTIONS ══ */}
-    {activeTab==='transactions'&&(
-      <>
-        <div style={{display:'flex',gap: isMobile ? 6 : 8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
-          <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
-          {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
-            <button key={k} style={qBtn(k)} onClick={()=>activeQuick===k?clearQuick():applyQuick(k)}>{l}</button>
-          ))}
-          {activeQuick&&<button onClick={clearQuick} style={{padding:'5px 8px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,backgroundColor:'#fee2e2',color:'#dc2626',fontWeight:600}}>✖</button>}
-        </div>
-
-        <div style={{display:'grid',gridTemplateColumns:filterCols,gap:10,marginBottom:16}}>
-          <input placeholder="🔍 Search…" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} style={iStyle}/>
-          <select value={typeFilter} onChange={e=>{setTypeFilter(e.target.value);setPage(1)}} style={iStyle}><option value="All">All Types</option><option>Income</option><option>Expense</option></select>
-          <select value={modeFilter} onChange={e=>{setModeFilter(e.target.value);setPage(1)}} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
-          <select value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(1)}} style={iStyle}><option value="All">All Status</option>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select>
-          <select value={acctFilter} onChange={e=>{setAcctFilter(e.target.value);setPage(1)}} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
-          <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setActiveQuick('');setPage(1)}} title="From" style={iStyle}/>
-          <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveQuick('');setPage(1)}} title="To" style={iStyle}/>
-        </div>
-
-        {selected.size>0&&canWrite&&(
-          <div style={{display:'flex',alignItems:'center',gap:12,backgroundColor:'#fef3c7',borderRadius:8,padding:'10px 16px',marginBottom:12,border:'1px solid #fde68a',flexWrap:'wrap'}}>
-            <span style={{fontSize:13,fontWeight:600,color:'#92400e'}}>{selected.size} selected</span>
-            <button onClick={handleBulkDelete} style={{backgroundColor:'#dc2626',color:'white',border:'none',borderRadius:6,padding:'6px 14px',fontSize:13,fontWeight:600,cursor:'pointer'}}>🗑 Delete</button>
-            <button onClick={()=>setSelected(new Set())} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:6,padding:'6px 12px',fontSize:13,fontWeight:600,cursor:'pointer'}}>✖ Deselect</button>
-          </div>
-        )}
-
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,flexWrap:'wrap',gap:8}}>
-          <span style={{fontSize:13,color:'#64748b'}}>{filteredEntries.length} result{filteredEntries.length!==1?'s':''}{isFiltered?' (filtered)':''}</span>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:12,color:'#94a3b8'}}>Show:</span>
-            {PAGE_SIZES.map(s=><button key={s} onClick={()=>{setPageSize(s);setPage(1)}} style={{padding:'3px 10px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,backgroundColor:pageSize===s?'#1e3a5f':'#f1f5f9',color:pageSize===s?'white':'#64748b'}}>{s}</button>)}
-          </div>
-        </div>
-
-        {loading?<div style={{textAlign:'center',padding:48,color:'#64748b'}}>⏳ Loading…</div>:(
-          isMobile ? (
-            <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              {pagedEntries.map((item,i)=>{
-                const isPending=(item.status||'Confirmed')==='Pending'
-                const runBal=runningBalanceMap[item.id]??0
-                const itemFlags=isAdmin?(fraudFlags[item.id]||[]):[]
-                const hasFraud=itemFlags.length>0
-                return(
-                  <div key={item.id} style={{backgroundColor:hasFraud&&isAdmin?'#fff7ed':isPending?'#fffbeb':'white',borderRadius:10,padding:14,boxShadow:'0 1px 4px rgba(0,0,0,0.08)',borderLeft:`4px solid ${item.type==='Income'?'#16a34a':'#dc2626'}`}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
-                      <div>
-                        <span style={{fontWeight:700,fontSize:15,color:'#1e293b'}}>{item.category}</span>
-                        {item.voucher_head&&<span style={{marginLeft:8,fontSize:11,color:'#7c3aed',fontWeight:600}}>{item.voucher_head}</span>}
-                      </div>
-                      <span style={{fontWeight:700,fontSize:16,color:item.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(item.amount)}</span>
-                    </div>
-                    <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
-                      <span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:item.type==='Income'?'#dcfce7':'#fee2e2',color:item.type==='Income'?'#16a34a':'#dc2626'}}>{item.type}</span>
-                      <span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:'#f1f5f9',color:'#64748b'}}>{item.payment_mode}</span>
-                      <span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:isPending?'#fef3c7':'#dcfce7',color:isPending?'#92400e':'#166534'}}>{isPending?'⏳ Pending':'✅'}</span>
-                      <span style={{fontSize:11,color:'#94a3b8'}}>{item.entry_date}</span>
-                    </div>
-                    {item.note&&<p style={{fontSize:12,color:'#64748b',margin:'0 0 8px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.note}</p>}
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <span style={{fontSize:11,color:runBal>=0?'#1e3a5f':'#dc2626',fontWeight:600}}>Bal: {fmt(runBal)}</span>
-                      <div style={{display:'flex',gap:6}}>
-                        {item.receipt_url&&<button onClick={()=>setViewReceipt(item.receipt_url)} style={smallBtn('#eff6ff','#1e3a5f')}>👁</button>}
-                        {canWrite&&<button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️</button>}
-                        {canWrite&&<button onClick={()=>handleDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button>}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              {pagedEntries.length===0&&<div style={{textAlign:'center',padding:32,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No entries found</div>}
-            </div>
-          ) : (
-            <div style={{backgroundColor:'white',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflowX:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-                <thead>
-                  <tr style={{backgroundColor:'#f8fafc',borderBottom:'1px solid #e2e8f0'}}>
-                    {canWrite&&<th style={{padding:'12px 12px',width:40}}><input type="checkbox" checked={pagedEntries.length>0&&selected.size===pagedEntries.length} onChange={toggleSelectAll}/></th>}
-                    {[['#',null],['Date','entry_date'],['Type',null],['Category','category'],['Amount','amount'],['Mode','payment_mode'],['Account',null],['Voucher Head',null],['Status',null],['Note',null],['Running Bal.',null],['Receipt',null],['Actions',null]].map(([h,field])=>(
-                      <th key={h} onClick={()=>field&&toggleSort(field)} style={{padding:'12px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,cursor:field?'pointer':'default',userSelect:'none',whiteSpace:'nowrap'}}>{h}{field?sortArrow(field):''}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedEntries.map((item,i)=>{
-                    const isPending=(item.status||'Confirmed')==='Pending'
-                    const runBal=runningBalanceMap[item.id]??0
-                    const itemFlags=isAdmin?(fraudFlags[item.id]||[]):[]
-                    const hasFraud=itemFlags.length>0
-                    return(
-                      <tr key={item.id} style={{borderBottom:'1px solid #f1f5f9',backgroundColor:selected.has(item.id)?'#eff6ff':hasFraud&&isAdmin?'#fff7ed':isPending?'#fffbeb':'white'}}>
-                        {canWrite&&<td style={{padding:'10px 12px'}}><input type="checkbox" checked={selected.has(item.id)} onChange={()=>toggleSelect(item.id)}/></td>}
-                        <td style={tdS}>{(page-1)*pageSize+i+1}</td>
-                        <td style={{...tdS,whiteSpace:'nowrap'}}>{item.entry_date}{isAdmin&&itemFlags.some(f=>f.type==='after_hours')&&<span title="After-hours" style={{marginLeft:4,fontSize:10,color:'#f59e0b'}}>🌙</span>}</td>
-                        <td style={tdS}><span style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:item.type==='Income'?'#dcfce7':'#fee2e2',color:item.type==='Income'?'#16a34a':'#dc2626'}}>{item.type}</span></td>
-                        <td style={{...tdS,fontWeight:500,color:'#1e293b'}}>{item.category}</td>
-                        <td style={{...tdS,fontWeight:600,color:item.type==='Income'?'#16a34a':'#dc2626',whiteSpace:'nowrap'}}>{fmt(item.amount)}{isAdmin&&hasFraud&&<span title={itemFlags.map(f=>f.label).join(', ')} style={{marginLeft:4,fontSize:10,color:'#dc2626',cursor:'help'}}>⚠</span>}</td>
-                        <td style={tdS}>{item.payment_mode}</td>
-                        <td style={tdS}><span style={{fontSize:11,padding:'2px 7px',borderRadius:4,backgroundColor:item.account_type==='2026-27 A/c'?'#ffe8c2':'#e8f5ee',color:item.account_type==='2026-27 A/c'?'#8b5e00':'#1a7a4a',fontWeight:700}}>{item.account_type||'Cash A/c'}</span></td>
-                        <td style={{...tdS,fontSize:12,color:'#7c3aed',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.voucher_head||'—'}</td>
-                        <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:isPending?'#fef3c7':'#dcfce7',color:isPending?'#92400e':'#166534'}}>{isPending?'⏳ Pending':'✅ Confirmed'}</span></td>
-                        <td style={{...tdS,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.note||'—'}</td>
-                        <td style={{...tdS,fontWeight:600,whiteSpace:'nowrap',color:runBal>=0?'#1e3a5f':'#dc2626'}}>{fmt(runBal)}</td>
-                        <td style={{...tdS,textAlign:'center'}}>
-                          {item.receipt_url?(<div style={{display:'flex',gap:4,justifyContent:'center'}}><button onClick={()=>setViewReceipt(item.receipt_url)} style={smallBtn('#eff6ff','#1e3a5f')}>👁</button>{isAdmin&&<button onClick={()=>deleteReceipt(item)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button>}</div>):<span style={{color:'#cbd5e1',fontSize:12}}>—</span>}
-                        </td>
-                        <td style={tdS}>
-                          <div style={{display:'flex',gap:4,alignItems:'center',flexWrap:'wrap'}}>
-                            {canWrite&&<button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️</button>}
-                            {isAdmin&&<button onClick={()=>openDuplicate(item)} style={smallBtn('#f0fdf4','#16a34a')} title="Duplicate">⧉</button>}
-                            {canWrite&&<button onClick={()=>handleDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button>}
-                            {item.edited_by&&<span title={`Edited by ${item.edited_by}`} style={{fontSize:10,color:'#f59e0b',fontWeight:700,cursor:'help'}}>✎</span>}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  {pagedEntries.length===0&&<tr><td colSpan={canWrite?14:13} style={{padding:32,textAlign:'center',color:'#94a3b8'}}>No entries found</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
-
-        {totalPages>1&&(
-          <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap: isMobile ? 4 : 8,marginTop:16,flexWrap:'wrap'}}>
-            <button onClick={()=>setPage(1)} disabled={page===1} style={pgBtn(page===1)}>«</button>
-            <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} style={pgBtn(page===1)}>‹</button>
-            {Array.from({length:Math.min(isMobile?5:7,totalPages)},(_,i)=>{let p;const maxPages=isMobile?5:7;if(totalPages<=maxPages)p=i+1;else if(page<=Math.floor(maxPages/2)+1)p=i+1;else if(page>=totalPages-Math.floor(maxPages/2))p=totalPages-maxPages+1+i;else p=page-Math.floor(maxPages/2)+i;return<button key={p} onClick={()=>setPage(p)} style={{...pgBtn(false),backgroundColor:page===p?'#1e3a5f':'#f1f5f9',color:page===p?'white':'#64748b'}}>{p}</button>})}
-            <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={pgBtn(page===totalPages)}>›</button>
-            <button onClick={()=>setPage(totalPages)} disabled={page===totalPages} style={pgBtn(page===totalPages)}>»</button>
-            <span style={{fontSize:12,color:'#94a3b8'}}>Page {page}/{totalPages}</span>
-          </div>
-        )}
-      </>
-    )}
+{activeTab==='transactions'&&(
+  <AccountsDashboardBanking
+    entries={entries}
+    fraudFlags={fraudFlags}
+    budgets={budgets}
+    canWrite={canWrite}
+    fmt={fmt}
+    isMobile={isMobile}
+    openEdit={openEdit}
+    handleDelete={handleDelete}
+  />
+)}
 
     {/* ══ TAB: DAILY REGISTER (Income / Expense by date) ══ */}
     {activeTab==='daily'&&(
