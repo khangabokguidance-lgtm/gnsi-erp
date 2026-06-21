@@ -5,6 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
 import IncomeAnalysis from './IncomeAnalysis'
+import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 
 // ── constants ──────────────────────────────────────────────────────────────
 const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Advance', 'Donation', 'Registration', 'Other']
@@ -190,7 +191,6 @@ function Accounts({role,userId}){
   const [dailySearch,      setDailySearch]      = useState('')
   const [dailyAcctFilter,  setDailyAcctFilter]  = useState('All')
   const [dailyModeFilter,  setDailyModeFilter]  = useState('All')
-  const [dailyCollapsed,   setDailyCollapsed]   = useState({})
   const [voucherHead,      setVoucherHead]      = useState('')
   // PAYMENT-DATE FILTER FIX: Daily register can now show Income (payments) or Expense
   const [dailyTypeFilter,  setDailyTypeFilter]  = useState('Expense')
@@ -1069,109 +1069,25 @@ function Accounts({role,userId}){
           <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveQuick('')}} title={dailyIsIncome&&dailyDateMode==='payment'?'Payment date to':'Entry date to'} style={iStyle}/>
           {(dailySearch||dailyAcctFilter!=='All'||dailyModeFilter!=='All'||voucherHead||dateFrom||dateTo)&&
             <button onClick={()=>{setDailySearch('');setDailyAcctFilter('All');setDailyModeFilter('All');setVoucherHead('');setDateFrom('');setDateTo('');setActiveQuick('')}} style={{...smallBtn('#fee2e2','#dc2626'),padding:'9px 14px',fontSize:12, gridColumn: isMobile ? 'span 2' : 'auto'}}>✖ Clear</button>}
-          <div style={{display:'flex',gap:6, gridColumn: isMobile ? 'span 2' : 'auto'}}>
-            <button onClick={()=>setDailyCollapsed(prev=>{const n={};dailyGroups.forEach(([d])=>{n[d]=true});return n})} style={{...smallBtn('#f1f5f9','#64748b'),padding:'9px 12px',fontSize:12,flex:1}}>Collapse</button>
-            <button onClick={()=>setDailyCollapsed({})} style={{...smallBtn('#eff6ff','#1e3a5f'),padding:'9px 12px',fontSize:12,flex:1}}>Expand</button>
-          </div>
         </div>
 
         {dailyGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
-          <>
-            {dailyGroups.map(([date,dayRows])=>{
-              const dayTotal=dayRows.reduce((s,e)=>s+Number(e.amount),0)
-              const dow=new Date(date).toLocaleDateString('en-IN',{weekday:'long'})
-              const isCollapsed=dailyCollapsed[date]
-              return(
-                <div key={date} style={{marginBottom:14,borderRadius:10,overflow:'hidden',boxShadow:'0 2px 6px rgba(0,0,0,0.06)'}}>
-                  <div onClick={()=>setDailyCollapsed(prev=>({...prev,[date]:!prev[date]}))} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 16px',backgroundColor:'#1e3a5f',cursor:'pointer',userSelect:'none',flexWrap:'wrap',gap:6}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                      <span style={{fontWeight:800,color:'white',fontSize: isMobile ? 13 : 15}}>{date}</span>
-                      {!isMobile&&<span style={{fontSize:12,color:'rgba(255,255,255,0.5)',fontWeight:600}}>{dow}</span>}
-                      <span style={{backgroundColor:'rgba(255,255,255,0.15)',color:'rgba(255,255,255,0.8)',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:999}}>{dayRows.length} {dailyIsIncome?'paid':'entries'}</span>
-                    </div>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <span style={{fontFamily:'monospace',fontSize: isMobile ? 14 : 16,fontWeight:600,color:'white'}}>{fmt(dayTotal)}</span>
-                      <span style={{color:'rgba(255,255,255,0.4)',fontSize:13,transform:isCollapsed?'rotate(-90deg)':'rotate(0deg)',display:'inline-block'}}>▼</span>
-                    </div>
-                  </div>
-                  {!isCollapsed&&(
-                    isMobile ? (
-                      <div style={{backgroundColor:'white',border:'1.5px solid #d8e3f0',borderTop:'none',padding:12,display:'flex',flexDirection:'column',gap:8}}>
-                        {dayRows.map((item,rowIdx)=>(
-                          <div key={item.id} style={{borderBottom:'1px solid #f0f4f9',paddingBottom:8}}>
-                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
-                              <div>
-                                <span style={{fontSize:11,color:'#8a9ab0',fontFamily:'monospace'}}>{rowIdx+1}. </span>
-                                <span style={{fontWeight:600,fontSize:13,color:'#1a2535'}}>{item.note||item.category||'—'}</span>
-                              </div>
-                              <span style={{fontFamily:'monospace',fontSize:13,fontWeight:700,color:dailyAmtColor}}>{fmt(item.amount)}</span>
-                            </div>
-                            <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-                              <span style={{fontSize:11,padding:'1px 6px',borderRadius:4,backgroundColor:item.account_type==='2026-27 A/c'?'#ffe8c2':'#e8f5ee',color:item.account_type==='2026-27 A/c'?'#8b5e00':'#1a7a4a',fontWeight:700}}>{item.account_type||'Cash A/c'}</span>
-                              <span style={{fontSize:11,color:'#7c3aed',fontWeight:500}}>{item.voucher_head||''}</span>
-                              <span style={{fontSize:11,color:'#64748b'}}>{item.payment_mode}</span>
-                              {dailyIsIncome&&item.payment_date&&item.payment_date!==item.entry_date&&<span style={{fontSize:10,color:'#f59e0b',fontWeight:600}}>{dailyDateMode==='payment'?`Entered ${item.entry_date}`:`Paid ${item.payment_date}`}</span>}
-                              {canWrite&&<div style={{marginLeft:'auto',display:'flex',gap:4}}>
-                                <button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️</button>
-                                <button onClick={()=>handleDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button>
-                              </div>}
-                            </div>
-                          </div>
-                        ))}
-                        <div style={{display:'flex',justifyContent:'space-between',paddingTop:4,fontWeight:700,fontSize:13,color:'#1e3a5f'}}>
-                          <span>Daily Total ({dayRows.length})</span>
-                          <span style={{fontFamily:'monospace'}}>{fmt(dayTotal)}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{backgroundColor:'white',border:'1.5px solid #d8e3f0',borderTop:'none',overflowX:'auto'}}>
-                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-                          <thead>
-                            <tr style={{backgroundColor:'#f7fafd'}}>
-                              {['#','Account','Voucher Head','Description','Pay Mode',`Amount (${dailyDrCr})`,canWrite&&'Actions'].filter(Boolean).map(h=><th key={h} style={{padding:'8px 12px',textAlign:h.startsWith('Amount')?'right':'left',fontFamily:'Outfit,sans-serif',fontSize:11,fontWeight:800,color:'#5a6a7e',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1.5px solid #d8e3f0'}}>{h}</th>)}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {dayRows.map((item,rowIdx)=>{
-                              const acctColor=item.account_type==='2026-27 A/c'?{bg:'#ffe8c2',color:'#8b5e00'}:{bg:'#e8f5ee',color:'#1a7a4a'}
-                              const modeColor={Cash:{bg:'#e8f0fa',color:'#1e3a5f'},Bank:{bg:'#f3e8ff',color:'#6b21a8'},UPI:{bg:'#ecfdf5',color:'#065f46'},Card:{bg:'#fde8e8',color:'#991b1b'}}[item.payment_mode]||{bg:'#f1f5f9',color:'#374151'}
-                              return(
-                                <tr key={item.id} style={{borderBottom:'1px solid #f0f4f9'}}>
-                                  <td style={{padding:'9px 12px',fontFamily:'monospace',fontSize:11,color:'#8a9ab0'}}>{rowIdx+1}</td>
-                                  <td style={{padding:'9px 12px'}}><span style={{display:'inline-block',padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:700,backgroundColor:acctColor.bg,color:acctColor.color}}>{item.account_type||'Cash A/c'}</span></td>
-                                  <td style={{padding:'9px 12px',fontSize:12,color:'#7c3aed',fontWeight:500}}>{item.voucher_head||'—'}</td>
-                                  <td style={{padding:'9px 12px',color:'#1a2535',fontWeight:500,maxWidth:260}}>{item.note||item.category||'—'}{dailyIsIncome&&item.payment_date&&item.payment_date!==item.entry_date&&<span style={{marginLeft:6,fontSize:10,color:'#f59e0b',fontWeight:600}}>({dailyDateMode==='payment'?`Entered ${item.entry_date}`:`Paid ${item.payment_date}`})</span>}</td>
-                                  <td style={{padding:'9px 12px'}}><span style={{display:'inline-block',padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:700,backgroundColor:modeColor.bg,color:modeColor.color}}>{item.payment_mode}</span></td>
-                                  <td style={{padding:'9px 12px',fontFamily:'monospace',fontSize:13,fontWeight:600,color:dailyAmtColor,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(item.amount)}</td>
-                                  {canWrite&&<td style={{padding:'9px 12px',textAlign:'center'}}><div style={{display:'flex',gap:4,justifyContent:'center'}}><button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️</button><button onClick={()=>handleDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')}>🗑</button></div></td>}
-                                </tr>
-                              )
-                            })}
-                            <tr style={{backgroundColor:'#f7fafd',borderTop:'1.5px solid #d8e3f0'}}>
-                              <td colSpan={canWrite?5:4} style={{padding:'8px 12px',fontWeight:700,fontSize:13,color:'#1e3a5f'}}>Daily Total — {dayRows.length} {dailyIsIncome?'payments':'transactions'}</td>
-                              <td style={{padding:'8px 12px',fontFamily:'monospace',fontSize:14,fontWeight:700,color:'#1e3a5f',textAlign:'right'}}>{fmt(dayTotal)}</td>
-                              {canWrite&&<td/>}
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  )}
-                </div>
-              )
-            })}
-            <div style={{backgroundColor:'#1e3a5f',borderRadius:12,padding: isMobile ? '16px' : '20px 28px',display:'flex',flexDirection: isMobile ? 'column' : 'row',justifyContent:'space-between',alignItems: isMobile ? 'stretch' : 'center',gap:16,marginTop:8}}>
-              <span style={{fontWeight:800,color:'white',fontSize: isMobile ? 14 : 16}}>Grand Total</span>
-              <div style={{display:'flex',gap: isMobile ? 16 : 32,flexWrap:'wrap'}}>
-                {[{label:'Cash',value:dailyCashAmt,color:'#fbbf24'},{label:'Bank',value:dailyBankAmt,color:'#fbbf24'},{label:'Total',value:dailyTotalAmt,color:'white'}].map(c=>(
-                  <div key={c.label} style={{textAlign: isMobile ? 'left' : 'right'}}>
-                    <p style={{fontSize:11,color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.5px',margin:'0 0 3px'}}>{c.label}</p>
-                    <p style={{fontFamily:'monospace',fontSize: isMobile ? 15 : 18,fontWeight:700,color:c.color,margin:0}}>{fmt(c.value)}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
+          <TransactionsViewBanking
+            dayRows={dailyFilteredEntries}
+            dailyIsIncome={dailyIsIncome}
+            dailyDateMode={dailyDateMode}
+            dailyAmtColor={dailyAmtColor}
+            dayTotal={dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)}
+            dailyCashAmt={dailyFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)}
+            dailyBankAmt={dailyFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)}
+            dailyTotalAmt={dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)}
+            fraudFlags={fraudFlags}
+            canWrite={canWrite}
+            fmt={fmt}
+            openEdit={openEdit}
+            handleDelete={handleDelete}
+            isMobile={isMobile}
+          />
         )}
       </div>
     )}
