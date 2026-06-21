@@ -99,7 +99,16 @@ function groupByDate(entries, getDate=(e)=>e.entry_date){
 }
 
 // ── sub-components ─────────────────────────────────────────────────────────
-
+function StatCard({label,value,color,bg,icon,isCurrency=true,sub}){
+  return(
+    <div style={{backgroundColor:bg,borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:`4px solid ${color}`}}>
+      <div style={{fontSize:22,marginBottom:6}}>{icon}</div>
+      <p style={{fontSize:13,color,fontWeight:600,margin:0}}>{label}</p>
+      <h2 style={{fontSize:22,fontWeight:'bold',color,marginTop:4,marginBottom:0}}>{isCurrency?fmt(value):value}</h2>
+      {sub&&<p style={{fontSize:11,color,opacity:0.7,marginTop:2,marginBottom:0}}>{sub}</p>}
+    </div>
+  )
+}
 
 function SeverityBadge({severity}){
   const map={high:{bg:'#fee2e2',color:'#dc2626',label:'High'},medium:{bg:'#fef3c7',color:'#d97706',label:'Med'},low:{bg:'#f1f5f9',color:'#64748b',label:'Low'}}
@@ -882,7 +891,6 @@ function Accounts({role,userId}){
   />
 )}
 
-    {/* ══ TAB: DAILY REGISTER (Income / Expense by date) ══ */}
     {activeTab==='daily'&&(
       <div>
         <div style={{backgroundColor:'#1e3a5f',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
@@ -1352,7 +1360,6 @@ function Accounts({role,userId}){
   )
 }
 
-// ── DESIGN SYSTEM: Polished styles with depth, contrast, and interactions ──
 const iStyle    = {width:'100%',padding:'11px 14px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,backgroundColor:'white',boxSizing:'border-box',transition:'all 0.2s cubic-bezier(0.4,0,0.2,1)'}
 const lStyle    = {display:'block',fontSize:12,fontWeight:700,color:'#374151',marginBottom:7,letterSpacing:'0.2px',textTransform:'capitalize'}
 const tdS       = {padding:'13px 14px',color:'#64748b',fontSize:'13px',fontWeight:500}
