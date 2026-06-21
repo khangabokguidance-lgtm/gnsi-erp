@@ -4203,7 +4203,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
     const level = record.approval_level ?? 0
     if (record.status === 'Rejected' || record.status === 'Returned' || record.status === 'Overdue') return false
     if (record.status === 'Approved' && level >= 2) return false
-    if (level === 0) return userRole === 'hm' || userRole === 'admin'
+    if (level === 0) return userRole === 'hm' || userRole === 'house master' || userRole === 'admin'
     if (level === 1) return ['superintendent', 'admin'].includes(userRole)
     return false
   }
@@ -4213,7 +4213,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
     if (record.status === 'Rejected' || record.status === 'Returned') return false
     if (record.status === 'Approved' && (record.approval_level ?? 0) >= 2) return false
     const level = record.approval_level ?? 0
-    if (level === 0) return userRole === 'hm' || userRole === 'admin'
+    if (level === 0) return userRole === 'hm' || userRole === 'house master' || userRole === 'admin'
     if (level === 1) return userRole === 'superintendent' || userRole === 'admin'
     return false
   }
