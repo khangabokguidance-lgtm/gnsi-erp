@@ -4131,7 +4131,7 @@ function Hostel() {
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     journal: <JournalTab currentHousemaster={currentHousemaster} />,
     classtimetable: <ClassTimetableTab />,
-    doubtsession: <DoubtSessionTab />,
+    doubtsession: <DoubtSessionTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
   }
 
   return (

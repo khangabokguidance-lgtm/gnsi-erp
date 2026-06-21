@@ -763,21 +763,250 @@ export function ClassTimetableTab({ editable = true, currentUser = 'Admin' }) {
   )
 }
 
-export function DoubtSessionTab({ editable = true, currentUser = 'Admin' }) {
+export function DoubtSessionTab({ editable = true, currentUser = 'Admin', students = [], currentHousemaster = null }) {
+  const [selectedHouse, setSelectedHouse] = useState(null)
+  const [view, setView] = useState('schedule')
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [sessionAttendance, setSessionAttendance] = useState({})
+  const [saving, setSaving] = useState(false)
+
+  const allHouses = useMemo(() => {
+    const houses = [...new Set(students
+      .filter(s => s.status !== 'Inactive')
+      .map(s => (s.house || '').trim())
+      .filter(h => h)
+    )].sort()
+    return houses
+  }, [students])
+
+  const houseStudents = useMemo(() => {
+    if (!selectedHouse) return []
+    return students.filter(s => 
+      s.status !== 'Inactive' && 
+      (s.house || '').trim() === selectedHouse.trim()
+    )
+  }, [students, selectedHouse])
+
+  const loadAttendance = useCallback(async () => {
+    if (!selectedHouse) return
+    const { data } = await supabase
+      .from('doubt_session_attendance')
+      .select('*')
+      .eq('date', selectedDate)
+      .eq('house', selectedHouse)
+    if (data) {
+      const map = {}
+      data.forEach(r => {
+        if (!map[r.batch]) map[r.batch] = []
+        map[r.batch].push(r.student_id)
+      })
+      setSessionAttendance(map)
+    }
+  }, [selectedDate, selectedHouse])
+
+  useEffect(() => {
+    if (view === 'attendance' && selectedHouse) {
+      loadAttendance()
+    }
+  }, [view, selectedDate, selectedHouse, loadAttendance])
+
+  const toggleStudent = (batch, studentId) => {
+    setSessionAttendance(prev => {
+      const batchList = prev[batch] || []
+      const newList = batchList.includes(studentId)
+        ? batchList.filter(id => id !== studentId)
+        : [...batchList, studentId]
+      return { ...prev, [batch]: newList }
+    })
+  }
+
+  const handleSaveAttendance = async () => {
+    if (!selectedHouse) {
+      alert('Select a house first')
+      return
+    }
+    setSaving(true)
+    try {
+      await supabase
+        .from('doubt_session_attendance')
+        .delete()
+        .eq('date', selectedDate)
+        .eq('house', selectedHouse)
+
+      const records = []
+      for (const [batch, studentIds] of Object.entries(sessionAttendance)) {
+        for (const studentId of studentIds) {
+          const student = houseStudents.find(s => s.id === studentId)
+          records.push({
+            date: selectedDate,
+            batch,
+            student_id: studentId,
+            student_name: student?.name || '',
+            gcc_no: student?.gcc_no || null,
+            house: selectedHouse,
+            marked_by: currentHousemaster?.name || currentUser || 'System',
+            marked_at: new Date().toISOString(),
+          })
+        }
+      }
+
+      if (records.length > 0) {
+        const { error } = await supabase.from('doubt_session_attendance').insert(records)
+        if (error) throw error
+      }
+      alert(`✅ Marked ${records.length} attendances for ${selectedHouse}`)
+      loadAttendance()
+    } catch (err) {
+      alert('Error: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: C.navy, margin: 0 }}>🙋 Doubt Sessions</h2>
-          <p style={{ fontSize: 13, color: C.textSm, margin: '4px 0 0' }}>Mon–Sat · Morning, Evening & Night · {DOUBT_BATCHES.length} sub-batches · {editable ? 'Click any slot to edit' : 'View only'}</p>
-        </div>
-        {editable && (
-          <div style={{ background: '#dcfce7', color: '#166534', padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
-            ✏️ Edit mode on
-          </div>
-        )}
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: C.navy, margin: '0 0 12px 0' }}>🙋 Doubt Sessions</h2>
+        <p style={{ fontSize: 13, color: C.textSm, margin: 0 }}>Mon–Sat · Morning, Evening & Night · {DOUBT_BATCHES.length} sub-batches</p>
       </div>
-      <EditableGrid type="doubt" batches={DOUBT_BATCHES} editable={editable} currentUser={currentUser} />
+
+      {/* House selector cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+        {allHouses.map(house => {
+          const pal = batchPalette(house)
+          const count = students.filter(s => s.status !== 'Inactive' && (s.house || '').trim() === house).length
+          const isSelected = selectedHouse === house
+          return (
+            <button
+              key={house}
+              onClick={() => { setSelectedHouse(house); setView('schedule') }}
+              style={{
+                padding: 12, borderRadius: 8, border: isSelected ? `2px solid ${pal.color}` : `1.5px solid ${pal.border}`,
+                background: isSelected ? pal.bg : 'white',
+                color: pal.color, fontWeight: 600, fontSize: 13,
+                cursor: 'pointer', transition: 'all .15s',
+                boxShadow: isSelected ? `0 2px 8px ${pal.color}20` : 'none',
+              }}
+            >
+              <div>{house}</div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{count} students</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {selectedHouse && (
+        <div style={{ background: C.white, borderRadius: 14, padding: 16, boxShadow: '0 2px 10px rgba(0,0,0,.07)' }}>
+          {/* Header with tabs */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: `1.5px solid ${C.border}` }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: C.navy, margin: 0 }}>{selectedHouse}</h3>
+              <p style={{ fontSize: 12, color: C.textSm, margin: '4px 0 0' }}>{houseStudents.length} students</p>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => setView('schedule')}
+                style={{
+                  padding: '6px 12px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 12,
+                  background: view === 'schedule' ? '#1e3a5f' : '#f1f5f9',
+                  color: view === 'schedule' ? 'white' : '#64748b',
+                  cursor: 'pointer', transition: 'all .15s',
+                }}
+              >
+                📅 Schedule
+              </button>
+              <button
+                onClick={() => setView('attendance')}
+                style={{
+                  padding: '6px 12px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 12,
+                  background: view === 'attendance' ? '#16a34a' : '#f1f5f9',
+                  color: view === 'attendance' ? 'white' : '#64748b',
+                  cursor: 'pointer', transition: 'all .15s',
+                }}
+              >
+                ✅ Attendance
+              </button>
+            </div>
+          </div>
+
+          {/* Schedule view */}
+          {view === 'schedule' && (
+            <EditableGrid type="doubt" batches={DOUBT_BATCHES} editable={editable} currentUser={currentUser} />
+          )}
+
+          {/* Attendance view */}
+          {view === 'attendance' && (
+            <div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={lbl}>Date</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  style={inp}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14, marginBottom: 16 }}>
+                {DOUBT_BATCHES.map(batch => {
+                  const batchStudents = houseStudents.filter(s => (s.batch || '').includes(batch.split(' ')[0]))
+                  const attending = sessionAttendance[batch] || []
+                  const pal = batchPalette(batch)
+                  return (
+                    <div key={batch} style={{ ...card, borderLeft: `4px solid ${pal.color}` }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: pal.color, marginBottom: 12 }}>
+                        {batch} ({attending.length}/{batchStudents.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+                        {batchStudents.map(student => (
+                          <label key={student.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px', borderRadius: 6, userSelect: 'none', transition: 'background .15s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={attending.includes(student.id)}
+                              onChange={() => toggleStudent(batch, student.id)}
+                              style={{ cursor: 'pointer', width: 16, height: 16 }}
+                            />
+                            <span style={{ fontSize: 12, color: C.text }}>
+                              {student.name}
+                              <span style={{ fontSize: 11, color: C.textSm, marginLeft: 4 }}>({student.gcc_no})</span>
+                            </span>
+                          </label>
+                        ))}
+                        {batchStudents.length === 0 && (
+                          <div style={{ fontSize: 11, color: C.muted, textAlign: 'center', padding: 12 }}>
+                            No students in this batch
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <button
+                onClick={handleSaveAttendance}
+                disabled={saving}
+                style={{
+                  padding: '10px 18px', background: '#16a34a', color: 'white', border: 'none',
+                  borderRadius: 8, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
+                  fontSize: 13, opacity: saving ? 0.6 : 1, transition: 'all .15s',
+                }}
+              >
+                {saving ? '⏳ Saving...' : `✅ Save Attendance for ${selectedHouse}`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!selectedHouse && (
+        <div style={{ ...card, textAlign: 'center', padding: 40 }}>
+          <p style={{ fontSize: 14, color: C.textSm }}>Select a house to view schedule or mark attendance</p>
+        </div>
+      )}
     </div>
   )
 }
