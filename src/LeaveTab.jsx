@@ -4955,7 +4955,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
                   </td>
                   <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>
                     <div>{r.parent_contact || '—'}</div>
-                    {r.parent_approved && <div style={{ color: '#16a34a', fontSize: '11px', fontWeight: '600' }}>✅ Approved</div>}
+                    {r.parent_approved && (r.approval_level ?? 0) >= 1 && <div style={{ color: '#16a34a', fontSize: '11px', fontWeight: '600' }}>✅ Approved</div>}
                     {/* Approval trail toggle */}
                     <button
                       onClick={() => setExpandedHistory(expandedHistory === r.id ? null : r.id)}
