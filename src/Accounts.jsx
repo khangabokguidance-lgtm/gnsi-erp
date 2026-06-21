@@ -215,12 +215,24 @@ function Accounts({role,userId}){
   // PHASE 3 FIX: fraud flags fetched from DB, not computed client-side
   const fetchEntries = useCallback(async()=>{
     setLoading(true)
-    const {data,error}=await supabase.from('accounts').select('*')
-      .eq('is_soft_deleted',false)
-      .order('entry_date',{ascending:false})
-      .order('created_at',{ascending:false})
-    if(error)console.error(error)
-    else setEntries(data||[])
+    // PHASE 5 FIX: Supabase/PostgREST caps a plain .select() at 1000 rows.
+    // Page through with .range() so entries (and every total derived from it) is complete.
+    const PAGE_SIZE=1000
+    let all=[],from=0,pageError=null
+    while(true){
+      const {data,error}=await supabase.from('accounts').select('*')
+        .eq('is_soft_deleted',false)
+        .order('entry_date',{ascending:false})
+        .order('created_at',{ascending:false})
+        .order('id',{ascending:false})
+        .range(from,from+PAGE_SIZE-1)
+      if(error){pageError=error;break}
+      all=all.concat(data||[])
+      if(!data||data.length<PAGE_SIZE)break
+      from+=PAGE_SIZE
+    }
+    if(pageError)console.error(pageError)
+    else setEntries(all)
 
     if(isAdmin){
       const {data:alerts}=await supabase
@@ -246,8 +258,20 @@ function Accounts({role,userId}){
 
   const fetchDeletedRows = useCallback(async()=>{
     if(!isAdmin)return
-    const {data}=await supabase.from('accounts').select('*').eq('is_soft_deleted',true).order('deleted_at',{ascending:false})
-    setDeletedRows(data||[])
+    const PAGE_SIZE=1000
+    let all=[],from=0
+    while(true){
+      const {data,error}=await supabase.from('accounts').select('*')
+        .eq('is_soft_deleted',true)
+        .order('deleted_at',{ascending:false})
+        .order('id',{ascending:false})
+        .range(from,from+PAGE_SIZE-1)
+      if(error){console.error(error);break}
+      all=all.concat(data||[])
+      if(!data||data.length<PAGE_SIZE)break
+      from+=PAGE_SIZE
+    }
+    setDeletedRows(all)
   },[isAdmin])
 
   const fetchAuditLog = useCallback(async()=>{
