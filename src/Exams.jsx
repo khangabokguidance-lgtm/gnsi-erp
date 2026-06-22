@@ -4965,20 +4965,54 @@ export default function Exams({ currentUser, perms }) {
  
   useEffect(() => {
     ensureLibs();
-    Promise.all([
-      supabase.from("students").select("id,name,class_name,course,admission_no,gcc_no").order("name"),
-      supabase.from("exam_types").select("*").order("created_at"),
-      supabase.from("system_settings").select("value").eq("key", "course_subjects").single(),
-      supabase.from("exam_schedule").select("*").order("exam_date"),
-      supabase.from("system_settings").select("value").eq("key", "exam_institute_config").single(),
-    ]).then(([{ data: sts }, { data: types }, { data: csSetting }, { data: sched }, { data: instSetting }]) => {
+
+    const loadData = async () => {
+      const [{ data: sts }, { data: types }, { data: csSetting }, { data: sched }, { data: instSetting }] =
+        await Promise.all([
+          supabase.from("students").select("id,name,class_name,course,admission_no,gcc_no").order("name"),
+          supabase.from("exam_types").select("*").order("created_at"),
+          supabase.from("system_settings").select("value").eq("key", "course_subjects").single(),
+          supabase.from("exam_schedule").select("*").order("exam_date"),
+          supabase.from("system_settings").select("value").eq("key", "exam_institute_config").single(),
+        ]);
+
       setStudents(sts || []);
       setExamTypes(types && types.length ? types : [{ id: "default", name: "1st Monthly Test" }]);
       if (csSetting?.value)   { try { setCourseSubjects(JSON.parse(csSetting.value)); }   catch (_) {} }
       setSchedule(sched || []);
       if (instSetting?.value) { try { setInstitute({ ...INSTITUTE_DEFAULT, ...JSON.parse(instSetting.value) }); } catch (_) {} }
       setLoading(false);
-    });
+    };
+
+    loadData();
+
+    // ── Realtime: keep the student list in sync with edits made in the
+    // Students module (or anywhere else) without requiring a page refresh ──
+    const studentsChannel = supabase
+      .channel('exams:students-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'students' },
+        (payload) => {
+          setStudents(prev => {
+            if (payload.eventType === 'INSERT') {
+              return [...prev, payload.new].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            }
+            if (payload.eventType === 'UPDATE') {
+              return prev.map(s => s.id === payload.new.id ? { ...s, ...payload.new } : s);
+            }
+            if (payload.eventType === 'DELETE') {
+              return prev.filter(s => s.id !== payload.old.id);
+            }
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(studentsChannel);
+    };
   }, []);
  
   if (loading) {
