@@ -1671,10 +1671,11 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
       setError(`GCC No. ${form.gcc_no} already exists.`); return;
     }
     setSaving(true);
+    const batchVal = form.class_name.trim().toUpperCase();
     const payload = {
       name: form.name.trim().toUpperCase(), gcc_no: Number(form.gcc_no),
       admission_no: form.admission_no.trim() || null,
-      course: form.course.toUpperCase(), class_name: form.class_name.trim().toUpperCase(),
+      course: form.course.toUpperCase(), class_name: batchVal, batch: batchVal,
     };
     const { data, error: sbErr } = await supabase.from("students").insert([payload]).select();
     if (sbErr) { setError(sbErr.message); setSaving(false); return; }
@@ -1690,10 +1691,11 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
   const cancelEdit = () => { setEditId(null); setEditForm({}); };
   const saveEdit = async (id) => {
     setEditSaving(true);
+    const batchVal = (editForm.class_name || "").trim().toUpperCase();
     const payload = {
       name: editForm.name.trim().toUpperCase(), gcc_no: Number(editForm.gcc_no),
       admission_no: editForm.admission_no || null,
-      course: (editForm.course || "").toUpperCase(), class_name: (editForm.class_name || "").trim().toUpperCase(),
+      course: (editForm.course || "").toUpperCase(), class_name: batchVal, batch: batchVal,
     };
     const { error: sbErr } = await supabase.from("students").update(payload).eq("id", id);
     if (sbErr) { alert(sbErr.message); setEditSaving(false); return; }
@@ -4963,20 +4965,27 @@ export default function Exams({ currentUser, perms }) {
     setSchedule(data || []);
   }, []);
  
+  // Exams.jsx historically treats `class_name` as "the batch" (Achiever / Champion /
+  // Umeed / etc). The Students module writes the real value to a column called
+  // `batch`, not `class_name`. This normalizer maps batch → class_name on every
+  // student record so the rest of this file (which reads s.class_name everywhere)
+  // always sees the current, correct batch — without needing to touch 50+ call sites.
+  const normalizeStudent = (s) => ({ ...s, class_name: s.batch || s.class_name || "" });
+
   useEffect(() => {
     ensureLibs();
 
     const loadData = async () => {
       const [{ data: sts }, { data: types }, { data: csSetting }, { data: sched }, { data: instSetting }] =
         await Promise.all([
-          supabase.from("students").select("id,name,class_name,course,admission_no,gcc_no").order("name"),
+          supabase.from("students").select("id,name,class_name,course,batch,admission_no,gcc_no").order("name"),
           supabase.from("exam_types").select("*").order("created_at"),
           supabase.from("system_settings").select("value").eq("key", "course_subjects").single(),
           supabase.from("exam_schedule").select("*").order("exam_date"),
           supabase.from("system_settings").select("value").eq("key", "exam_institute_config").single(),
         ]);
 
-      setStudents(sts || []);
+      setStudents((sts || []).map(normalizeStudent));
       setExamTypes(types && types.length ? types : [{ id: "default", name: "1st Monthly Test" }]);
       if (csSetting?.value)   { try { setCourseSubjects(JSON.parse(csSetting.value)); }   catch (_) {} }
       setSchedule(sched || []);
@@ -4996,10 +5005,11 @@ export default function Exams({ currentUser, perms }) {
         (payload) => {
           setStudents(prev => {
             if (payload.eventType === 'INSERT') {
-              return [...prev, payload.new].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+              return [...prev, normalizeStudent(payload.new)].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
             }
             if (payload.eventType === 'UPDATE') {
-              return prev.map(s => s.id === payload.new.id ? { ...s, ...payload.new } : s);
+              const merged = normalizeStudent(payload.new);
+              return prev.map(s => s.id === merged.id ? { ...s, ...merged } : s);
             }
             if (payload.eventType === 'DELETE') {
               return prev.filter(s => s.id !== payload.old.id);
