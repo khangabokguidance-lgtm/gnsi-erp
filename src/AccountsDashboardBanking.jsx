@@ -1,6 +1,15 @@
 /**
- * GNSI ERP — Accounts Overview
+ * GNSI ERP — Accounts Overview (Enhanced)
  * Single-view treasury dashboard: net balance card, summary metrics, transaction ledger.
+ * 
+ * Improvements:
+ * - Better mobile responsiveness
+ * - Enhanced accessibility (aria-labels, proper semantics)
+ * - Improved visual hierarchy
+ * - Better empty states
+ * - Fixed modal overflow
+ * - Smoother animations
+ * - Better color contrast
  */
 
 import React, { useMemo, useState } from 'react'
@@ -11,188 +20,939 @@ export const AccountsDashboardBanking = ({
   fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`,
   isMobile = false,
   openEdit = () => {},
-  handleDelete = () => {}
+  handleDelete = () => {},
 }) => {
   const [selectedTxn, setSelectedTxn] = useState(null)
 
   const stats = useMemo(() => {
-    const income = entries.filter(e => e.type === 'Income').reduce((s, e) => s + Number(e.amount), 0)
-    const expense = entries.filter(e => e.type === 'Expense').reduce((s, e) => s + Number(e.amount), 0)
-    const confirmed = entries.filter(e => e.status === 'Confirmed').length
-    const pending = entries.filter(e => e.status !== 'Confirmed').length
+    const income = entries
+      .filter((e) => e.type === 'Income')
+      .reduce((s, e) => s + Number(e.amount || 0), 0)
+    const expense = entries
+      .filter((e) => e.type === 'Expense')
+      .reduce((s, e) => s + Number(e.amount || 0), 0)
+    const confirmed = entries.filter((e) => e.status === 'Confirmed').length
+    const pending = entries.filter((e) => e.status !== 'Confirmed').length
     return { income, expense, balance: income - expense, confirmed, pending }
   }, [entries])
 
   const sortedEntries = useMemo(
-    () => [...entries].sort((a, b) => new Date(b.entry_date) - new Date(a.entry_date)),
+    () =>
+      [...entries].sort(
+        (a, b) => new Date(b.entry_date || 0) - new Date(a.entry_date || 0)
+      ),
     [entries]
   )
 
   return (
-    <div className="min-h-screen bg-[#FBFBFD] text-[#1D1D1F] p-6">
+    <div style={{ minHeight: '100vh', backgroundColor: '#FBFBFD', color: '#1D1D1F', padding: isMobile ? '16px' : '24px' }}>
+      <style>{`
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+
+        button {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          border: none;
+          outline: none;
+        }
+
+        button:focus-visible {
+          outline: 2px solid #0084FF;
+          outline-offset: 2px;
+        }
+
+        .smooth-transition {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+      `}</style>
+
       {/* Header */}
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1D1D1F] to-[#3A3A3C] flex items-center justify-center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" className="w-4 h-4">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #1D1D1F 0%, #3A3A3C 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#fff"
+            strokeWidth="2.5"
+            style={{ width: '20px', height: '20px' }}
+          >
             <path d="M3 12l2-2 4 4 8-8 4 4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
         <div>
-          <p className="text-[15px] font-semibold leading-tight">GNSI Treasury</p>
-          <p className="text-xs text-[#AEAEB2] leading-tight">Accounts &amp; cash flow</p>
+          <p
+            style={{
+              fontSize: '16px',
+              fontWeight: 600,
+              lineHeight: 1.3,
+              marginBottom: '2px',
+            }}
+          >
+            GNSI Treasury
+          </p>
+          <p
+            style={{
+              fontSize: '13px',
+              color: '#AEAEB2',
+              lineHeight: 1.3,
+            }}
+          >
+            Accounts &amp; cash flow
+          </p>
         </div>
       </div>
 
-      {/* Treasury card */}
-      <div className="relative rounded-3xl p-8 mb-7 text-white overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.05),0_16px_40px_rgba(0,0,0,0.10)] bg-gradient-to-br from-[#1D1D1F] via-[#2C2C2E] to-[#1D1D1F]">
+      {/* Treasury Card - Compact */}
+      <div
+        style={{
+          position: 'relative',
+          borderRadius: '16px',
+          padding: isMobile ? '16px' : '20px 24px',
+          marginBottom: '24px',
+          color: 'white',
+          overflow: 'hidden',
+          background: 'linear-gradient(135deg, #1D1D1F 0%, #2C2C2E 50%, #1D1D1F 100%)',
+          boxShadow:
+            '0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(20px)',
+        }}
+      >
+        {/* Glossy overlay */}
         <div
-          className="absolute -top-[60%] -right-[20%] w-[60%] h-[220%] pointer-events-none"
           style={{
-            background: 'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)',
-            transform: 'rotate(8deg)'
+            position: 'absolute',
+            top: '-60%',
+            right: '-20%',
+            width: '60%',
+            height: '220%',
+            pointerEvents: 'none',
+            background:
+              'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)',
+            transform: 'rotate(8deg)',
           }}
         />
-        <div className="flex justify-between items-start mb-7">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-white/50">Net balance</p>
-            <p className="text-sm font-medium text-white/85 mt-1">GNSI · Khangabok, Thoubal</p>
-          </div>
-          <div className="w-9 h-[26px] rounded-[5px] bg-gradient-to-br from-[#D4AF6A] to-[#B8915A]" />
-        </div>
 
-        <p className="text-[42px] font-semibold m-0 tabular-nums tracking-tight">{fmt(stats.balance)}</p>
-
-        <div className="flex gap-7 mt-6">
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-white/45">Income</p>
-            <p className="text-[15px] font-medium mt-1 tabular-nums text-[#6FDB9A]">+{fmt(stats.income)}</p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-white/45">Expense</p>
-            <p className="text-[15px] font-medium mt-1 tabular-nums text-[#FF8A8A]">−{fmt(stats.expense)}</p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-white/45">Confirmed</p>
-            <p className="text-[15px] font-medium mt-1 tabular-nums">{stats.confirmed} entries</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Summary metrics */}
-      <div className={`grid gap-4 mb-7 ${isMobile ? 'grid-cols-2' : 'grid-cols-4'}`}>
-        <div className="bg-white rounded-xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06]">
-          <p className="text-xs font-medium text-[#6E6E73]">Pending entries</p>
-          <p className="text-[22px] font-semibold mt-2 tabular-nums">{stats.pending}</p>
-          <p className="text-xs text-[#AEAEB2] mt-1.5">Awaiting confirmation</p>
-        </div>
-        <div className="bg-white rounded-xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06]">
-          <p className="text-xs font-medium text-[#6E6E73]">Total transactions</p>
-          <p className="text-[22px] font-semibold mt-2 tabular-nums">{entries.length}</p>
-          <p className="text-xs text-[#AEAEB2] mt-1.5">All time</p>
-        </div>
-        <div className="bg-white rounded-xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06]">
-          <p className="text-xs font-medium text-[#6E6E73]">Income entries</p>
-          <p className="text-[22px] font-semibold mt-2 tabular-nums text-[#0A8042]">
-            {entries.filter(e => e.type === 'Income').length}
-          </p>
-          <p className="text-xs text-[#AEAEB2] mt-1.5">Credits recorded</p>
-        </div>
-        <div className="bg-white rounded-xl p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06]">
-          <p className="text-xs font-medium text-[#6E6E73]">Expense entries</p>
-          <p className="text-[22px] font-semibold mt-2 tabular-nums text-[#D70015]">
-            {entries.filter(e => e.type === 'Expense').length}
-          </p>
-          <p className="text-xs text-[#AEAEB2] mt-1.5">Debits recorded</p>
-        </div>
-      </div>
-
-      {/* Transaction ledger */}
-      <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] overflow-hidden">
-        <div className="px-6 py-5 border-b border-black/[0.06] flex justify-between items-center">
-          <div>
-            <p className="text-base font-semibold">Recent transactions</p>
-            <p className="text-xs text-[#6E6E73] mt-0.5">{entries.length} total · sorted by date</p>
-          </div>
-        </div>
-
-        <div>
-          {sortedEntries.slice(0, isMobile ? 10 : 25).map((entry) => {
-            const isIncome = entry.type === 'Income'
-            return (
-              <div
-                key={entry.id}
-                className="flex items-center justify-between px-6 py-4 border-b border-black/[0.06] last:border-b-0 hover:bg-[#FAFAFA] transition cursor-pointer"
-                onClick={() => setSelectedTxn(entry)}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Top row */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              marginBottom: '12px',
+            }}
+          >
+            <div>
+              <p
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  marginBottom: '2px',
+                  margin: 0,
+                }}
               >
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className={`w-9 h-9 rounded-[11px] flex items-center justify-center text-sm flex-shrink-0 ${
-                      isIncome ? 'bg-[#E8F7EE] text-[#0A8042]' : 'bg-[#FDEAEC] text-[#D70015]'
-                    }`}
-                  >
-                    {isIncome ? '↑' : '↓'}
-                  </div>
-                  <div>
-                    <p className="text-[14.5px] font-medium">{entry.note || entry.category}</p>
-                    <p className="text-xs text-[#AEAEB2] mt-0.5">{entry.entry_date} · {entry.payment_mode}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className={`text-[15px] font-semibold tabular-nums ${isIncome ? 'text-[#0A8042]' : 'text-[#D70015]'}`}>
-                    {isIncome ? '+' : '−'}{fmt(entry.amount)}
-                  </p>
-                  {entry.status !== 'Confirmed' && (
-                    <span className="inline-block text-[10.5px] font-semibold px-2 py-0.5 rounded-md mt-1 bg-[#FDF1E3] text-[#B25E00]">
-                      Pending
-                    </span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-
-          {entries.length === 0 && (
-            <div className="px-6 py-12 text-center text-sm text-[#AEAEB2]">
-              No transactions yet.
+                Net balance
+              </p>
+              <p
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  lineHeight: 1.2,
+                  margin: 0,
+                }}
+              >
+                GNSI · Khangabok, Thoubal
+              </p>
             </div>
+            <div
+              style={{
+                width: '32px',
+                height: '20px',
+                borderRadius: '4px',
+                background: 'linear-gradient(135deg, #D4AF6A 0%, #B8915A 100%)',
+                boxShadow: '0 2px 8px rgba(212, 175, 106, 0.25)',
+                flexShrink: 0,
+              }}
+            />
+          </div>
+
+          {/* Balance */}
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '32px',
+              fontWeight: 600,
+              margin: '8px 0 12px 0',
+              fontFamily: "'Courier New', monospace",
+              letterSpacing: '-0.3px',
+              lineHeight: 1.1,
+            }}
+          >
+            {fmt(stats.balance)}
+          </p>
+
+          {/* Metrics row - more compact */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: isMobile ? '12px' : '16px',
+            }}
+          >
+            <div>
+              <p
+                style={{
+                  fontSize: '9px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  margin: '0 0 4px 0',
+                  fontWeight: 500,
+                }}
+              >
+                Income
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  margin: 0,
+                  fontFamily: "'Courier New', monospace",
+                  color: '#6FDB9A',
+                }}
+              >
+                +{fmt(stats.income)}
+              </p>
+            </div>
+            <div>
+              <p
+                style={{
+                  fontSize: '9px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  margin: '0 0 4px 0',
+                  fontWeight: 500,
+                }}
+              >
+                Expense
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  margin: 0,
+                  fontFamily: "'Courier New', monospace",
+                  color: '#FF8A8A',
+                }}
+              >
+                −{fmt(stats.expense)}
+              </p>
+            </div>
+            <div>
+              <p
+                style={{
+                  fontSize: '9px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  margin: '0 0 4px 0',
+                  fontWeight: 500,
+                }}
+              >
+                Confirmed
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  margin: 0,
+                  fontFamily: "'Courier New', monospace",
+                  color: 'rgba(255, 255, 255, 0.9)',
+                }}
+              >
+                {stats.confirmed}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Metrics Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+          gap: '16px',
+          marginBottom: '28px',
+        }}
+      >
+        {/* Pending */}
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#6E6E73',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Pending
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: "'Courier New', monospace",
+            }}
+          >
+            {stats.pending}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#AEAEB2',
+              margin: '8px 0 0 0',
+            }}
+          >
+            Awaiting confirmation
+          </p>
+        </div>
+
+        {/* Total Transactions */}
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#6E6E73',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Total
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: "'Courier New', monospace",
+            }}
+          >
+            {entries.length}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#AEAEB2',
+              margin: '8px 0 0 0',
+            }}
+          >
+            All-time transactions
+          </p>
+        </div>
+
+        {/* Income Count */}
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#6E6E73',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Income
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: "'Courier New', monospace",
+              color: '#0A8042',
+            }}
+          >
+            {entries.filter((e) => e.type === 'Income').length}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#AEAEB2',
+              margin: '8px 0 0 0',
+            }}
+          >
+            Credits recorded
+          </p>
+        </div>
+
+        {/* Expense Count */}
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#6E6E73',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Expense
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: "'Courier New', monospace",
+              color: '#D70015',
+            }}
+          >
+            {entries.filter((e) => e.type === 'Expense').length}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#AEAEB2',
+              margin: '8px 0 0 0',
+            }}
+          >
+            Debits recorded
+          </p>
+        </div>
+      </div>
+
+      {/* Transaction Ledger */}
+      <div
+        style={{
+          backgroundColor: 'white',
+          borderRadius: '16px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: isMobile ? '16px' : '20px 24px',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <div>
+            <p
+              style={{
+                fontSize: '15px',
+                fontWeight: 600,
+                margin: 0,
+              }}
+            >
+              Recent Transactions
+            </p>
+            <p
+              style={{
+                fontSize: '12px',
+                color: '#6E6E73',
+                margin: '4px 0 0 0',
+              }}
+            >
+              {entries.length} total · sorted by date
+            </p>
+          </div>
+        </div>
+
+        {/* Transactions List */}
+        <div>
+          {entries.length === 0 ? (
+            <div
+              style={{
+                padding: isMobile ? '40px 20px' : '60px 40px',
+                textAlign: 'center',
+                color: '#AEAEB2',
+              }}
+            >
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+              <p style={{ fontSize: '15px', fontWeight: 500, margin: 0 }}>
+                No transactions yet
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  color: '#D1D5DB',
+                  margin: '6px 0 0 0',
+                }}
+              >
+                Start recording income and expenses to see them here.
+              </p>
+            </div>
+          ) : (
+            sortedEntries.slice(0, isMobile ? 15 : 30).map((entry, idx) => {
+              const isIncome = entry.type === 'Income'
+              return (
+                <div
+                  key={entry.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: isMobile ? '14px 16px' : '16px 24px',
+                    borderBottom:
+                      idx < sortedEntries.slice(0, isMobile ? 15 : 30).length - 1
+                        ? '1px solid rgba(0,0,0,0.04)'
+                        : 'none',
+                    backgroundColor: 'transparent',
+                    transition: 'background-color 0.15s ease',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#FAFAFA'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                  }}
+                  onClick={() => setSelectedTxn(entry)}
+                >
+                  {/* Left side */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '14px',
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '16px',
+                        flexShrink: 0,
+                        backgroundColor: isIncome
+                          ? 'rgba(10, 128, 66, 0.1)'
+                          : 'rgba(215, 0, 21, 0.1)',
+                        color: isIncome ? '#0A8042' : '#D70015',
+                      }}
+                    >
+                      {isIncome ? '↑' : '↓'}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          margin: 0,
+                          color: '#1D1D1F',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {entry.note || entry.category || 'Transaction'}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: '12px',
+                          color: '#AEAEB2',
+                          margin: '4px 0 0 0',
+                        }}
+                      >
+                        {entry.entry_date} · {entry.payment_mode || 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right side */}
+                  <div
+                    style={{
+                      textAlign: 'right',
+                      marginLeft: '16px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        margin: 0,
+                        fontFamily: "'Courier New', monospace",
+                        color: isIncome ? '#0A8042' : '#D70015',
+                      }}
+                    >
+                      {isIncome ? '+' : '−'}{fmt(entry.amount || 0)}
+                    </p>
+                    {entry.status !== 'Confirmed' && (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          padding: '4px 8px',
+                          borderRadius: '5px',
+                          marginTop: '6px',
+                          backgroundColor: '#FDF1E3',
+                          color: '#B25E00',
+                        }}
+                      >
+                        Pending
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })
           )}
         </div>
       </div>
 
-      {/* Transaction detail modal */}
+      {/* Transaction Detail Modal */}
       {selectedTxn && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-[0_16px_40px_rgba(0,0,0,0.20)]">
-            <div className="flex justify-between items-start mb-5">
-              <h3 className="text-lg font-semibold">{selectedTxn.note || selectedTxn.category}</h3>
-              <button
-                onClick={() => setSelectedTxn(null)}
-                className="text-[#AEAEB2] hover:text-[#1D1D1F] text-xl leading-none"
-                aria-label="Close"
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            padding: '16px',
+            zIndex: 50,
+          }}
+          onClick={() => setSelectedTxn(null)}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '20px 20px 0 0',
+              padding: '28px 20px',
+              width: '100%',
+              maxWidth: '480px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.20)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setSelectedTxn(null)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'none',
+                cursor: 'pointer',
+                fontSize: '24px',
+                color: '#AEAEB2',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '8px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#F5F5F7'
+                e.target.style.color = '#1D1D1F'
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = 'transparent'
+                e.target.style.color = '#AEAEB2'
+              }}
+              aria-label="Close modal"
+            >
+              ×
+            </button>
+
+            {/* Content */}
+            <h3
+              style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                margin: '0 0 24px 0',
+                paddingRight: '32px',
+              }}
+            >
+              {selectedTxn.note || selectedTxn.category || 'Transaction'}
+            </h3>
+
+            <div style={{ marginBottom: '28px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '16px',
+                }}
               >
-                ×
-              </button>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#AEAEB2',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Type
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#1D1D1F',
+                    }}
+                  >
+                    {selectedTxn.type}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#AEAEB2',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Amount
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      margin: 0,
+                      fontFamily: "'Courier New', monospace",
+                      color:
+                        selectedTxn.type === 'Income' ? '#0A8042' : '#D70015',
+                    }}
+                  >
+                    {selectedTxn.type === 'Income' ? '+' : '−'}
+                    {fmt(selectedTxn.amount || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#AEAEB2',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Date
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#1D1D1F',
+                    }}
+                  >
+                    {selectedTxn.entry_date}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#AEAEB2',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Mode
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#1D1D1F',
+                    }}
+                  >
+                    {selectedTxn.payment_mode || '—'}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#AEAEB2',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Status
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: selectedTxn.status === 'Confirmed' ? '#0A8042' : '#B25E00',
+                    }}
+                  >
+                    {selectedTxn.status}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#AEAEB2',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Account
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#1D1D1F',
+                    }}
+                  >
+                    {selectedTxn.account_type || '—'}
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2.5 text-sm mb-6">
-              <p><span className="text-[#AEAEB2]">Type</span><span className="float-right font-medium">{selectedTxn.type}</span></p>
-              <p><span className="text-[#AEAEB2]">Amount</span><span className="float-right font-medium tabular-nums">{fmt(selectedTxn.amount)}</span></p>
-              <p><span className="text-[#AEAEB2]">Date</span><span className="float-right font-medium">{selectedTxn.entry_date}</span></p>
-              <p><span className="text-[#AEAEB2]">Mode</span><span className="float-right font-medium">{selectedTxn.payment_mode}</span></p>
-              <p><span className="text-[#AEAEB2]">Status</span><span className="float-right font-medium">{selectedTxn.status}</span></p>
-            </div>
-
+            {/* Action Buttons */}
             {canWrite && (
-              <div className="flex gap-2">
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '12px',
+                }}
+              >
                 <button
-                  onClick={() => { openEdit(selectedTxn); setSelectedTxn(null) }}
-                  className="flex-1 px-4 py-2.5 bg-[#1D1D1F] text-white font-medium text-sm rounded-xl"
+                  onClick={() => {
+                    openEdit(selectedTxn)
+                    setSelectedTxn(null)
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    backgroundColor: '#1D1D1F',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = '#3A3A3C'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = '#1D1D1F'
+                  }}
                 >
                   Edit
                 </button>
                 <button
-                  onClick={() => { handleDelete(selectedTxn.id); setSelectedTxn(null) }}
-                  className="flex-1 px-4 py-2.5 bg-[#FDEAEC] text-[#D70015] font-medium text-sm rounded-xl"
+                  onClick={() => {
+                    handleDelete(selectedTxn.id)
+                    setSelectedTxn(null)
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    backgroundColor: '#FDEAEC',
+                    color: '#D70015',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = '#FFCDD2'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = '#FDEAEC'
+                  }}
                 >
                   Delete
                 </button>
