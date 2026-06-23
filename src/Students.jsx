@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { getFlatFeeAmt } from './feeEngine'
+import { getFlatFeeAmtSync } from './feeEngine'
 import { useAuth } from './AuthContext'
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -223,7 +223,7 @@ function getAge(dob) {
   return age
 }
 function getEffectiveMonthlyDue(student) {
-  const base=getFlatFeeAmt(student.hostel_type)
+  const base=getFlatFeeAmtSync(student.hostel_type, student.course)
   const waiver=Number(student.fee_waiver||0)
   const scholarship=Number(student.scholarship||0)
   return Math.max(0, base-waiver-scholarship)
@@ -1482,7 +1482,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
             <div style={{display:'flex',flexDirection:'column',gap:14}}>
               {(Number(student.fee_waiver)||Number(student.scholarship))?(
                 <div style={{background:T.amberLight,border:`1px solid ${T.amberBorder}`,borderRadius:T.r8,padding:'10px 14px',fontSize:12,color:T.amber,fontWeight:600}}>
-                  Effective due: ₹{fmt(effectiveDue)}/mo (base ₹{fmt(getFlatFeeAmt(student.hostel_type))} − waiver ₹{fmt(student.fee_waiver||0)} − scholarship ₹{fmt(student.scholarship||0)})
+                  Effective due: ₹{fmt(effectiveDue)}/mo (base ₹{fmt(getFlatFeeAmtSync(student.hostel_type, student.course))} − waiver ₹{fmt(student.fee_waiver||0)} − scholarship ₹{fmt(student.scholarship||0)})
                 </div>
               ):null}
               {totalArrears>0&&<div style={{background:T.redLight,border:`1px solid ${T.redBorder}`,borderRadius:T.r8,padding:'10px 14px',fontWeight:700,color:T.red,fontSize:12}}>⚠ Total Arrears: ₹{fmt(totalArrears)}</div>}
@@ -1552,7 +1552,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents }) {
   const subtypes=COURSE_STRUCTURE[form.course]?.subtypes??[]
   const gccDup=form.gcc_no?allStudents.find(s=>s.gcc_no?.toString()===form.gcc_no?.toString()&&s.id!==editing?.id):null
   const phoneDup=form.phone?.trim()?allStudents.find(s=>s.phone?.trim()===form.phone?.trim()&&s.id!==editing?.id):null
-  const effectiveDue=Math.max(0,getFlatFeeAmt(derived)-Number(form.fee_waiver||0)-Number(form.scholarship||0))
+  const effectiveDue=Math.max(0,getFlatFeeAmtSync(derived, form.course)-Number(form.fee_waiver||0)-Number(form.scholarship||0))
   const hostelCfg=HOSTEL_CFG[derived]||HOSTEL_CFG['Day Scholar']
 
   const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;setErrors(e);return!Object.keys(e).length}
@@ -1608,7 +1608,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents }) {
           <FieldRow label="Hostel Type"><select style={{...SEL,opacity:DAY_SCHOLAR_HOUSES.includes(form.house) ? .6 : 1}} value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>{['Boarder','Day Scholar','Day Boarder'].map(h=><option key={h}>{h}</option>)}</select></FieldRow>
         </div>
         <div style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'8px 14px',borderRadius:T.r8,background:hostelCfg.bg,border:`1px solid ${hostelCfg.border}`,fontSize:12,fontWeight:600,color:hostelCfg.color}}>
-          {derived} · ₹{fmt(getFlatFeeAmt(derived))}/month
+          {derived} · ₹{fmt(getFlatFeeAmtSync(derived, form.course))}/month
         </div>
 
         <Divider label="Fee Adjustments"/>

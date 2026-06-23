@@ -1,4 +1,3 @@
-
 // Admissions.jsx — GNSI Portal v2.0
 // ─────────────────────────────────────────────────────────────────────────────
 // 100-FEATURE COMPLETE REWRITE
@@ -19,7 +18,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { promoteToStudent, getFlatFeeAmt } from './feeEngine'
+import { promoteToStudent, getFlatFeeAmtSync } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 
 function useWindowWidth() {
@@ -475,7 +474,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
     ? Math.round(byStatus['Enrolled'] / (byStatus['Admitted']+byStatus['Enrolled']) * 100) : 0
 
   const monthsLeft = 8
-  const revenueMonthly = apps.filter(a=>a.status==='Enrolled').reduce((s,a) => s + getFlatFeeAmt(a.hostel_type), 0)
+  const revenueMonthly = apps.filter(a=>a.status==='Enrolled').reduce((s,a) => s + getFlatFeeAmtSync(a.hostel_type, a.course), 0)
   const revForecast = revenueMonthly * monthsLeft
 
   const dailyCounts = Array.from({length:7},(_,i) => {
@@ -605,12 +604,12 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
 
         <div>
           <div style={{ fontSize:10, fontWeight:700, color:T.slate[400], textTransform:'uppercase', marginBottom:8 }}>Financial</div>
-          {[['Scholarship',a.scholarshipPct?`${a.scholarshipPct}%`:'—'],['Concession',a.concessionAmt?`₹${fmt(a.concessionAmt)}`:'—'],['Security Dep.',a.securityDeposit?`₹${fmt(a.securityDeposit)}`:'—'],['Transport Fee',a.transportFee?`₹${fmt(a.transportFee)}/mo`:'—'],['Base Fee',`₹${fmt(getFlatFeeAmt(a.hostel_type))}/mo`]].map(([k,v])=>(
+          {[['Scholarship',a.scholarshipPct?`${a.scholarshipPct}%`:'—'],['Concession',a.concessionAmt?`₹${fmt(a.concessionAmt)}`:'—'],['Security Dep.',a.securityDeposit?`₹${fmt(a.securityDeposit)}`:'—'],['Transport Fee',a.transportFee?`₹${fmt(a.transportFee)}/mo`:'—'],['Base Fee',`₹${fmt(getFlatFeeAmtSync(a.hostel_type, a.course))}/mo`]].map(([k,v])=>(
             <div key={k} style={{ fontSize:12, color:T.slate[600], marginBottom:4 }}><span style={{ fontWeight:700, color:T.slate[500] }}>{k}:</span> {v}</div>
           ))}
           {a.scholarshipPct > 0 && (
             <div style={{ marginTop:6, padding:'6px 10px', borderRadius:7, background:T.emerald[50], border:`1px solid ${T.emerald[200]}`, fontSize:11, fontWeight:700, color:T.emerald[700] }}>
-              Effective fee: ₹{fmt(Math.round(getFlatFeeAmt(a.hostel_type) * (1 - a.scholarshipPct/100)))}/mo
+              Effective fee: ₹{fmt(Math.round(getFlatFeeAmtSync(a.hostel_type, a.course) * (1 - a.scholarshipPct/100)))}/mo
             </div>
           )}
         </div>
@@ -848,7 +847,7 @@ function WABlastModal({ apps, onClose }) {
 // ─── Print helpers ─────────────────────────────────────────────────────────────
 function printAdmitCard(a) {
   const win = window.open('','_blank','width=600,height=700')
-  const fee = getFlatFeeAmt(a.hostel_type)
+  const fee = getFlatFeeAmtSync(a.hostel_type, a.course)
   win.document.write(`<!DOCTYPE html><html><head><title>Admit Card – ${a.name}</title>
   <style>body{font-family:Georgia,serif;padding:32px;max-width:540px;margin:auto}
   .header{text-align:center;border-bottom:2px solid #1E1B4B;padding-bottom:12px;margin-bottom:16px}
@@ -979,7 +978,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
 
   const derivedHostelType = deriveHostelType(form.house, form.hostel_type)
   const hs       = HOSTEL_STYLES[derivedHostelType] || HOSTEL_STYLES['Day Scholar']
-  const baseRate = getFlatFeeAmt(derivedHostelType)
+  const baseRate = getFlatFeeAmtSync(derivedHostelType, form.course)
   const discRate = form.scholarshipPct > 0 ? Math.round(baseRate*(1-form.scholarshipPct/100)) : baseRate
   const warden   = WARDEN_CONTACTS[form.house]
 
@@ -1537,7 +1536,7 @@ function Dashboard({ apps, cols, darkMode }) {
   const enrolled = byStatus('Enrolled')
   const admitted = byStatus('Admitted')
   const revenue  = apps.filter(a => a.status === 'Enrolled')
-                       .reduce((s, a) => s + getFlatFeeAmt(a.hostel_type), 0)
+                       .reduce((s, a) => s + getFlatFeeAmtSync(a.hostel_type, a.course), 0)
 
   const admitRate  = total > 0 ? Math.round((admitted + enrolled) / total * 100) : 0
   const enrollRate = (admitted + enrolled) > 0
@@ -1647,7 +1646,7 @@ function Dashboard({ apps, cols, darkMode }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap: 12, marginBottom: 14 }}>
           {HOSTEL_TYPES.map(h => {
             const count = apps.filter(a => a.hostel_type === h).length
-            const rev   = apps.filter(a => a.status === 'Enrolled' && a.hostel_type === h).reduce((s) => s + getFlatFeeAmt(h), 0)
+            const rev   = apps.filter(a => a.status === 'Enrolled' && a.hostel_type === h).reduce((s, a) => s + getFlatFeeAmtSync(h, a.course), 0)
             const s = HOSTEL_STYLES[h]
             return (
               <div key={h} style={{ padding: 14, background: s.bg, border: `1px solid ${s.border}`, borderRadius: 10 }}>
@@ -1909,7 +1908,7 @@ export default function Admissions() {
       }
       const newApp = mapFromDB(data)
       setApps(prev => [newApp, ...prev])
-      showToast(`Saved! Adm. No: ${newApp.admNo} · ${newApp.hostel_type} · ₹${fmt(getFlatFeeAmt(newApp.hostel_type))}/mo`, T.violet[600])
+      showToast(`Saved! Adm. No: ${newApp.admNo} · ${newApp.hostel_type} · ₹${fmt(getFlatFeeAmtSync(newApp.hostel_type, newApp.course))}/mo`, T.violet[600])
     }
     try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
     setFormOpen(false); setEditing(null)
@@ -2053,7 +2052,7 @@ export default function Admissions() {
   ADM_STATUSES.forEach(s => byStatus[s]=0)
   apps.forEach(a => byStatus[a.status] = (byStatus[a.status]||0)+1)
 
-  const monthlyRevenue = apps.filter(a=>a.status==='Enrolled').reduce((s,a)=>s+getFlatFeeAmt(a.hostel_type),0)
+  const monthlyRevenue = apps.filter(a=>a.status==='Enrolled').reduce((s,a)=>s+getFlatFeeAmtSync(a.hostel_type, a.course),0)
 
   const bg   = darkMode ? T.slate[900] : T.slate[50]
   const card = darkMode ? T.slate[800] : '#fff'

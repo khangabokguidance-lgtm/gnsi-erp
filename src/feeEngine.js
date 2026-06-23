@@ -228,6 +228,18 @@ export const getFlatFeeAmt = async (hostelType, course, batch, sessionYear = `${
   return r.flatFee
 }
 
+/**
+ * Sync — quick flat fee estimate using the legacy hardcoded rate tables only
+ * (no DB lookup, no per-student override). For inline/render-time aggregates
+ * (dashboard totals, running sums in reduce/useMemo) where awaiting a DB
+ * round-trip per row isn't practical. NOT for actual billing/invoicing —
+ * those must use the async getFlatFeeAmt so overrides are respected.
+ */
+export const getFlatFeeAmtSync = (hostelType, course) => {
+  if (course && COURSE_RATES[course]?.[hostelType] != null) return COURSE_RATES[course][hostelType]
+  return FLAT_RATES[hostelType] ?? 0
+}
+
 /** Async — returns course fee amount for this student */
 export const getCourseFeeAmt = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
   const r = await getFeeRates(sessionYear, course, batch, hostelType)
