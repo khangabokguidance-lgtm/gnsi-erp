@@ -3801,9 +3801,9 @@ LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","V
       PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
     },
     courseMaxMarks: {
-      ACHIEVER:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":30,"General Knowledge":20},
-CHAMPION:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":30,"General Knowledge":20},
-LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":30,"General Knowledge":20},
+      ACHIEVER:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
+CHAMPION:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
+LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
       LAKSHYA:   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
@@ -3892,10 +3892,16 @@ function downloadText(filename, text) {
 
 // ── Exam Format Builder Wizard ─────────────────────────────────────────────
 // editingConfig: if passed, the wizard opens pre-filled for editing
+const COURSE_TARGET_TOTAL = {
+  ACHIEVER: 300, CHAMPION: 300, LEADER: 300,
+  // everything else defaults to 100
+};
+
 function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) {
   const isMobile = useMobile();
   const allCourses = Object.keys(courseSubjects);
   const isEdit = !!editingConfig;
+  const getTarget = (course) => COURSE_TARGET_TOTAL[course] || 100;
 
   // Wizard steps
   const [step, setStep] = useState(1);
@@ -4254,12 +4260,12 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <div style={{ fontWeight:700, fontSize:15, color:"#1a3c2e" }}>{activeCourse}</div>
             <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-              <span style={{ fontSize:11, color: total===100?"#0F6E56":total>100?"#DC2626":"#9CA3AF", fontWeight:700 }}>
-                Total: {total} / 100
+              <span style={{ fontSize:11, color: total===getTarget(activeCourse)?"#0F6E56":total>getTarget(activeCourse)?"#DC2626":"#9CA3AF", fontWeight:700 }}>
+                Total: {total} / {getTarget(activeCourse)}
               </span>
-              <button onClick={() => autoSplitMarks(activeCourse, 100)}
+              <button onClick={() => autoSplitMarks(activeCourse, getTarget(activeCourse))}
                 style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE" }}>
-                ⚡ Auto-split 100
+                ⚡ Auto-split {getTarget(activeCourse)}
               </button>
             </div>
           </div>
@@ -4375,11 +4381,12 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
             const d = courseData[c] || { subjects:[], marks:{} };
             const total = Object.values(d.marks).reduce((s,v)=>s+(Number(v)||0),0);
             const ok = d.subjects.length > 0;
+            const target = getTarget(c);
             return (
               <div key={c} style={{ background:"white", borderRadius:10, border: ok?"1px solid #BBF7D0":"1px solid #FECACA", padding:"12px 14px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                   <div style={{ fontWeight:700, color:"#1a3c2e", fontSize:13 }}>{c}</div>
-                  <span style={{ fontSize:11, padding:"2px 8px", borderRadius:999, background: total===100?"#E1F5EE":total>100?"#FCEBEB":"#FFFBEB", color: total===100?"#0F6E56":total>100?"#DC2626":"#92400E", fontWeight:700 }}>
+                  <span style={{ fontSize:11, padding:"2px 8px", borderRadius:999, background: total===target?"#E1F5EE":total>target?"#FCEBEB":"#FFFBEB", color: total===target?"#0F6E56":total>target?"#DC2626":"#92400E", fontWeight:700 }}>
                     {total} marks
                   </span>
                 </div>
