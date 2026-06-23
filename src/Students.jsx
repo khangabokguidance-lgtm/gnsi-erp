@@ -169,6 +169,49 @@ const ALL_COLUMNS = [
   {key:'last_paid',   label:'Last Paid',   default:false, pii:true},   // ← PII
 ]
 
+// ─── Report Generator: field & report-type registry ──────────────────────────
+const REPORT_FIELDS = [
+  { key:'gcc_no',         label:'GCC No.',           group:'Identity',    pii:false },
+  { key:'name',           label:'Name',              group:'Identity',    pii:false },
+  { key:'gender',         label:'Gender',            group:'Identity',    pii:false },
+  { key:'dob',            label:'Date of Birth',     group:'Identity',    pii:true  },
+  { key:'age',            label:'Age',               group:'Identity',    pii:false },
+  { key:'course',         label:'Course',            group:'Academic',    pii:false },
+  { key:'batch',          label:'Batch',             group:'Academic',    pii:false },
+  { key:'session',        label:'Session',           group:'Academic',    pii:false },
+  { key:'status',         label:'Status',            group:'Academic',    pii:false },
+  { key:'admission_date', label:'Admission Date',    group:'Academic',    pii:false },
+  { key:'house',          label:'House',             group:'Residence',   pii:false },
+  { key:'hostel_type',    label:'Hostel Type',       group:'Residence',   pii:false },
+  { key:'attendance',     label:'Attendance %',      group:'Performance', pii:false },
+  { key:'latest_score',   label:'Latest Exam Score', group:'Performance', pii:false },
+  { key:'fee_dues',       label:'Fee Dues (₹)',      group:'Finance',     pii:false },
+  { key:'last_paid',      label:'Last Paid',         group:'Finance',     pii:true  },
+  { key:'phone',          label:'Phone',             group:'Contact',     pii:true  },
+  { key:'father_name',    label:"Father's Name",     group:'Contact',     pii:true  },
+  { key:'mother_name',    label:"Mother's Name",     group:'Contact',     pii:true  },
+  { key:'address',        label:'Address',           group:'Contact',     pii:true  },
+  { key:'remarks',        label:'Remarks',           group:'Other',       pii:false },
+]
+
+const REPORT_TYPES = [
+  { key:'directory',  icon:'📋', label:'Student Directory',    desc:'Full roster with academic & residence info',
+    cols:['gcc_no','name','course','batch','house','hostel_type','status'], groupBy:'none',   duesOnly:false },
+  { key:'fees',       icon:'💰', label:'Fee Dues Report',      desc:'Outstanding dues & last payment — dues-only by default',
+    cols:['gcc_no','name','batch','course','fee_dues','last_paid'],          groupBy:'course', duesOnly:true  },
+  { key:'attendance', icon:'📊', label:'Attendance Report',    desc:'Attendance percentage by student',
+    cols:['gcc_no','name','batch','attendance','status'],                    groupBy:'batch',  duesOnly:false },
+  { key:'academic',   icon:'🎯', label:'Academic Performance', desc:'Latest exam scores by student',
+    cols:['gcc_no','name','batch','course','latest_score'],                  groupBy:'course', duesOnly:false },
+  { key:'house',      icon:'🏠', label:'House / Hostel Census',desc:'Distribution across houses & hostel types',
+    cols:['gcc_no','name','house','hostel_type','course'],                   groupBy:'house',  duesOnly:false },
+  { key:'custom',     icon:'⚙️', label:'Custom Report',        desc:'Build your own column & filter combination',
+    cols:['gcc_no','name','batch','course','status'],                        groupBy:'none',   duesOnly:false },
+]
+
+const REPORT_PRESETS_KEY  = 'gnsi_report_presets'
+const MAX_REPORT_PRESETS  = 15
+
 const DENSITY = {
   compact:    { py:'6px',  avatarSize:28, fontSize:13 },
   comfortable:{ py:'12px', avatarSize:34, fontSize:14 },
@@ -1275,6 +1318,420 @@ function printFeeReceipt(student, payment) {
   w.document.close()
 }
 
+// ─── Report Generator: data + print helpers ──────────────────────────────────
+function getReportFieldValue(s, key, feeData, attData, examData) {
+  switch (key) {
+    case 'age':            return getAge(s.dob) ?? '—'
+    case 'dob':            return fmtD(s.dob)
+    case 'admission_date': return fmtD(s.admission_date)
+    case 'fee_dues':       return feeData[s.id]?.dues || 0
+    case 'last_paid':      return feeData[s.id]?.lastPaid || '—'
+    case 'attendance':     return attData[s.id] != null ? `${attData[s.id].toFixed(1)}%` : '—'
+    case 'latest_score':   return examData[s.id]?.[0]?.total ?? '—'
+    default:                return s[key] ?? '—'
+  }
+}
+
+function printProfessionalReport(cfg) {
+  const { title, subtitle, reportTypeLabel, rows, fields, groupBy, includeSummary, includeSignature, filterSummary, generatedBy, watermark, summaryStats } = cfg
+
+  const groups = groupBy && groupBy !== 'none'
+    ? rows.reduce((acc, r) => { const k = r.__group || 'Unassigned'; (acc[k] = acc[k] || []).push(r); return acc }, {})
+    : { '': rows }
+
+  const isNumericCol = key => ['fee_dues', 'latest_score'].includes(key)
+  const theadHTML = `<tr>${fields.map(f => `<th>${f.label}</th>`).join('')}</tr>`
+
+  const sectionHTML = Object.entries(groups).map(([gName, gRows]) => {
+    const body = gRows.map((r, i) => `
+      <tr style="background:${i % 2 ? '#F8FAFC' : '#fff'}">
+        ${fields.map(f => `<td>${r[f.key] ?? '—'}</td>`).join('')}
+      </tr>`).join('')
+    const subtotalCells = fields.map((f, i) => {
+      if (!isNumericCol(f.key)) return i === 0 ? `<td><strong>Subtotal (${gRows.length})</strong></td>` : `<td></td>`
+      const sum = gRows.reduce((a, r) => a + (Number(r[f.key]) || 0), 0)
+      return `<td><strong>${fmt(sum)}</strong></td>`
+    }).join('')
+    return `
+      ${gName ? `<tr class="grouphead"><td colspan="${fields.length}">${gName} <span>(${gRows.length})</span></td></tr>` : ''}
+      ${body}
+      ${gName ? `<tr class="subtotal">${subtotalCells}</tr>` : ''}
+    `
+  }).join('')
+
+  const w = window.open('', '_blank')
+  w.document.write(`<html><head><title>${title}</title><style>
+    @page { size: A4 portrait; margin: 14mm 12mm; }
+    *{box-sizing:border-box}
+    body{font-family:'Segoe UI',system-ui,sans-serif;color:#1E293B;padding:0;margin:0;font-size:11px}
+    .letterhead{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2563EB;padding-bottom:12px;margin-bottom:14px}
+    .brand{font-size:20px;font-weight:800;color:#2563EB;letter-spacing:-.02em}
+    .brand-sub{font-size:10px;color:#64748B;margin-top:2px;line-height:1.5}
+    .meta-box{text-align:right;font-size:10px;color:#64748B}
+    .meta-box b{color:#0F172A}
+    .report-title{font-size:16px;font-weight:800;color:#0F172A;margin:6px 0 2px}
+    .report-sub{font-size:11px;color:#64748B;margin-bottom:4px}
+    .filter-line{font-size:9.5px;color:#94A3B8;margin-bottom:14px;font-style:italic}
+    .summary{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+    .stat{flex:1;min-width:100px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 12px}
+    .stat .n{font-size:18px;font-weight:800;color:#0F172A}
+    .stat .l{font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+    table{width:100%;border-collapse:collapse;margin-bottom:6px}
+    thead{display:table-header-group}
+    tr{page-break-inside:avoid}
+    th{background:#0F172A;color:#fff;padding:7px 9px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    td{padding:6px 9px;border-bottom:1px solid #E2E8F0;font-size:10.5px}
+    tr.grouphead td{background:#EFF6FF;color:#1D4ED8;font-weight:800;font-size:11px;padding:8px 9px;border-top:2px solid #BFDBFE}
+    tr.grouphead span{color:#64748B;font-weight:500;font-size:9.5px}
+    tr.subtotal td{background:#F1F5F9;font-weight:700;border-bottom:2px solid #CBD5E1}
+    .signatures{display:flex;justify-content:space-between;margin-top:36px;font-size:10px;color:#475569}
+    .sig-line{border-top:1px solid #94A3B8;padding-top:4px;width:150px;text-align:center}
+    .footnote{margin-top:18px;font-size:8.5px;color:#94A3B8;text-align:center;border-top:1px solid #E2E8F0;padding-top:8px}
+    .watermark{position:fixed;top:45%;left:10%;font-size:64px;color:rgba(220,38,38,.07);font-weight:800;transform:rotate(-30deg);z-index:-1}
+  </style></head><body>
+    ${watermark ? `<div class="watermark">CONFIDENTIAL</div>` : ''}
+    <div class="letterhead">
+      <div>
+        <div class="brand">GNSI</div>
+        <div class="brand-sub">Guidance Navodaya & Sainik Institute<br>Khangabok, Thoubal, Manipur · Est. 2016</div>
+      </div>
+      <div class="meta-box">
+        <div>Generated: <b>${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</b></div>
+        <div>By: <b>${generatedBy || '—'}</b></div>
+        <div>Records: <b>${rows.length}</b></div>
+      </div>
+    </div>
+    <div class="report-title">${title}</div>
+    ${subtitle ? `<div class="report-sub">${subtitle}</div>` : ''}
+    ${filterSummary ? `<div class="filter-line">Filters: ${filterSummary}</div>` : ''}
+    ${includeSummary && summaryStats?.length ? `
+      <div class="summary">
+        ${summaryStats.map(s => `<div class="stat"><div class="n">${s.value}</div><div class="l">${s.label}</div></div>`).join('')}
+      </div>` : ''}
+    <table><thead>${theadHTML}</thead><tbody>${sectionHTML}</tbody></table>
+    ${includeSignature ? `
+      <div class="signatures">
+        <div class="sig-line">Prepared By</div>
+        <div class="sig-line">Checked By</div>
+        <div class="sig-line">Principal / Director</div>
+      </div>` : ''}
+    <div class="footnote">GNSI Portal · ${reportTypeLabel} · Generated automatically — verify figures before official use</div>
+    <script>window.onload=()=>setTimeout(()=>window.print(),350)<\/script>
+  </body></html>`)
+  w.document.close()
+}
+
+// ─── Report Generator: UI primitives ─────────────────────────────────────────
+function ReportPill({ label, active, onClick, color = T.brand }) {
+  return (
+    <button onClick={onClick} style={{
+      padding:'5px 12px', borderRadius:T.r24, fontSize:12, fontWeight:600,
+      border:`1.5px solid ${active?color:T.border}`,
+      background:active?`${color}12`:T.surface, color:active?color:T.text2,
+      cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap',
+    }}>{label}</button>
+  )
+}
+
+function MultiPicker({ label, options, selected, onChange, color = T.brand }) {
+  const toggle = v => onChange(selected.includes(v) ? selected.filter(x=>x!==v) : [...selected, v])
+  return (
+    <div style={{marginBottom:12}}>
+      <Label>{label}{selected.length>0 && <span style={{color}}> · {selected.length} selected</span>}</Label>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+        {options.map(o=><ReportPill key={o} label={o} active={selected.includes(o)} onClick={()=>toggle(o)} color={color}/>)}
+        {options.length===0 && <span style={{fontSize:12,color:T.text4}}>No options available</span>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Report Generator: main modal ────────────────────────────────────────────
+function ReportGeneratorModal({ students, feeData, attData, examData, houseOptions, can, role, onClose, showToast }) {
+  const isMobile = useIsMobile()
+  const [reportType, setReportType] = useState('directory')
+  const [rf, setRf] = useState({
+    course:[], batch:[], house:[], hostel:[], status:[], gender:[], session:[],
+    gccMin:'', gccMax:'', ageMin:'', ageMax:'', admFrom:'', admTo:'',
+    duesOnly:false, lowAttendance:false, attBelowPct:'50',
+  })
+  const [columns, setColumns]   = useState(REPORT_TYPES[0].cols)
+  const [groupBy, setGroupBy]   = useState('none')
+  const [sortBy, setSortBy]     = useState('name')
+  const [reportTitle, setReportTitle] = useState('Student Directory Report')
+  const [includeSummary, setIncludeSummary]     = useState(true)
+  const [includeSignature, setIncludeSignature] = useState(true)
+  const [presets, setPresets]   = useState(() => { try { return JSON.parse(localStorage.getItem(REPORT_PRESETS_KEY)||'[]') } catch { return [] } })
+  const [presetName, setPresetName] = useState('')
+
+  const allBatches = Array.from(new Set(students.map(s=>s.batch).filter(Boolean))).sort()
+  const availableFields = REPORT_FIELDS.filter(f => can.viewPII || !f.pii)
+  const fieldGroups = Array.from(new Set(availableFields.map(f=>f.group)))
+
+  const applyReportType = key => {
+    const rt = REPORT_TYPES.find(r=>r.key===key)
+    setReportType(key)
+    setColumns(rt.cols.filter(c => availableFields.some(f=>f.key===c)))
+    setGroupBy(rt.groupBy)
+    setReportTitle(rt.label + ' — ' + new Date().toLocaleDateString('en-IN', {month:'long', year:'numeric'}))
+    setRf(prev => ({ ...prev, duesOnly: rt.duesOnly }))
+  }
+
+  const setField = (k,v) => setRf(prev => ({ ...prev, [k]: v }))
+
+  const matched = useMemo(() => students.filter(s => {
+    if (rf.course.length  && !rf.course.includes(s.course))      return false
+    if (rf.batch.length   && !rf.batch.includes(s.batch))        return false
+    if (rf.house.length   && !rf.house.includes(s.house))        return false
+    if (rf.hostel.length  && !rf.hostel.includes(s.hostel_type)) return false
+    if (rf.status.length  && !rf.status.includes(s.status))      return false
+    if (rf.gender.length  && !rf.gender.includes(s.gender))       return false
+    if (rf.session.length && !rf.session.includes(s.session))     return false
+    if (rf.gccMin && Number(s.gcc_no) < Number(rf.gccMin)) return false
+    if (rf.gccMax && Number(s.gcc_no) > Number(rf.gccMax)) return false
+    if (rf.ageMin) { const a=getAge(s.dob); if (a==null||a<Number(rf.ageMin)) return false }
+    if (rf.ageMax) { const a=getAge(s.dob); if (a==null||a>Number(rf.ageMax)) return false }
+    if (rf.admFrom && (!s.admission_date || s.admission_date < rf.admFrom)) return false
+    if (rf.admTo   && (!s.admission_date || s.admission_date > rf.admTo))   return false
+    if (rf.duesOnly && !(feeData[s.id]?.dues > 0)) return false
+    if (rf.lowAttendance) { const a=attData[s.id]; if (a==null || a >= Number(rf.attBelowPct||50)) return false }
+    return true
+  }), [students, rf, feeData, attData])
+
+  const sorted = useMemo(() => {
+    const arr = [...matched]
+    arr.sort((a,b) => {
+      if (sortBy==='gcc_no')     return Number(a.gcc_no||0)-Number(b.gcc_no||0)
+      if (sortBy==='fee_dues')   return (feeData[b.id]?.dues||0)-(feeData[a.id]?.dues||0)
+      if (sortBy==='attendance') return (attData[a.id]??999)-(attData[b.id]??999)
+      if (sortBy==='batch')      return (a.batch||'').localeCompare(b.batch||'')
+      return (a.name||'').localeCompare(b.name||'')
+    })
+    return arr
+  }, [matched, sortBy, feeData, attData])
+
+  const hasAdvancedFilters = rf.course.length||rf.batch.length||rf.house.length||rf.hostel.length||rf.status.length||rf.gender.length||rf.session.length||rf.gccMin||rf.gccMax||rf.ageMin||rf.ageMax||rf.admFrom||rf.admTo||rf.duesOnly||rf.lowAttendance
+
+  const clearFilters = () => setRf({course:[],batch:[],house:[],hostel:[],status:[],gender:[],session:[],gccMin:'',gccMax:'',ageMin:'',ageMax:'',admFrom:'',admTo:'',duesOnly:false,lowAttendance:false,attBelowPct:'50'})
+
+  const toggleColumn = key => setColumns(prev => prev.includes(key) ? prev.filter(c=>c!==key) : [...prev, key])
+
+  const buildRows = () => sorted.map(s => {
+    const row = { id:s.id }
+    columns.forEach(c => { row[c] = getReportFieldValue(s, c, feeData, attData, examData) })
+    if (groupBy !== 'none') row.__group = getReportFieldValue(s, groupBy==='hostel'?'hostel_type':groupBy, feeData, attData, examData) || 'Unassigned'
+    return row
+  })
+
+  const filterSummaryText = () => {
+    const parts = []
+    if (rf.course.length)  parts.push(`Course: ${rf.course.join(', ')}`)
+    if (rf.batch.length)   parts.push(`Batch: ${rf.batch.join(', ')}`)
+    if (rf.house.length)   parts.push(`House: ${rf.house.join(', ')}`)
+    if (rf.hostel.length)  parts.push(`Hostel: ${rf.hostel.join(', ')}`)
+    if (rf.status.length)  parts.push(`Status: ${rf.status.join(', ')}`)
+    if (rf.gender.length)  parts.push(`Gender: ${rf.gender.join(', ')}`)
+    if (rf.session.length) parts.push(`Session: ${rf.session.join(', ')}`)
+    if (rf.gccMin||rf.gccMax) parts.push(`GCC ${rf.gccMin||'…'}–${rf.gccMax||'…'}`)
+    if (rf.ageMin||rf.ageMax) parts.push(`Age ${rf.ageMin||'…'}–${rf.ageMax||'…'}`)
+    if (rf.admFrom||rf.admTo) parts.push(`Admitted ${rf.admFrom||'…'} to ${rf.admTo||'…'}`)
+    if (rf.duesOnly)       parts.push('Fee dues only')
+    if (rf.lowAttendance)  parts.push(`Attendance below ${rf.attBelowPct}%`)
+    return parts.length ? parts.join(' · ') : 'No filters applied — all students included'
+  }
+
+  const buildSummaryStats = () => {
+    const stats = [{ label:'Total Records', value: sorted.length }]
+    if (reportType==='fees') {
+      const totalDues = sorted.reduce((a,s)=>a+(feeData[s.id]?.dues||0),0)
+      stats.push({ label:'Total Outstanding', value:`₹${fmt(totalDues)}` })
+      stats.push({ label:'With Dues', value: sorted.filter(s=>feeData[s.id]?.dues>0).length })
+    } else if (reportType==='attendance') {
+      const withAtt = sorted.filter(s=>attData[s.id]!=null)
+      const avg = withAtt.length ? withAtt.reduce((a,s)=>a+attData[s.id],0)/withAtt.length : 0
+      stats.push({ label:'Average Attendance', value:`${avg.toFixed(1)}%` })
+      stats.push({ label:'Below 75%', value: withAtt.filter(s=>attData[s.id]<75).length })
+    } else if (reportType==='academic') {
+      const withScore = sorted.filter(s=>examData[s.id]?.[0]?.total!=null)
+      const avg = withScore.length ? withScore.reduce((a,s)=>a+(examData[s.id][0].total||0),0)/withScore.length : 0
+      stats.push({ label:'Average Score', value: avg.toFixed(0) })
+    } else {
+      stats.push({ label:'Active', value: sorted.filter(s=>s.status==='Active').length })
+      stats.push({ label:'Boarders', value: sorted.filter(s=>s.hostel_type==='Boarder').length })
+    }
+    return stats
+  }
+
+  const handleGeneratePDF = () => {
+    if (!sorted.length) { showToast('No students match these filters', T.red); return }
+    const rt = REPORT_TYPES.find(r=>r.key===reportType)
+    const fields = columns.map(c => REPORT_FIELDS.find(f=>f.key===c)).filter(Boolean)
+    if (!fields.length) { showToast('Select at least one column', T.red); return }
+    printProfessionalReport({
+      title: reportTitle || rt.label,
+      subtitle: rt.desc,
+      reportTypeLabel: rt.label,
+      rows: buildRows(),
+      fields,
+      groupBy,
+      includeSummary, includeSignature,
+      filterSummary: filterSummaryText(),
+      generatedBy: role ? role.charAt(0).toUpperCase()+role.slice(1) : 'Staff',
+      watermark: fields.some(f=>f.pii),
+      summaryStats: buildSummaryStats(),
+    })
+    showToast('Report opened — use Print → Save as PDF', T.brand)
+  }
+
+  const handleExportCSV = () => {
+    if (!sorted.length) { showToast('No students match these filters', T.red); return }
+    const fields = columns.map(c => REPORT_FIELDS.find(f=>f.key===c)).filter(Boolean)
+    const rows = buildRows().map(r => {
+      const out = {}
+      fields.forEach(f => { out[f.label] = r[f.key] })
+      return out
+    })
+    downloadCSV(rows, `${(reportTitle||'report').replace(/\s+/g,'_').toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`)
+    showToast('CSV exported', T.green)
+  }
+
+  const savePresetFn = () => {
+    if (!presetName.trim()) return
+    const next = [...presets.filter(p=>p.name!==presetName.trim()), { name:presetName.trim(), reportType, rf, columns, groupBy, sortBy }].slice(-MAX_REPORT_PRESETS)
+    setPresets(next); localStorage.setItem(REPORT_PRESETS_KEY, JSON.stringify(next))
+    setPresetName(''); showToast('Report preset saved', T.brand)
+  }
+  const loadPresetFn = p => {
+    setReportType(p.reportType); setRf(p.rf); setColumns(p.columns); setGroupBy(p.groupBy); setSortBy(p.sortBy||'name')
+    showToast(`Loaded preset "${p.name}"`, T.brand)
+  }
+  const removePresetFn = name => {
+    const next = presets.filter(p=>p.name!==name); setPresets(next); localStorage.setItem(REPORT_PRESETS_KEY, JSON.stringify(next))
+  }
+
+  return (
+    <Modal onClose={onClose} width={820} title="📄 Report Generator" subtitle="Build a filtered, professional report — print to PDF or export to CSV">
+      <Label>Report Type</Label>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:8,marginBottom:18}}>
+        {REPORT_TYPES.map(rt => (
+          <div key={rt.key} onClick={()=>applyReportType(rt.key)} style={{
+            padding:'12px 14px', borderRadius:T.r10, cursor:'pointer',
+            border:`1.5px solid ${reportType===rt.key?T.brand:T.border}`,
+            background:reportType===rt.key?T.brandLight:T.surface,
+          }}>
+            <div style={{fontSize:13,fontWeight:700,color:reportType===rt.key?T.brandText:T.text1,marginBottom:2}}>{rt.icon} {rt.label}</div>
+            <div style={{fontSize:11,color:T.text3,lineHeight:1.4}}>{rt.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      <Divider label="Advanced Filters"/>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:8}}>
+        <span style={{fontSize:12,color:T.text3}}><strong style={{color:T.text1}}>{sorted.length}</strong> of {students.length} students match</span>
+        {hasAdvancedFilters && <Btn onClick={clearFilters} size='sm' style={{color:T.red,borderColor:T.redBorder}}>✕ Clear Filters</Btn>}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:16,marginBottom:6}}>
+        <MultiPicker label="Course"      options={COURSES.filter(c=>c!=='All')}       selected={rf.course}  onChange={v=>setField('course',v)}/>
+        <MultiPicker label="Batch"       options={allBatches}                          selected={rf.batch}   onChange={v=>setField('batch',v)}/>
+        <MultiPicker label="House"       options={houseOptions}                        selected={rf.house}   onChange={v=>setField('house',v)}  color={T.violet}/>
+        <MultiPicker label="Hostel Type" options={HOSTEL_TYPES.filter(h=>h!=='All')}   selected={rf.hostel}  onChange={v=>setField('hostel',v)} color={T.amber}/>
+        <MultiPicker label="Status"      options={STATUSES.filter(s=>s!=='All')}       selected={rf.status}  onChange={v=>setField('status',v)} color={T.green}/>
+        <MultiPicker label="Gender"      options={GENDERS.filter(g=>g!=='All')}        selected={rf.gender}  onChange={v=>setField('gender',v)} color={T.sky}/>
+        <MultiPicker label="Session"     options={SESSIONS}                            selected={rf.session} onChange={v=>setField('session',v)} color={T.teal}/>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>
+        <FieldRow label="GCC No. Min"><Input value={rf.gccMin} onChange={e=>setField('gccMin',e.target.value)} type="number" placeholder="e.g. 100"/></FieldRow>
+        <FieldRow label="GCC No. Max"><Input value={rf.gccMax} onChange={e=>setField('gccMax',e.target.value)} type="number" placeholder="e.g. 900"/></FieldRow>
+        <FieldRow label="Age Min"><Input value={rf.ageMin} onChange={e=>setField('ageMin',e.target.value)} type="number" placeholder="e.g. 10"/></FieldRow>
+        <FieldRow label="Age Max"><Input value={rf.ageMax} onChange={e=>setField('ageMax',e.target.value)} type="number" placeholder="e.g. 16"/></FieldRow>
+        <FieldRow label="Admitted From"><Input value={rf.admFrom} onChange={e=>setField('admFrom',e.target.value)} type="date"/></FieldRow>
+        <FieldRow label="Admitted To"><Input value={rf.admTo} onChange={e=>setField('admTo',e.target.value)} type="date"/></FieldRow>
+      </div>
+
+      <div style={{display:'flex',gap:16,flexWrap:'wrap',marginBottom:18,alignItems:'center'}}>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:600,color:T.text2,cursor:'pointer'}}>
+          <input type="checkbox" checked={rf.duesOnly} onChange={e=>setField('duesOnly',e.target.checked)} style={{accentColor:T.red,width:16,height:16}}/>
+          Fee dues only
+        </label>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:600,color:T.text2,cursor:'pointer'}}>
+          <input type="checkbox" checked={rf.lowAttendance} onChange={e=>setField('lowAttendance',e.target.checked)} style={{accentColor:T.amber,width:16,height:16}}/>
+          Attendance below
+          <input value={rf.attBelowPct} onChange={e=>setField('attBelowPct',e.target.value)} type="number" style={{width:50,padding:'4px 6px',borderRadius:T.r6,border:`1px solid ${T.border2}`,fontSize:12,fontFamily:'inherit'}}/>%
+        </label>
+      </div>
+
+      <Divider label="Columns & Layout"/>
+      {fieldGroups.map(grp => (
+        <div key={grp} style={{marginBottom:12}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.text4,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>{grp}</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {availableFields.filter(f=>f.group===grp).map(f => (
+              <ReportPill key={f.key} label={f.label} active={columns.includes(f.key)} onClick={()=>toggleColumn(f.key)}/>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:12,marginTop:14,marginBottom:14}}>
+        <FieldRow label="Group Rows By">
+          <Select value={groupBy} onChange={e=>setGroupBy(e.target.value)} style={{width:'100%'}}>
+            <option value="none">No Grouping</option>
+            <option value="course">Course</option>
+            <option value="batch">Batch</option>
+            <option value="house">House</option>
+            <option value="status">Status</option>
+            <option value="hostel">Hostel Type</option>
+          </Select>
+        </FieldRow>
+        <FieldRow label="Sort By">
+          <Select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{width:'100%'}}>
+            <option value="name">Name (A–Z)</option>
+            <option value="gcc_no">GCC No.</option>
+            <option value="batch">Batch</option>
+            <option value="fee_dues">Fee Dues (High–Low)</option>
+            <option value="attendance">Attendance (Low–High)</option>
+          </Select>
+        </FieldRow>
+      </div>
+
+      <FieldRow label="Report Title"><Input value={reportTitle} onChange={e=>setReportTitle(e.target.value)} placeholder="Report title shown on the printout"/></FieldRow>
+
+      <div style={{display:'flex',gap:16,flexWrap:'wrap',margin:'14px 0 4px'}}>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:600,color:T.text2,cursor:'pointer'}}>
+          <input type="checkbox" checked={includeSummary} onChange={e=>setIncludeSummary(e.target.checked)} style={{accentColor:T.brand,width:16,height:16}}/>
+          Include summary statistics
+        </label>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:600,color:T.text2,cursor:'pointer'}}>
+          <input type="checkbox" checked={includeSignature} onChange={e=>setIncludeSignature(e.target.checked)} style={{accentColor:T.brand,width:16,height:16}}/>
+          Include signature block
+        </label>
+      </div>
+
+      <Divider label="Saved Filter Presets"/>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
+        {presets.length===0 && <span style={{fontSize:12,color:T.text4}}>No saved presets yet</span>}
+        {presets.map(p => (
+          <div key={p.name} style={{display:'flex',alignItems:'center',gap:4,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r24,padding:'3px 4px 3px 12px'}}>
+            <button onClick={()=>loadPresetFn(p)} style={{background:'none',border:'none',fontSize:12,fontWeight:600,color:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{p.name}</button>
+            <button onClick={()=>removePresetFn(p.name)} style={{background:'none',border:'none',cursor:'pointer',color:T.red,fontSize:14,padding:'0 6px',lineHeight:1}}>×</button>
+          </div>
+        ))}
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:20}}>
+        <Input value={presetName} onChange={e=>setPresetName(e.target.value)} placeholder="Save current setup as…" style={{flex:1}}/>
+        <Btn onClick={savePresetFn} size='sm'>⭐ Save Preset</Btn>
+      </div>
+
+      <div style={{display:'flex',gap:10,position:'sticky',bottom:0,background:T.surface,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
+        <Btn onClick={handleExportCSV} style={{flex:1,justifyContent:'center'}}>⬇ Export CSV</Btn>
+        <Btn onClick={handleGeneratePDF} variant='primary' style={{flex:2,justifyContent:'center'}}>🖨 Generate Professional Report ({sorted.length})</Btn>
+      </div>
+    </Modal>
+  )
+}
+
 // ─── Student Detail Drawer ────────────────────────────────────────────────────
 function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, onClose, onEdit, showToast }) {
   const [tab,setTab]=useState('profile')
@@ -2227,6 +2684,7 @@ export default function Students() {
   const [showBulkFee,setShowBulkFee]=useState(false)
   const [showHouseReassign,setShowHouseReassign]=useState(false)
   const [showMergeDups,setShowMergeDups]=useState(false)
+  const [showReportGen,setShowReportGen]=useState(false)
   const [quickAttend,setQuickAttend]=useState(null)
   const [showColPicker,setShowColPicker]=useState(false)
   const [showHousePills,setShowHousePills]=useState(false)
@@ -2548,6 +3006,7 @@ const effectiveCols = visibleCols.filter(col => {
       {showBulkFee&&<BulkFeeModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkFee(false)} onSaved={loadAll} showToast={showToast}/>}
       {showHouseReassign&&<HouseReassignmentModal students={students} selectedIds={selected} can={can} onClose={()=>setShowHouseReassign(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showMergeDups&&<MergeDuplicatesModal students={students} can={can} onClose={()=>setShowMergeDups(false)} onRefresh={loadAll} showToast={showToast}/>}
+      {showReportGen&&<ReportGeneratorModal students={students} feeData={feeData} attData={attData} examData={examData} houseOptions={houseOptions} can={can} role={role} onClose={()=>setShowReportGen(false)} showToast={showToast}/>}
 
       {quickAttend&&(
         <Modal onClose={()=>setQuickAttend(null)} width={320} title="Quick Attendance" subtitle={`${quickAttend.name} · ${new Date().toLocaleDateString('en-IN')}`}>
@@ -2655,6 +3114,9 @@ const effectiveCols = visibleCols.filter(col => {
             </div>
           </IfCan>
           <Btn onClick={()=>setShowDashboard(v=>!v)} size='sm' style={{color:showDashboard?T.brand:T.text2,background:showDashboard?T.brandLight:'transparent',borderColor:showDashboard?T.brandBorder:T.border}}>🏠 Dashboard</Btn>
+          <IfCan can={can.export}>
+            <Btn onClick={()=>setShowReportGen(true)} size='sm' style={{color:T.violet,borderColor:T.violetBorder}}>📄 Reports</Btn>
+          </IfCan>
           <Btn onClick={()=>setShowDeleted(v=>!v)} size='sm' style={{color:showDeleted?T.red:T.text2,background:showDeleted?T.redLight:'transparent',borderColor:showDeleted?T.redBorder:T.border}}>Archive{deleted.length>0?` (${deleted.length})`:''}</Btn>
           <IfCan can={can.write}>
             <Btn onClick={()=>setShowMergeDups(true)} size='sm' style={{color:T.red,borderColor:T.redBorder}}>Merge</Btn>
