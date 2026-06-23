@@ -21,6 +21,115 @@ import FeeCollectionModal from './FeeCollectionModal'
 import { promoteToStudent, getFlatFeeAmtSync } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 
+// ═════════════════════════════════════════════════════════════════════════════
+// SECURITY LAYER — Validation · Authorization · Rate Limiting · Sanitization
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── Role-Based Permissions ─────────────────────────────────────────────────
+const ROLE_PERMISSIONS = {
+  admin:             ['create','read','update','delete','bulk','export','wa','viewContacts'],
+  admission_officer: ['create','read','update','export','wa','viewContacts'],
+  reception:         ['create','read'],
+  staff:             ['read'],
+}
+
+function checkPermission(role, action) {
+  return (ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.staff).includes(action)
+}
+
+// Reads identity from the existing gnsi_session localStorage entry (set by
+// login) so this integrates with the portal's existing custom-auth system
+// without requiring a separate auth context.
+function getSessionInfo() {
+  try {
+    const raw = localStorage.getItem('gnsi_session')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      const role = parsed?.role || parsed?.user?.role || 'staff'
+      const userId = parsed?.id || parsed?.user_id || parsed?.user?.id || null
+      const userName = parsed?.name || parsed?.username || parsed?.user?.name || role
+      return { role, userId, userName }
+    }
+  } catch (_) { /* default to least-privilege */ }
+  return { role: 'staff', userId: null, userName: 'staff' }
+}
+
+function useUserRole() {
+  const [role, setRole] = useState('staff')
+  useEffect(() => { setRole(getSessionInfo().role) }, [])
+  return role
+}
+
+// ─── Input Validation ────────────────────────────────────────────────────────
+const ValidationRules = {
+  phone: { test: v => !v || /^[0-9]{10}$/.test(String(v).replace(/\D/g,'')), msg: 'Phone must be 10 digits' },
+  gcc:   { test: v => !v || /^[0-9]{1,10}$/.test(String(v).trim()),          msg: 'GCC No. must be numeric' },
+  name:  { test: v => v && v.trim().length >= 2 && v.trim().length <= 100,   msg: 'Name must be 2–100 characters' },
+}
+
+function validateApplicationData(obj) {
+  const errors = {}
+  if (!ValidationRules.name.test(obj.name))               errors.name = ValidationRules.name.msg
+  if (!ValidationRules.gcc.test(obj.gcc))                 errors.gcc = ValidationRules.gcc.msg
+  if (obj.phone     && !ValidationRules.phone.test(obj.phone))     errors.phone = ValidationRules.phone.msg
+  if (obj.whatsapp  && !ValidationRules.phone.test(obj.whatsapp))  errors.whatsapp = ValidationRules.phone.msg
+  if (obj.emergencyPhone && !ValidationRules.phone.test(obj.emergencyPhone)) errors.emergencyPhone = ValidationRules.phone.msg
+  return Object.keys(errors).length ? errors : null
+}
+
+// ─── Sanitization (defense-in-depth against stored XSS) ─────────────────────
+function sanitizeStr(v) {
+  if (typeof v !== 'string') return v
+  return v.trim().replace(/[<>]/g, '').slice(0, 500)
+}
+
+function sanitizeApplicationData(obj) {
+  const safe = { ...obj }
+  ;['name','father','mother','address','remarks','prevSchool','emergencyName','emergencyRel','disabilityNotes'].forEach(k => {
+    if (safe[k] != null) safe[k] = sanitizeStr(safe[k])
+  })
+  return safe
+}
+
+// ─── Rate Limiter (client-side guard against bulk-action abuse) ────────────
+class RateLimiter {
+  static _hits = {}
+  static check(key, limit = 5, windowMs = 60000) {
+    const now = Date.now()
+    const hits = (this._hits[key] || []).filter(t => now - t < windowMs)
+    if (hits.length >= limit) {
+      const waitSec = Math.ceil((hits[0] + windowMs - now) / 1000)
+      throw new Error(`Too many bulk actions — wait ${waitSec}s and try again`)
+    }
+    hits.push(now)
+    this._hits[key] = hits
+    return true
+  }
+}
+
+const MAX_BULK_OPERATION_SIZE = 100
+
+// ─── Audit Logging (best-effort; never blocks the primary action) ──────────
+// Writes into the portal's EXISTING shared audit_logs table
+// (columns: id uuid, user_id uuid, user_name text, action text, module text,
+//  level text, metadata jsonb, created_at timestamptz) — no schema changes
+// needed, and no risk of colliding with other modules that already use it.
+async function logAudit(action, recordId, details, role) {
+  try {
+    const { userId, userName } = getSessionInfo()
+    await supabase.from('audit_logs').insert([{
+      user_id: userId,                 // null if portal_users id isn't a uuid — safe, column is nullable
+      user_name: userName || role,
+      action: `admissions.${action}`,  // e.g. 'admissions.CREATE', 'admissions.BULK_DELETE'
+      module: 'admissions',
+      level: action.includes('DELETE') ? 'warning' : 'info',
+      metadata: { recordId, role, ...details },
+    }])
+  } catch (_) {
+    // Never block the user's action if logging fails for any reason.
+  }
+}
+
 function useWindowWidth() {
   const [width, setWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
@@ -568,7 +677,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, onClose, onAddNote, darkMode }) {
+function DetailPanel({ a, onClose, onAddNote, darkMode, role }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -657,7 +766,7 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
           style={{ padding:'9px 16px', borderRadius:8, background:T.slate[800], color:'#fff', border:'none', fontSize:12, fontWeight:700, cursor:'pointer' }}>Add</button>
       </div>
 
-      {a.house && WARDEN_CONTACTS[a.house] && (
+      {a.house && WARDEN_CONTACTS[a.house] && checkPermission(role, 'viewContacts') && (
         <>
           <SectionDivider label="Warden Contact" />
           <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:T.sky[50], border:`1px solid ${T.sky[100]}`, borderRadius:8 }}>
@@ -667,6 +776,14 @@ function DetailPanel({ a, onClose, onAddNote, darkMode }) {
               <div style={{ fontSize:11, color:T.sky[600] }}>{a.house} House Warden · {WARDEN_CONTACTS[a.house].phone}</div>
             </div>
             <a href={`tel:${WARDEN_CONTACTS[a.house].phone}`} style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:7, background:T.sky[500], color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none' }}>Call</a>
+          </div>
+        </>
+      )}
+      {a.house && WARDEN_CONTACTS[a.house] && !checkPermission(role, 'viewContacts') && (
+        <>
+          <SectionDivider label="Warden Contact" />
+          <div style={{ fontSize:12, color:T.slate[500], padding:'8px 12px', background:T.slate[50], borderRadius:8 }}>
+            🔒 {a.house} House Warden — contact restricted to admission staff
           </div>
         </>
       )}
@@ -1225,7 +1342,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
 }
 
 // ─── Application Card ──────────────────────────────────────────────────────────
-function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode }) {
+function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
   const gcc     = String(a.gcc || a.id)
   const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission')
   const cs      = COURSE_STRUCTURE[a.course]
@@ -1366,13 +1483,13 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
   {actionBtn && (
     <div style={{ marginBottom:6 }}>{actionBtn}</div>
   )}
-  <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:5 }}>
+  <div style={{ display:'grid', gridTemplateColumns:canDelete?'repeat(5,1fr)':'repeat(4,1fr)', gap:5 }}>
     {[
       { label:'View',  color:N.sky,    fn:e=>{e.stopPropagation();onDetail(a)} },
       { label:'QEdit', color:N.amber,  fn:e=>{e.stopPropagation();onQuickEdit(a)} },
       { label:'Edit',  color:N.text2,  fn:e=>{e.stopPropagation();onEdit(a)} },
       { label:'WA',    color:'#059669',fn:e=>{e.stopPropagation();onWAMsg(a)} },
-      { label:'Del',   color:N.rose,   fn:e=>{e.stopPropagation();onDelete(a.id)} },
+      ...(canDelete ? [{ label:'Del', color:N.rose, fn:e=>{e.stopPropagation();onDelete(a.id)} }] : []),
     ].map(b=>(
       <button key={b.label} onClick={b.fn}
         style={{ padding:'6px 4px', borderRadius:8, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:b.color, fontSize:10, fontWeight:700, cursor:'pointer', textAlign:'center', transition:'box-shadow .12s', width:'100%' }}
@@ -1735,6 +1852,7 @@ export default function Admissions() {
 
   const { session: activeSession } = useActiveSession()
   const { presets, save: savePreset, remove: removePreset } = useFilterPresets()
+  const userRole = useUserRole()
 
   const showToast = (msg, color, undoFn) => {
     setToast({ msg, color, undoFn })
@@ -1882,31 +2000,43 @@ export default function Admissions() {
   const selectedApps = filtered.filter(a=>selectedIds.has(a.id))
 
   const handleSave = async (eid, obj) => {
+    // 🔒 Authorization
+    if (!checkPermission(userRole, eid ? 'update' : 'create')) {
+      showToast('🚫 You do not have permission to '+(eid?'edit':'create')+' applications', T.rose[600]); return
+    }
+    // 🔒 Validation
     if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return }
     if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return }
+    const valErrors = validateApplicationData(obj)
+    if (valErrors) { showToast(Object.values(valErrors)[0], T.rose[600]); return }
     if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
 
-    const sessionName = (!eid && activeSession) ? activeSession.session_name : obj.session
-    const dbRow = mapToDB({ ...obj, session: sessionName })
+    // 🔒 Sanitization (defense-in-depth — strips HTML brackets, caps length)
+    const cleanObj = sanitizeApplicationData(obj)
+
+    const sessionName = (!eid && activeSession) ? activeSession.session_name : cleanObj.session
+    const dbRow = mapToDB({ ...cleanObj, session: sessionName })
 
     if (eid) {
       const { error } = await supabase.from('admissions').update(dbRow).eq('gcc_no', parseInt(eid))
       if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
+      logAudit('UPDATE', eid, dbRow, userRole)
       try {
         const log = JSON.parse(localStorage.getItem('gnsi_audit_'+eid)||'[]')
-        log.unshift({ ts:now(), action:'edit', by:'Staff', changes: JSON.stringify(dbRow).slice(0,200) })
+        log.unshift({ ts:now(), action:'edit', by:userRole, changes: JSON.stringify(dbRow).slice(0,200) })
         localStorage.setItem('gnsi_audit_'+eid, JSON.stringify(log.slice(0,50)))
       } catch(_) {}
-      setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...obj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
+      setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...cleanObj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
       showToast('Application updated', T.amber[600])
     } else {
       const { data, error } = await supabase.from('admissions').insert(dbRow).select().single()
       if (error) {
-        if (error.code==='23505') showToast(`GCC No. ${obj.gcc} already exists`, T.rose[600])
+        if (error.code==='23505') showToast(`GCC No. ${cleanObj.gcc} already exists`, T.rose[600])
         else showToast('Save failed: '+error.message, T.rose[600])
         return
       }
       const newApp = mapFromDB(data)
+      logAudit('CREATE', newApp.id, dbRow, userRole)
       setApps(prev => [newApp, ...prev])
       showToast(`Saved! Adm. No: ${newApp.admNo} · ${newApp.hostel_type} · ₹${fmt(getFlatFeeAmtSync(newApp.hostel_type, newApp.course))}/mo`, T.violet[600])
     }
@@ -1938,6 +2068,10 @@ export default function Admissions() {
   }
 
   const handleDelete = async id => {
+    // 🔒 Authorization
+    if (!checkPermission(userRole, 'delete')) {
+      showToast('🚫 You do not have permission to delete applications', T.rose[600]); return
+    }
     const a = apps.find(x => String(x.id)===String(id))
     if (!confirm(`Delete admission for ${a?.name}?`)) return
     const snapshot = { ...a }
@@ -1952,6 +2086,7 @@ export default function Admissions() {
       if (!deleted) {
         const { error } = await supabase.from('admissions').delete().eq('gcc_no', parseInt(id))
         if (error) { setApps(prev => [snapshot, ...prev]); showToast('Delete failed: '+error.message, T.rose[600]) }
+        else logAudit('DELETE', id, { name: snapshot.name, gcc: snapshot.gcc }, userRole)
       }
     }, 5000)
   }
@@ -1983,26 +2118,39 @@ export default function Admissions() {
   }
 
   const handleBulkStatus = async status => {
+    if (!checkPermission(userRole, 'bulk')) { showToast('🚫 You do not have permission for bulk actions', T.rose[600]); return }
+    try { RateLimiter.check('bulk_status', 8, 60000) } catch(e) { showToast(e.message, T.rose[600]); return }
+    if (selectedIds.size > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} records per bulk action`, T.rose[600]); return }
     if (!confirm(`Set ${selectedIds.size} applicants to "${status}"?`)) return
     const ids = [...selectedIds]
     const { error } = await supabase.from('admissions').update({ status }).in('gcc_no', ids.map(Number))
     if (error) { showToast('Bulk update failed', T.rose[600]); return }
+    logAudit('BULK_STATUS', null, { ids, status }, userRole)
     setApps(prev => prev.map(a => selectedIds.has(a.id) ? { ...a, status } : a))
     showToast(`${ids.length} applicants set to ${status}`, T.violet[600])
     clearSelection()
   }
 
   const handleBulkHouse = async house => {
+    if (!checkPermission(userRole, 'bulk')) { showToast('🚫 You do not have permission for bulk actions', T.rose[600]); return }
+    try { RateLimiter.check('bulk_house', 8, 60000) } catch(e) { showToast(e.message, T.rose[600]); return }
+    if (selectedIds.size > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} records per bulk action`, T.rose[600]); return }
     if (!confirm(`Set house "${house}" for ${selectedIds.size} applicants?`)) return
     const ids = [...selectedIds]; const ht = DAY_SCHOLAR_HOUSES.includes(house)?'Day Scholar':'Boarder'
     const { error } = await supabase.from('admissions').update({ house, hostel_type:ht }).in('gcc_no', ids.map(Number))
     if (error) { showToast('Bulk house update failed', T.rose[600]); return }
+    logAudit('BULK_HOUSE', null, { ids, house }, userRole)
     setApps(prev => prev.map(a => selectedIds.has(a.id) ? { ...a, house, hostel_type:ht } : a))
     showToast(`${ids.length} applicants assigned to ${house}`, T.emerald[600])
     clearSelection()
   }
 
   const handleBulkDelete = async () => {
+    if (!checkPermission(userRole, 'bulk') && !checkPermission(userRole, 'delete')) {
+      showToast('🚫 You do not have permission for bulk delete', T.rose[600]); return
+    }
+    try { RateLimiter.check('bulk_delete', 5, 60000) } catch(e) { showToast(e.message, T.rose[600]); return }
+    if (selectedIds.size > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} records per bulk delete`, T.rose[600]); return }
     if (!confirm(`Delete ${selectedIds.size} selected applicants? You will have 5 seconds to undo.`)) return
     const ids = [...selectedIds]
     const snapshots = apps.filter(a => selectedIds.has(a.id))
@@ -2017,6 +2165,7 @@ export default function Admissions() {
       if (cancelled) return
       const { error } = await supabase.from('admissions').delete().in('gcc_no', ids.map(Number))
       if (error) { setApps(prev => [...snapshots, ...prev]); showToast('Bulk delete failed: '+error.message, T.rose[600]) }
+      else logAudit('BULK_DELETE', null, { ids, names: snapshots.map(s=>s.name) }, userRole)
     }, 5000)
   }
 
@@ -2035,6 +2184,7 @@ export default function Admissions() {
   }
 
   const handleAutoAssignHouse = async () => {
+    if (!checkPermission(userRole, 'bulk')) { showToast('🚫 You do not have permission for this action', T.rose[600]); return }
     const unassigned = filtered.filter(a=>!a.house||a.house==='Day Scholar')
     if (!unassigned.length) { showToast('No unassigned boarder records', T.amber[600]); return }
     const boarderHouses = HOUSES_LIST.filter(h=>!DAY_SCHOLAR_HOUSES.includes(h))
@@ -2046,6 +2196,38 @@ export default function Admissions() {
     }
     await loadAll()
     showToast(fail>0 ? `Auto-assigned ${ok}, failed ${fail}` : `Auto-assigned houses for ${ok} students`, fail>0?T.rose[600]:T.emerald[600])
+  }
+
+  // 🔒 Secure export wrapper — requires permission + explicit consent before
+  // any CSV containing phone numbers leaves the browser.
+  const secureExport = (rows, filename) => {
+    if (!checkPermission(userRole, 'export')) { showToast('🚫 You do not have permission to export data', T.rose[600]); return }
+    const ok = window.confirm(
+      `Export ${rows.length} record(s) to CSV?\n\nThis file will contain phone numbers and addresses unencrypted on your device. Keep it secure.`
+    )
+    if (!ok) return
+    logAudit('EXPORT', null, { count: rows.length, filename }, userRole)
+    downloadCSV(toCSV(rows), filename)
+  }
+
+  // 🔒 Secure WhatsApp blast wrapper — requires permission + consent.
+  const secureWABlast = (appsToSend) => {
+    if (!checkPermission(userRole, 'wa')) { showToast('🚫 You do not have permission to send WhatsApp messages', T.rose[600]); return }
+    const ok = window.confirm(
+      `Send WhatsApp message to ${appsToSend.length} recipient(s)?\n\nMake sure you have consent to contact them.`
+    )
+    if (!ok) return
+    logAudit('WA_BLAST', null, { count: appsToSend.length, gccs: appsToSend.map(a=>a.gcc) }, userRole)
+    setWABlastApps(appsToSend)
+  }
+
+  // 🔒 Secure print wrapper — printing exposes the same data as export, so it
+  // shares the export permission gate (no extra consent needed — it's a
+  // physical document under staff control, but still logged for audit).
+  const securePrint = (appsToPrint) => {
+    if (!checkPermission(userRole, 'export')) { showToast('🚫 You do not have permission to print lists', T.rose[600]); return }
+    logAudit('PRINT', null, { count: appsToPrint.length }, userRole)
+    printBulkList(appsToPrint)
   }
 
   const byStatus = {}
@@ -2089,12 +2271,72 @@ export default function Admissions() {
 
         {toast && <Toast msg={toast.msg} color={toast.color} onUndo={toast.undoFn} />}
 
-        {/* Header */}
-        <div style={{ padding: isMobile?'14px 0 12px':'24px 0 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'flex-start', justifyContent:'space-between', gap:isMobile?12:14 }}>
+        {/* ── Identity header (matches Accounts module banking style) ── */}
+        <div style={{ paddingTop: isMobile?'14px':'20px', marginBottom:'12px', display:'flex', alignItems:'center', gap:'12px' }}>
+          <div style={{
+            width:40, height:40, borderRadius:'10px',
+            background:'linear-gradient(135deg, #1D1D1F 0%, #3A3A3C 100%)',
+            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+          }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" style={{ width:20, height:20 }}>
+              <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
           <div>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:T.slate[400], marginBottom:5 }}>GNSI Portal</div>
-            <div style={{ fontSize:26, fontWeight:800, color:tx, letterSpacing:'-.03em', lineHeight:1.1 }}>Admissions</div>
-            <div style={{ fontSize:13, color:T.slate[500], marginTop:5, display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+            <p style={{ fontSize:16, fontWeight:600, lineHeight:1.3, margin:0, color:tx }}>GNSI Admissions</p>
+            <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>Application management &amp; enrollment</p>
+          </div>
+        </div>
+
+        {/* ── Dark gradient stats card (Accounts-style treasury card) ── */}
+        <div style={{
+          position:'relative', borderRadius:16, padding:isMobile?'16px':'20px 24px', marginBottom:18,
+          color:'#fff', overflow:'hidden',
+          background:'linear-gradient(135deg, #1D1D1F 0%, #2C2C2E 50%, #1D1D1F 100%)',
+          boxShadow:'0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.10)',
+        }}>
+          <div style={{ position:'absolute', top:'-60%', right:'-20%', width:'60%', height:'220%', pointerEvents:'none',
+            background:'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)', transform:'rotate(8deg)' }} />
+          <div style={{ position:'relative', zIndex:1 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+              <div>
+                <p style={{ fontSize:10, fontWeight:500, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:0, marginBottom:2 }}>Total Applications</p>
+                <p style={{ fontSize:12, fontWeight:500, color:'rgba(255,255,255,.8)', margin:0 }}>
+                  {activeSession ? `Session ${activeSession.session_name}` : 'All sessions'}
+                </p>
+              </div>
+              <div style={{ width:32, height:20, borderRadius:4, background:'linear-gradient(135deg,#D4AF6A 0%,#B8915A 100%)', boxShadow:'0 2px 8px rgba(212,175,106,.25)', flexShrink:0 }} />
+            </div>
+
+            <p style={{ fontSize:isMobile?24:32, fontWeight:600, margin:'8px 0 12px 0', fontFamily:"'Courier New',monospace", lineHeight:1.1 }}>
+              {apps.length}
+            </p>
+
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:isMobile?10:16 }}>
+              <div>
+                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Admitted</p>
+                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#6FDB9A' }}>{byStatus['Admitted']||0}</p>
+              </div>
+              <div>
+                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Enrolled</p>
+                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#6FDB9A' }}>{byStatus['Enrolled']||0}</p>
+              </div>
+              <div>
+                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Pending</p>
+                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#FF8A8A' }}>{(byStatus['Applied']||0)+(byStatus['Under Review']||0)}</p>
+              </div>
+              <div>
+                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Revenue/mo</p>
+                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'rgba(255,255,255,.9)' }}>₹{fmt(monthlyRevenue)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Header */}
+        <div style={{ padding: isMobile?'0 0 12px':'0 0 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'flex-start', justifyContent:'space-between', gap:isMobile?12:14 }}>
+          <div>
+            <div style={{ fontSize:13, color:T.slate[500], display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
               {['Applied','Under Review','Admitted','Fee Collection','Enrolled → Student'].map((s,i,arr) => (
                 <span key={s} style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <span style={{ fontWeight:600, color:[T.indigo[600],T.amber[600],T.violet[600],T.amber[500],T.emerald[600]][i] }}>{s}</span>
@@ -2106,7 +2348,7 @@ export default function Admissions() {
               <span>🏠 Boarder: <strong style={{ color:T.emerald[600] }}>₹5,500/mo</strong></span>
               <span>🌅 Day Boarder: <strong style={{ color:T.amber[600] }}>₹4,000/mo</strong></span>
               <span>🏫 Day Scholar: <strong style={{ color:T.slate[500] }}>₹2,000/mo</strong></span>
-              {monthlyRevenue > 0 && <span style={{ color:T.emerald[600] }}>💰 Enrolled revenue: <strong>₹{fmt(monthlyRevenue)}/mo</strong></span>}
+              <span style={{ padding:'1px 8px', borderRadius:6, background:T.slate[100], color:T.slate[500], fontWeight:700, fontSize:10 }}>Role: {userRole}</span>
             </div>
             <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
               Shortcuts: <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>N</kbd> New &nbsp;
@@ -2127,29 +2369,37 @@ export default function Admissions() {
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:tableMode?N.inset('sm'):N.shadow('sm'), fontSize:14, cursor:'pointer', color:N.text2, transition:'box-shadow .15s' }}
 >{tableMode?'🃏':'📋'}</button>
 
+
 <button onClick={()=>setShowAnalytics(v=>!v)}
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:showAnalytics?N.inset('sm'):N.shadow('sm'), color:showAnalytics?N.indigo:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s' }}>
   📊 Analytics
 </button>
 
+{checkPermission(userRole,'create') && (
 <button onClick={()=>setShowCSVImport(true)}
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
   onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
   onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
 >📥 Import</button>
+)}
 
-<button onClick={()=>downloadCSV(toCSV(filtered), `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}
+{checkPermission(userRole,'export') && (
+<button onClick={()=>secureExport(filtered, `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
   onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
   onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
 >📤 Export</button>
+)}
 
+{checkPermission(userRole,'bulk') && (
 <button onClick={handleAutoAssignHouse}
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
   onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
   onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
 >🏠 Auto-Assign</button>
+)}
 
+{checkPermission(userRole,'create') && (
 <button onClick={()=>{ setEditing(null); setFormOpen(true) }}
   style={{ padding:'10px 22px', borderRadius:13, background:`linear-gradient(135deg,${N.indigo},${N.violet})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:`4px 4px 14px rgba(79,70,229,.35), -2px -2px 8px rgba(255,255,255,.8)`, transition:'all .2s' }}
   onMouseEnter={e=>{ e.currentTarget.style.boxShadow=`6px 6px 18px rgba(79,70,229,.45), -2px -2px 8px rgba(255,255,255,.9)`; e.currentTarget.style.transform='translateY(-2px)' }}
@@ -2157,6 +2407,7 @@ export default function Admissions() {
 >
   <span style={{ fontSize:18, lineHeight:1 }}>+</span> New Application
 </button>
+)}
           </div>
         </div>
 
@@ -2216,7 +2467,7 @@ export default function Admissions() {
 
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} />
+          <DetailPanel a={detailApp} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} />
         )}
 
         {/* Quick-edit row */}
@@ -2310,11 +2561,11 @@ export default function Admissions() {
             {selectedIds.size>0 && <span style={{ color:T.indigo[600], fontWeight:700 }}>{selectedIds.size} selected</span>}
             {selectedIds.size>0 && (
               <>
-                <button onClick={()=>{ downloadCSV(toCSV(selectedApps), `GNSI_Selected_${new Date().toISOString().slice(0,10)}.csv`) }}
+                <button onClick={()=>{ secureExport(selectedApps, `GNSI_Selected_${new Date().toISOString().slice(0,10)}.csv`) }}
                   style={{ padding:'4px 10px', borderRadius:6, background:T.sky[50], color:T.sky[600], border:`1px solid ${T.sky[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Export Selected</button>
-                <button onClick={()=>printBulkList(selectedApps)}
+                <button onClick={()=>securePrint(selectedApps)}
                   style={{ padding:'4px 10px', borderRadius:6, background:T.indigo[50], color:T.indigo[600], border:`1px solid ${T.indigo[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Print Selected</button>
-                <button onClick={()=>setWABlastApps(selectedApps)}
+                <button onClick={()=>secureWABlast(selectedApps)}
                   style={{ padding:'4px 10px', borderRadius:6, background:'#E7FBE9', color:'#128C7E', border:'1px solid #A7F0BA', fontSize:11, fontWeight:700, cursor:'pointer' }}>WA Blast</button>
               </>
             )}
@@ -2329,9 +2580,9 @@ export default function Admissions() {
           onBulkHouse={handleBulkHouse}
           onBulkDelete={handleBulkDelete}
           onBulkEnroll={()=>showToast('Select enrolled-ready applicants first',T.amber[600])}
-          onBulkExport={()=>downloadCSV(toCSV(selectedApps),`GNSI_Bulk_${Date.now()}.csv`)}
-          onBulkPrint={()=>printBulkList(selectedApps)}
-          onBulkWA={()=>setWABlastApps(selectedApps)}
+          onBulkExport={()=>secureExport(selectedApps, `GNSI_Bulk_${Date.now()}.csv`)}
+          onBulkPrint={()=>securePrint(selectedApps)}
+          onBulkWA={()=>secureWABlast(selectedApps)}
         />
 
         {/* List / Table */}
@@ -2354,7 +2605,7 @@ export default function Admissions() {
                     <AppCard key={a.id} a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                       onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                       onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
-                      onDetail={setDetailApp} onWAMsg={a=>setWABlastApps([a])} tableMode darkMode={darkMode} />
+                      onDetail={setDetailApp} onWAMsg={a=>secureWABlast([a])} tableMode darkMode={darkMode} />
                   ))}
                 </tbody>
               </table>
@@ -2374,7 +2625,7 @@ export default function Admissions() {
                   <AppCard a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                     onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                     onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
-                    onDetail={setDetailApp} onWAMsg={a=>setWABlastApps([a])} tableMode={false} darkMode={darkMode} />
+                    onDetail={setDetailApp} onWAMsg={a=>secureWABlast([a])} tableMode={false} darkMode={darkMode} canDelete={checkPermission(userRole,'delete')} />
                 </div>
               ))}
             </div>
