@@ -159,33 +159,56 @@ const T = {
   orange:  { 50:'#FFF7ED',100:'#FFEDD5',400:'#FB923C',500:'#F97316',600:'#EA580C',700:'#C2410C' },
 }
 
-// ─── Neomorphism Design System ────────────────────────────────────────────────
+// ─── Page background (kept separate from N.bg so cards read as white
+// surfaces sitting on a light page, instead of blending into it) ───────────
+const PAGE_BG = '#FBFBFD'
+
+// ─── Design System — flat, Accounts-style banking UI ───────────────────────
+// (Same visual language as AccountsDashboardBanking: white cards, hairline
+// borders simulated via box-shadow, navy/gold accents, soft elevation
+// instead of dual-direction neumorphic shadows.)
 const N = {
-  bg:       '#f0f2f8',
-  bg2:      '#e8eaf2',
-  bg3:      '#dde0ec',
-  surface:  '#f5f6fa',
-  shLight:  'rgba(255,255,255,0.92)',
-  shDark:   'rgba(174,179,208,0.65)',
-  text:     '#1e1b4b',
-  text2:    '#4b5280',
-  muted:    '#8b8fb0',
-  muted2:   '#6b6f96',
+  bg:       '#FFFFFF',   // card surface (was page-matching neumorphic bg)
+  bg2:      '#F5F5F7',   // secondary surface / hover tint
+  bg3:      '#E5E5EA',   // tertiary surface / divider tint
+  surface:  '#FFFFFF',
+  shLight:  'rgba(255,255,255,1)',
+  shDark:   'rgba(0,0,0,0.08)',
+  text:     '#1D1D1F',
+  text2:    '#3A3A3C',
+  muted:    '#86868B',
+  muted2:   '#6E6E73',
+  navy:     '#1D1D1F',
+  navyLight:'#3A3A3C',
+  gold:     '#D4AF6A',
+  goldDark: '#B8915A',
   indigo:   '#4f46e5',
   violet:   '#7c3aed',
-  emerald:  '#059669',
+  emerald:  '#0A8042',
   amber:    '#d97706',
-  rose:     '#e11d48',
+  rose:     '#D70015',
   sky:      '#0284c7',
+  border:   'rgba(0,0,0,0.07)',
+  // Soft flat elevation + hairline border baked into one box-shadow string,
+  // so every component that already does `boxShadow:N.shadow('md')`
+  // automatically gets a clean bordered card with zero code changes.
   shadow:   (size='md') => {
-    const s = { sm:'4px 4px 10px', md:'6px 6px 14px', lg:'8px 8px 20px' }[size]
-    const si = { sm:'-4px -4px 10px', md:'-6px -6px 14px', lg:'-8px -8px 20px' }[size]
-    return `${s} rgba(174,179,208,0.65), ${si} rgba(255,255,255,0.92)`
+    const m = {
+      sm: '0 0 0 1px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04)',
+      md: '0 0 0 1px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04), 0 8px 20px rgba(0,0,0,.06)',
+      lg: '0 0 0 1px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.05), 0 16px 36px rgba(0,0,0,.10)',
+    }
+    return m[size] || m.md
   },
-  inset: (size='md') => {
-    const s = { sm:'3px 3px 6px', md:'4px 4px 10px', lg:'5px 5px 12px' }[size]
-    const si = { sm:'-3px -3px 6px', md:'-4px -4px 10px', lg:'-5px -5px 12px' }[size]
-    return `inset ${s} rgba(174,179,208,0.65), inset ${si} rgba(255,255,255,0.92)`
+  // "Active / selected / pressed" state — a colored ring instead of an
+  // inverted neumorphic dent. Reads clearly as "selected" on a flat card.
+  inset:    (size='md') => {
+    const m = {
+      sm: '0 0 0 1.5px rgba(29,29,31,.18), inset 0 0 0 1px rgba(0,0,0,.03)',
+      md: '0 0 0 2px rgba(29,29,31,.18), inset 0 0 0 1px rgba(0,0,0,.03)',
+      lg: '0 0 0 2.5px rgba(29,29,31,.20), inset 0 0 0 1px rgba(0,0,0,.03)',
+    }
+    return m[size] || m.md
   },
 }
 
@@ -402,13 +425,13 @@ const sbApps = {
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = {
   inp: {
-    width:'100%', padding:'10px 14px', borderRadius:12,
-    border:'none', fontSize:13,
+    width:'100%', padding:'10px 14px', borderRadius:10,
+    border:`1px solid ${N.border}`, fontSize:13,
     outline:'none', boxSizing:'border-box',
-    backgroundColor:N.bg,
+    backgroundColor:'#FFFFFF',
     color:N.text, fontFamily:'system-ui,sans-serif',
-    boxShadow:N.inset('md'),
-    transition:'box-shadow .15s',
+    boxShadow:'none',
+    transition:'box-shadow .15s, border-color .15s',
   },
   label: {
     display:'block', fontSize:10, fontWeight:700, color:N.muted,
@@ -829,10 +852,13 @@ function AdvancedSearch({ filters, onChange, onClose, apps }) {
   const [f, setF] = useState(filters)
   const set = (k,v) => setF(p=>({...p,[k]:v}))
   return (
-    <div style={{ background:'#fff', border:`1.5px solid ${T.indigo[200]}`, borderRadius:12, padding:'18px 20px', marginBottom:12 }}>
+    <div style={{ background:'#fff', boxShadow:N.shadow('md'), borderRadius:16, padding:'18px 20px', marginBottom:12 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-        <div style={{ fontSize:14, fontWeight:800, color:T.indigo[700] }}>🔎 Advanced Search</div>
-        <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:`1px solid ${T.slate[200]}`, background:'#fff', cursor:'pointer', fontSize:14 }}>✕</button>
+        <div style={{ fontSize:14, fontWeight:700, color:N.text, display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ width:6, height:6, borderRadius:'50%', background:`linear-gradient(135deg,${N.gold},${N.goldDark})` }} />
+          Advanced Search
+        </div>
+        <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:`1px solid ${N.border}`, background:'#fff', cursor:'pointer', fontSize:14, color:N.text2 }}>✕</button>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:10 }}>
         <FieldRow label="Gender">
@@ -906,7 +932,7 @@ function AdvancedSearch({ filters, onChange, onClose, apps }) {
       </div>
       <div style={{ display:'flex', gap:10, marginTop:14, flexWrap:'wrap' }}>
         <button onClick={() => onChange(f)}
-          style={{ padding:'9px 20px', borderRadius:9, background:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>Apply Filters</button>
+          style={{ padding:'9px 20px', borderRadius:9, background:`linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer' }}>Apply Filters</button>
         <button onClick={() => { const empty={}; setF(empty); onChange(empty) }}
           style={{ padding:'9px 16px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', color:T.slate[600] }}>Reset</button>
       </div>
@@ -1109,17 +1135,17 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
   }
 
   return (
-    <div style={{ background:'#fff', border:`1.5px solid ${T.violet[200]}`, borderRadius:14, overflow:'hidden', marginBottom:16 }}>
-      <div style={{ background:T.violet[50], borderBottom:`1px solid ${T.violet[200]}`, padding:'14px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+    <div style={{ background:'#fff', boxShadow:N.shadow('lg'), borderRadius:16, overflow:'hidden', marginBottom:16 }}>
+      <div style={{ background:`linear-gradient(135deg, ${N.navy} 0%, ${N.navyLight} 100%)`, padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
-          <div style={{ fontSize:15, fontWeight:800, color:T.violet[700] }}>{editing ? '✏️ Edit Application' : '➕ New Application'}</div>
+          <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{editing ? '✏️ Edit Application' : '➕ New Application'}</div>
           {activeSession && !editing && (
-            <div style={{ fontSize:12, fontWeight:700, marginTop:3, color:activeSession.is_locked?T.rose[600]:T.emerald[600] }}>
+            <div style={{ fontSize:12, fontWeight:600, marginTop:3, color:activeSession.is_locked?'#FF8A8A':'#6FDB9A' }}>
               📅 Session: {activeSession.session_name}{activeSession.is_locked && ' · 🔒 Locked'}
             </div>
           )}
         </div>
-        <button onClick={handleCancel} style={{ width:30, height:30, borderRadius:8, border:`1px solid ${T.violet[200]}`, background:'#fff', cursor:'pointer', fontSize:16, color:T.slate[500] }}>✕</button>
+        <button onClick={handleCancel} style={{ width:30, height:30, borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)', cursor:'pointer', fontSize:16, color:'#fff' }}>✕</button>
       </div>
 
       <div style={{ padding:'20px' }}>
@@ -1327,7 +1353,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
 
         <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
           <button onClick={() => onSave(editing?.id||null, form)} disabled={gccDup}
-            style={{ padding:'10px 24px', borderRadius:9, background:gccDup?T.slate[300]:`linear-gradient(135deg,${T.indigo[700]},${T.indigo[500]})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:gccDup?'not-allowed':'pointer' }}>
+            style={{ padding:'10px 24px', borderRadius:9, background:gccDup?T.slate[300]:`linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:gccDup?'not-allowed':'pointer' }}>
             {editing ? 'Update Application' : 'Save Application'}
           </button>
           <button onClick={handleCancel} style={{ padding:'10px 16px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', color:T.slate[600] }}>Cancel</button>
@@ -1512,7 +1538,7 @@ function BulkBar({ selected, total, onClear, onBulkStatus, onBulkHouse, onBulkDe
 
   if (selected.length === 0) return null
   return (
-    <div style={{ position:'sticky', bottom:isMobile?6:16, zIndex:100, background:N.text, color:'#fff', borderRadius:isMobile?12:16, padding:isMobile?'10px 12px':'12px 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'center', gap:isMobile?8:10, flexWrap:'wrap', boxShadow:'0 12px 40px rgba(30,27,75,.35)', margin:isMobile?'8px 0':'14px 0' }}>
+    <div style={{ position:'sticky', bottom:isMobile?6:16, zIndex:100, background:N.text, color:'#fff', borderRadius:isMobile?12:16, padding:isMobile?'10px 12px':'12px 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'center', gap:isMobile?8:10, flexWrap:'wrap', boxShadow:'0 12px 40px rgba(29,29,31,.35)', margin:isMobile?'8px 0':'14px 0' }}>
       <span style={{ fontSize:12, fontWeight:700 }}>{selected.length} selected</span>
       <button onClick={onClear} style={{ padding:'4px 10px', borderRadius:6, background:'transparent', color:T.slate[300], border:`1px solid ${T.slate[600]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>✕ Clear</button>
       <div style={{ width:1, height:24, background:T.slate[600] }} />
@@ -1860,7 +1886,7 @@ export default function Admissions() {
   }
 
   useEffect(() => {
-    document.body.style.background = darkMode ? T.slate[900] : T.slate[50]
+    document.body.style.background = darkMode ? T.slate[900] : PAGE_BG
     return () => { document.body.style.background = '' }
   }, [darkMode])
 
@@ -2255,18 +2281,19 @@ export default function Admissions() {
       {waBlastApps && <WABlastModal apps={waBlastApps} onClose={()=>setWABlastApps(null)} />}
       {showCSVImport && <CSVImportModal onClose={()=>setShowCSVImport(false)} onImport={handleCSVImport} />}
 
-      <div style={{ padding:'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background:N.bg, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
+      <div style={{ padding:'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background: darkMode ? T.slate[900] : PAGE_BG, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
         <style>{`
   @keyframes spin { to { transform:rotate(360deg) } }
-  @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(5,150,105,.18)} 50%{box-shadow:0 0 0 7px rgba(5,150,105,.06)} }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(10,128,66,.18)} 50%{box-shadow:0 0 0 7px rgba(10,128,66,.06)} }
   * { box-sizing:border-box; }
   select:focus, input:focus, textarea:focus {
-    box-shadow: inset 4px 4px 10px rgba(174,179,208,0.65), inset -4px -4px 10px rgba(255,255,255,0.92), 0 0 0 3px rgba(79,70,229,.12) !important;
+    box-shadow: 0 0 0 3px rgba(29,29,31,.12) !important;
+    border-color: rgba(29,29,31,.3) !important;
     outline:none;
   }
   ::-webkit-scrollbar { width:4px; height:4px; }
   ::-webkit-scrollbar-track { background:${N.bg2}; }
-  ::-webkit-scrollbar-thumb { background:rgba(79,70,229,.25); border-radius:99px; }
+  ::-webkit-scrollbar-thumb { background:rgba(29,29,31,.25); border-radius:99px; }
 `}</style>
 
         {toast && <Toast msg={toast.msg} color={toast.color} onUndo={toast.undoFn} />}
@@ -2401,9 +2428,9 @@ export default function Admissions() {
 
 {checkPermission(userRole,'create') && (
 <button onClick={()=>{ setEditing(null); setFormOpen(true) }}
-  style={{ padding:'10px 22px', borderRadius:13, background:`linear-gradient(135deg,${N.indigo},${N.violet})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:`4px 4px 14px rgba(79,70,229,.35), -2px -2px 8px rgba(255,255,255,.8)`, transition:'all .2s' }}
-  onMouseEnter={e=>{ e.currentTarget.style.boxShadow=`6px 6px 18px rgba(79,70,229,.45), -2px -2px 8px rgba(255,255,255,.9)`; e.currentTarget.style.transform='translateY(-2px)' }}
-  onMouseLeave={e=>{ e.currentTarget.style.boxShadow=`4px 4px 14px rgba(79,70,229,.35), -2px -2px 8px rgba(255,255,255,.8)`; e.currentTarget.style.transform='translateY(0)' }}
+  style={{ padding:'10px 22px', borderRadius:13, background:`linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:'0 4px 14px rgba(29,29,31,.25)', transition:'all .2s' }}
+  onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 6px 20px rgba(29,29,31,.32)'; e.currentTarget.style.transform='translateY(-2px)' }}
+  onMouseLeave={e=>{ e.currentTarget.style.boxShadow='0 4px 14px rgba(29,29,31,.25)'; e.currentTarget.style.transform='translateY(0)' }}
 >
   <span style={{ fontSize:18, lineHeight:1 }}>+</span> New Application
 </button>
@@ -2436,7 +2463,7 @@ export default function Admissions() {
         {/* KPI Strip */}
         <div style={{ display:'grid', gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)', gap:isMobile?10:12, marginBottom:18 }}>
   {[
-    { label:'Total', value:apps.length, color:N.indigo, accent:`linear-gradient(90deg,${N.indigo},${N.violet})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
+    { label:'Total', value:apps.length, color:N.text, accent:`linear-gradient(90deg,${N.gold},${N.goldDark})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
     { label:'Applied',      value:byStatus['Applied']||0,      color:'#6366f1', accent:'#6366f1', filter:'Applied' },
     { label:'Under Review', value:byStatus['Under Review']||0, color:N.amber,   accent:N.amber,   filter:'Under Review' },
     { label:'Admitted',     value:byStatus['Admitted']||0,     color:N.violet,  accent:N.violet,  filter:'Admitted' },
@@ -2638,7 +2665,7 @@ export default function Admissions() {
               {apps.length===0?'Click "+ New Application" to add your first applicant.':'Try adjusting your search or clearing the filters.'}
             </p>
             {activeFilters>0 && <button onClick={clearAll} style={{ padding:'11px 24px', borderRadius:13, background:N.bg, boxShadow:N.shadow('md'), color:N.rose, border:'none', fontSize:13, fontWeight:800, cursor:'pointer', transition:'box-shadow .15s' }} onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('md')} onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('md')}>✕ Clear all filters</button>}
-{apps.length===0 && <button onClick={()=>setFormOpen(true)} style={{ padding:'11px 24px', borderRadius:13, background:`linear-gradient(135deg,${N.indigo},${N.violet})`, color:'#fff', border:'none', fontSize:13, fontWeight:800, cursor:'pointer', boxShadow:`4px 4px 14px rgba(79,70,229,.35)` }}>+ New Application</button>}
+{apps.length===0 && <button onClick={()=>setFormOpen(true)} style={{ padding:'11px 24px', borderRadius:13, background:`linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer', boxShadow:'0 4px 14px rgba(29,29,31,.25)' }}>+ New Application</button>}
           </div>
         )}
 
