@@ -7,6 +7,15 @@ import {
 import IncomeAnalysis from './IncomeAnalysis'
 import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 import { AccountsDashboardBanking } from './AccountsDashboardBanking'
+// ── Report Generator dependencies ───────────────────────────────────────────
+// npm install jspdf jspdf-autotable docx xlsx
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import * as XLSX from 'xlsx'
+import {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  AlignmentType, BorderStyle, WidthType, ShadingType, PageOrientation,
+} from 'docx'
 
 // ── constants ──────────────────────────────────────────────────────────────
 const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Advance', 'Donation', 'Registration', 'Other']
@@ -17,6 +26,26 @@ const CHART_COLORS       = ['#1e3a5f','#16a34a','#dc2626','#f59e0b','#7c3aed','#
 const STATUS_OPTIONS     = ['Confirmed', 'Pending']
 const PAGE_SIZES         = [25, 50, 100]
 const RECEIPT_BUCKET     = 'account-receipts'
+
+// ── institute info (letterhead used by the Report Generator) ───────────────
+// Edit these once — every generated PDF / DOCX / Excel report reads from here.
+const INSTITUTE_INFO = {
+  name    : 'GUIDANCE NAVODAYA & SAINIK INSTITUTE (GNSI)',
+  tagline : 'NVS · Sainik School · RMS Entrance Coaching',
+  address : 'Khangabok, Thoubal, Manipur, India',
+  phone   : '',   // TODO: add contact number
+  email   : '',   // TODO: add contact email
+  website : 'guidancekhangabok.in',
+}
+
+// report type presets
+const REPORT_TYPES = [
+  'Transaction Statement',
+  'Income Statement',
+  'Expenditure Statement',
+  'Category-wise Summary',
+  'Account-wise Summary',
+]
 
 // ── PHASE 1: removed module-level today constant (now reactive state inside component) ──
 
@@ -212,6 +241,20 @@ function Accounts({role,userId}){
   const [balanceSheet,      setBalanceSheet]      = useState([])
   const [loadingFinancials, setLoadingFinancials] = useState(false)
 
+  // ── Report Generator state (independent filter set, doesn't touch Transactions tab) ──
+  const [rptReportType,  setRptReportType]  = useState(REPORT_TYPES[0])
+  const [rptType,        setRptType]        = useState('All')
+  const [rptCategory,    setRptCategory]    = useState('All')
+  const [rptMode,        setRptMode]        = useState('All')
+  const [rptAccount,     setRptAccount]     = useState('All')
+  const [rptStatus,      setRptStatus]      = useState('All')
+  const [rptVoucherHead, setRptVoucherHead] = useState('')
+  const [rptSearch,      setRptSearch]      = useState('')
+  const [rptDateFrom,    setRptDateFrom]    = useState('')
+  const [rptDateTo,      setRptDateTo]      = useState('')
+  const [rptQuick,       setRptQuick]       = useState('')
+  const [generatingReport, setGeneratingReport] = useState('') // '' | 'pdf' | 'docx' | 'excel'
+
   // ── fetch ─────────────────────────────────────────────────────────────
   // PHASE 3 FIX: fraud flags fetched from DB, not computed client-side
   const fetchEntries = useCallback(async()=>{
@@ -341,6 +384,14 @@ function Accounts({role,userId}){
   // ── quick date ────────────────────────────────────────────────────────
   const applyQuick=(key)=>{const{from,to}=getQuickRange(key);setDateFrom(from);setDateTo(to);setActiveQuick(key);setPage(1)}
   const clearQuick=()=>{setDateFrom('');setDateTo('');setActiveQuick('');setPage(1)}
+
+  // ── report quick date (independent of the Transactions tab filters) ─────
+  const applyRptQuick=(key)=>{const{from,to}=getQuickRange(key);setRptDateFrom(from);setRptDateTo(to);setRptQuick(key)}
+  const clearRptQuick=()=>{setRptDateFrom('');setRptDateTo('');setRptQuick('')}
+  const resetRptFilters=()=>{
+    setRptType('All');setRptCategory('All');setRptMode('All');setRptAccount('All');setRptStatus('All')
+    setRptVoucherHead('');setRptSearch('');setRptDateFrom('');setRptDateTo('');setRptQuick('')
+  }
 
   // ── CRUD ──────────────────────────────────────────────────────────────
   const openAdd=()=>{
@@ -562,6 +613,289 @@ function Accounts({role,userId}){
     w.document.close();w.print()
   }
 
+  // ── Report Generator: shared export-log helper ──────────────────────────
+  const logReportExport=(format)=>{
+    supabase.from('export_log').insert({
+      exported_by:role,
+      filter_type:`Report (${format}): ${rptReportType} / ${rptType}`,
+      filter_dates:`${rptDateFrom||'all'}–${rptDateTo||'present'}`,
+      row_count:reportEntries.length,
+      created_at:new Date().toISOString(),
+    }).then(({error})=>{
+      if(error)console.warn('Export log failed:',error.message)
+      else if(isAdmin)fetchExportLog()
+    })
+  }
+
+  // ── Report Generator: Professional PDF (jsPDF + autoTable) ──────────────
+  const generateReportPDF=()=>{
+    if(reportEntries.length===0){alert('No entries match the selected filters.');return}
+    setGeneratingReport('pdf')
+    try{
+      // jsPDF's built-in fonts don't render the ₹ glyph, so PDF output uses "Rs." prefix
+      const fmtPdf=(n)=>`Rs. ${Number(n).toLocaleString('en-IN')}`
+      const printDate=new Date().toLocaleString('en-IN')
+      const doc=new jsPDF({orientation:'landscape',unit:'pt',format:'a4'})
+      const pageW=doc.internal.pageSize.getWidth()
+      const pageH=doc.internal.pageSize.getHeight()
+      const margin=40
+
+      // letterhead
+      doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(30,58,95)
+      doc.text(INSTITUTE_INFO.name,pageW/2,42,{align:'center'})
+      doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(100,116,139)
+      doc.text(INSTITUTE_INFO.tagline,pageW/2,56,{align:'center'})
+      doc.text(INSTITUTE_INFO.address,pageW/2,68,{align:'center'})
+      const contact=[INSTITUTE_INFO.phone,INSTITUTE_INFO.email,INSTITUTE_INFO.website].filter(Boolean).join('   |   ')
+      if(contact)doc.text(contact,pageW/2,80,{align:'center'})
+      doc.setDrawColor(30,58,95);doc.setLineWidth(1.2);doc.line(margin,90,pageW-margin,90)
+      doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(30,41,59)
+      doc.text(rptReportType,pageW/2,108,{align:'center'})
+      doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(100,116,139)
+      doc.text(reportFilterSummary,pageW/2,121,{align:'center',maxWidth:pageW-2*margin})
+      doc.setFontSize(8)
+      doc.text(`Printed on: ${printDate}`,pageW-margin,121,{align:'right'})
+      let y=134
+
+      // summary cards
+      autoTable(doc,{
+        startY:y,theme:'plain',margin:{left:margin,right:margin},
+        body:[
+          ['Total Income','Total Expense','Net Balance','Total Entries'],
+          [fmtPdf(reportTotals.income),fmtPdf(reportTotals.expense),fmtPdf(reportTotals.net),String(reportTotals.count)],
+        ],
+        styles:{halign:'center',fontSize:9,cellPadding:4},
+        didParseCell:(data)=>{
+          if(data.row.index===0){data.cell.styles.fontStyle='bold';data.cell.styles.textColor=[100,116,139];data.cell.styles.fontSize=8}
+          if(data.row.index===1){
+            data.cell.styles.fontStyle='bold';data.cell.styles.fontSize=11
+            const colors=[[22,163,74],[220,38,38],[30,58,95],[124,58,237]]
+            data.cell.styles.textColor=colors[data.column.index]
+          }
+        },
+      })
+      y=doc.lastAutoTable.finalY+16
+
+      // break-up by category
+      if(reportByCategory.length){
+        doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(30,58,95)
+        doc.text('Break-up by Category',margin,y);y+=6
+        autoTable(doc,{
+          startY:y,
+          head:[['Category','Type','Entries','Amount']],
+          body:reportByCategory.map(r=>[r.category,r.type,String(r.count),fmtPdf(r.total)]),
+          headStyles:{fillColor:[30,58,95],textColor:255,fontSize:8.5},
+          bodyStyles:{fontSize:8.5},
+          columnStyles:{3:{halign:'right'}},
+          margin:{left:margin,right:margin},
+          didParseCell:(data)=>{
+            if(data.section==='body'&&data.column.index===3){
+              const type=data.row.raw[1]
+              data.cell.styles.textColor=type==='Income'?[22,163,74]:[220,38,38]
+              data.cell.styles.fontStyle='bold'
+            }
+          },
+        })
+        y=doc.lastAutoTable.finalY+16
+      }
+
+      // transaction detail
+      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(30,58,95)
+      doc.text('Transaction Detail',margin,y);y+=6
+      autoTable(doc,{
+        startY:y,
+        head:[['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount']],
+        body:reportEntries.map((e,i)=>[i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmtPdf(e.amount)}`]),
+        headStyles:{fillColor:[30,58,95],textColor:255,fontSize:8.5},
+        bodyStyles:{fontSize:8},
+        alternateRowStyles:{fillColor:[248,250,252]},
+        columnStyles:{0:{cellWidth:24},8:{halign:'right'}},
+        margin:{left:margin,right:margin,bottom:70},
+        didParseCell:(data)=>{
+          if(data.section==='body'&&data.column.index===8){
+            const type=data.row.raw[2]
+            data.cell.styles.textColor=type==='Income'?[22,163,74]:[220,38,38]
+          }
+        },
+        didDrawPage:(data)=>{
+          doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(148,163,184)
+          doc.text(`Page ${data.pageNumber}`,pageW-margin,pageH-20,{align:'right'})
+          doc.text(`${INSTITUTE_INFO.name} · GNSI Portal`,margin,pageH-20)
+        },
+      })
+
+      // signature block
+      let sigY=doc.lastAutoTable.finalY+60
+      if(sigY>pageH-70){doc.addPage('a4','landscape');sigY=80}
+      doc.setDrawColor(30,41,59);doc.setLineWidth(0.6)
+      doc.line(margin,sigY,margin+180,sigY)
+      doc.line(pageW-margin-180,sigY,pageW-margin,sigY)
+      doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(30,41,59)
+      doc.text('Prepared By',margin,sigY+14)
+      doc.text('Authorized Signature',pageW-margin-180,sigY+14)
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(148,163,184)
+      doc.text(`Date: ${getToday()}`,margin,sigY+27)
+      doc.text(`Date: ${getToday()}`,pageW-margin-180,sigY+27)
+
+      doc.save(`GNSI-${rptReportType.replace(/\s+/g,'-')}-${getToday()}.pdf`)
+      logReportExport('PDF')
+    }catch(err){
+      console.error(err)
+      alert('PDF generation failed: '+err.message+'\n\nMake sure these packages are installed:\nnpm install jspdf jspdf-autotable')
+    }
+    setGeneratingReport('')
+  }
+
+  // ── Report Generator: Professional DOCX (docx library) ──────────────────
+  const generateReportDOCX=async()=>{
+    if(reportEntries.length===0){alert('No entries match the selected filters.');return}
+    setGeneratingReport('docx')
+    try{
+      const printDate=new Date().toLocaleString('en-IN')
+      const headerCellShade='1E3A5F'
+      const noBorder={style:BorderStyle.NONE,size:0,color:'FFFFFF'}
+
+      const titleHeading=new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:INSTITUTE_INFO.name,bold:true,size:32,color:'1E3A5F'})]})
+      const taglineLine=new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:INSTITUTE_INFO.tagline,size:18,italics:true,color:'64748B'})]})
+      const contact=[INSTITUTE_INFO.phone,INSTITUTE_INFO.email,INSTITUTE_INFO.website].filter(Boolean).join('  |  ')
+      const addressLine=new Paragraph({
+        alignment:AlignmentType.CENTER,
+        border:{bottom:{style:BorderStyle.SINGLE,size:8,color:'1E3A5F'}},
+        spacing:{after:200},
+        children:[new TextRun({text:contact?`${INSTITUTE_INFO.address}   |   ${contact}`:INSTITUTE_INFO.address,size:20,color:'475569'})],
+      })
+      const reportTitlePara=new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:60},children:[new TextRun({text:rptReportType,bold:true,size:26,color:'1E293B'})]})
+      const filterLine=new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:60},children:[new TextRun({text:reportFilterSummary,size:16,italics:true,color:'64748B'})]})
+      const printedLine=new Paragraph({alignment:AlignmentType.RIGHT,spacing:{after:200},children:[new TextRun({text:`Printed on: ${printDate}`,size:16,color:'94A3B8'})]})
+
+      const sumCell=(label,value,color)=>new TableCell({
+        width:{size:25,type:WidthType.PERCENTAGE},
+        children:[
+          new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:label,size:16,color:'64748B'})]}),
+          new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:value,bold:true,size:22,color})]}),
+        ],
+      })
+      const summaryTable=new Table({
+        width:{size:100,type:WidthType.PERCENTAGE},
+        rows:[new TableRow({children:[
+          sumCell('Total Income',fmt(reportTotals.income),'16A34A'),
+          sumCell('Total Expense',fmt(reportTotals.expense),'DC2626'),
+          sumCell('Net Balance',fmt(reportTotals.net),'1E3A5F'),
+          sumCell('Entries',String(reportTotals.count),'7C3AED'),
+        ]})],
+      })
+
+      const headRow=new TableRow({
+        tableHeader:true,
+        children:['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'].map(h=>new TableCell({
+          shading:{type:ShadingType.CLEAR,fill:headerCellShade},
+          children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:'FFFFFF',size:16})]})],
+        })),
+      })
+      const dataRows=reportEntries.map((e,i)=>new TableRow({
+        children:[String(i+1),e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmt(e.amount)}`]
+          .map((val,ci)=>new TableCell({
+            shading:i%2===1?{type:ShadingType.CLEAR,fill:'F8FAFC'}:undefined,
+            children:[new Paragraph({
+              alignment:ci===8?AlignmentType.RIGHT:AlignmentType.LEFT,
+              children:[new TextRun({text:String(val),size:16,color:ci===8?(e.type==='Income'?'16A34A':'DC2626'):'1E293B'})],
+            })],
+          })),
+      }))
+      const totalRow=new TableRow({
+        children:[
+          new TableCell({columnSpan:8,children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'NET TOTAL',bold:true,size:16})]})]}),
+          new TableCell({children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:fmt(reportTotals.net),bold:true,size:16})]})]}),
+        ],
+      })
+      const detailTable=new Table({width:{size:100,type:WidthType.PERCENTAGE},rows:[headRow,...dataRows,totalRow]})
+
+      const sigCell=(label)=>new TableCell({
+        borders:{top:noBorder,bottom:noBorder,left:noBorder,right:noBorder},
+        width:{size:50,type:WidthType.PERCENTAGE},
+        children:[
+          new Paragraph({spacing:{after:400},children:[new TextRun({text:' '})]}),
+          new Paragraph({border:{top:{style:BorderStyle.SINGLE,size:6,color:'1E293B'}},children:[new TextRun({text:' '})]}),
+          new Paragraph({children:[new TextRun({text:label,bold:true,size:18})]}),
+          new Paragraph({children:[new TextRun({text:`Date: ${getToday()}`,size:14,color:'64748B'})]}),
+        ],
+      })
+      const sigTable=new Table({
+        width:{size:100,type:WidthType.PERCENTAGE},
+        borders:{top:noBorder,bottom:noBorder,left:noBorder,right:noBorder,insideHorizontal:noBorder,insideVertical:noBorder},
+        rows:[new TableRow({children:[sigCell('Prepared By'),sigCell('Authorized Signature')]})],
+      })
+
+      const docFile=new Document({
+        sections:[{
+          properties:{page:{size:{orientation:PageOrientation.LANDSCAPE},margin:{top:720,bottom:720,left:600,right:600}}},
+          children:[
+            titleHeading,taglineLine,addressLine,
+            reportTitlePara,filterLine,printedLine,
+            summaryTable,
+            new Paragraph({text:'',spacing:{after:200}}),
+            detailTable,
+            new Paragraph({text:'',spacing:{after:600}}),
+            sigTable,
+          ],
+        }],
+      })
+
+      const blob=await Packer.toBlob(docFile)
+      const url=URL.createObjectURL(blob)
+      const a=Object.assign(document.createElement('a'),{href:url,download:`GNSI-${rptReportType.replace(/\s+/g,'-')}-${getToday()}.docx`})
+      a.click();URL.revokeObjectURL(url)
+      logReportExport('DOCX')
+    }catch(err){
+      console.error(err)
+      alert('DOCX generation failed: '+err.message+'\n\nMake sure the "docx" package is installed:\nnpm install docx')
+    }
+    setGeneratingReport('')
+  }
+
+  // ── Report Generator: Professional Excel (SheetJS) ──────────────────────
+  const generateReportExcel=()=>{
+    if(reportEntries.length===0){alert('No entries match the selected filters.');return}
+    setGeneratingReport('excel')
+    try{
+      const printDate=new Date().toLocaleString('en-IN')
+      const headerLines=[INSTITUTE_INFO.name,INSTITUTE_INFO.tagline,INSTITUTE_INFO.address]
+      const contact=[INSTITUTE_INFO.phone,INSTITUTE_INFO.email,INSTITUTE_INFO.website].filter(Boolean).join('  |  ')
+      if(contact)headerLines.push(contact)
+      headerLines.push('')
+      headerLines.push(rptReportType)
+      headerLines.push(reportFilterSummary)
+      headerLines.push(`Printed on: ${printDate}`)
+
+      const wsData=headerLines.map(l=>[l])
+      wsData.push([])
+      wsData.push(['Total Income',reportTotals.income,'','Total Expense',reportTotals.expense,'','Net Balance',reportTotals.net,'','Entries',reportTotals.count])
+      wsData.push([])
+      wsData.push(['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'])
+      reportEntries.forEach((e,i)=>{
+        wsData.push([i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',e.type==='Income'?Number(e.amount):-Number(e.amount)])
+      })
+      wsData.push(['','','','','','','','NET TOTAL',reportTotals.net])
+      wsData.push([])
+      wsData.push([])
+      wsData.push(['Prepared By:','','','','Authorized Signature:'])
+      wsData.push(['______________________','','','','______________________'])
+      wsData.push([`Date: ${getToday()}`,'','','',`Date: ${getToday()}`])
+
+      const ws=XLSX.utils.aoa_to_sheet(wsData)
+      ws['!cols']=[{wch:6},{wch:12},{wch:10},{wch:16},{wch:14},{wch:10},{wch:20},{wch:12},{wch:14}]
+      ws['!merges']=headerLines.map((_,r)=>({s:{r,c:0},e:{r,c:8}}))
+      const wb=XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb,ws,'Report')
+      XLSX.writeFile(wb,`GNSI-${rptReportType.replace(/\s+/g,'-')}-${getToday()}.xlsx`)
+      logReportExport('Excel')
+    }catch(err){
+      console.error(err)
+      alert('Excel generation failed: '+err.message+'\n\nMake sure the "xlsx" package is installed:\nnpm install xlsx')
+    }
+    setGeneratingReport('')
+  }
+
   // PHASE 1 FIX: AI insights routed through /api/ai-insights serverless function
   const getInsights=async()=>{
     setLoadingAI(true);setInsights('')
@@ -596,6 +930,68 @@ function Accounts({role,userId}){
     })
     return[...list].sort((a,b)=>{let av=a[sortField],bv=b[sortField];if(sortField==='amount'){av=Number(av);bv=Number(bv)};if(av<bv)return sortDir==='asc'?-1:1;if(av>bv)return sortDir==='asc'?1:-1;return 0})
   },[entries,search,typeFilter,modeFilter,statusFilter,acctFilter,dateFrom,dateTo,sortField,sortDir])
+
+  // ── Report Generator memos ───────────────────────────────────────────────
+  const rptCategoryOptions = useMemo(()=>{
+    if(rptType==='Income')return INCOME_CATEGORIES
+    if(rptType==='Expense')return EXPENSE_CATEGORIES
+    return [...new Set([...INCOME_CATEGORIES,...EXPENSE_CATEGORIES])]
+  },[rptType])
+
+  const reportEntries = useMemo(()=>{
+    const list = entries.filter(item=>{
+      if(rptType!=='All'&&item.type!==rptType)return false
+      if(rptCategory!=='All'&&item.category!==rptCategory)return false
+      if(rptMode!=='All'&&item.payment_mode!==rptMode)return false
+      if(rptAccount!=='All'&&(item.account_type||'Cash A/c')!==rptAccount)return false
+      if(rptStatus!=='All'&&(item.status||'Confirmed')!==rptStatus)return false
+      if(rptVoucherHead&&!(item.voucher_head||'').toLowerCase().includes(rptVoucherHead.toLowerCase()))return false
+      if(rptDateFrom&&item.entry_date<rptDateFrom)return false
+      if(rptDateTo&&item.entry_date>rptDateTo)return false
+      const q=rptSearch.toLowerCase()
+      if(!q)return true
+      return(item.category||'').toLowerCase().includes(q)||(item.note||'').toLowerCase().includes(q)||(item.voucher_head||'').toLowerCase().includes(q)
+    })
+    return [...list].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
+  },[entries,rptType,rptCategory,rptMode,rptAccount,rptStatus,rptVoucherHead,rptSearch,rptDateFrom,rptDateTo])
+
+  const reportTotals = useMemo(()=>{
+    const income  = reportEntries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+    const expense = reportEntries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    return { income, expense, net: income-expense, count: reportEntries.length }
+  },[reportEntries])
+
+  const reportByCategory = useMemo(()=>{
+    const map={}
+    reportEntries.forEach(e=>{
+      const k=e.category||'Other'
+      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
+      map[k].total+=Number(e.amount);map[k].count+=1
+    })
+    return Object.values(map).sort((a,b)=>b.total-a.total)
+  },[reportEntries])
+
+  const reportByAccount = useMemo(()=>{
+    const map={}
+    reportEntries.forEach(e=>{
+      const k=e.account_type||'Cash A/c'
+      if(!map[k])map[k]={account:k,income:0,expense:0}
+      if(e.type==='Income')map[k].income+=Number(e.amount);else map[k].expense+=Number(e.amount)
+    })
+    return Object.values(map)
+  },[reportEntries])
+
+  const reportFilterSummary = useMemo(()=>{
+    const parts=[`Type: ${rptType}`]
+    if(rptCategory!=='All')parts.push(`Category: ${rptCategory}`)
+    if(rptMode!=='All')parts.push(`Mode: ${rptMode}`)
+    if(rptAccount!=='All')parts.push(`Account: ${rptAccount}`)
+    if(rptStatus!=='All')parts.push(`Status: ${rptStatus}`)
+    if(rptVoucherHead)parts.push(`Voucher Head: "${rptVoucherHead}"`)
+    if(rptSearch)parts.push(`Search: "${rptSearch}"`)
+    parts.push(`Period: ${rptDateFrom||'Beginning'} to ${rptDateTo||'Present'}`)
+    return parts.join('   •   ')
+  },[rptType,rptCategory,rptMode,rptAccount,rptStatus,rptVoucherHead,rptSearch,rptDateFrom,rptDateTo])
 
   // ACTUAL PAYMENT DATE FIX: resolves which date field the Daily register filters/groups by
   const getDailyDate = useCallback((e)=>{
@@ -862,6 +1258,7 @@ function Accounts({role,userId}){
         ['budgets','💰 Budgets'],
         ['recurring','🔁 Recurring'],
         ['daily','📋 Daily'],
+        ['reports','📑 Reports'],
         ...(isAdmin?[['fraud',totalFraudAlerts>0?`🕵️ Fraud (${totalFraudAlerts})`:'🕵️ Fraud']]:[] ),
         // PHASE 4: Balance Sheet tab (admin only)
         ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
@@ -872,6 +1269,7 @@ function Accounts({role,userId}){
           ...tabStyle(id),
           ...(id==='fraud'?{backgroundColor:activeTab===id?'#7c3aed':'#faf5ff',color:activeTab===id?'white':'#7c3aed',border:'1px solid #e9d5ff'}:{}),
           ...(id==='daily'?{backgroundColor:activeTab===id?'#0369a1':'#f0f9ff',color:activeTab===id?'white':'#0369a1',border:'1px solid #bae6fd'}:{}),
+          ...(id==='reports'?{backgroundColor:activeTab===id?'#be185d':'#fdf2f8',color:activeTab===id?'white':'#be185d',border:'1px solid #fbcfe8'}:{}),
           ...(id==='balancesheet'?{backgroundColor:activeTab===id?'#047857':'#f0fdf4',color:activeTab===id?'white':'#047857',border:'1px solid #bbf7d0'}:{}),
         }} onClick={()=>setActiveTab(id)}>{label}</button>
       ))}
@@ -964,6 +1362,133 @@ function Accounts({role,userId}){
             isMobile={isMobile}
           />
         )}
+      </div>
+    )}
+
+    {/* ══ TAB: REPORT GENERATOR ══ */}
+    {activeTab==='reports'&&(
+      <div>
+        <div style={{backgroundColor:'#831843',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📑 Professional Report Generator</h2>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Build a filtered financial report and export it as a letterheaded PDF, Word (DOCX), or Excel file — ready to print and sign.</p>
+        </div>
+
+        {/* ── report type ── */}
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+          <label style={lStyle}>Report Title</label>
+          <select value={rptReportType} onChange={e=>setRptReportType(e.target.value)} style={{...iStyle,maxWidth: isMobile ? '100%' : 360,fontWeight:600}}>
+            {REPORT_TYPES.map(t=><option key={t}>{t}</option>)}
+          </select>
+
+          {/* ── filters ── */}
+          <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : isTablet ? 'repeat(3,1fr)' : 'repeat(5,1fr)',gap:12,marginTop:18}}>
+            <div>
+              <label style={lStyle}>Type</label>
+              <select value={rptType} onChange={e=>{setRptType(e.target.value);setRptCategory('All')}} style={iStyle}>
+                <option value="All">All (Income + Expense)</option>
+                <option value="Income">Income only</option>
+                <option value="Expense">Expense only</option>
+              </select>
+            </div>
+            <div>
+              <label style={lStyle}>Category</label>
+              <select value={rptCategory} onChange={e=>setRptCategory(e.target.value)} style={iStyle}>
+                <option value="All">All Categories</option>
+                {rptCategoryOptions.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lStyle}>Payment Mode</label>
+              <select value={rptMode} onChange={e=>setRptMode(e.target.value)} style={iStyle}>
+                <option value="All">All Modes</option>
+                {PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lStyle}>Account Type</label>
+              <select value={rptAccount} onChange={e=>setRptAccount(e.target.value)} style={iStyle}>
+                <option value="All">All Accounts</option>
+                {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lStyle}>Status</label>
+              <select value={rptStatus} onChange={e=>setRptStatus(e.target.value)} style={iStyle}>
+                <option value="All">All Statuses</option>
+                {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lStyle}>Voucher Head</label>
+              <input type="text" placeholder="e.g. Sir Arunkumar" value={rptVoucherHead} onChange={e=>setRptVoucherHead(e.target.value)} style={iStyle}/>
+            </div>
+            <div>
+              <label style={lStyle}>Search</label>
+              <input type="text" placeholder="🔍 Category, note…" value={rptSearch} onChange={e=>setRptSearch(e.target.value)} style={iStyle}/>
+            </div>
+            <div>
+              <label style={lStyle}>Date From</label>
+              <input type="date" value={rptDateFrom} onChange={e=>{setRptDateFrom(e.target.value);setRptQuick('')}} style={iStyle}/>
+            </div>
+            <div>
+              <label style={lStyle}>Date To</label>
+              <input type="date" value={rptDateTo} onChange={e=>{setRptDateTo(e.target.value);setRptQuick('')}} style={iStyle}/>
+            </div>
+          </div>
+
+          {/* ── quick range + reset ── */}
+          <div style={{display:'flex',gap:8,marginTop:14,alignItems:'center',flexWrap:'wrap'}}>
+            <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
+            {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
+              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:rptQuick===k?'#831843':'#f1f5f9',color:rptQuick===k?'white':'#64748b'}} onClick={()=>rptQuick===k?clearRptQuick():applyRptQuick(k)}>{l}</button>
+            ))}
+            <button onClick={resetRptFilters} style={{...smallBtn('#fee2e2','#dc2626'),padding:'5px 12px',fontSize:12}}>✖ Reset Filters</button>
+          </div>
+        </div>
+
+        {/* ── live preview ── */}
+        <div style={{display:'grid',gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)',gap: isMobile ? 10 : 14,marginBottom:16}}>
+          <StatCard label="Income (matched)" value={reportTotals.income} color="#16a34a" bg="#dcfce7" icon="📈"/>
+          <StatCard label="Expense (matched)" value={reportTotals.expense} color="#dc2626" bg="#fee2e2" icon="📉"/>
+          <StatCard label="Net" value={reportTotals.net} color="#1e3a5f" bg="#eff6ff" icon="💼"/>
+          <StatCard label="Entries Matched" value={reportTotals.count} color="#7c3aed" bg="#f3e8ff" icon="🧾" isCurrency={false}/>
+        </div>
+
+        {/* ── export actions ── */}
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+          <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 12px',fontWeight:600}}>EXPORT — every file includes the GNSI letterhead, applied filters, print date, and signature lines for "Prepared By" &amp; "Authorized Signature".</p>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+            <button onClick={generateReportPDF} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 Generate PDF'}</button>
+            <button onClick={generateReportDOCX} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='docx'?'⏳ Generating…':'📝 Generate Word (DOCX)'}</button>
+            <button onClick={generateReportExcel} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Generate Excel'}</button>
+          </div>
+        </div>
+
+        {/* ── preview table ── */}
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',overflowX:'auto'}}>
+          <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>Preview {reportEntries.length>8?`(first 8 of ${reportEntries.length})`:`(${reportEntries.length} entries)`}</h3>
+          {reportEntries.length===0?(
+            <p style={{color:'#94a3b8',textAlign:'center',padding:24}}>No entries match the selected filters.</p>
+          ):(
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize: isMobile ? 12 : 13}}>
+              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <tbody>
+                {reportEntries.slice(0,8).map((e,i)=>(
+                  <tr key={i} style={{borderBottom:'1px solid #f1f5f9'}}>
+                    <td style={tdS}>{e.entry_date}</td>
+                    <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:e.type==='Income'?'#dcfce7':'#fee2e2',color:e.type==='Income'?'#16a34a':'#dc2626'}}>{e.type}</span></td>
+                    <td style={{...tdS,color:'#1e293b',fontWeight:500}}>{e.category}</td>
+                    <td style={tdS}>{e.account_type||'Cash A/c'}</td>
+                    <td style={tdS}>{e.payment_mode}</td>
+                    <td style={tdS}>{e.voucher_head||'-'}</td>
+                    <td style={tdS}>{e.status||'Confirmed'}</td>
+                    <td style={{...tdS,fontWeight:700,color:e.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(e.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     )}
 
