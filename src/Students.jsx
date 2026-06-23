@@ -271,9 +271,26 @@ function usePermissions() {
 
 async function auditLog(action, details={}) {
   try {
-    const { data:{session} } = await supabase.auth.getSession()
-    await supabase.from('audit_logs').insert({ action, actor_id:session?.user?.id||null, actor_role:session?.user?.app_metadata?.role||'unknown', details, created_at:new Date().toISOString() })
-  } catch {}
+    // This portal uses custom auth (gnsi_session in localStorage), not Supabase Auth —
+    // supabase.auth.getSession() always returned an empty session here, which is part of
+    // why this was broken. user_id is left NULL (uuid column) since the app's user id is
+    // very likely not a real UUID (e.g. staff_profiles.id is bigint); the raw id/role are
+    // captured in metadata instead, where any type is valid.
+    const raw = localStorage.getItem('gnsi_session')
+    const session = raw ? JSON.parse(raw) : null
+    const user = session?.user || session || null
+    const userName = user?.name || user?.username || user?.full_name || user?.role || 'Unknown'
+    const { error } = await supabase.from('audit_logs').insert({
+      action,
+      module: 'Students',
+      level: 'info',
+      user_id: null,
+      user_name: userName,
+      metadata: { ...details, raw_user_id: user?.id ?? null, role: user?.role ?? null },
+      created_at: new Date().toISOString(),
+    })
+    if (error) console.error('audit log insert failed:', error.message)
+  } catch (err) { console.error('audit log failed:', err) }
 }
 
 function usePresets() {
