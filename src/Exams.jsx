@@ -893,7 +893,18 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     }
     for (let i = 0; i < rows.length; i += 100)
       await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
-    await fetchMarks(examType, examDate, detCourse);
+    
+    // ✅ FIX: Auto-set course and exam date to match the import
+    // This ensures the table immediately displays marks without user needing to manually select the date
+    setCourse(detCourse);
+    setExamType(examType);
+    
+    // ✅ FIX: Force a fresh fetch with the correct date/course after brief delay
+    // Delay ensures the database is ready and state updates have propagated
+    setTimeout(() => {
+      fetchMarks(examType, examDate, detCourse);
+    }, 300);
+    
     setImporting(false); setImportDone(true);
     // Record exactly what was saved & where — this banner persists even after the import
     // panel is closed, so it's never unclear whether the records went somewhere or vanished.
