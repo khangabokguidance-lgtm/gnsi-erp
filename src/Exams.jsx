@@ -740,6 +740,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [marks, setMarks] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [importMode, setImportMode] = useState(false);
@@ -755,6 +756,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", course: "", class_name: "" });
   const [addingStudent, setAddingStudent] = useState(false);
   const [addStudentError, setAddStudentError] = useState("");
+  const [importSaveError, setImportSaveError] = useState("");
   const [lastImportSummary, setLastImportSummary] = useState(null); // persists after the import panel closes, so the save is never invisible
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
@@ -767,8 +769,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       (s.course || "").toUpperCase() === crs.toUpperCase()
     ).map(s => s.id);
     if (!ids.length) { setMarks({}); setLoading(false); return; }
-    const { data } = await supabase.from("exam_marks").select("*")
+    const { data, error } = await supabase.from("exam_marks").select("*")
       .eq("exam_type_id", typeId).eq("exam_date", date).in("student_id", ids);
+    if (error) {
+      console.error("Failed to fetch exam_marks:", error);
+      setMarks({}); setLoading(false);
+      return;
+    }
     const map = {};
     (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; });
     setMarks(map); setLoading(false);
@@ -807,8 +814,18 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         });
       }
     }
-    for (let i = 0; i < rows.length; i += 100)
-      await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
+    const writeErrors = [];
+    for (let i = 0; i < rows.length; i += 100) {
+      const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
+      if (error) writeErrors.push(error.message || String(error));
+    }
+    if (writeErrors.length) {
+      console.error("exam_marks upsert failed during manual save:", writeErrors);
+      setSaving(false);
+      setSaveError(writeErrors[0]);
+      return;
+    }
+    setSaveError("");
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -891,20 +908,25 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         }
       }
     }
-    for (let i = 0; i < rows.length; i += 100)
-      await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
-    
-    // ✅ FIX: Auto-set course and exam date to match the import
-    // This ensures the table immediately displays marks without user needing to manually select the date
+    const writeErrors = [];
+    for (let i = 0; i < rows.length; i += 100) {
+      const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
+      if (error) writeErrors.push(error.message || String(error));
+    }
+    if (writeErrors.length) {
+      console.error("exam_marks upsert failed during CSV import:", writeErrors);
+      setImporting(false);
+      setImportSaveError(writeErrors[0]);
+      return;
+    }
+    setImportSaveError("");
+
+    // Auto-set course and exam date to match the import, then re-fetch the rows we
+    // just wrote — no arbitrary delay, since the writes above are already awaited.
     setCourse(detCourse);
     setExamType(examType);
-    
-    // ✅ FIX: Force a fresh fetch with the correct date/course after brief delay
-    // Delay ensures the database is ready and state updates have propagated
-    setTimeout(() => {
-      fetchMarks(examType, examDate, detCourse);
-    }, 300);
-    
+    await fetchMarks(examType, examDate, detCourse);
+
     setImporting(false); setImportDone(true);
     // Record exactly what was saved & where — this banner persists even after the import
     // panel is closed, so it's never unclear whether the records went somewhere or vanished.
@@ -925,7 +947,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   // "what was saved & where" confirmation banner keeps showing afterwards.
   const closeImportPanel = () => {
     setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setImportDone(false);
-    setManualSearch({}); setManualOpenIdx(null); setRawImport(null); setAddNewOpenIdx(null); setAddStudentError("");
+    setManualSearch({}); setManualOpenIdx(null); setRawImport(null); setAddNewOpenIdx(null); setAddStudentError(""); setImportSaveError("");
   };
 
   // ─── Manual resolution for rows the auto-detector couldn't confidently match ──
@@ -1288,6 +1310,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
           Rank is computed live from marks obtained within this import batch — newly-added students are ranked automatically alongside everyone else.
         </div>
 
+        {importSaveError && (
+          <div style={{ background: "#FEF2F2", border: "1.5px solid #FECACA", color: "#991B1B", borderRadius: 10, padding: "14px 16px", marginBottom: 14, fontSize: 13 }}>
+            <b>⚠ Import did not save:</b> {importSaveError}
+            <div style={{ fontSize: 11.5, marginTop: 4, color: "#B91C1C" }}>Nothing was written to the database. Check your connection and try again — if this keeps happening, share this exact message.</div>
+          </div>
+        )}
+
         {importDone
           ? (
             <div style={{ background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, padding: "16px 18px" }}>
@@ -1416,6 +1445,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       </div>
 
       {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved!</div>}
+      {saveError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⚠ Save failed: {saveError}</div>}
       {importMode && <ImportPreview />}
 
       {loading ? <Spinner /> : (
