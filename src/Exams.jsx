@@ -716,11 +716,11 @@ function useRemarks(studentId, examTypeId, examDate) {
   return { remark, setRemark, save, saving, saved };
 }
 
-function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, onStudentsChange }) {
+function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, onStudentsChange, initialCourse, initialExamType, initialExamDate }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms);
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse] = useState(initialCourse || courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() ||
@@ -735,8 +735,8 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     return [...set].sort();
   };
 
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
-  const [examDate, setExamDate] = useState(new Date().toISOString().split("T")[0]);
+  const [examType, setExamType] = useState(initialExamType || examTypes[0]?.id || "");
+  const [examDate, setExamDate] = useState(initialExamDate || new Date().toISOString().split("T")[0]);
   const [marks, setMarks] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -5705,6 +5705,7 @@ export default function Exams({ currentUser, perms }) {
   const [institute, setInstitute]   = useState(INSTITUTE_DEFAULT);
   const [activeConfigId, setActiveConfigId] = useState("default");
   const [markEntryRefreshKey, setMarkEntryRefreshKey] = useState(0);
+  const [lastCSVImportContext, setLastCSVImportContext] = useState(null);
  
   const refetchSchedule = useCallback(async () => {
     const { data } = await supabase.from('exam_schedule').select('*').order('exam_date');
@@ -5781,9 +5782,12 @@ export default function Exams({ currentUser, perms }) {
  
   const courses = Object.keys(courseSubjects);
  
-  const handleCSVImportDone = () => {
-    // ExamCSVImport already upserted the marks to Supabase internally.
-    // Bump the key to remount MarkEntry so it re-fetches fresh data.
+  const handleCSVImportDone = (_marksMap, course, examTypeId, examDate) => {
+    // ExamCSVImport already upserted the marks to Supabase internally, and tells us
+    // exactly which course / exam type / date it used. Capture that so the remounted
+    // MarkEntry opens on the right combination instead of always defaulting to the
+    // first course / first exam type / today's date.
+    if (course || examTypeId || examDate) setLastCSVImportContext({ course, examTypeId, examDate });
     setMarkEntryRefreshKey(k => k + 1);
     setTab("entry");
   };
@@ -5792,7 +5796,7 @@ export default function Exams({ currentUser, perms }) {
   const sectionMap = {
     dashboard:      () => <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
     toppers:        () => <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
-    entry:          () => <MarkEntry key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} onStudentsChange={setStudents} />,
+    entry:          () => <MarkEntry key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} onStudentsChange={setStudents} initialCourse={lastCSVImportContext?.course} initialExamType={lastCSVImportContext?.examTypeId} initialExamDate={lastCSVImportContext?.examDate} />,
  
     // ── NEW: smart CSV import tab ──────────────────────────────────────────
     csvimport: () => (
