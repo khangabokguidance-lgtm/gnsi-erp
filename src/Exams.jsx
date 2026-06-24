@@ -71,6 +71,107 @@ function getSubjectMax(course, subject) {
   return ((window.__gnsiCourseMaxMarks || COURSE_MAX_MARKS)[course] || {})[subject] || 100;
 }
 
+// ─── Fuzzy matching helpers for CSV/Excel student detection ──────────────────
+function normalizeGccValue(v) {
+  if (v === null || v === undefined) return "";
+  const digits = String(v).replace(/[^0-9]/g, "");      // strip "GCC-", spaces, etc.
+  return digits.replace(/^0+(?=\d)/, "");                 // strip leading zeros
+}
+
+function normalizeNameValue(name) {
+  return String(name || "")
+    .toUpperCase()
+    .replace(/[.,'"_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+  return dp[m][n];
+}
+
+// Order-independent + typo-tolerant name similarity, 0..1
+function nameSimilarity(a, b) {
+  const na = normalizeNameValue(a), nb = normalizeNameValue(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+
+  const sa = na.split(" ").filter(Boolean).sort().join(" ");
+  const sb = nb.split(" ").filter(Boolean).sort().join(" ");
+  if (sa === sb) return 0.97; // same words, different order (e.g. "SHARMA RAHUL")
+
+  const dist = levenshtein(sa, sb);
+  const maxLen = Math.max(sa.length, sb.length) || 1;
+  const ratio = 1 - dist / maxLen;
+  const containBonus = (sa.includes(sb) || sb.includes(sa)) ? 0.1 : 0;
+  return Math.min(1, Math.max(0, ratio + containBonus));
+}
+
+/**
+ * Best-effort student detection for a CSV/Excel row.
+ * Priority: exact GCC → exact admission no → exact name → fuzzy name.
+ */
+function findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool }) {
+  const gccNorm = normalizeGccValue(rawGcc);
+  if (gccNorm) {
+    const hit = matchPool.find(s => normalizeGccValue(s.gcc_no) === gccNorm);
+    if (hit) return { student: hit, matchType: "GCC", confidence: 1 };
+  }
+
+  const admNorm = String(rawAdm || "").trim().toUpperCase();
+  if (admNorm) {
+    const hit = matchPool.find(s => String(s.admission_no || "").trim().toUpperCase() === admNorm);
+    if (hit) return { student: hit, matchType: "Admission No.", confidence: 1 };
+  }
+
+  if (!rawName) return { student: null, matchType: "none", confidence: 0, suggestion: null };
+
+  const nameNorm = normalizeNameValue(rawName);
+  const exact = matchPool.find(s => normalizeNameValue(s.name) === nameNorm);
+  if (exact) return { student: exact, matchType: "Name (exact)", confidence: 1 };
+
+  let best = null, bestScore = 0;
+  for (const s of matchPool) {
+    const score = nameSimilarity(rawName, s.name);
+    if (score > bestScore) { bestScore = score; best = s; }
+  }
+  const THRESHOLD = 0.72;
+  if (best && bestScore >= THRESHOLD) {
+    return { student: best, matchType: "Name (fuzzy)", confidence: bestScore, suggestion: null };
+  }
+  return { student: null, matchType: "none", confidence: bestScore, suggestion: best };
+}
+
+function MatchBadge({ matchType, confidence }) {
+  const pct = Math.round((confidence || 0) * 100);
+  let bg = "#E1F5EE", color = "#0F6E56", label = matchType;
+  if (matchType === "Name (fuzzy)") {
+    if (pct >= 90) { bg = "#FEF9E7"; color = "#92740C"; }
+    else { bg = "#FCEBEB"; color = "#A32D2D"; }
+    label = `Name ≈${pct}%`;
+  } else if (matchType === "Name (exact)") {
+    label = "Name match";
+  } else if (matchType === "Manual") {
+    bg = "#EEF2FF"; color = "#4338CA"; label = "Manual";
+  }
+  return (
+    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: bg, color, whiteSpace: "nowrap" }}>
+      {label}
+    </span>
+  );
+}
+
 // ─── Grade presets ────────────────────────────────────────────────────────────
 const GRADE_PRESETS = [
   { min: 90, label: "A+", color: "#0F6E56", bg: "#E1F5EE", gpa: 4.0 },
@@ -568,6 +669,8 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
   const [importInfo, setImportInfo] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importDone, setImportDone] = useState(false);
+  const [manualSearch, setManualSearch] = useState({});   // { [errorIndex]: query string }
+  const [manualOpenIdx, setManualOpenIdx] = useState(null); // which unmatched row has its search box open
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
 
@@ -666,14 +769,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
       const rawName = row[nameCol]?.toString().trim(); if (!rawName) continue;
       const rawGcc = gccCol !== -1 ? row[gccCol]?.toString().trim() : "";
       const rawAdm = admCol !== -1 ? row[admCol]?.toString().trim() : "";
-      let student = rawGcc ? matchPool.find(s => String(s.gcc_no).trim() === rawGcc) : null;
-      if (!student && rawAdm) student = matchPool.find(s => String(s.admission_no).trim() === rawAdm);
-      if (!student) student = matchPool.find(s => s.name?.toLowerCase() === rawName.toLowerCase());
-      if (!student) student = matchPool.find(s => s.name?.toLowerCase().startsWith(rawName.toLowerCase().slice(0, 8)));
-      if (!student) { errors.push(rawName); continue; }
       const subMarks = {};
       subjectCols.forEach(({ sub, col }) => { if (col !== -1) { const v = Number(row[col]); if (!isNaN(v) && row[col] !== "") subMarks[sub] = v; } });
-      matched.push({ student, subMarks });
+
+      const { student, matchType, confidence, suggestion } = findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool });
+
+      if (!student) { errors.push({ rawName, rawGcc, rawAdm, subMarks, suggestion, rowIndex: i }); continue; }
+      matched.push({ student, subMarks, matchType, confidence });
     }
     setImportRows(matched); setImportErrors(errors);
     setImportInfo({ detectedCourse, subjects: importSubjects });
@@ -701,7 +803,22 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
       await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
     await fetchMarks(examType, examDate, importInfo?.detectedCourse || course);
     setImporting(false); setImportDone(true);
-    setTimeout(() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setImportDone(false); }, 2500);
+    setTimeout(() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setImportDone(false); setManualSearch({}); setManualOpenIdx(null); }, 2500);
+  };
+
+  // ─── Manual resolution for rows the auto-detector couldn't confidently match ──
+  const assignStudentToError = (errIndex, student) => {
+    const errRow = importErrors[errIndex];
+    if (!errRow || !student) return;
+    setImportRows(rows => [...rows, { student, subMarks: errRow.subMarks, matchType: "Manual", confidence: 1 }]);
+    setImportErrors(prev => prev.filter((_, i) => i !== errIndex));
+    setManualOpenIdx(null);
+    setManualSearch(prev => { const n = { ...prev }; delete n[errIndex]; return n; });
+  };
+
+  const dismissErrorRow = (errIndex) => {
+    setImportErrors(prev => prev.filter((_, i) => i !== errIndex));
+    setManualOpenIdx(null);
   };
 
   const handleExport = async () => {
@@ -729,11 +846,30 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
   const ImportPreview = () => {
     const previewSubjects = importInfo?.subjects || subjects;
     const detCourse = importInfo?.detectedCourse || course;
+
+    // Same pool the auto-detector used, for manual search/assignment of unmatched rows
+    const manualPoolBase = students.filter(s => (s.class_name || "").toUpperCase() === detCourse || (s.course || "").toUpperCase() === detCourse);
+    const manualPool = manualPoolBase.length ? manualPoolBase : students;
+    const assignedIds = new Set(importRows.map(r => r.student.id));
+
+    const getManualCandidates = (query) => {
+      const q = (query || "").trim();
+      const pool = manualPool.filter(s => !assignedIds.has(s.id));
+      if (!q) return pool.slice(0, 6);
+      const ql = q.toLowerCase();
+      return pool
+        .map(s => ({ s, score: Math.max(nameSimilarity(q, s.name), String(s.gcc_no).includes(q) ? 0.99 : 0) }))
+        .filter(({ s, score }) => score > 0.3 || s.name?.toLowerCase().includes(ql))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6)
+        .map(({ s }) => s);
+    };
+
     return (
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.10)", padding: isMobile ? 14 : 24, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, color: "#1e293b" }}>📂 Import Preview</div>
-          <button onClick={() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); }}
+          <button onClick={() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setManualSearch({}); setManualOpenIdx(null); }}
             style={{ ...css.btn, padding: "5px 12px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕ Cancel</button>
         </div>
         {importInfo && (
@@ -752,23 +888,92 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: importErrors.length ? "#A32D2D" : "#9CA3AF" }}>{importErrors.length}</div>
           </div>
         </div>
+
+        {/* ── Unmatched rows: search & manually assign, or skip ───────────────── */}
+        {importErrors.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#92400E", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+              ⚠️ {importErrors.length} row{importErrors.length > 1 ? "s" : ""} need manual matching
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+              {importErrors.map((err, idx) => {
+                const isOpen = manualOpenIdx === idx;
+                const query = manualSearch[idx] ?? "";
+                const candidates = getManualCandidates(query);
+                return (
+                  <div key={idx} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{err.rawName || "(no name in row)"}</div>
+                        <div style={{ fontSize: 11, color: "#9CA3AF" }}>
+                          Row {err.rowIndex + 1}{err.rawGcc ? ` · GCC ${err.rawGcc}` : ""}
+                          {err.suggestion && <span style={{ color: "#A16207" }}> · best guess: <b>{err.suggestion.name}</b></span>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {err.suggestion && (
+                          <button onClick={() => assignStudentToError(idx, err.suggestion)}
+                            style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#FEF9E7", color: "#92740C", border: "1px solid #FDE68A" }}>
+                            ✓ Use {err.suggestion.name.split(" ")[0]}
+                          </button>
+                        )}
+                        <button onClick={() => setManualOpenIdx(isOpen ? null : idx)}
+                          style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: isOpen ? "#1a3c2e" : "#EFF6FF", color: isOpen ? "white" : "#1D4ED8", border: isOpen ? "none" : "1px solid #BFDBFE" }}>
+                          🔍 {isOpen ? "Close" : "Search"}
+                        </button>
+                        <button onClick={() => dismissErrorRow(idx)}
+                          style={{ ...css.btn, padding: "4px 8px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                    {isOpen && (
+                      <div style={{ marginTop: 10 }}>
+                        <input
+                          autoFocus
+                          value={query}
+                          onChange={e => setManualSearch(p => ({ ...p, [idx]: e.target.value }))}
+                          placeholder="Search by student name or GCC no…"
+                          style={{ ...css.input, fontSize: 12, marginBottom: 6 }}
+                        />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 150, overflowY: "auto" }}>
+                          {candidates.map(s => (
+                            <div key={s.id} onClick={() => assignStudentToError(idx, s)}
+                              style={{ padding: "6px 10px", borderRadius: 6, background: "white", border: "1px solid #E5E7EB", cursor: "pointer", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontWeight: 600 }}>{s.name}</span>
+                              <span style={{ color: "#9CA3AF", fontSize: 11 }}>GCC {s.gcc_no} · {s.class_name || s.course}</span>
+                            </div>
+                          ))}
+                          {!candidates.length && <div style={{ fontSize: 11, color: "#9CA3AF", padding: "4px 2px" }}>No matching students found.</div>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 400 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 460 }}>
             <thead style={{ position: "sticky", top: 0 }}>
               <tr style={{ background: "#1a3c2e" }}>
                 <th style={{ padding: "8px 12px", textAlign: "left", color: "white", fontWeight: 700 }}>Student</th>
+                <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Matched By</th>
                 {previewSubjects.map(s => <th key={s} style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>{s}</th>)}
                 <th style={{ padding: "8px 10px", textAlign: "center", color: "white", fontWeight: 700 }}>Total</th>
                 <th style={{ padding: "8px 10px", textAlign: "center", color: "white", fontWeight: 700 }}>%</th>
               </tr>
             </thead>
             <tbody>
-              {importRows.map(({ student: st, subMarks }, i) => {
+              {importRows.map(({ student: st, subMarks, matchType, confidence }, i) => {
                 const total = previewSubjects.reduce((s, sub) => s + (subMarks[sub] ?? 0), 0);
                 const pct = calcPct(total, detCourse);
                 return (
                   <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
                     <td style={{ padding: "7px 12px", fontWeight: 600, whiteSpace: "nowrap" }}>{st.name}</td>
+                    <td style={{ padding: "7px 8px", textAlign: "center" }}><MatchBadge matchType={matchType} confidence={confidence} /></td>
                     {previewSubjects.map(sub => (
                       <td key={sub} style={{ padding: "7px 8px", textAlign: "center", color: subMarks[sub] !== undefined ? "#1e293b" : "#CBD5E1", fontWeight: subMarks[sub] !== undefined ? 600 : 400 }}>
                         {subMarks[sub] !== undefined ? subMarks[sub] : "--"}
@@ -779,6 +984,9 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
                   </tr>
                 );
               })}
+              {!importRows.length && (
+                <tr><td colSpan={previewSubjects.length + 4} style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>No matched rows yet — resolve unmatched rows above, or skip them.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
