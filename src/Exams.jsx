@@ -1004,6 +1004,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   };
 
   const confirmImport = async () => {
+    console.log("%c[BUILD CHECK] confirmImport v4 — subject-tracking debug build", "background:#7c3aed;color:#fff;padding:2px 6px;border-radius:4px;font-weight:bold;");
     setImporting(true);
     setImportSaveError("");
     
