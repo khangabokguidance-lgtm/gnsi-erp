@@ -121,17 +121,27 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
   useEffect(() => {
     if (!examType) return;
     setLoading(true);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType)
+    supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained, exam_date").eq("exam_type_id", examType)
       .then(({ data }) => {
         setAllMarks(data || []);
         setLoading(false);
       });
   }, [examType]);
 
+  // ── Real exam config, sourced live from the schedule prop (already fetched by the
+  // parent from exam_schedule) instead of the static courseSubjects/COURSE_MAX_MARKS
+  // config — keeps dashboard totals/% in sync with what was actually scheduled, and
+  // resolves exam_id -> subject so stale/null `subject` columns on exam_marks rows
+  // don't silently drop marks the way they did before.
+  const scheduleForType = schedule.filter(s => s.exam_type_id === examType);
+  const examIdToSubject = {};
+  scheduleForType.forEach(s => { examIdToSubject[s.id] = s.subject; });
+  const resolvedMarks = allMarks.map(r => ({ ...r, subject: examIdToSubject[r.exam_id] || r.subject }));
+
   // ── Per-course stats ──────────────────────────────────────────────────────
   const courseStats = courses.map((course, ci) => {
-    const subjects = courseSubjects[course] || [];
-    const courseMax = getCourseMax(course);
+    const courseSchedule = scheduleForType.filter(s => (s.course || "").toUpperCase() === course.toUpperCase());
+    const subjects = [...new Set(courseSchedule.length ? courseSchedule.map(s => s.subject) : (courseSubjects[course] || []))];
     const courseStudents = students.filter(s =>
       (s.class_name || "").toUpperCase() === course ||
       (s.course || "").toUpperCase() === course
@@ -139,13 +149,21 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
     // Latest date for this course
     const courseDates = [...new Set(
-      allMarks
+      resolvedMarks
         .filter(r => courseStudents.some(s => s.id === r.student_id))
         .map(r => r.exam_date)
     )].sort().reverse();
     const latestDate = courseDates[0];
 
-    const latestMarks = allMarks.filter(r =>
+    // Max marks for the latest date specifically — a course's schedule (and its total)
+    // can differ from one sitting to the next, so anchor the denominator to that date's
+    // own scheduled subjects rather than a single static course-level number.
+    const latestDateSchedule = courseSchedule.filter(s => s.exam_date === latestDate);
+    const courseMax = latestDateSchedule.length
+      ? latestDateSchedule.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+      : (courseSchedule.length ? courseSchedule.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0) : getCourseMax(course));
+
+    const latestMarks = resolvedMarks.filter(r =>
       r.exam_date === latestDate &&
       courseStudents.some(s => s.id === r.student_id)
     );
@@ -157,9 +175,9 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
     const totals = studentsWithMarks.map(st => {
       const total = subjects.reduce((s, sub) => {
         const m = latestMarks.find(r => r.student_id === st.id && r.subject === sub);
-        return s + (m ? Number(m.marks) || 0 : 0);
+        return s + (m ? Number(m.marks_obtained) || 0 : 0);
       }, 0);
-      return { ...st, total, pct: (total / courseMax) * 100 };
+      return { ...st, total, pct: courseMax ? (total / courseMax) * 100 : 0 };
     });
 
     const avgPct = totals.length ? totals.reduce((s, t) => s + t.pct, 0) / totals.length : 0;
@@ -167,18 +185,22 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
     const passRate = totals.length ? Math.round((passCount / totals.length) * 100) : 0;
     const topper = totals.sort((a, b) => b.total - a.total)[0];
 
-    // Trend: avg pct across all dates
+    // Trend: avg pct across all dates — each date uses its OWN scheduled subjects/max,
+    // since a course's schedule can legitimately differ from one monthly test to the next.
     const trendData = courseDates.slice(0, 6).reverse().map(date => {
-      const dm = allMarks.filter(r =>
+      const dateSchedule = courseSchedule.filter(s => s.exam_date === date);
+      const dateSubjects = [...new Set(dateSchedule.length ? dateSchedule.map(s => s.subject) : subjects)];
+      const dateMax = dateSchedule.length ? dateSchedule.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0) : courseMax;
+      const dm = resolvedMarks.filter(r =>
         r.exam_date === date && courseStudents.some(s => s.id === r.student_id)
       );
       const stTotals = courseStudents.map(st => {
-        return subjects.reduce((s, sub) => {
+        return dateSubjects.reduce((s, sub) => {
           const m = dm.find(r => r.student_id === st.id && r.subject === sub);
-          return s + (m ? Number(m.marks) || 0 : 0);
+          return s + (m ? Number(m.marks_obtained) || 0 : 0);
         }, 0);
       }).filter(t => t > 0);
-      return stTotals.length ? (stTotals.reduce((a, b) => a + b, 0) / stTotals.length / courseMax) * 100 : 0;
+      return stTotals.length && dateMax ? (stTotals.reduce((a, b) => a + b, 0) / stTotals.length / dateMax) * 100 : 0;
     });
 
     return {
@@ -214,22 +236,23 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
   // ── Grade distribution across all ─────────────────────────────────────────
   const gradeCounts = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C": 0, "D": 0, "F": 0 };
   courseStats.forEach(c => {
-    const subjects = courseSubjects[c.course] || [];
+    const courseScheduleLocal = scheduleForType.filter(s => (s.course || "").toUpperCase() === c.course.toUpperCase() && s.exam_date === c.latestDate);
+    const subjects = [...new Set(courseScheduleLocal.length ? courseScheduleLocal.map(s => s.subject) : (courseSubjects[c.course] || []))];
     const courseStudentsLocal = students.filter(s =>
       (s.class_name || "").toUpperCase() === c.course ||
       (s.course || "").toUpperCase() === c.course
     );
-    const latestMarksLocal = allMarks.filter(r =>
+    const latestMarksLocal = resolvedMarks.filter(r =>
       r.exam_date === c.latestDate &&
       courseStudentsLocal.some(s => s.id === r.student_id)
     );
     courseStudentsLocal.forEach(st => {
       const total = subjects.reduce((s, sub) => {
         const m = latestMarksLocal.find(r => r.student_id === st.id && r.subject === sub);
-        return s + (m ? Number(m.marks) || 0 : 0);
+        return s + (m ? Number(m.marks_obtained) || 0 : 0);
       }, 0);
       if (total > 0) {
-        const pct = (total / c.courseMax) * 100;
+        const pct = c.courseMax ? (total / c.courseMax) * 100 : 0;
         const g = getGrade(pct);
         gradeCounts[g.label] = (gradeCounts[g.label] || 0) + 1;
       }
@@ -276,6 +299,12 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
         {/* Left: Course performance */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {!loading && courseStats.some(c => !scheduleForType.some(s => (s.course || "").toUpperCase() === c.course.toUpperCase())) && (
+            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "10px 16px", fontSize: 12, color: "#991B1B", lineHeight: 1.5 }}>
+              ⚠️ Some courses have no exam scheduled under "<b>{examName}</b>" — their totals/max marks fall back to the static Course Subjects config, which may not match actual entries. Check <b>Exams → Schedule</b>.
+            </div>
+          )}
 
           {/* Course bars */}
           <div style={{ background: "white", borderRadius: 14, padding: "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)" }}>

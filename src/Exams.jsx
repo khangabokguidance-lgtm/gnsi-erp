@@ -1357,7 +1357,7 @@ for (const st of courseStudents) {
                 <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: matchType === "none" ? "#FFFBEB" : "#F9FAFB", border: `1px solid ${matchType === "none" ? "#FDE68A" : "#E5E7EB"}`, borderRadius: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
-                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>/{getSubjectMax(detCourse, sub)} marks</div>
+                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>/{importInfo?.maxMarksBySubject?.[sub] ?? getSubjectMax(detCourse, sub)} marks</div>
                   </div>
                   <ColumnMatchBadge matchType={matchType} confidence={confidence} />
                   <select
@@ -1582,6 +1582,9 @@ for (const st of courseStudents) {
             else if (r.total !== _pt) { _cr++; _pt = r.total; }
             r.rank = _cr;
           });
+          const previewCourseMax = importInfo?.maxMarksBySubject
+            ? previewSubjects.reduce((s, sub) => s + (Number(importInfo.maxMarksBySubject[sub]) || 0), 0) || getCourseMax(detCourse)
+            : getCourseMax(detCourse);
           const medals = ["🥇", "🥈", "🥉"];
           return (
             <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
@@ -1598,7 +1601,7 @@ for (const st of courseStudents) {
                 </thead>
                 <tbody>
                   {rankedImportRows.map(({ student: st, subMarks, matchType, confidence, total, rank }, i) => {
-                    const pct = calcPct(total, detCourse);
+                    const pct = previewCourseMax ? (total / previewCourseMax) * 100 : 0;
                     return (
                       <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
                         <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 800, color: rank <= 3 ? "#D97706" : "#9CA3AF", fontSize: rank <= 3 ? 14 : 12 }}>
@@ -1828,17 +1831,19 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
-  const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
   const [datesLoaded, setDatesLoaded] = useState(false); // distinguishes "still checking" from "confirmed zero"
   const [loading, setLoading] = useState(false);
+  // ── Real exam config, sourced live from exam_schedule for this exact course +
+  // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config, which can
+  // drift out of sync with whatever was actually scheduled and marked.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]); // [{ subject, total_marks }]
 
   useEffect(() => {
     if (!examType) return;
@@ -1849,6 +1854,20 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
       setDatesLoaded(true);
     });
   }, [examType]);
+
+  useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  const subjects = scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []);
+  const subjectMaxMap = {};
+  scheduledSubjects.forEach(s => { subjectMaxMap[s.subject] = s.total_marks; });
+  const courseMax = scheduledSubjects.length
+    ? scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(course);
 
   useEffect(() => {
     if (!examType || !examDate) return;
@@ -1898,6 +1917,11 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
           check <b>Setup → Exam Types</b> for duplicates, or confirm the Exam Type used in Mark Entry matches this exact one.
         </div>
       )}
+      {!scheduledSubjects.length && examType && course && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "#991B1B", lineHeight: 1.6 }}>
+          ⚠️ No exam is scheduled for <b>{course}</b> under "<b>{examName}</b>" — subjects and max marks below are falling back to the static Course Subjects config, which may not match what was actually entered. Set up the schedule in <b>Exams → Schedule</b> for accurate totals.
+        </div>
+      )}
       {loading ? <Spinner /> : (
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
@@ -1905,7 +1929,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
               <th style={{ padding: "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 12, position: isMobile ? "sticky" : "static", left: 0, background: "#1a3c2e", zIndex: 2 }}>Student</th>
               {subjects.map(s => (
                 <th key={s} style={{ padding: "10px 6px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 10, whiteSpace: "nowrap" }}>
-                  {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{getSubjectMax(course, s)}</span>
+                  {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{subjectMaxMap[s] || 100}</span>
                 </th>
               ))}
               <th style={{ padding: "10px 8px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 11 }}>Total</th>
@@ -1915,7 +1939,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
             <tbody>
               {courseStudents.map((st, i) => {
                 const total = getTotal(st.id);
-                const pct = calcPct(total, course);
+                const pct = courseMax ? (total / courseMax) * 100 : 0;
                 const g = getGrade(pct);
                 return (
                   <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
@@ -1923,7 +1947,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
                       {st.name}<div style={{ fontSize: 10, color: "#9CA3AF" }}>GCC {st.gcc_no}</div>
                     </td>
                     {subjects.map(sub => <td key={sub} style={{ padding: "8px 6px", textAlign: "center", fontSize: 12 }}>{marks[`${st.id}-${sub}`] ?? <span style={{ color: "#CBD5E1" }}>--</span>}</td>)}
-                    <td style={{ padding: "8px 8px", textAlign: "center", fontWeight: 800 }}>{total}</td>
+                    <td style={{ padding: "8px 8px", textAlign: "center", fontWeight: 800 }}>{total}<span style={{ fontSize: 10, color: "#9CA3AF" }}>/{courseMax}</span></td>
                     <td style={{ padding: "8px 8px", textAlign: "center", color: g.color, fontWeight: 700 }}>{pct.toFixed(0)}%</td>
                     <td style={{ padding: "8px 8px", textAlign: "center" }}><Badge label={g.label} color={g.color} bg={g.bg} /></td>
                   </tr>
@@ -1942,17 +1966,18 @@ function Analytics({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
-  const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
   const gradeRef = useRef(null); const subjectRef = useRef(null); const passRef = useRef(null);
   const chartsRef = useRef([]);
+  // ── Real exam config, sourced live from exam_schedule for this exact course +
+  // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]); // [{ subject, total_marks }]
 
   useEffect(() => {
     if (!examType) return;
@@ -1961,6 +1986,20 @@ function Analytics({ courseSubjects, examTypes, students }) {
       setDates(unique); if (unique.length) setExamDate(unique[0]);
     });
   }, [examType]);
+
+  useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  const subjects = scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []);
+  const subjectMaxMap = {};
+  scheduledSubjects.forEach(s => { subjectMaxMap[s.subject] = s.total_marks; });
+  const courseMax = scheduledSubjects.length
+    ? scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(course);
 
   useEffect(() => {
     if (!examType || !examDate) return;
@@ -1985,6 +2024,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
   }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
+  const getPct = total => courseMax ? (total / courseMax) * 100 : 0;
   const n = courseStudents.length || 1;
 
   const gradeCounts = {}; GRADE_PRESETS.forEach(g => { gradeCounts[g.label] = 0; });
@@ -1992,19 +2032,19 @@ function Analytics({ courseSubjects, examTypes, students }) {
   subjects.forEach(s => { subjectAvgPct[s] = 0; subjectPass[s] = 0; });
 
   courseStudents.forEach(st => {
-    const pct = calcPct(getTotal(st.id), course);
+    const pct = getPct(getTotal(st.id));
     const g = getGrade(pct); gradeCounts[g.label] = (gradeCounts[g.label] || 0) + 1;
     subjects.forEach(sub => {
       const m = Number(marks[`${st.id}-${sub}`]) || 0;
-      const subMax = getSubjectMax(course, sub);
+      const subMax = subjectMaxMap[sub] || 100;
       subjectAvgPct[sub] += (m / subMax) * 100;
       if ((m / subMax) * 100 >= 40) subjectPass[sub]++;
     });
   });
   subjects.forEach(s => { subjectAvgPct[s] = Math.round(subjectAvgPct[s] / n * 10) / 10; });
 
-  const passed = courseStudents.filter(st => calcPct(getTotal(st.id), course) >= 40).length;
-  const classAvg = (courseStudents.reduce((s, st) => s + calcPct(getTotal(st.id), course), 0) / n).toFixed(1);
+  const passed = courseStudents.filter(st => getPct(getTotal(st.id)) >= 40).length;
+  const classAvg = (courseStudents.reduce((s, st) => s + getPct(getTotal(st.id)), 0) / n).toFixed(1);
   const highest = courseStudents.length ? Math.max(...courseStudents.map(st => getTotal(st.id))) : 0;
   const lowest  = courseStudents.length ? Math.min(...courseStudents.map(st => getTotal(st.id))) : 0;
 
@@ -2083,15 +2123,16 @@ function Rankings({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
-  const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
+  // ── Real exam config, sourced live from exam_schedule for this exact course +
+  // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]);
 
   useEffect(() => {
     if (!examType) return;
@@ -2100,6 +2141,18 @@ function Rankings({ courseSubjects, examTypes, students }) {
       setDates(unique); if (unique.length) setExamDate(unique[0]);
     });
   }, [examType]);
+
+  useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  const subjects = scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []);
+  const courseMax = scheduledSubjects.length
+    ? scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(course);
 
   useEffect(() => {
     if (!examType || !examDate) return;
@@ -2124,7 +2177,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
   }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
-  const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: calcPct(getTotal(st.id), course) })).sort((a, b) => b.total - a.total);
+  const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: courseMax ? (getTotal(st.id) / courseMax) * 100 : 0 })).sort((a, b) => b.total - a.total);
   let cr = 1, pt = null;
   const rankedWithRanks = ranked.map((st, i) => { if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; } return { ...st, rank: cr }; });
   const medals = ["🥇", "🥈", "🥉"];
@@ -2144,6 +2197,12 @@ function Rankings({ courseSubjects, examTypes, students }) {
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>{dates.map(d => <option key={d} value={d}>{d}</option>)}</select>
         </div>
       </div>
+
+      {!scheduledSubjects.length && examType && course && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "#991B1B", lineHeight: 1.6 }}>
+          ⚠️ No exam is scheduled for <b>{course}</b> under this exam type — totals/max marks are falling back to the static Course Subjects config. Set up the schedule in <b>Exams → Schedule</b> for accurate rankings.
+        </div>
+      )}
 
       {/* Podium — 1 col on mobile, 3 col on desktop */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: isMobile ? 10 : 14, marginBottom: 20 }}>
@@ -2199,11 +2258,9 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
-  const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [search, setSearch] = useState("");
@@ -2212,6 +2269,10 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
   const [loading, setLoading] = useState(false);
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
+  // ── Real exam config per exam_id, sourced live from exam_schedule for this course +
+  // exam type — covers ALL dates under this exam type, since the schedule (and its max
+  // marks) can legitimately differ from one monthly test date to the next.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]); // [{ id, subject, total_marks, exam_date }]
 
   useEffect(() => {
     if (!examType) return;
@@ -2222,12 +2283,37 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
   }, [examType]);
 
   useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks, exam_date").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  useEffect(() => {
     if (!selectedStudent || !examType || !dates.length) return;
     setLoading(true);
-    supabase.from("exam_marks").select("*").eq("student_id", selectedStudent.id).eq("exam_type_id", examType).then(({ data }) => {
+    supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained, exam_date").eq("student_id", selectedStudent.id).eq("exam_type_id", examType).then(({ data }) => {
       setAllMarks(data || []); setLoading(false);
     });
   }, [selectedStudent, examType, dates]);
+
+  // exam_id -> subject map, resolved from the live schedule rather than the raw
+  // `subject` text column on exam_marks (which can be null/stale on older rows).
+  const examIdToSubject = {};
+  scheduledSubjects.forEach(s => { examIdToSubject[s.id] = s.subject; });
+  const resolvedMarks = allMarks.map(r => ({ ...r, subject: examIdToSubject[r.exam_id] || r.subject }));
+
+  // Subjects for the chart legend: union across all scheduled dates for this exam type,
+  // since a months-long trend can span schedule revisions.
+  const subjects = [...new Set(scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []))];
+
+  // Per-date max marks: each date's total is the sum of that date's own scheduled subjects,
+  // not a single static course-level max — a given monthly test's config can differ from
+  // another month's, and forcing them all to the same denominator silently distorts %.
+  const maxByDate = {};
+  scheduledSubjects.forEach(s => { maxByDate[s.exam_date] = (maxByDate[s.exam_date] || 0) + (Number(s.total_marks) || 0); });
+  const fallbackCourseMax = getCourseMax(course);
+  const courseMax = dates.length && maxByDate[dates[dates.length - 1]] ? maxByDate[dates[dates.length - 1]] : fallbackCourseMax;
 
   useEffect(() => {
     if (!chartRef.current || !selectedStudent || !dates.length) return;
@@ -2237,12 +2323,12 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
       const colors = ["#2A5C45","#185FA5","#7c3aed","#d97706","#0891b2","#e11d48","#84cc16"];
       const datasets = subjects.map((sub, i) => ({
         label: sub,
-        data: dates.map(d => { const m = allMarks.find(r => r.subject === sub && r.exam_date === d); return m ? m.marks : null; }),
+        data: dates.map(d => { const m = resolvedMarks.find(r => r.subject === sub && r.exam_date === d); return m ? m.marks_obtained : null; }),
         borderColor: colors[i % colors.length], backgroundColor: colors[i % colors.length] + "22",
         tension: 0.4, fill: false, pointRadius: 4, pointHoverRadius: 6, spanGaps: true,
       }));
       const totalsData = dates.map(d => {
-        const dm = allMarks.filter(r => r.exam_date === d);
+        const dm = resolvedMarks.filter(r => r.exam_date === d);
         return dm.length ? dm.reduce((s, r) => s + (r.marks_obtained || 0), 0) : null;
       });
       datasets.push({ label: "Total", data: totalsData, borderColor: "#1a3c2e", backgroundColor: "#1a3c2e22", tension: 0.4, fill: true, borderWidth: 3, pointRadius: 5, pointHoverRadius: 7, spanGaps: true, yAxisID: "y2" });
@@ -2254,14 +2340,15 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
       });
     });
     return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} } };
-  }, [allMarks, dates, selectedStudent]);
+  }, [allMarks, dates, selectedStudent, scheduledSubjects]);
 
   const filteredStudents = courseStudents.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search));
   const dateSummary = dates.map(d => {
-    const dm = allMarks.filter(r => r.exam_date === d);
+    const dm = resolvedMarks.filter(r => r.exam_date === d);
     const total = dm.reduce((s, r) => s + (r.marks_obtained || 0), 0);
-    const pct = dm.length ? calcPct(total, course) : null;
-    return { date: d, total, pct, grade: pct !== null ? getGrade(pct) : null };
+    const dMax = maxByDate[d] || fallbackCourseMax;
+    const pct = dm.length ? (dMax ? (total / dMax) * 100 : 0) : null;
+    return { date: d, total, max: dMax, pct, grade: pct !== null ? getGrade(pct) : null };
   });
 
   return (
@@ -2337,8 +2424,8 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
                         {dateSummary.map((d, i) => (
                           <tr key={d.date} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
                             <td style={{ padding: "8px 12px", fontWeight: 600, fontSize: 12 }}>{d.date}</td>
-                            {subjects.map(sub => { const m = allMarks.find(r => r.subject === sub && r.exam_date === d.date); return <td key={sub} style={{ padding: "8px 6px", textAlign: "center", color: m ? "#1e293b" : "#CBD5E1", fontSize: 12 }}>{m ? m.marks : "--"}</td>; })}
-                            <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800 }}>{d.pct !== null ? `${d.total}/${courseMax}` : "--"}</td>
+                            {subjects.map(sub => { const m = resolvedMarks.find(r => r.subject === sub && r.exam_date === d.date); return <td key={sub} style={{ padding: "8px 6px", textAlign: "center", color: m ? "#1e293b" : "#CBD5E1", fontSize: 12 }}>{m ? m.marks_obtained : "--"}</td>; })}
+                            <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800 }}>{d.pct !== null ? `${d.total}/${d.max}` : "--"}</td>
                             <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, color: d.grade?.color || "#94A3B8" }}>{d.pct !== null ? `${d.pct.toFixed(1)}%` : "--"}</td>
                             <td style={{ padding: "8px 10px", textAlign: "center" }}>{d.grade ? <Badge label={d.grade.label} color={d.grade.color} bg={d.grade.bg} /> : "--"}</td>
                           </tr>
@@ -2361,11 +2448,9 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
-  const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [dates, setDates] = useState([]);
@@ -2375,6 +2460,9 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
   const COMPARE_COLORS = ["#2A5C45","#185FA5","#7c3aed","#d97706"];
+  // ── Real exam config, sourced live from exam_schedule for this exact course +
+  // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]);
 
   useEffect(() => {
     if (!examType) return;
@@ -2383,6 +2471,20 @@ function CompareTab({ courseSubjects, examTypes, students }) {
       setDates(unique); if (unique.length) setExamDate(unique[0]);
     });
   }, [examType]);
+
+  useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  const subjects = scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []);
+  const subjectMaxMap = {};
+  scheduledSubjects.forEach(s => { subjectMaxMap[s.subject] = s.total_marks; });
+  const courseMax = scheduledSubjects.length
+    ? scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(course);
 
   useEffect(() => {
     if (!examType || !examDate) return;
@@ -2407,6 +2509,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
+  const getPct = total => courseMax ? (total / courseMax) * 100 : 0;
   const toggleStudent = st => {
     if (selected.find(s => s.id === st.id)) setSelected(p => p.filter(s => s.id !== st.id));
     else if (selected.length < 4) setSelected(p => [...p, st]);
@@ -2454,6 +2557,12 @@ function CompareTab({ courseSubjects, examTypes, students }) {
         <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 10, textAlign: "center" }}>Tap students below to select 2–4 for comparison</div>
       )}
 
+      {!scheduledSubjects.length && examType && course && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "#991B1B", lineHeight: 1.6 }}>
+          ⚠️ No exam is scheduled for <b>{course}</b> under this exam type — totals/max marks are falling back to the static Course Subjects config.
+        </div>
+      )}
+
       {/* Layout: stacked on mobile */}
       <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "260px 1fr", gap: isMobile ? 12 : 20 }}>
         {/* Student list */}
@@ -2486,7 +2595,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
               {/* Compare cards */}
               <div style={{ display: "grid", gridTemplateColumns: compareCols, gap: isMobile ? 8 : 12, marginBottom: 14 }}>
                 {selected.map((st, i) => {
-                  const total = getTotal(st.id); const pct = calcPct(total, course); const g = getGrade(pct);
+                  const total = getTotal(st.id); const pct = getPct(total); const g = getGrade(pct);
                   return (
                     <div key={st.id} style={{ background: "white", borderRadius: 10, padding: isMobile ? "12px 10px" : "16px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderTop: `4px solid ${COMPARE_COLORS[i]}`, position: "relative" }}>
                       <div style={{ position: "absolute", top: 8, right: 10, width: 20, height: 20, borderRadius: "50%", background: COMPARE_COLORS[i], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "white" }}>{i + 1}</div>
@@ -2523,7 +2632,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
                         return (
                           <tr key={sub} style={{ background: ri % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
                             <td style={{ padding: "8px 12px", fontWeight: 600, fontSize: isMobile ? 11 : 13 }}>{sub}</td>
-                            <td style={{ padding: "8px 8px", textAlign: "center", color: "#94A3B8", fontSize: 11 }}>{getSubjectMax(course, sub)}</td>
+                            <td style={{ padding: "8px 8px", textAlign: "center", color: "#94A3B8", fontSize: 11 }}>{subjectMaxMap[sub] || 100}</td>
                             {selected.map((st, i) => { const m = Number(marks[`${st.id}-${sub}`]) || 0; const isTop = m === maxMark && m > 0;
                               return <td key={st.id} style={{ padding: "8px 10px", textAlign: "center", fontWeight: isTop ? 800 : 500, color: isTop ? COMPARE_COLORS[i] : "#374151" }}>{m}{isTop ? " 🏆" : ""}</td>; })}
                           </tr>
@@ -2532,7 +2641,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
                       <tr style={{ background: "#F0FDF4", borderTop: "2px solid #BBF7D0" }}>
                         <td style={{ padding: "10px 12px", fontWeight: 800, color: "#1a3c2e", fontSize: isMobile ? 12 : 13 }}>TOTAL</td>
                         <td style={{ padding: "10px 8px", textAlign: "center", fontWeight: 700, color: "#94A3B8" }}>{courseMax}</td>
-                        {selected.map((st, i) => { const total = getTotal(st.id); const pct = calcPct(total, course); const maxTotal = Math.max(...selected.map(s => getTotal(s.id))); const isTop = total === maxTotal;
+                        {selected.map((st, i) => { const total = getTotal(st.id); const pct = getPct(total); const maxTotal = Math.max(...selected.map(s => getTotal(s.id))); const isTop = total === maxTotal;
                           return <td key={st.id} style={{ padding: "10px 10px", textAlign: "center", fontWeight: 800, color: isTop ? COMPARE_COLORS[i] : "#374151", fontSize: isMobile ? 11 : 13 }}>{total} <span style={{ fontSize: 10, color: "#64748b" }}>({pct.toFixed(0)}%)</span>{isTop ? " 🏆" : ""}</td>; })}
                       </tr>
                     </tbody>
@@ -3053,16 +3162,17 @@ function MeritList({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
-  const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
   const [rankFilter, setRankFilter] = useState("");
+  // ── Real exam config, sourced live from exam_schedule for this exact course +
+  // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]);
 
   useEffect(() => {
     if (!examType) return;
@@ -3071,6 +3181,18 @@ function MeritList({ courseSubjects, examTypes, students }) {
       setDates(unique); if (unique.length) setExamDate(unique[0]);
     });
   }, [examType]);
+
+  useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  const subjects = scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []);
+  const courseMax = scheduledSubjects.length
+    ? scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(course);
 
   useEffect(() => {
     if (!examType || !examDate) return;
@@ -3095,7 +3217,7 @@ function MeritList({ courseSubjects, examTypes, students }) {
   }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
-  const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: calcPct(getTotal(st.id), course) })).sort((a, b) => b.total - a.total);
+  const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: courseMax ? (getTotal(st.id) / courseMax) * 100 : 0 })).sort((a, b) => b.total - a.total);
   let cr = 1, pt = null;
   const rankedWithRanks = ranked.map((st, i) => { if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; } return { ...st, rank: cr }; });
   const filtered = rankedWithRanks.filter(st => !rankFilter || st.rank <= parseInt(rankFilter));
@@ -4195,11 +4317,10 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 `;
 
 // ─── buildReportCardHTML ──────────────────────────────────────────────────────
-function buildReportCardHTML(st, subjects, marksMap, course, allStudents, examName, examDate, institute, remarkText) {
-  const courseMax = getCourseMax(course);
+function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, course, allStudents, examName, examDate, institute, remarkText) {
   const getTotal = sid => subjects.reduce((s,sub)=>s+(Number(marksMap[`${sid}-${sub}`])||0),0);
   const total = getTotal(st.id);
-  const pct = calcPct(total, course);
+  const pct = courseMax ? (total / courseMax) * 100 : 0;
   const grade = getGrade(pct);
   const passed = pct >= 40;
   const gradeColors = {"A+":"#0F6E56","A":"#1B4F8A","B+":"#534AB7","B":"#2563eb","C":"#BA7517","D":"#ea580c","F":"#C0392B"};
@@ -4215,7 +4336,7 @@ function buildReportCardHTML(st, subjects, marksMap, course, allStudents, examNa
 
   const subjectRows = subjects.map((s,idx)=>{
     const m=Number(marksMap[`${st.id}-${s}`])||0;
-    const subMax=getSubjectMax(course,s);
+    const subMax=(subjectMaxMap && subjectMaxMap[s]) || 100;
     const subPct=Math.round((m/subMax)*100);
     const subPassed=subPct>=40;
     const barColor=subPct>=80?"#0F6E56":subPct>=60?"#1B4F8A":subPct>=40?"#BA7517":"#C0392B";
@@ -4300,12 +4421,11 @@ function buildReportCardHTML(st, subjects, marksMap, course, allStudents, examNa
 }
 
 // ─── REPORT CARD ITEM ─────────────────────────────────────────────────────────
-function ReportCardItem({ st, subjects, marks, examType, examDate, examName, institute, allStudents, course }) {
+function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examType, examDate, examName, institute, allStudents, course }) {
   const { remark, setRemark, save: saveRemark, saving: savingRemark, saved: savedRemark } = useRemarks(st.id, examType, examDate);
-  const courseMax = getCourseMax(course);
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const total = getTotal(st.id);
-  const pct = calcPct(total, course);
+  const pct = courseMax ? (total / courseMax) * 100 : 0;
   const grade = getGrade(pct);
 
   const printReport = () => {
@@ -4315,7 +4435,7 @@ function ReportCardItem({ st, subjects, marks, examType, examDate, examName, ins
       if (i === 0) { rank = 1; prev = sortedStudents[i].total; } else if (sortedStudents[i].total !== prev) { rank++; prev = sortedStudents[i].total; }
       if (sortedStudents[i].id === st.id) break;
     }
-    const html = buildReportCardHTML(st, subjects, marks, course, allStudents, examName, examDate, institute, remark);
+    const html = buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marks, course, allStudents, examName, examDate, institute, remark);
     const w = window.open("", "_blank");
     w.document.write(`<!DOCTYPE html><html><head>
     <title>Report Card — ${st.name}</title>
@@ -4367,7 +4487,6 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
@@ -4376,6 +4495,11 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
   const [datesLoaded, setDatesLoaded] = useState(false); // distinguishes "still checking" from "confirmed zero"
+  // ── Real exam config, sourced live from exam_schedule for this exact course + exam type —
+  // NOT the static courseSubjects/COURSE_MAX_MARKS config, which can drift out of sync with
+  // whatever was actually scheduled and marked. This is what makes Report Cards "integrate
+  // with exam config": subject list + max marks always mirror Mark Entry / Schedule exactly.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]); // [{ subject, total_marks }]
 
   useEffect(() => {
     if (!examType) return;
@@ -4386,6 +4510,20 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
       setDatesLoaded(true);
     });
   }, [examType]);
+
+  useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  const subjects = scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []);
+  const subjectMaxMap = {};
+  scheduledSubjects.forEach(s => { subjectMaxMap[s.subject] = s.total_marks; });
+  const courseMax = scheduledSubjects.length
+    ? scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(course);
 
   useEffect(() => {
     if (!examType || !examDate) return;
@@ -4434,9 +4572,14 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
           check <b>Setup → Exam Types</b> for duplicates (it will flag them and show which copy actually has marks), or confirm the Exam Type used in Mark Entry matches this exact one.
         </div>
       )}
+      {!scheduledSubjects.length && examType && course && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "#991B1B", lineHeight: 1.6 }}>
+          ⚠️ No exam is scheduled for <b>{course}</b> under "<b>{examName}</b>" — totals and max marks below are falling back to the static Course Subjects config, which may not match what was actually entered. Set up the schedule in <b>Exams → Schedule</b> for accurate report cards.
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
         {courseStudents.map(st => (
-          <ReportCardItem key={st.id} st={st} subjects={subjects} marks={marks} examType={examType} examDate={examDate} examName={examName} institute={institute} allStudents={courseStudents} course={course} />
+          <ReportCardItem key={st.id} st={st} subjects={subjects} subjectMaxMap={subjectMaxMap} courseMax={courseMax} marks={marks} examType={examType} examDate={examDate} examName={examName} institute={institute} allStudents={courseStudents} course={course} />
         ))}
       </div>
     </div>
@@ -4470,7 +4613,17 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const [acSortBy, setAcSortBy]       = useState("name");
   const [acProgress, setAcProgress]   = useState(null);
 
-  const rcSubjects = courseSubjects[rcCourse] || [];
+  // ── Real exam config for bulk report cards, sourced from the schedule prop
+  // (already fetched live by the parent) instead of the static courseSubjects /
+  // COURSE_MAX_MARKS config — keeps bulk-printed cards in sync with what was
+  // actually scheduled and marked, same as the single Report Cards tab.
+  const rcScheduledRows = schedule.filter(s => s.exam_type_id === rcExamType && (!s.course || s.course.toUpperCase() === rcCourse.toUpperCase()));
+  const rcSubjects = rcScheduledRows.length ? rcScheduledRows.map(s => s.subject) : (courseSubjects[rcCourse] || []);
+  const rcSubjectMaxMap = {};
+  rcScheduledRows.forEach(s => { rcSubjectMaxMap[s.subject] = s.total_marks; });
+  const rcCourseMax = rcScheduledRows.length
+    ? rcScheduledRows.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(rcCourse);
   const rcStudents = students.filter(s => (s.class_name||"").toUpperCase()===rcCourse||(s.course||"").toUpperCase()===rcCourse);
   const acStudents = students.filter(s => (s.class_name||"").toUpperCase()===acCourse||(s.course||"").toUpperCase()===acCourse);
   const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course.toUpperCase() === acCourse.toUpperCase()));
@@ -4515,7 +4668,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   }, [rcExamType, rcExamDate, rcCourse]);
 
   const getTotal = (sid) => rcSubjects.reduce((s,sub)=>s+(Number(rcMarks[`${sid}-${sub}`])||0),0);
-  const getPct   = (sid) => calcPct(getTotal(sid), rcCourse);
+  const getPct   = (sid) => rcCourseMax ? (getTotal(sid) / rcCourseMax) * 100 : 0;
 
   const sortedRcStudents = [...rcStudents].sort((a,b)=>{
     if (rcSortBy==="rank") return getTotal(b.id)-getTotal(a.id);
@@ -4548,7 +4701,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     for (let i = 0; i < filteredRcStudents.length; i++) {
       const st = filteredRcStudents[i];
       const remark = rcIncludeRemarks ? (rcRemarks[st.id] || "") : "";
-      cards.push(buildReportCardHTML(st, rcSubjects, rcMarks, rcCourse, rcStudents, examTypes.find(e=>e.id===rcExamType)?.name||"Examination", rcExamDate, institute, remark));
+      cards.push(buildReportCardHTML(st, rcSubjects, rcSubjectMaxMap, rcCourseMax, rcMarks, rcCourse, rcStudents, examTypes.find(e=>e.id===rcExamType)?.name||"Examination", rcExamDate, institute, remark));
       setRcProgress({ current: i+1, total: filteredRcStudents.length });
       await new Promise(r => setTimeout(r, 0));
     }
@@ -4708,7 +4861,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
                         <td style={{ padding:"8px 10px", textAlign:"center", color:"#9CA3AF", fontSize:11 }}>{i+1}</td>
                         <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:"#1a3c2e" }}>{st.gcc_no}</td>
                         <td style={{ padding:"8px 10px", fontWeight:600 }}>{st.name}</td>
-                        <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700 }}>{total}/{getCourseMax(rcCourse)}</td>
+                        <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700 }}>{total}/{rcCourseMax}</td>
                         <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:g.color }}>{pct.toFixed(1)}%</td>
                         <td style={{ padding:"8px 10px", textAlign:"center" }}><Badge label={g.label} color={g.color} bg={g.bg} /></td>
                       </tr>;

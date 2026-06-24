@@ -393,13 +393,19 @@ export default function ToppersCertificate({ courseSubjects, examTypes, students
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(null); // null | "all" | studentId
   const [customTitle, setCustomTitle] = useState("");
+  // ── Real exam config, sourced live from exam_schedule for this exact course +
+  // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config, which can
+  // drift out of sync with whatever was actually scheduled and marked.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]); // [{ id, subject, total_marks }]
 
-  const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course ||
     (s.course || "").toUpperCase() === course
   );
-  const courseMax = getCourseMax(course);
+  const subjects = scheduledSubjects.length ? scheduledSubjects.map(s => s.subject) : (courseSubjects[course] || []);
+  const courseMax = scheduledSubjects.length
+    ? scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
+    : getCourseMax(course);
   const examName = examTypes.find(e => e.id === examType)?.name || "Examination";
 
   useEffect(() => {
@@ -412,18 +418,35 @@ export default function ToppersCertificate({ courseSubjects, examTypes, students
   }, [examType]);
 
   useEffect(() => {
+    if (!examType || !course) { setScheduledSubjects([]); return; }
+    supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
+      setScheduledSubjects(data || []);
+    });
+  }, [examType, course]);
+
+  useEffect(() => {
     if (!examType || !examDate || !course) return;
     setLoading(true);
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*")
-      .eq("exam_type_id", examType).eq("exam_date", examDate)
-      .in("student_id", ids.length ? ids : ["__none__"])
-      .then(({ data }) => {
-        const map = {};
-        (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; });
-        setMarks(map);
-        setLoading(false);
+    // Resolve via exam_schedule (exam_id -> subject) and the correct marks_obtained
+    // column — the previous version read a `marks` column that doesn't exist on
+    // exam_marks, which meant every total here silently came out as zero.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained")
+        .eq("exam_type_id", examType).eq("exam_date", examDate)
+        .in("student_id", ids.length ? ids : ["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data || []).forEach(r => {
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
       });
+      setMarks(map);
+      setLoading(false);
+    });
   }, [examType, examDate, course]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
@@ -530,6 +553,12 @@ export default function ToppersCertificate({ courseSubjects, examTypes, students
             placeholder={examName} style={css.input} />
         </div>
       </div>
+
+      {!scheduledSubjects.length && examType && course && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: 12.5, color: "#991B1B", lineHeight: 1.6 }}>
+          ⚠️ No exam is scheduled for <b>{course}</b> under "<b>{examName}</b>" — totals/max marks are falling back to the static Course Subjects config. Set up the schedule in <b>Exams → Schedule</b> for accurate certificates.
+        </div>
+      )}
 
       {/* Print all button */}
       {topThree.length > 0 && (
