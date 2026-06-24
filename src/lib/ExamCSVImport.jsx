@@ -211,29 +211,6 @@ function ConfBar({ score }) {
   );
 }
 
-/* ─── Fuzzy subject matcher for handling spacing/punctuation variations ───── */
-function findBestScheduleSubject(configSubject, scheduleSubjects) {
-  const normalize = (s) => String(s).toLowerCase()
-    .replace(/\s*[-–—]\s*/g, ' ')  // "Mathematics -I" → "mathematics i"
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  const configNorm = normalize(configSubject);
-  
-  // Exact match first
-  for (const sched of scheduleSubjects) {
-    if (normalize(sched) === configNorm) return sched;
-  }
-  
-  // Fuzzy match: check if normalized forms are very similar (substring)
-  for (const sched of scheduleSubjects) {
-    const schedNorm = normalize(sched);
-    if (configNorm.includes(schedNorm) || schedNorm.includes(configNorm)) return sched;
-  }
-  
-  return null; // No match found
-}
-
 /* ─── MAIN COMPONENT ─────────────────────────────────────────────────────── */
 export default function ExamCSVImport({
   courseSubjects = {},
@@ -268,15 +245,40 @@ export default function ExamCSVImport({
 
   useEffect(() => { setRollbackSnap(loadRollbackSnapshot()); }, []);
 
-  const buildState = useCallback((name, rows, overrideDate, overrideCourse) => {
+  const buildState = useCallback(async (name, rows, overrideDate, overrideCourse) => {
     if (!rows || rows.length < 2) return null;
     const headers  = rows[0].map(h => String(h).trim());
     const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim()));
     const fromFile = detectFromFilename(name, courses);
     const det      = detectCourse(headers, dataRows, courseSubjects);
     const course   = overrideCourse || fromFile.detectedCourse || det?.course || (courses[0] || "");
-    const autoDate = overrideDate   || fromFile.detectedDate   || null;
-    const subs     = courseSubjects[course] || [];
+    const autoDate = overrideDate   || fromFile.detectedDate   || localExamDate || null;
+
+    // Pull the REAL subject list for this course's scheduled exam (course + examType + date)
+    // instead of the static Course Subjects config. This is what marks actually link to, so
+    // matching CSV headers against it guarantees an exact match — no fuzzy matching, no
+    // "combined vs split subject" mismatches between the config and what was scheduled.
+    let subs = [];
+    let examIdBySubject = {};
+    let maxMarksBySubject = {};
+    let scheduleMissing = false;
+    if (course && localExamTypeId && autoDate) {
+      const { data: schedRows, error: schedErr } = await supabase
+        .from("exam_schedule")
+        .select("id, subject, total_marks")
+        .eq("exam_type_id", localExamTypeId)
+        .eq("exam_date", autoDate)
+        .eq("course", course);
+      if (!schedErr && schedRows?.length) {
+        subs = schedRows.map(s => s.subject);
+        schedRows.forEach(s => { examIdBySubject[s.subject] = s.id; maxMarksBySubject[s.subject] = s.total_marks; });
+      } else {
+        scheduleMissing = true;
+      }
+    } else {
+      scheduleMissing = true;
+    }
+
     const nameCol  = headers.findIndex(h => /name/i.test(h));
     const gccCol   = headers.findIndex(h => /gcc|roll/i.test(h));
     const admCol   = headers.findIndex(h => /adm(ission)?/i.test(h));
@@ -297,8 +299,8 @@ export default function ExamCSVImport({
       const rawAdm  = admCol  >= 0 ? String(row[admCol]  || "").trim() : "";
       return { rawName, rawGcc, rawAdm, row, match: matchStudent(rawName, rawGcc, rawAdm, matchPool) };
     }).filter(r => r.rawName || r.rawGcc);
-    return { headers, dataRows, course, det, fromFile, autoDate, subs, nameCol, gccCol, admCol, crsCol, subjectMappings, stuRows, filename: name };
-  }, [courseSubjects, students, courses]);
+    return { headers, dataRows, course, det, fromFile, autoDate, subs, examIdBySubject, maxMarksBySubject, scheduleMissing, nameCol, gccCol, admCol, crsCol, subjectMappings, stuRows, filename: name };
+  }, [courseSubjects, students, courses, localExamTypeId, localExamDate]);
 
   const processRawFile = useCallback(async (file) => {
     const ext = file.name.split(".").pop().toLowerCase();
@@ -319,7 +321,7 @@ export default function ExamCSVImport({
 
   const handleFiles = useCallback(async (files) => {
     const all = (await Promise.all(files.map(f => processRawFile(f)))).flat();
-    const states = all.map(({ name, rows }) => buildState(name, rows, null, null)).filter(Boolean);
+    const states = (await Promise.all(all.map(({ name, rows }) => buildState(name, rows, null, null)))).filter(Boolean);
     if (!states.length) return;
     setImportState(states[0]);
     setFileQueue(states.slice(1).map(s => ({ label: s.filename, state: s })));
@@ -375,42 +377,22 @@ export default function ExamCSVImport({
   }
 
   async function confirmImport() {
-    const { stuRows, subjectMappings, course } = importState;
+    const { stuRows, subjectMappings, course, examIdBySubject, maxMarksBySubject } = importState;
     const activeMaps    = subjectMappings.map((m, mi) => ({ m, sub: effectiveSub(m, mi) })).filter(x => x.sub);
     const validStudents = stuRows.filter(r => r.match);
     const studentIds    = validStudents.map(r => r.match.student.id);
 
+    if (!examIdBySubject || !Object.keys(examIdBySubject).length) {
+      alert(`No exam schedule was resolved for course="${course}" on ${localExamDate}. Create it in Exams → Schedule first, then re-upload the file.`);
+      return;
+    }
+
     await saveRollbackSnapshot(studentIds, localExamTypeId, localExamDate);
     setRollbackSnap(loadRollbackSnapshot());
 
-    // Fetch exam_schedule to map subjects to exam_ids — filtered by course too, since other
-    // courses' rows for the same exam_type_id/exam_date would otherwise silently collide
-    console.log(`[ExamCSVImport.confirmImport] Looking for exams: examTypeId="${localExamTypeId}", examDate="${localExamDate}", course="${course}"`);
-    const { data: schedules, error: schedError } = await supabase
-      .from("exam_schedule")
-      .select("id, subject, exam_type_id, exam_date, course")
-      .eq("exam_type_id", localExamTypeId)
-      .eq("exam_date", localExamDate)
-      .eq("course", course);
-    
-    console.log(`[ExamCSVImport.confirmImport] Query returned:`, schedules, "error:", schedError);
-    
-    if (schedError || !schedules?.length) {
-      setImporting(false);
-      const msg = `No exams found for examTypeId="${localExamTypeId}", examDate="${localExamDate}", course="${course}". Create an exam schedule first, or check that the date matches exactly.`;
-      console.error(msg);
-      alert(msg);
-      return;
-    }
-    
-    const examIdBySubject = {};
-    const scheduleSubjectsSet = new Set();
-    schedules.forEach(s => { 
-      examIdBySubject[s.subject] = s.id;
-      scheduleSubjectsSet.add(s.subject);
-    });
-    const scheduleSubjects = Array.from(scheduleSubjectsSet);
-
+    // examIdBySubject was resolved against the real exam_schedule when the file was loaded,
+    // so every subject here maps to exactly one exam_id. No fuzzy matching, no risk of two
+    // subjects colliding onto the same exam.
     const rows = [];
     for (const { match, row } of stuRows) {
       if (!match) continue;
@@ -421,37 +403,23 @@ export default function ExamCSVImport({
         const raw      = override !== undefined ? override : (absentSet.has(st.id) ? 0 : row[m.csvIdx]);
         const v        = parseFloat(raw);
         if (!isNaN(v) && raw !== "" && raw !== undefined) {
-          // Try exact match first, then fuzzy match
-          let examId = examIdBySubject[sub];
-          if (!examId) {
-            const bestMatch = findBestScheduleSubject(sub, scheduleSubjects);
-            if (bestMatch) examId = examIdBySubject[bestMatch];
-          }
-          if (!examId) {
-            alert(`Subject "${sub}" not found in exam schedule. Available: ${scheduleSubjects.join(', ')}`);
-            return;
-          }
+          const examId = examIdBySubject[sub];
+          if (!examId) continue; // shouldn't happen — sub is drawn from the same schedule list
           rows.push({
             student_id:   st.id,
             exam_id:      examId,
             marks_obtained: v,
+            max_marks:    maxMarksBySubject?.[sub],
             class_name:   st.class_name,
           });
         }
       }
     }
 
-    // Check for duplicate (student_id, exam_id) pairs within the batch
-    console.log(`[ExamCSVImport.confirmImport] Inserting ${rows.length} rows:`, rows);
-    const seen = new Map();
-    for (const r of rows) {
-      const key = `${r.student_id}-${r.exam_id}`;
-      if (seen.has(key)) {
-        setImporting(false);
-        alert(`Duplicate entry detected: Student ${r.student_id} has marks for exam ${r.exam_id} listed twice in the import. Check your CSV for duplicate student rows or subject columns.`);
-        return;
-      }
-      seen.set(key, r);
+    if (!rows.length) {
+      setStage("done");
+      setDoneLog({ imported: 0, skipped: stuRows.filter(r => !r.match).length, course, filename: importState.filename, studentCount: 0, subjectCount: activeMaps.length, absentCount: absentSet.size, examDate: localExamDate, examTypeId: localExamTypeId, examTypeName: examTypes.find(e => e.id === localExamTypeId)?.name || "" });
+      return;
     }
 
     for (let i = 0; i < rows.length; i += 100) {
@@ -628,10 +596,10 @@ export default function ExamCSVImport({
   );
 
   if (stage !== "mapping" || !importState) return null;
-  const { course, det, fromFile, autoDate, subs, subjectMappings, stuRows, filename } = importState;
+  const { course, det, fromFile, autoDate, subs, subjectMappings, stuRows, filename, scheduleMissing, maxMarksBySubject } = importState;
   const activeMaps    = subjectMappings.map((m, mi) => ({ m, mi, sub: effectiveSub(m, mi) })).filter(x => x.sub);
   const validStudents = stuRows.filter(r => r.match);
-  const maxForSub     = {}; subs.forEach(s => { maxForSub[s] = 100; });
+  const maxForSub     = {}; subs.forEach(s => { maxForSub[s] = (maxMarksBySubject && maxMarksBySubject[s]) || 100; });
   const autoAbsentIds = validStudents.filter(({ match, row }) =>
     activeMaps.every(({ m }) => { const v = parseFloat(row[m.csvIdx]); return isNaN(v) || v === 0; })
   ).map(r => r.match.student.id);
@@ -639,6 +607,12 @@ export default function ExamCSVImport({
 
   return (
     <div>
+      {scheduleMissing && (
+        <div style={{ ...css.card, background: "#FFFBEB", border: "1.5px solid #FDE68A", color: "#92400E" }}>
+          <b>⚠ No exam scheduled</b> for course "{course}" on {autoDate || localExamDate}. Subjects can't be matched until
+          the exam is scheduled — go to Exams → Schedule, create it, then re-upload this file.
+        </div>
+      )}
       <div style={css.card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
           <div>

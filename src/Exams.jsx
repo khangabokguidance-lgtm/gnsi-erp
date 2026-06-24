@@ -721,12 +721,27 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const perm = usePerm(currentUser, perms);
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(initialCourse || courses[0] || "");
-  const subjects = courseSubjects[course] || [];
+  const [examType, setExamType] = useState(initialExamType || examTypes[0]?.id || "");
+  const [examDate, setExamDate] = useState(initialExamDate || new Date().toISOString().split("T")[0]);
+
+  // ── Subjects for the CURRENTLY SELECTED exam (course + examType + examDate) come straight
+  // from exam_schedule, not from the static Course Subjects config. The config can drift from
+  // what was actually scheduled (subjects combined/split differently per sitting), so anchoring
+  // marks entry to the schedule itself guarantees every subject lines up with a real exam_id —
+  // no fuzzy matching, no "combined vs split" mismatches.
+  const [scheduledSubjects, setScheduledSubjects] = useState([]); // [{id, subject, total_marks}]
+  const [scheduleError, setScheduleError] = useState("");
+  const subjects = scheduledSubjects.map(s => s.subject);
+  const getSubMax = (sub) => {
+    const found = scheduledSubjects.find(s => s.subject === sub);
+    return found ? (Number(found.total_marks) || 100) : 100;
+  };
+  const courseMax = scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0) || 100;
+
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase() ||
     (s.course || "").toUpperCase() === course.toUpperCase()
   );
-  const courseMax = getCourseMax(course);
 
   // Existing batches for a course — used to quick-pick a batch when registering a new student
   const batchesForCourse = (crs) => {
@@ -735,8 +750,6 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     return [...set].sort();
   };
 
-  const [examType, setExamType] = useState(initialExamType || examTypes[0]?.id || "");
-  const [examDate, setExamDate] = useState(initialExamDate || new Date().toISOString().split("T")[0]);
   const [marks, setMarks] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -761,43 +774,70 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
 
-  const fetchMarks = useCallback(async (typeId, date, crs) => {
-    if (!typeId || !date || !crs) return;
+  // Loads the real exam_schedule rows for (course, examType, examDate), then loads any
+  // exam_marks already saved against those exact exam_ids. This is the single source of
+  // truth for "what subjects exist for this exam" — replacing the old static config lookup.
+  const loadScheduleAndMarks = useCallback(async (typeId, date, crs) => {
+    if (!typeId || !date || !crs) { setScheduledSubjects([]); setMarks({}); return; }
     setLoading(true);
+    setScheduleError("");
+
+    const { data: schedData, error: schedErr } = await supabase
+      .from("exam_schedule")
+      .select("id, subject, total_marks")
+      .eq("exam_type_id", typeId)
+      .eq("exam_date", date)
+      .eq("course", crs);
+
+    if (schedErr) {
+      console.error("Failed to fetch exam_schedule:", schedErr);
+      setScheduledSubjects([]); setMarks({}); setLoading(false);
+      setScheduleError(schedErr.message || String(schedErr));
+      return;
+    }
+
+    const schedSubs = schedData || [];
+    setScheduledSubjects(schedSubs);
+
+    if (!schedSubs.length) {
+      setMarks({}); setLoading(false);
+      setScheduleError(`No exam scheduled for ${crs} on ${date}. Create it in Exams → Schedule first.`);
+      return;
+    }
+
     const ids = students.filter(s =>
       (s.class_name || "").toUpperCase() === crs.toUpperCase() ||
       (s.course || "").toUpperCase() === crs.toUpperCase()
     ).map(s => s.id);
+    const examIds = schedSubs.map(s => s.id);
     if (!ids.length) { setMarks({}); setLoading(false); return; }
-    
-    // Fetch exam_marks with joined exam_schedule to filter by exam_type_id, subject, exam_date
+
     const { data, error } = await supabase
       .from("exam_marks")
-      .select(`id, student_id, marks_obtained, 
-               exam_schedule:exam_id (id, exam_type_id, subject, exam_date)`)
-      .in("student_id", ids);
-    
+      .select("student_id, exam_id, marks_obtained")
+      .in("student_id", ids)
+      .in("exam_id", examIds);
+
     if (error) {
       console.error("Failed to fetch exam_marks:", error);
       setMarks({}); setLoading(false);
       return;
     }
-    
+
+    const examIdToSubject = {};
+    schedSubs.forEach(s => { examIdToSubject[s.id] = s.subject; });
     const map = {};
     (data || []).forEach(r => {
-      const sched = r.exam_schedule;
-      // Only include marks matching the selected exam type, date, and course
-      if (sched && sched.exam_type_id === typeId && sched.exam_date === date) {
-        map[`${r.student_id}-${sched.subject}`] = r.marks_obtained;
-      }
+      const sub = examIdToSubject[r.exam_id];
+      if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
     });
     setMarks(map); setLoading(false);
   }, [students]);
 
-  useEffect(() => { fetchMarks(examType, examDate, course); }, [examType, examDate, course, fetchMarks]);
+  useEffect(() => { loadScheduleAndMarks(examType, examDate, course); }, [examType, examDate, course, loadScheduleAndMarks]);
 
   const handleMark = (sid, sub, val) => {
-    const num = val === "" ? "" : Math.min(Number(val), getSubjectMax(course, sub));
+    const num = val === "" ? "" : Math.min(Number(val), getSubMax(sub));
     setMarks(p => ({ ...p, [`${sid}-${sub}`]: num }));
     setSaved(false);
   };
@@ -811,65 +851,24 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     });
   };
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
-
-  // Fuzzy subject matcher — normalizes spacing/punctuation to handle "Mathematics I" vs "Mathematics -I"
-  const findBestScheduleSubject = (configSubject, scheduleSubjects) => {
-    const normalize = (s) => String(s).toLowerCase()
-      .replace(/\s*[-–—]\s*/g, ' ')  // "Mathematics -I" → "mathematics i"
-      .replace(/\s+/g, ' ')
-      .trim();
-    
-    const configNorm = normalize(configSubject);
-    
-    // Exact match first
-    for (const sched of scheduleSubjects) {
-      if (normalize(sched) === configNorm) return sched;
-    }
-    
-    // Fuzzy match: check if normalized forms are very similar (substring or Dice coefficient)
-    for (const sched of scheduleSubjects) {
-      const schedNorm = normalize(sched);
-      if (configNorm.includes(schedNorm) || schedNorm.includes(configNorm)) return sched;
-    }
-    
-    return null; // No match found
-  };
+  const calcPctLocal = (total) => courseMax ? (total / courseMax) * 100 : 0;
 
   const handleSave = async () => {
     setSaving(true);
     setSaveError("");
     
     try {
-      // Build a map of subject → exam_id for the selected exam type, date, AND course
-      // (without the course filter, other courses' rows for the same exam_type_id/exam_date
-      // silently overwrite each other and students get mapped to the wrong course's exam_id)
-      console.log(`[MarkEntry.handleSave] Looking for exams: examType="${examType}", examDate="${examDate}", course="${course}"`);
-      const { data: schedules, error: schedError } = await supabase
-        .from("exam_schedule")
-        .select("id, subject, exam_type_id, exam_date, course")
-        .eq("exam_type_id", examType)
-        .eq("exam_date", examDate)
-        .eq("course", course);
-      
-      console.log(`[MarkEntry.handleSave] Query returned:`, schedules, "error:", schedError);
-      
-      if (schedError || !schedules?.length) {
+      if (!scheduledSubjects.length) {
         setSaving(false);
-        const msg = `No exams found for examType="${examType}", examDate="${examDate}", course="${course}". Create an exam schedule first.`;
-        console.error(msg);
-        setSaveError(msg);
+        setSaveError(`No exam scheduled for course="${course}" on ${examDate}. Create it in Exams → Schedule first.`);
         return;
       }
       
       const examIdBySubject = {};
-      const scheduleSubjectsSet = new Set();
-      schedules.forEach(s => { 
-        examIdBySubject[s.subject] = s.id;
-        scheduleSubjectsSet.add(s.subject);
-      });
-      const scheduleSubjects = Array.from(scheduleSubjectsSet);
+      scheduledSubjects.forEach(s => { examIdBySubject[s.subject] = s.id; });
       
-      // Build rows to insert
+      // Build rows to insert — subjects already comes straight from scheduledSubjects,
+      // so every lookup below is an exact match by construction. No fuzzy matching needed.
       const rows = [];
       for (const st of courseStudents) {
         for (const sub of subjects) {
@@ -877,21 +876,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
           if (raw === "" || raw === undefined || raw === null) continue;
           const m = Number(raw);
           if (!isNaN(m)) {
-            // Try exact match first, then fuzzy match
-            let examId = examIdBySubject[sub];
-            if (!examId) {
-              const bestMatch = findBestScheduleSubject(sub, scheduleSubjects);
-              if (bestMatch) examId = examIdBySubject[bestMatch];
-            }
-            if (!examId) {
-              setSaving(false);
-              setSaveError(`Subject "${sub}" not found in exam schedule for ${examDate}. Available: ${scheduleSubjects.join(', ')}`);
-              return;
-            }
+            const examId = examIdBySubject[sub];
+            if (!examId) continue; // shouldn't happen — sub is drawn from scheduledSubjects itself
             rows.push({
               student_id: st.id,
               exam_id: examId,
               marks_obtained: m,
+              max_marks: getSubMax(sub),
               class_name: st.class_name,
             });
           }
@@ -903,19 +894,6 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
         return;
-      }
-      
-      // Check for duplicate (student_id, exam_id) pairs within the batch
-      console.log(`[MarkEntry.handleSave] Upserting ${rows.length} rows:`, rows);
-      const seen = new Map();
-      for (const r of rows) {
-        const key = `${r.student_id}-${r.exam_id}`;
-        if (seen.has(key)) {
-          setSaving(false);
-          setSaveError(`Duplicate entry: Student ${r.student_id} has marks for exam ${r.exam_id} listed twice. This shouldn't happen — contact support.`);
-          return;
-        }
-        seen.set(key, r);
       }
       
       // Upsert marks — use (student_id, exam_id) as the unique key
@@ -977,7 +955,28 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       if (raw && courseSubjects[raw]) detectedCourse = raw;
       else if (raw) { const match = Object.keys(courseSubjects).find(k => raw.includes(k) || k.includes(raw)); if (match) detectedCourse = match; }
     }
-    const importSubjects = courseSubjects[detectedCourse] || subjects;
+
+    // Pull the REAL subject list for this course's scheduled exam (course + examType + examDate)
+    // instead of the static Course Subjects config. This is what marks will actually be linked
+    // to, so matching CSV headers against it guarantees an exact match every time — no fuzzy
+    // matching, no "combined vs split subject" mismatches between config and schedule.
+    const { data: schedRows, error: schedErr } = await supabase
+      .from("exam_schedule")
+      .select("id, subject, total_marks")
+      .eq("exam_type_id", examType)
+      .eq("exam_date", examDate)
+      .eq("course", detectedCourse);
+
+    if (schedErr || !schedRows?.length) {
+      alert(`No exam scheduled for course="${detectedCourse}" on ${examDate}. Create the exam schedule first (Exams → Schedule), then try importing again.`);
+      return;
+    }
+
+    const importSubjects = schedRows.map(s => s.subject);
+    const examIdBySubject = {};
+    const maxMarksBySubject = {};
+    schedRows.forEach(s => { examIdBySubject[s.subject] = s.id; maxMarksBySubject[s.subject] = s.total_marks; });
+
     const nameCol = headers.findIndex(h => /name/i.test(h));
     const gccCol  = headers.findIndex(h => /gcc/i.test(h));
     const admCol  = headers.findIndex(h => /admission|adm|roll/i.test(h));
@@ -1001,72 +1000,42 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     }
     setImportRows(matched); setImportErrors(errors);
     setRawImport({ rows, headers });
-    setImportInfo({ detectedCourse, subjects: importSubjects, subjectColMap });
+    setImportInfo({ detectedCourse, subjects: importSubjects, subjectColMap, examIdBySubject, maxMarksBySubject });
     setImportMode(true); setImportDone(false);
     if (detectedCourse !== course) setCourse(detectedCourse);
   };
 
   const confirmImport = async () => {
-    console.log("%c[BUILD CHECK] confirmImport v4 — subject-tracking debug build", "background:#7c3aed;color:#fff;padding:2px 6px;border-radius:4px;font-weight:bold;");
     setImporting(true);
     setImportSaveError("");
     
     try {
       const importSubjects = importInfo?.subjects || subjects;
       const detCourse = importInfo?.detectedCourse || course;
+      const examIdBySubject = importInfo?.examIdBySubject || {};
+      const maxMarksBySubject = importInfo?.maxMarksBySubject || {};
       
-      // Fetch exam_schedule to map subjects to exam_ids — filtered by course too, since other
-      // courses' rows for the same exam_type_id/exam_date would otherwise silently collide
-      console.log(`[MarkEntry.confirmImport] Looking for exams: examType="${examType}", examDate="${examDate}", course="${detCourse}"`);
-      const { data: schedules, error: schedError } = await supabase
-        .from("exam_schedule")
-        .select("id, subject, exam_type_id, exam_date, course")
-        .eq("exam_type_id", examType)
-        .eq("exam_date", examDate)
-        .eq("course", detCourse);
-      
-      console.log(`[MarkEntry.confirmImport] Query returned:`, schedules, "error:", schedError);
-      
-      if (schedError || !schedules?.length) {
+      if (!Object.keys(examIdBySubject).length) {
         setImporting(false);
-        const msg = `No exams found for examType="${examType}", examDate="${examDate}", course="${detCourse}". Create an exam schedule first, or check that the date matches exactly.`;
-        console.error(msg);
-        setImportSaveError(msg);
+        setImportSaveError(`No exam schedule was resolved for this import. Re-upload the file to try again.`);
         return;
       }
       
-      const examIdBySubject = {};
-      const scheduleSubjectsSet = new Set();
-      schedules.forEach(s => { 
-        examIdBySubject[s.subject] = s.id;
-        scheduleSubjectsSet.add(s.subject);
-      });
-      const scheduleSubjects = Array.from(scheduleSubjectsSet);
-      
-      // Build rows to insert
+      // Build rows to insert — examIdBySubject was resolved against the real exam_schedule
+      // at upload time, so every subject here maps to exactly one exam_id. No fuzzy matching,
+      // no risk of two subjects colliding onto the same exam.
       const rows = [];
       for (const { student: st, subMarks } of importRows) {
         for (const sub of importSubjects) {
           if (subMarks[sub] !== undefined) {
-            // Try exact match first, then fuzzy match
-            let examId = examIdBySubject[sub];
-            let matchedVia = examId ? "exact" : null;
-            if (!examId) {
-              const bestMatch = findBestScheduleSubject(sub, scheduleSubjects);
-              if (bestMatch) { examId = examIdBySubject[bestMatch]; matchedVia = `fuzzy→"${bestMatch}"`; }
-            }
-            if (!examId) {
-              setImporting(false);
-              setImportSaveError(`Subject "${sub}" not found in exam schedule. Available: ${scheduleSubjects.join(', ')}`);
-              return;
-            }
+            const examId = examIdBySubject[sub];
+            if (!examId) continue; // shouldn't happen — sub is drawn from the same schedule list
             rows.push({
               student_id: st.id,
               exam_id: examId,
               marks_obtained: subMarks[sub],
+              max_marks: maxMarksBySubject[sub],
               class_name: st.class_name,
-              __sub: sub,            // debug only — stripped before insert
-              __matchedVia: matchedVia, // debug only — stripped before insert
             });
           }
         }
@@ -1078,35 +1047,17 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         return;
       }
       
-      // Check for duplicate (student_id, exam_id) pairs within the batch
-      console.log(`[MarkEntry.confirmImport] Upserting ${rows.length} rows:`, rows);
-      const seen = new Map();
-      for (const r of rows) {
-        const key = `${r.student_id}-${r.exam_id}`;
-        if (seen.has(key)) {
-          const prev = seen.get(key);
-          setImporting(false);
-          console.error(`Duplicate found:`, { prev, current: r });
-          setImportSaveError(`Subjects "${prev.__sub}" (${prev.__matchedVia}) and "${r.__sub}" (${r.__matchedVia}) both matched exam_id ${r.exam_id} for student ${r.student_id}. Marks: ${prev.marks_obtained} vs ${r.marks_obtained}.`);
-          return;
-        }
-        seen.set(key, r);
-      }
-      
-      // Strip debug-only fields before sending to Supabase
-      const cleanRows = rows.map(({ __sub, __matchedVia, ...rest }) => rest);
-      
       // Upsert using (student_id, exam_id) as unique key
       const writeErrors = [];
-      for (let i = 0; i < cleanRows.length; i += 100) {
-        const { error } = await supabase.from("exam_marks").upsert(cleanRows.slice(i, i + 100), { 
+      for (let i = 0; i < rows.length; i += 100) {
+        const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
           onConflict: "student_id,exam_id" 
         });
         if (error) writeErrors.push(error.message || String(error));
       }
       
       if (writeErrors.length) {
-        console.error("exam_marks upsert failed during CSV import:", writeErrors);
+        console.error("exam_marks upsert failed during CSV import:", writeErrors, "rows:", rows);
         setImporting(false);
         setImportSaveError(writeErrors[0]);
         return;
@@ -1117,7 +1068,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       // Auto-set course and exam date to match the import, then re-fetch
       setCourse(detCourse);
       setExamType(examType);
-      await fetchMarks(examType, examDate, detCourse);
+      await loadScheduleAndMarks(examType, examDate, detCourse);
 
       setImporting(false); 
       setImportDone(true);
@@ -1229,7 +1180,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     const headers = ["Student", "Class", ...subjects, "Total", "%", "Grade"];
     const rows = courseStudents.map(st => {
       const total = getTotal(st.id);
-      const pct = calcPct(total, course);
+      const pct = calcPctLocal(total);
       const g = getGrade(pct);
       return [st.name, st.class_name, ...subjects.map(s => marks[`${st.id}-${s}`] ?? ""), total, pct.toFixed(1) + "%", g.label];
     });
@@ -1581,7 +1532,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
           <div style={{ marginTop: 10, display: "flex", gap: 5, flexWrap: "wrap" }}>
             {subjects.map(s => (
               <span key={s} style={{ fontSize: 11, padding: "3px 10px", background: "#E0F2FE", color: "#0369A1", borderRadius: 999, fontWeight: 600 }}>
-                {s} <span style={{ opacity: 0.6 }}>/{getSubjectMax(course, s)}</span>
+                {s} <span style={{ opacity: 0.6 }}>/{getSubMax(s)}</span>
               </span>
             ))}
             <span style={{ fontSize: 11, padding: "3px 10px", background: "#1a3c2e", color: "white", borderRadius: 999, fontWeight: 700 }}>Total: {courseMax}</span>
@@ -1640,6 +1591,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
 
       {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved!</div>}
       {saveError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⚠ Save failed: {saveError}</div>}
+      {scheduleError && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>📋 {scheduleError}</div>}
       {importMode && <ImportPreview />}
 
       {loading ? <Spinner /> : (
@@ -1650,7 +1602,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
                 <th style={{ padding: isMobile ? "8px 10px" : "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: isMobile ? 11 : 12, position: "sticky", left: 0, background: "#1a3c2e", zIndex: 2 }}>Student</th>
                 {subjects.map(s => (
                   <th key={s} style={{ padding: "10px 6px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 10, whiteSpace: "nowrap" }}>
-                    {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{getSubjectMax(course, s)}</span>
+                    {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{getSubMax(s)}</span>
                   </th>
                 ))}
                 <th style={{ padding: "10px 8px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 11 }}>Total</th>
@@ -1661,7 +1613,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
             <tbody>
               {filtered.map((st, i) => {
                 const total = getTotal(st.id);
-                const pct = calcPct(total, course);
+                const pct = calcPctLocal(total);
                 const g = getGrade(pct);
                 return (
                   <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
@@ -1671,7 +1623,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
                     </td>
                     {subjects.map(sub => (
                       <td key={sub} style={{ padding: "5px 3px", textAlign: "center" }}>
-                        <input type="number" min="0" max={getSubjectMax(course, sub)} placeholder="--"
+                        <input type="number" min="0" max={getSubMax(sub)} placeholder="--"
                           value={marks[`${st.id}-${sub}`] ?? ""}
                           onChange={e => handleMark(st.id, sub, e.target.value)}
                           style={{ width: isMobile ? 40 : 52, padding: "4px 2px", borderRadius: 6, border: "1px solid #D1D5DB", textAlign: "center", fontSize: isMobile ? 12 : 13, outline: "none" }} />
