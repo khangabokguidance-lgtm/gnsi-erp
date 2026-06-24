@@ -1075,8 +1075,10 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       for (const r of rows) {
         const key = `${r.student_id}-${r.exam_id}`;
         if (seen.has(key)) {
+          const prev = seen.get(key);
           setImporting(false);
-          setImportSaveError(`Duplicate entry: Student ${r.student_id} has marks for exam ${r.exam_id} listed twice in the CSV. Check for duplicate rows.`);
+          console.error(`Duplicate found:`, { prev, current: r });
+          setImportSaveError(`Duplicate: Student ${r.student_id} exam ${r.exam_id} appears twice. Previous: ${JSON.stringify(prev)}, Current: ${JSON.stringify(r)}`);
           return;
         }
         seen.set(key, r);
