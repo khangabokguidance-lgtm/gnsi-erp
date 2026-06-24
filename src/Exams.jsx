@@ -2136,6 +2136,9 @@ function ExamTypesManager({ examTypes, onUpdate }) {
   const [saving, setSaving] = useState(false); const [saved, setSaved] = useState(false);
   const [addError, setAddError] = useState("");
   const [markCounts, setMarkCounts] = useState({}); // { exam_type_id: number of exam_marks rows }
+  const [inspectId, setInspectId] = useState(null);     // exam_type_id currently being inspected, or null
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectRows, setInspectRows] = useState([]);
 
   // Fetch how many marks exist per exam type once, so duplicate (same-name) entries
   // can be told apart by which one actually holds data vs. which is an empty twin.
@@ -2146,6 +2149,20 @@ function ExamTypesManager({ examTypes, onUpdate }) {
       setMarkCounts(counts);
     });
   }, []);
+
+  // Pulls the actual raw exam_marks rows for one exam type, so "which marks have I
+  // uploaded" can be answered by looking directly at the database — no guessing.
+  const toggleInspect = async (id) => {
+    if (inspectId === id) { setInspectId(null); return; }
+    setInspectId(id);
+    setInspectLoading(true);
+    const { data } = await supabase.from("exam_marks")
+      .select("student_id, student_name, class_name, subject, marks, total_marks, exam_date")
+      .eq("exam_type_id", id)
+      .order("exam_date", { ascending: false });
+    setInspectRows(data || []);
+    setInspectLoading(false);
+  };
 
   const add = async () => {
     setAddError("");
@@ -2165,6 +2182,7 @@ function ExamTypesManager({ examTypes, onUpdate }) {
     if (!confirm("Delete this exam type?")) return;
     await supabase.from("exam_types").delete().eq("id", id);
     const updated = list.filter(e => e.id !== id); setList(updated); onUpdate(updated);
+    if (inspectId === id) setInspectId(null);
   };
 
   // Group existing exam types by normalized name to surface any pre-existing duplicates.
@@ -2174,6 +2192,65 @@ function ExamTypesManager({ examTypes, onUpdate }) {
     (nameGroups[key] = nameGroups[key] || []).push(et);
   });
   const duplicateGroups = Object.values(nameGroups).filter(g => g.length > 1);
+
+  // Renders the raw-data breakdown for whichever exam type is currently being inspected.
+  const InspectPanel = () => {
+    if (inspectLoading) {
+      return <div style={{ padding: 14, textAlign: "center", color: "#9CA3AF", fontSize: 12 }}>⏳ Loading marks from the database…</div>;
+    }
+    if (!inspectRows.length) {
+      return <div style={{ padding: 14, textAlign: "center", color: "#9CA3AF", fontSize: 12 }}>No mark rows exist in the database for this exam type.</div>;
+    }
+    const byDate = {};
+    inspectRows.forEach(r => {
+      const d = r.exam_date || "(no date)";
+      if (!byDate[d]) byDate[d] = { students: new Set(), subjects: new Set(), count: 0 };
+      byDate[d].students.add(r.student_id);
+      byDate[d].subjects.add(r.subject);
+      byDate[d].count++;
+    });
+    const dateList = Object.entries(byDate).sort((a, b) => b[0].localeCompare(a[0]));
+    return (
+      <div style={{ marginTop: 10, background: "#FAFAFA", border: "1px solid #E5E7EB", borderRadius: 8, padding: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 11, color: "#374151", textTransform: "uppercase", marginBottom: 8 }}>
+          📊 {inspectRows.length} mark entr{inspectRows.length === 1 ? "y" : "ies"} found, across {dateList.length} date{dateList.length !== 1 ? "s" : ""}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+          {dateList.map(([date, info]) => (
+            <div key={date} style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 4, fontSize: 11.5, padding: "5px 10px", background: "white", border: "1px solid #E5E7EB", borderRadius: 6 }}>
+              <span style={{ fontWeight: 700 }}>{date}</span>
+              <span style={{ color: "#64748b" }}>{info.students.size} student{info.students.size !== 1 ? "s" : ""} · {info.subjects.size} subject{info.subjects.size !== 1 ? "s" : ""} · {info.count} entries</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 6 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <thead style={{ position: "sticky", top: 0 }}>
+              <tr style={{ background: "#1a3c2e" }}>
+                {["Date", "Student", "Class", "Subject", "Marks"].map(h => (
+                  <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "white", fontWeight: 700 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {inspectRows.slice(0, 200).map((r, i) => (
+                <tr key={i} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                  <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{r.exam_date}</td>
+                  <td style={{ padding: "5px 8px", fontWeight: 600 }}>{r.student_name}</td>
+                  <td style={{ padding: "5px 8px" }}>{r.class_name}</td>
+                  <td style={{ padding: "5px 8px" }}>{r.subject}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 700 }}>{r.marks}/{r.total_marks}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {inspectRows.length > 200 && (
+            <div style={{ padding: "6px 10px", fontSize: 10, color: "#9CA3AF", textAlign: "center" }}>Showing first 200 of {inspectRows.length} rows.</div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
@@ -2201,7 +2278,7 @@ function ExamTypesManager({ examTypes, onUpdate }) {
           <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 12.5, color: "#92400E" }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠️ Duplicate exam type name{duplicateGroups.length > 1 ? "s" : ""} found</div>
             <div style={{ marginBottom: 10, lineHeight: 1.5 }}>
-              These share the exact same name but are different underlying records — selecting "the same" exam type by name in different tabs (e.g. Mark Entry vs. Report Cards) can silently point at different ones, making saved marks look like they vanished. Keep whichever copy has marks recorded, and delete the empty twin(s).
+              These share the exact same name but are different underlying records — selecting "the same" exam type by name in different tabs (e.g. Mark Entry vs. Report Cards) can silently point at different ones, making saved marks look like they vanished. Click <b>🔍 Inspect</b> on each to see its actual saved marks, keep whichever copy has the data, and delete the empty twin(s).
             </div>
             {duplicateGroups.map((group, gi) => (
               <div key={gi} style={{ marginBottom: gi < duplicateGroups.length - 1 ? 10 : 0 }}>
@@ -2209,12 +2286,20 @@ function ExamTypesManager({ examTypes, onUpdate }) {
                 {group.map(et => {
                   const count = markCounts[et.id] || 0;
                   return (
-                    <div key={et.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px", background: "white", border: "1px solid #FDE68A", borderRadius: 6, marginBottom: 5, flexWrap: "wrap" }}>
-                      <span style={{ fontFamily: "monospace", fontSize: 10.5, color: "#78716C", wordBreak: "break-all" }}>{et.id}</span>
-                      <span style={{ fontWeight: 700, fontSize: 12, color: count ? "#0F6E56" : "#A32D2D", whiteSpace: "nowrap" }}>
-                        {count ? `✓ ${count} mark${count !== 1 ? "s" : ""} recorded` : "0 marks — likely safe to delete"}
-                      </span>
-                      <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>🗑️ Delete</button>
+                    <div key={et.id}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px", background: "white", border: "1px solid #FDE68A", borderRadius: 6, marginBottom: 5, flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 10.5, color: "#78716C", wordBreak: "break-all" }}>{et.id}</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: count ? "#0F6E56" : "#A32D2D", whiteSpace: "nowrap" }}>
+                          {count ? `✓ ${count} mark${count !== 1 ? "s" : ""} recorded` : "0 marks — likely safe to delete"}
+                        </span>
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: inspectId === et.id ? "#1a3c2e" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
+                            🔍 {inspectId === et.id ? "Hide" : "Inspect"}
+                          </button>
+                          <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>🗑️ Delete</button>
+                        </div>
+                      </div>
+                      {inspectId === et.id && <InspectPanel />}
                     </div>
                   );
                 })}
@@ -2224,15 +2309,23 @@ function ExamTypesManager({ examTypes, onUpdate }) {
         )}
 
         {list.map(et => (
-          <div key={et.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8, background: "#F9FAFB" }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{et.name}</div>
-              {et.description && <div style={{ fontSize: 11, color: "#9CA3AF" }}>{et.description}</div>}
-              <div style={{ fontSize: 10, color: markCounts[et.id] ? "#0F6E56" : "#9CA3AF", marginTop: 2 }}>
-                {markCounts[et.id] ? `${markCounts[et.id]} mark${markCounts[et.id] !== 1 ? "s" : ""} recorded` : "no marks yet"}
+          <div key={et.id} style={{ border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8, background: "#F9FAFB", padding: "10px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{et.name}</div>
+                {et.description && <div style={{ fontSize: 11, color: "#9CA3AF" }}>{et.description}</div>}
+                <div style={{ fontSize: 10, color: markCounts[et.id] ? "#0F6E56" : "#9CA3AF", marginTop: 2 }}>
+                  {markCounts[et.id] ? `${markCounts[et.id]} mark${markCounts[et.id] !== 1 ? "s" : ""} recorded` : "no marks yet"}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 5 }}>
+                <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: inspectId === et.id ? "#1a3c2e" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
+                  🔍 {inspectId === et.id ? "Hide" : "Inspect"}
+                </button>
+                <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕</button>
               </div>
             </div>
-            <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕</button>
+            {inspectId === et.id && <InspectPanel />}
           </div>
         ))}
         {!list.length && <div style={{ color: "#94A3B8", fontSize: 13, textAlign: "center", padding: 20 }}>No exam types yet.</div>}
