@@ -5882,10 +5882,21 @@ export default function Exams({ currentUser, perms }) {
   const [activeConfigId, setActiveConfigId] = useState("default");
   const [markEntryRefreshKey, setMarkEntryRefreshKey] = useState(0);
   const [lastCSVImportContext, setLastCSVImportContext] = useState(null);
+  const [syncVersion, setSyncVersion] = useState(0); // Trigger for global sync
  
   const refetchSchedule = useCallback(async () => {
     const { data } = await supabase.from('exam_schedule').select('*').order('exam_date');
     setSchedule(data || []);
+    setSyncVersion(v => v + 1); // Notify all tabs to sync
+  }, []);
+
+  /**
+   * Central sync handler: whenever courseSubjects changes,
+   * notify Schedule and ExamConfig to re-validate their data
+   */
+  const handleCourseSubjectsUpdate = useCallback((newSubjects) => {
+    setCourseSubjects(newSubjects);
+    setSyncVersion(v => v + 1);
   }, []);
  
   // Exams.jsx historically treats `class_name` as "the batch" (Achiever / Champion /
@@ -5993,12 +6004,15 @@ export default function Exams({ currentUser, perms }) {
     rankings:       () => <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     merit:          () => <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     reportcard:     () => <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
-    schedule:       () => <Schedule courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
+    // ── SYNCED: Schedule now uses syncVersion and refetchSchedule ──
+    schedule:       () => <Schedule key={syncVersion} courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
     seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
     studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
-    coursesubjects: () => <CourseSubjectsManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} />,
+    // ── SYNCED: CourseSubjectsManager uses centralized handler ──
+    coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
     examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
-    examconfig:     () => <ExamConfigManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; }} />,
+    // ── SYNCED: ExamConfigManager notifies on config switch ──
+    examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} />,
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
     progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
