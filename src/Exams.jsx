@@ -2735,7 +2735,7 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
       setError(`GCC No. ${form.gcc_no} already exists.`); return;
     }
     setSaving(true);
-    const batchVal = form.class_name.trim().toUpperCase();
+    const batchVal = form.class_name.trim();
     const payload = {
       name: form.name.trim().toUpperCase(), gcc_no: Number(form.gcc_no),
       admission_no: form.admission_no.trim() || null,
@@ -2755,7 +2755,7 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
   const cancelEdit = () => { setEditId(null); setEditForm({}); };
   const saveEdit = async (id) => {
     setEditSaving(true);
-    const batchVal = (editForm.class_name || "").trim().toUpperCase();
+    const batchVal = (editForm.class_name || "").trim();
     const payload = {
       name: editForm.name.trim().toUpperCase(), gcc_no: Number(editForm.gcc_no),
       admission_no: editForm.admission_no || null,
