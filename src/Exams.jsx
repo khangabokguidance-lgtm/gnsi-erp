@@ -1191,41 +1191,64 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         )}
 
 
-        <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 460 }}>
-            <thead style={{ position: "sticky", top: 0 }}>
-              <tr style={{ background: "#1a3c2e" }}>
-                <th style={{ padding: "8px 12px", textAlign: "left", color: "white", fontWeight: 700 }}>Student</th>
-                <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Matched By</th>
-                {previewSubjects.map(s => <th key={s} style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>{s}</th>)}
-                <th style={{ padding: "8px 10px", textAlign: "center", color: "white", fontWeight: 700 }}>Total</th>
-                <th style={{ padding: "8px 10px", textAlign: "center", color: "white", fontWeight: 700 }}>%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {importRows.map(({ student: st, subMarks, matchType, confidence }, i) => {
-                const total = previewSubjects.reduce((s, sub) => s + (subMarks[sub] ?? 0), 0);
-                const pct = calcPct(total, detCourse);
-                return (
-                  <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                    <td style={{ padding: "7px 12px", fontWeight: 600, whiteSpace: "nowrap" }}>{st.name}</td>
-                    <td style={{ padding: "7px 8px", textAlign: "center" }}><MatchBadge matchType={matchType} confidence={confidence} /></td>
-                    {previewSubjects.map(sub => (
-                      <td key={sub} style={{ padding: "7px 8px", textAlign: "center", color: subMarks[sub] !== undefined ? "#1e293b" : "#CBD5E1", fontWeight: subMarks[sub] !== undefined ? 600 : 400 }}>
-                        {subMarks[sub] !== undefined ? subMarks[sub] : "--"}
-                      </td>
-                    ))}
-                    <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 800 }}>{total}</td>
-                    <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 700, color: getGrade(pct).color }}>{pct.toFixed(1)}%</td>
+        {/* Auto-rank every matched row (including newly-added students) by total marks obtained,
+            same tie-aware logic as the Rankings / Merit List tabs: equal totals share a rank. */}
+        {(() => {
+          const rankedImportRows = importRows
+            .map(r => ({ ...r, total: previewSubjects.reduce((s, sub) => s + (r.subMarks[sub] ?? 0), 0) }))
+            .sort((a, b) => b.total - a.total);
+          let _cr = 1, _pt = null;
+          rankedImportRows.forEach((r, i) => {
+            if (i === 0) { _cr = 1; _pt = r.total; }
+            else if (r.total !== _pt) { _cr++; _pt = r.total; }
+            r.rank = _cr;
+          });
+          const medals = ["🥇", "🥈", "🥉"];
+          return (
+            <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
+                <thead style={{ position: "sticky", top: 0 }}>
+                  <tr style={{ background: "#1a3c2e" }}>
+                    <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Rank</th>
+                    <th style={{ padding: "8px 12px", textAlign: "left", color: "white", fontWeight: 700 }}>Student</th>
+                    <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Matched By</th>
+                    {previewSubjects.map(s => <th key={s} style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>{s}</th>)}
+                    <th style={{ padding: "8px 10px", textAlign: "center", color: "white", fontWeight: 700 }}>Total</th>
+                    <th style={{ padding: "8px 10px", textAlign: "center", color: "white", fontWeight: 700 }}>%</th>
                   </tr>
-                );
-              })}
-              {!importRows.length && (
-                <tr><td colSpan={previewSubjects.length + 4} style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>No matched rows yet — resolve unmatched rows above, or skip them.</td></tr>
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {rankedImportRows.map(({ student: st, subMarks, matchType, confidence, total, rank }, i) => {
+                    const pct = calcPct(total, detCourse);
+                    return (
+                      <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                        <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 800, color: rank <= 3 ? "#D97706" : "#9CA3AF", fontSize: rank <= 3 ? 14 : 12 }}>
+                          {rank <= 3 ? medals[rank - 1] : `#${rank}`}
+                        </td>
+                        <td style={{ padding: "7px 12px", fontWeight: 600, whiteSpace: "nowrap" }}>{st.name}</td>
+                        <td style={{ padding: "7px 8px", textAlign: "center" }}><MatchBadge matchType={matchType} confidence={confidence} /></td>
+                        {previewSubjects.map(sub => (
+                          <td key={sub} style={{ padding: "7px 8px", textAlign: "center", color: subMarks[sub] !== undefined ? "#1e293b" : "#CBD5E1", fontWeight: subMarks[sub] !== undefined ? 600 : 400 }}>
+                            {subMarks[sub] !== undefined ? subMarks[sub] : "--"}
+                          </td>
+                        ))}
+                        <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 800 }}>{total}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 700, color: getGrade(pct).color }}>{pct.toFixed(1)}%</td>
+                      </tr>
+                    );
+                  })}
+                  {!rankedImportRows.length && (
+                    <tr><td colSpan={previewSubjects.length + 5} style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>No matched rows yet — resolve unmatched rows above, or skip them.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+        <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: -10, marginBottom: 16 }}>
+          Rank is computed live from marks obtained within this import batch — newly-added students are ranked automatically alongside everyone else.
         </div>
+
         {importDone
           ? <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "12px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>✅ Import complete!</div>
           : <button onClick={confirmImport} disabled={importing || !importRows.length}
