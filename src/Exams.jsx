@@ -1854,8 +1854,19 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
     if (!examType || !examDate) return;
     setLoading(true);
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; });
+    // Resolve via exam_schedule (exam_id -> subject) rather than trusting the raw
+    // `subject` text column on exam_marks, which can be null/stale on older rows.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data || []).forEach(r => {
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+      });
       setMarks(map); setLoading(false);
     });
   }, [examType, examDate, course]);
@@ -1954,10 +1965,24 @@ function Analytics({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
+    // Resolve marks via exam_schedule (exam_id -> subject) instead of trusting the
+    // raw `subject` text column on exam_marks directly — that column can be null/stale
+    // on older rows or out of sync with the current schedule, which silently dropped
+    // marks here even though Mark Entry (which joins via exam_id) could see them fine.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data || []).forEach(r => {
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+      });
+      setMarks(map);
     });
-  }, [examType, course]);
+  }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const n = courseStudents.length || 1;
@@ -2079,10 +2104,24 @@ function Rankings({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
+    // Resolve marks via exam_schedule (exam_id -> subject) instead of trusting the
+    // raw `subject` text column on exam_marks directly — that column can be null/stale
+    // on older rows or out of sync with the current schedule, which silently dropped
+    // marks here even though Mark Entry (which joins via exam_id) could see them fine.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data || []).forEach(r => {
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+      });
+      setMarks(map);
     });
-  }, [examType, course]);
+  }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: calcPct(getTotal(st.id), course) })).sort((a, b) => b.total - a.total);
@@ -2348,10 +2387,24 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
+    // Resolve marks via exam_schedule (exam_id -> subject) instead of trusting the
+    // raw `subject` text column on exam_marks directly — that column can be null/stale
+    // on older rows or out of sync with the current schedule, which silently dropped
+    // marks here even though Mark Entry (which joins via exam_id) could see them fine.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data || []).forEach(r => {
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+      });
+      setMarks(map);
     });
-  }, [examType, course]);
+  }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const toggleStudent = st => {
@@ -2786,8 +2839,10 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
   };
 
   const filtered = students.filter(s => {
-    const matchSearch = !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search);
-    const matchCourse = filterCourse === "ALL" || (s.course || "").toUpperCase() === filterCourse || (s.class_name || "").toUpperCase() === filterCourse;
+    const q = search.trim().toLowerCase();
+    const matchSearch = !q || (s.name || "").toLowerCase().includes(q) || String(s.gcc_no ?? "").includes(q);
+    const fc = filterCourse.trim().toUpperCase();
+    const matchCourse = fc === "ALL" || (s.course || "").trim().toUpperCase() === fc || (s.class_name || "").trim().toUpperCase() === fc;
     return matchSearch && matchCourse;
   });
 
@@ -2914,6 +2969,12 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
                 </button>
               ))}
             </div>
+            {(search || filterCourse !== "ALL") && (
+              <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }}
+                style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
+                ✕ Reset filters
+              </button>
+            )}
           </div>
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
@@ -2925,6 +2986,15 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
                 </tr>
               </thead>
               <tbody>
+                {!filtered.length && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: "28px 12px", textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>
+                      {students.length
+                        ? <>No students match your current filters. <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }} style={{ color: "#1a3c2e", fontWeight: 700, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Reset filters</button> to see all {students.length}.</>
+                        : "No students loaded yet."}
+                    </td>
+                  </tr>
+                )}
                 {filtered.map((st, i) => (
                   <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
                     {editId === st.id ? (
@@ -3005,10 +3075,24 @@ function MeritList({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
+    // Resolve marks via exam_schedule (exam_id -> subject) instead of trusting the
+    // raw `subject` text column on exam_marks directly — that column can be null/stale
+    // on older rows or out of sync with the current schedule, which silently dropped
+    // marks here even though Mark Entry (which joins via exam_id) could see them fine.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data || []).forEach(r => {
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+      });
+      setMarks(map);
     });
-  }, [examType, course]);
+  }, [examType, course, examDate]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: calcPct(getTotal(st.id), course) })).sort((a, b) => b.total - a.total);
@@ -4306,10 +4390,24 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
+    // Resolve marks via exam_schedule (exam_id -> subject) instead of trusting the
+    // raw `subject` text column on exam_marks directly — that column can be null/stale
+    // on older rows or out of sync with the current schedule, which silently dropped
+    // marks here even though Mark Entry (which joins via exam_id) could see them fine.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data || []).forEach(r => {
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+      });
+      setMarks(map);
     });
-  }, [examType, course]);
+  }, [examType, course, examDate]);
 
   const examName = examTypes.find(e => e.id === examType)?.name || "Examination";
   return (
@@ -4390,11 +4488,22 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     if (!rcExamType || !rcExamDate) return;
     setRcLoading(true);
     const ids = rcStudents.map(s=>s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", rcExamType).in("student_id", ids.length?ids:["__none__"]).then(({ data }) => {
-      const map = {}; (data||[]).forEach(r=>{ map[`${r.student_id}-${r.subject}`]=r.marks_obtained; });
+    // Resolve via exam_schedule (exam_id -> subject) rather than trusting the raw
+    // `subject` text column on exam_marks, which can be null/stale on older rows.
+    Promise.all([
+      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", rcExamType).eq("course", rcCourse),
+      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", rcExamType).in("student_id", ids.length?ids:["__none__"]),
+    ]).then(([{ data: sched }, { data }]) => {
+      const examIdToSubject = {};
+      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+      const map = {};
+      (data||[]).forEach(r=>{
+        const sub = examIdToSubject[r.exam_id] || r.subject;
+        if (sub) map[`${r.student_id}-${sub}`]=r.marks_obtained;
+      });
       setRcMarks(map); setRcLoading(false);
     });
-  }, [rcExamType, rcCourse]);
+  }, [rcExamType, rcCourse, rcExamDate]);
 
   useEffect(() => {
     if (!rcExamType || !rcExamDate || !rcStudents.length) return;
