@@ -755,6 +755,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", course: "", class_name: "" });
   const [addingStudent, setAddingStudent] = useState(false);
   const [addStudentError, setAddStudentError] = useState("");
+  const [lastImportSummary, setLastImportSummary] = useState(null); // persists after the import panel closes, so the save is never invisible
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
 
@@ -886,9 +887,28 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     }
     for (let i = 0; i < rows.length; i += 100)
       await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
-    await fetchMarks(examType, examDate, importInfo?.detectedCourse || course);
+    await fetchMarks(examType, examDate, detCourse);
     setImporting(false); setImportDone(true);
-    setTimeout(() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setImportDone(false); setManualSearch({}); setManualOpenIdx(null); setRawImport(null); setAddNewOpenIdx(null); setAddStudentError(""); }, 2500);
+    // Record exactly what was saved & where — this banner persists even after the import
+    // panel is closed, so it's never unclear whether the records went somewhere or vanished.
+    setLastImportSummary({
+      course: detCourse,
+      examTypeName: examTypes.find(e => e.id === examType)?.name || "Exam",
+      examDate,
+      studentCount: importRows.length,
+      marksCount: rows.length,
+      newStudentCount: importRows.filter(r => r.matchType === "New").length,
+      savedAt: new Date(),
+    });
+    // No auto-close — the success summary inside the panel stays up until the user
+    // explicitly clicks "Done", so the save is always visibly confirmed.
+  };
+
+  // Closes the import panel/preview. Does NOT touch lastImportSummary, so the
+  // "what was saved & where" confirmation banner keeps showing afterwards.
+  const closeImportPanel = () => {
+    setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setImportDone(false);
+    setManualSearch({}); setManualOpenIdx(null); setRawImport(null); setAddNewOpenIdx(null); setAddStudentError("");
   };
 
   // ─── Manual resolution for rows the auto-detector couldn't confidently match ──
@@ -1019,8 +1039,10 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.10)", padding: isMobile ? 14 : 24, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, color: "#1e293b" }}>📂 Import Preview</div>
-          <button onClick={() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setManualSearch({}); setManualOpenIdx(null); setRawImport(null); setAddNewOpenIdx(null); setAddStudentError(""); }}
-            style={{ ...css.btn, padding: "5px 12px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕ Cancel</button>
+          <button onClick={closeImportPanel}
+            style={{ ...css.btn, padding: "5px 12px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>
+            {importDone ? "✕ Close" : "✕ Cancel"}
+          </button>
         </div>
         {importInfo && (
           <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12 }}>
@@ -1250,7 +1272,32 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         </div>
 
         {importDone
-          ? <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "12px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>✅ Import complete!</div>
+          ? (
+            <div style={{ background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, padding: "16px 18px" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ fontSize: 26, lineHeight: 1 }}>✅</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: "#166534", fontSize: 14, marginBottom: 4 }}>Import saved successfully</div>
+                  <div style={{ fontSize: 12.5, color: "#166534", lineHeight: 1.7 }}>
+                    Saved <b>{lastImportSummary?.marksCount}</b> mark entr{lastImportSummary?.marksCount === 1 ? "y" : "ies"} for{" "}
+                    <b>{lastImportSummary?.studentCount}</b> student{lastImportSummary?.studentCount !== 1 ? "s" : ""}
+                    {lastImportSummary?.newStudentCount > 0 && (
+                      <> (including <b>{lastImportSummary.newStudentCount}</b> newly-registered student{lastImportSummary.newStudentCount !== 1 ? "s" : ""})</>
+                    )}
+                    <br />
+                    into <b>{lastImportSummary?.course}</b> · <b>{lastImportSummary?.examTypeName}</b> · <b>{lastImportSummary?.examDate}</b>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#15803d", marginTop: 6 }}>
+                    Saved at {lastImportSummary?.savedAt?.toLocaleTimeString()} · these marks are already written to the database — closing this panel just returns you to the Mark Entry table below, where you'll see them.
+                  </div>
+                </div>
+              </div>
+              <button onClick={closeImportPanel}
+                style={{ ...css.btn, background: "#16A34A", color: "white", padding: "9px 20px", fontSize: 13, marginTop: 12, width: isMobile ? "100%" : "auto" }}>
+                ✓ Done — Show Mark Entry Table
+              </button>
+            </div>
+          )
           : <button onClick={confirmImport} disabled={importing || !importRows.length}
               style={{ ...css.btn, background: importing ? "#93C5FD" : "#1a3c2e", color: "white", padding: "10px 24px", fontSize: 14, width: isMobile ? "100%" : "auto" }}>
               {importing ? "⏳ Saving…" : `✅ Confirm Import (${importRows.length} students)`}
@@ -1263,6 +1310,29 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   return (
     <div>
       <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={handleFileUpload} />
+
+      {/* Persistent confirmation of the last CSV/Excel import — stays visible even after the
+          import panel is closed, so it's never unclear whether records were saved or vanished. */}
+      {!importMode && lastImportSummary && (
+        <div style={{ background: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ fontSize: 18, lineHeight: 1.3 }}>✅</div>
+            <div>
+              <div style={{ fontWeight: 700, color: "#166534", fontSize: 13 }}>
+                Last import: saved {lastImportSummary.marksCount} mark entr{lastImportSummary.marksCount === 1 ? "y" : "ies"} for {lastImportSummary.studentCount} student{lastImportSummary.studentCount !== 1 ? "s" : ""}
+                {lastImportSummary.newStudentCount > 0 && ` (incl. ${lastImportSummary.newStudentCount} new)`}
+              </div>
+              <div style={{ fontSize: 11.5, color: "#15803d", marginTop: 2 }}>
+                into <b>{lastImportSummary.course}</b> · <b>{lastImportSummary.examTypeName}</b> · <b>{lastImportSummary.examDate}</b> — at {lastImportSummary.savedAt?.toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+          <button onClick={() => setLastImportSummary(null)}
+            style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "transparent", color: "#166534", border: "1px solid #86EFAC" }}>
+            ✕ Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Course picker */}
       <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
