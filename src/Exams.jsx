@@ -764,6 +764,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [importDone, setImportDone] = useState(false);
   const [manualSearch, setManualSearch] = useState({});   // { [errorIndex]: query string }
   const [manualOpenIdx, setManualOpenIdx] = useState(null); // which unmatched row has its search box open
+  const [manualSearchFilter, setManualSearchFilter] = useState({}); // { [errorIndex]: { course?, batch? } }
   const [rawImport, setRawImport] = useState(null);       // { rows, headers } — kept so subject columns can be remapped after detection
   const [addNewOpenIdx, setAddNewOpenIdx] = useState(null);     // which unmatched row has its "add new student" form open
   const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", course: "", class_name: "" });
@@ -774,20 +775,23 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
 
-  // Loads the real exam_schedule rows for (course, examType, examDate), then loads any
-  // exam_marks already saved against those exact exam_ids. This is the single source of
-  // truth for "what subjects exist for this exam" — replacing the old static config lookup.
-  const loadScheduleAndMarks = useCallback(async (typeId, date, crs) => {
-    if (!typeId || !date || !crs) { setScheduledSubjects([]); setMarks({}); return; }
+  // Loads the real exam_schedule rows for (course, examType), then loads any
+  // exam_marks already saved against those exact exam_ids. This allows subjects
+  // scheduled on different dates to all be entered in one view.
+  // The exam_date picker now shows the EARLIEST exam date for reference, but doesn't
+  // filter the schedule query — we get all subjects for this course's exam type.
+  const loadScheduleAndMarks = useCallback(async (typeId, crs) => {
+    if (!typeId || !crs) { setScheduledSubjects([]); setMarks({}); return; }
     setLoading(true);
     setScheduleError("");
 
+    // Query by exam_type + course, NOT by date — allows multi-day exams
     const { data: schedData, error: schedErr } = await supabase
       .from("exam_schedule")
-      .select("id, subject, total_marks")
+      .select("id, subject, total_marks, exam_date")
       .eq("exam_type_id", typeId)
-      .eq("exam_date", date)
-      .eq("course", crs);
+      .eq("course", crs)
+      .order("exam_date"); // Sort by date for UI clarity
 
     if (schedErr) {
       console.error("Failed to fetch exam_schedule:", schedErr);
@@ -801,7 +805,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
 
     if (!schedSubs.length) {
       setMarks({}); setLoading(false);
-      setScheduleError(`No exam scheduled for ${crs} on ${date}. Create it in Exams → Schedule first.`);
+      setScheduleError(`No exam scheduled for ${crs} under this exam type. Create it in Exams → Schedule first.`);
       return;
     }
 
@@ -834,7 +838,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     setMarks(map); setLoading(false);
   }, [students]);
 
-  useEffect(() => { loadScheduleAndMarks(examType, examDate, course); }, [examType, examDate, course, loadScheduleAndMarks]);
+  useEffect(() => { loadScheduleAndMarks(examType, course); }, [examType, course, loadScheduleAndMarks]);
 
   const handleMark = (sid, sub, val) => {
     const num = val === "" ? "" : Math.min(Number(val), getSubMax(sub));
@@ -860,7 +864,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     try {
       if (!scheduledSubjects.length) {
         setSaving(false);
-        setSaveError(`No exam scheduled for course="${course}" on ${examDate}. Create it in Exams → Schedule first.`);
+        setSaveError(`No exam scheduled for course="${course}" under this exam type. Create it in Exams → Schedule first.`);
         return;
       }
       
@@ -1206,17 +1210,113 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     const manualPool = manualPoolBase.length ? manualPoolBase : students;
     const assignedIds = new Set(importRows.map(r => r.student.id));
 
-    const getManualCandidates = (query) => {
-      const q = (query || "").trim();
-      const pool = manualPool.filter(s => !assignedIds.has(s.id));
-      if (!q) return pool.slice(0, 6);
-      const ql = q.toLowerCase();
-      return pool
-        .map(s => ({ s, score: Math.max(nameSimilarity(q, s.name), String(s.gcc_no).includes(q) ? 0.99 : 0) }))
-        .filter(({ s, score }) => score > 0.3 || s.name?.toLowerCase().includes(ql))
+    // ── ENHANCED: Multi-strategy smart search ──────────────────────────────────
+    // 1. Exact GCC match → score 1.0
+    // 2. GCC substring match → score 0.95
+    // 3. Exact admission no → score 1.0
+    // 4. Exact name → score 1.0
+    // 5. First/last name matches → score 0.85-0.9
+    // 6. All words in name appear (fuzzy word match) → score 0.8
+    // 7. Fuzzy string similarity → score varies
+    // 8. Substring name match → score 0.75
+    const getManualCandidates = (query, filterIdx) => {
+      const q = (query || "").trim().toUpperCase();
+      const filter = manualSearchFilter[filterIdx] || {};
+      
+      let pool = manualPool.filter(s => !assignedIds.has(s.id));
+      
+      // Apply course/batch filters
+      if (filter.course) {
+        pool = pool.filter(s => (s.course || "").toUpperCase() === filter.course.toUpperCase());
+      }
+      if (filter.batch) {
+        pool = pool.filter(s => (s.class_name || "").toUpperCase() === filter.batch.toUpperCase());
+      }
+      
+      if (!q) {
+        // No query: return first 8 unassigned students (from filtered pool)
+        return pool.slice(0, 8);
+      }
+
+      const scoredCandidates = pool.map(s => {
+        let score = 0;
+        let matchReason = "";
+
+        const normGcc = normalizeGccValue(s.gcc_no);
+        const normAdm = String(s.admission_no || "").trim().toUpperCase();
+        const normName = normalizeNameValue(s.name);
+        const ql = q.toLowerCase();
+
+        // 1. Exact GCC match
+        if (normalizeGccValue(q) && normalizeGccValue(q) === normGcc) {
+          score = 1.0;
+          matchReason = "GCC exact";
+        }
+        // 2. GCC substring/contains match
+        else if (String(s.gcc_no).includes(q)) {
+          score = 0.95;
+          matchReason = "GCC substring";
+        }
+        // 3. Exact admission number match
+        else if (normAdm && normAdm === q) {
+          score = 1.0;
+          matchReason = "Admission# exact";
+        }
+        // 4. Admission number partial match
+        else if (normAdm && normAdm.includes(q)) {
+          score = 0.92;
+          matchReason = "Admission# partial";
+        }
+        // 5. Exact name match
+        else if (normName === q) {
+          score = 1.0;
+          matchReason = "Name exact";
+        }
+        // 6. First or last name exact match
+        else {
+          const nameTokens = normName.split(" ").filter(Boolean);
+          const queryTokens = q.split(" ").filter(Boolean);
+          
+          // 6a. First name exact match
+          if (nameTokens[0] === queryTokens[0] && queryTokens.length === 1) {
+            score = 0.88;
+            matchReason = "First name";
+          }
+          // 6b. Last name exact match
+          else if (nameTokens.length > 1 && queryTokens.length === 1 && 
+                   nameTokens[nameTokens.length - 1] === queryTokens[0]) {
+            score = 0.88;
+            matchReason = "Last name";
+          }
+          // 7. All query tokens exist in name (word match)
+          else if (queryTokens.every(qt => nameTokens.some(nt => nt === qt))) {
+            score = 0.82;
+            matchReason = "All words match";
+          }
+          // 8. Query tokens are substrings of name tokens (partial word match)
+          else if (queryTokens.every(qt => nameTokens.some(nt => nt.includes(qt)))) {
+            score = 0.75;
+            matchReason = "Partial words";
+          }
+          // 9. Fuzzy string similarity on full name
+          else {
+            score = nameSimilarity(q, s.name);
+            matchReason = score > 0.5 ? "Fuzzy match" : "Low match";
+          }
+          // 10. Substring check (catch-all)
+          if (score < 0.5 && s.name?.toUpperCase().includes(ql)) {
+            score = 0.65;
+            matchReason = "Name contains";
+          }
+        }
+
+        return { student: s, score, reason: matchReason };
+      })
+        .filter(({ score }) => score >= 0.45) // Slightly lower threshold to catch more matches
         .sort((a, b) => b.score - a.score)
-        .slice(0, 6)
-        .map(({ s }) => s);
+        .slice(0, 10); // Show up to 10 results
+
+      return scoredCandidates.map(({ student }) => student);
     };
 
     return (
@@ -1287,7 +1387,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
                 const isOpen = manualOpenIdx === idx;
                 const isAddOpen = addNewOpenIdx === idx;
                 const query = manualSearch[idx] ?? "";
-                const candidates = getManualCandidates(query);
+                const candidates = getManualCandidates(query, idx);
                 return (
                   <div key={idx} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -1320,25 +1420,87 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
                       </div>
                     </div>
                     {isOpen && (
-                      <div style={{ marginTop: 10 }}>
+                      <div style={{ marginTop: 10, padding: "10px 12px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB" }}>
                         <input
                           autoFocus
                           value={query}
                           onChange={e => setManualSearch(p => ({ ...p, [idx]: e.target.value }))}
-                          placeholder="Search by student name or GCC no…"
-                          style={{ ...css.input, fontSize: 12, marginBottom: 6 }}
+                          placeholder={err.rawGcc ? `GCC ${err.rawGcc} or name…` : (err.rawName ? `Similar to: ${err.rawName}…` : "Search: name, GCC, or admission#…")}
+                          style={{ ...css.input, fontSize: 12, marginBottom: 8, width: "100%" }}
                         />
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 150, overflowY: "auto" }}>
-                          {candidates.map(s => (
-                            <div key={s.id} onClick={() => assignStudentToError(idx, s)}
-                              style={{ padding: "6px 10px", borderRadius: 6, background: "white", border: "1px solid #E5E7EB", cursor: "pointer", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontWeight: 600 }}>{s.name}</span>
-                              <span style={{ color: "#9CA3AF", fontSize: 11 }}>GCC {s.gcc_no} · {s.class_name || s.course}</span>
-                            </div>
-                          ))}
-                          {!candidates.length && <div style={{ fontSize: 11, color: "#9CA3AF", padding: "4px 2px" }}>No matching students found.</div>}
+                        <div style={{ fontSize: 10, color: "#6B7280", marginBottom: 8, background: "white", padding: "6px 8px", borderRadius: 4 }}>
+                          💡 Try: first/last name, GCC number, admission number, or partial name match
                         </div>
-                      </div>
+                        
+                        {/* Quick filters */}
+                        <div style={{ marginBottom: 10, paddingTop: 8, borderTop: "1px solid #E5E7EB" }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>🎯 Filter by Course/Batch:</div>
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                            <button 
+                              onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: {} }))}
+                              style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: !manualSearchFilter[idx]?.course && !manualSearchFilter[idx]?.batch ? "#1a3c2e" : "#F3F4F6", color: !manualSearchFilter[idx]?.course && !manualSearchFilter[idx]?.batch ? "white" : "#374151", border: "none", borderRadius: 4 }}>
+                              ✕ Clear
+                            </button>
+                            {courses.map(c => (
+                              <button key={c}
+                                onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: { ...(p[idx] || {}), course: manualSearchFilter[idx]?.course === c ? undefined : c, batch: undefined } }))}
+                                style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: manualSearchFilter[idx]?.course === c ? "#1D4ED8" : "#F3F4F6", color: manualSearchFilter[idx]?.course === c ? "white" : "#374151", border: manualSearchFilter[idx]?.course === c ? "none" : "1px solid #E5E7EB", borderRadius: 4 }}>
+                                {c}
+                              </button>
+                            ))}
+                          </div>
+                          {manualSearchFilter[idx]?.course && batchesForCourse(manualSearchFilter[idx].course).length > 0 && (
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                              {batchesForCourse(manualSearchFilter[idx].course).map(b => (
+                                <button key={b}
+                                  onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: { ...(p[idx] || {}), batch: manualSearchFilter[idx]?.batch === b ? undefined : b } }))}
+                                  style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: manualSearchFilter[idx]?.batch === b ? "#7c3aed" : "#F5F3FF", color: manualSearchFilter[idx]?.batch === b ? "white" : "#5B21B6", border: manualSearchFilter[idx]?.batch === b ? "none" : "1px solid #DDD6FE", borderRadius: 4 }}>
+                                  {b}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                          {candidates.length > 0 ? (
+                            candidates.map(s => {
+                              // Re-compute match info for display
+                              const q = manualSearch[idx]?.toUpperCase() || "";
+                              const normGcc = normalizeGccValue(s.gcc_no);
+                              const normAdm = String(s.admission_no || "").trim().toUpperCase();
+                              const normName = normalizeNameValue(s.name);
+                              
+                              let matchBg = "#F0FDF4", matchColor = "#15803D", matchLabel = "";
+                              if (normalizeGccValue(q) === normGcc) matchLabel = "GCC match";
+                              else if (String(s.gcc_no).includes(q)) { matchLabel = "GCC substring"; matchBg = "#FEF3C7"; matchColor = "#92400E"; }
+                              else if (normAdm === q) matchLabel = "Admission# exact";
+                              else if (normAdm && normAdm.includes(q)) { matchLabel = "Admission# partial"; matchBg = "#FEF3C7"; matchColor = "#92400E"; }
+                              else if (normName === q) matchLabel = "Name exact";
+                              else matchLabel = "Partial match";
+
+                              return (
+                                <div key={s.id} onClick={() => assignStudentToError(idx, s)}
+                                  style={{ padding: "8px 10px", borderRadius: 6, background: "white", border: "2px solid #E5E7EB", cursor: "pointer", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", transition: "all 0.15s", }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#3B82F6"; e.currentTarget.style.background = "#EFF6FF"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "white"; }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 600, color: "#1F2937", marginBottom: 2 }}>{s.name}</div>
+                                    <div style={{ fontSize: 10, color: "#6B7280" }}>
+                                      {s.gcc_no && <span>GCC {s.gcc_no}</span>}
+                                      {s.admission_no && <span> · Adm# {s.admission_no}</span>}
+                                      {(s.class_name || s.course) && <span> · {s.class_name || s.course}</span>}
+                                    </div>
+                                  </div>
+                                  <span style={{ background: matchBg, color: matchColor, padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", marginLeft: 8 }}>{matchLabel}</span>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div style={{ fontSize: 11, color: "#9CA3AF", padding: "8px 10px", textAlign: "center", background: "#F9FAFB", borderRadius: 6 }}>
+                              <div style={{ marginBottom: 4 }}>🔍 No matching students found</div>
+                              <div style={{ fontSize: 10, color: "#9CA3AF" }}>Try: name, GCC, or admission number</div>
+                            </div>
+                          )}
+                        </div>
                     )}
                     {isAddOpen && (
                       <div style={{ marginTop: 10, padding: 12, background: "white", border: "1px solid #E5E7EB", borderRadius: 8 }}>
