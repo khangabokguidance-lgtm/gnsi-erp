@@ -1044,9 +1044,10 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
           if (subMarks[sub] !== undefined) {
             // Try exact match first, then fuzzy match
             let examId = examIdBySubject[sub];
+            let matchedVia = examId ? "exact" : null;
             if (!examId) {
               const bestMatch = findBestScheduleSubject(sub, scheduleSubjects);
-              if (bestMatch) examId = examIdBySubject[bestMatch];
+              if (bestMatch) { examId = examIdBySubject[bestMatch]; matchedVia = `fuzzy→"${bestMatch}"`; }
             }
             if (!examId) {
               setImporting(false);
@@ -1058,6 +1059,8 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
               exam_id: examId,
               marks_obtained: subMarks[sub],
               class_name: st.class_name,
+              __sub: sub,            // debug only — stripped before insert
+              __matchedVia: matchedVia, // debug only — stripped before insert
             });
           }
         }
@@ -1078,16 +1081,19 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
           const prev = seen.get(key);
           setImporting(false);
           console.error(`Duplicate found:`, { prev, current: r });
-          setImportSaveError(`Duplicate: Student ${r.student_id} exam ${r.exam_id} appears twice. Previous: ${JSON.stringify(prev)}, Current: ${JSON.stringify(r)}`);
+          setImportSaveError(`Subjects "${prev.__sub}" (${prev.__matchedVia}) and "${r.__sub}" (${r.__matchedVia}) both matched exam_id ${r.exam_id} for student ${r.student_id}. Marks: ${prev.marks_obtained} vs ${r.marks_obtained}.`);
           return;
         }
         seen.set(key, r);
       }
       
+      // Strip debug-only fields before sending to Supabase
+      const cleanRows = rows.map(({ __sub, __matchedVia, ...rest }) => rest);
+      
       // Upsert using (student_id, exam_id) as unique key
       const writeErrors = [];
-      for (let i = 0; i < rows.length; i += 100) {
-        const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
+      for (let i = 0; i < cleanRows.length; i += 100) {
+        const { error } = await supabase.from("exam_marks").upsert(cleanRows.slice(i, i + 100), { 
           onConflict: "student_id,exam_id" 
         });
         if (error) writeErrors.push(error.message || String(error));
