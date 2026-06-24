@@ -873,25 +873,31 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       
       // Build rows to insert — subjects already comes straight from scheduledSubjects,
       // so every lookup below is an exact match by construction. No fuzzy matching needed.
-      const rows = [];
-      for (const st of courseStudents) {
-        for (const sub of subjects) {
-          const raw = marks[`${st.id}-${sub}`];
-          if (raw === "" || raw === undefined || raw === null) continue;
-          const m = Number(raw);
-          if (!isNaN(m)) {
-            const examId = examIdBySubject[sub];
-            if (!examId) continue; // shouldn't happen — sub is drawn from scheduledSubjects itself
-            rows.push({
-              student_id: st.id,
-              exam_id: examId,
-              marks_obtained: m,
-              max_marks: getSubMax(sub),
-              class_name: st.class_name,
-            });
-          }
-        }
-      }
+      // REPLACE this block in MarkEntry's handleSave():
+const rows = [];
+for (const st of courseStudents) {
+  for (const sub of subjects) {
+    const raw = marks[`${st.id}-${sub}`];
+    if (raw === "" || raw === undefined || raw === null) continue;
+    const m = Number(raw);
+    if (!isNaN(m)) {
+      const examId = examIdBySubject[sub];
+      if (!examId) continue;
+      rows.push({
+        student_id: st.id,
+        exam_id: examId,
+        exam_type_id: examType,      // ← ADD THIS
+        exam_date: examDate,          // ← ADD THIS
+        subject: sub,                 // ← ADD THIS
+        marks_obtained: m,
+        marks: m,                     // ← ADD THIS (normalized)
+        max_marks: getSubMax(sub),
+        total_marks: getSubMax(sub),  // ← ADD THIS
+        class_name: st.class_name,
+      });
+    }
+  }
+}
       
       if (!rows.length) {
         setSaving(false);
@@ -1037,8 +1043,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
             rows.push({
               student_id: st.id,
               exam_id: examId,
+              exam_type_id: examType,      // ← ADD
+              exam_date: examDate,          // ← ADD
+              subject: sub,  
               marks_obtained: subMarks[sub],
+              marks: subMarks[sub],         // ← ADD
               max_marks: maxMarksBySubject[sub],
+              total_marks: maxMarksBySubject[sub],  // ← ADD
               class_name: st.class_name,
             });
           }
