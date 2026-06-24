@@ -1471,13 +1471,16 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
+  const [datesLoaded, setDatesLoaded] = useState(false); // distinguishes "still checking" from "confirmed zero"
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!examType) return;
+    setDatesLoaded(false);
     supabase.from("exam_marks").select("exam_date").eq("exam_type_id", examType).then(({ data }) => {
       const unique = [...new Set((data || []).map(r => r.exam_date))].sort().reverse();
-      setDates(unique); if (unique.length) setExamDate(unique[0]);
+      setDates(unique); if (unique.length) setExamDate(unique[0]); else setExamDate("");
+      setDatesLoaded(true);
     });
   }, [examType]);
 
@@ -1492,6 +1495,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
   }, [examType, examDate, course]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
+  const examName = examTypes.find(e => e.id === examType)?.name || "Examination";
 
   return (
     <div>
@@ -1505,9 +1509,18 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
-          <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>{dates.map(d => <option key={d} value={d}>{d}</option>)}</select>
+          <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>
+            {!dates.length && <option value="">{datesLoaded ? "— No marks recorded —" : "Checking…"}</option>}
+            {dates.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
         </div>
       </div>
+      {datesLoaded && !dates.length && (
+        <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "#92400E", lineHeight: 1.6 }}>
+          ⚠️ No marks have been recorded yet under the exam type "<b>{examName}</b>". If marks were already imported or entered under what looks like this same exam type, there may be a <b>duplicate exam type with an identical name</b> pointing at a different record —
+          check <b>Setup → Exam Types</b> for duplicates, or confirm the Exam Type used in Mark Entry matches this exact one.
+        </div>
+      )}
       {loading ? <Spinner /> : (
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
@@ -2121,10 +2134,30 @@ function ExamTypesManager({ examTypes, onUpdate }) {
   const [list, setList] = useState(examTypes);
   const [form, setForm] = useState({ name: "", description: "" });
   const [saving, setSaving] = useState(false); const [saved, setSaved] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [markCounts, setMarkCounts] = useState({}); // { exam_type_id: number of exam_marks rows }
+
+  // Fetch how many marks exist per exam type once, so duplicate (same-name) entries
+  // can be told apart by which one actually holds data vs. which is an empty twin.
+  useEffect(() => {
+    supabase.from("exam_marks").select("exam_type_id").then(({ data }) => {
+      const counts = {};
+      (data || []).forEach(r => { counts[r.exam_type_id] = (counts[r.exam_type_id] || 0) + 1; });
+      setMarkCounts(counts);
+    });
+  }, []);
 
   const add = async () => {
-    if (!form.name.trim()) return; setSaving(true);
-    const { data } = await supabase.from("exam_types").insert([{ name: form.name.trim(), description: form.description }]).select();
+    setAddError("");
+    const trimmed = form.name.trim();
+    if (!trimmed) return;
+    const dup = list.find(et => (et.name || "").trim().toLowerCase() === trimmed.toLowerCase());
+    if (dup) {
+      setAddError(`An exam type named "${trimmed}" already exists. Two exam types with the same name will silently behave like different records everywhere in the app (imports, report cards, etc. can end up pointing at different ones) — rename this one, or edit/delete the existing entry below instead.`);
+      return;
+    }
+    setSaving(true);
+    const { data } = await supabase.from("exam_types").insert([{ name: trimmed, description: form.description }]).select();
     if (data) { const updated = [...list, data[0]]; setList(updated); onUpdate(updated); }
     setForm({ name: "", description: "" }); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
@@ -2134,10 +2167,23 @@ function ExamTypesManager({ examTypes, onUpdate }) {
     const updated = list.filter(e => e.id !== id); setList(updated); onUpdate(updated);
   };
 
+  // Group existing exam types by normalized name to surface any pre-existing duplicates.
+  const nameGroups = {};
+  list.forEach(et => {
+    const key = (et.name || "").trim().toLowerCase();
+    (nameGroups[key] = nameGroups[key] || []).push(et);
+  });
+  const duplicateGroups = Object.values(nameGroups).filter(g => g.length > 1);
+
   return (
     <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>➕ Add Exam Type</div>
+        {addError && (
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12, marginBottom: 14, lineHeight: 1.5 }}>
+            ⚠️ {addError}
+          </div>
+        )}
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Name *</label>
           <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. 1st Monthly Test" style={css.input} />
@@ -2150,9 +2196,42 @@ function ExamTypesManager({ examTypes, onUpdate }) {
       </div>
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>⚙️ Configured Exam Types</div>
+
+        {duplicateGroups.length > 0 && (
+          <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 12.5, color: "#92400E" }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠️ Duplicate exam type name{duplicateGroups.length > 1 ? "s" : ""} found</div>
+            <div style={{ marginBottom: 10, lineHeight: 1.5 }}>
+              These share the exact same name but are different underlying records — selecting "the same" exam type by name in different tabs (e.g. Mark Entry vs. Report Cards) can silently point at different ones, making saved marks look like they vanished. Keep whichever copy has marks recorded, and delete the empty twin(s).
+            </div>
+            {duplicateGroups.map((group, gi) => (
+              <div key={gi} style={{ marginBottom: gi < duplicateGroups.length - 1 ? 10 : 0 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>"{group[0].name}" — {group.length} copies</div>
+                {group.map(et => {
+                  const count = markCounts[et.id] || 0;
+                  return (
+                    <div key={et.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px", background: "white", border: "1px solid #FDE68A", borderRadius: 6, marginBottom: 5, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: "monospace", fontSize: 10.5, color: "#78716C", wordBreak: "break-all" }}>{et.id}</span>
+                      <span style={{ fontWeight: 700, fontSize: 12, color: count ? "#0F6E56" : "#A32D2D", whiteSpace: "nowrap" }}>
+                        {count ? `✓ ${count} mark${count !== 1 ? "s" : ""} recorded` : "0 marks — likely safe to delete"}
+                      </span>
+                      <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>🗑️ Delete</button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+
         {list.map(et => (
           <div key={et.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8, background: "#F9FAFB" }}>
-            <div><div style={{ fontWeight: 600, fontSize: 13 }}>{et.name}</div>{et.description && <div style={{ fontSize: 11, color: "#9CA3AF" }}>{et.description}</div>}</div>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{et.name}</div>
+              {et.description && <div style={{ fontSize: 11, color: "#9CA3AF" }}>{et.description}</div>}
+              <div style={{ fontSize: 10, color: markCounts[et.id] ? "#0F6E56" : "#9CA3AF", marginTop: 2 }}>
+                {markCounts[et.id] ? `${markCounts[et.id]} mark${markCounts[et.id] !== 1 ? "s" : ""} recorded` : "no marks yet"}
+              </div>
+            </div>
             <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕</button>
           </div>
         ))}
@@ -3753,12 +3832,15 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
+  const [datesLoaded, setDatesLoaded] = useState(false); // distinguishes "still checking" from "confirmed zero"
 
   useEffect(() => {
     if (!examType) return;
+    setDatesLoaded(false);
     supabase.from("exam_marks").select("exam_date").eq("exam_type_id", examType).then(({ data }) => {
       const unique = [...new Set((data || []).map(r => r.exam_date))].sort().reverse();
-      setDates(unique); if (unique.length) setExamDate(unique[0]);
+      setDates(unique); if (unique.length) setExamDate(unique[0]); else setExamDate("");
+      setDatesLoaded(true);
     });
   }, [examType]);
 
@@ -3783,9 +3865,18 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
-          <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>{dates.map(d => <option key={d} value={d}>{d}</option>)}</select>
+          <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>
+            {!dates.length && <option value="">{datesLoaded ? "— No marks recorded —" : "Checking…"}</option>}
+            {dates.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
         </div>
       </div>
+      {datesLoaded && !dates.length && (
+        <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "#92400E", lineHeight: 1.6 }}>
+          ⚠️ No marks have been recorded yet under the exam type "<b>{examName}</b>". If you already imported or entered marks under what looks like this same exam type, there may be a <b>duplicate exam type with an identical name</b> pointing at a different record —
+          check <b>Setup → Exam Types</b> for duplicates (it will flag them and show which copy actually has marks), or confirm the Exam Type used in Mark Entry matches this exact one.
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
         {courseStudents.map(st => (
           <ReportCardItem key={st.id} st={st} subjects={subjects} marks={marks} examType={examType} examDate={examDate} examName={examName} institute={institute} allStudents={courseStudents} course={course} />
