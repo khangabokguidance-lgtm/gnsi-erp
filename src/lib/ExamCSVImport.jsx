@@ -383,19 +383,21 @@ export default function ExamCSVImport({
     await saveRollbackSnapshot(studentIds, localExamTypeId, localExamDate);
     setRollbackSnap(loadRollbackSnapshot());
 
-    // Fetch exam_schedule to map subjects to exam_ids
-    console.log(`[ExamCSVImport.confirmImport] Looking for exams: examTypeId="${localExamTypeId}", examDate="${localExamDate}"`);
+    // Fetch exam_schedule to map subjects to exam_ids — filtered by course too, since other
+    // courses' rows for the same exam_type_id/exam_date would otherwise silently collide
+    console.log(`[ExamCSVImport.confirmImport] Looking for exams: examTypeId="${localExamTypeId}", examDate="${localExamDate}", course="${course}"`);
     const { data: schedules, error: schedError } = await supabase
       .from("exam_schedule")
-      .select("id, subject, exam_type_id, exam_date")
+      .select("id, subject, exam_type_id, exam_date, course")
       .eq("exam_type_id", localExamTypeId)
-      .eq("exam_date", localExamDate);
+      .eq("exam_date", localExamDate)
+      .eq("course", course);
     
     console.log(`[ExamCSVImport.confirmImport] Query returned:`, schedules, "error:", schedError);
     
     if (schedError || !schedules?.length) {
       setImporting(false);
-      const msg = `No exams found for examTypeId="${localExamTypeId}" and examDate="${localExamDate}". Create an exam schedule first, or check that the date matches exactly.`;
+      const msg = `No exams found for examTypeId="${localExamTypeId}", examDate="${localExamDate}", course="${course}". Create an exam schedule first, or check that the date matches exactly.`;
       console.error(msg);
       alert(msg);
       return;

@@ -840,19 +840,22 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     setSaveError("");
     
     try {
-      // Build a map of subject → exam_id for the selected exam type and date
-      console.log(`[MarkEntry.handleSave] Looking for exams: examType="${examType}", examDate="${examDate}"`);
+      // Build a map of subject → exam_id for the selected exam type, date, AND course
+      // (without the course filter, other courses' rows for the same exam_type_id/exam_date
+      // silently overwrite each other and students get mapped to the wrong course's exam_id)
+      console.log(`[MarkEntry.handleSave] Looking for exams: examType="${examType}", examDate="${examDate}", course="${course}"`);
       const { data: schedules, error: schedError } = await supabase
         .from("exam_schedule")
-        .select("id, subject, exam_type_id, exam_date")
+        .select("id, subject, exam_type_id, exam_date, course")
         .eq("exam_type_id", examType)
-        .eq("exam_date", examDate);
+        .eq("exam_date", examDate)
+        .eq("course", course);
       
       console.log(`[MarkEntry.handleSave] Query returned:`, schedules, "error:", schedError);
       
       if (schedError || !schedules?.length) {
         setSaving(false);
-        const msg = `No exams found for examType="${examType}" and examDate="${examDate}". Create an exam schedule first.`;
+        const msg = `No exams found for examType="${examType}", examDate="${examDate}", course="${course}". Create an exam schedule first.`;
         console.error(msg);
         setSaveError(msg);
         return;
@@ -1012,19 +1015,21 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       const importSubjects = importInfo?.subjects || subjects;
       const detCourse = importInfo?.detectedCourse || course;
       
-      // Fetch exam_schedule to map subjects to exam_ids
-      console.log(`[MarkEntry.confirmImport] Looking for exams: examType="${examType}", examDate="${examDate}"`);
+      // Fetch exam_schedule to map subjects to exam_ids — filtered by course too, since other
+      // courses' rows for the same exam_type_id/exam_date would otherwise silently collide
+      console.log(`[MarkEntry.confirmImport] Looking for exams: examType="${examType}", examDate="${examDate}", course="${detCourse}"`);
       const { data: schedules, error: schedError } = await supabase
         .from("exam_schedule")
-        .select("id, subject, exam_type_id, exam_date")
+        .select("id, subject, exam_type_id, exam_date, course")
         .eq("exam_type_id", examType)
-        .eq("exam_date", examDate);
+        .eq("exam_date", examDate)
+        .eq("course", detCourse);
       
       console.log(`[MarkEntry.confirmImport] Query returned:`, schedules, "error:", schedError);
       
       if (schedError || !schedules?.length) {
         setImporting(false);
-        const msg = `No exams found for examType="${examType}" and examDate="${examDate}". Create an exam schedule first, or check that the date matches exactly.`;
+        const msg = `No exams found for examType="${examType}", examDate="${examDate}", course="${detCourse}". Create an exam schedule first, or check that the date matches exactly.`;
         console.error(msg);
         setImportSaveError(msg);
         return;
