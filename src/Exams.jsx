@@ -164,6 +164,78 @@ function MatchBadge({ matchType, confidence }) {
     label = "Name match";
   } else if (matchType === "Manual") {
     bg = "#EEF2FF"; color = "#4338CA"; label = "Manual";
+  } else if (matchType === "New") {
+    bg = "#ECFDF5"; color = "#047857"; label = "New Student";
+  }
+  return (
+    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: bg, color, whiteSpace: "nowrap" }}>
+      {label}
+    </span>
+  );
+}
+
+// ─── Fuzzy matching helpers for CSV/Excel SUBJECT COLUMN detection ────────────
+/**
+ * Greedy best-effort mapping of expected subject names -> spreadsheet column indices.
+ * Pass 1: exact (case/space-insensitive) match.
+ * Pass 2: fuzzy similarity match (typos, "Mathematics-I" vs "Mathematics -I", abbreviations, etc),
+ *         assigned highest-confidence pairs first so no column or subject is double-claimed.
+ * `excludedCols` should contain columns already used for name/GCC/admission/course.
+ */
+function findBestColumnMatches(importSubjects, headers, excludedCols) {
+  const available = headers.map((_, idx) => idx).filter(idx => !excludedCols.has(idx));
+  const result = importSubjects.map(sub => ({ sub, col: -1, matchType: "none", confidence: 0 }));
+  const usedCols = new Set();
+
+  // Pass 1: exact match
+  result.forEach(r => {
+    const idx = available.find(c => !usedCols.has(c) && headers[c]?.toLowerCase().trim() === r.sub.toLowerCase().trim());
+    if (idx !== undefined) { r.col = idx; r.matchType = "Exact"; r.confidence = 1; usedCols.add(idx); }
+  });
+
+  // Pass 2: fuzzy match — score every remaining (subject, column) pair, assign best pairs first
+  const COL_THRESHOLD = 0.55;
+  const pairs = [];
+  result.forEach(r => {
+    if (r.col !== -1) return;
+    available.forEach(c => {
+      if (usedCols.has(c)) return;
+      const score = nameSimilarity(r.sub, headers[c] || "");
+      if (score >= COL_THRESHOLD) pairs.push({ r, c, score });
+    });
+  });
+  pairs.sort((a, b) => b.score - a.score);
+  pairs.forEach(({ r, c, score }) => {
+    if (r.col !== -1 || usedCols.has(c)) return;
+    r.col = c; r.matchType = "Fuzzy"; r.confidence = score; usedCols.add(c);
+  });
+
+  return result;
+}
+
+/** Build a {subject: marks} object for one raw spreadsheet row given a subject→column map. */
+function extractSubMarksFromRow(row, subjectColMap) {
+  const subMarks = {};
+  (subjectColMap || []).forEach(({ sub, col }) => {
+    if (col !== undefined && col !== -1 && row && row[col] !== undefined && row[col] !== "") {
+      const v = Number(row[col]);
+      if (!isNaN(v)) subMarks[sub] = v;
+    }
+  });
+  return subMarks;
+}
+
+function ColumnMatchBadge({ matchType, confidence }) {
+  const pct = Math.round((confidence || 0) * 100);
+  let bg = "#E1F5EE", color = "#0F6E56", label = "Exact";
+  if (matchType === "Fuzzy") {
+    if (pct >= 80) { bg = "#FEF9E7"; color = "#92740C"; }
+    else { bg = "#FCEBEB"; color = "#A32D2D"; }
+    label = `≈${pct}%`;
+  } else if (matchType === "Manual") {
+    bg = "#EEF2FF"; color = "#4338CA"; label = "Manual";
+  } else if (matchType === "none") {
+    bg = "#FCEBEB"; color = "#A32D2D"; label = "Not found";
   }
   return (
     <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: bg, color, whiteSpace: "nowrap" }}>
@@ -644,7 +716,7 @@ function useRemarks(studentId, examTypeId, examDate) {
   return { remark, setRemark, save, saving, saved };
 }
 
-function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) {
+function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, onStudentsChange }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms);
   const courses = Object.keys(courseSubjects);
@@ -655,6 +727,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
     (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const courseMax = getCourseMax(course);
+
+  // Existing batches for a course — used to quick-pick a batch when registering a new student
+  const batchesForCourse = (crs) => {
+    if (!crs) return [];
+    const set = new Set(students.filter(s => (s.course || "").toUpperCase() === crs.toUpperCase()).map(s => s.class_name).filter(Boolean));
+    return [...set].sort();
+  };
 
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState(new Date().toISOString().split("T")[0]);
@@ -671,6 +750,11 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
   const [importDone, setImportDone] = useState(false);
   const [manualSearch, setManualSearch] = useState({});   // { [errorIndex]: query string }
   const [manualOpenIdx, setManualOpenIdx] = useState(null); // which unmatched row has its search box open
+  const [rawImport, setRawImport] = useState(null);       // { rows, headers } — kept so subject columns can be remapped after detection
+  const [addNewOpenIdx, setAddNewOpenIdx] = useState(null);     // which unmatched row has its "add new student" form open
+  const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", course: "", class_name: "" });
+  const [addingStudent, setAddingStudent] = useState(false);
+  const [addStudentError, setAddStudentError] = useState("");
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
 
@@ -756,11 +840,12 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
       else if (raw) { const match = Object.keys(courseSubjects).find(k => raw.includes(k) || k.includes(raw)); if (match) detectedCourse = match; }
     }
     const importSubjects = courseSubjects[detectedCourse] || subjects;
-    const subjectCols = importSubjects.map(sub => ({ sub, col: headers.findIndex(h => h.toLowerCase().trim() === sub.toLowerCase().trim()) }));
     const nameCol = headers.findIndex(h => /name/i.test(h));
     const gccCol  = headers.findIndex(h => /gcc/i.test(h));
     const admCol  = headers.findIndex(h => /admission|adm|roll/i.test(h));
     if (nameCol === -1) { alert("Could not find a 'STUDENTS NAME' column."); return; }
+    const excludedCols = new Set([nameCol, gccCol, admCol, courseCol].filter(c => c !== -1 && c !== undefined));
+    const subjectColMap = findBestColumnMatches(importSubjects, headers, excludedCols);
     const allStudentsForCourse = students.filter(s => (s.class_name || "").toUpperCase() === detectedCourse || (s.course || "").toUpperCase() === detectedCourse);
     const matchPool = allStudentsForCourse.length ? allStudentsForCourse : students;
     const matched = []; const errors = [];
@@ -769,16 +854,16 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
       const rawName = row[nameCol]?.toString().trim(); if (!rawName) continue;
       const rawGcc = gccCol !== -1 ? row[gccCol]?.toString().trim() : "";
       const rawAdm = admCol !== -1 ? row[admCol]?.toString().trim() : "";
-      const subMarks = {};
-      subjectCols.forEach(({ sub, col }) => { if (col !== -1) { const v = Number(row[col]); if (!isNaN(v) && row[col] !== "") subMarks[sub] = v; } });
+      const subMarks = extractSubMarksFromRow(row, subjectColMap);
 
       const { student, matchType, confidence, suggestion } = findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool });
 
       if (!student) { errors.push({ rawName, rawGcc, rawAdm, subMarks, suggestion, rowIndex: i }); continue; }
-      matched.push({ student, subMarks, matchType, confidence });
+      matched.push({ student, subMarks, matchType, confidence, rowIndex: i });
     }
     setImportRows(matched); setImportErrors(errors);
-    setImportInfo({ detectedCourse, subjects: importSubjects });
+    setRawImport({ rows, headers });
+    setImportInfo({ detectedCourse, subjects: importSubjects, subjectColMap });
     setImportMode(true); setImportDone(false);
     if (detectedCourse !== course) setCourse(detectedCourse);
   };
@@ -803,22 +888,87 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
       await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
     await fetchMarks(examType, examDate, importInfo?.detectedCourse || course);
     setImporting(false); setImportDone(true);
-    setTimeout(() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setImportDone(false); setManualSearch({}); setManualOpenIdx(null); }, 2500);
+    setTimeout(() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setImportDone(false); setManualSearch({}); setManualOpenIdx(null); setRawImport(null); setAddNewOpenIdx(null); setAddStudentError(""); }, 2500);
   };
 
   // ─── Manual resolution for rows the auto-detector couldn't confidently match ──
   const assignStudentToError = (errIndex, student) => {
     const errRow = importErrors[errIndex];
     if (!errRow || !student) return;
-    setImportRows(rows => [...rows, { student, subMarks: errRow.subMarks, matchType: "Manual", confidence: 1 }]);
+    setImportRows(rows => [...rows, { student, subMarks: errRow.subMarks, matchType: "Manual", confidence: 1, rowIndex: errRow.rowIndex }]);
     setImportErrors(prev => prev.filter((_, i) => i !== errIndex));
     setManualOpenIdx(null);
+    setAddNewOpenIdx(null);
     setManualSearch(prev => { const n = { ...prev }; delete n[errIndex]; return n; });
   };
 
   const dismissErrorRow = (errIndex) => {
     setImportErrors(prev => prev.filter((_, i) => i !== errIndex));
     setManualOpenIdx(null);
+    setAddNewOpenIdx(null);
+  };
+
+  // ─── Register a brand-new student straight from an unmatched CSV/Excel row ──────
+  const toggleAddStudentForm = (idx, err) => {
+    if (addNewOpenIdx === idx) { setAddNewOpenIdx(null); return; }
+    setManualOpenIdx(null);
+    setAddStudentError("");
+    const detCourse = importInfo?.detectedCourse || course;
+    setNewStudentForm({
+      name: (err.rawName || "").toUpperCase(),
+      gcc_no: normalizeGccValue(err.rawGcc) || err.rawGcc || "",
+      admission_no: err.rawAdm || "",
+      course: detCourse,
+      class_name: (detCourse || "").toUpperCase(),
+    });
+    setAddNewOpenIdx(idx);
+  };
+
+  const saveNewStudentFromError = async (idx) => {
+    const errRow = importErrors[idx];
+    if (!errRow) return;
+    setAddStudentError("");
+    const name = newStudentForm.name.trim();
+    const gccRaw = newStudentForm.gcc_no.trim();
+    const courseVal = newStudentForm.course;
+    const batchVal = newStudentForm.class_name.trim().toUpperCase();
+    if (!name) { setAddStudentError("Name is required."); return; }
+    if (!gccRaw) { setAddStudentError("GCC No. is required."); return; }
+    if (!courseVal) { setAddStudentError("Course is required."); return; }
+    if (!batchVal) { setAddStudentError("Batch is required."); return; }
+    const gccNum = Number(normalizeGccValue(gccRaw) || gccRaw);
+    if (isNaN(gccNum)) { setAddStudentError("GCC No. must contain digits."); return; }
+    if (students.find(s => normalizeGccValue(s.gcc_no) === normalizeGccValue(gccRaw))) {
+      setAddStudentError(`GCC No. ${gccRaw} already belongs to another student.`);
+      return;
+    }
+    setAddingStudent(true);
+    const payload = {
+      name: name.toUpperCase(), gcc_no: gccNum,
+      admission_no: newStudentForm.admission_no.trim() || null,
+      course: courseVal.toUpperCase(), class_name: batchVal, batch: batchVal,
+    };
+    const { data, error } = await supabase.from("students").insert([payload]).select();
+    setAddingStudent(false);
+    if (error) { setAddStudentError(error.message); return; }
+    const newStudent = data[0];
+    onStudentsChange?.([...students, newStudent].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    setImportRows(rows => [...rows, { student: newStudent, subMarks: errRow.subMarks, matchType: "New", confidence: 1, rowIndex: errRow.rowIndex }]);
+    setImportErrors(prev => prev.filter(e => e !== errRow));
+    setAddNewOpenIdx(null);
+    setManualOpenIdx(null);
+  };
+
+  // ─── Manual remap of a subject -> spreadsheet column (fixes a wrong/missing auto-detection) ──
+  const remapSubjectColumn = (subjectName, newCol) => {
+    if (!importInfo?.subjectColMap) return;
+    const newMap = importInfo.subjectColMap.map(m =>
+      m.sub === subjectName ? { ...m, col: newCol, matchType: newCol === -1 ? "none" : "Manual", confidence: newCol === -1 ? 0 : 1 } : m
+    );
+    setImportInfo(prev => ({ ...prev, subjectColMap: newMap }));
+    if (!rawImport) return;
+    setImportRows(rows => rows.map(r => ({ ...r, subMarks: extractSubMarksFromRow(rawImport.rows[r.rowIndex], newMap) })));
+    setImportErrors(errs => errs.map(e => ({ ...e, subMarks: extractSubMarksFromRow(rawImport.rows[e.rowIndex], newMap) })));
   };
 
   const handleExport = async () => {
@@ -869,7 +1019,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.10)", padding: isMobile ? 14 : 24, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, color: "#1e293b" }}>📂 Import Preview</div>
-          <button onClick={() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setManualSearch({}); setManualOpenIdx(null); }}
+          <button onClick={() => { setImportMode(false); setImportRows([]); setImportErrors([]); setImportInfo(null); setManualSearch({}); setManualOpenIdx(null); setRawImport(null); setAddNewOpenIdx(null); setAddStudentError(""); }}
             style={{ ...css.btn, padding: "5px 12px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕ Cancel</button>
         </div>
         {importInfo && (
@@ -878,6 +1028,37 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
             <span style={{ fontWeight: 800, color: "#1a3c2e", background: "#D1FAE5", padding: "2px 10px", borderRadius: 999 }}>{importInfo.detectedCourse}</span>
           </div>
         )}
+
+        {/* ── Subject column mapping: which spreadsheet column feeds which subject ──── */}
+        {importInfo?.subjectColMap?.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+              📊 Subject Column Mapping
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(260px,1fr))", gap: 8 }}>
+              {importInfo.subjectColMap.map(({ sub, col, matchType, confidence }) => (
+                <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: matchType === "none" ? "#FFFBEB" : "#F9FAFB", border: `1px solid ${matchType === "none" ? "#FDE68A" : "#E5E7EB"}`, borderRadius: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
+                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>/{getSubjectMax(detCourse, sub)} marks</div>
+                  </div>
+                  <ColumnMatchBadge matchType={matchType} confidence={confidence} />
+                  <select
+                    value={col}
+                    onChange={e => remapSubjectColumn(sub, Number(e.target.value))}
+                    style={{ fontSize: 11, padding: "4px 6px", borderRadius: 6, border: "1px solid #D1D5DB", maxWidth: 110 }}
+                  >
+                    <option value={-1}>— Not in file —</option>
+                    {(rawImport?.headers || []).map((h, idx) => (
+                      <option key={idx} value={idx}>{h || `Col ${idx + 1}`}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 80, background: "#E1F5EE", border: "1px solid #BBF7D0", borderRadius: 8, padding: "10px 14px" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase" }}>Matched</div>
@@ -898,6 +1079,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
               {importErrors.map((err, idx) => {
                 const isOpen = manualOpenIdx === idx;
+                const isAddOpen = addNewOpenIdx === idx;
                 const query = manualSearch[idx] ?? "";
                 const candidates = getManualCandidates(query);
                 return (
@@ -917,9 +1099,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
                             ✓ Use {err.suggestion.name.split(" ")[0]}
                           </button>
                         )}
-                        <button onClick={() => setManualOpenIdx(isOpen ? null : idx)}
+                        <button onClick={() => { setAddNewOpenIdx(null); setManualOpenIdx(isOpen ? null : idx); }}
                           style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: isOpen ? "#1a3c2e" : "#EFF6FF", color: isOpen ? "white" : "#1D4ED8", border: isOpen ? "none" : "1px solid #BFDBFE" }}>
                           🔍 {isOpen ? "Close" : "Search"}
+                        </button>
+                        <button onClick={() => toggleAddStudentForm(idx, err)}
+                          style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: isAddOpen ? "#16A34A" : "#ECFDF5", color: isAddOpen ? "white" : "#047857", border: isAddOpen ? "none" : "1px solid #BBF7D0" }}>
+                          ➕ {isAddOpen ? "Close" : "Add New"}
                         </button>
                         <button onClick={() => dismissErrorRow(idx)}
                           style={{ ...css.btn, padding: "4px 8px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
@@ -948,12 +1134,62 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms }) 
                         </div>
                       </div>
                     )}
+                    {isAddOpen && (
+                      <div style={{ marginTop: 10, padding: 12, background: "white", border: "1px solid #E5E7EB", borderRadius: 8 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: "#1a3c2e", marginBottom: 8 }}>➕ Register as New Student</div>
+                        {addStudentError && (
+                          <div style={{ background: "#FEF2F2", color: "#DC2626", padding: "6px 10px", borderRadius: 6, fontSize: 11, marginBottom: 8 }}>⚠️ {addStudentError}</div>
+                        )}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, marginBottom: 8 }}>
+                          <input value={newStudentForm.name} onChange={e => setNewStudentForm(p => ({ ...p, name: e.target.value }))}
+                            placeholder="Full name" style={{ ...css.input, fontSize: 12 }} />
+                          <input value={newStudentForm.gcc_no} onChange={e => setNewStudentForm(p => ({ ...p, gcc_no: e.target.value }))}
+                            placeholder="GCC No." style={{ ...css.input, fontSize: 12 }} />
+                        </div>
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Course</div>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {courses.map(c => (
+                              <button key={c} onClick={() => setNewStudentForm(p => ({ ...p, course: c }))}
+                                style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.course === c ? "#1a3c2e" : "#F3F4F6", color: newStudentForm.course === c ? "white" : "#374151", border: newStudentForm.course === c ? "none" : "1px solid #E5E7EB" }}>
+                                {c}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Batch</div>
+                          {batchesForCourse(newStudentForm.course).length > 0 && (
+                            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
+                              {batchesForCourse(newStudentForm.course).map(b => (
+                                <button key={b} onClick={() => setNewStudentForm(p => ({ ...p, class_name: b }))}
+                                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.class_name === b ? "#7c3aed" : "#F5F3FF", color: newStudentForm.class_name === b ? "white" : "#5B21B6", border: newStudentForm.class_name === b ? "none" : "1px solid #DDD6FE" }}>
+                                  {b}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <input value={newStudentForm.class_name} onChange={e => setNewStudentForm(p => ({ ...p, class_name: e.target.value }))}
+                            placeholder="Batch / class name" style={{ ...css.input, fontSize: 12 }} />
+                        </div>
+                        <input value={newStudentForm.admission_no} onChange={e => setNewStudentForm(p => ({ ...p, admission_no: e.target.value }))}
+                          placeholder="Admission No. (optional)" style={{ ...css.input, fontSize: 12, marginBottom: 10 }} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setAddNewOpenIdx(null)} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151", fontSize: 12 }}>Cancel</button>
+                          <button onClick={() => saveNewStudentFromError(idx)} disabled={addingStudent}
+                            style={{ ...css.btn, flex: 2, background: addingStudent ? "#93C5FD" : "#16A34A", color: "white", fontSize: 12 }}>
+                            {addingStudent ? "⏳ Saving…" : "✅ Add & Use This Student"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
         )}
+
 
         <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 460 }}>
@@ -5288,7 +5524,7 @@ export default function Exams({ currentUser, perms }) {
   const sectionMap = {
     dashboard:      <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
     toppers:        <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
-    entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} />,
+    entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} onStudentsChange={setStudents} />,
  
     // ── NEW: smart CSV import tab ──────────────────────────────────────────
     csvimport: (
