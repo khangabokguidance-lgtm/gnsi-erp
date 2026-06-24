@@ -51,6 +51,29 @@ const DEFAULT_COURSE_SUBJECTS = {
   LEADER:    ["Vocabulary", "Grammar", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
 };
 
+// ─── Track (real exam track) → Batches it contains ───────────────────────────
+// IMPORTANT: throughout this file, the word "course" in variable names, picker
+// labels, and courseSubjects keys (ACHIEVER, CHAMPION, LEADER, LAKSHYA, UMEED,
+// PRIME, ELITE) actually means BATCH, not the student's real exam track. The
+// `students.course` database column holds the real track instead (Sainik /
+// Navodaya / Foundation / Combined Course). These two concepts share the word
+// "course" but are NOT the same thing — never compare s.course against a
+// courseSubjects-style batch value.
+const TRACK_BATCHES = {
+  Sainik:           ["ACHIEVER", "LEADER", "CHAMPION"],
+  Navodaya:         ["LAKSHYA", "UMEED"],
+  Foundation:       ["PRIME", "ELITE"],
+  "Combined Course": [],
+};
+const TRACKS = Object.keys(TRACK_BATCHES);
+function trackForBatch(batch) {
+  const b = (batch || "").trim().toUpperCase();
+  for (const t of TRACKS) {
+    if (TRACK_BATCHES[t].some(x => x.toUpperCase() === b)) return t;
+  }
+  return "";
+}
+
 // ─── Max marks per subject per course (all total to 100) ─────────────────────
 const COURSE_MAX_MARKS = {
   ACHIEVER:  { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
@@ -739,15 +762,17 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const courseMax = scheduledSubjects.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0) || 100;
 
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() ||
-    (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
 
-  // Existing batches for a course — used to quick-pick a batch when registering a new student
-  const batchesForCourse = (crs) => {
-    if (!crs) return [];
-    const set = new Set(students.filter(s => (s.course || "").toUpperCase() === crs.toUpperCase()).map(s => s.class_name).filter(Boolean));
-    return [...set].sort();
+  // Existing batches for a track — used to quick-pick a batch when registering a new student
+  const batchesForTrack = (trackName) => {
+    if (!trackName) return [];
+    const canonical = TRACK_BATCHES[trackName] || [];
+    const seen = new Set(
+      students.filter(s => (s.course || "").trim() === trackName).map(s => (s.class_name || s.batch || "").toUpperCase()).filter(Boolean)
+    );
+    return [...new Set([...canonical, ...seen])];
   };
 
   const [marks, setMarks] = useState({});
@@ -767,7 +792,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [manualSearchFilter, setManualSearchFilter] = useState({}); // { [errorIndex]: { course?, batch? } }
   const [rawImport, setRawImport] = useState(null);       // { rows, headers } — kept so subject columns can be remapped after detection
   const [addNewOpenIdx, setAddNewOpenIdx] = useState(null);     // which unmatched row has its "add new student" form open
-  const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", course: "", class_name: "" });
+  const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", track: "", batch: "" });
   const [addingStudent, setAddingStudent] = useState(false);
   const [addStudentError, setAddStudentError] = useState("");
   const [importSaveError, setImportSaveError] = useState("");
@@ -810,8 +835,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     }
 
     const ids = students.filter(s =>
-      (s.class_name || "").toUpperCase() === crs.toUpperCase() ||
-      (s.course || "").toUpperCase() === crs.toUpperCase()
+      (s.class_name || "").toUpperCase() === crs.toUpperCase()
     ).map(s => s.id);
     const examIds = schedSubs.map(s => s.id);
     if (!ids.length) { setMarks({}); setLoading(false); return; }
@@ -993,7 +1017,7 @@ for (const st of courseStudents) {
     if (nameCol === -1) { alert("Could not find a 'STUDENTS NAME' column."); return; }
     const excludedCols = new Set([nameCol, gccCol, admCol, courseCol].filter(c => c !== -1 && c !== undefined));
     const subjectColMap = findBestColumnMatches(importSubjects, headers, excludedCols);
-    const allStudentsForCourse = students.filter(s => (s.class_name || "").toUpperCase() === detectedCourse || (s.course || "").toUpperCase() === detectedCourse);
+    const allStudentsForCourse = students.filter(s => (s.class_name || "").toUpperCase() === detectedCourse);
     const matchPool = allStudentsForCourse.length ? allStudentsForCourse : students;
     const matched = []; const errors = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1149,11 +1173,11 @@ for (const st of courseStudents) {
     setAddStudentError("");
     const name = newStudentForm.name.trim();
     const gccRaw = newStudentForm.gcc_no.trim();
-    const courseVal = newStudentForm.course;
-    const batchVal = newStudentForm.class_name.trim().toUpperCase();
+    const trackVal = newStudentForm.track;
+    const batchVal = newStudentForm.batch.trim().toUpperCase();
     if (!name) { setAddStudentError("Name is required."); return; }
     if (!gccRaw) { setAddStudentError("GCC No. is required."); return; }
-    if (!courseVal) { setAddStudentError("Course is required."); return; }
+    if (!trackVal) { setAddStudentError("Track is required."); return; }
     if (!batchVal) { setAddStudentError("Batch is required."); return; }
     const gccNum = Number(normalizeGccValue(gccRaw) || gccRaw);
     if (isNaN(gccNum)) { setAddStudentError("GCC No. must contain digits."); return; }
@@ -1165,7 +1189,7 @@ for (const st of courseStudents) {
     const payload = {
       name: name.toUpperCase(), gcc_no: gccNum,
       admission_no: newStudentForm.admission_no.trim() || null,
-      course: courseVal.toUpperCase(), class_name: batchVal, batch: batchVal,
+      course: trackVal, class_name: batchVal, batch: batchVal,
     };
     const { data, error } = await supabase.from("students").insert([payload]).select();
     setAddingStudent(false);
@@ -1217,7 +1241,7 @@ for (const st of courseStudents) {
     const detCourse = importInfo?.detectedCourse || course;
 
     // Same pool the auto-detector used, for manual search/assignment of unmatched rows
-    const manualPoolBase = students.filter(s => (s.class_name || "").toUpperCase() === detCourse || (s.course || "").toUpperCase() === detCourse);
+    const manualPoolBase = students.filter(s => (s.class_name || "").toUpperCase() === detCourse);
     const manualPool = manualPoolBase.length ? manualPoolBase : students;
     const assignedIds = new Set(importRows.map(r => r.student.id));
 
@@ -1236,10 +1260,9 @@ for (const st of courseStudents) {
       
       let pool = manualPool.filter(s => !assignedIds.has(s.id));
       
-      // Apply course/batch filters
-      if (filter.course) {
-        pool = pool.filter(s => (s.course || "").toUpperCase() === filter.course.toUpperCase());
-      }
+      // Apply batch filter (the "course" picker in this UI is actually a batch —
+      // Achiever/Champion/etc — matched against class_name, not the students.course
+      // column, which holds the real exam track (Sainik/Navodaya/Foundation/Combined).
       if (filter.batch) {
         pool = pool.filter(s => (s.class_name || "").toUpperCase() === filter.batch.toUpperCase());
       }
@@ -1445,32 +1468,21 @@ for (const st of courseStudents) {
                         
                         {/* Quick filters */}
                         <div style={{ marginBottom: 10, paddingTop: 8, borderTop: "1px solid #E5E7EB" }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>🎯 Filter by Course/Batch:</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>🎯 Filter by Batch:</div>
                           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                             <button 
                               onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: {} }))}
-                              style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: !manualSearchFilter[idx]?.course && !manualSearchFilter[idx]?.batch ? "#1a3c2e" : "#F3F4F6", color: !manualSearchFilter[idx]?.course && !manualSearchFilter[idx]?.batch ? "white" : "#374151", border: "none", borderRadius: 4 }}>
+                              style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: !manualSearchFilter[idx]?.batch ? "#1a3c2e" : "#F3F4F6", color: !manualSearchFilter[idx]?.batch ? "white" : "#374151", border: "none", borderRadius: 4 }}>
                               ✕ Clear
                             </button>
                             {courses.map(c => (
                               <button key={c}
-                                onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: { ...(p[idx] || {}), course: manualSearchFilter[idx]?.course === c ? undefined : c, batch: undefined } }))}
-                                style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: manualSearchFilter[idx]?.course === c ? "#1D4ED8" : "#F3F4F6", color: manualSearchFilter[idx]?.course === c ? "white" : "#374151", border: manualSearchFilter[idx]?.course === c ? "none" : "1px solid #E5E7EB", borderRadius: 4 }}>
+                                onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: { batch: manualSearchFilter[idx]?.batch === c ? undefined : c } }))}
+                                style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: manualSearchFilter[idx]?.batch === c ? "#7c3aed" : "#F3F4F6", color: manualSearchFilter[idx]?.batch === c ? "white" : "#374151", border: manualSearchFilter[idx]?.batch === c ? "none" : "1px solid #E5E7EB", borderRadius: 4 }}>
                                 {c}
                               </button>
                             ))}
                           </div>
-                          {manualSearchFilter[idx]?.course && batchesForCourse(manualSearchFilter[idx].course).length > 0 && (
-                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
-                              {batchesForCourse(manualSearchFilter[idx].course).map(b => (
-                                <button key={b}
-                                  onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: { ...(p[idx] || {}), batch: manualSearchFilter[idx]?.batch === b ? undefined : b } }))}
-                                  style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: manualSearchFilter[idx]?.batch === b ? "#7c3aed" : "#F5F3FF", color: manualSearchFilter[idx]?.batch === b ? "white" : "#5B21B6", border: manualSearchFilter[idx]?.batch === b ? "none" : "1px solid #DDD6FE", borderRadius: 4 }}>
-                                  {b}
-                                </button>
-                              ))}
-                            </div>
-                          )}
                         </div>
                           {candidates.length > 0 ? (
                             candidates.map(s => {
@@ -1526,29 +1538,29 @@ for (const st of courseStudents) {
                             placeholder="GCC No." style={{ ...css.input, fontSize: 12 }} />
                         </div>
                         <div style={{ marginBottom: 8 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Course</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Track</div>
                           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                            {courses.map(c => (
-                              <button key={c} onClick={() => setNewStudentForm(p => ({ ...p, course: c }))}
-                                style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.course === c ? "#1a3c2e" : "#F3F4F6", color: newStudentForm.course === c ? "white" : "#374151", border: newStudentForm.course === c ? "none" : "1px solid #E5E7EB" }}>
-                                {c}
+                            {TRACKS.map(t => (
+                              <button key={t} onClick={() => setNewStudentForm(p => ({ ...p, track: t, batch: TRACK_BATCHES[t][0] || p.batch }))}
+                                style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.track === t ? "#1a3c2e" : "#F3F4F6", color: newStudentForm.track === t ? "white" : "#374151", border: newStudentForm.track === t ? "none" : "1px solid #E5E7EB" }}>
+                                {t}
                               </button>
                             ))}
                           </div>
                         </div>
                         <div style={{ marginBottom: 10 }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Batch</div>
-                          {batchesForCourse(newStudentForm.course).length > 0 && (
+                          {batchesForTrack(newStudentForm.track).length > 0 && (
                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
-                              {batchesForCourse(newStudentForm.course).map(b => (
-                                <button key={b} onClick={() => setNewStudentForm(p => ({ ...p, class_name: b }))}
-                                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.class_name === b ? "#7c3aed" : "#F5F3FF", color: newStudentForm.class_name === b ? "white" : "#5B21B6", border: newStudentForm.class_name === b ? "none" : "1px solid #DDD6FE" }}>
+                              {batchesForTrack(newStudentForm.track).map(b => (
+                                <button key={b} onClick={() => setNewStudentForm(p => ({ ...p, batch: b }))}
+                                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.batch === b ? "#7c3aed" : "#F5F3FF", color: newStudentForm.batch === b ? "white" : "#5B21B6", border: newStudentForm.batch === b ? "none" : "1px solid #DDD6FE" }}>
                                   {b}
                                 </button>
                               ))}
                             </div>
                           )}
-                          <input value={newStudentForm.class_name} onChange={e => setNewStudentForm(p => ({ ...p, class_name: e.target.value }))}
+                          <input value={newStudentForm.batch} onChange={e => setNewStudentForm(p => ({ ...p, batch: e.target.value }))}
                             placeholder="Batch / class name" style={{ ...css.input, fontSize: 12 }} />
                         </div>
                         <input value={newStudentForm.admission_no} onChange={e => setNewStudentForm(p => ({ ...p, admission_no: e.target.value }))}
@@ -1832,7 +1844,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
@@ -1967,7 +1979,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
@@ -2124,7 +2136,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
@@ -2259,7 +2271,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -2449,7 +2461,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
@@ -2876,9 +2888,11 @@ function ExamTypesManager({ examTypes, onUpdate }) {
 function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, perms }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms)
-  const courses = Object.keys(courseSubjects);
+  const courses = Object.keys(courseSubjects); // NOTE: these are BATCH names (Achiever, Champion...), not real tracks
 
-  const EMPTY_FORM = { name: "", gcc_no: "", admission_no: "", course: courses[0] || "", class_name: "" };
+  // `track` = the real exam track (Sainik/Navodaya/Foundation/Combined Course), written to
+  // students.course. `batch` = Achiever/Champion/etc, written to students.class_name + batch.
+  const EMPTY_FORM = { name: "", gcc_no: "", admission_no: "", track: "", batch: courses[0] || "" };
   const [form, setForm]             = useState(EMPTY_FORM);
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
@@ -2891,28 +2905,35 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
   const [deleteId, setDeleteId]     = useState(null);
   const [view, setView]             = useState("list");
 
-  const batchesForCourse = (crs) => {
-    const set = new Set(
-      students.filter(s => (s.course || "").toUpperCase() === crs).map(s => s.class_name).filter(Boolean)
+  // Existing batch values already in use (for quick-pick buttons). Track has no further
+  // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
+  // but we also surface any batch values already seen in the data in case of stragglers.
+  const batchesForTrack = (trackName) => {
+    const canonical = TRACK_BATCHES[trackName] || [];
+    const seen = new Set(
+      students
+        .filter(s => (s.course || "").trim() === trackName)
+        .map(s => (s.class_name || s.batch || "").toUpperCase())
+        .filter(Boolean)
     );
-    return [...set].sort();
+    return [...new Set([...canonical, ...seen])];
   };
 
   const handleAdd = async () => {
     setError("");
     if (!form.name.trim())       { setError("Student name is required."); return; }
     if (!form.gcc_no.trim())     { setError("GCC No. is required."); return; }
-    if (!form.course)            { setError("Course is required."); return; }
-    if (!form.class_name.trim()) { setError("Batch is required."); return; }
+    if (!form.track)             { setError("Track is required."); return; }
+    if (!form.batch.trim())      { setError("Batch is required."); return; }
     if (students.find(s => String(s.gcc_no) === String(form.gcc_no).trim())) {
       setError(`GCC No. ${form.gcc_no} already exists.`); return;
     }
     setSaving(true);
-    const batchVal = form.class_name.trim();
+    const batchVal = form.batch.trim();
     const payload = {
       name: form.name.trim().toUpperCase(), gcc_no: Number(form.gcc_no),
       admission_no: form.admission_no.trim() || null,
-      course: form.course.toUpperCase(), class_name: batchVal, batch: batchVal,
+      course: form.track, class_name: batchVal.toUpperCase(), batch: batchVal,
     };
     const { data, error: sbErr } = await supabase.from("students").insert([payload]).select();
     if (sbErr) { setError(sbErr.message); setSaving(false); return; }
@@ -2923,16 +2944,20 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
 
   const startEdit = (st) => {
     setEditId(st.id);
-    setEditForm({ name: st.name, gcc_no: st.gcc_no, admission_no: st.admission_no || "", course: st.course || "", class_name: st.class_name || "" });
+    setEditForm({
+      name: st.name, gcc_no: st.gcc_no, admission_no: st.admission_no || "",
+      track: st.course || trackForBatch(st.class_name) || "",
+      batch: st.class_name || st.batch || "",
+    });
   };
   const cancelEdit = () => { setEditId(null); setEditForm({}); };
   const saveEdit = async (id) => {
     setEditSaving(true);
-    const batchVal = (editForm.class_name || "").trim();
+    const batchVal = (editForm.batch || "").trim();
     const payload = {
       name: editForm.name.trim().toUpperCase(), gcc_no: Number(editForm.gcc_no),
       admission_no: editForm.admission_no || null,
-      course: (editForm.course || "").toUpperCase(), class_name: batchVal, batch: batchVal,
+      course: editForm.track || "", class_name: batchVal.toUpperCase(), batch: batchVal,
     };
     const { error: sbErr } = await supabase.from("students").update(payload).eq("id", id);
     if (sbErr) { alert(sbErr.message); setEditSaving(false); return; }
@@ -2951,12 +2976,14 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
     const q = search.trim().toLowerCase();
     const matchSearch = !q || (s.name || "").toLowerCase().includes(q) || String(s.gcc_no ?? "").includes(q);
     const fc = filterCourse.trim().toUpperCase();
-    const matchCourse = fc === "ALL" || (s.course || "").trim().toUpperCase() === fc || (s.class_name || "").trim().toUpperCase() === fc;
+    const matchCourse = fc === "ALL" || (s.class_name || "").trim().toUpperCase() === fc;
     return matchSearch && matchCourse;
   });
 
   const statsPerCourse = courses.map(c => ({
-    course: c, count: students.filter(s => (s.course || "").toUpperCase() === c).length, batches: batchesForCourse(c),
+    course: c,
+    count: students.filter(s => (s.class_name || "").toUpperCase() === c).length,
+    batches: batchesForTrack(trackForBatch(c)),
   }));
 
   const EditCell = ({ field, width = 120, type = "text" }) => (
@@ -3018,29 +3045,29 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
                 </div>
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Course *</label>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Track *</label>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {courses.map(c => (
-                    <button key={c} onClick={() => setForm(p => ({ ...p, course: c, class_name: "" }))}
-                      style={{ ...css.btn, padding: "6px 16px", fontSize: 12, background: form.course === c ? "#1a3c2e" : "#F3F4F6", color: form.course === c ? "white" : "#374151", border: form.course === c ? "none" : "1px solid #E5E7EB" }}>
-                      {c}
+                  {TRACKS.map(t => (
+                    <button key={t} onClick={() => setForm(p => ({ ...p, track: t, batch: TRACK_BATCHES[t][0] || p.batch }))}
+                      style={{ ...css.btn, padding: "6px 16px", fontSize: 12, background: form.track === t ? "#1a3c2e" : "#F3F4F6", color: form.track === t ? "white" : "#374151", border: form.track === t ? "none" : "1px solid #E5E7EB" }}>
+                      {t}
                     </button>
                   ))}
                 </div>
               </div>
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Batch *</label>
-                {batchesForCourse(form.course).length > 0 && (
+                {batchesForTrack(form.track).length > 0 && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                    {batchesForCourse(form.course).map(b => (
-                      <button key={b} onClick={() => setForm(p => ({ ...p, class_name: b }))}
-                        style={{ ...css.btn, padding: "5px 14px", fontSize: 12, background: form.class_name === b ? "#7c3aed" : "#F5F3FF", color: form.class_name === b ? "white" : "#5B21B6", border: form.class_name === b ? "none" : "1px solid #DDD6FE" }}>
+                    {batchesForTrack(form.track).map(b => (
+                      <button key={b} onClick={() => setForm(p => ({ ...p, batch: b }))}
+                        style={{ ...css.btn, padding: "5px 14px", fontSize: 12, background: form.batch === b ? "#7c3aed" : "#F5F3FF", color: form.batch === b ? "white" : "#5B21B6", border: form.batch === b ? "none" : "1px solid #DDD6FE" }}>
                         {b}
                       </button>
                     ))}
                   </div>
                 )}
-                <input value={form.class_name} onChange={e => setForm(p => ({ ...p, class_name: e.target.value }))} placeholder="Type batch name or pick above…" style={css.input} />
+                <input value={form.batch} onChange={e => setForm(p => ({ ...p, batch: e.target.value }))} placeholder="Type batch name or pick above…" style={css.input} />
               </div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => { setView("list"); setError(""); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151", flex: 1 }}>Cancel</button>
@@ -3089,7 +3116,7 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
               <thead>
                 <tr style={{ background: "#1a3c2e" }}>
-                  {["GCC No.", "Name", "Batch", "Course", "Adm. No.", "Actions"].map(h => (
+                  {["GCC No.", "Name", "Batch", "Track", "Adm. No.", "Actions"].map(h => (
                     <th key={h} style={{ padding: "10px 12px", textAlign: h === "Name" ? "left" : "center", color: "white", fontWeight: 700, fontSize: 11, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -3110,10 +3137,11 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
                       <>
                         <td style={{ padding: "6px 8px", textAlign: "center" }}><EditCell field="gcc_no" width={60} type="number" /></td>
                         <td style={{ padding: "6px 8px" }}><EditCell field="name" width={160} /></td>
-                        <td style={{ padding: "6px 8px", textAlign: "center" }}><EditCell field="class_name" width={80} /></td>
+                        <td style={{ padding: "6px 8px", textAlign: "center" }}><EditCell field="batch" width={80} /></td>
                         <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                          <select value={editForm.course || ""} onChange={e => setEditForm(p => ({ ...p, course: e.target.value }))} style={{ ...css.input, width: 100, fontSize: 12 }}>
-                            {courses.map(c => <option key={c} value={c}>{c}</option>)}
+                          <select value={editForm.track || ""} onChange={e => setEditForm(p => ({ ...p, track: e.target.value }))} style={{ ...css.input, width: 110, fontSize: 12 }}>
+                            <option value="">— Track —</option>
+                            {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </td>
                         <td style={{ padding: "6px 8px", textAlign: "center" }}><EditCell field="admission_no" width={80} /></td>
@@ -3163,7 +3191,7 @@ function MeritList({ courseSubjects, examTypes, students }) {
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
@@ -4046,7 +4074,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
   }, [examType, examDate, seats]);
 
   const filteredStudents = students.filter(s => {
-    const matchCourse = filterCourse==="ALL" || (s.course||"").toUpperCase()===filterCourse;
+    const matchCourse = filterCourse==="ALL" || (s.class_name||"").toUpperCase()===filterCourse;
     const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search);
     return matchCourse && matchSearch;
   }).sort((a,b) => {
@@ -4056,7 +4084,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
   });
 
   const autoAssign = () => {
-    const unassigned = students.filter(s => (filterCourse==="ALL" || (s.course||"").toUpperCase()===filterCourse) && !globalAssigned.has(s.id));
+    const unassigned = students.filter(s => (filterCourse==="ALL" || (s.class_name||"").toUpperCase()===filterCourse) && !globalAssigned.has(s.id));
     const newSeats = { ...seats }; let si = 0;
     for (let seat = 1; seat <= capacity && si < unassigned.length; seat++) {
       if (!newSeats[seat]) { newSeats[seat] = unassigned[si].id; si++; }
@@ -4488,7 +4516,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
@@ -4624,8 +4652,8 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const rcCourseMax = rcScheduledRows.length
     ? rcScheduledRows.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
     : getCourseMax(rcCourse);
-  const rcStudents = students.filter(s => (s.class_name||"").toUpperCase()===rcCourse||(s.course||"").toUpperCase()===rcCourse);
-  const acStudents = students.filter(s => (s.class_name||"").toUpperCase()===acCourse||(s.course||"").toUpperCase()===acCourse);
+  const rcStudents = students.filter(s => (s.class_name||"").toUpperCase()===rcCourse);
+  const acStudents = students.filter(s => (s.class_name||"").toUpperCase()===acCourse);
   const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course.toUpperCase() === acCourse.toUpperCase()));
   const acExamName = examTypes.find(e=>e.id===acExamType)?.name||"Examination";
 
@@ -4942,7 +4970,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   const [search, setSearch] = useState("");
 
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
+    (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
   const filtered = courseStudents.filter(s =>
     !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search)
