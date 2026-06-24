@@ -384,15 +384,20 @@ export default function ExamCSVImport({
     setRollbackSnap(loadRollbackSnapshot());
 
     // Fetch exam_schedule to map subjects to exam_ids
+    console.log(`[ExamCSVImport.confirmImport] Looking for exams: examTypeId="${localExamTypeId}", examDate="${localExamDate}"`);
     const { data: schedules, error: schedError } = await supabase
       .from("exam_schedule")
       .select("id, subject, exam_type_id, exam_date")
       .eq("exam_type_id", localExamTypeId)
       .eq("exam_date", localExamDate);
     
+    console.log(`[ExamCSVImport.confirmImport] Query returned:`, schedules, "error:", schedError);
+    
     if (schedError || !schedules?.length) {
       setImporting(false);
-      alert(`No exams found for this date/type. Create an exam schedule first.`);
+      const msg = `No exams found for examTypeId="${localExamTypeId}" and examDate="${localExamDate}". Create an exam schedule first, or check that the date matches exactly.`;
+      console.error(msg);
+      alert(msg);
       return;
     }
     
@@ -434,12 +439,26 @@ export default function ExamCSVImport({
       }
     }
 
+    // Check for duplicate (student_id, exam_id) pairs within the batch
+    console.log(`[ExamCSVImport.confirmImport] Inserting ${rows.length} rows:`, rows);
+    const seen = new Map();
+    for (const r of rows) {
+      const key = `${r.student_id}-${r.exam_id}`;
+      if (seen.has(key)) {
+        setImporting(false);
+        alert(`Duplicate entry detected: Student ${r.student_id} has marks for exam ${r.exam_id} listed twice in the import. Check your CSV for duplicate student rows or subject columns.`);
+        return;
+      }
+      seen.set(key, r);
+    }
+
     for (let i = 0; i < rows.length; i += 100) {
       const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
         onConflict: "student_id,exam_id" 
       });
       if (error) {
         alert(`Import failed: ${error.message}`);
+        console.error("Upsert error:", error, "batch:", rows.slice(i, i + 100));
         return;
       }
     }

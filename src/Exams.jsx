@@ -841,15 +841,20 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     
     try {
       // Build a map of subject → exam_id for the selected exam type and date
+      console.log(`[MarkEntry.handleSave] Looking for exams: examType="${examType}", examDate="${examDate}"`);
       const { data: schedules, error: schedError } = await supabase
         .from("exam_schedule")
         .select("id, subject, exam_type_id, exam_date")
         .eq("exam_type_id", examType)
         .eq("exam_date", examDate);
       
+      console.log(`[MarkEntry.handleSave] Query returned:`, schedules, "error:", schedError);
+      
       if (schedError || !schedules?.length) {
         setSaving(false);
-        setSaveError(`No exams found for this date/type. Create an exam schedule first.`);
+        const msg = `No exams found for examType="${examType}" and examDate="${examDate}". Create an exam schedule first.`;
+        console.error(msg);
+        setSaveError(msg);
         return;
       }
       
@@ -897,6 +902,19 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         return;
       }
       
+      // Check for duplicate (student_id, exam_id) pairs within the batch
+      console.log(`[MarkEntry.handleSave] Upserting ${rows.length} rows:`, rows);
+      const seen = new Map();
+      for (const r of rows) {
+        const key = `${r.student_id}-${r.exam_id}`;
+        if (seen.has(key)) {
+          setSaving(false);
+          setSaveError(`Duplicate entry: Student ${r.student_id} has marks for exam ${r.exam_id} listed twice. This shouldn't happen — contact support.`);
+          return;
+        }
+        seen.set(key, r);
+      }
+      
       // Upsert marks — use (student_id, exam_id) as the unique key
       const writeErrors = [];
       for (let i = 0; i < rows.length; i += 100) {
@@ -907,7 +925,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       }
       
       if (writeErrors.length) {
-        console.error("exam_marks upsert failed:", writeErrors);
+        console.error("exam_marks upsert failed:", writeErrors, "rows:", rows);
         setSaving(false);
         setSaveError(writeErrors[0]);
         return;
@@ -994,15 +1012,20 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       const detCourse = importInfo?.detectedCourse || course;
       
       // Fetch exam_schedule to map subjects to exam_ids
+      console.log(`[MarkEntry.confirmImport] Looking for exams: examType="${examType}", examDate="${examDate}"`);
       const { data: schedules, error: schedError } = await supabase
         .from("exam_schedule")
         .select("id, subject, exam_type_id, exam_date")
         .eq("exam_type_id", examType)
         .eq("exam_date", examDate);
       
+      console.log(`[MarkEntry.confirmImport] Query returned:`, schedules, "error:", schedError);
+      
       if (schedError || !schedules?.length) {
         setImporting(false);
-        setImportSaveError(`No exams found for this date/type. Create an exam schedule first.`);
+        const msg = `No exams found for examType="${examType}" and examDate="${examDate}". Create an exam schedule first, or check that the date matches exactly.`;
+        console.error(msg);
+        setImportSaveError(msg);
         return;
       }
       
@@ -1044,6 +1067,19 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
         setImporting(false);
         setImportDone(true);
         return;
+      }
+      
+      // Check for duplicate (student_id, exam_id) pairs within the batch
+      console.log(`[MarkEntry.confirmImport] Upserting ${rows.length} rows:`, rows);
+      const seen = new Map();
+      for (const r of rows) {
+        const key = `${r.student_id}-${r.exam_id}`;
+        if (seen.has(key)) {
+          setImporting(false);
+          setImportSaveError(`Duplicate entry: Student ${r.student_id} has marks for exam ${r.exam_id} listed twice in the CSV. Check for duplicate rows.`);
+          return;
+        }
+        seen.set(key, r);
       }
       
       // Upsert using (student_id, exam_id) as unique key
