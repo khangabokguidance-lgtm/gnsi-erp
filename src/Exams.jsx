@@ -769,15 +769,28 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       (s.course || "").toUpperCase() === crs.toUpperCase()
     ).map(s => s.id);
     if (!ids.length) { setMarks({}); setLoading(false); return; }
-    const { data, error } = await supabase.from("exam_marks").select("*")
-      .eq("exam_type_id", typeId).eq("exam_date", date).in("student_id", ids);
+    
+    // Fetch exam_marks with joined exam_schedule to filter by exam_type_id, subject, exam_date
+    const { data, error } = await supabase
+      .from("exam_marks")
+      .select(`id, student_id, marks_obtained, 
+               exam_schedule:exam_id (id, exam_type_id, subject, exam_date)`)
+      .in("student_id", ids);
+    
     if (error) {
       console.error("Failed to fetch exam_marks:", error);
       setMarks({}); setLoading(false);
       return;
     }
+    
     const map = {};
-    (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; });
+    (data || []).forEach(r => {
+      const sched = r.exam_schedule;
+      // Only include marks matching the selected exam type, date, and course
+      if (sched && sched.exam_type_id === typeId && sched.exam_date === date) {
+        map[`${r.student_id}-${sched.subject}`] = r.marks_obtained;
+      }
+    });
     setMarks(map); setLoading(false);
   }, [students]);
 
@@ -799,35 +812,115 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   };
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
 
+  // Fuzzy subject matcher — normalizes spacing/punctuation to handle "Mathematics I" vs "Mathematics -I"
+  const findBestScheduleSubject = (configSubject, scheduleSubjects) => {
+    const normalize = (s) => String(s).toLowerCase()
+      .replace(/\s*[-–—]\s*/g, ' ')  // "Mathematics -I" → "mathematics i"
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    const configNorm = normalize(configSubject);
+    
+    // Exact match first
+    for (const sched of scheduleSubjects) {
+      if (normalize(sched) === configNorm) return sched;
+    }
+    
+    // Fuzzy match: check if normalized forms are very similar (substring or Dice coefficient)
+    for (const sched of scheduleSubjects) {
+      const schedNorm = normalize(sched);
+      if (configNorm.includes(schedNorm) || schedNorm.includes(configNorm)) return sched;
+    }
+    
+    return null; // No match found
+  };
+
   const handleSave = async () => {
     setSaving(true);
-    const rows = [];
-    for (const st of courseStudents) {
-      for (const sub of subjects) {
-        const raw = marks[`${st.id}-${sub}`];
-        if (raw === "" || raw === undefined || raw === null) continue;
-        const m = Number(raw);
-        if (!isNaN(m)) rows.push({
-          student_id: st.id, student_name: st.name, class_name: st.class_name,
-          exam_type_id: examType, subject: sub, marks: m,
-          total_marks: getSubjectMax(course, sub), exam_date: examDate,
-        });
-      }
-    }
-    const writeErrors = [];
-    for (let i = 0; i < rows.length; i += 100) {
-      const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
-      if (error) writeErrors.push(error.message || String(error));
-    }
-    if (writeErrors.length) {
-      console.error("exam_marks upsert failed during manual save:", writeErrors);
-      setSaving(false);
-      setSaveError(writeErrors[0]);
-      return;
-    }
     setSaveError("");
-    setSaving(false); setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    
+    try {
+      // Build a map of subject → exam_id for the selected exam type and date
+      const { data: schedules, error: schedError } = await supabase
+        .from("exam_schedule")
+        .select("id, subject, exam_type_id, exam_date")
+        .eq("exam_type_id", examType)
+        .eq("exam_date", examDate);
+      
+      if (schedError || !schedules?.length) {
+        setSaving(false);
+        setSaveError(`No exams found for this date/type. Create an exam schedule first.`);
+        return;
+      }
+      
+      const examIdBySubject = {};
+      const scheduleSubjectsSet = new Set();
+      schedules.forEach(s => { 
+        examIdBySubject[s.subject] = s.id;
+        scheduleSubjectsSet.add(s.subject);
+      });
+      const scheduleSubjects = Array.from(scheduleSubjectsSet);
+      
+      // Build rows to insert
+      const rows = [];
+      for (const st of courseStudents) {
+        for (const sub of subjects) {
+          const raw = marks[`${st.id}-${sub}`];
+          if (raw === "" || raw === undefined || raw === null) continue;
+          const m = Number(raw);
+          if (!isNaN(m)) {
+            // Try exact match first, then fuzzy match
+            let examId = examIdBySubject[sub];
+            if (!examId) {
+              const bestMatch = findBestScheduleSubject(sub, scheduleSubjects);
+              if (bestMatch) examId = examIdBySubject[bestMatch];
+            }
+            if (!examId) {
+              setSaving(false);
+              setSaveError(`Subject "${sub}" not found in exam schedule for ${examDate}. Available: ${scheduleSubjects.join(', ')}`);
+              return;
+            }
+            rows.push({
+              student_id: st.id,
+              exam_id: examId,
+              marks_obtained: m,
+              class_name: st.class_name,
+            });
+          }
+        }
+      }
+      
+      if (!rows.length) {
+        setSaving(false);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+        return;
+      }
+      
+      // Upsert marks — use (student_id, exam_id) as the unique key
+      const writeErrors = [];
+      for (let i = 0; i < rows.length; i += 100) {
+        const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
+          onConflict: "student_id,exam_id" 
+        });
+        if (error) writeErrors.push(error.message || String(error));
+      }
+      
+      if (writeErrors.length) {
+        console.error("exam_marks upsert failed:", writeErrors);
+        setSaving(false);
+        setSaveError(writeErrors[0]);
+        return;
+      }
+      
+      setSaving(false); 
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error("Save error:", err);
+      setSaving(false);
+      setSaveError(String(err?.message || err));
+    }
   };
 
   const downloadTemplate = () => {
@@ -894,53 +987,104 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
 
   const confirmImport = async () => {
     setImporting(true);
-    const importSubjects = importInfo?.subjects || subjects;
-    const detCourse = importInfo?.detectedCourse || course;
-    const rows = [];
-    for (const { student: st, subMarks } of importRows) {
-      for (const sub of importSubjects) {
-        if (subMarks[sub] !== undefined) {
-          rows.push({
-            student_id: st.id, student_name: st.name, class_name: st.class_name,
-            exam_type_id: examType, subject: sub, marks: subMarks[sub],
-            total_marks: getSubjectMax(detCourse, sub), exam_date: examDate,
-          });
+    setImportSaveError("");
+    
+    try {
+      const importSubjects = importInfo?.subjects || subjects;
+      const detCourse = importInfo?.detectedCourse || course;
+      
+      // Fetch exam_schedule to map subjects to exam_ids
+      const { data: schedules, error: schedError } = await supabase
+        .from("exam_schedule")
+        .select("id, subject, exam_type_id, exam_date")
+        .eq("exam_type_id", examType)
+        .eq("exam_date", examDate);
+      
+      if (schedError || !schedules?.length) {
+        setImporting(false);
+        setImportSaveError(`No exams found for this date/type. Create an exam schedule first.`);
+        return;
+      }
+      
+      const examIdBySubject = {};
+      const scheduleSubjectsSet = new Set();
+      schedules.forEach(s => { 
+        examIdBySubject[s.subject] = s.id;
+        scheduleSubjectsSet.add(s.subject);
+      });
+      const scheduleSubjects = Array.from(scheduleSubjectsSet);
+      
+      // Build rows to insert
+      const rows = [];
+      for (const { student: st, subMarks } of importRows) {
+        for (const sub of importSubjects) {
+          if (subMarks[sub] !== undefined) {
+            // Try exact match first, then fuzzy match
+            let examId = examIdBySubject[sub];
+            if (!examId) {
+              const bestMatch = findBestScheduleSubject(sub, scheduleSubjects);
+              if (bestMatch) examId = examIdBySubject[bestMatch];
+            }
+            if (!examId) {
+              setImporting(false);
+              setImportSaveError(`Subject "${sub}" not found in exam schedule. Available: ${scheduleSubjects.join(', ')}`);
+              return;
+            }
+            rows.push({
+              student_id: st.id,
+              exam_id: examId,
+              marks_obtained: subMarks[sub],
+              class_name: st.class_name,
+            });
+          }
         }
       }
-    }
-    const writeErrors = [];
-    for (let i = 0; i < rows.length; i += 100) {
-      const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
-      if (error) writeErrors.push(error.message || String(error));
-    }
-    if (writeErrors.length) {
-      console.error("exam_marks upsert failed during CSV import:", writeErrors);
+      
+      if (!rows.length) {
+        setImporting(false);
+        setImportDone(true);
+        return;
+      }
+      
+      // Upsert using (student_id, exam_id) as unique key
+      const writeErrors = [];
+      for (let i = 0; i < rows.length; i += 100) {
+        const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
+          onConflict: "student_id,exam_id" 
+        });
+        if (error) writeErrors.push(error.message || String(error));
+      }
+      
+      if (writeErrors.length) {
+        console.error("exam_marks upsert failed during CSV import:", writeErrors);
+        setImporting(false);
+        setImportSaveError(writeErrors[0]);
+        return;
+      }
+      
+      setImportSaveError("");
+
+      // Auto-set course and exam date to match the import, then re-fetch
+      setCourse(detCourse);
+      setExamType(examType);
+      await fetchMarks(examType, examDate, detCourse);
+
+      setImporting(false); 
+      setImportDone(true);
+      setLastImportSummary({
+        course: detCourse,
+        examTypeName: examTypes.find(e => e.id === examType)?.name || "Exam",
+        examDate,
+        studentCount: importRows.length,
+        marksCount: rows.length,
+        newStudentCount: importRows.filter(r => r.matchType === "New").length,
+        savedAt: new Date(),
+      });
+    } catch (err) {
+      console.error("Import error:", err);
       setImporting(false);
-      setImportSaveError(writeErrors[0]);
-      return;
+      setImportSaveError(String(err?.message || err));
     }
-    setImportSaveError("");
-
-    // Auto-set course and exam date to match the import, then re-fetch the rows we
-    // just wrote — no arbitrary delay, since the writes above are already awaited.
-    setCourse(detCourse);
-    setExamType(examType);
-    await fetchMarks(examType, examDate, detCourse);
-
-    setImporting(false); setImportDone(true);
-    // Record exactly what was saved & where — this banner persists even after the import
-    // panel is closed, so it's never unclear whether the records went somewhere or vanished.
-    setLastImportSummary({
-      course: detCourse,
-      examTypeName: examTypes.find(e => e.id === examType)?.name || "Exam",
-      examDate,
-      studentCount: importRows.length,
-      marksCount: rows.length,
-      newStudentCount: importRows.filter(r => r.matchType === "New").length,
-      savedAt: new Date(),
-    });
-    // No auto-close — the success summary inside the panel stays up until the user
-    // explicitly clicks "Done", so the save is always visibly confirmed.
   };
 
   // Closes the import panel/preview. Does NOT touch lastImportSummary, so the

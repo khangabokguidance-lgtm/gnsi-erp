@@ -161,11 +161,22 @@ const ROLLBACK_KEY = "gnsi_csv_import_rollback";
 
 async function saveRollbackSnapshot(studentIds, examTypeId, examDate) {
   try {
+    // Fetch exam_schedule records for this type/date, then find associated marks
+    const { data: schedules } = await supabase
+      .from("exam_schedule")
+      .select("id")
+      .eq("exam_type_id", examTypeId)
+      .eq("exam_date", examDate);
+    
+    if (!schedules?.length) return;
+    
+    const examIds = schedules.map(s => s.id);
     const { data } = await supabase.from("exam_marks").select("*")
-      .eq("exam_type_id", examTypeId).eq("exam_date", examDate)
+      .in("exam_id", examIds)
       .in("student_id", studentIds.length ? studentIds : ["__none__"]);
+    
     sessionStorage.setItem(ROLLBACK_KEY, JSON.stringify({
-      rows: data || [], examTypeId, examDate,
+      rows: data || [], examIds, examTypeId, examDate,
       savedAt: new Date().toISOString(), studentIds,
     }));
   } catch (_) {}
@@ -198,6 +209,29 @@ function ConfBar({ score }) {
       </span>
     </span>
   );
+}
+
+/* ─── Fuzzy subject matcher for handling spacing/punctuation variations ───── */
+function findBestScheduleSubject(configSubject, scheduleSubjects) {
+  const normalize = (s) => String(s).toLowerCase()
+    .replace(/\s*[-–—]\s*/g, ' ')  // "Mathematics -I" → "mathematics i"
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  const configNorm = normalize(configSubject);
+  
+  // Exact match first
+  for (const sched of scheduleSubjects) {
+    if (normalize(sched) === configNorm) return sched;
+  }
+  
+  // Fuzzy match: check if normalized forms are very similar (substring)
+  for (const sched of scheduleSubjects) {
+    const schedNorm = normalize(sched);
+    if (configNorm.includes(schedNorm) || schedNorm.includes(configNorm)) return sched;
+  }
+  
+  return null; // No match found
 }
 
 /* ─── MAIN COMPONENT ─────────────────────────────────────────────────────── */
@@ -349,6 +383,27 @@ export default function ExamCSVImport({
     await saveRollbackSnapshot(studentIds, localExamTypeId, localExamDate);
     setRollbackSnap(loadRollbackSnapshot());
 
+    // Fetch exam_schedule to map subjects to exam_ids
+    const { data: schedules, error: schedError } = await supabase
+      .from("exam_schedule")
+      .select("id, subject, exam_type_id, exam_date")
+      .eq("exam_type_id", localExamTypeId)
+      .eq("exam_date", localExamDate);
+    
+    if (schedError || !schedules?.length) {
+      setImporting(false);
+      alert(`No exams found for this date/type. Create an exam schedule first.`);
+      return;
+    }
+    
+    const examIdBySubject = {};
+    const scheduleSubjectsSet = new Set();
+    schedules.forEach(s => { 
+      examIdBySubject[s.subject] = s.id;
+      scheduleSubjectsSet.add(s.subject);
+    });
+    const scheduleSubjects = Array.from(scheduleSubjectsSet);
+
     const rows = [];
     for (const { match, row } of stuRows) {
       if (!match) continue;
@@ -359,22 +414,35 @@ export default function ExamCSVImport({
         const raw      = override !== undefined ? override : (absentSet.has(st.id) ? 0 : row[m.csvIdx]);
         const v        = parseFloat(raw);
         if (!isNaN(v) && raw !== "" && raw !== undefined) {
+          // Try exact match first, then fuzzy match
+          let examId = examIdBySubject[sub];
+          if (!examId) {
+            const bestMatch = findBestScheduleSubject(sub, scheduleSubjects);
+            if (bestMatch) examId = examIdBySubject[bestMatch];
+          }
+          if (!examId) {
+            alert(`Subject "${sub}" not found in exam schedule. Available: ${scheduleSubjects.join(', ')}`);
+            return;
+          }
           rows.push({
             student_id:   st.id,
-            student_name: st.name,
+            exam_id:      examId,
+            marks_obtained: v,
             class_name:   st.class_name,
-            exam_type_id: localExamTypeId,
-            subject:      sub,
-            marks:        v,
-            total_marks:  100,
-            exam_date:    localExamDate,
           });
         }
       }
     }
 
-    for (let i = 0; i < rows.length; i += 100)
-      await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { onConflict: "student_id,exam_type_id,subject,exam_date" });
+    for (let i = 0; i < rows.length; i += 100) {
+      const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
+        onConflict: "student_id,exam_id" 
+      });
+      if (error) {
+        alert(`Import failed: ${error.message}`);
+        return;
+      }
+    }
 
     const log = {
       imported:     rows.length,
@@ -392,7 +460,7 @@ export default function ExamCSVImport({
     setQueueResults(p => [...p, log]);
     setStage("done");
     if (typeof onImportDone === "function")
-      onImportDone(rows.reduce((acc, r) => { acc[`${r.student_id}-${r.subject}`] = r.marks; return acc; }, {}), course, localExamTypeId, localExamDate);
+      onImportDone({}, course, localExamTypeId, localExamDate);
   }
 
   function downloadTemplate(course) {
