@@ -774,9 +774,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     setMarks(map); setLoading(false);
   }, [students]);
 
-  useEffect(() => { fetchMarks(examType, examDate, course); }, [examType, examDate, course]);
+  useEffect(() => { fetchMarks(examType, examDate, course); }, [examType, examDate, course, fetchMarks]);
 
-  const handleMark = (sid, sub, val) => { setMarks(p => ({ ...p, [`${sid}-${sub}`]: val })); setSaved(false); };
+  const handleMark = (sid, sub, val) => {
+    const num = val === "" ? "" : Math.min(Number(val), getSubjectMax(course, sub));
+    setMarks(p => ({ ...p, [`${sid}-${sub}`]: num }));
+    setSaved(false);
+  };
   const toggleAbsent = (sid, sub) => {
     const key = `${sid}-${sub}`;
     setAbsentSet(prev => {
@@ -793,7 +797,9 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     const rows = [];
     for (const st of courseStudents) {
       for (const sub of subjects) {
-        const m = Number(marks[`${st.id}-${sub}`]);
+        const raw = marks[`${st.id}-${sub}`];
+        if (raw === "" || raw === undefined || raw === null) continue;
+        const m = Number(raw);
         if (!isNaN(m)) rows.push({
           student_id: st.id, student_name: st.name, class_name: st.class_name,
           exam_type_id: examType, subject: sub, marks: m,
@@ -1464,7 +1470,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
@@ -1567,7 +1573,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
@@ -1694,7 +1700,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
@@ -1796,7 +1802,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
@@ -1958,7 +1964,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
@@ -2619,7 +2625,7 @@ function MeritList({ courseSubjects, examTypes, students }) {
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const courseMax = getCourseMax(course);
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
@@ -3919,7 +3925,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const [course, setCourse] = useState(courses[0] || "");
   const subjects = courseSubjects[course] || [];
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
@@ -4314,7 +4320,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   const [search, setSearch] = useState("");
 
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course || (s.course || "").toUpperCase() === course
+    (s.class_name || "").toUpperCase() === course.toUpperCase() || (s.course || "").toUpperCase() === course.toUpperCase()
   );
   const filtered = courseStudents.filter(s =>
     !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search)
@@ -5687,6 +5693,7 @@ export default function Exams({ currentUser, perms }) {
   const [loading, setLoading]       = useState(true);
   const [institute, setInstitute]   = useState(INSTITUTE_DEFAULT);
   const [activeConfigId, setActiveConfigId] = useState("default");
+  const [markEntryRefreshKey, setMarkEntryRefreshKey] = useState(0);
  
   const refetchSchedule = useCallback(async () => {
     const { data } = await supabase.from('exam_schedule').select('*').order('exam_date');
@@ -5763,48 +5770,21 @@ export default function Exams({ currentUser, perms }) {
  
   const courses = Object.keys(courseSubjects);
  
-  const handleCSVImportDone = async (importedMarks, course) => {
-  const examTypeId = examTypes[0]?.id || "";
-  const examDate   = new Date().toISOString().split("T")[0];
-  const rows = [];
-
-  for (const [key, markValue] of Object.entries(importedMarks)) {
-    const student = students.find(s => key.startsWith(`${s.id}-`));
-    if (!student) continue;
-    const subject = key.slice(`${student.id}-`.length);
-
-    const subjectMax = (COURSE_MAX_MARKS[course] || {})[subject] || 100;
-    rows.push({
-      student_id:   student.id,
-      student_name: student.name,
-      class_name:   student.class_name,
-      exam_type_id: examTypeId,
-      subject,
-      marks:        Math.min(markValue, subjectMax),
-      total_marks:  subjectMax,
-      exam_date:    examDate,
-    });
-  }
-
-  for (let i = 0; i < rows.length; i += 100) {
-    await supabase
-      .from("exam_marks")
-      .upsert(rows.slice(i, i + 100), {
-        onConflict: "student_id,exam_type_id,subject,exam_date",
-      });
-  }
-
-  setTab("entry");
-};
+  const handleCSVImportDone = () => {
+    // ExamCSVImport already upserted the marks to Supabase internally.
+    // Bump the key to remount MarkEntry so it re-fetches fresh data.
+    setMarkEntryRefreshKey(k => k + 1);
+    setTab("entry");
+  };
  
   // ── Section map ────────────────────────────────────────────────────────────
   const sectionMap = {
-    dashboard:      <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    toppers:        <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
-    entry:          <MarkEntry courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} onStudentsChange={setStudents} />,
+    dashboard:      () => <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
+    toppers:        () => <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
+    entry:          () => <MarkEntry key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} onStudentsChange={setStudents} />,
  
     // ── NEW: smart CSV import tab ──────────────────────────────────────────
-    csvimport: (
+    csvimport: () => (
       <ExamCSVImport
         courseSubjects={courseSubjects}
         students={students}
@@ -5817,22 +5797,22 @@ export default function Exams({ currentUser, perms }) {
     ),
     // ──────────────────────────────────────────────────────────────────────
  
-    marks:          <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    analytics:      <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    rankings:       <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    merit:          <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    reportcard:     <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
-    schedule:       <Schedule courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
-    seatplan:       <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    studentsmgr:    <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
-    coursesubjects: <CourseSubjectsManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} />,
-    examtypes:      <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
-    examconfig: <ExamConfigManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; }} />,
-    settings:       <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
-    progress:       <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    compare:        <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    admitcard:      <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    bulkreport:     <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
+    marks:          () => <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
+    analytics:      () => <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
+    rankings:       () => <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
+    merit:          () => <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
+    reportcard:     () => <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
+    schedule:       () => <Schedule courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
+    seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
+    studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
+    coursesubjects: () => <CourseSubjectsManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} />,
+    examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
+    examconfig:     () => <ExamConfigManager courseSubjects={courseSubjects} onUpdate={setCourseSubjects} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; }} />,
+    settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
+    progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
+    compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
+    admitcard:      () => <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
+    bulkreport:     () => <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
   };
  
   const activeTabInfo = TAB_GROUPS.flatMap(g => g.tabs).find(t => t.id === tab);
@@ -5849,7 +5829,7 @@ export default function Exams({ currentUser, perms }) {
           </h2>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9CA3AF" }}>{activeTabInfo?.tip}</p>
         </div>
-        {sectionMap[tab]}
+        {sectionMap[tab]?.()}
       </div>
     </div>
   );
