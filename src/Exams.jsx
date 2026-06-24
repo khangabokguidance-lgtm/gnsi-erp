@@ -1855,7 +1855,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
     setLoading(true);
     const ids = courseStudents.map(s => s.id);
     supabase.from("exam_marks").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; });
+      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; });
       setMarks(map); setLoading(false);
     });
   }, [examType, examDate, course]);
@@ -1954,10 +1954,10 @@ function Analytics({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; }); setMarks(map);
+    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
+      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
     });
-  }, [examType, examDate, course]);
+  }, [examType, course]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const n = courseStudents.length || 1;
@@ -2079,10 +2079,10 @@ function Rankings({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; }); setMarks(map);
+    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
+      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
     });
-  }, [examType, examDate, course]);
+  }, [examType, course]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: calcPct(getTotal(st.id), course) })).sort((a, b) => b.total - a.total);
@@ -2204,7 +2204,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
       }));
       const totalsData = dates.map(d => {
         const dm = allMarks.filter(r => r.exam_date === d);
-        return dm.length ? dm.reduce((s, r) => s + (r.marks || 0), 0) : null;
+        return dm.length ? dm.reduce((s, r) => s + (r.marks_obtained || 0), 0) : null;
       });
       datasets.push({ label: "Total", data: totalsData, borderColor: "#1a3c2e", backgroundColor: "#1a3c2e22", tension: 0.4, fill: true, borderWidth: 3, pointRadius: 5, pointHoverRadius: 7, spanGaps: true, yAxisID: "y2" });
       chartInstance.current = new Chart(chartRef.current, {
@@ -2220,7 +2220,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
   const filteredStudents = courseStudents.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search));
   const dateSummary = dates.map(d => {
     const dm = allMarks.filter(r => r.exam_date === d);
-    const total = dm.reduce((s, r) => s + (r.marks || 0), 0);
+    const total = dm.reduce((s, r) => s + (r.marks_obtained || 0), 0);
     const pct = dm.length ? calcPct(total, course) : null;
     return { date: d, total, pct, grade: pct !== null ? getGrade(pct) : null };
   });
@@ -2348,10 +2348,10 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; }); setMarks(map);
+    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
+      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
     });
-  }, [examType, examDate, course]);
+  }, [examType, course]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const toggleStudent = st => {
@@ -3005,10 +3005,10 @@ function MeritList({ courseSubjects, examTypes, students }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; }); setMarks(map);
+    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
+      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
     });
-  }, [examType, examDate, course]);
+  }, [examType, course]);
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: calcPct(getTotal(st.id), course) })).sort((a, b) => b.total - a.total);
@@ -4306,10 +4306,10 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   useEffect(() => {
     if (!examType || !examDate) return;
     const ids = courseStudents.map(s => s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
-      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks; }); setMarks(map);
+    supabase.from("exam_marks").select("*").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).then(({ data }) => {
+      const map = {}; (data || []).forEach(r => { map[`${r.student_id}-${r.subject}`] = r.marks_obtained; }); setMarks(map);
     });
-  }, [examType, examDate, course]);
+  }, [examType, course]);
 
   const examName = examTypes.find(e => e.id === examType)?.name || "Examination";
   return (
@@ -4390,11 +4390,11 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     if (!rcExamType || !rcExamDate) return;
     setRcLoading(true);
     const ids = rcStudents.map(s=>s.id);
-    supabase.from("exam_marks").select("*").eq("exam_type_id", rcExamType).eq("exam_date", rcExamDate).in("student_id", ids.length?ids:["__none__"]).then(({ data }) => {
-      const map = {}; (data||[]).forEach(r=>{ map[`${r.student_id}-${r.subject}`]=r.marks; });
+    supabase.from("exam_marks").select("*").eq("exam_type_id", rcExamType).in("student_id", ids.length?ids:["__none__"]).then(({ data }) => {
+      const map = {}; (data||[]).forEach(r=>{ map[`${r.student_id}-${r.subject}`]=r.marks_obtained; });
       setRcMarks(map); setRcLoading(false);
     });
-  }, [rcExamType, rcExamDate, rcCourse]);
+  }, [rcExamType, rcCourse]);
 
   useEffect(() => {
     if (!rcExamType || !rcExamDate || !rcStudents.length) return;
