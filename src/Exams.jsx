@@ -4350,7 +4350,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
   const pct = courseMax ? (total / courseMax) * 100 : 0;
   const grade = getGrade(pct);
   const passed = pct >= 40;
-  const gradeColors = {"A+":"#1a56db","A":"#1B4F8A","B+":"#534AB7","B":"#2563eb","C":"#BA7517","D":"#ea580c","F":"#C0392B"};
+  const gradeColors = {"A+":"#fbbf24","A":"#fbbf24","B+":"#e0e7ff","B":"#e0e7ff","C":"#f87171","D":"#fb923c","F":"#fca5a5"};
   const gradeColor = gradeColors[grade.label]||"#0A1628";
 
   const sortedStudents = [...allStudents].map(s=>({...s,total:getTotal(s.id)})).sort((a,b)=>b.total-a.total);
