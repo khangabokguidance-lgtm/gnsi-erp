@@ -371,14 +371,14 @@ function printHTML(html, title = "GNSI") {
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    :root{--bg:#F7F6F1;--bg2:#EDEAE2;--border:#D5D0C5;--text:#1C1A16;--text2:#6B6657;--accent:#2A5C45;--gold:#B8860B;}
+    :root{--bg:#F0F4FF;--bg2:#DBEAFE;--border:#BFDBFE;--text:#1C1A16;--text2:#3b5ca8;--accent:#0f2d5e;--gold:#B8860B;}
     body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);padding:28px;-webkit-font-smoothing:antialiased;}
     .page{max-width:720px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);}
-    .header{background:linear-gradient(135deg,#1a3c2e 0%,#2A5C45 60%,#3a7a5c 100%);color:#fff;padding:28px 36px 22px;text-align:center;position:relative;}
+    .header{background:linear-gradient(135deg,#0f2d5e 0%,#1a4d8a 60%,#2563b0 100%);color:#fff;padding:28px 36px 22px;text-align:center;position:relative;}
     .header::after{content:'';display:block;position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#B8860B,#f0c040,#B8860B);}
-    .eyebrow{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.65);margin-bottom:6px;}
+    .eyebrow{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:6px;}
     .inst-name{font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:400;margin-bottom:4px;}
-    .inst-addr{font-size:12px;color:rgba(255,255,255,.7);}
+    .inst-addr{font-size:12px;color:rgba(255,255,255,.75);}
     .exam-pill{display:inline-block;margin-top:10px;font-size:12px;font-weight:500;background:rgba(255,255,255,.15);border-radius:20px;padding:4px 16px;color:rgba(255,255,255,.9);}
     .body{padding:28px 36px;}
     .info-grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:22px;font-size:13px;}
@@ -388,7 +388,7 @@ function printHTML(html, title = "GNSI") {
     .info-label{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--text2);margin-bottom:3px;font-weight:600;}
     .info-value{font-weight:600;font-size:14px;}
     table{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px;}
-    thead tr{background:#1a3c2e;color:#fff;}
+    thead tr{background:#0f2d5e;color:#fff;}
     thead th{padding:10px 14px;font-weight:600;font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;text-align:center;}
     thead th:first-child{text-align:left;}
     tbody td{padding:9px 12px;text-align:center;border-bottom:1px solid var(--border);}
@@ -408,7 +408,7 @@ function printHTML(html, title = "GNSI") {
     @media print{body{background:#fff;padding:0;}.page{box-shadow:none;border-radius:0;}@page{margin:1cm;}.no-print{display:none;}}
   </style></head><body>
   <div class="no-print" style="margin-bottom:14px;text-align:center;">
-    <button onclick="window.print()" style="padding:10px 24px;background:#1a3c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;">🖨️ Print / Save as PDF</button>
+    <button onclick="window.print()" style="padding:10px 24px;background:#0f2d5e;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;">🖨️ Print / Save as PDF</button>
   </div>
   ${html}</body></html>`);
   w.document.close();
@@ -4286,61 +4286,61 @@ const REPORT_CARD_CSS = `
 body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
 .no-print{text-align:center;margin-bottom:16px;display:flex;gap:10px;justify-content:center;}
 .no-print button{padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;}
-.btn-print{background:#1a3c2e;color:white;}.btn-close{background:#e5e7eb;color:#374151;}
+.btn-print{background:#0f2d5e;color:white;}.btn-close{background:#e5e7eb;color:#374151;}
 .page-break{page-break-after:always;height:0;overflow:hidden;}
-.card{width:720px;margin:0 auto 24px;background:#FDFAF3;border-radius:3px;box-shadow:0 12px 48px rgba(0,0,0,0.22),0 0 0 1px #D5C89A;position:relative;overflow:hidden;}
-.top-strip{height:5px;background:linear-gradient(90deg,#1a3c2e 0%,#2A5C45 30%,#B8860B 60%,#f0c040 80%,#2A5C45 100%);}
-.header{background:linear-gradient(150deg,#0d2818 0%,#1a3c2e 45%,#1e4d36 100%);padding:22px 32px 18px;display:flex;align-items:center;gap:16px;}
+.card{width:720px;margin:0 auto 24px;background:#F0F4FF;border-radius:3px;box-shadow:0 12px 48px rgba(0,0,0,0.22),0 0 0 1px #B8C9E8;position:relative;overflow:hidden;}
+.top-strip{height:5px;background:linear-gradient(90deg,#0f2d5e 0%,#1a4d8a 30%,#B8860B 60%,#f0c040 80%,#1a4d8a 100%);}
+.header{background:linear-gradient(150deg,#071a3e 0%,#0f2d5e 45%,#133a7a 100%);padding:22px 32px 18px;display:flex;align-items:center;gap:16px;}
 .logo-ring{width:64px;height:64px;border-radius:50%;border:2px solid #D4A017;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.logo-text{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:#f0c040;}
+.logo-text{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:white;}
 .header-center{flex:1;text-align:center;}
-.eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(240,192,64,0.7);margin-bottom:5px;}
+.eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.75);margin-bottom:5px;}
 .inst-name{font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:white;margin-bottom:3px;}
-.inst-addr{font-size:11px;color:rgba(255,255,255,0.65);}
+.inst-addr{font-size:11px;color:rgba(255,255,255,0.75);}
 .doc-badge{text-align:center;flex-shrink:0;}
-.doc-badge-title{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#f0c040;letter-spacing:2px;line-height:1.2;}
-.doc-badge-sub{font-size:10px;color:rgba(255,255,255,0.6);margin-top:3px;}
-.exam-result-bar{background:#1a3c2e;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;}
+.doc-badge-title{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:white;letter-spacing:2px;line-height:1.2;}
+.doc-badge-sub{font-size:10px;color:rgba(255,255,255,0.75);margin-top:3px;}
+.exam-result-bar{background:#0f2d5e;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;}
 .exam-info{display:flex;gap:20px;flex-wrap:wrap;}
 .exam-info-item{display:flex;flex-direction:column;}
-.exam-info-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(240,192,64,0.6);margin-bottom:2px;}
+.exam-info-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);margin-bottom:2px;}
 .exam-info-value{font-size:13px;font-weight:600;color:white;}
 .result-pill-bar{display:flex;align-items:center;gap:8px;}
 .student-section{padding:14px 24px 10px;}
-.section-title{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:#1a3c2e;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;}
+.section-title{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:#0f2d5e;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;}
 .student-table{width:100%;border-collapse:collapse;font-size:13px;}
-.student-table td{padding:7px 10px;border:1px solid #E5DFC8;}
-.student-table .lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#B8860B;font-weight:600;background:#FDFAF3;width:120px;}
+.student-table td{padding:7px 10px;border:1px solid #BFDBFE;}
+.student-table .lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#1a4d8a;font-weight:600;background:#EFF6FF;width:120px;}
 .student-table .val{font-weight:600;color:#0A1628;}
-.student-table .val.big{font-family:'Playfair Display',serif;font-size:16px;color:#1a3c2e;}
-.score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:#1a3c2e;margin:0 16px 0;border-radius:6px;overflow:hidden;}
-.score-cell{text-align:center;padding:12px 8px;border-right:1px solid rgba(255,255,255,0.1);}
+.student-table .val.big{font-family:'Playfair Display',serif;font-size:16px;color:#0f2d5e;}
+.score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:#0f2d5e;margin:0 16px 0;border-radius:6px;overflow:hidden;}
+.score-cell{text-align:center;padding:12px 8px;border-right:1px solid rgba(255,255,255,0.15);}
 .score-cell:last-child{border-right:none;}
-.score-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(240,192,64,0.6);margin-bottom:4px;}
+.score-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);margin-bottom:4px;}
 .score-val{font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:white;line-height:1;}
 .score-val.gold{color:#f0c040;}
-.score-sub{font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px;}
+.score-sub{font-size:10px;color:rgba(255,255,255,0.6);margin-top:2px;}
 .marks-section{padding:14px 24px;}
-.marks-table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #E5DFC8;border-radius:6px;overflow:hidden;}
-.marks-table thead tr{background:#f5f0e8;}
-.marks-table thead th{padding:8px 10px;text-align:center;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#5C5440;font-weight:700;border-bottom:2px solid #D5C89A;}
-.marks-table tbody td{padding:9px 10px;text-align:center;border-bottom:1px solid #EDE8D8;}
-.marks-table tfoot tr{background:#f5f0e8;}
-.marks-table tfoot td{padding:10px;border-top:2px solid #D5C89A;text-align:center;font-weight:700;}
-.remark-box{margin:0 24px 14px;padding:12px 16px;background:white;border:1px solid #D5C89A;border-left:4px solid #B8860B;border-radius:4px;}
-.remark-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#B8860B;font-weight:700;margin-bottom:5px;}
-.remark-text{font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;color:#5C5440;line-height:1.6;}
-.sig-section{display:flex;align-items:flex-end;justify-content:space-between;padding:14px 24px 18px;background:white;border-top:1px solid #EDE8D8;gap:16px;}
+.marks-table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #BFDBFE;border-radius:6px;overflow:hidden;}
+.marks-table thead tr{background:#DBEAFE;}
+.marks-table thead th{padding:8px 10px;text-align:center;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#1e3a6e;font-weight:700;border-bottom:2px solid #93C5FD;}
+.marks-table tbody td{padding:9px 10px;text-align:center;border-bottom:1px solid #EFF6FF;}
+.marks-table tfoot tr{background:#DBEAFE;}
+.marks-table tfoot td{padding:10px;border-top:2px solid #93C5FD;text-align:center;font-weight:700;}
+.remark-box{margin:0 24px 14px;padding:12px 16px;background:white;border:1px solid #BFDBFE;border-left:4px solid #1a4d8a;border-radius:4px;}
+.remark-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#1a4d8a;font-weight:700;margin-bottom:5px;}
+.remark-text{font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;color:#1e3a6e;line-height:1.6;}
+.sig-section{display:flex;align-items:flex-end;justify-content:space-between;padding:14px 24px 18px;background:white;border-top:1px solid #BFDBFE;gap:16px;}
 .sig-block{text-align:center;flex:1;}
 .sig-space{height:40px;}
-.sig-label{border-top:1.5px solid #1C1A16;padding-top:5px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#5C5440;font-weight:600;margin:0 10px;}
+.sig-label{border-top:1.5px solid #1C1A16;padding-top:5px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#1e3a6e;font-weight:600;margin:0 10px;}
 .seal-block{flex:0 0 70px;display:flex;flex-direction:column;align-items:center;}
-.seal{width:64px;height:64px;border-radius:50%;border:2px dashed #B8860B;background:#FDFAF3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
-.seal-word{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#B8860B;font-weight:700;}
-.seal-star{font-size:14px;color:#B8860B;line-height:1;}
-.footer-strip{background:linear-gradient(90deg,#0d2818,#1a3c2e,#0d2818);padding:8px 32px;}
-.footer-text{font-size:10px;color:rgba(255,255,255,0.5);text-align:center;}
-.bottom-strip{height:4px;background:linear-gradient(90deg,#B8860B,#f0c040,#B8860B);}
+.seal{width:64px;height:64px;border-radius:50%;border:2px dashed #1a4d8a;background:#EFF6FF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
+.seal-word{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#1a4d8a;font-weight:700;}
+.seal-star{font-size:14px;color:#1a4d8a;line-height:1;}
+.footer-strip{background:linear-gradient(90deg,#071a3e,#0f2d5e,#071a3e);padding:8px 32px;}
+.footer-text{font-size:10px;color:rgba(255,255,255,0.75);text-align:center;}
+.bottom-strip{height:4px;background:linear-gradient(90deg,#1a4d8a,#60A5FA,#1a4d8a);}
 @media print{body{background:white;padding:0;}.no-print{display:none!important;}.card{box-shadow:none;border-radius:0;width:100%;margin:0;}}
 `;
 
@@ -4351,7 +4351,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
   const pct = courseMax ? (total / courseMax) * 100 : 0;
   const grade = getGrade(pct);
   const passed = pct >= 40;
-  const gradeColors = {"A+":"#0F6E56","A":"#1B4F8A","B+":"#534AB7","B":"#2563eb","C":"#BA7517","D":"#ea580c","F":"#C0392B"};
+  const gradeColors = {"A+":"#1a56db","A":"#1B4F8A","B+":"#534AB7","B":"#2563eb","C":"#BA7517","D":"#ea580c","F":"#C0392B"};
   const gradeColor = gradeColors[grade.label]||"#0A1628";
 
   const sortedStudents = [...allStudents].map(s=>({...s,total:getTotal(s.id)})).sort((a,b)=>b.total-a.total);
@@ -4367,7 +4367,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
     const subMax=(subjectMaxMap && subjectMaxMap[s]) || 100;
     const subPct=Math.round((m/subMax)*100);
     const subPassed=subPct>=40;
-    const barColor=subPct>=80?"#0F6E56":subPct>=60?"#1B4F8A":subPct>=40?"#BA7517":"#C0392B";
+    const barColor=subPct>=80?"#1a56db":subPct>=60?"#1B4F8A":subPct>=40?"#BA7517":"#C0392B";
     const gradeLbl=subPct>=90?"A+":subPct>=80?"A":subPct>=70?"B+":subPct>=60?"B":subPct>=50?"C":subPct>=40?"D":"F";
     return `<tr>
       <td style="text-align:left;font-weight:600;color:#2D3748">${idx+1}. ${s}</td>
@@ -4375,7 +4375,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
       <td style="font-family:'EB Garamond',serif;font-size:14px;font-weight:700;color:#0A1628">${m}</td>
       <td><div style="display:flex;align-items:center;gap:5px;"><div style="flex:1;height:6px;background:#E2E8F0;border-radius:3px;overflow:hidden;"><div style="width:${subPct}%;height:100%;background:${barColor};border-radius:3px;"></div></div><span style="font-size:10px;font-weight:700;color:${barColor};min-width:32px">${subPct}%</span></div></td>
       <td><span style="display:inline-block;padding:1px 8px;border-radius:2px;font-size:11px;font-weight:700;color:${barColor};border:1px solid ${barColor};background:${barColor}18">${gradeLbl}</span></td>
-      <td><span style="font-size:10px;font-weight:700;color:${subPassed?"#0F6E56":"#C0392B"}">${subPassed?"✓ PASS":"✗ FAIL"}</span></td>
+      <td><span style="font-size:10px;font-weight:700;color:${subPassed?"#1a56db":"#C0392B"}">${subPassed?"✓ PASS":"✗ FAIL"}</span></td>
     </tr>`;
   }).join("");
 
@@ -4403,7 +4403,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
       </div>
       <div class="result-pill-bar">
         <span style="font-size:20px;font-weight:700;color:${gradeColor}">${grade.label}</span>
-        <span style="font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:2px;background:${passed?"#E1F5EE":"#FCEBEB"};color:${passed?"#0F6E56":"#C0392B"};border:1px solid ${passed?"#BBF7D0":"#FECACA"}">${passed?"PASS":"FAIL"}</span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:2px;background:${passed?"#EFF6FF":"#FCEBEB"};color:${passed?"#1a56db":"#C0392B"};border:1px solid ${passed?"#BFDBFE":"#FECACA"}">${passed?"PASS":"FAIL"}</span>
       </div>
     </div>
     <div class="student-section">
@@ -4432,7 +4432,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
           <td style="font-size:16px;font-weight:700;color:#0A1628">${total}</td>
           <td><div style="display:flex;align-items:center;gap:5px;"><div style="flex:1;height:7px;background:#E2E8F0;border-radius:3px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${gradeColor};border-radius:3px;"></div></div><span style="font-size:11px;font-weight:700;color:${gradeColor}">${pct.toFixed(1)}%</span></div></td>
           <td><span style="display:inline-block;padding:2px 9px;border-radius:2px;font-size:12px;font-weight:700;color:${gradeColor};border:1px solid ${gradeColor};background:${gradeColor}18">${grade.label}</span></td>
-          <td><span style="font-size:11px;font-weight:700;color:${passed?"#0F6E56":"#C0392B"}">${passed?"✓ PASS":"✗ FAIL"}</span></td>
+          <td><span style="font-size:11px;font-weight:700;color:${passed?"#1a56db":"#C0392B"}">${passed?"✓ PASS":"✗ FAIL"}</span></td>
         </tr></tfoot>
       </table>
     </div>
