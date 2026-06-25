@@ -18,7 +18,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { promoteToStudent, getFlatFeeAmtSync } from './feeEngine'
+import ReportGenerator from './ReportGenerator'
+import { promoteToStudent, getFlatFeeAmtSync, checkHouseCapacity } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -143,6 +144,37 @@ function useWindowWidth() {
 }
 
 function useMobile() { return useWindowWidth() < 768 }
+
+// 🔗 Live housemaster lookup — reads the same `housemasters` table that
+// Hostel.jsx's HousemasterTab manages (columns: name, house, phone, email,
+// designation, status). Filters to status:'Active' and keys by house name,
+// mirroring exactly how Hostel.jsx's notifyHousemasterByHouse() already
+// resolves "who is the current housemaster of house X" — so both modules
+// agree on the same answer instead of Admissions showing stale fake data.
+function useActiveHousemasters() {
+  const [byHouse, setByHouse] = useState({})
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('housemasters')
+        .select('name, house, phone, email, designation')
+        .eq('status', 'Active')
+      if (cancelled) return
+      if (error) { console.error('useActiveHousemasters fetch error:', error); setLoading(false); return }
+      const map = {}
+      ;(data || []).forEach(hm => {
+        const key = (hm.house || '').trim()
+        if (key) map[key] = hm   // one active housemaster per house, matching Hostel.jsx's .maybeSingle() assumption
+      })
+      setByHouse(map)
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [])
+  return { housemastersByHouse: byHouse, housemastersLoading: loading }
+}
 function useTablet() { return useWindowWidth() < 1024 }
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
@@ -247,17 +279,12 @@ const HOUSE_CAPACITIES = {
   'Kombirei':40,'Shiroi':40,'Loktak':40,'Singgarei':40,'Koubru':40,
   'Kangla':40,'Sangai':40,'Takhelei':40,'Block-B':30,'Day Scholar':999,
 }
-const WARDEN_CONTACTS = {
-  'Kombirei':  { name:'Mr. Tomba Singh',    phone:'9876500001' },
-  'Shiroi':    { name:'Mr. Ranjit Sharma',  phone:'9876500002' },
-  'Loktak':    { name:'Mr. Ibomcha Meitei', phone:'9876500003' },
-  'Singgarei': { name:'Mrs. Sushila Devi',  phone:'9876500004' },
-  'Koubru':    { name:'Mr. Somorjit Singh', phone:'9876500005' },
-  'Kangla':    { name:'Mr. Praveen Kumar',  phone:'9876500006' },
-  'Sangai':    { name:'Mrs. Bimola Devi',   phone:'9876500007' },
-  'Takhelei':  { name:'Mr. Hemanta Singh',  phone:'9876500008' },
-  'Nongin':   { name:'Mr. James Haokip',   phone:'9876500009' },
-}
+// 🔗 WARDEN_CONTACTS hardcoded object removed — warden/housemaster info now
+// comes from the real `housemasters` table (the same one Hostel.jsx's
+// HousemasterTab manages) via the useActiveHousemasters() hook below.
+// This closes the same kind of drift gap as the house-capacity fix: before,
+// this list was fake placeholder data that could never reflect a real
+// staffing change made in Hostel.jsx.
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 const fmt = n => Number(n||0).toLocaleString('en-IN')
@@ -700,7 +727,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, onClose, onAddNote, darkMode, role }) {
+function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -789,20 +816,32 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role }) {
           style={{ padding:'9px 16px', borderRadius:8, background:T.slate[800], color:'#fff', border:'none', fontSize:12, fontWeight:700, cursor:'pointer' }}>Add</button>
       </div>
 
-      {a.house && WARDEN_CONTACTS[a.house] && checkPermission(role, 'viewContacts') && (
+      {a.house && housemastersByHouse[a.house] && checkPermission(role, 'viewContacts') && (
         <>
           <SectionDivider label="Warden Contact" />
           <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:T.sky[50], border:`1px solid ${T.sky[100]}`, borderRadius:8 }}>
             <span style={{ fontSize:20 }}>👤</span>
             <div>
-              <div style={{ fontSize:13, fontWeight:700, color:T.sky[700] }}>{WARDEN_CONTACTS[a.house].name}</div>
-              <div style={{ fontSize:11, color:T.sky[600] }}>{a.house} House Warden · {WARDEN_CONTACTS[a.house].phone}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:T.sky[700] }}>{housemastersByHouse[a.house].name}</div>
+              <div style={{ fontSize:11, color:T.sky[600] }}>
+                {a.house} {housemastersByHouse[a.house].designation || 'House Warden'} · {housemastersByHouse[a.house].phone || 'No phone on file'}
+              </div>
             </div>
-            <a href={`tel:${WARDEN_CONTACTS[a.house].phone}`} style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:7, background:T.sky[500], color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none' }}>Call</a>
+            {housemastersByHouse[a.house].phone && (
+              <a href={`tel:${housemastersByHouse[a.house].phone}`} style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:7, background:T.sky[500], color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none' }}>Call</a>
+            )}
           </div>
         </>
       )}
-      {a.house && WARDEN_CONTACTS[a.house] && !checkPermission(role, 'viewContacts') && (
+      {a.house && !housemastersByHouse[a.house] && checkPermission(role, 'viewContacts') && (
+        <>
+          <SectionDivider label="Warden Contact" />
+          <div style={{ fontSize:12, color:T.amber[600], padding:'8px 12px', background:T.amber[50], borderRadius:8, fontWeight:600 }}>
+            ⚠ No active housemaster assigned to {a.house} — add one in Hostel → Housemasters
+          </div>
+        </>
+      )}
+      {a.house && housemastersByHouse[a.house] && !checkPermission(role, 'viewContacts') && (
         <>
           <SectionDivider label="Warden Contact" />
           <div style={{ fontSize:12, color:T.slate[500], padding:'8px 12px', background:T.slate[50], borderRadius:8 }}>
@@ -1044,7 +1083,7 @@ function printBulkList(apps) {
 }
 
 // ─── Application Form ──────────────────────────────────────────────────────────
-function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
+function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersByHouse={} }) {
   const def = (k, fb='') => editing ? (editing[k] ?? fb) : fb
   const defaultSession = editing ? def('session') : (activeSession?.session_name || '')
 
@@ -1119,11 +1158,28 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
     return () => clearTimeout(timer)
   }, [form.gcc, editing])
 
+  // 🔗 Live house capacity check — sourced from the real `houses` table +
+  // actual student/admission counts (feeEngine.js's getHouseOccupancy),
+  // not the old hardcoded HOUSE_CAPACITIES guess. This is a WARNING, not a
+  // hard block: staff can still proceed (e.g. a house may legitimately get
+  // an extra bed added), but they'll never be silently unaware of it the
+  // way the old hardcoded-only check allowed. The real enforcement point
+  // is promoteToStudent() at actual enrollment time, which does block.
+  const [houseCapacityWarning, setHouseCapacityWarning] = useState('')
+  useEffect(() => {
+    if (!form.house) { setHouseCapacityWarning(''); return }
+    const timer = setTimeout(async () => {
+      const check = await checkHouseCapacity(form.house, editing ? parseInt(form.gcc) : null)
+      setHouseCapacityWarning(check.ok ? (check.warning || '') : check.reason)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [form.house, form.gcc, editing])
+
   const derivedHostelType = deriveHostelType(form.house, form.hostel_type)
   const hs       = HOSTEL_STYLES[derivedHostelType] || HOSTEL_STYLES['Day Scholar']
   const baseRate = getFlatFeeAmtSync(derivedHostelType, form.course)
   const discRate = form.scholarshipPct > 0 ? Math.round(baseRate*(1-form.scholarshipPct/100)) : baseRate
-  const warden   = WARDEN_CONTACTS[form.house]
+  const warden   = housemastersByHouse[form.house]
 
   const [dirty, setDirty] = useState(false)
   useEffect(() => setDirty(true), [form])
@@ -1249,6 +1305,9 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
               <option value="">— House —</option>
               {HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
             </select>
+            {houseCapacityWarning && (
+              <div style={{ fontSize:11, color:T.amber[600], marginTop:3, fontWeight:700 }}>⚠ {houseCapacityWarning}</div>
+            )}
           </FieldRow>
           <FieldRow label="Hostel Type">
             <select style={{ ...styles.inp, background:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?T.slate[50]:'#fff', color:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?T.slate[400]:T.slate[800] }}
@@ -1269,9 +1328,14 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role }) {
           </FieldRow>
         </div>
 
+        {form.house && !warden && (
+          <div style={{ display:'inline-flex', alignItems:'center', gap:7, marginBottom:12, padding:'6px 14px', borderRadius:8, background:T.amber[50], border:`1px solid ${T.amber[200]}`, fontSize:12, color:T.amber[700], fontWeight:600 }}>
+            ⚠ No active housemaster on file for {form.house}
+          </div>
+        )}
         {warden && (
           <div style={{ display:'inline-flex', alignItems:'center', gap:7, marginBottom:12, padding:'6px 14px', borderRadius:8, background:T.sky[50], border:`1px solid ${T.sky[100]}`, fontSize:12, color:T.sky[700] }}>
-            👤 Warden: <strong>{warden.name}</strong> · {warden.phone}
+            👤 {warden.designation || 'Warden'}: <strong>{warden.name}</strong>{warden.phone ? ` · ${warden.phone}` : ''}
           </div>
         )}
 
@@ -1866,6 +1930,7 @@ export default function Admissions() {
   const [toast,          setToast]         = useState(null)
   const [selectedIds,    setSelectedIds]   = useState(new Set())
   const [showAnalytics,  setShowAnalytics] = useState(false)
+  const [showReports,    setShowReports]   = useState(false)
   const [showAdvSearch,  setShowAdvSearch] = useState(false)
   const [detailApp,      setDetailApp]     = useState(null)
   const [quickEditApp,   setQuickEditApp]  = useState(null)
@@ -1877,6 +1942,7 @@ export default function Admissions() {
   const searchRef = useRef(null)
 
   const { session: activeSession } = useActiveSession()
+  const { housemastersByHouse } = useActiveHousemasters()
   const { presets, save: savePreset, remove: removePreset } = useFilterPresets()
   const userRole = useUserRole()
 
@@ -2085,13 +2151,26 @@ export default function Admissions() {
     if (!admPaid) { showToast('⚠ Collect admission fee first', T.rose[600]); setFeePanel(a); return }
     if (!confirm(`Enroll ${a.name} as a student?`)) return
     try {
+      // 🔗 House capacity is checked INSIDE promoteToStudent (feeEngine.js),
+      // sourced live from the real `houses` table + Hostel.jsx's student
+      // data — not from a hardcoded constant. We deliberately call this
+      // BEFORE flipping admissions.status to 'Enrolled' below: if the house
+      // is full, promoteToStudent throws and we bail out here with the
+      // admission still sitting at its previous status, untouched. Doing
+      // the status flip first (the old order) would have left a record
+      // marked "Enrolled" with no student row and no seat — a worse,
+      // harder-to-spot inconsistency than just stopping early.
+      const { created, houseWarning } = await promoteToStudent(a)
+
       const { error: admErr } = await supabase.from('admissions').update({ status:'Enrolled' }).eq('gcc_no', parseInt(id))
       if (admErr) throw admErr
-      const { created } = await promoteToStudent(a)
+
       setApps(prev => prev.map(x => String(x.id)===String(id) ? { ...x, status:'Enrolled' } : x))
       showToast(created ? `✅ ${a.name} enrolled & student record created!` : `✅ ${a.name} enrolled (student already existed)`, T.emerald[600])
+      if (houseWarning) showToast(`⚠ ${houseWarning}`, T.amber[600])
     } catch(err) { showToast('Enroll failed: '+err.message, T.rose[600]) }
   }
+
 
   const handleDelete = async id => {
     // 🔒 Authorization
@@ -2402,6 +2481,11 @@ export default function Admissions() {
   📊 Analytics
 </button>
 
+<button onClick={()=>setShowReports(v=>!v)}
+  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:showReports?N.inset('sm'):N.shadow('sm'), color:showReports?N.indigo:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s' }}>
+  📑 Reports
+</button>
+
 {checkPermission(userRole,'create') && (
 <button onClick={()=>setShowCSVImport(true)}
   style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
@@ -2457,6 +2541,9 @@ export default function Admissions() {
         {/* Analytics Dashboard */}
         {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
 
+        {/* Report Generator — Phase A */}
+        {showReports && <ReportGenerator apps={apps} cols={cols} sessionOptions={sessionOptions} courseOptions={courseOptions} />}
+
         {/* Dashboard — default view */}
         <Dashboard apps={apps} cols={cols} darkMode={darkMode} />
 
@@ -2489,12 +2576,12 @@ export default function Admissions() {
 
         {/* Form */}
         {formOpen && (
-          <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} />
+          <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} />
+          <DetailPanel a={detailApp} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Quick-edit row */}

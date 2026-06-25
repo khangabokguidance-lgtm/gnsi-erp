@@ -492,13 +492,133 @@ export const recordPayment = async ({ invoiceId, amount, method }) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 11. PROMOTE ADMISSION → STUDENT
+// 11. HOUSE OCCUPANCY — SHARED SOURCE OF TRUTH
+// ═══════════════════════════════════════════════════════════════════════════
+// Both Admissions.jsx (assigning a house to an applicant) and Hostel.jsx's
+// HouseTab (assigning/reassigning a house to an existing student) need the
+// same answer to "how full is this house, right now?" — this is that one
+// answer, computed live from real data instead of two separate hardcoded
+// guesses living in two separate files.
+//
+// "Occupancy" counts BOTH:
+//   - students already in the `students` table with this house (Hostel side)
+//   - admissions in flight (status Admitted/Enrolled) with this house, that
+//     haven't been promoted to a student row yet (Admissions side) — an
+//     applicant who has been assigned a bed but hasn't formally enrolled
+//     yet still occupies that bed in practice.
+// Counting only one side would let the two modules independently overbook
+// the same house without either one ever seeing the other's bookings.
+
+const _houseCapacityCache = {}  // key = house name, cleared on demand
+
+export const clearHouseCapacityCache = () => {
+  Object.keys(_houseCapacityCache).forEach(k => delete _houseCapacityCache[k])
+}
+
+/**
+ * Returns { capacity, occupied, available, isFull } for one house, OR for
+ * every house if `houseName` is omitted (returns an array instead).
+ *
+ * @param houseName - exact house name as stored in houses.name, or omit for all houses
+ * @param excludeGcc - GCC number to exclude from the admissions-side count
+ *                     (use this when re-checking a house an applicant is
+ *                     ALREADY assigned to, so they don't count against
+ *                     their own seat)
+ */
+export const getHouseOccupancy = async (houseName = null, excludeGcc = null) => {
+  const { data: houses, error: housesErr } = await supabase
+    .from('houses')
+    .select('name, capacity')
+    .order('name')
+  if (housesErr) throw housesErr
+
+  const targetHouses = houseName
+    ? houses.filter(h => h.name.toLowerCase() === houseName.toLowerCase())
+    : houses
+  if (houseName && targetHouses.length === 0) {
+    throw new Error(`getHouseOccupancy: no house named "${houseName}" found in houses table`)
+  }
+
+  const [{ data: students, error: studentsErr }, { data: admissions, error: admissionsErr }] = await Promise.all([
+    supabase.from(TABLES.students).select('house').not('house', 'is', null),
+    supabase.from(TABLES.admissions).select('gcc_no, house').not('house', 'is', null).in('status', ['Admitted', 'Enrolled']),
+  ])
+  if (studentsErr) throw studentsErr
+  if (admissionsErr) throw admissionsErr
+
+  const norm = h => (h || '').toString().trim().toLowerCase()
+
+  const result = targetHouses.map(h => {
+    const studentCount = students.filter(s => norm(s.house) === norm(h.name)).length
+    const admissionCount = admissions.filter(a =>
+      norm(a.house) === norm(h.name) &&
+      String(a.gcc_no) !== String(excludeGcc)
+    ).length
+    const occupied = studentCount + admissionCount
+    const capacity = h.capacity ?? 40
+    return {
+      name: h.name,
+      capacity,
+      occupied,
+      available: Math.max(0, capacity - occupied),
+      isFull: occupied >= capacity,
+    }
+  })
+
+  return houseName ? result[0] : result
+}
+
+/**
+ * Convenience check used right before assigning a house to an applicant or
+ * student. Returns { ok: true } or { ok: false, reason } — never throws for
+ * the "house is full" case, only for actual lookup errors, so callers can
+ * show a clean toast instead of catching exceptions for normal business logic.
+ */
+export const checkHouseCapacity = async (houseName, excludeGcc = null) => {
+  if (!houseName) return { ok: true }  // unassigning / no house selected is always fine
+  try {
+    const occ = await getHouseOccupancy(houseName, excludeGcc)
+    if (!occ) return { ok: false, reason: `House "${houseName}" not found` }
+    if (occ.isFull) {
+      return { ok: false, reason: `${houseName} is full (${occ.occupied}/${occ.capacity}) — choose another house or increase capacity in Hostel → Houses` }
+    }
+    return { ok: true, occupied: occ.occupied, capacity: occ.capacity }
+  } catch (err) {
+    // Lookup failure (network, etc.) — fail OPEN with a warning rather than
+    // blocking staff from completing an admission over a transient error.
+    console.error('checkHouseCapacity lookup failed:', err)
+    return { ok: true, warning: 'Could not verify house capacity — proceeding anyway' }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. PROMOTE ADMISSION → STUDENT
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const promoteToStudent = async (admission) => {
   const gccNo = parseInt(admission.gcc || admission.gcc_no)
   const { data: existing } = await supabase.from(TABLES.students).select('id').eq('gcc_no', gccNo).maybeSingle()
   if (existing) return { created: false, id: existing.id }
+
+  // Re-verify house capacity at the actual moment of enrollment, not just
+  // at the moment the house was first picked in the Admissions form. Time
+  // may have passed; other students may have filled the house since.
+  // `excludeGcc: gccNo` because this exact applicant already "occupies" a
+  // notional seat in getHouseOccupancy's admissions-side count — we don't
+  // want them double-counted against their own seat.
+  let houseWarning = null
+  if (admission.house) {
+    const check = await checkHouseCapacity(admission.house, gccNo)
+    if (!check.ok) {
+      // Don't silently drop the house — don't silently keep it either.
+      // Surface this back to the caller (Admissions.jsx's handleEnroll) so
+      // staff sees it, rather than the student landing in an invisible
+      // overflow the way the old code allowed.
+      throw new Error(`Cannot enroll: ${check.reason}`)
+    }
+    if (check.warning) houseWarning = check.warning
+  }
+
   const payload = {
     gcc_no: gccNo, name: admission.name || admission.applicant_name || '',
     dob: admission.dob || null, gender: admission.gender || null,
@@ -511,7 +631,8 @@ export const promoteToStudent = async (admission) => {
   }
   const { data, error } = await supabase.from(TABLES.students).insert(payload).select().single()
   if (error) throw error
-  return { created: true, id: data.id }
+  clearHouseCapacityCache()
+  return { created: true, id: data.id, houseWarning }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -3313,7 +3313,7 @@ const HOUSE_COLORS = [
 ]
 const emptyHouse = {
   name: '', motto: '', color_index: 0, captain: '', vice_captain: '',
-  established_year: new Date().getFullYear(), remarks: '',
+  established_year: new Date().getFullYear(), remarks: '', capacity: 40,
 }
 
 function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
@@ -3356,6 +3356,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
       color: HOUSE_COLOR_HEX[Number(form.color_index) % HOUSE_COLOR_HEX.length],
       captain: form.captain, vice_captain: form.vice_captain,
       established_year: Number(form.established_year) || new Date().getFullYear(), remarks: form.remarks,
+      capacity: Math.max(1, Number(form.capacity) || 40),
     }
     const { error } = editRec
       ? await supabase.from('houses').update(payload).eq('id', editRec.id)
@@ -3374,8 +3375,28 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     showToast('🗑 House deleted', '#dc2626'); load()
   }
 
+  // 🔗 Shared capacity logic — same `houses.capacity` column Admissions.jsx
+  // now reads via feeEngine.js's getHouseOccupancy(). Computed locally here
+  // since HouseTab already has both `houses` (with capacity) and `students`
+  // loaded in memory — no need to re-fetch.
+  const getHouseRemaining = (houseName, excludeStudentId = null) => {
+    const h = houses.find(h => normalizeHouse(h.name) === normalizeHouse(houseName))
+    if (!h) return null
+    const capacity = h.capacity ?? 40
+    const occupied = students.filter(s =>
+      normalizeHouse(s.house) === normalizeHouse(houseName) && s.id !== excludeStudentId
+    ).length
+    return { capacity, occupied, available: capacity - occupied, isFull: occupied >= capacity }
+  }
+
   const handleAssign = async (studentId, houseName) => {
     if (!isAdmin) { alert('Only admins can change house assignments.'); return }
+    if (houseName) {
+      const remaining = getHouseRemaining(houseName, studentId)
+      if (remaining?.isFull) {
+        if (!window.confirm(`⚠ ${houseName} is full (${remaining.occupied}/${remaining.capacity}). Assign anyway?`)) return
+      }
+    }
     await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, house: houseName || null } : s))
     showToast(houseName ? `✅ Assigned to ${houseName}` : '✅ Removed from house')
@@ -3385,11 +3406,17 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     if (!isAdmin) { showToast('Only admins can bulk assign', '#dc2626'); return }
     const unassigned = students.filter(s => !isAssigned(s))
     if (!unassigned.length) { showToast('No unassigned students', '#ca8a04'); return }
-    if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
+    const remaining = getHouseRemaining(houseName)
+    if (remaining && unassigned.length > remaining.available) {
+      if (!window.confirm(`⚠ ${houseName} only has ${remaining.available} seat(s) left (${remaining.occupied}/${remaining.capacity}), but ${unassigned.length} students are unassigned. Assign anyway? (will exceed capacity)`)) return
+    } else {
+      if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
+    }
     await supabase.from('students').update({ house: houseName }).in('id', unassigned.map(s => s.id))
     setStudents(prev => prev.map(s => !isAssigned(s) ? { ...s, house: houseName } : s))
     showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
   }
+
 
   const getHouseStyle = h => {
     const c = houseColorMap[h.name] || HOUSE_PALETTE[(Number(h.color_index) || 0) % HOUSE_PALETTE.length]
@@ -3569,6 +3596,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <div><label style={lbl}>House Captain</label><input value={form.captain} onChange={e => setForm(f => ({ ...f, captain: e.target.value }))} placeholder="Student name" style={inp} /></div>
               <div><label style={lbl}>Vice Captain</label><input value={form.vice_captain} onChange={e => setForm(f => ({ ...f, vice_captain: e.target.value }))} placeholder="Student name" style={inp} /></div>
               <div><label style={lbl}>Established Year</label><input type="number" value={form.established_year} onChange={e => setForm(f => ({ ...f, established_year: e.target.value }))} style={inp} /></div>
+              <div>
+                <label style={lbl}>Capacity (beds)</label>
+                <input type="number" min="1" value={form.capacity} onChange={e => setForm(f => ({ ...f, capacity: e.target.value }))} placeholder="e.g. 40" style={inp} />
+              </div>
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
@@ -3638,14 +3669,17 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
                           {[
-                            { label: 'Students', value: cnt, icon: '👥' },
+                            // 🔗 capacity now comes from houses.capacity (real DB column,
+                            // shared with Admissions.jsx via feeEngine.js's
+                            // getHouseOccupancy) instead of being absent entirely.
+                            { label: 'Students', value: `${cnt}/${h.capacity ?? 40}`, icon: '👥', full: cnt >= (h.capacity ?? 40) },
                             { label: 'Masters', value: hms.length, icon: '👨‍🏫' },
                             { label: 'Est.', value: h.established_year || '—', icon: '📅' },
                           ].map(s => (
-                            <div key={s.label} style={{ background: hs.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                            <div key={s.label} style={{ background: s.full ? '#fee2e2' : hs.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
                               <div style={{ fontSize: 14 }}>{s.icon}</div>
-                              <div style={{ fontSize: 16, fontWeight: 800, color: hs.color }}>{s.value}</div>
-                              <div style={{ fontSize: 10, color: hs.color, opacity: .7 }}>{s.label}</div>
+                              <div style={{ fontSize: 16, fontWeight: 800, color: s.full ? '#dc2626' : hs.color }}>{s.value}</div>
+                              <div style={{ fontSize: 10, color: s.full ? '#dc2626' : hs.color, opacity: .7 }}>{s.full ? 'FULL' : s.label}</div>
                             </div>
                           ))}
                         </div>
