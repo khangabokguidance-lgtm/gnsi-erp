@@ -1,159 +1,53 @@
-// Kitchen.jsx — Tailwind CSS Redesign v4.0
-// Complete utility-first redesign preserving all v3.3 functionality
+// Kitchen.jsx — Fees-style redesign v5.0
+// Same visual language as Fees.jsx (navy/indigo, inline styles) — all v4.0 functionality preserved 1:1
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase.js'
 
-// ─── Design Tokens (mapped to Tailwind classes) ───────────────────────────────
-const THEME = {
-  terra: {
-    50: 'bg-orange-50', 100: 'bg-orange-100', 200: 'bg-orange-200',
-    300: 'bg-orange-300', 400: 'bg-orange-400', 500: 'bg-orange-500',
-    600: 'bg-orange-600', 700: 'bg-orange-700', 800: 'bg-orange-800', 900: 'bg-orange-900',
-    text50: 'text-orange-50', text100: 'text-orange-100', text200: 'text-orange-200',
-    text300: 'text-orange-300', text400: 'text-orange-400', text500: 'text-orange-500',
-    text600: 'text-orange-600', text700: 'text-orange-700', text800: 'text-orange-800', text900: 'text-orange-900',
-    border50: 'border-orange-50', border100: 'border-orange-100', border200: 'border-orange-200',
-    border300: 'border-orange-300', border400: 'border-orange-400', border500: 'border-orange-500',
-    border600: 'border-orange-600', border700: 'border-orange-700', border800: 'border-orange-800', border900: 'border-orange-900',
-  },
-  saffron: {
-    50: 'bg-amber-50', 100: 'bg-amber-100', 200: 'bg-amber-200',
-    300: 'bg-amber-300', 400: 'bg-amber-400', 500: 'bg-amber-500',
-    600: 'bg-amber-600', 700: 'bg-amber-700', 800: 'bg-amber-800', 900: 'bg-amber-900',
-    text50: 'text-amber-50', text100: 'text-amber-100', text200: 'text-amber-200',
-    text300: 'text-amber-300', text400: 'text-amber-400', text500: 'text-amber-500',
-    text600: 'text-amber-600', text700: 'text-amber-700', text800: 'text-amber-800', text900: 'text-amber-900',
-    border50: 'border-amber-50', border100: 'border-amber-100', border200: 'border-amber-200',
-    border300: 'border-amber-300', border400: 'border-amber-400', border500: 'border-amber-500',
-    border600: 'border-amber-600', border700: 'border-amber-700', border800: 'border-amber-800', border900: 'border-amber-900',
-  },
-  forest: {
-    50: 'bg-green-50', 100: 'bg-green-100', 200: 'bg-green-200',
-    300: 'bg-green-300', 400: 'bg-green-400', 500: 'bg-green-500',
-    600: 'bg-green-600', 700: 'bg-green-700', 800: 'bg-green-800', 900: 'bg-green-900',
-    text50: 'text-green-50', text100: 'text-green-100', text200: 'text-green-200',
-    text300: 'text-green-300', text400: 'text-green-400', text500: 'text-green-500',
-    text600: 'text-green-600', text700: 'text-green-700', text800: 'text-green-800', text900: 'text-green-900',
-    border50: 'border-green-50', border100: 'border-green-100', border200: 'border-green-200',
-    border300: 'border-green-300', border400: 'border-green-400', border500: 'border-green-500',
-    border600: 'border-green-600', border700: 'border-green-700', border800: 'border-green-800', border900: 'border-green-900',
-  },
-  teal: {
-    50: 'bg-teal-50', 100: 'bg-teal-100', 200: 'bg-teal-200',
-    300: 'bg-teal-300', 400: 'bg-teal-400', 500: 'bg-teal-500',
-    600: 'bg-teal-600', 700: 'bg-teal-700', 800: 'bg-teal-800', 900: 'bg-teal-900',
-    text50: 'text-teal-50', text100: 'text-teal-100', text200: 'text-teal-200',
-    text300: 'text-teal-300', text400: 'text-teal-400', text500: 'text-teal-500',
-    text600: 'text-teal-600', text700: 'text-teal-700', text800: 'text-teal-800', text900: 'text-teal-900',
-    border50: 'border-teal-50', border100: 'border-teal-100', border200: 'border-teal-200',
-    border300: 'border-teal-300', border400: 'border-teal-400', border500: 'border-teal-500',
-    border600: 'border-teal-600', border700: 'border-teal-700', border800: 'border-teal-800', border900: 'border-teal-900',
-  },
-  ink: {
-    50: 'bg-stone-50', 100: 'bg-stone-100', 200: 'bg-stone-200',
-    300: 'bg-stone-300', 400: 'bg-stone-400', 500: 'bg-stone-500',
-    600: 'bg-stone-600', 700: 'bg-stone-700', 800: 'bg-stone-800', 900: 'bg-stone-900',
-    text50: 'text-stone-50', text100: 'text-stone-100', text200: 'text-stone-200',
-    text300: 'text-stone-300', text400: 'text-stone-400', text500: 'text-stone-500',
-    text600: 'text-stone-600', text700: 'text-stone-700', text800: 'text-stone-800', text900: 'text-stone-900',
-    border50: 'border-stone-50', border100: 'border-stone-100', border200: 'border-stone-200',
-    border300: 'border-stone-300', border400: 'border-stone-400', border500: 'border-stone-500',
-    border600: 'border-stone-600', border700: 'border-stone-700', border800: 'border-stone-800', border900: 'border-stone-900',
-  },
-  slate: {
-    50: 'bg-slate-50', 100: 'bg-slate-100', 200: 'bg-slate-200',
-    300: 'bg-slate-300', 400: 'bg-slate-400', 500: 'bg-slate-500',
-    600: 'bg-slate-600', 700: 'bg-slate-700', 800: 'bg-slate-800', 900: 'bg-slate-900',
-    text50: 'text-slate-50', text100: 'text-slate-100', text200: 'text-slate-200',
-    text300: 'text-slate-300', text400: 'text-slate-400', text500: 'text-slate-500',
-    text600: 'text-slate-600', text700: 'text-slate-700', text800: 'text-slate-800', text900: 'text-slate-900',
-    border50: 'border-slate-50', border100: 'border-slate-100', border200: 'border-slate-200',
-    border300: 'border-slate-300', border400: 'border-slate-400', border500: 'border-slate-500',
-    border600: 'border-slate-600', border700: 'border-slate-700', border800: 'border-slate-800', border900: 'border-slate-900',
-  },
-  rose: {
-    50: 'bg-rose-50', 100: 'bg-rose-100', 200: 'bg-rose-200',
-    300: 'bg-rose-300', 400: 'bg-rose-400', 500: 'bg-rose-500',
-    600: 'bg-rose-600', 700: 'bg-rose-700', 800: 'bg-rose-800', 900: 'bg-rose-900',
-    text50: 'text-rose-50', text100: 'text-rose-100', text200: 'text-rose-200',
-    text300: 'text-rose-300', text400: 'text-rose-400', text500: 'text-rose-500',
-    text600: 'text-rose-600', text700: 'text-rose-700', text800: 'text-rose-800', text900: 'text-rose-900',
-    border50: 'border-rose-50', border100: 'border-rose-100', border200: 'border-rose-200',
-    border300: 'border-rose-300', border400: 'border-rose-400', border500: 'border-rose-500',
-    border600: 'border-rose-600', border700: 'border-rose-700', border800: 'border-rose-800', border900: 'border-rose-900',
-  },
-  sky: {
-    50: 'bg-sky-50', 100: 'bg-sky-100', 200: 'bg-sky-200',
-    300: 'bg-sky-300', 400: 'bg-sky-400', 500: 'bg-sky-500',
-    600: 'bg-sky-600', 700: 'bg-sky-700', 800: 'bg-sky-800', 900: 'bg-sky-900',
-    text50: 'text-sky-50', text100: 'text-sky-100', text200: 'text-sky-200',
-    text300: 'text-sky-300', text400: 'text-sky-400', text500: 'text-sky-500',
-    text600: 'text-sky-600', text700: 'text-sky-700', text800: 'text-sky-800', text900: 'text-sky-900',
-    border50: 'border-sky-50', border100: 'border-sky-100', border200: 'border-sky-200',
-    border300: 'border-sky-300', border400: 'border-sky-400', border500: 'border-sky-500',
-    border600: 'border-sky-600', border700: 'border-sky-700', border800: 'border-sky-800', border900: 'border-sky-900',
-  },
-  violet: {
-    50: 'bg-violet-50', 100: 'bg-violet-100', 200: 'bg-violet-200',
-    300: 'bg-violet-300', 400: 'bg-violet-400', 500: 'bg-violet-500',
-    600: 'bg-violet-600', 700: 'bg-violet-700', 800: 'bg-violet-800', 900: 'bg-violet-900',
-    text50: 'text-violet-50', text100: 'text-violet-100', text200: 'text-violet-200',
-    text300: 'text-violet-300', text400: 'text-violet-400', text500: 'text-violet-500',
-    text600: 'text-violet-600', text700: 'text-violet-700', text800: 'text-violet-800', text900: 'text-violet-900',
-    border50: 'border-violet-50', border100: 'border-violet-100', border200: 'border-violet-200',
-    border300: 'border-violet-300', border400: 'border-violet-400', border500: 'border-violet-500',
-    border600: 'border-violet-600', border700: 'border-violet-700', border800: 'border-violet-800', border900: 'border-violet-900',
-  },
+// ── Responsive hook (same pattern as Fees.jsx) ────────────────────────────────
+function useWindowWidth() {
+  const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200)
+  useEffect(() => {
+    const fn = () => setW(window.innerWidth)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return w
 }
 
-// ─── Tailwind Global Styles (injected via <style>) ───────────────────────────
-const TAILWIND_GLOBAL = `
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-
-  @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
-  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-  @keyframes shimmer { from{transform:translateX(-100%)} to{transform:translateX(200%)} }
-  @keyframes spin { to { transform:rotate(360deg) } }
-  @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
-
-  .animate-fade-up { animation: fadeUp .3s ease both; }
-  .animate-fade-in { animation: fadeIn .2s ease both; }
-  .animate-slide-down { animation: slideDown .25s ease both; }
-  .animate-blink { animation: blink 1.4s ease-in-out infinite; }
-  .animate-shimmer { animation: shimmer 1.2s ease-in-out infinite; }
-  .animate-spin-slow { animation: spin 1s linear infinite; }
-
-  .stagger > * { animation: fadeUp .3s ease both; }
-  .stagger > *:nth-child(1) { animation-delay: .03s; }
-  .stagger > *:nth-child(2) { animation-delay: .07s; }
-  .stagger > *:nth-child(3) { animation-delay: .11s; }
-  .stagger > *:nth-child(4) { animation-delay: .15s; }
-  .stagger > *:nth-child(5) { animation-delay: .19s; }
-
-  .font-display { font-family: 'Playfair Display', 'Georgia', serif; }
-  .font-body { font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif; }
-  .font-mono { font-family: 'DM Mono', 'Courier New', monospace; }
-
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
-
-  @media print {
-    .no-print { display: none !important; }
-    .gnsi-kitchen { background: #fff; }
-  }
-`
+// ── Shared style tokens (mirrors Fees.jsx `inp` / `lbl` pattern) ──────────────
+const inp = {
+  width: '100%', padding: '10px 14px', borderRadius: '8px',
+  border: '1px solid #d1d5db', fontSize: '14px',
+  outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
+}
+const inpSm = { ...inp, fontSize: 12, padding: '7px 10px' }
+const lbl = {
+  display: 'block', fontSize: '13px', fontWeight: '600',
+  color: '#374151', marginBottom: '6px',
+}
+const card = {
+  background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+  boxShadow: '0 2px 8px rgba(0,0,0,.05)',
+}
+const btnPrimary = (disabled) => ({
+  padding: '10px 22px', borderRadius: 8, border: 'none',
+  background: disabled ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)',
+  color: 'white', fontWeight: 700, fontSize: 14,
+  cursor: disabled ? 'not-allowed' : 'pointer',
+})
+const btnGhost = {
+  padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0',
+  background: '#f8fafc', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b',
+}
 
 // ─── Meal Config ──────────────────────────────────────────────────────────────
 const MEALS = {
-  lunch:             { label:'Morning Lunch',       short:'Lunch',   emoji:'🍱', time:'12:30', twBg:'bg-green-600', twSoft:'bg-green-50', twBorder:'border-green-200', twText:'text-green-800', accent:'#166534' },
-  morning_breakfast: { label:'Afternoon Breakfast', short:'A.Bfast', emoji:'☕', time:'14:30', twBg:'bg-amber-500', twSoft:'bg-amber-50', twBorder:'border-amber-200', twText:'text-amber-800', accent:'#92400E' },
-  evening_breakfast: { label:'Evening Breakfast',   short:'E.Bfast', emoji:'🌇', time:'16:30', twBg:'bg-orange-500', twSoft:'bg-orange-50', twBorder:'border-orange-200', twText:'text-orange-800', accent:'#7A2A0A' },
-  dinner:            { label:'Dinner',              short:'Dinner',  emoji:'🌙', time:'19:30', twBg:'bg-teal-700', twSoft:'bg-teal-50', twBorder:'border-teal-200', twText:'text-teal-800', accent:'#134E4A' },
+  lunch:             { label:'Morning Lunch',       short:'Lunch',   emoji:'🍱', time:'12:30', color:'#059669', soft:'#f0fdf4', border:'#bbf7d0' },
+  morning_breakfast: { label:'Afternoon Breakfast', short:'A.Bfast', emoji:'☕', time:'14:30', color:'#d97706', soft:'#fffbeb', border:'#fde68a' },
+  evening_breakfast: { label:'Evening Breakfast',   short:'E.Bfast', emoji:'🌇', time:'16:30', color:'#4f46e5', soft:'#eef2ff', border:'#c7d2fe' },
+  dinner:            { label:'Dinner',              short:'Dinner',  emoji:'🌙', time:'19:30', color:'#1e3a5f', soft:'#eff6ff', border:'#bfdbfe' },
 }
 const MEAL_KEYS = ['lunch','morning_breakfast','evening_breakfast','dinner']
 
@@ -164,8 +58,8 @@ const COOKS = [
   'Khundrakpam Premabati Devi',
 ]
 const COOK_SHIFTS = {
-  morning: { label:'Morning Shift', short:'Morning', emoji:'🌅', time:'06:30–09:00 AM', defaultIn:'06:30', defaultOut:'09:00', twSoft:'bg-amber-50', twBorder:'border-amber-200', twText:'text-amber-800' },
-  evening: { label:'Evening Shift', short:'Evening', emoji:'🌇', time:'06:00–09:00 PM', defaultIn:'18:00', defaultOut:'21:00', twSoft:'bg-orange-50', twBorder:'border-orange-200', twText:'text-orange-800' },
+  morning: { label:'Morning Shift', short:'Morning', emoji:'🌅', time:'06:30–09:00 AM', defaultIn:'06:30', defaultOut:'09:00', color:'#d97706', soft:'#fffbeb', border:'#fde68a' },
+  evening: { label:'Evening Shift', short:'Evening', emoji:'🌇', time:'06:00–09:00 PM', defaultIn:'18:00', defaultOut:'21:00', color:'#7c3aed', soft:'#f5f3ff', border:'#ddd6fe' },
 }
 const MANIPURI_PRESETS = {
   lunch:             ['Chak (Rice)','Kangsoi','Eromba','Nga Thongba','Hawai Thongba','Alu Kangmet','Khichdi','Papad','Pickle','Sabzi'],
@@ -175,13 +69,13 @@ const MANIPURI_PRESETS = {
 }
 const LOCAL_VENDORS = ['Khangabok Market','Thoubal Bazaar','Ima Keithel','Wangjing Market','Chandani Shop','Imphal Market','Thangal Bazaar','Lamlong Bazaar','Local Farmer','Daily Supplier']
 const ITEM_CATEGORIES = {
-  grain:     { label:'Grain / Cereal', emoji:'🌾', twSoft:'bg-amber-50', twBorder:'border-amber-200', twText:'text-amber-800' },
-  vegetable: { label:'Vegetable',      emoji:'🥦', twSoft:'bg-green-50', twBorder:'border-green-200', twText:'text-green-800' },
-  protein:   { label:'Protein',        emoji:'🍗', twSoft:'bg-orange-50', twBorder:'border-orange-200', twText:'text-orange-800' },
-  dairy:     { label:'Dairy',          emoji:'🥛', twSoft:'bg-sky-50', twBorder:'border-sky-200', twText:'text-sky-800' },
-  spice:     { label:'Spice / Masala', emoji:'🌶️', twSoft:'bg-rose-50', twBorder:'border-rose-200', twText:'text-rose-800' },
-  oil:       { label:'Oil / Fat',      emoji:'🫙', twSoft:'bg-stone-50', twBorder:'border-stone-200', twText:'text-stone-800' },
-  other:     { label:'Other',          emoji:'📦', twSoft:'bg-slate-50', twBorder:'border-slate-200', twText:'text-slate-800' },
+  grain:     { label:'Grain / Cereal', emoji:'🌾', color:'#d97706', soft:'#fffbeb', border:'#fde68a' },
+  vegetable: { label:'Vegetable',      emoji:'🥦', color:'#059669', soft:'#f0fdf4', border:'#bbf7d0' },
+  protein:   { label:'Protein',        emoji:'🍗', color:'#dc2626', soft:'#fef2f2', border:'#fecaca' },
+  dairy:     { label:'Dairy',          emoji:'🥛', color:'#0284c7', soft:'#f0f9ff', border:'#bae6fd' },
+  spice:     { label:'Spice / Masala', emoji:'🌶️', color:'#db2777', soft:'#fdf2f8', border:'#fbcfe8' },
+  oil:       { label:'Oil / Fat',      emoji:'🫙', color:'#64748b', soft:'#f8fafc', border:'#e2e8f0' },
+  other:     { label:'Other',          emoji:'📦', color:'#94a3b8', soft:'#f8fafc', border:'#e2e8f0' },
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -199,23 +93,17 @@ const weekStart= () => {
 const nowHHMM  = () => { const n=new Date(); return n.getHours()*100+n.getMinutes() }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TAILWIND PRIMITIVES
+// PRIMITIVES (Fees.jsx visual language)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function Toast({ msg, color = 'bg-green-600' }) {
-  const colorMap = {
-    'bg-green-600': '#22c55e',
-    'bg-rose-600': '#e11d48',
-    'bg-amber-600': '#d97706',
-    'bg-orange-600': '#ea580c',
-    'bg-teal-600': '#0d9488',
-    'bg-sky-600': '#0284c7',
-    'bg-stone-600': '#78716c',
-  }
+function Toast({ msg, color = '#16a34a' }) {
   return (
-    <div className="no-print animate-fade-in fixed top-5 right-5 z-[999999] bg-white rounded-xl px-5 py-3.5 text-sm font-semibold font-body shadow-lg border border-stone-100 border-l-4 max-w-sm text-stone-800 flex items-center gap-2.5"
-      style={{ borderLeftColor: colorMap[color] || color }}>
-      <span className={`w-2 h-2 rounded-full ${color}`} />
+    <div className="no-print" style={{
+      position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff',
+      border: '1px solid #e2e8f0', borderLeft: `3px solid ${color}`, borderRadius: 10,
+      padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)',
+      maxWidth: 320, color: '#1e293b',
+    }}>
       {msg}
     </div>
   )
@@ -223,10 +111,10 @@ function Toast({ msg, color = 'bg-green-600' }) {
 
 function Field({ label, sub, children, span }) {
   return (
-    <div className={span ? `col-span-${span}` : ''}>
-      <label className="block text-[10.5px] font-bold text-stone-500 mb-1.5 uppercase tracking-wider font-body">
+    <div style={span ? { gridColumn: '1/-1' } : undefined}>
+      <label style={lbl}>
         {label}
-        {sub && <span className="font-normal text-stone-400 ml-1.5 normal-case tracking-normal">{sub}</span>}
+        {sub && <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 6 }}>{sub}</span>}
       </label>
       {children}
     </div>
@@ -235,9 +123,12 @@ function Field({ label, sub, children, span }) {
 
 function MealBadge({ type, size = 'sm' }) {
   const m = MEALS[type]; if (!m) return null
-  const sizeClasses = size === 'sm' ? 'text-[10px] px-2.5 py-0.5' : 'text-[11.5px] px-3 py-1'
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full font-bold tracking-wide ${sizeClasses} ${m.twSoft} ${m.twText} ${m.twBorder} border`}>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 999, fontWeight: 700,
+      fontSize: size === 'sm' ? 10 : 11.5, padding: size === 'sm' ? '2px 10px' : '4px 12px',
+      background: m.soft, color: m.color, border: `1px solid ${m.border}`,
+    }}>
       {m.emoji} {m.short}
     </span>
   )
@@ -245,11 +136,10 @@ function MealBadge({ type, size = 'sm' }) {
 
 function StarRating({ value, onChange }) {
   return (
-    <div className="flex gap-0.5">
+    <div style={{ display: 'flex', gap: 2 }}>
       {[1,2,3,4,5].map(n => (
         <span key={n} onClick={() => onChange && onChange(n===value?0:n)}
-          className={`text-lg transition-all duration-100 inline-block cursor-${onChange ? 'pointer' : 'default'} hover:scale-125`}
-          style={{ color: n <= value ? '#f59e0b' : '#e7e5e4' }}>★</span>
+          style={{ fontSize: 17, cursor: onChange ? 'pointer' : 'default', color: n <= value ? '#d97706' : '#e2e8f0' }}>★</span>
       ))}
     </div>
   )
@@ -257,63 +147,51 @@ function StarRating({ value, onChange }) {
 
 function SectionDivider({ label }) {
   return (
-    <div className="flex items-center gap-3 my-5 text-[10px] font-bold uppercase tracking-widest text-orange-400">
-      <div className="flex-1 h-px bg-gradient-to-r from-orange-100 to-transparent" />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0 14px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#94a3b8' }}>
+      <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
       {label}
-      <div className="flex-1 h-px bg-gradient-to-l from-orange-100 to-transparent" />
-    </div>
-  )
-}
-
-function LoadingBar() {
-  return (
-    <div className="h-0.5 rounded-full bg-stone-100 overflow-hidden mb-5 relative">
-      <div className="absolute top-0 left-0 h-full w-2/5 rounded-full bg-gradient-to-r from-orange-300 to-orange-500 animate-shimmer" />
+      <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
     </div>
   )
 }
 
 function StatPill({ label, value, color }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
-      style={{ backgroundColor: `${color}18`, color: color, border: `1px solid ${color}30` }}>
-      <span className="font-bold">{value}</span>
-      <span className="opacity-70 font-normal text-[10px]">{label}</span>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999,
+      fontSize: 11, fontWeight: 600, backgroundColor: `${color}18`, color, border: `1px solid ${color}30`,
+    }}>
+      <span style={{ fontWeight: 700 }}>{value}</span>
+      <span style={{ opacity: .7, fontWeight: 400, fontSize: 10 }}>{label}</span>
     </span>
   )
 }
 
+function LoadingBlock({ label = '⏳ Loading…' }) {
+  return <div style={{ textAlign: 'center', padding: 40, color: '#64748b', fontSize: 14 }}>{label}</div>
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// KPI SYSTEM (Tailwind)
+// KPI SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════════
-function KpiCard({ label, value, accent, subtitle, icon, pulse, trend }) {
+function KpiCard({ label, value, color, bg, icon, sub, big }) {
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 relative overflow-hidden flex-1 min-w-[140px] animate-fade-up">
-      <div className="absolute -right-2.5 -top-2.5 w-16 h-16 rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: accent }} />
-      {icon && <div className="absolute right-4 top-3.5 text-[22px] opacity-10">{icon}</div>}
-      {pulse && (
-        <div className="absolute top-3 right-3 w-1.5 h-1.5 rounded-full bg-orange-500 animate-blink shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
-      )}
-      <div className="font-display text-2xl font-bold leading-none tracking-tight" style={{ color: accent || '#1c1917' }}>
-        {value}
-      </div>
-      <div className="text-[10.5px] font-bold text-stone-400 mt-1.5 uppercase tracking-wider font-body">
-        {label}
-      </div>
-      {subtitle && <div className="text-[10px] text-stone-300 mt-1 font-mono">{subtitle}</div>}
-      {trend !== undefined && (
-        <div className={`mt-2 text-[11px] font-semibold ${trend >= 0 ? 'text-rose-600' : 'text-green-600'}`}>
-          {trend >= 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
-        </div>
-      )}
+    <div style={{
+      background: bg || '#fff', borderRadius: 12, padding: big ? '16px 18px' : '14px 16px',
+      borderLeft: `4px solid ${color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)',
+    }}>
+      {icon && <div style={{ fontSize: big ? 22 : 18, marginBottom: 5 }}>{icon}</div>}
+      <div style={{ fontSize: big ? 12 : 11, color, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: big ? 22 : 19, fontWeight: 900, color }}>{value}</div>
+      {sub && <div style={{ fontSize: big ? 11 : 10, color, opacity: .7, marginTop: 4 }}>{sub}</div>}
     </div>
   )
 }
 
-function MealKpiStrip({ entries, dateFilter }) {
+function MealKpiStrip({ entries, dateFilter, cols }) {
   const dayEntries = entries.filter(e => e.expense_date === dateFilter)
   return (
-    <div className="grid grid-cols-4 gap-2 mb-4">
+    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, marginBottom: 16 }}>
       {MEAL_KEYS.map(mk => {
         const m   = MEALS[mk]
         const mEntries = dayEntries.filter(e=>e.meal_type===mk)
@@ -323,15 +201,17 @@ function MealKpiStrip({ entries, dateFilter }) {
         const isPast  = h*100+min < nowHHMM()
         const isMissing = !hasEntry && isPast && dateFilter === today()
         return (
-          <div key={mk} className={`rounded-xl p-3.5 relative overflow-hidden border-[1.5px] ${
-            isMissing ? 'bg-rose-50 border-rose-200' : hasEntry ? m.twSoft : 'bg-white border-stone-100'
-          } ${!hasEntry && !isPast ? 'opacity-65' : 'opacity-100'}`}>
-            <div className="absolute right-2 top-2 text-xl opacity-[0.13]">{m.emoji}</div>
-            <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isMissing ? 'text-rose-600' : m.twText}`}>{m.short}</div>
-            <div className={`font-display text-lg font-bold leading-none ${isMissing ? 'text-rose-500' : m.twText}`}>
-              {hasEntry ? moneyFmt(amt) : <span className="text-xs opacity-50">{isMissing ? '⚠ Missing' : 'Upcoming'}</span>}
+          <div key={mk} style={{
+            borderRadius: 10, padding: '12px 14px', position: 'relative',
+            background: isMissing ? '#fef2f2' : hasEntry ? m.soft : '#fff',
+            border: `1.5px solid ${isMissing ? '#fca5a5' : hasEntry ? m.border : '#e2e8f0'}`,
+            opacity: !hasEntry && !isPast ? .65 : 1,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4, color: isMissing ? '#dc2626' : m.color }}>{m.short}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1, color: isMissing ? '#dc2626' : m.color }}>
+              {hasEntry ? moneyFmt(amt) : <span style={{ fontSize: 12, opacity: .55, fontWeight: 600 }}>{isMissing ? '⚠ Missing' : 'Upcoming'}</span>}
             </div>
-            <div className={`text-[9px] mt-1 ${isMissing ? 'text-rose-400' : m.twText} opacity-60`}>{m.time}</div>
+            <div style={{ fontSize: 9, marginTop: 4, color: isMissing ? '#dc2626' : m.color, opacity: .6 }}>{m.time}</div>
           </div>
         )
       })}
@@ -343,22 +223,22 @@ function BudgetBar({ spent, budget }) {
   if (!budget) return null
   const pct   = Math.min((spent/budget)*100, 100)
   const over  = spent > budget
-  const colorClass = pct > 90 ? 'bg-rose-500' : pct > 70 ? 'bg-amber-500' : 'bg-green-500'
+  const color = pct > 90 ? '#dc2626' : pct > 70 ? '#d97706' : '#16a34a'
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-4 mb-4 flex items-center gap-4">
-      <div className="text-xl flex-shrink-0">📊</div>
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-baseline mb-2">
-          <span className="text-xs font-bold text-stone-600">Monthly Budget</span>
-          <span className="font-display text-sm font-bold text-stone-700">
-            {moneyFmt(spent)} <span className="text-stone-300 font-normal text-[11px]">/ {moneyFmt(budget)}</span>
-            {over && <span className="ml-2 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold">OVER</span>}
+    <div style={{ ...card, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div style={{ fontSize: 20, flexShrink: 0 }}>📊</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Monthly Budget</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>
+            {moneyFmt(spent)} <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 11 }}>/ {moneyFmt(budget)}</span>
+            {over && <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#dc2626', fontSize: 10, fontWeight: 700 }}>OVER</span>}
           </span>
         </div>
-        <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-[600ms] ease-[cubic-bezier(.4,0,.2,1)] ${colorClass}`} style={{ width: `${pct}%` }} />
+        <div style={{ height: 8, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width .5s' }} />
         </div>
-        <div className="text-[11px] text-stone-400 mt-1.5 font-mono">
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
           {over ? `${moneyFmt(spent-budget)} over limit` : `${moneyFmt(budget-spent)} remaining · ${(100-pct).toFixed(1)}% left`}
         </div>
       </div>
@@ -379,40 +259,38 @@ function MonthlyChart({ entries }) {
   const avg = Object.values(byDay).reduce((a,b)=>a+b,0) / days.length
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
-      <div className="flex justify-between items-center mb-4">
+    <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
-          <div className="text-sm font-bold text-stone-700 font-body">Daily Spend</div>
-          <div className="text-[11px] text-stone-400 mt-0.5">This month</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>📈 Daily Spend</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>This month</div>
         </div>
-        <div className="text-right">
-          <div className="font-display text-[15px] font-bold text-stone-700">{moneyFmt(avg)}</div>
-          <div className="text-[10px] text-stone-400">daily avg</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>{moneyFmt(avg)}</div>
+          <div style={{ fontSize: 10, color: '#94a3b8' }}>daily avg</div>
         </div>
       </div>
-      <div className="flex items-end gap-1 h-[100px] overflow-x-auto pb-1">
-        {days.map((d, i) => {
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 100, overflowX: 'auto', paddingBottom: 4 }}>
+        {days.map(d => {
           const v = byDay[d]
           const h = Math.max((v/max)*84, 4)
           const isToday  = d === today()
           const isPeak   = v === max
-          const color    = isPeak ? '#f43f5e' : isToday ? '#ea580c' : '#fed7aa'
+          const color    = isPeak ? '#dc2626' : isToday ? '#3730a3' : '#c7d2fe'
           return (
-            <div key={d} title={`${dateFmt(d)}: ${moneyFmt(v)}`}
-              className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group">
-              <div className="w-[18px] rounded-t transition-all duration-[400ms] ease-[cubic-bezier(.4,0,.2,1)] group-hover:brightness-110"
-                style={{ height: h, backgroundColor: color, animationDelay: `${i*.02}s` }} />
-              <span className="text-[8px] text-stone-300 -rotate-45 origin-center block w-3.5 text-center">
+            <div key={d} title={`${dateFmt(d)}: ${moneyFmt(v)}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'pointer' }}>
+              <div style={{ width: 16, borderRadius: '3px 3px 0 0', transition: 'height .3s', height: h, backgroundColor: color }} />
+              <span style={{ fontSize: 8, color: '#cbd5e1', display: 'block', width: 14, textAlign: 'center' }}>
                 {new Date(d+'T00:00:00').getDate()}
               </span>
             </div>
           )
         })}
       </div>
-      <div className="flex gap-2.5 mt-2.5 text-[10px]">
-        {[['Today','#ea580c'],['Peak','#f43f5e'],['Other','#fed7aa']].map(([l,col])=>(
-          <span key={l} className="flex items-center gap-1.5 text-stone-400">
-            <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: col }} />{l}
+      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 10 }}>
+        {[['Today','#3730a3'],['Peak','#dc2626'],['Other','#c7d2fe']].map(([l,col])=>(
+          <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94a3b8' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, display: 'inline-block', background: col }} />{l}
           </span>
         ))}
       </div>
@@ -429,27 +307,26 @@ function MealPieBreakdown({ entries }) {
   const grand = Object.values(totals).reduce((a,b)=>a+b,0)
   if (!grand) return null
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
-      <div className="text-sm font-bold text-stone-700 mb-4">Meal-wise Breakdown</div>
-      <div className="flex flex-col gap-2.5">
+    <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 14 }}>Meal-wise Breakdown</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {MEAL_KEYS.map(mk => {
           const m   = MEALS[mk]
           const amt = totals[mk]
           const pct = grand ? ((amt/grand)*100) : 0
           return (
             <div key={mk}>
-              <div className="flex justify-between text-xs text-stone-600 mb-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: m.accent }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#475569', marginBottom: 4 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, display: 'inline-block', background: m.color }} />
                   {m.label}
                 </span>
-                <span className="font-bold font-mono text-[11px]">
-                  {moneyFmt(amt)} <span className="text-stone-400 font-normal">({pct.toFixed(1)}%)</span>
+                <span style={{ fontWeight: 700, fontSize: 11 }}>
+                  {moneyFmt(amt)} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pct.toFixed(1)}%)</span>
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-[600ms] ease-[cubic-bezier(.4,0,.2,1)]"
-                  style={{ width: `${pct}%`, backgroundColor: m.accent }} />
+              <div style={{ height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: m.color, borderRadius: 3, transition: 'width .4s' }} />
               </div>
             </div>
           )
@@ -474,12 +351,12 @@ function CalendarHeatmap({ entries, onDayClick }) {
   const firstDOW= new Date(year, month, 1).getDay()
 
   const getColor = amt => {
-    if (!amt) return '#e7e5e4'
+    if (!amt) return '#e2e8f0'
     const i = amt/max
-    if (i > .75) return '#f43f5e'
-    if (i > .5)  return '#f97316'
-    if (i > .25) return '#f59e0b'
-    return '#fde68a'
+    if (i > .75) return '#dc2626'
+    if (i > .5)  return '#4f46e5'
+    if (i > .25) return '#818cf8'
+    return '#c7d2fe'
   }
 
   const cells = []
@@ -490,32 +367,32 @@ function CalendarHeatmap({ entries, onDayClick }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
-      <div className="text-sm font-bold text-stone-700 mb-3">
+    <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 12 }}>
         Spend Heatmap — {now.toLocaleString('en-IN',{month:'long',year:'numeric'})}
       </div>
-      <div className="grid grid-cols-7 gap-1.5">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 6 }}>
         {['Su','Mo','Tu','We','Th','Fr','Sa'].map((d,i)=>(
-          <div key={i} className="text-center text-[9px] font-bold text-stone-400 pb-1">{d}</div>
+          <div key={i} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#94a3b8', paddingBottom: 4 }}>{d}</div>
         ))}
         {cells.map((c,i) => c===null
           ? <div key={`e${i}`} />
           : <div key={c.iso} onClick={() => onDayClick(c.iso)}
               title={`${dateFmt(c.iso)}: ${moneyFmt(c.amt)}`}
-              className="aspect-square rounded-md cursor-pointer flex items-center justify-center text-[9px] font-bold transition-all duration-100 hover:scale-125 hover:z-10 hover:shadow-md"
               style={{
-                backgroundColor: getColor(c.amt),
-                color: c.amt ? '#fff' : '#a8a29e',
-                border: c.iso===today() ? '2px solid #ea580c' : '2px solid transparent',
+                aspectRatio: '1', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, fontWeight: 700, transition: 'all .1s',
+                backgroundColor: getColor(c.amt), color: c.amt ? '#fff' : '#94a3b8',
+                border: c.iso===today() ? '2px solid #1e3a5f' : '2px solid transparent',
               }}>
               {c.d}
             </div>
         )}
       </div>
-      <div className="flex gap-2.5 mt-3 text-[10px] text-stone-400">
-        {[['None','#e7e5e4'],['Low','#fde68a'],['Mid','#f59e0b'],['High','#f97316'],['Peak','#f43f5e']].map(([l,col])=>(
-          <span key={l} className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: col }} />{l}
+      <div style={{ display: 'flex', gap: 14, marginTop: 12, fontSize: 10, color: '#94a3b8' }}>
+        {[['None','#e2e8f0'],['Low','#c7d2fe'],['Mid','#818cf8'],['High','#4f46e5'],['Peak','#dc2626']].map(([l,col])=>(
+          <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, display: 'inline-block', background: col }} />{l}
           </span>
         ))}
       </div>
@@ -535,21 +412,21 @@ function VendorSummary({ entries }) {
   if (!vendors.length) return null
   const maxT = vendors[0][1].total
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
-      <div className="text-sm font-bold text-stone-700 mb-3.5">Top Vendors</div>
-      <div className="flex flex-col gap-2.5">
+    <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 14 }}>Top Vendors</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {vendors.map(([name, { count, total }], i) => (
           <div key={name}>
-            <div className="flex justify-between items-baseline mb-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-stone-400 font-mono w-3.5">{i+1}</span>
-                <span className="text-xs font-semibold text-stone-700">{name}</span>
-                <span className="text-[10px] text-stone-400">{count}×</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', width: 14 }}>{i+1}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{name}</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>{count}×</span>
               </div>
-              <span className="font-display text-[13px] font-bold text-teal-700">{moneyFmt(total)}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#0284c7' }}>{moneyFmt(total)}</span>
             </div>
-            <div className="h-1 rounded-full bg-stone-100 overflow-hidden">
-              <div className="h-full rounded-full bg-teal-400 transition-all duration-500" style={{ width: `${(total/maxT)*100}%` }} />
+            <div style={{ height: 4, borderRadius: 2, background: '#f1f5f9', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${(total/maxT)*100}%`, background: '#0284c7', borderRadius: 2, transition: 'width .4s' }} />
             </div>
           </div>
         ))}
@@ -569,13 +446,16 @@ function ItemFrequency({ entries }) {
   }, [entries])
   if (!freq.length) return null
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
-      <div className="text-sm font-bold text-stone-700 mb-3">Most Used Items</div>
-      <div className="flex flex-wrap gap-1.5">
+    <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 12 }}>Most Used Items</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {freq.map(([item,count]) => (
-          <span key={item} className="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800 inline-flex items-center gap-1">
+          <span key={item} style={{
+            padding: '5px 12px', borderRadius: 999, background: '#fffbeb', border: '1px solid #fde68a',
+            fontSize: 11, fontWeight: 600, color: '#92400e', display: 'inline-flex', alignItems: 'center', gap: 5,
+          }}>
             {item}
-            <span className="text-[10px] font-bold text-amber-500 font-mono">×{count}</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#d97706' }}>×{count}</span>
           </span>
         ))}
       </div>
@@ -590,11 +470,14 @@ function CostPerStudentCard({ entries, dateFilter }) {
   const avgPax   = dayEntries.reduce((s,e)=>s+Number(e.pax_count),0)/dayEntries.length
   const cps      = avgPax > 0 ? totalAmt/avgPax : 0
   return (
-    <div className="bg-white rounded-xl border border-sky-200 p-4 mb-3 bg-gradient-to-br from-sky-50 to-white flex items-center gap-4">
-      <div className="w-12 h-12 rounded-xl bg-sky-100 flex items-center justify-center text-[22px] flex-shrink-0">👤</div>
+    <div style={{
+      ...card, border: '1px solid #bae6fd', background: 'linear-gradient(135deg,#f0f9ff,#fff)',
+      padding: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 14,
+    }}>
+      <div style={{ width: 44, height: 44, borderRadius: 10, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>👤</div>
       <div>
-        <div className="font-display text-[22px] font-bold text-sky-700 leading-none">{moneyFmt(cps)}</div>
-        <div className="text-[11px] text-sky-600 mt-1">
+        <div style={{ fontSize: 20, fontWeight: 800, color: '#0284c7', lineHeight: 1 }}>{moneyFmt(cps)}</div>
+        <div style={{ fontSize: 11, color: '#0284c7', marginTop: 4 }}>
           per student · {Math.round(avgPax)} served today
         </div>
       </div>
@@ -618,24 +501,23 @@ function PettyCashWidget({ entries, dateFilter }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mb-4">
-      <div className="text-sm font-bold text-stone-700 mb-3 flex items-center gap-1.5">
+    <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
         💵 Petty Cash Ledger
-        <span className="text-[10px] text-stone-400 font-normal ml-1">— {dateFmt(dateFilter)}</span>
+        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>— {dateFmt(dateFilter)}</span>
       </div>
-      <div className="flex gap-2 mb-3">
-        <input className="flex-1 px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-          type="number" placeholder="Amount given (₹)" value={given} onChange={e=>setGiven(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addCash()} />
-        <button type="button" className="px-4 py-2 rounded-lg bg-white text-stone-600 border-[1.5px] border-stone-200 text-xs font-semibold hover:bg-stone-50 transition-all shadow-sm"
-          onClick={addCash}>+ Add</button>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input style={{ ...inp, flex: 1 }} type="number" placeholder="Amount given (₹)" value={given}
+          onChange={e=>setGiven(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addCash()} />
+        <button type="button" style={btnGhost} onClick={addCash}>+ Add</button>
       </div>
-      <div className="flex gap-4 flex-wrap">
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <StatPill label="given" value={moneyFmt(totalGiven)} color="#16a34a" />
-        <StatPill label="spent" value={moneyFmt(daySpend)} color="#e11d48" />
-        <StatPill label={balance<0?'short':'balance'} value={moneyFmt(Math.abs(balance))} color={balance>=0?'#0d9488':'#e11d48'} />
+        <StatPill label="spent" value={moneyFmt(daySpend)} color="#dc2626" />
+        <StatPill label={balance<0?'short':'balance'} value={moneyFmt(Math.abs(balance))} color={balance>=0?'#0284c7':'#dc2626'} />
       </div>
       {cashLog.filter(c=>c.date===dateFilter).map((c,i)=>(
-        <div key={i} className="text-[11px] text-stone-400 mt-1.5 font-mono">
+        <div key={i} style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
           ✓ {moneyFmt(c.amount)} added at {c.at}
         </div>
       ))}
@@ -653,11 +535,14 @@ function MissingMealAlert({ entries, dateFilter }) {
   })
   if (!overdue.length) return null
   return (
-    <div className="animate-fade-up mb-3.5 p-3.5 rounded-xl bg-rose-50 border-[1.5px] border-rose-200 flex items-start gap-3">
-      <span className="text-lg mt-0.5">⚠️</span>
+    <div style={{
+      marginBottom: 14, padding: '12px 16px', borderRadius: 10, background: '#fef2f2',
+      border: '1.5px solid #fca5a5', display: 'flex', alignItems: 'flex-start', gap: 10,
+    }}>
+      <span style={{ fontSize: 16, marginTop: 1 }}>⚠️</span>
       <div>
-        <div className="text-xs font-bold text-rose-700 mb-1.5">Missing meal entries — past scheduled time</div>
-        <div className="flex gap-1.5 flex-wrap">
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 6 }}>Missing meal entries — past scheduled time</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {overdue.map(mk => <MealBadge key={mk} type={mk} />)}
         </div>
       </div>
@@ -671,32 +556,26 @@ function MissingMealAlert({ entries, dateFilter }) {
 function ReceiptViewer({ url, onClose, onDelete }) {
   const [zoom, setZoom] = useState(1)
   const isPDF = url?.toLowerCase().includes('.pdf')
+  const btnDark = { padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,.1)', color: 'white', border: '1px solid rgba(255,255,255,.2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }
   return (
-    <div className="animate-fade-in fixed inset-0 bg-[rgba(12,6,3,0.92)] z-[99999] flex flex-col items-center justify-center"
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,18,30,.92)', zIndex: 99999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}>
-      <div className="absolute top-4 right-4 flex gap-2" onClick={e=>e.stopPropagation()}>
+      <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 8 }} onClick={e=>e.stopPropagation()}>
         {!isPDF && <>
-          <button type="button" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all"
-            onClick={()=>setZoom(z=>Math.min(z+.25,3))}>🔍+</button>
-          <button type="button" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all"
-            onClick={()=>setZoom(z=>Math.max(z-.25,.5))}>🔍−</button>
+          <button type="button" style={btnDark} onClick={()=>setZoom(z=>Math.min(z+.25,3))}>🔍+</button>
+          <button type="button" style={btnDark} onClick={()=>setZoom(z=>Math.max(z-.25,.5))}>🔍−</button>
         </>}
-        <a href={url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all no-underline inline-flex items-center">
-          ⬇ Download
-        </a>
-        {onDelete && <button type="button" className="px-3 py-2 rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-semibold hover:bg-red-500/30 transition-all"
-          onClick={onDelete}>🗑 Delete</button>}
-        <button type="button" className="px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 text-xs font-semibold hover:bg-white/20 transition-all"
-          onClick={onClose}>✕ Close</button>
+        <a href={url} target="_blank" rel="noreferrer" style={{ ...btnDark, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>⬇ Download</a>
+        {onDelete && <button type="button" style={{ ...btnDark, background: 'rgba(220,38,38,.25)', color: '#fca5a5', border: '1px solid rgba(220,38,38,.4)' }} onClick={onDelete}>🗑 Delete</button>}
+        <button type="button" style={btnDark} onClick={onClose}>✕ Close</button>
       </div>
-      <div onClick={e=>e.stopPropagation()} className="max-w-[90vw] max-h-[85vh] overflow-auto">
+      <div onClick={e=>e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '85vh', overflow: 'auto' }}>
         {isPDF
-          ? <iframe src={url} className="w-[80vw] h-[80vh] border-none rounded-xl" title="Receipt PDF" />
-          : <img src={url} alt="Receipt" className="rounded-xl shadow-2xl transition-transform duration-200 max-w-[85vw]"
-              style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} />
+          ? <iframe src={url} style={{ width: '80vw', height: '80vh', border: 'none', borderRadius: 10 }} title="Receipt PDF" />
+          : <img src={url} alt="Receipt" style={{ borderRadius: 10, boxShadow: '0 10px 40px rgba(0,0,0,.4)', transition: 'transform .2s', transform: `scale(${zoom})`, transformOrigin: 'top center', maxWidth: '85vw' }} />
         }
       </div>
-      {!isPDF && <div className="mt-2.5 text-[10px] text-white/30">Zoom: {Math.round(zoom*100)}% · Click outside to close</div>}
+      {!isPDF && <div style={{ marginTop: 10, fontSize: 10, color: 'rgba(255,255,255,.3)' }}>Zoom: {Math.round(zoom*100)}% · Click outside to close</div>}
     </div>
   )
 }
@@ -704,7 +583,7 @@ function ReceiptViewer({ url, onClose, onDelete }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ITEM SETUP PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
-function ItemSetupPanel({ onClose, showToast }) {
+function ItemSetupPanel({ onClose, showToast, isMobile }) {
   const [items, setItems]     = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm]       = useState({ name:'', name_meitei:'', category:'vegetable', unit:'kg', default_price:'' })
@@ -724,10 +603,10 @@ function ItemSetupPanel({ onClose, showToast }) {
     const row = { name:form.name, name_meitei:form.name_meitei||null, category:form.category, unit:form.unit, default_price:Number(form.default_price)||null, is_active:true }
     if (editId) {
       await supabase.from('kitchen_items').update(row).eq('id',editId)
-      showToast('Item updated ✓', 'bg-amber-600')
+      showToast('Item updated ✓', '#d97706')
     } else {
       await supabase.from('kitchen_items').insert(row)
-      showToast('Item added ✓', 'bg-green-600')
+      showToast('Item added ✓', '#16a34a')
     }
     setForm({ name:'', name_meitei:'', category:'vegetable', unit:'kg', default_price:'' })
     setEditId(null); loadItems()
@@ -748,93 +627,82 @@ function ItemSetupPanel({ onClose, showToast }) {
   )
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm mb-4 overflow-hidden animate-slide-down">
-      <div className="px-5 py-4 border-b border-stone-200 flex justify-between items-center bg-gradient-to-br from-amber-50 to-white">
+    <div style={{ ...card, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
         <div>
-          <div className="text-[15px] font-bold text-orange-800 font-display">Item Setup</div>
-          <div className="text-[11px] text-stone-500 mt-0.5">Manage kitchen item master list</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>Item Setup</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Manage kitchen item master list</div>
         </div>
-        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
-          onClick={onClose}>✕</button>
+        <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} onClick={onClose}>✕</button>
       </div>
-      <div className="p-5">
-        <div className="bg-amber-50 border-[1.5px] border-amber-200 rounded-xl p-4 mb-4">
-          <div className="text-xs font-bold text-amber-800 mb-3">
+      <div style={{ padding: 20 }}>
+        <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 12 }}>
             {editId ? '✏️ Edit Item' : '➕ New Item'}
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
             <Field label="Name (English)">
-              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Rice" />
+              <input style={inp} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Rice" />
             </Field>
             <Field label="Local Name">
-              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.name_meitei} onChange={e=>setForm(f=>({...f,name_meitei:e.target.value}))} placeholder="Alternate name" />
+              <input style={inp} value={form.name_meitei} onChange={e=>setForm(f=>({...f,name_meitei:e.target.value}))} placeholder="Alternate name" />
             </Field>
             <Field label="Category">
-              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
-                value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+              <select style={inp} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
                 {Object.entries(ITEM_CATEGORIES).map(([k,v])=>(
                   <option key={k} value={k}>{v.emoji} {v.label}</option>
                 ))}
               </select>
             </Field>
             <Field label="Unit">
-              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
-                value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>
+              <select style={inp} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>
                 {['kg','g','litre','ml','piece','dozen','packet','bundle'].map(u=><option key={u} value={u}>{u}</option>)}
               </select>
             </Field>
             <Field label="Default Price (₹/unit)">
-              <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.default_price} onChange={e=>setForm(f=>({...f,default_price:e.target.value}))} placeholder="0.00" />
+              <input type="number" style={inp} value={form.default_price} onChange={e=>setForm(f=>({...f,default_price:e.target.value}))} placeholder="0.00" />
             </Field>
           </div>
-          <div className="flex gap-2 mt-3.5">
-            <button type="button" className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
-              onClick={handleSave}>{editId ? 'Update' : '+ Add'}</button>
-            {editId && <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-              onClick={()=>{setEditId(null);setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })}}>Cancel</button>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button type="button" style={btnPrimary(false)} onClick={handleSave}>{editId ? 'Update' : '+ Add'}</button>
+            {editId && <button type="button" style={btnGhost} onClick={()=>{setEditId(null);setForm({ name:'',name_meitei:'',category:'vegetable',unit:'kg',default_price:'' })}}>Cancel</button>}
           </div>
         </div>
-        <div className="flex gap-2 mb-3">
-          <input className="flex-1 px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-            value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items…" />
-          <select className="px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white w-auto min-w-[140px]"
-            value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input style={{ ...inp, flex: 1 }} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items…" />
+          <select style={{ ...inp, width: 'auto', minWidth: 150 }} value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
             <option value="all">All Categories</option>
             {Object.entries(ITEM_CATEGORIES).map(([k,v])=><option key={k} value={k}>{v.emoji} {v.label}</option>)}
           </select>
         </div>
-        {loading ? <div className="text-center text-stone-400 py-5 text-xs">Loading…</div> : (
-          <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
-            {!filtered.length && <div className="text-center text-stone-400 py-5 text-xs">No items found</div>}
+        {loading ? <LoadingBlock /> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+            {!filtered.length && <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: 20 }}>No items found</div>}
             {filtered.map(it => {
               const cat = ITEM_CATEGORIES[it.category]||ITEM_CATEGORIES.other
               return (
-                <div key={it.id} className={`flex justify-between items-center px-3.5 py-2.5 rounded-lg transition-all duration-150 ${
-                  it.is_active ? 'bg-white' : 'bg-stone-50'
-                } border-[1.5px] ${it.is_active ? cat.twBorder : 'border-stone-100'} ${it.is_active ? 'opacity-100' : 'opacity-55'}`}>
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-lg w-6 text-center">{cat.emoji}</span>
+                <div key={it.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 8,
+                  background: it.is_active ? '#fff' : '#f8fafc', border: `1.5px solid ${it.is_active ? cat.border : '#e2e8f0'}`,
+                  opacity: it.is_active ? 1 : .55,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>{cat.emoji}</span>
                     <div>
-                      <div className="text-xs font-bold text-stone-800">
-                        {it.name} {it.name_meitei && <span className="text-stone-400 font-normal">· {it.name_meitei}</span>}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>
+                        {it.name} {it.name_meitei && <span style={{ color: '#94a3b8', fontWeight: 400 }}>· {it.name_meitei}</span>}
                       </div>
-                      <div className="text-[10px] text-stone-400 mt-0.5">
+                      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
                         {cat.label} · {it.unit}{it.default_price?` · ₹${it.default_price}/${it.unit}`:''}
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-1.5">
-                    <button type="button" className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-                      onClick={()=>startEdit(it)}>Edit</button>
-                    <button type="button" className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border-[1.5px] ${
-                      it.is_active
-                        ? 'text-rose-600 bg-rose-50 border-rose-200 hover:bg-rose-100'
-                        : 'text-green-600 bg-green-50 border-green-200 hover:bg-green-100'
-                    }`}
-                      onClick={()=>toggleActive(it.id,it.is_active)}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" style={{ ...btnGhost, padding: '4px 10px', fontSize: 11 }} onClick={()=>startEdit(it)}>Edit</button>
+                    <button type="button" style={{
+                      padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '1px solid',
+                      ...(it.is_active ? { color: '#dc2626', background: '#fef2f2', borderColor: '#fca5a5' } : { color: '#16a34a', background: '#f0fdf4', borderColor: '#86efac' }),
+                    }} onClick={()=>toggleActive(it.id,it.is_active)}>
                       {it.is_active?'Disable':'Enable'}
                     </button>
                   </div>
@@ -851,7 +719,7 @@ function ItemSetupPanel({ onClose, showToast }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN MONITOR PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
-function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
+function AdminMonitorPanel({ entries, budget, cookLog, onClose, isMobile }) {
   const todayEntries = entries.filter(e=>e.expense_date===today())
   const todayTotal   = todayEntries.reduce((s,e)=>s+Number(e.amount),0)
   const monthTotal   = entries.reduce((s,e)=>s+Number(e.amount),0)
@@ -871,69 +739,68 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
   })
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 shadow-sm mb-4 overflow-hidden animate-slide-down">
-      <div className="px-5 py-4 border-b border-stone-200 flex justify-between items-center bg-gradient-to-br from-orange-50 to-white">
+    <div style={{ ...card, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
         <div>
-          <div className="text-[15px] font-bold text-orange-800 font-display">Admin Monitor</div>
-          <div className="text-[11px] text-stone-500 mt-0.5">Live kitchen oversight · {dateFmt(today())}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>Admin Monitor</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Live kitchen oversight · {dateFmt(today())}</div>
         </div>
-        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
-          onClick={onClose}>✕</button>
+        <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} onClick={onClose}>✕</button>
       </div>
-      <div className="p-5">
-        <div className="flex gap-2 flex-wrap mb-4 stagger">
-          <KpiCard label="Today" value={moneyFmt(todayTotal)} accent="#ea580c" icon="💸" pulse />
-          <KpiCard label="Month" value={moneyFmt(monthTotal)} accent="#1c1917" icon="🗓" />
-          {budget && <KpiCard label="Budget Used" value={`${budgetPct.toFixed(1)}%`} accent={budgetPct>90?'#e11d48':'#f59e0b'} icon="📊" />}
-          <KpiCard label="Meals Today" value={`${presentMeals.length}/4`} accent={presentMeals.length===4?'#16a34a':'#e11d48'} icon="🍽" />
+      <div style={{ padding: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
+          <KpiCard label="Today" value={moneyFmt(todayTotal)} color="#d97706" bg="#fffbeb" icon="💸" />
+          <KpiCard label="Month" value={moneyFmt(monthTotal)} color="#1e3a5f" bg="#eff6ff" icon="🗓" />
+          {budget && <KpiCard label="Budget Used" value={`${budgetPct.toFixed(1)}%`} color={budgetPct>90?'#dc2626':'#d97706'} bg={budgetPct>90?'#fef2f2':'#fffbeb'} icon="📊" />}
+          <KpiCard label="Meals Today" value={`${presentMeals.length}/4`} color={presentMeals.length===4?'#16a34a':'#dc2626'} bg={presentMeals.length===4?'#f0fdf4':'#fef2f2'} icon="🍽" />
         </div>
         {budgetPct > 90 && (
-          <div className="p-3 rounded-xl bg-rose-50 border-[1.5px] border-rose-200 mb-3">
-            <div className="text-xs font-bold text-rose-700">🚨 Budget Breach — {budgetPct.toFixed(1)}% consumed</div>
-            <div className="text-[11px] text-rose-500 mt-1">Spent {moneyFmt(monthTotal)} of {moneyFmt(budget)}</div>
+          <div style={{ padding: 12, borderRadius: 10, background: '#fef2f2', border: '1.5px solid #fca5a5', marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>🚨 Budget Breach — {budgetPct.toFixed(1)}% consumed</div>
+            <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>Spent {moneyFmt(monthTotal)} of {moneyFmt(budget)}</div>
           </div>
         )}
         {overdueAlerts.length > 0 && (
-          <div className="p-3 rounded-xl bg-amber-50 border-[1.5px] border-amber-300 mb-3.5">
-            <div className="text-xs font-bold text-amber-800 mb-1.5">⏰ Missing Past-Due Entries</div>
-            <div className="flex gap-1.5 flex-wrap">
+          <div style={{ padding: 12, borderRadius: 10, background: '#fffbeb', border: '1.5px solid #fde68a', marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>⏰ Missing Past-Due Entries</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {overdueAlerts.map(mk=><MealBadge key={mk} type={mk} />)}
             </div>
           </div>
         )}
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
           {mealStatus.map(({ mk, amt, isDue, isLogged, entries:me }) => {
             const m = MEALS[mk]
-            const statusColor = isLogged ? 'text-green-600' : isDue ? 'text-rose-600' : 'text-stone-400'
+            const statusColor = isLogged ? '#16a34a' : isDue ? '#dc2626' : '#94a3b8'
             const statusLabel = isLogged ? '✓ Logged' : isDue ? '⚠ Missing' : '⏳ Upcoming'
             return (
-              <div key={mk} className={`p-3 rounded-xl ${m.twSoft} ${m.twBorder} border-[1.5px]`}>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[13px]">{m.emoji} <strong className="font-body">{m.short}</strong></span>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-white/70 ${statusColor}`}>{statusLabel}</span>
+              <div key={mk} style={{ padding: 10, borderRadius: 10, background: m.soft, border: `1.5px solid ${m.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13 }}>{m.emoji} <strong>{m.short}</strong></span>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: 'rgba(255,255,255,.7)', color: statusColor }}>{statusLabel}</span>
                 </div>
-                <div className="font-display text-base font-bold text-stone-800">{moneyFmt(amt)}</div>
-                <div className="text-[10px] text-stone-500 mt-0.5 opacity-70">Scheduled: {m.time}</div>
-                {me.length>0 && me[0].prepared_by && <div className="text-[10px] text-stone-500 mt-0.5 opacity-80">👨‍🍳 {me[0].prepared_by}</div>}
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{moneyFmt(amt)}</div>
+                <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, opacity: .8 }}>Scheduled: {m.time}</div>
+                {me.length>0 && me[0].prepared_by && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, opacity: .8 }}>👨‍🍳 {me[0].prepared_by}</div>}
               </div>
             )
           })}
         </div>
-        <div className="border-t border-stone-200 pt-4">
-          <div className="text-xs font-bold text-stone-600 mb-2.5">Cook Activity — Today</div>
+        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Cook Activity — Today</div>
           {!todayCookLog.length
-            ? <div className="text-[11px] text-stone-400 text-center py-3">No cook log entries today</div>
+            ? <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: 12 }}>No cook log entries today</div>
             : todayCookLog.map(log => (
-              <div key={log.id} className="flex justify-between items-center px-3 py-2 rounded-lg bg-stone-50 border border-stone-100 mb-1.5">
+              <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: '#f8fafc', border: '1px solid #f1f5f9', marginBottom: 6 }}>
                 <div>
-                  <div className="text-xs font-bold text-stone-700">{log.staff_name}</div>
-                  <div className="text-[10px] text-stone-400 mt-0.5 flex gap-2 items-center">
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{log.staff_name}</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center' }}>
                     <MealBadge type={log.meal_type} />
                     {log.arrived_at&&<span>In: {log.arrived_at}</span>}
                     {log.left_at&&<span>Out: {log.left_at}</span>}
                   </div>
                 </div>
-                {log.notes && <div className="text-[10px] text-stone-400 max-w-[150px] text-right">{log.notes}</div>}
+                {log.notes && <div style={{ fontSize: 10, color: '#94a3b8', maxWidth: 150, textAlign: 'right' }}>{log.notes}</div>}
               </div>
             ))
           }
@@ -944,46 +811,38 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose }) {
 }
 
 // ─── Cook Log Form ────────────────────────────────────────────────────────────
-function CookLogForm({ onSave, onClose }) {
+function CookLogForm({ onSave, onClose, isMobile }) {
   const [form, setForm] = useState({ staff_name:'', meal_type:'lunch', arrived_at:'', left_at:'', notes:'' })
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   return (
-    <div className="bg-white rounded-xl border-[1.5px] border-green-200 mb-3.5 overflow-hidden animate-slide-down">
-      <div className="px-5 py-3.5 border-b border-green-100 flex justify-between items-center bg-gradient-to-br from-green-50 to-white">
-        <div className="text-sm font-bold text-green-700 font-display">Log Cook Activity</div>
-        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
-          onClick={onClose}>✕</button>
+    <div style={{ ...card, border: '1.5px solid #bbf7d0', marginBottom: 14, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid #f0fdf4', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f0fdf4' }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#16a34a' }}>Log Cook Activity</div>
+        <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} onClick={onClose}>✕</button>
       </div>
-      <div className="p-5">
-        <div className="grid grid-cols-2 gap-2.5">
+      <div style={{ padding: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
           <Field label="Staff / Cook Name">
-            <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-              value={form.staff_name} onChange={e=>set('staff_name',e.target.value)} placeholder="Name" />
+            <input style={inp} value={form.staff_name} onChange={e=>set('staff_name',e.target.value)} placeholder="Name" />
           </Field>
           <Field label="Meal">
-            <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
-              value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
+            <select style={inp} value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
               {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
             </select>
           </Field>
           <Field label="Arrived At">
-            <input type="time" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
-              value={form.arrived_at} onChange={e=>set('arrived_at',e.target.value)} />
+            <input type="time" style={inp} value={form.arrived_at} onChange={e=>set('arrived_at',e.target.value)} />
           </Field>
           <Field label="Left At">
-            <input type="time" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
-              value={form.left_at} onChange={e=>set('left_at',e.target.value)} />
+            <input type="time" style={inp} value={form.left_at} onChange={e=>set('left_at',e.target.value)} />
           </Field>
-          <Field label="Notes" span={2}>
-            <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-              value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
+          <Field label="Notes" span>
+            <input style={inp} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
           </Field>
         </div>
-        <div className="flex gap-2 mt-3.5">
-          <button type="button" className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
-            onClick={()=>form.staff_name&&onSave(form)}>Save Log</button>
-          <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-            onClick={onClose}>Cancel</button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button type="button" style={btnPrimary(false)} onClick={()=>form.staff_name&&onSave(form)}>Save Log</button>
+          <button type="button" style={btnGhost} onClick={onClose}>Cancel</button>
         </div>
       </div>
     </div>
@@ -993,7 +852,7 @@ function CookLogForm({ onSave, onClose }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // COOK ATTENDANCE PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
-function CookAttendancePanel({ onClose, showToast }) {
+function CookAttendancePanel({ onClose, showToast, isMobile }) {
   const [attDate,   setAttDate]   = useState(today())
   const [monthly,   setMonthly]   = useState([])
   const [loading,   setLoading]   = useState(false)
@@ -1056,12 +915,12 @@ function CookAttendancePanel({ onClose, showToast }) {
     })
 
     const { error: delErr } = await supabase.from('kitchen_cook_attendance').delete().eq('att_date', attDate)
-    if (delErr) { setLoading(false); showToast('Save failed: '+delErr.message, 'bg-rose-600'); return }
+    if (delErr) { setLoading(false); showToast('Save failed: '+delErr.message, '#dc2626'); return }
 
     const { error } = await supabase.from('kitchen_cook_attendance').insert(rows)
     setLoading(false)
-    if (error) { showToast('Save failed: '+error.message, 'bg-rose-600'); return }
-    showToast('Attendance saved ✓', 'bg-green-600')
+    if (error) { showToast('Save failed: '+error.message, '#dc2626'); return }
+    showToast('Attendance saved ✓', '#16a34a')
     loadDay(attDate)
   }
 
@@ -1079,66 +938,62 @@ function CookAttendancePanel({ onClose, showToast }) {
     }
   }), [monthly])
 
-  const statusBtn = (status, selected) => {
+  const statusBtnStyle = (status, selected) => {
     const configs = {
-      present:  { bg:selected?'bg-green-600':'bg-green-50',  color:selected?'text-white':'text-green-700', border:selected?'border-green-600':'border-green-200' },
-      absent:   { bg:selected?'bg-rose-600':'bg-rose-50',      color:selected?'text-white':'text-rose-700',   border:selected?'border-rose-600':'border-rose-200'   },
-      half_day: { bg:selected?'bg-amber-500':'bg-amber-50',color:selected?'text-white':'text-amber-700',border:selected?'border-amber-500':'border-amber-200' },
+      present:  { bg:selected?'#16a34a':'#f0fdf4', color:selected?'#fff':'#16a34a', border:selected?'#16a34a':'#bbf7d0' },
+      absent:   { bg:selected?'#dc2626':'#fef2f2', color:selected?'#fff':'#dc2626', border:selected?'#dc2626':'#fecaca' },
+      half_day: { bg:selected?'#d97706':'#fffbeb', color:selected?'#fff':'#d97706', border:selected?'#d97706':'#fde68a' },
     }
     const c = configs[status]
-    return `px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer font-body transition-all border-[1.5px] ${c.bg} ${c.color} ${c.border}`
+    return { padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `1.5px solid ${c.border}`, background: c.bg, color: c.color }
   }
 
   return (
-    <div className="bg-white rounded-xl border-[1.5px] border-teal-200 mb-4 overflow-hidden animate-slide-down">
-      <div className="px-5 py-4 border-b border-teal-100 flex justify-between items-center bg-gradient-to-br from-teal-50 to-white">
+    <div style={{ ...card, border: '1.5px solid #c7d2fe', marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eef2ff' }}>
         <div>
-          <div className="text-[15px] font-bold text-teal-700 font-display">Cook Attendance</div>
-          <div className="text-[11px] text-stone-500 mt-0.5">Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#3730a3' }}>Cook Attendance</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
         </div>
-        <button type="button" className="w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] border-stone-200 text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center"
-          onClick={onClose}>✕</button>
+        <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} onClick={onClose}>✕</button>
       </div>
-      <div className="p-5">
-        <div className="flex gap-2.5 items-center mb-4 flex-wrap">
-          <div className="flex rounded-lg overflow-hidden border-[1.5px] border-stone-200">
+      <div style={{ padding: 20 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
             {[['mark','📋 Mark'],['monthly','📊 Monthly']].map(([k,l]) => (
-              <button key={k} type="button" onClick={()=>setView(k)}
-                className={`px-4 py-1.5 text-xs font-bold cursor-pointer font-body transition-all border-none ${
-                  view===k ? 'bg-teal-600 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'
-                }`}>
+              <button key={k} type="button" onClick={()=>setView(k)} style={{
+                padding: '7px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                background: view===k ? '#3730a3' : '#fff', color: view===k ? '#fff' : '#64748b',
+              }}>
                 {l}
               </button>
             ))}
           </div>
           {view==='mark' && (
-            <input type="date" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
-              value={attDate} onChange={e=>setAttDate(e.target.value)} />
+            <input type="date" style={{ ...inp, width: 'auto' }} value={attDate} onChange={e=>setAttDate(e.target.value)} />
           )}
           {view==='monthly' && (
-            <input type="month" className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
-              value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
+            <input type="month" style={{ ...inp, width: 'auto' }} value={viewMonth} onChange={e=>setViewMonth(e.target.value)} />
           )}
         </div>
 
-        {loading && <div className="text-center text-stone-400 py-5 text-xs">Loading…</div>}
+        {loading && <LoadingBlock />}
 
         {!loading && view==='mark' && Object.entries(COOK_SHIFTS).map(([shift, sh]) => (
-          <div key={shift} className="mb-5">
-            <div className={`flex items-center gap-2.5 px-4 py-2 rounded-xl ${sh.twSoft} ${sh.twBorder} border-[1.5px] mb-2.5`}>
-              <span className="text-lg">{sh.emoji}</span>
-              <div className="flex-1">
-                <div className={`text-xs font-extrabold ${sh.twText}`}>{sh.label}</div>
-                <div className={`text-[10px] ${sh.twText} opacity-70`}>{sh.time}</div>
+          <div key={shift} style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 10, background: sh.soft, border: `1.5px solid ${sh.border}`, marginBottom: 10 }}>
+              <span style={{ fontSize: 16 }}>{sh.emoji}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: sh.color }}>{sh.label}</div>
+                <div style={{ fontSize: 10, color: sh.color, opacity: .7 }}>{sh.time}</div>
               </div>
-              <div className="flex gap-1">
+              <div style={{ display: 'flex', gap: 4 }}>
                 {['present','absent','half_day'].map(st => {
                   const cnt = COOKS.filter(c=>draft[draftKey(c,shift)]?.status===st).length
                   if (!cnt) return null
-                  const colors={present:'green',absent:'rose',half_day:'amber'}
-                  const col=colors[st]
+                  const colors={present:'#16a34a',absent:'#dc2626',half_day:'#d97706'}
                   return (
-                    <span key={st} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-${col}-50 text-${col}-700 border border-${col}-200`}>
+                    <span key={st} style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: 'rgba(255,255,255,.7)', color: colors[st] }}>
                       {st==='present'?'✓':st==='absent'?'✗':'½'} {cnt}
                     </span>
                   )
@@ -1150,41 +1005,39 @@ function CookAttendancePanel({ onClose, showToast }) {
               const rec = draft[dk] || {}
               const isAbsent = rec.status==='absent'
               return (
-                <div key={cook} className={`mb-2 px-4 py-3 rounded-xl transition-all duration-150 ${
-                  isAbsent ? 'bg-rose-50 border-rose-200' : 'bg-white border-stone-100'
-                } border-[1.5px]`}>
-                  <div className={`flex items-center justify-between flex-wrap gap-2 ${isAbsent ? 'mb-0' : 'mb-2.5'}`}>
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-8 h-8 rounded-full ${sh.twSoft} ${sh.twBorder} border-[1.5px] flex items-center justify-center text-[13px] font-extrabold ${sh.twText} font-display`}>
+                <div key={cook} style={{
+                  marginBottom: 8, padding: '10px 14px', borderRadius: 10,
+                  background: isAbsent ? '#fef2f2' : '#fff', border: `1.5px solid ${isAbsent ? '#fecaca' : '#e2e8f0'}`,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: isAbsent ? 0 : 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: 999, background: sh.soft, border: `1.5px solid ${sh.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: sh.color }}>
                         {cook[0]}
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-stone-800">{cook}</div>
-                        <div className="text-[10px] text-stone-400">Cook #{ci+1}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{cook}</div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>Cook #{ci+1}</div>
                       </div>
                     </div>
-                    <div className="flex gap-1">
+                    <div style={{ display: 'flex', gap: 4 }}>
                       {['present','absent','half_day'].map(st => (
-                        <button key={st} type="button" onClick={()=>setField(cook,shift,'status',st)} className={statusBtn(st, rec.status===st)}>
+                        <button key={st} type="button" onClick={()=>setField(cook,shift,'status',st)} style={statusBtnStyle(st, rec.status===st)}>
                           {st==='present'?'✓ Present':st==='absent'?'✗ Absent':'½ Half'}
                         </button>
                       ))}
                     </div>
                   </div>
                   {!isAbsent && (
-                    <div className="flex gap-2.5 items-center flex-wrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-0">IN</span>
-                        <input type="time" className="px-2.5 py-1 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
-                          value={rec.check_in||''} onChange={e=>setField(cook,shift,'check_in',e.target.value)} />
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8' }}>IN</span>
+                        <input type="time" style={{ ...inp, width: 'auto', padding: '5px 8px', fontSize: 12 }} value={rec.check_in||''} onChange={e=>setField(cook,shift,'check_in',e.target.value)} />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-0">OUT</span>
-                        <input type="time" className="px-2.5 py-1 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
-                          value={rec.check_out||''} onChange={e=>setField(cook,shift,'check_out',e.target.value)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8' }}>OUT</span>
+                        <input type="time" style={{ ...inp, width: 'auto', padding: '5px 8px', fontSize: 12 }} value={rec.check_out||''} onChange={e=>setField(cook,shift,'check_out',e.target.value)} />
                       </div>
-                      <input className="flex-1 min-w-[120px] px-2.5 py-1 rounded-lg border-[1.5px] border-stone-200 text-[11px] font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                        value={rec.notes||''} onChange={e=>setField(cook,shift,'notes',e.target.value)} placeholder="Notes…" />
+                      <input style={{ ...inp, flex: 1, minWidth: 120, padding: '5px 8px', fontSize: 11 }} value={rec.notes||''} onChange={e=>setField(cook,shift,'notes',e.target.value)} placeholder="Notes…" />
                     </div>
                   )}
                 </div>
@@ -1194,56 +1047,54 @@ function CookAttendancePanel({ onClose, showToast }) {
         ))}
 
         {!loading && view==='mark' && (
-          <button type="button" className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-teal-600 to-teal-800 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50"
-            onClick={saveAll} disabled={loading}>
+          <button type="button" style={btnPrimary(loading)} onClick={saveAll} disabled={loading}>
             {loading ? 'Saving…' : '💾 Save All Attendance'}
           </button>
         )}
 
         {!loading && view==='monthly' && (
-          <div className="flex flex-col gap-2.5">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {monthlySummary.map(({ cook, present, absent, half, pct, mPresent, ePresent, totalDays }) => {
-              const pctColor = pct>=90?'text-green-600':pct>=70?'text-amber-600':'text-rose-600'
+              const pctColor = pct>=90?'#16a34a':pct>=70?'#d97706':'#dc2626'
               return (
-                <div key={cook} className="bg-white rounded-xl border border-stone-200 shadow-sm p-3.5">
-                  <div className="flex justify-between items-center mb-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-teal-50 border-[1.5px] border-teal-200 flex items-center justify-center text-sm font-extrabold text-teal-700 font-display">
+                <div key={cook} style={{ ...card, padding: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 999, background: '#eef2ff', border: '1.5px solid #c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#3730a3' }}>
                         {cook[0]}
                       </div>
                       <div>
-                        <div className="text-[13px] font-bold text-stone-800">{cook}</div>
-                        <div className="text-[10px] text-stone-400">{totalDays} shifts · {viewMonth}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{cook}</div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>{totalDays} shifts · {viewMonth}</div>
                       </div>
                     </div>
-                    <div className={`font-display text-[22px] font-bold ${pctColor}`}>{pct}%</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: pctColor }}>{pct}%</div>
                   </div>
-                  <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden mb-2.5">
-                    <div className="h-full rounded-full transition-all duration-[600ms]"
-                      style={{ width: `${pct}%`, backgroundColor: pct>=90?'#22c55e':pct>=70?'#f59e0b':'#f43f5e' }} />
+                  <div style={{ height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden', marginBottom: 10 }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: pctColor, borderRadius: 3, transition: 'width .5s' }} />
                   </div>
-                  <div className="flex gap-3 flex-wrap">
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     <StatPill label="present" value={present} color="#16a34a" />
-                    <StatPill label="absent"  value={absent}  color="#e11d48"   />
-                    <StatPill label="half"    value={half}    color="#d97706"/>
-                    <StatPill label="morning" value={mPresent} color="#0d9488" />
-                    <StatPill label="evening" value={ePresent} color="#ea580c"/>
+                    <StatPill label="absent"  value={absent}  color="#dc2626" />
+                    <StatPill label="half"    value={half}    color="#d97706" />
+                    <StatPill label="morning" value={mPresent} color="#3730a3" />
+                    <StatPill label="evening" value={ePresent} color="#7c3aed" />
                   </div>
                 </div>
               )
             })}
 
             {monthly.length > 0 && (
-              <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-5 mt-1 overflow-x-auto">
-                <div className="text-sm font-bold text-stone-700 mb-3.5">Day-wise Detail — {viewMonth}</div>
-                <table className="w-full border-collapse text-[11px] min-w-[600px]">
+              <div style={{ ...card, padding: 18, marginTop: 4, overflowX: 'auto' }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 14 }}>Day-wise Detail — {viewMonth}</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 600 }}>
                   <thead>
                     <tr>
-                      <th className="px-2.5 py-1.5 text-left bg-stone-50 text-stone-600 font-bold border-b-2 border-stone-100 whitespace-nowrap text-[10px]">Cook</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', background: '#f8fafc', color: '#475569', fontWeight: 700, borderBottom: '2px solid #f1f5f9', whiteSpace: 'nowrap', fontSize: 10 }}>Cook</th>
                       {[...new Set(monthly.map(r=>r.att_date))].sort().map(d=>(
-                        <th key={d} className="px-1 py-1 text-center bg-stone-50 text-stone-600 font-bold border-b-2 border-stone-100 whitespace-nowrap text-[9px]">
+                        <th key={d} style={{ padding: '4px 4px', textAlign: 'center', background: '#f8fafc', color: '#475569', fontWeight: 700, borderBottom: '2px solid #f1f5f9', whiteSpace: 'nowrap', fontSize: 9 }}>
                           {new Date(d+'T00:00:00').getDate()}<br/>
-                          <span className="font-normal text-stone-400">{new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span>
+                          <span style={{ fontWeight: 400, color: '#94a3b8' }}>{new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span>
                         </th>
                       ))}
                     </tr>
@@ -1252,25 +1103,25 @@ function CookAttendancePanel({ onClose, showToast }) {
                     {COOKS.map(cook => {
                       const dates = [...new Set(monthly.map(r=>r.att_date))].sort()
                       const cell = (row) => {
-                        if (!row) return <span className="text-stone-300">—</span>
-                        if (row.status==='present')  return <span className="text-green-600 font-extrabold">✓</span>
-                        if (row.status==='absent')   return <span className="text-rose-600 font-extrabold">✗</span>
-                        if (row.status==='half_day') return <span className="text-amber-600 font-extrabold">½</span>
+                        if (!row) return <span style={{ color: '#cbd5e1' }}>—</span>
+                        if (row.status==='present')  return <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+                        if (row.status==='absent')   return <span style={{ color: '#dc2626', fontWeight: 800 }}>✗</span>
+                        if (row.status==='half_day') return <span style={{ color: '#d97706', fontWeight: 800 }}>½</span>
                         return null
                       }
                       return (
-                        <tr key={cook} className="border-b border-stone-100">
-                          <td className="px-2.5 py-1.5 font-bold text-stone-700 whitespace-nowrap text-[10px]">
+                        <tr key={cook} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', fontSize: 10 }}>
                             {cook.split(' ').slice(0,2).join(' ')}
                           </td>
                           {dates.map(d => {
                             const mRow = monthly.find(r=>r.cook_name===cook&&r.att_date===d&&r.shift==='morning')
                             const eRow = monthly.find(r=>r.cook_name===cook&&r.att_date===d&&r.shift==='evening')
                             return (
-                              <td key={d} className="px-1 py-1 text-center align-middle">
-                                <div className="flex flex-col items-center gap-px">
+                              <td key={d} style={{ padding: '4px 4px', textAlign: 'center', verticalAlign: 'middle' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                                   <span>{cell(mRow)}</span>
-                                  <span className="opacity-60 text-[9px]">{cell(eRow)}</span>
+                                  <span style={{ opacity: .6, fontSize: 9 }}>{cell(eRow)}</span>
                                 </div>
                               </td>
                             )
@@ -1280,7 +1131,7 @@ function CookAttendancePanel({ onClose, showToast }) {
                     })}
                   </tbody>
                 </table>
-                <div className="text-[10px] text-stone-400 mt-2">
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 8 }}>
                   Top = 🌅 Morning · Bottom = 🌇 Evening &nbsp;·&nbsp; ✓ Present · ✗ Absent · ½ Half Day
                 </div>
               </div>
@@ -1295,7 +1146,7 @@ function CookAttendancePanel({ onClose, showToast }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTRY FORM
 // ═══════════════════════════════════════════════════════════════════════════════
-function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
+function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems, isMobile }) {
   const def = (k, fb='') => editing ? (editing[k]??fb) : fb
   const [form, setForm] = useState({
     meal_type:    def('meal_type','lunch'),
@@ -1348,135 +1199,122 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems }) {
         <ReceiptViewer url={form.receipt_url} onClose={()=>setViewReceipt(false)}
           onDelete={()=>{ set('receipt_url',''); setViewReceipt(false) }} />
       )}
-      <div className={`bg-white rounded-xl border-[1.5px] ${m.twBorder} mb-4 overflow-hidden animate-fade-up shadow-sm`}>
-        <div className={`${m.twSoft} border-b ${m.twBorder} px-5 py-3.5 flex justify-between items-center`}>
+      <div style={{ ...card, border: `1.5px solid ${m.border}`, marginBottom: 16, overflow: 'hidden' }}>
+        <div style={{ background: m.soft, borderBottom: `1px solid ${m.border}`, padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div className={`text-[15px] font-bold ${m.twText} font-display`}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: m.color }}>
               {editing ? `✏️ Edit — ${m.label}` : `➕ Add ${m.label}`}
             </div>
-            <div className={`text-[11px] ${m.twText} opacity-70 mt-0.5`}>
+            <div style={{ fontSize: 11, color: m.color, opacity: .7, marginTop: 2 }}>
               {form.expense_date ? dateFmt(form.expense_date) : 'Select date'}
             </div>
           </div>
-          <button type="button" className={`w-8 h-8 rounded-lg bg-white text-stone-500 border-[1.5px] ${m.twBorder} text-sm font-semibold hover:bg-stone-50 transition-all shadow-sm flex items-center justify-center`}
-            onClick={onCancel}>✕</button>
+          <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderColor: m.border }} onClick={onCancel}>✕</button>
         </div>
 
-        <div className="p-5">
-          <div className="grid grid-cols-2 gap-3.5">
+        <div style={{ padding: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
             <Field label="Meal *">
-              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white"
-                value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
+              <select style={inp} value={form.meal_type} onChange={e=>set('meal_type',e.target.value)}>
                 {MEAL_KEYS.map(mk=><option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>)}
               </select>
             </Field>
             <Field label="Date *">
-              <input type="date" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
-                value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
+              <input type="date" style={inp} value={form.expense_date} onChange={e=>set('expense_date',e.target.value)} />
             </Field>
             <Field label="Amount (₹) *">
-              <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
+              <input type="number" style={inp} value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0.00" min="0" step="0.01" />
             </Field>
             <Field label="Serving Time">
-              <input type="time" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
-                value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
+              <input type="time" style={inp} value={form.serving_time} onChange={e=>set('serving_time',e.target.value)} />
             </Field>
 
-            <Field label="Items / Ingredients" span={2}>
-              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
-              <div className="mt-2.5">
-                <div className="text-[10px] font-bold text-orange-600 mb-1.5 uppercase tracking-wider">🍛 Manipuri Dishes</div>
-                <div className="flex flex-wrap gap-1">
+            <Field label="Items / Ingredients" span>
+              <input style={inp} value={form.item_details} onChange={e=>set('item_details',e.target.value)} placeholder="e.g. Chak, Dal, Eromba…" />
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#d97706', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>🍛 Manipuri Dishes</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {presets.map(item=>(
-                    <button key={item} type="button" onClick={()=>addItem(item)}
-                      className="px-2.5 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-semibold cursor-pointer text-amber-800 font-body transition-all hover:bg-amber-100">
+                    <button key={item} type="button" onClick={()=>addItem(item)} style={{
+                      padding: '2px 10px', borderRadius: 999, border: '1px solid #fde68a', background: '#fffbeb',
+                      fontSize: 10, fontWeight: 600, cursor: 'pointer', color: '#92400e',
+                    }}>
                       + {item}
                     </button>
                   ))}
                 </div>
               </div>
               {dbItems.length > 0 && (
-                <div className="mt-2.5">
-                  <div className="text-[10px] font-bold text-teal-700 mb-1.5 uppercase tracking-wider">🧺 Item List</div>
-                  <div className="flex flex-wrap gap-1">
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#0284c7', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>🧺 Item List</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {dbItems.map(it=>(
-                      <button key={it.id} type="button" onClick={()=>addItem(it.name)}
-                        className="px-2.5 py-0.5 rounded-full border border-teal-200 bg-teal-50 text-[10px] font-semibold cursor-pointer text-teal-800 font-body transition-all hover:bg-teal-100">
+                      <button key={it.id} type="button" onClick={()=>addItem(it.name)} style={{
+                        padding: '2px 10px', borderRadius: 999, border: '1px solid #bae6fd', background: '#f0f9ff',
+                        fontSize: 10, fontWeight: 600, cursor: 'pointer', color: '#0369a1',
+                      }}>
                         + {it.name}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="flex gap-2 mt-2.5">
-                <input className="flex-1 px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                  value={customItem} onChange={e=>setCustomItem(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addCustomItem()} placeholder="Type custom item + Enter" />
-                <button type="button" className="px-3 py-1.5 rounded-lg bg-white text-stone-600 border-[1.5px] border-stone-200 text-xs font-semibold hover:bg-stone-50 transition-all shadow-sm"
-                  onClick={addCustomItem}>+ Add</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <input style={{ ...inp, flex: 1, fontSize: 12, padding: '7px 10px' }} value={customItem} onChange={e=>setCustomItem(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addCustomItem()} placeholder="Type custom item + Enter" />
+                <button type="button" style={btnGhost} onClick={addCustomItem}>+ Add</button>
               </div>
             </Field>
 
             <Field label="Prepared By">
-              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
+              <input style={inp} value={form.prepared_by} onChange={e=>set('prepared_by',e.target.value)} placeholder="Cook / Staff name" />
             </Field>
 
             <Field label="Vendor / Supplier">
-              <select className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white mb-1.5"
-                value={vendorIsPreset ? form.vendor : ''}
+              <select style={{ ...inp, marginBottom: 6 }} value={vendorIsPreset ? form.vendor : ''}
                 onChange={e => { if (e.target.value) set('vendor', e.target.value) }}>
                 <option value="">— Select preset vendor —</option>
                 {LOCAL_VENDORS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
-              <input className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.vendor} onChange={e=>set('vendor',e.target.value)} placeholder="Or type custom vendor name…" />
+              <input style={{ ...inp, fontSize: 12 }} value={form.vendor} onChange={e=>set('vendor',e.target.value)} placeholder="Or type custom vendor name…" />
             </Field>
 
             <Field label="Students Served">
-              <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-                value={form.pax_count} onChange={e=>set('pax_count',e.target.value)} placeholder="0" min="0" />
+              <input type="number" style={inp} value={form.pax_count} onChange={e=>set('pax_count',e.target.value)} placeholder="0" min="0" />
             </Field>
 
             <Field label="Meal Quality">
-              <div className="pt-1">
+              <div style={{ paddingTop: 4 }}>
                 <StarRating value={form.meal_rating} onChange={v=>set('meal_rating',v)} />
               </div>
             </Field>
 
-            <Field label="Notes" span={2}>
-              <textarea className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300 resize-y"
-                rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
+            <Field label="Notes" span>
+              <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any observations…" />
             </Field>
 
-            <Field label="📎 Receipt / Bill Photo" span={2}>
-              <div className="flex items-center gap-2.5 flex-wrap px-3.5 py-2.5 rounded-lg bg-stone-50 border-[1.5px] border-dashed border-stone-200">
-                <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} className="text-[11px] flex-1" />
-                {uploading && <span className="text-[11px] text-stone-400">Uploading…</span>}
+            <Field label="📎 Receipt / Bill Photo" span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 8, background: '#f8fafc', border: '1.5px dashed #e2e8f0' }}>
+                <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} style={{ fontSize: 11, flex: 1 }} />
+                {uploading && <span style={{ fontSize: 11, color: '#94a3b8' }}>Uploading…</span>}
                 {form.receipt_url && (
-                  <div className="flex gap-1.5 items-center flex-wrap">
-                    <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-sky-700 border border-sky-200 bg-sky-50 hover:bg-sky-100 transition-all"
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button type="button" style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#0284c7', border: '1px solid #bae6fd', background: '#f0f9ff', cursor: 'pointer' }}
                       onClick={()=>setViewReceipt(true)}>👁 View</button>
-                    <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-all"
+                    <button type="button" style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#dc2626', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer' }}
                       onClick={()=>set('receipt_url','')}>🗑 Remove</button>
-                    <span className="text-[10px] text-green-600 font-bold">✓ Uploaded</span>
+                    <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>✓ Uploaded</span>
                   </div>
                 )}
               </div>
             </Field>
           </div>
 
-          <div className="flex gap-2.5 mt-5 pt-4 border-t border-stone-200">
-            <button type="button" className={`px-5 py-2.5 rounded-lg text-sm font-semibold text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-              valid ? 'bg-gradient-to-br from-orange-500 to-orange-700' : 'bg-stone-400'
-            }`}
-              onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}>
+          <div style={{ display: 'flex', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #e2e8f0', alignItems: 'center' }}>
+            <button type="button" style={btnPrimary(!valid)} onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}>
               {editing ? 'Update Entry' : 'Save Entry'}
             </button>
-            <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-              onClick={onCancel}>Cancel</button>
-            {!valid && <span className="text-[11px] text-stone-400 self-center">Fill required fields *</span>}
+            <button type="button" style={btnGhost} onClick={onCancel}>Cancel</button>
+            {!valid && <span style={{ fontSize: 11, color: '#94a3b8' }}>Fill required fields *</span>}
           </div>
         </div>
       </div>
@@ -1493,47 +1331,48 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
       {viewReceipt && e.receipt_url && (
         <ReceiptViewer url={e.receipt_url} onClose={()=>setViewReceipt(false)} />
       )}
-      <div className={`bg-white rounded-xl border-[1.5px] ${m?.twBorder || 'border-stone-200'} p-3.5 grid grid-cols-[1fr_auto] gap-3 items-start shadow-sm ${
-        m ? `bg-gradient-to-br ${m.twSoft} to-white` : 'bg-white'
-      }`}>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+      <div style={{
+        ...card, borderColor: m?.border || '#e2e8f0', padding: 14, display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start',
+        background: m ? `linear-gradient(135deg,${m.soft},#fff)` : '#fff',
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
             <MealBadge type={e.meal_type} size="sm" />
-            <span className="font-display text-xl font-bold text-stone-800 leading-none">
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
               {moneyFmt(e.amount)}
             </span>
             {e.meal_rating>0 && <StarRating value={e.meal_rating} />}
             {e.pax_count>0 && (
-              <span className="text-[10px] text-teal-700 font-bold font-mono px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200">
+              <span style={{ fontSize: 10, color: '#0284c7', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
                 ₹{(e.amount/e.pax_count).toFixed(2)}/student
               </span>
             )}
             {e.receipt_url && (
-              <button type="button" onClick={()=>setViewReceipt(true)}
-                className="px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[10px] font-bold cursor-pointer font-body hover:bg-sky-100 transition-all">
+              <button type="button" onClick={()=>setViewReceipt(true)} style={{
+                padding: '2px 8px', borderRadius: 999, background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0284c7',
+                fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              }}>
                 📎 Receipt
               </button>
             )}
           </div>
-          <div className="flex gap-2.5 text-[11px] text-stone-500 flex-wrap">
+          <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#64748b', flexWrap: 'wrap' }}>
             {e.item_details  && <span>🥦 {e.item_details}</span>}
             {e.prepared_by   && <span>👨‍🍳 {e.prepared_by}</span>}
             {e.vendor        && <span>🏪 {e.vendor}</span>}
             {e.pax_count     && <span>👥 {e.pax_count} students</span>}
-            {e.serving_time  && <span className="font-mono">🕐 {e.serving_time}</span>}
+            {e.serving_time  && <span>🕐 {e.serving_time}</span>}
           </div>
           {e.notes && (
-            <div className="mt-1.5 text-[11px] text-stone-500 px-2.5 py-1 bg-stone-50 rounded-lg border-l-[3px] border-stone-200">
+            <div style={{ marginTop: 6, fontSize: 11, color: '#64748b', padding: '4px 10px', background: '#f8fafc', borderRadius: 6, borderLeft: '3px solid #e2e8f0' }}>
               {e.notes}
             </div>
           )}
         </div>
         {!locked && (
-          <div className="flex flex-col gap-1">
-            <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-              onClick={()=>onEdit(e)}>Edit</button>
-            <button type="button" className="px-3 py-1 rounded-lg text-[11px] font-semibold text-rose-600 border-[1.5px] border-rose-200 bg-rose-50 hover:bg-rose-100 transition-all shadow-sm"
-              onClick={()=>onDelete(e.id)}>Del</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <button type="button" style={{ ...btnGhost, padding: '4px 10px', fontSize: 11 }} onClick={()=>onEdit(e)}>Edit</button>
+            <button type="button" style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#dc2626', border: '1.5px solid #fecaca', background: '#fef2f2', cursor: 'pointer' }} onClick={()=>onDelete(e.id)}>Del</button>
           </div>
         )}
       </div>
@@ -1550,36 +1389,36 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
   const [collapsed, setCollapsed] = useState(!isToday)
 
   return (
-    <div className="mb-3.5 animate-fade-up">
-      <div onClick={()=>setCollapsed(c=>!c)} className={`cursor-pointer flex items-center justify-between px-4 py-2.5 rounded-xl mb-2 select-none transition-all ${
-        isToday ? 'bg-gradient-to-br from-orange-50 to-white border-[1.5px] border-orange-200' : 'bg-stone-50 border-[1.5px] border-stone-200'
-      }`}>
-        <div className="flex items-center gap-2.5">
-          <span className={`text-xs font-bold ${isToday ? 'text-orange-700' : 'text-stone-600'}`}>
-            {isToday && <span className="text-orange-500 mr-1">📌</span>}
+    <div style={{ marginBottom: 14 }}>
+      <div onClick={()=>setCollapsed(c=>!c)} style={{
+        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 16px', borderRadius: 10, marginBottom: 8, userSelect: 'none',
+        background: isToday ? '#eff6ff' : '#f8fafc', border: `1.5px solid ${isToday ? '#bfdbfe' : '#e2e8f0'}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#1e3a5f' : '#475569' }}>
+            {isToday && <span style={{ color: '#3730a3', marginRight: 4 }}>📌</span>}
             {dateFmt(dateStr)}
           </span>
-          {isToday && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">Today</span>}
-          {locked  && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold">🔒 Locked</span>}
-          <span className="text-[11px] text-stone-400">{dayE.length} entries</span>
+          {isToday && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#dbeafe', color: '#1e3a5f', fontWeight: 700 }}>Today</span>}
+          {locked  && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#dc2626', fontWeight: 700 }}>🔒 Locked</span>}
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>{dayE.length} entries</span>
         </div>
-        <div className="flex items-center gap-2.5">
-          <span className="font-display text-base font-bold text-stone-800">{moneyFmt(total)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{moneyFmt(total)}</span>
           {!locked
-            ? <button type="button" onClick={e=>{e.stopPropagation();onLockDay(dateStr)}}
-                className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-rose-600 border-[1.5px] border-rose-200 bg-rose-50 hover:bg-rose-100 transition-all shadow-sm">
+            ? <button type="button" onClick={e=>{e.stopPropagation();onLockDay(dateStr)}} style={{ padding: '4px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, color: '#dc2626', border: '1.5px solid #fecaca', background: '#fef2f2', cursor: 'pointer' }}>
                 🔒 Lock
               </button>
-            : <button type="button" onClick={e=>{e.stopPropagation();onUnlockDay(dateStr)}}
-                className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-amber-700 border-[1.5px] border-amber-200 bg-amber-50 hover:bg-amber-100 transition-all shadow-sm">
+            : <button type="button" onClick={e=>{e.stopPropagation();onUnlockDay(dateStr)}} style={{ padding: '4px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, color: '#d97706', border: '1.5px solid #fde68a', background: '#fffbeb', cursor: 'pointer' }}>
                 🔓 Unlock
               </button>
           }
-          <span className={`text-xs text-stone-400 transition-transform duration-200 inline-block ${collapsed ? '-rotate-90' : 'rotate-0'}`}>▾</span>
+          <span style={{ fontSize: 12, color: '#94a3b8', transition: 'transform .2s', display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none' }}>▾</span>
         </div>
       </div>
       {!collapsed && (
-        <div className="flex flex-col gap-1.5">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {dayE.map(e=><EntryCard key={e.id} e={e} locked={locked} onEdit={onEdit} onDelete={onDelete} />)}
         </div>
       )}
@@ -1596,27 +1435,21 @@ function BudgetModal({ current, month, onSave, onClose }) {
     onSave(amt)
   }
   return (
-    <div className="animate-fade-in fixed inset-0 bg-[rgba(32,20,10,0.45)] z-[9999] flex items-center justify-center backdrop-blur-sm"
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}>
-      <div className="bg-white rounded-xl border border-stone-200 shadow-xl w-[400px] overflow-hidden" onClick={e=>e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-stone-200 bg-gradient-to-br from-teal-50 to-white">
-          <div className="text-[17px] font-bold text-teal-700 font-display">Set Monthly Budget</div>
-          <div className="text-xs text-stone-400 mt-0.5">For {month}</div>
+      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 20px 60px rgba(0,0,0,.2)', width: 400, overflow: 'hidden' }} onClick={e=>e.stopPropagation()}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', background: '#eff6ff' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#1e3a5f' }}>Set Monthly Budget</div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>For {month}</div>
         </div>
-        <div className="px-6 py-5">
+        <div style={{ padding: '20px 22px' }}>
           <Field label="Budget Amount (₹)">
-            <input type="number" className="w-full px-3.5 py-2 rounded-lg border-[1.5px] border-stone-200 text-sm font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all placeholder:text-stone-300"
-              value={val} onChange={e=>setVal(e.target.value)} placeholder="e.g. 50000" min="1"
-              onKeyDown={e=>e.key==='Enter'&&handleSave()} />
+            <input type="number" style={inp} value={val} onChange={e=>setVal(e.target.value)} placeholder="e.g. 50000" min="1" onKeyDown={e=>e.key==='Enter'&&handleSave()} />
           </Field>
-          {val && Number(val) <= 0 && (
-            <div className="text-[11px] text-rose-600 mt-1.5">Enter a valid amount</div>
-          )}
-          <div className="flex gap-2.5 mt-4">
-            <button type="button" className="flex-1 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
-              onClick={handleSave}>Save Budget</button>
-            <button type="button" className="px-4 py-2.5 rounded-lg text-xs font-semibold text-stone-600 bg-white border-[1.5px] border-stone-200 hover:bg-stone-50 transition-all shadow-sm"
-              onClick={onClose}>Cancel</button>
+          {val && Number(val) <= 0 && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 6 }}>Enter a valid amount</div>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button type="button" style={{ ...btnPrimary(false), flex: 1 }} onClick={handleSave}>Save Budget</button>
+            <button type="button" style={btnGhost} onClick={onClose}>Cancel</button>
           </div>
         </div>
       </div>
@@ -1640,26 +1473,25 @@ function generatePrintReport(entries, budget, monthLabel) {
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>GNSI Kitchen Report — ${monthLabel}</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=DM+Mono&display=swap" rel="stylesheet">
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:'DM Sans',sans-serif; color:#1c1917; background:#fafaf9; padding:36px 48px; }
-  .header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:18px; margin-bottom:28px; border-bottom:3px solid #ea580c; }
-  .institute { font-family:'Playfair Display',serif; font-size:22px; font-weight:800; color:#ea580c; }
-  .sub { font-size:11px; color:#78716c; margin-top:3px; }
-  .title-area { text-align:right; font-size:12px; color:#57534e; font-family:'DM Mono',monospace; }
-  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:28px; }
-  .kpi { padding:16px 18px; border-radius:10px; background:#fff; border:1.5px solid #fed7aa; }
-  .kpi-val { font-family:'Playfair Display',serif; font-size:22px; font-weight:700; color:#ea580c; }
-  .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#78716c; margin-top:4px; }
-  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; color:#ea580c; margin:24px 0 12px; padding-left:12px; border-left:3px solid #ea580c; }
+  body { font-family:system-ui,-apple-system,sans-serif; color:#1e293b; background:#fff; padding:36px 48px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:16px; margin-bottom:26px; border-bottom:3px solid #1e3a5f; }
+  .institute { font-size:21px; font-weight:800; color:#1e3a5f; }
+  .sub { font-size:11px; color:#64748b; margin-top:3px; }
+  .title-area { text-align:right; font-size:12px; color:#475569; }
+  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:26px; }
+  .kpi { padding:14px 16px; border-radius:10px; background:#fff; border:1.5px solid #e2e8f0; border-left:4px solid #1e3a5f; }
+  .kpi-val { font-size:20px; font-weight:800; color:#1e3a5f; }
+  .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; margin-top:4px; }
+  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#1e3a5f; margin:22px 0 10px; padding-left:10px; border-left:3px solid #1e3a5f; }
   table { width:100%; border-collapse:collapse; font-size:11px; }
-  th { background:#fff7ed; color:#57534e; font-weight:700; padding:8px 10px; text-align:left; border-bottom:2px solid #fed7aa; text-transform:uppercase; letter-spacing:.04em; font-size:9px; }
-  td { padding:7px 10px; border-bottom:1px solid #e7e5e4; color:#1c1917; font-family:'DM Mono',monospace; font-size:10px; }
-  td:first-child { font-family:'DM Sans',sans-serif; font-size:11px; }
-  .total-row td { font-weight:800; color:#ea580c; border-top:2px solid #ea580c; border-bottom:none; font-family:'DM Sans',sans-serif; }
-  .footer { margin-top:32px; padding-top:14px; border-top:1px solid #e7e5e4; font-size:10px; color:#a8a29e; display:flex; justify-content:space-between; font-family:'DM Mono',monospace; }
-  @media print { body { background:#fff; padding:20px; } }
+  th { background:#f8fafc; color:#475569; font-weight:700; padding:8px 10px; text-align:left; border-bottom:2px solid #e2e8f0; text-transform:uppercase; letter-spacing:.04em; font-size:9px; }
+  td { padding:7px 10px; border-bottom:1px solid #f1f5f9; color:#1e293b; font-size:10px; }
+  td:first-child { font-size:11px; }
+  .total-row td { font-weight:800; color:#1e3a5f; border-top:2px solid #1e3a5f; border-bottom:none; }
+  .footer { margin-top:30px; padding-top:14px; border-top:1px solid #e2e8f0; font-size:10px; color:#94a3b8; display:flex; justify-content:space-between; }
+  @media print { body { padding:20px; } }
 </style></head><body>
   <div class="header">
     <div><div class="institute">🏫 Guidance Navodaya & Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur · Kitchen Expenditure Report</div></div>
@@ -1726,33 +1558,23 @@ function generateWhatsAppMsg(entries, dateStr) {
 
 /**
  * LedgerTab — All ledger/filter/day-group view logic
- * Isolated for clarity, testability, and tree-shaking
  */
-function LedgerTab({ 
+function LedgerTab({
   entries, filterDate, setFilterDate, filterMeal, setFilterMeal,
   uniqueDates, filteredByMeal, locks, viewMonth, setFormOpen,
-  handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab
+  handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab, isMobile
 }) {
   return (
     <>
       {/* Filter Bar */}
-      <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3 mb-3.5 flex gap-3 items-center flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Date</label>
-          <input 
-            type="date" 
-            className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all w-auto"
-            value={filterDate} 
-            onChange={e => setFilterDate(e.target.value)} 
-          />
+      <div style={{ ...card, padding: 12, marginBottom: 14, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Date</label>
+          <input type="date" style={{ ...inp, width: 'auto' }} value={filterDate} onChange={e => setFilterDate(e.target.value)} />
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-[10.5px] font-bold text-stone-500 uppercase tracking-wider mb-0">Meal</label>
-          <select 
-            className="px-3 py-1.5 rounded-lg border-[1.5px] border-stone-200 text-xs font-body outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all cursor-pointer bg-white w-auto"
-            value={filterMeal} 
-            onChange={e => setFilterMeal(e.target.value)}
-          >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Meal</label>
+          <select style={{ ...inp, width: 'auto' }} value={filterMeal} onChange={e => setFilterMeal(e.target.value)}>
             <option value="all">All Meals</option>
             {MEAL_KEYS.map(mk => (
               <option key={mk} value={mk}>{MEALS[mk].emoji} {MEALS[mk].label}</option>
@@ -1764,36 +1586,31 @@ function LedgerTab({
       {/* Alerts & Widgets */}
       <MissingMealAlert entries={entries} dateFilter={filterDate} />
       <CostPerStudentCard entries={entries} dateFilter={filterDate} />
-      <MealKpiStrip entries={entries} dateFilter={filterDate} />
+      <MealKpiStrip entries={entries} dateFilter={filterDate} cols={isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)'} />
       <PettyCashWidget entries={entries} dateFilter={filterDate} />
 
       {/* Empty State */}
       {!uniqueDates.length ? (
-        <div className="flex flex-col items-center py-16 text-center animate-fade-up">
-          <div className="w-20 h-20 rounded-[22px] bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-dashed border-orange-200 flex items-center justify-center text-[38px] mb-5">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '56px 0', textAlign: 'center' }}>
+          <div style={{ width: 76, height: 76, borderRadius: 18, background: '#eff6ff', border: '2px dashed #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, marginBottom: 18 }}>
             🍽
           </div>
-          <div className="text-lg font-bold text-stone-700 font-display mb-2">No entries yet</div>
-          <p className="text-[13px] text-stone-400 max-w-[36ch] leading-relaxed mb-6">
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>No entries yet</div>
+          <p style={{ fontSize: 13, color: '#94a3b8', maxWidth: '36ch', lineHeight: 1.5, marginBottom: 20 }}>
             Start tracking your kitchen expenses — add your first meal entry for {viewMonth}.
           </p>
-          <button 
-            type="button" 
-            className="px-7 py-3 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
-            onClick={() => setFormOpen(true)}
-          >
+          <button type="button" style={btnPrimary(false)} onClick={() => setFormOpen(true)}>
             + Add First Entry
           </button>
         </div>
       ) : (
         <>
-          {/* Day Groups */}
           <SectionDivider label={`${filteredByMeal.length} Entries · ${uniqueDates.length} Days`} />
           {uniqueDates.map(d => (
-            <DayGroup 
-              key={d} 
-              dateStr={d} 
-              entries={filteredByMeal} 
+            <DayGroup
+              key={d}
+              dateStr={d}
+              entries={filteredByMeal}
               locks={locks}
               onEdit={e => { setEditing(e); setFormOpen(true) }}
               onDelete={handleDelete}
@@ -1809,16 +1626,15 @@ function LedgerTab({
 
 /**
  * AnalyticsTab — All charts, heatmaps, and summary views
- * Self-contained with its own data transformation logic
  */
 function AnalyticsTab({ entries, setFilterDate, setTab }) {
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       <MonthlyChart entries={entries} />
       <MealPieBreakdown entries={entries} />
-      <CalendarHeatmap 
-        entries={entries} 
-        onDayClick={d => { setFilterDate(d); setTab('ledger') }} 
+      <CalendarHeatmap
+        entries={entries}
+        onDayClick={d => { setFilterDate(d); setTab('ledger') }}
       />
       <VendorSummary entries={entries} />
       <ItemFrequency entries={entries} />
@@ -1827,12 +1643,11 @@ function AnalyticsTab({ entries, setFilterDate, setTab }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════════
-// TOPBAR — Grid action bar
+// TOPBAR
 // ═══════════════════════════════════════════════════════════════════════════════
 function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
   onBudget, onReport, onCSV, onWhatsApp, onAdd,
-  onItemSetup, onMonitor, onCookLog, onCookAtt, activePanel }) {
+  onItemSetup, onMonitor, onCookLog, onCookAtt, activePanel, isMobile }) {
 
   const now     = new Date()
   const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
@@ -1846,53 +1661,38 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
     { id: 'budget',     label: 'Budget',     emoji: '💰', fn: onBudget,    toggle: false, adminOnly: false },
     { id: 'report',     label: 'Report',     emoji: '🖨',  fn: onReport,    toggle: false, adminOnly: false },
     { id: 'csv',        label: 'CSV',        emoji: '⬇',  fn: onCSV,       toggle: false, adminOnly: false },
-    { id: 'whatsapp',   label: 'WhatsApp',   emoji: '📲', fn: onWhatsApp,  toggle: false, adminOnly: false, green: true },
-    { id: 'add',        label: 'Add Entry',  emoji: '+',  fn: onAdd,       toggle: false, adminOnly: false, orange: true },
+    { id: 'whatsapp',   label: 'WhatsApp',   emoji: '📲', fn: onWhatsApp,  toggle: false, adminOnly: false },
+    { id: 'add',        label: 'Add Entry',  emoji: '+',  fn: onAdd,       toggle: false, adminOnly: false, primary: true },
   ].filter(a => !a.adminOnly || isAdmin)
 
-  const cols = ACTIONS.length
-
   return (
-    <div className="no-print bg-white border-b border-stone-200 sticky top-0 z-[100]">
-
-      {/* ── Brand row ── */}
-      <div className="flex items-center gap-3 px-5 py-2 border-b border-stone-100">
-        <div className="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center text-sm flex-shrink-0">🍽</div>
+    <div className="no-print" style={{ background: 'white', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 100 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isMobile ? '10px 14px' : '12px 22px', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div className="text-[14px] font-bold text-stone-900 font-display leading-tight">Kitchen Ledger</div>
-          <div className="text-[10px] text-stone-400">GNSI · Khangabok, Thoubal</div>
+          <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>🍽 Kitchen Ledger</h1>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '3px 0 0' }}>GNSI · Khangabok, Thoubal</p>
         </div>
 
-        {/* Tab switcher */}
-        <div className="flex rounded-lg overflow-hidden border border-stone-200 ml-2 flex-shrink-0">
-          {[['ledger', '📋 Ledger'], ['analytics', '📊 Analytics']].map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setTab(k)}
-              className={`px-3.5 py-1.5 text-[11px] font-semibold border-none cursor-pointer transition-all ${
-                tab === k ? 'bg-orange-600 text-white' : 'bg-white text-stone-500 hover:bg-stone-50'
-              }`}>
-              {l}
-            </button>
-          ))}
-        </div>
-
-        {/* Month picker */}
-        <input type="month"
-          className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-[11px] font-body outline-none focus:border-orange-400 transition-all"
-          value={viewMonth} onChange={e => setViewMonth(e.target.value)} />
-
-        <div className="flex-1" />
-
-        {/* Clock */}
-        <div className="text-right flex-shrink-0">
-          <div className="text-[13px] font-bold text-stone-700 font-mono">{timeStr}</div>
-          <div className="text-[10px] text-stone-400">{dateStr}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+            {[['ledger', '📋 Ledger'], ['analytics', '📊 Analytics']].map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setTab(k)} style={{
+                padding: '7px 14px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: tab === k ? '#1e3a5f' : '#fff', color: tab === k ? '#fff' : '#64748b',
+              }}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <input type="month" style={{ ...inp, width: 'auto', padding: '7px 10px', fontSize: 12 }} value={viewMonth} onChange={e => setViewMonth(e.target.value)} />
+          <div style={{ textAlign: 'right', fontSize: 11, color: '#94a3b8' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>{timeStr}</div>
+            {dateStr}
+          </div>
         </div>
       </div>
 
-      {/* ── Action grid ── */}
-      <div
-        className="grid border-b border-stone-100"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+      <div style={{ display: 'flex', gap: 8, padding: '0 22px 12px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
         {ACTIONS.map(a => {
           const isActive = a.toggle && activePanel === a.id
           return (
@@ -1900,39 +1700,16 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
               key={a.id}
               type="button"
               onClick={a.fn}
-              className={[
-                'relative flex flex-col items-center justify-center gap-[3px] py-2 px-1',
-                'border-r border-stone-100 last:border-r-0',
-                'cursor-pointer select-none transition-colors duration-100',
-                a.orange ? 'bg-orange-600 hover:bg-orange-700' :
-                a.green  ? 'hover:bg-green-50' :
-                isActive ? 'bg-orange-50' : 'hover:bg-stone-50',
-              ].join(' ')}>
-
-              {/* Icon */}
-              <span className={[
-                'text-[17px] leading-none',
-                a.orange ? 'text-white' :
-                a.green  ? 'text-green-600' :
-                isActive ? 'text-orange-600' : 'text-stone-400',
-              ].join(' ')}>
-                {a.emoji}
-              </span>
-
-              {/* Label */}
-              <span className={[
-                'text-[9.5px] font-semibold leading-none whitespace-nowrap',
-                a.orange ? 'text-orange-100' :
-                a.green  ? 'text-green-700' :
-                isActive ? 'text-orange-700' : 'text-stone-400',
-              ].join(' ')}>
-                {a.label}
-              </span>
-
-              {/* Active underline indicator */}
-              {isActive && (
-                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-[2px] bg-orange-500 rounded-t" />
-              )}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
+                fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1.5px solid',
+                ...(a.primary
+                  ? { background: 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: '#fff', borderColor: 'transparent' }
+                  : isActive
+                    ? { background: '#eff6ff', color: '#1e3a5f', borderColor: '#bfdbfe' }
+                    : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }),
+              }}>
+              <span>{a.emoji}</span>{a.label}
             </button>
           )
         })}
@@ -1945,6 +1722,8 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function Kitchen({ currentUser }) {
+  const w        = useWindowWidth()
+  const isMobile = w < 640
   const isAdmin = ['admin','superintendent'].includes((currentUser?.role||'').toLowerCase())
 
   const [entries,      setEntries]      = useState([])
@@ -2029,12 +1808,12 @@ export default function Kitchen({ currentUser }) {
     }
     if (eid) {
       const { error } = await supabase.from('kitchen_expenditure').update(row).eq('id',eid)
-      if (error) { showToast('Update failed: '+error.message, 'bg-rose-600'); return }
-      showToast('Entry updated ✓', 'bg-amber-600')
+      if (error) { showToast('Update failed: '+error.message, '#dc2626'); return }
+      showToast('Entry updated ✓', '#d97706')
     } else {
       const { error } = await supabase.from('kitchen_expenditure').insert(row)
-      if (error) { showToast('Save failed: '+error.message, 'bg-rose-600'); return }
-      showToast('Entry saved ✓', 'bg-green-600')
+      if (error) { showToast('Save failed: '+error.message, '#dc2626'); return }
+      showToast('Entry saved ✓', '#16a34a')
     }
     setFormOpen(false); setEditing(null); load()
   }
@@ -2042,24 +1821,24 @@ export default function Kitchen({ currentUser }) {
   const handleDelete = async id => {
     if (!window.confirm('Delete this entry?')) return
     const { error } = await supabase.from('kitchen_expenditure').delete().eq('id',id)
-    if (error) { showToast('Delete failed', 'bg-rose-600'); return }
-    showToast('Deleted', 'bg-rose-600'); load()
+    if (error) { showToast('Delete failed', '#dc2626'); return }
+    showToast('Deleted', '#dc2626'); load()
   }
 
   const handleLockDay = async dateStr => {
     if (!window.confirm(`Lock all entries for ${dateFmt(dateStr)}?`)) return
     await supabase.from('kitchen_daily_locks').insert({ lock_date:dateStr })
-    showToast(`🔒 ${dateFmt(dateStr)} locked`, 'bg-rose-500'); load()
+    showToast(`🔒 ${dateFmt(dateStr)} locked`, '#dc2626'); load()
   }
 
   const handleUnlockDay = async dateStr => {
     await supabase.from('kitchen_daily_locks').delete().eq('lock_date',dateStr)
-    showToast(`🔓 ${dateFmt(dateStr)} unlocked`, 'bg-amber-600'); load()
+    showToast(`🔓 ${dateFmt(dateStr)} unlocked`, '#d97706'); load()
   }
 
   const handleBudgetSave = async amount => {
     await supabase.from('kitchen_budgets').upsert({ month:viewMonth, budget_amount:amount },{ onConflict:'month' })
-    setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', 'bg-green-600')
+    setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', '#16a34a')
   }
 
   const handleCookLogSave = async form => {
@@ -2071,8 +1850,8 @@ export default function Kitchen({ currentUser }) {
       left_at:    form.left_at    || null,
       notes:      form.notes      || null,
     })
-    if (error) { showToast('Cook log save failed: '+error.message, 'bg-rose-600'); return }
-    showToast('Cook log saved ✓', 'bg-green-600')
+    if (error) { showToast('Cook log save failed: '+error.message, '#dc2626'); return }
+    showToast('Cook log saved ✓', '#16a34a')
     setShowCookLog(false)
     load()
   }
@@ -2096,66 +1875,72 @@ export default function Kitchen({ currentUser }) {
   )
 
   return (
-    <div className="gnsi-kitchen bg-[#faf6f1] min-h-screen text-stone-900 font-body">
-      <style>{TAILWIND_GLOBAL}</style>
+    <div style={{ background: '#f8fafc', minHeight: '100vh', color: '#1e293b', fontFamily: 'system-ui,sans-serif' }}>
+      <style>{`
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        @media print { .no-print { display: none !important; } }
+      `}</style>
 
       {/* Overlays */}
       {toast      && <Toast msg={toast.msg} color={toast.color} />}
       {showBudget && <BudgetModal current={budget} month={viewMonth} onSave={handleBudgetSave} onClose={()=>setShowBudget(false)} />}
       {showWA && (
-        <div className="animate-fade-in fixed inset-0 bg-[rgba(32,20,10,0.5)] z-[9999] flex items-center justify-center backdrop-blur-sm"
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={()=>setShowWA(null)}>
-          <div className="bg-white rounded-xl border border-stone-200 shadow-xl w-[420px] overflow-hidden" onClick={e=>e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-stone-200 bg-gradient-to-br from-green-50 to-white flex items-center gap-2">
-              <span className="text-xl">📲</span>
+          <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 20px 60px rgba(0,0,0,.2)', width: 420, overflow: 'hidden' }} onClick={e=>e.stopPropagation()}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 20 }}>📲</span>
               <div>
-                <div className="text-sm font-bold text-green-700">WhatsApp Message — Copied!</div>
-                <div className="text-[11px] text-stone-400 mt-0.5">Paste in any chat</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#16a34a' }}>WhatsApp Message — Copied!</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Paste in any chat</div>
               </div>
             </div>
-            <div className="px-5 py-4">
-              <pre className="text-xs text-stone-600 whitespace-pre-wrap bg-stone-50 rounded-lg p-3 border border-stone-100 max-h-[250px] overflow-y-auto font-mono leading-relaxed">{showWA}</pre>
-              <button type="button" className="mt-3.5 w-full px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-gradient-to-br from-orange-500 to-orange-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex justify-center"
-                onClick={()=>setShowWA(null)}>Close</button>
+            <div style={{ padding: '16px 20px' }}>
+              <pre style={{ fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #f1f5f9', maxHeight: 250, overflowY: 'auto' }}>{showWA}</pre>
+              <button type="button" style={{ ...btnPrimary(false), width: '100%', marginTop: 14, display: 'flex', justifyContent: 'center' }} onClick={()=>setShowWA(null)}>Close</button>
             </div>
           </div>
         </div>
       )}
 
       <Topbar
-  viewMonth={viewMonth}   setViewMonth={setViewMonth}
-  tab={tab}               setTab={setTab}
-  isAdmin={isAdmin}
-  activePanel={activePanel}          
-  onBudget={()=>setShowBudget(true)}
-  onReport={()=>generatePrintReport(entries,budget,viewMonth)}
-  onCSV={()=>exportToCSV(entries,viewMonth)}
-  onWhatsApp={()=>setShowWA(generateWhatsAppMsg(entries,filterDate))}
-  onAdd={()=>{ setEditing(null); setFormOpen(true) }}
-  onItemSetup={()=>{ setShowMonitor(false); setShowCookLog(false); setShowCookAtt(false); setShowItemSetup(v=>!v) }}
-onMonitor={()=>{ setShowItemSetup(false); setShowCookLog(false); setShowCookAtt(false); setShowMonitor(v=>!v) }}
-onCookLog={()=>{ setShowItemSetup(false); setShowMonitor(false); setShowCookAtt(false); setShowCookLog(v=>!v) }}
-onCookAtt={()=>{ setShowItemSetup(false); setShowMonitor(false); setShowCookLog(false); setShowCookAtt(v=>!v) }}
-/>
+        viewMonth={viewMonth}   setViewMonth={setViewMonth}
+        tab={tab}               setTab={setTab}
+        isAdmin={isAdmin}
+        activePanel={activePanel}
+        isMobile={isMobile}
+        onBudget={()=>setShowBudget(true)}
+        onReport={()=>generatePrintReport(entries,budget,viewMonth)}
+        onCSV={()=>exportToCSV(entries,viewMonth)}
+        onWhatsApp={()=>setShowWA(generateWhatsAppMsg(entries,filterDate))}
+        onAdd={()=>{ setEditing(null); setFormOpen(true) }}
+        onItemSetup={()=>{ setShowMonitor(false); setShowCookLog(false); setShowCookAtt(false); setShowItemSetup(v=>!v) }}
+        onMonitor={()=>{ setShowItemSetup(false); setShowCookLog(false); setShowCookAtt(false); setShowMonitor(v=>!v) }}
+        onCookLog={()=>{ setShowItemSetup(false); setShowMonitor(false); setShowCookAtt(false); setShowCookLog(v=>!v) }}
+        onCookAtt={()=>{ setShowItemSetup(false); setShowMonitor(false); setShowCookLog(false); setShowCookAtt(v=>!v) }}
+      />
 
-      <div ref={contentRef} className="max-w-[1080px] mx-auto px-7 py-6 h-[calc(100vh-88px)] overflow-y-auto">
-        {loading && <LoadingBar />}
+      <div ref={contentRef} style={{ maxWidth: 1080, margin: '0 auto', padding: isMobile ? '16px 12px' : '24px 28px' }}>
+        {loading && <LoadingBlock />}
 
-        <div className="flex gap-2.5 flex-wrap mb-4 stagger">
-          <KpiCard label="Today"     value={moneyFmt(todayTotal)} accent="#ea580c"  icon="🌅" subtitle={today()} pulse />
-          <KpiCard label="This Week" value={moneyFmt(weekTotal)}  accent="#1c1917"    icon="📅" />
-          <KpiCard label="Month"     value={moneyFmt(monthTotal)} accent="#0d9488"   icon="🗓" subtitle={viewMonth} />
-          <KpiCard label="Daily Avg" value={moneyFmt(avgPerDay)}  accent="#16a34a" icon="📈" />
-          <KpiCard label="Peak Day"  value={highDay.d?dateFmt(highDay.d):'—'} accent="#e11d48" icon="🔺" subtitle={highDay.d?moneyFmt(highDay.sum):''} />
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: 10, marginBottom: 16 }}>
+          <KpiCard label="Today"     value={moneyFmt(todayTotal)} color="#d97706" bg="#fffbeb" icon="🌅" sub={today()} />
+          <KpiCard label="This Week" value={moneyFmt(weekTotal)}  color="#1e3a5f" bg="#eff6ff" icon="📅" />
+          <KpiCard label="Month"     value={moneyFmt(monthTotal)} color="#0284c7" bg="#f0f9ff" icon="🗓" sub={viewMonth} />
+          <KpiCard label="Daily Avg" value={moneyFmt(avgPerDay)}  color="#16a34a" bg="#f0fdf4" icon="📈" />
+          <KpiCard label="Peak Day"  value={highDay.d?dateFmt(highDay.d):'—'} color="#dc2626" bg="#fef2f2" icon="🔺" sub={highDay.d?moneyFmt(highDay.sum):''} />
         </div>
 
         <BudgetBar spent={monthTotal} budget={budget} />
 
         {/* Panels */}
-        {showItemSetup && <ItemSetupPanel onClose={()=>setShowItemSetup(false)} showToast={showToast} />}
-        {showMonitor && isAdmin && <AdminMonitorPanel entries={entries} budget={budget} cookLog={cookLog} onClose={()=>setShowMonitor(false)} />}
-        {showCookLog && isAdmin && <CookLogForm onSave={handleCookLogSave} onClose={()=>setShowCookLog(false)} />}
-        {showCookAtt && isAdmin && <CookAttendancePanel onClose={()=>setShowCookAtt(false)} showToast={showToast} />}
+        {showItemSetup && <ItemSetupPanel onClose={()=>setShowItemSetup(false)} showToast={showToast} isMobile={isMobile} />}
+        {showMonitor && isAdmin && <AdminMonitorPanel entries={entries} budget={budget} cookLog={cookLog} onClose={()=>setShowMonitor(false)} isMobile={isMobile} />}
+        {showCookLog && isAdmin && <CookLogForm onSave={handleCookLogSave} onClose={()=>setShowCookLog(false)} isMobile={isMobile} />}
+        {showCookAtt && isAdmin && <CookAttendancePanel onClose={()=>setShowCookAtt(false)} showToast={showToast} isMobile={isMobile} />}
 
         {formOpen && (
           <EntryForm
@@ -2164,36 +1949,38 @@ onCookAtt={()=>{ setShowItemSetup(false); setShowMonitor(false); setShowCookLog(
             editing={editing}
             defaultDate={filterDate}
             kitchenItems={kitchenItems}
+            isMobile={isMobile}
           />
         )}
 
         {/* ── TAB CONTENT ── */}
-<div key={tab} className="animate-fade-up">
-  {tab === 'ledger' && (
-    <LedgerTab
-      entries={entries}
-      filterDate={filterDate}         setFilterDate={setFilterDate}
-      filterMeal={filterMeal}         setFilterMeal={setFilterMeal}
-      uniqueDates={uniqueDates}
-      filteredByMeal={filteredByMeal}
-      locks={locks}
-      viewMonth={viewMonth}
-      setFormOpen={setFormOpen}
-      handleDelete={handleDelete}
-      handleLockDay={handleLockDay}
-      handleUnlockDay={handleUnlockDay}
-      setEditing={setEditing}
-      setTab={setTab}
-    />
-  )}
-  {tab === 'analytics' && (
-    <AnalyticsTab
-      entries={entries}
-      setFilterDate={setFilterDate}
-      setTab={setTab}
-    />
-  )}
-</div>
+        <div key={tab}>
+          {tab === 'ledger' && (
+            <LedgerTab
+              entries={entries}
+              filterDate={filterDate}         setFilterDate={setFilterDate}
+              filterMeal={filterMeal}         setFilterMeal={setFilterMeal}
+              uniqueDates={uniqueDates}
+              filteredByMeal={filteredByMeal}
+              locks={locks}
+              viewMonth={viewMonth}
+              setFormOpen={setFormOpen}
+              handleDelete={handleDelete}
+              handleLockDay={handleLockDay}
+              handleUnlockDay={handleUnlockDay}
+              setEditing={setEditing}
+              setTab={setTab}
+              isMobile={isMobile}
+            />
+          )}
+          {tab === 'analytics' && (
+            <AnalyticsTab
+              entries={entries}
+              setFilterDate={setFilterDate}
+              setTab={setTab}
+            />
+          )}
+        </div>
       </div>
     </div>
   )
