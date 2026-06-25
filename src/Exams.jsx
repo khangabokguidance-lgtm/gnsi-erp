@@ -4294,17 +4294,17 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 .logo-ring{width:64px;height:64px;border-radius:50%;border:2px solid #D4A017;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .logo-text{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:white;}
 .header-center{flex:1;text-align:center;}
-.eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,0.75);margin-bottom:5px;}
+.eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:#cbd5e1;margin-bottom:5px;font-weight:600;}
 .inst-name{font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:white;margin-bottom:3px;}
-.inst-addr{font-size:11px;color:rgba(255,255,255,0.75);}
+.inst-addr{font-size:11px;color:#cbd5e1;}
 .doc-badge{text-align:center;flex-shrink:0;}
 .doc-badge-title{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:white;letter-spacing:2px;line-height:1.2;}
-.doc-badge-sub{font-size:10px;color:rgba(255,255,255,0.75);margin-top:3px;}
+.doc-badge-sub{font-size:10px;color:#cbd5e1;margin-top:3px;font-weight:600;}
 .exam-result-bar{background:#0f2d5e;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;}
 .exam-info{display:flex;gap:20px;flex-wrap:wrap;}
 .exam-info-item{display:flex;flex-direction:column;}
-.exam-info-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);margin-bottom:2px;}
-.exam-info-value{font-size:13px;font-weight:600;color:white;}
+.exam-info-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e0e7ff;margin-bottom:2px;font-weight:700;}
+.exam-info-value{font-size:13px;font-weight:600;color:#ffffff;}
 .result-pill-bar{display:flex;align-items:center;gap:8px;}
 .student-section{padding:14px 24px 10px;}
 .section-title{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:#0f2d5e;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;}
@@ -4314,12 +4314,12 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 .student-table .val{font-weight:600;color:#0A1628;}
 .student-table .val.big{font-family:'Playfair Display',serif;font-size:16px;color:#0f2d5e;}
 .score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:#0f2d5e;margin:0 16px 0;border-radius:6px;overflow:hidden;}
-.score-cell{text-align:center;padding:12px 8px;border-right:1px solid rgba(255,255,255,0.15);}
+.score-cell{text-align:center;padding:12px 8px;border-right:1px solid rgba(255,255,255,0.2);}
 .score-cell:last-child{border-right:none;}
-.score-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);margin-bottom:4px;}
-.score-val{font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:white;line-height:1;}
-.score-val.gold{color:#f0c040;}
-.score-sub{font-size:10px;color:rgba(255,255,255,0.6);margin-top:2px;}
+.score-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e0e7ff;margin-bottom:4px;font-weight:700;}
+.score-val{font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:#ffffff;line-height:1;}
+.score-val.gold{color:#fbbf24;}
+.score-sub{font-size:10px;color:#d0d9ff;margin-top:2px;font-weight:500;}
 .marks-section{padding:14px 24px;}
 .marks-table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #BFDBFE;border-radius:6px;overflow:hidden;}
 .marks-table thead tr{background:#DBEAFE;}
@@ -4338,7 +4338,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 .seal{width:90px;height:90px;display:flex;align-items:center;justify-content:center;}
 .seal img{width:90px;height:90px;object-fit:contain;}
 .footer-strip{background:linear-gradient(90deg,#071a3e,#0f2d5e,#071a3e);padding:8px 32px;}
-.footer-text{font-size:10px;color:rgba(255,255,255,0.75);text-align:center;}
+.footer-text{font-size:10px;color:#cbd5e1;text-align:center;font-weight:500;}
 .bottom-strip{height:4px;background:linear-gradient(90deg,#1a4d8a,#60A5FA,#1a4d8a);}
 @media print{body{background:white;padding:0;}.no-print{display:none!important;}.card{box-shadow:none;border-radius:0;width:100%;margin:0;}}
 `;
