@@ -80,6 +80,28 @@ async function safeFetch(queryFn) {
   }
 }
 
+// FIX: Supabase/PostgREST caps a plain .select() at 1000 rows. Page through with
+// .range() so tables like adm_flat_fees / adm_course_fees aren't silently truncated
+// for a multi-year institute. Mirrors the pagination pattern already used in Accounts.jsx.
+async function fetchAllRows(table, selectCols, orderCol = "created_at") {
+  const PAGE_SIZE = 1000
+  let all = [], from = 0
+  try {
+    while (true) {
+      const { data, error } = await supabase.from(table).select(selectCols)
+        .order(orderCol, { ascending: false })
+        .range(from, from + PAGE_SIZE - 1)
+      if (error) { console.warn(`Supabase pagination warning (${table}):`, error.message); break }
+      all = all.concat(data || [])
+      if (!data || data.length < PAGE_SIZE) break
+      from += PAGE_SIZE
+    }
+  } catch (e) {
+    console.warn(`Supabase pagination failed (${table}):`, e.message)
+  }
+  return all
+}
+
 // ─── REUSABLE UI COMPONENTS ──────────────────────────────────────────────────
 
 function Counter({ value, duration=1200 }) {
@@ -217,6 +239,9 @@ async function loadAllData() {
   const today = todayStr(), nowD = new Date()
 
   // FIX #4: removed duplicate teaching_logs fetch (was last item in Promise.all)
+  // FIX: removed expensesData (was a second, 200-row-capped query against the SAME
+  // accounts table already covered by accountsRes/accountsExpense — it was being
+  // summed alongside accountsExpense and silently doubling totalExpenses & plTrend).
   const [
     studentsCountRes, studentsRes, admissionsRes, recentAdmRes,
     accountsRes, recentFeeRes, staffRes, staffTasksRes, staffScoresRes,
@@ -226,7 +251,7 @@ async function loadAllData() {
     serviceHoursData, achievementsData, waiverData, scholarshipData,
     batchesData, timetableData, enquiriesData, doubtSessionsData,
     smsLogsData, studyMaterialData, selectionsData, syllabusCoverageData,
-    expensesData, teachingLogsRaw,
+    teachingLogsRaw,
     feeStructuresData, feeOverridesData, admFlatFeesData, admCourseFeesData,
     entranceExamsData, entranceCandidatesData, entranceResultsData,
     studyLockersData, lockerMaterialsData, socialCampaignsData,
@@ -237,7 +262,8 @@ async function loadAllData() {
 supabase.from("students").select("gender, state, date_of_birth, created_at, hostel_type, course, batch"),
 supabase.from("adm_applications").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
 supabase.from("adm_applications").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
-    supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note"),
+    // FIX: exclude soft-deleted rows so dashboard totals match Accounts.jsx exactly
+    supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note").eq("is_soft_deleted",false),
     supabase.from("adm_fee_collections").select("amount_paid,fee_type,adm_app_id,student_name,pay_date,pay_mode,description").order("pay_date",{ascending:false}).limit(6),
     safeFetch(()=>supabase.from("staff_profiles").select("id,name,department,status,designation")),
     safeFetch(()=>supabase.from("management_checklist").select("id,status,priority,section,task,assigned_to,created_at")),
@@ -267,13 +293,14 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
     safeFetch(()=>supabase.from("study_material").select("id,title,subject,batch_name,material_type,distributed_date,total_copies,distributed_copies")),
     safeFetch(()=>supabase.from("selections").select("id,student_name,exam_name,rank,year,batch_name,category,school_allotted")),
     safeFetch(()=>supabase.from("monthly_syllabus").select("teacher_name,subject,batch_name,total_topics,covered_topics,month")),
-    safeFetch(()=>supabase.from("accounts").select("id,category,amount,entry_date,note,added_by,created_at").eq("type","Expense").order("entry_date",{ascending:false}).limit(200)),
     // FIX #4: single fetch with all needed columns (removed duplicate)
     safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
     safeFetch(()=>supabase.from("fee_structures").select("session_year,course,batch,hostel_type,flat_fee,course_fee,admission_fee")),
     safeFetch(()=>supabase.from("student_fee_overrides").select("gcc_no,flat_fee_override,reason,created_at")),
-    safeFetch(()=>supabase.from("adm_flat_fees").select("adm_app_id,amount,status,month,year").order("created_at",{ascending:false}).limit(200)),
-    safeFetch(()=>supabase.from("adm_course_fees").select("adm_app_id,amount_paid,status,for_month,year").order("created_at",{ascending:false}).limit(200)),
+    // FIX: removed .limit(200) — was silently dropping older flat/course fee records
+    // for a 10-year-old institute; now pages through the full table via fetchAllRows.
+    fetchAllRows("adm_flat_fees","adm_app_id,amount,status,month,year"),
+    fetchAllRows("adm_course_fees","adm_app_id,amount_paid,status,for_month,year"),
     safeFetch(()=>supabase.from("entrance_exams").select("id,exam_type,exam_date,status,total_seats,venue").order("exam_date",{ascending:false})),
     safeFetch(()=>supabase.from("entrance_candidates").select("id,exam_id,status,roll_number").order("created_at",{ascending:false})),
     safeFetch(()=>supabase.from("entrance_results").select("id,exam_id,total_marks,marks_obtained,result_status").order("created_at",{ascending:false})),
@@ -295,8 +322,14 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   const accountsExpense = (accountsRes.data || []).filter(r => r.type === "Expense")
   const totalFeeCollected = allIncome.reduce((s,r)=>s+(Number(r.amount)||0),0)
   const admFeeTotal    = allIncome.filter(r=>r.category==="Admission").reduce((s,r)=>s+(Number(r.amount)||0),0)
-  const flatFeeTotal   = admFlatFeesData.reduce((s,r)=>s+(Number(r.amount)||0),0)
-const courseFeeTotal = admCourseFeesData.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  // FIX: flatFeeTotal/courseFeeTotal now derive from the SAME accounts rows as admFeeTotal
+  // (matching the categories FeeCollectionModal's upsertAccount() writes: 'Hostel' for flat
+  // fees, 'Fees' for course fees) instead of separately summing adm_flat_fees/adm_course_fees.
+  // This breakdown previously came from a different source than totalFeeCollected, so
+  // Admission + Flat + Course never reconciled with "Total Income" shown elsewhere on this
+  // dashboard or in Accounts.jsx. It now does, by construction.
+  const flatFeeTotal   = allIncome.filter(r=>r.category==="Hostel").reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const courseFeeTotal = allIncome.filter(r=>r.category==="Fees").reduce((s,r)=>s+(Number(r.amount)||0),0)
   const feePending = 0 // fee_invoices not in use — pending calc requires fee structure setup
   const monthlyFees = ACADEMIC_MONTHS.map(m=>({month:m.label,collected:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),target:500000}))
   const feeAging=[{bucket:"0-30 days",amount:0,count:0,color:T.amber},{bucket:"31-60 days",amount:0,count:0,color:T.orange},{bucket:"60+ days",amount:0,count:0,color:T.rose}]
@@ -542,23 +575,23 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
   }).sort((a,b)=>b.streak-a.streak)
 
   // ── Expenses ──
-  // FIX #5: merge gnsi_expenditure + accounts Expense rows for complete P&L
-  const gnsiExpTotal = expensesData.reduce((s,e)=>s+(Number(e.amount)||0),0)
+  // FIX: gnsiExpTotal previously summed expensesData (a separately-fetched, 200-row-capped
+  // query against the SAME accounts table as accountsExpense), then ADDED it to acctExpTotal.
+  // That double-counted every expense row, inflating totalExpenses (and deflating netPL) by
+  // up to 2x. accountsExpense (from the unlimited accountsRes fetch) is the single correct
+  // source — same one Accounts.jsx uses — so it's now used alone, with no second source to merge.
   const acctExpTotal = accountsExpense.reduce((s,r)=>s+(Number(r.amount)||0),0)
-  const totalExpenses = gnsiExpTotal + acctExpTotal
+  const totalExpenses = acctExpTotal
   const netPL=totalFeeCollected-totalExpenses
 
   const expenseCategoryMap={}
-  expensesData.forEach(e=>{const c=e.category||"Other";expenseCategoryMap[c]=(expenseCategoryMap[c]||0)+(Number(e.amount)||0)})
-  // Also bucket accounts-based expenses under their category
   accountsExpense.forEach(r=>{const c=r.category||"Other";expenseCategoryMap[c]=(expenseCategoryMap[c]||0)+(Number(r.amount)||0)})
   const expenseByCategory=Object.entries(expenseCategoryMap).sort((a,b)=>b[1]-a[1]).map(([name,amount],i)=>({name,amount,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
 
   const expenseMonthMap={}
-  expensesData.forEach(e=>{const mo=(e.entry_date||e.created_at)?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(e.amount)||0)})
   accountsExpense.forEach(r=>{const mo=r.entry_date?.slice(0,7);if(!mo)return;expenseMonthMap[mo]=(expenseMonthMap[mo]||0)+(Number(r.amount)||0)})
   const plTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,income:allIncome.filter(r=>r.entry_date?.startsWith(m.key)).reduce((s,r)=>s+(Number(r.amount)||0),0),expense:expenseMonthMap[m.key]||0})).map(m=>({...m,pl:m.income-m.expense}))
-  const recentExpenses=expensesData.slice(-6).reverse()
+  const recentExpenses=[...accountsExpense].sort((a,b)=>(b.entry_date||"").localeCompare(a.entry_date||"")).slice(0,6)
 
   // ── Notifications ──
   const notifications=[]
