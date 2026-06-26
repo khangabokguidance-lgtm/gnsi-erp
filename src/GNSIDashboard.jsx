@@ -85,24 +85,34 @@ async function safeFetch(queryFn) {
 // truncated for a multi-year institute. Mirrors the pagination pattern already used
 // in Accounts.jsx ("PHASE 5 FIX" there). `filterFn`, if given, receives the query
 // builder so callers can chain .eq()/.in()/etc before pagination is applied.
+//
+// HARDENING: unlike a naive pager, this does NOT silently swallow a mid-pagination
+// error and return a partial page (that would reintroduce the exact silent-truncation
+// bug we're fixing). On any page error it THROWS, so loadAllData surfaces it instead of
+// quietly under-counting. Returns { rows, pages, complete } so callers can assert
+// completeness. MAX_PAGES is a safety bound against an infinite loop.
 async function fetchAllRows(table, selectCols, { orderCol = "created_at", filterFn } = {}) {
   const PAGE_SIZE = 1000
-  let all = [], from = 0
-  try {
-    while (true) {
-      let q = supabase.from(table).select(selectCols)
-      if (filterFn) q = filterFn(q)
-      q = q.order(orderCol, { ascending: false }).range(from, from + PAGE_SIZE - 1)
-      const { data, error } = await q
-      if (error) { console.warn(`Supabase pagination warning (${table}):`, error.message); break }
-      all = all.concat(data || [])
-      if (!data || data.length < PAGE_SIZE) break
-      from += PAGE_SIZE
+  const MAX_PAGES = 50 // 50k rows ceiling — raise if a single table ever exceeds this
+  let all = [], from = 0, pages = 0, complete = false
+  while (pages < MAX_PAGES) {
+    let q = supabase.from(table).select(selectCols)
+    if (filterFn) q = filterFn(q)
+    q = q.order(orderCol, { ascending: false }).range(from, from + PAGE_SIZE - 1)
+    const { data, error } = await q
+    if (error) {
+      // Throw rather than break — a partial total is worse than a visible failure.
+      throw new Error(`fetchAllRows(${table}) failed on page ${pages}: ${error.message}`)
     }
-  } catch (e) {
-    console.warn(`Supabase pagination failed (${table}):`, e.message)
+    all = all.concat(data || [])
+    pages++
+    if (!data || data.length < PAGE_SIZE) { complete = true; break }
+    from += PAGE_SIZE
   }
-  return all
+  if (!complete) {
+    console.warn(`fetchAllRows(${table}) hit MAX_PAGES (${MAX_PAGES}) — result may be truncated. Raise MAX_PAGES.`)
+  }
+  return { rows: all, pages, complete }
 }
 
 // ─── REUSABLE UI COMPONENTS ──────────────────────────────────────────────────
@@ -247,7 +257,7 @@ async function loadAllData() {
   // summed alongside accountsExpense and silently doubling totalExpenses & plTrend).
   const [
     studentsCountRes, studentsRes, admissionsRes, recentAdmRes,
-    accountsData, recentFeeRes, staffRes, staffTasksRes, staffScoresRes,
+    accountsResult, recentFeeRes, staffRes, staffTasksRes, staffScoresRes,
     attendanceTodayRes, attendanceAllRes, housesRawRes, defaultersRes,
     hostelRoomsData, hostelIncidentsData, messData, housePointsData,
     clubsData, leavesData, recruitmentData, examMarksData, sportsData,
@@ -255,7 +265,7 @@ async function loadAllData() {
     batchesData, timetableData, enquiriesData, doubtSessionsData,
     smsLogsData, studyMaterialData, selectionsData, syllabusCoverageData,
     teachingLogsRaw,
-    feeStructuresData, feeOverridesData, admFlatFeesData, admCourseFeesData,
+    feeStructuresData, feeOverridesData, admFlatFeesResult, admCourseFeesResult,
     entranceExamsData, entranceCandidatesData, entranceResultsData,
     studyLockersData, lockerMaterialsData, socialCampaignsData,
     socialLeadsData, socialPostsData, connectBroadcastsData,
@@ -324,6 +334,18 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
     safeFetch(()=>supabase.from("qbank_questions").select("id,course,subject,difficulty,question_type,created_at").order("created_at",{ascending:false})),
     safeFetch(()=>supabase.from("syllabus_topics").select("id,subject_name,course,completed,completed_at,chapter_name,expected_date,display_order").order("display_order",{ascending:true})),
   ])
+
+  // HARDENING: unwrap the paginated {rows,pages,complete} results into plain arrays the
+  // downstream code expects. Capture accounts diagnostics so we can both (a) assert the
+  // fetch was complete and (b) surface the row count on-screen for deploy verification.
+  const accountsData     = accountsResult.rows
+  const admFlatFeesData  = admFlatFeesResult.rows
+  const admCourseFeesData= admCourseFeesResult.rows
+  const __accountsDiag = {
+    rowCount: accountsData.length,
+    pages:    accountsResult.pages,
+    complete: accountsResult.complete,
+  }
 
   // ── Finance ──
   const allIncome = accountsData.filter(r => r.type === "Income")
@@ -737,6 +759,8 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
   const syllabusBySubject=Object.entries(syllabusSubjectMap).sort((a,b)=>b[1].total-a[1].total).slice(0,8).map(([subject,v],i)=>({subject,total:v.total,completed:v.completed,pct:v.total>0?pct(v.completed,v.total):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
 
   return {
+    // HARDENING: accounts fetch diagnostics for on-screen deploy verification.
+    __accountsDiag,
     // FIX #1: expose both counts separately
     totalStudents: totalStudentsCount,
     enrolledStudents: admEnrolled,
@@ -802,20 +826,26 @@ export default function GNSIDashboard({ scrollToSection }) {
 
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),60000); return()=>clearInterval(t) },[])
 
-  useEffect(()=>{
-    const channel=supabase.channel("gnsi-live")
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"accounts"},
-        payload=>{ if(payload.new.type==="Income") setLiveTotal(v=>v+(Number(payload.new.amount)||0)) })
-      .subscribe()
-    return()=>{ channel.unsubscribe() }
-  },[])
-
   const load = useCallback(async()=>{
     setLoading(true); setError(null)
     try { const d=await loadAllData(); setData(d); setLiveTotal(d.totalFeeCollected) }
     catch(e) { console.error(e); setError(e.message) }
     finally { setLoading(false) }
   },[])
+
+  useEffect(()=>{
+    // HARDENING: the old handler incremented liveTotal on every Income INSERT. That
+    // drifts from the true total whenever a row is soft-deleted, edited, or upsert-
+    // overwritten (upsertAccount uses onConflict→UPDATE, which never fires INSERT).
+    // Instead, on ANY accounts change we debounce a full reload so every total
+    // reconverges to the authoritative paginated figure rather than guessing deltas.
+    let debounce
+    const channel=supabase.channel("gnsi-live")
+      .on("postgres_changes",{event:"*",schema:"public",table:"accounts"},
+        ()=>{ clearTimeout(debounce); debounce=setTimeout(()=>{ load() }, 1500) })
+      .subscribe()
+    return()=>{ clearTimeout(debounce); channel.unsubscribe() }
+  },[load])
 
   useEffect(()=>{ load() },[load])
 
@@ -935,6 +965,13 @@ export default function GNSIDashboard({ scrollToSection }) {
               <div>
                 <div style={{fontSize:10,color:T.gold,fontWeight:700,textTransform:"uppercase",letterSpacing:".1em"}}>Live Fee Collection · AY {CURRENT_YEAR}–{CURRENT_YEAR+1}</div>
                 <div style={{fontSize:26,fontWeight:900,color:T.ink,letterSpacing:"-.02em",marginTop:1}}>{fmt(liveTotal)}</div>
+                {data.__accountsDiag && (
+                  <div style={{fontSize:9,color:data.__accountsDiag.complete?T.inkSub:T.rose,marginTop:2,fontWeight:600}}>
+                    {data.__accountsDiag.complete
+                      ? `✓ ${data.__accountsDiag.rowCount.toLocaleString("en-IN")} ledger rows · ${data.__accountsDiag.pages} page${data.__accountsDiag.pages>1?"s":""}`
+                      : `⚠ Incomplete fetch — ${data.__accountsDiag.rowCount.toLocaleString("en-IN")} rows loaded, totals may be understated`}
+                  </div>
+                )}
               </div>
             </div>
             <div style={{flex:1,minWidth:200,maxWidth:300}}>
