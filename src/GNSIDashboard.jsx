@@ -81,16 +81,19 @@ async function safeFetch(queryFn) {
 }
 
 // FIX: Supabase/PostgREST caps a plain .select() at 1000 rows. Page through with
-// .range() so tables like adm_flat_fees / adm_course_fees aren't silently truncated
-// for a multi-year institute. Mirrors the pagination pattern already used in Accounts.jsx.
-async function fetchAllRows(table, selectCols, orderCol = "created_at") {
+// .range() so tables like accounts / adm_flat_fees / adm_course_fees aren't silently
+// truncated for a multi-year institute. Mirrors the pagination pattern already used
+// in Accounts.jsx ("PHASE 5 FIX" there). `filterFn`, if given, receives the query
+// builder so callers can chain .eq()/.in()/etc before pagination is applied.
+async function fetchAllRows(table, selectCols, { orderCol = "created_at", filterFn } = {}) {
   const PAGE_SIZE = 1000
   let all = [], from = 0
   try {
     while (true) {
-      const { data, error } = await supabase.from(table).select(selectCols)
-        .order(orderCol, { ascending: false })
-        .range(from, from + PAGE_SIZE - 1)
+      let q = supabase.from(table).select(selectCols)
+      if (filterFn) q = filterFn(q)
+      q = q.order(orderCol, { ascending: false }).range(from, from + PAGE_SIZE - 1)
+      const { data, error } = await q
       if (error) { console.warn(`Supabase pagination warning (${table}):`, error.message); break }
       all = all.concat(data || [])
       if (!data || data.length < PAGE_SIZE) break
@@ -240,11 +243,11 @@ async function loadAllData() {
 
   // FIX #4: removed duplicate teaching_logs fetch (was last item in Promise.all)
   // FIX: removed expensesData (was a second, 200-row-capped query against the SAME
-  // accounts table already covered by accountsRes/accountsExpense — it was being
+  // accounts table already covered by accountsData/accountsExpense — it was being
   // summed alongside accountsExpense and silently doubling totalExpenses & plTrend).
   const [
     studentsCountRes, studentsRes, admissionsRes, recentAdmRes,
-    accountsRes, recentFeeRes, staffRes, staffTasksRes, staffScoresRes,
+    accountsData, recentFeeRes, staffRes, staffTasksRes, staffScoresRes,
     attendanceTodayRes, attendanceAllRes, housesRawRes, defaultersRes,
     hostelRoomsData, hostelIncidentsData, messData, housePointsData,
     clubsData, leavesData, recruitmentData, examMarksData, sportsData,
@@ -262,8 +265,14 @@ async function loadAllData() {
 supabase.from("students").select("gender, state, date_of_birth, created_at, hostel_type, course, batch"),
 supabase.from("adm_applications").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
 supabase.from("adm_applications").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
-    // FIX: exclude soft-deleted rows so dashboard totals match Accounts.jsx exactly
-    supabase.from("accounts").select("amount,category,entry_date,type,payment_mode,note").eq("is_soft_deleted",false),
+    // FIX: this was a plain .select() with no .range() pagination — Supabase/PostgREST
+    // silently caps that at 1000 rows. With 1534+ transactions (per Accounts.jsx's own
+    // counter), this query was missing 500+ rows, which is the actual reason the
+    // dashboard's "Live Fee Collection" total didn't match Accounts.jsx's "Total Income".
+    // Now paginated, with the same is_soft_deleted filter Accounts.jsx uses.
+    fetchAllRows("accounts","id,amount,category,entry_date,type,payment_mode,note",{
+      orderCol:"id", filterFn:q=>q.eq("is_soft_deleted",false),
+    }),
     supabase.from("adm_fee_collections").select("amount_paid,fee_type,adm_app_id,student_name,pay_date,pay_mode,description").order("pay_date",{ascending:false}).limit(6),
     safeFetch(()=>supabase.from("staff_profiles").select("id,name,department,status,designation")),
     safeFetch(()=>supabase.from("management_checklist").select("id,status,priority,section,task,assigned_to,created_at")),
@@ -317,9 +326,9 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   ])
 
   // ── Finance ──
-  const allIncome = (accountsRes.data || []).filter(r => r.type === "Income")
+  const allIncome = accountsData.filter(r => r.type === "Income")
   // FIX #5: also track expense rows in accounts table so P&L is accurate
-  const accountsExpense = (accountsRes.data || []).filter(r => r.type === "Expense")
+  const accountsExpense = accountsData.filter(r => r.type === "Expense")
   const totalFeeCollected = allIncome.reduce((s,r)=>s+(Number(r.amount)||0),0)
   const admFeeTotal    = allIncome.filter(r=>r.category==="Admission").reduce((s,r)=>s+(Number(r.amount)||0),0)
   // FIX: flatFeeTotal/courseFeeTotal now derive from the SAME accounts rows as admFeeTotal
@@ -578,7 +587,7 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
   // FIX: gnsiExpTotal previously summed expensesData (a separately-fetched, 200-row-capped
   // query against the SAME accounts table as accountsExpense), then ADDED it to acctExpTotal.
   // That double-counted every expense row, inflating totalExpenses (and deflating netPL) by
-  // up to 2x. accountsExpense (from the unlimited accountsRes fetch) is the single correct
+  // up to 2x. accountsExpense (from the paginated accountsData fetch) is the single correct
   // source — same one Accounts.jsx uses — so it's now used alone, with no second source to merge.
   const acctExpTotal = accountsExpense.reduce((s,r)=>s+(Number(r.amount)||0),0)
   const totalExpenses = acctExpTotal
