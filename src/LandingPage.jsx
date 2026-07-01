@@ -648,13 +648,13 @@ window.submitGrievance = async () => {
     };
 
     window.ppLogin = async () => {
-      const phone = document.getElementById('ppPhone')?.value?.trim();
-      const sid   = document.getElementById('ppSid')?.value?.trim();
-      const err   = document.getElementById('ppErr');
-      const btn   = document.getElementById('ppLbtn');
+      const gccNo     = document.getElementById('ppPhone')?.value?.trim();
+      const nameInput = document.getElementById('ppSid')?.value?.trim().toUpperCase();
+      const err       = document.getElementById('ppErr');
+      const btn       = document.getElementById('ppLbtn');
 
-      if (!phone || !sid) {
-        if (err) { err.style.display = 'block'; err.textContent = 'Please enter both phone number and student ID.'; }
+      if (!gccNo || !nameInput) {
+        if (err) { err.style.display = 'block'; err.textContent = 'Please enter both GCC No. and Student Name.'; }
         return;
       }
       btn.disabled = true;
@@ -665,13 +665,12 @@ window.submitGrievance = async () => {
         const { data, error } = await supabase
           .from('students')
           .select('id, name, course, class_name, batch, hostel_type, status, admission_no')
-          .eq('phone', phone)
-          .eq('admission_no', sid)
+          .eq('gcc_no', gccNo)
           .eq('is_soft_deleted', false)
           .single();
 
-        if (error || !data) {
-          if (err) { err.style.display = 'block'; err.textContent = 'Student not found. Check phone number and admission number.'; }
+        if (error || !data || data.name?.toUpperCase() !== nameInput) {
+          if (err) { err.style.display = 'block'; err.textContent = 'Student not found. Check GCC No. and Name.'; }
           btn.disabled = false;
           btn.textContent = 'Login to Parents Portal →';
           return;
@@ -5001,19 +5000,19 @@ window.submitGrievance = async () => {
           <p>GNSI · Khangabok, Manipur</p>
         </div>
         <div className="pp-err" id="ppErr" />
-        <label className="pp-fl">Registered Phone Number</label>
+        <label className="pp-fl">GCC No.</label>
         <input
-          type="tel"
+          type="text"
           className="pp-fi"
           id="ppPhone"
-          placeholder="+91 XXXXXXXXXX"
+          placeholder="e.g. 1107"
         />
-        <label className="pp-fl">Student ID / Roll Number</label>
+        <label className="pp-fl">Student Name</label>
         <input
           type="text"
           className="pp-fi"
           id="ppSid"
-          placeholder="e.g. GNSI-2024-001"
+          placeholder="Full name as registered"
           onKeyDown={(e) => { if (e.key === 'Enter') window.ppLogin(); }}
         />
         <button className="pp-lbtn" id="ppLbtn" onClick={() => window.ppLogin()}>
