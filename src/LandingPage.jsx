@@ -664,11 +664,21 @@ window.submitGrievance = async () => {
       if (err) err.style.display = 'none';
 
       try {
-        const { data, error } = await supabase
-          .from('students')
-          .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no')
-          .eq('gcc_no', gccNo)
-          .single();
+        // Guard against a request that never resolves (paused backend, blocked
+        // network, dead connection, etc.) — without this, a hung request leaves
+        // the button stuck on "Checking…" forever with no way to recover short
+        // of reloading the page.
+        const timeout = (ms) => new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), ms));
+
+        const { data, error } = await Promise.race([
+          supabase
+            .from('students')
+            .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no')
+            .eq('gcc_no', gccNo)
+            .single(),
+          timeout(15000),
+        ]);
 
         if (error || !data || data.name?.toUpperCase().replace(/\s+/g,' ').trim() !== nameInput.replace(/\s+/g,' ').trim()) {
           const msg = error ? `Error: ${error.message}` : !data ? 'GCC No. not found.' : 'Name does not match.';
@@ -693,7 +703,7 @@ window.submitGrievance = async () => {
         ppLoadAtt(data.id);
 
       } catch (e) {
-        if (err) { err.style.display = 'block'; err.textContent = 'Connection error. Try again.'; }
+        if (err) { err.style.display = 'block'; err.textContent = e?.message || 'Connection error. Try again.'; }
         btn.disabled = false;
         btn.textContent = 'Login to Parents Portal →';
       }
