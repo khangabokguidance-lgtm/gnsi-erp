@@ -105,379 +105,529 @@ function ExportBar({ rows, filename, label = '' }) {
   )
 }
 
-// ── Student Fee Card (per-student history + admin revert) ─────────────────────
+// ── Report Export Engine ──────────────────────────────────────────────────────
 
-function StudentFeeCard({ student, adm_fee_collections, adm_flat_fees, adm_course_fees,
-                          isAdmin, currentUser, onRefresh, onCollect }) {
-  const n     = v => Number(v||0).toLocaleString('en-IN')
-  const gcc   = gccStr(student.gcc_no)
-  const [tab, setTab]     = useState('history')   // history | revert
-  const [toast, setToast] = useState(null)
-  const [saving, setSaving] = useState(false)
+// ① CSV (already exists as exportCSV above, alias for clarity)
+const _dl = (blob, name) => { const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u) }
 
-  const showToast = (msg, color='#16a34a') => { setToast({msg,color}); setTimeout(()=>setToast(null),3500) }
+// ② TSV
+function exportTSV(rows, filename) {
+  if (!rows?.length) { alert('No data.'); return }
+  const H = Object.keys(rows[0])
+  const body = [H.join('\t'), ...rows.map(r => H.map(h => String(r[h]??'').replace(/\t/g,' ')).join('\t'))].join('\n')
+  _dl(new Blob(['\ufeff'+body],{type:'text/tab-separated-values;charset=utf-8'}), filename+'.tsv')
+}
 
-  // ── All fee records for this student ──
-  const myAdm  = adm_fee_collections.filter(r => gccStr(r.adm_app_id)===gcc)
-  const myFlat = adm_flat_fees.filter(r => gccStr(r.adm_app_id)===gcc)
-  const myCrsf = adm_course_fees.filter(r => gccStr(r.adm_app_id)===gcc)
+// ③ JSON
+function exportJSONFile(rows, filename) {
+  if (!rows?.length) { alert('No data.'); return }
+  _dl(new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}), filename+'.json')
+}
 
-  const admTotal  = myAdm.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
-  const flatTotal = myFlat.reduce((s,r)=>s+(r.amount||0),0)
-  const crsfTotal = myCrsf.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
-  const grandTotal = admTotal + flatTotal + crsfTotal
+// ④ Excel-compatible HTML table (opens correctly in Excel / LibreOffice)
+function exportXLS(rows, filename, sheetTitle='Report') {
+  if (!rows?.length) { alert('No data.'); return }
+  const H = Object.keys(rows[0])
+  const esc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const hdr = H.map(h=>`<th style="background:#1e3a5f;color:white;font-weight:bold;padding:6px 10px;border:1px solid #ccc">${esc(h)}</th>`).join('')
+  const bdy = rows.map((r,i)=>{
+    const bg = i%2===0?'#ffffff':'#f8fafc'
+    return `<tr>${H.map(h=>`<td style="padding:5px 10px;border:1px solid #ddd;background:${bg}">${esc(r[h])}</td>`).join('')}</tr>`
+  }).join('')
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta charset="UTF-8"/><title>${sheetTitle}</title>
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>${sheetTitle}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px}</style></head>
+<body><h3 style="font-family:Arial;color:#1e3a5f">Guidance Navodaya &amp; Sainik Institute — ${sheetTitle}</h3>
+<table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table></body></html>`
+  _dl(new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'}), filename+'.xls')
+}
 
-  // Combined timeline sorted by pay_date desc
-  const timeline = [
-    ...myAdm.map(r=>({ ...r, _type:'Admission Fee', _amt: Number(r.amount_paid)||0, _desc: r.description||r.fee_type||'Admission', _date: r.pay_date, _table:'adm_fee_collections' })),
-    ...myFlat.map(r=>({ ...r, _type:'Flat Fee',      _amt: r.amount||0,              _desc: `${r.month} ${r.year}`,                 _date: r.pay_date, _table:'adm_flat_fees'       })),
-    ...myCrsf.map(r=>({ ...r, _type:'Course Fee',    _amt: Number(r.amount_paid)||0, _desc: `${r.course} — ${r.for_month} ${r.year}`,_date: r.pay_date, _table:'adm_course_fees'     })),
-  ].sort((a,b)=>(b._date||'').localeCompare(a._date||''))
+// ⑤ Print-ready HTML (opens in new tab → Ctrl+P)
+function exportPrintHTML(rows, filename, title, meta={}) {
+  if (!rows?.length) { alert('No data.'); return }
+  const H = Object.keys(rows[0])
+  const esc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const hdr = H.map(h=>`<th>${esc(h)}</th>`).join('')
+  const bdy = rows.map((r,i)=>`<tr class="${i%2===0?'':'ev'}">${H.map(h=>`<td>${esc(r[h])}</td>`).join('')}</tr>`).join('')
+  const metaRows = Object.entries(meta).map(([k,v])=>`<div class="mi"><span class="mk">${esc(k)}</span><span class="mv">${esc(String(v))}</span></div>`).join('')
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${title}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:white;padding:12mm 14mm}
+.inst{font-size:18px;font-weight:900;color:#1e3a5f;font-family:Georgia,serif}
+.tag{font-size:9px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+.addr{font-size:9px;color:#475569;margin-top:1px}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1e3a5f;padding-bottom:8px;margin-bottom:10px}
+.rinfo{text-align:right}.rtype{font-size:11px;font-weight:900;color:white;background:#1e3a5f;padding:2px 10px;border-radius:4px;display:inline-block}
+.rdate{font-size:10px;color:#64748b;display:block;margin-top:3px}
+.meta{display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:10px}
+.mi{display:flex;flex-direction:column}.mk{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
+.mv{font-size:11px;font-weight:700;color:#1e3a5f}
+table{width:100%;border-collapse:collapse;font-size:10.5px}
+thead tr{background:#1e3a5f;color:white}th{padding:6px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}
+tbody tr{border-bottom:1px solid #f1f5f9}tbody tr.ev{background:#f8fafc}td{padding:5px 8px;vertical-align:middle}
+.foot{margin-top:10px;display:flex;justify-content:space-between;font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:5px}
+@media print{body{padding:0}.np{display:none}}
+@media screen{body{background:#e2e8f0;padding:20px}.wrap{background:white;padding:20mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:297mm;margin:0 auto}
+.pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
+.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}
+</style></head><body>
+<button class="pbtn np" onclick="window.print()">🖨 Print / PDF</button>
+<button class="cbtn np" onclick="window.close()">✕ Close</button>
+<div class="wrap">
+<div class="hdr">
+<div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div>
+<div class="tag">Premier Coaching for NVS · Sainik School · RMS</div>
+<div class="addr">Khangabok Sorok Wangma, Thoubal District, Manipur – 795 131</div></div>
+<div class="rinfo"><span class="rtype">${esc(title)}</span><span class="rdate">Generated: ${new Date().toLocaleString('en-IN')}</span></div>
+</div>
+<div class="meta">${metaRows}</div>
+<table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table>
+<div class="foot"><span>GNSI Portal · guidancekhangabok.in</span><span>Total records: ${rows.length}</span><span>CONFIDENTIAL — For Internal Use</span></div>
+</div></body></html>`
+  const win = window.open('','_blank','width=1000,height=700,scrollbars=yes')
+  win.document.write(html); win.document.close()
+}
 
-  // ── Revert handler ──
-  const doRevert = async (row) => {
-    if (!isAdmin) return
-    const reason = window.prompt(
-      `Revert "${row._desc}" (₹${n(row._amt)})?\n\nThis removes the entry from books so it can be re-collected.\nReason (optional):`
-    )
-    if (reason === null) return
-    setSaving(true)
-    try {
-      // Build accountSourceRef based on type
-      let accountSourceRef = null, accountSourceType = null
-      if (row._table === 'adm_fee_collections') {
-        accountSourceType = row.fee_type==='advance' ? 'advance_fee' : 'adm_fee'
-        if (row.fee_type==='admission')     accountSourceRef = sourceRef.admission(gcc)
-        else if (row.fee_type==='advance')  accountSourceRef = row.id
-        else if (row.fee_type==='item')     accountSourceRef = sourceRef.admItem(gcc, row.description==='Prospectus'?'prospectus':(row.description||'').replace(/^Dress Kit — /,''))
-      } else if (row._table === 'adm_flat_fees') {
-        accountSourceType = 'flat_fee'
-        accountSourceRef  = sourceRef.flatFee(gcc, row.month, row.year)
-      } else if (row._table === 'adm_course_fees') {
-        accountSourceType = 'course_fee'
-        accountSourceRef  = sourceRef.courseFee(gcc, row.for_month, row.year)
-      }
-      await revertFeeCollection({ table: row._table, id: row.id, accountSourceRef, accountSourceType,
-        revertedBy: currentUser?.name||'Admin', reason })
-      showToast(`↩️ Reverted: ${row._desc}`, '#dc2626')
-      onRefresh()
-    } catch (err) { showToast('Revert failed: '+err.message, '#dc2626') }
-    setSaving(false)
+// ── Report presets (what data + columns each report contains) ─────────────────
+function buildReports({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows, todayStr, afDateFrom, afDateTo }) {
+  const n  = v => Number(v||0).toLocaleString('en-IN')
+  const gs = v => gccStr(v)
+
+  // helper: lookup student
+  const stu = gcc => students.find(s=>String(s.gcc_no)===String(gcc))
+
+  // ─ 1. Fee Status Summary (all students) ──────────────────────────────────
+  const feeStatusRows = liveRows.map(s => ({
+    'GCC No':        `GCC-${s.gcc_no}`,
+    'Student Name':  s.name || '—',
+    'Batch/Class':   s.class_name || s.batch || '—',
+    'Course':        s.course || '—',
+    'Hostel Type':   s.hostel_type || '—',
+    'Admission Fee': s.admTotal  > 0 ? s.admTotal  : 0,
+    'Flat Fees':     s.flatTotal > 0 ? s.flatTotal : 0,
+    'Course Fees':   s.crsfTotal > 0 ? s.crsfTotal : 0,
+    'Total Paid':    s.grandTotal,
+    'Status':        s.liveStatus,
+    'Repeater':      s.is_repeater ? 'Yes' : 'No',
+  }))
+
+  // ─ 2. Pending Students ────────────────────────────────────────────────────
+  const pendingRows = liveRows.filter(s=>s.grandTotal===0).map(s=>({
+    'GCC No':       `GCC-${s.gcc_no}`,
+    'Student Name': s.name||'—',
+    'Batch/Class':  s.class_name||s.batch||'—',
+    'Course':       s.course||'—',
+    'Hostel Type':  s.hostel_type||'—',
+    'Status':       'Pending',
+  }))
+
+  // ─ 3. Flat Fee Collection Register ───────────────────────────────────────
+  const flatRows = adm_flat_fees.map(r => {
+    const s = stu(r.adm_app_id)
+    return {
+      'GCC No':       `GCC-${r.adm_app_id}`,
+      'Student Name': s?.name||'—',
+      'Course':       s?.course||'—',
+      'Hostel Type':  s?.hostel_type||'—',
+      'Month':        r.month||'—',
+      'Year':         r.year||'—',
+      'Amount':       r.amount||0,
+      'Pay Date':     r.pay_date||'—',
+      'Pay Mode':     r.pay_mode||'—',
+      'Txn Ref':      r.txn_ref||'—',
+      'Collected By': r.collected_by||'—',
+    }
+  }).sort((a,b)=>(b['Pay Date']).localeCompare(a['Pay Date']))
+
+  // ─ 4. Course Fee Collection Register ─────────────────────────────────────
+  const crsfRows = adm_course_fees.map(r => {
+    const s = stu(r.adm_app_id)
+    return {
+      'GCC No':       `GCC-${r.adm_app_id}`,
+      'Student Name': s?.name||'—',
+      'Course':       r.course||'—',
+      'Hostel Type':  s?.hostel_type||'—',
+      'For Month':    r.for_month||'—',
+      'Year':         r.year||'—',
+      'Amount Paid':  Number(r.amount_paid)||0,
+      'Pay Date':     r.pay_date||'—',
+      'Pay Mode':     r.pay_mode||'—',
+      'Txn Ref':      r.txn_ref||'—',
+      'Collected By': r.collected_by||'—',
+    }
+  }).sort((a,b)=>(b['Pay Date']).localeCompare(a['Pay Date']))
+
+  // ─ 5. Admission Fee Register ──────────────────────────────────────────────
+  const admRows = adm_fee_collections.map(r => {
+    const s = stu(r.adm_app_id)
+    return {
+      'GCC No':       `GCC-${r.adm_app_id}`,
+      'Student Name': s?.name||'—',
+      'Course':       s?.course||'—',
+      'Fee Type':     r.fee_type||'—',
+      'Description':  r.description||'—',
+      'Amount Paid':  Number(r.amount_paid)||0,
+      'Pay Date':     r.pay_date||'—',
+      'Pay Mode':     r.pay_mode||'—',
+      'Txn Ref':      r.txn_ref||'—',
+      'Collected By': r.collected_by||'—',
+    }
+  }).sort((a,b)=>(b['Pay Date']).localeCompare(a['Pay Date']))
+
+  // ─ 6. Course-wise Summary ────────────────────────────────────────────────
+  const courses = ['Sainik','Navodaya','Foundation','Combined Course']
+  const courseRows = courses.map(c => {
+    const ss = liveRows.filter(s=>s.course===c)
+    return {
+      'Course':            c,
+      'Total Students':    ss.length,
+      'Boarders':          ss.filter(s=>s.hostel_type==='Boarder').length,
+      'Day Boarders':      ss.filter(s=>s.hostel_type==='Day Boarder').length,
+      'Day Scholars':      ss.filter(s=>s.hostel_type==='Day Scholar').length,
+      'Total Adm Fees':    ss.reduce((t,s)=>t+s.admTotal,0),
+      'Total Flat Fees':   ss.reduce((t,s)=>t+s.flatTotal,0),
+      'Total Course Fees': ss.reduce((t,s)=>t+s.crsfTotal,0),
+      'Grand Total':       ss.reduce((t,s)=>t+s.grandTotal,0),
+    }
+  }).filter(r=>r['Total Students']>0)
+
+  // ─ 7. Monthly Collection Summary ─────────────────────────────────────────
+  const monthMap = {}
+  const addToMonth = (monthKey, type, amt) => {
+    if (!monthMap[monthKey]) monthMap[monthKey] = { 'Month':monthKey, 'Flat Fee':0, 'Course Fee':0, 'Admission Fee':0 }
+    monthMap[monthKey][type] = (monthMap[monthKey][type]||0) + amt
+  }
+  adm_flat_fees.forEach(r => { if(r.month && r.year) addToMonth(`${r.month} ${r.year}`,'Flat Fee',r.amount||0) })
+  adm_course_fees.forEach(r => { if(r.for_month && r.year) addToMonth(`${r.for_month} ${r.year}`,'Course Fee',Number(r.amount_paid)||0) })
+  adm_fee_collections.forEach(r => { if(r.pay_date) { const d=new Date(r.pay_date+'T00:00:00'); addToMonth(`${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`,'Admission Fee',Number(r.amount_paid)||0) } })
+  const monthlyRows = Object.values(monthMap).map(m => ({
+    ...m,
+    'Total': (m['Flat Fee']||0)+(m['Course Fee']||0)+(m['Admission Fee']||0)
+  }))
+
+  // ─ 8. Daily transactions (date-range) ────────────────────────────────────
+  const from = afDateFrom||'2020-01-01', to = afDateTo||todayStr
+  const inRange = d => d && d>=from && d<=to
+  const dailyRows = [
+    ...adm_flat_fees.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Flat Fee','Description':`${r.month} ${r.year}`,'Amount':r.amount||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
+    ...adm_course_fees.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':r.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Course Fee','Description':`${r.course} — ${r.for_month} ${r.year}`,'Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
+    ...adm_fee_collections.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Admission Fee','Description':r.description||r.fee_type||'—','Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
+  ].sort((a,b)=>b['Date'].localeCompare(a['Date']))
+
+  return { feeStatusRows, pendingRows, flatRows, crsfRows, admRows, courseRows, monthlyRows, dailyRows }
+}
+
+// ── Reports Export Tab ────────────────────────────────────────────────────────
+function ReportsExportTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows }) {
+  const w = useWindowWidth()
+  const isMobile = w < 768
+  const todayStr = new Date().toLocaleDateString('en-CA')
+
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo,   setDateTo]   = useState('')
+  const [courseF,  setCourseF]  = useState('All')
+  const [hostelF,  setHostelF]  = useState('All')
+  const [statusF,  setStatusF]  = useState('All')
+  const [lastExport, setLastExport] = useState(null)
+
+  const n  = v => Number(v||0).toLocaleString('en-IN')
+
+  // Apply course/hostel/status filter to liveRows for status report
+  const filteredLive = useMemo(() => liveRows.filter(s => {
+    if (courseF!=='All' && s.course!==courseF) return false
+    if (hostelF!=='All' && s.hostel_type!==hostelF) return false
+    if (statusF!=='All' && s.liveStatus!==statusF) return false
+    return true
+  }), [liveRows, courseF, hostelF, statusF])
+
+  const reports = useMemo(() => buildReports({
+    students, adm_fee_collections, adm_flat_fees, adm_course_fees,
+    liveRows: filteredLive, todayStr,
+    afDateFrom: dateFrom, afDateTo: dateTo,
+  }), [students, adm_fee_collections, adm_flat_fees, adm_course_fees, filteredLive, dateFrom, dateTo, todayStr])
+
+  const toast = (name) => setLastExport(`✅ ${name} exported successfully`)
+
+  // Summary cards
+  const grandTotal = liveRows.reduce((s,r)=>s+r.grandTotal,0)
+  const admTotal   = adm_fee_collections.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  const flatTotal  = adm_flat_fees.reduce((s,r)=>s+(r.amount||0),0)
+  const crsfTotal  = adm_course_fees.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+
+  const inp3 = { padding:'8px 11px', borderRadius:7, border:'1px solid #d1d5db', fontSize:12, outline:'none', background:'white', width:'100%' }
+
+  // ── Report definitions ────────────────────────────────────────────────────
+  const REPORT_GROUPS = [
+    {
+      group: 'Student Reports',
+      icon: '👨‍🎓',
+      color: '#1e3a5f',
+      bg: '#eff6ff',
+      reports: [
+        {
+          id: 'fee_status',
+          name: 'Fee Status Summary',
+          desc: 'All students with admission, flat, course fees and overall status',
+          rows: () => reports.feeStatusRows,
+          meta: () => ({ 'Total Students': students.length, 'Grand Total': `₹${n(grandTotal)}`, 'Filters': `${courseF}/${hostelF}/${statusF}`, 'Generated': todayStr }),
+        },
+        {
+          id: 'pending',
+          name: 'Pending Fee Students',
+          desc: 'Students who have not made any payment yet',
+          rows: () => reports.pendingRows,
+          meta: () => ({ 'Pending Count': reports.pendingRows.length, 'Generated': todayStr }),
+        },
+      ],
+    },
+    {
+      group: 'Collection Registers',
+      icon: '📋',
+      color: '#166534',
+      bg: '#f0fdf4',
+      reports: [
+        {
+          id: 'flat_register',
+          name: 'Flat Fee Register',
+          desc: 'All monthly flat fee payments with dates, mode and reference',
+          rows: () => reports.flatRows,
+          meta: () => ({ 'Total Records': reports.flatRows.length, 'Total Amount': `₹${n(flatTotal)}`, 'Generated': todayStr }),
+        },
+        {
+          id: 'course_register',
+          name: 'Course Fee Register',
+          desc: 'All course fee payments per month per student',
+          rows: () => reports.crsfRows,
+          meta: () => ({ 'Total Records': reports.crsfRows.length, 'Total Amount': `₹${n(crsfTotal)}`, 'Generated': todayStr }),
+        },
+        {
+          id: 'adm_register',
+          name: 'Admission Fee Register',
+          desc: 'Admission, dress kit, prospectus and advance fee collections',
+          rows: () => reports.admRows,
+          meta: () => ({ 'Total Records': reports.admRows.length, 'Total Amount': `₹${n(admTotal)}`, 'Generated': todayStr }),
+        },
+      ],
+    },
+    {
+      group: 'Summary Reports',
+      icon: '📊',
+      color: '#6d28d9',
+      bg: '#f5f3ff',
+      reports: [
+        {
+          id: 'course_summary',
+          name: 'Course-wise Collection Summary',
+          desc: 'Fee totals broken down by course and hostel type',
+          rows: () => reports.courseRows,
+          meta: () => ({ 'Courses': reports.courseRows.length, 'Grand Total': `₹${n(grandTotal)}`, 'Generated': todayStr }),
+        },
+        {
+          id: 'monthly_summary',
+          name: 'Monthly Collection Summary',
+          desc: 'Month-wise totals for flat, course and admission fees',
+          rows: () => reports.monthlyRows,
+          meta: () => ({ 'Months': reports.monthlyRows.length, 'Generated': todayStr }),
+        },
+      ],
+    },
+    {
+      group: 'Date Range Report',
+      icon: '📅',
+      color: '#d97706',
+      bg: '#fffbeb',
+      reports: [
+        {
+          id: 'daily_range',
+          name: 'Transaction Register',
+          desc: `All fee transactions${dateFrom?' from '+dateFrom:''}${dateTo?' to '+dateTo:' (all time)'}`,
+          rows: () => reports.dailyRows,
+          meta: () => ({ 'Date From': dateFrom||'All', 'Date To': dateTo||'Today', 'Records': reports.dailyRows.length, 'Total': `₹${n(reports.dailyRows.reduce((s,r)=>s+r['Amount'],0))}` }),
+        },
+      ],
+    },
+  ]
+
+  // Export dispatcher
+  const doExport = (report, format) => {
+    const rows = report.rows()
+    const meta = report.meta()
+    if (!rows?.length) { alert('No data to export for this report.'); return }
+    const filename = `GNSI_${report.id}_${todayStr}`
+    const title    = `${report.name} — GNSI`
+    if (format==='csv')   { exportCSV(rows, filename); toast(report.name+' CSV') }
+    if (format==='tsv')   { exportTSV(rows, filename); toast(report.name+' TSV') }
+    if (format==='json')  { exportJSONFile(rows, filename); toast(report.name+' JSON') }
+    if (format==='xls')   { exportXLS(rows, filename, report.name); toast(report.name+' XLS') }
+    if (format==='print') { exportPrintHTML(rows, filename, title, meta); toast(report.name+' Print') }
   }
 
-  // ── Fix date handler ──
-  const doFixDate = async (row) => {
-    if (!isAdmin) return
-    const newDate = window.prompt(
-      `Fix payment date for "${row._desc}"\nCurrent: ${row._date||'—'}\n\nEnter correct date (YYYY-MM-DD):`,
-      row._date || new Date().toLocaleDateString('en-CA')
-    )
-    if (!newDate) return
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { showToast('Invalid date — use YYYY-MM-DD','#dc2626'); return }
-    setSaving(true)
-    try {
-      let accountSourceRef = null, accountSourceType = null
-      if (row._table==='adm_flat_fees')   { accountSourceType='flat_fee';   accountSourceRef=sourceRef.flatFee(gcc,row.month,row.year) }
-      if (row._table==='adm_course_fees') { accountSourceType='course_fee'; accountSourceRef=sourceRef.courseFee(gcc,row.for_month,row.year) }
-      if (row._table==='adm_fee_collections') {
-        accountSourceType = row.fee_type==='advance'?'advance_fee':'adm_fee'
-        accountSourceRef  = row.fee_type==='admission'?sourceRef.admission(gcc):row.fee_type==='advance'?row.id:null
-      }
-      await correctFeeCollectionDate({ table:row._table, id:row.id, newDate, accountSourceRef, accountSourceType })
-      showToast(`📅 Date corrected to ${newDate}`, '#1e3a5f')
-      onRefresh()
-    } catch (err) { showToast('Date fix failed: '+err.message, '#dc2626') }
-    setSaving(false)
-  }
-
-  const typeColor = t => t==='Admission Fee'?{bg:'#eef2ff',color:'#3730a3'}:t==='Flat Fee'?{bg:'#dcfce7',color:'#166534'}:{bg:'#f5f3ff',color:'#6d28d9'}
+  const FmtBtn = ({ format, label, color, onClick }) => (
+    <button onClick={onClick}
+      style={{ padding:'6px 10px', borderRadius:6, border:`1.5px solid ${color}20`, background:`${color}10`,
+        color, fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}
+      onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}}
+      onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>
+      {label}
+    </button>
+  )
 
   return (
-    <div style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:14, overflow:'hidden', boxShadow:'0 4px 16px rgba(0,0,0,.08)' }}>
-      {toast && (
-        <div style={{ position:'fixed', top:20, right:20, zIndex:99999, background:'white', border:`1px solid #e2e8f0`, borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, boxShadow:'0 8px 32px rgba(0,0,0,.12)', maxWidth:320, color:'#1e293b' }}>
-          {toast.msg}
+    <div style={{ fontFamily:'system-ui,sans-serif' }}>
+
+      {/* ── Header ── */}
+      <div style={{ background:'linear-gradient(135deg,#1e3a5f,#1e40af)', borderRadius:14, padding:'20px 24px', color:'white', marginBottom:20 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+          <div style={{ fontSize:36 }}>📤</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:20, fontWeight:900 }}>Reports &amp; Export Centre</div>
+            <div style={{ fontSize:12, opacity:.8, marginTop:3 }}>Export any fee report in CSV · TSV · XLS · JSON · Print/PDF format</div>
+          </div>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {[{l:'Students',v:students.length,icon:'👨‍🎓'},{l:'Total Collected',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(
+              <div key={c.l} style={{ background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.2)', borderRadius:8, padding:'8px 14px', textAlign:'center', minWidth:80 }}>
+                <div style={{ fontSize:11, opacity:.8 }}>{c.icon} {c.l}</div>
+                <div style={{ fontSize:14, fontWeight:900, marginTop:2 }}>{c.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Global filters ── */}
+      <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:12, padding:'14px 18px', marginBottom:20 }}>
+        <div style={{ fontSize:12, fontWeight:800, color:'#1e3a5f', marginBottom:12 }}>🔧 Report Filters — applies to Fee Status, Pending &amp; Date Range reports</div>
+        <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5,1fr)', gap:10 }}>
+          <div>
+            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Course</div>
+            <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={inp3}>
+              <option value="All">All Courses</option>
+              {['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Hostel Type</div>
+            <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={inp3}>
+              <option value="All">All Types</option>
+              {['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Status</div>
+            <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={inp3}>
+              <option value="All">All Status</option>
+              <option>Paid</option><option>Partial</option><option>Pending</option>
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Date From</div>
+            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp3} />
+          </div>
+          <div>
+            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Date To</div>
+            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp3} />
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
+          <button onClick={()=>{setDateFrom(todayStr);setDateTo(todayStr)}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #bfdbfe', background:'#eff6ff', color:'#1e3a5f', fontSize:11, fontWeight:700, cursor:'pointer' }}>📅 Today</button>
+          <button onClick={()=>{const d=new Date();d.setDate(1);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #d1fae5', background:'#ecfdf5', color:'#059669', fontSize:11, fontWeight:700, cursor:'pointer' }}>📅 This Month</button>
+          <button onClick={()=>{const d=new Date();d.setDate(d.getDate()-30);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #ede9fe', background:'#f5f3ff', color:'#7c3aed', fontSize:11, fontWeight:700, cursor:'pointer' }}>📅 Last 30 Days</button>
+          <button onClick={()=>{setCourseF('All');setHostelF('All');setStatusF('All');setDateFrom('');setDateTo('')}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #fca5a5', background:'#fef2f2', color:'#dc2626', fontSize:11, fontWeight:700, cursor:'pointer' }}>✕ Clear All</button>
+        </div>
+      </div>
+
+      {/* ── Success toast ── */}
+      {lastExport && (
+        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, padding:'10px 16px', marginBottom:16, fontSize:12, fontWeight:700, color:'#16a34a', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          {lastExport}
+          <button onClick={()=>setLastExport(null)} style={{ background:'none', border:'none', color:'#16a34a', cursor:'pointer', fontSize:16, fontWeight:900 }}>×</button>
         </div>
       )}
 
-      {/* ── Header ── */}
-      <div style={{ background:'linear-gradient(135deg,#1e3a5f,#1e40af)', padding:'18px 20px', color:'white' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
-          <div style={{ width:52, height:52, borderRadius:'50%', background:'rgba(255,255,255,.2)', border:'2px solid rgba(255,255,255,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:900, flexShrink:0 }}>
-            {(student.name||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()}
+      {/* ── Format legend ── */}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:16, padding:'10px 14px', background:'#f8fafc', borderRadius:8, border:'1px solid #e2e8f0' }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'#64748b', marginRight:4 }}>FORMAT GUIDE:</span>
+        {[
+          {l:'📄 CSV', d:'Excel / Google Sheets (comma-separated)', c:'#1e3a5f'},
+          {l:'📋 TSV', d:'Tab-separated, safe for all locales', c:'#059669'},
+          {l:'📊 XLS', d:'Opens directly in Microsoft Excel', c:'#166534'},
+          {l:'{ } JSON', d:'For developers / API integration', c:'#7c3aed'},
+          {l:'🖨 Print', d:'Formatted A4 printout / PDF', c:'#d97706'},
+        ].map(f=>(
+          <div key={f.l} style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <span style={{ fontSize:11, fontWeight:800, color:f.c }}>{f.l}</span>
+            <span style={{ fontSize:10, color:'#94a3b8' }}>— {f.d}</span>
           </div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:18, fontWeight:900, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              {student.name}
-              {student.is_repeater && <span style={{ fontSize:9, fontWeight:800, background:'#fef3c7', color:'#92400e', padding:'1px 7px', borderRadius:3, border:'1px solid #fcd34d' }}>REPEATER</span>}
-            </div>
-            <div style={{ fontSize:12, opacity:.8, marginTop:3, display:'flex', gap:10, flexWrap:'wrap' }}>
-              {student.gcc_no && <span style={{ fontWeight:700 }}>GCC-{student.gcc_no}</span>}
-              {(student.class_name||student.batch) && <span>{student.class_name||student.batch}</span>}
-              {student.course && <span>{student.course}</span>}
-              {student.hostel_type && <span style={{ background:'rgba(255,255,255,.15)', padding:'1px 8px', borderRadius:4 }}>{student.hostel_type}</span>}
-            </div>
-          </div>
-          <div style={{ textAlign:'right', flexShrink:0 }}>
-            <div style={{ fontSize:24, fontWeight:900 }}>₹{n(grandTotal)}</div>
-            <div style={{ fontSize:10, opacity:.7, marginTop:2 }}>Total paid</div>
-          </div>
-        </div>
+        ))}
+      </div>
 
-        {/* Mini summary row */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(255,255,255,.2)' }}>
-          {[{l:'Admission',v:admTotal,i:'🎓'},{l:'Flat Fees',v:flatTotal,i:'📅'},{l:'Course Fees',v:crsfTotal,i:'📚'}].map(c=>(
-            <div key={c.l} style={{ textAlign:'center' }}>
-              <div style={{ fontSize:11, opacity:.7 }}>{c.i} {c.l}</div>
-              <div style={{ fontSize:15, fontWeight:800, marginTop:2 }}>₹{n(c.v)}</div>
+      {/* ── Report groups ── */}
+      <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+        {REPORT_GROUPS.map(group => (
+          <div key={group.group} style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:14, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
+            {/* Group header */}
+            <div style={{ background:`linear-gradient(135deg,${group.color}15,${group.color}08)`, borderBottom:`2px solid ${group.color}20`, padding:'12px 18px', display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:20 }}>{group.icon}</span>
+              <div style={{ fontWeight:800, fontSize:14, color:group.color }}>{group.group}</div>
+              <div style={{ marginLeft:'auto', fontSize:11, color:group.color, opacity:.7 }}>{group.reports.length} report{group.reports.length!==1?'s':''}</div>
             </div>
+
+            {/* Reports in group */}
+            <div style={{ padding:'0 6px 6px' }}>
+              {group.reports.map((report, ri) => {
+                const rows = report.rows()
+                const meta = report.meta()
+                return (
+                  <div key={report.id} style={{ padding:'14px 12px', borderBottom: ri<group.reports.length-1 ? '1px solid #f1f5f9' : 'none' }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:14, flexWrap:'wrap' }}>
+                      <div style={{ flex:1, minWidth:200 }}>
+                        <div style={{ fontSize:13, fontWeight:800, color:'#1e293b', marginBottom:3 }}>{report.name}</div>
+                        <div style={{ fontSize:11, color:'#64748b', marginBottom:6 }}>{report.desc}</div>
+                        <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+                          {Object.entries(meta).map(([k,v])=>(
+                            <div key={k} style={{ fontSize:10 }}>
+                              <span style={{ color:'#94a3b8', fontWeight:600 }}>{k}: </span>
+                              <span style={{ color:'#1e293b', fontWeight:800 }}>{String(v)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', flexShrink:0 }}>
+                        <span style={{ fontSize:10, color:'#94a3b8', fontWeight:700, marginRight:4 }}>{rows.length} rows</span>
+                        <FmtBtn format="csv"   label="📄 CSV"   color="#1e3a5f" onClick={()=>doExport(report,'csv')} />
+                        <FmtBtn format="tsv"   label="📋 TSV"   color="#059669" onClick={()=>doExport(report,'tsv')} />
+                        <FmtBtn format="xls"   label="📊 XLS"   color="#166534" onClick={()=>doExport(report,'xls')} />
+                        <FmtBtn format="json"  label="{} JSON"  color="#7c3aed" onClick={()=>doExport(report,'json')} />
+                        <FmtBtn format="print" label="🖨 Print"  color="#d97706" onClick={()=>doExport(report,'print')} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Quick export all ── */}
+      <div style={{ marginTop:20, background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:12, padding:'16px 18px' }}>
+        <div style={{ fontSize:13, fontWeight:800, color:'#1e3a5f', marginBottom:10 }}>⚡ Quick Export All Reports as CSV</div>
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          {REPORT_GROUPS.flatMap(g=>g.reports).map(r=>(
+            <button key={r.id} onClick={()=>doExport(r,'csv')}
+              style={{ padding:'7px 14px', borderRadius:7, border:'1px solid #e2e8f0', background:'white', color:'#1e3a5f', fontSize:12, fontWeight:700, cursor:'pointer' }}
+              onMouseEnter={e=>e.currentTarget.style.background='#eff6ff'}
+              onMouseLeave={e=>e.currentTarget.style.background='white'}>
+              📄 {r.name}
+            </button>
           ))}
         </div>
       </div>
 
-      {/* ── Sub-tabs ── */}
-      <div style={{ display:'flex', borderBottom:'2px solid #f1f5f9', background:'#f8fafc' }}>
-        {[{id:'history',l:'📋 Fee History'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(
-          <button key={t.id} onClick={()=>isAdmin||t.id==='history'?setTab(t.id):null}
-            style={{ padding:'10px 18px', border:'none', borderBottom:tab===t.id?'2px solid #1e3a5f':'2px solid transparent', background:'none',
-              cursor:isAdmin||t.id==='history'?'pointer':'not-allowed', fontSize:12, fontWeight:tab===t.id?800:500,
-              color:tab===t.id?'#1e3a5f':isAdmin||t.id==='history'?'#64748b':'#cbd5e1', marginBottom:-2 }}>
-            {t.l}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Fee History tab ── */}
-      {tab==='history' && (
-        <div style={{ padding:'0 0 4px' }}>
-          {timeline.length===0 ? (
-            <div style={{ padding:40, textAlign:'center', color:'#94a3b8' }}>
-              <div style={{ fontSize:32, marginBottom:8 }}>💳</div>
-              <div style={{ fontWeight:600 }}>No fee records yet</div>
-            </div>
-          ) : (
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                <thead>
-                  <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                    {['#','Type','Description','Amount','Date','Mode','Ref / TxnID','By'].map(h=>(
-                      <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {timeline.map((r,i)=>{
-                    const tc = typeColor(r._type)
-                    return (
-                      <tr key={r.id+r._table} style={{ borderBottom:'1px solid #f8fafc' }}
-                        onMouseEnter={e=>e.currentTarget.style.background='#f8fafc'}
-                        onMouseLeave={e=>e.currentTarget.style.background='white'}>
-                        <td style={{ padding:'8px 12px', color:'#94a3b8', fontSize:10 }}>{i+1}</td>
-                        <td style={{ padding:'8px 12px' }}>
-                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4, background:tc.bg, color:tc.color, whiteSpace:'nowrap' }}>{r._type}</span>
-                        </td>
-                        <td style={{ padding:'8px 12px', color:'#1e293b', fontWeight:600 }}>{r._desc}</td>
-                        <td style={{ padding:'8px 12px', fontWeight:800, color:'#16a34a', whiteSpace:'nowrap' }}>₹{n(r._amt)}</td>
-                        <td style={{ padding:'8px 12px', color:'#64748b', fontFamily:'monospace', fontSize:11 }}>{r._date||'—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#475569' }}>{r.pay_mode||'—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#94a3b8', fontFamily:'monospace', fontSize:10 }}>{r.txn_ref||'—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#64748b', fontSize:11 }}>{r.collected_by||'—'}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background:'#1e3a5f' }}>
-                    <td colSpan={3} style={{ padding:'10px 12px', fontWeight:800, color:'white', fontSize:12 }}>Total Paid</td>
-                    <td style={{ padding:'10px 12px', fontWeight:900, color:'#6ee7b7', fontSize:13 }}>₹{n(grandTotal)}</td>
-                    <td colSpan={4} />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-          {/* Collect button */}
-          <div style={{ padding:'12px 16px', borderTop:'1px solid #f1f5f9' }}>
-            <button onClick={()=>onCollect(student)}
-              style={{ width:'100%', padding:'10px', borderRadius:8, background:'linear-gradient(135deg,#1e3a5f,#3730a3)', color:'white', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
-              💳 Collect Fee for {student.name.split(' ')[0]}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Revert / Fix tab (Admin only) ── */}
-      {tab==='revert' && isAdmin && (
-        <div style={{ padding:'4px 0' }}>
-          <div style={{ padding:'12px 16px 8px', fontSize:11, color:'#dc2626', fontWeight:700, background:'#fef2f2', borderBottom:'1px solid #fca5a5' }}>
-            ⚠️ Admin-only — Revert removes a payment from books. Fix Date corrects a wrong date without reverting. Both actions are logged.
-          </div>
-          {timeline.length===0 ? (
-            <div style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No fee records to manage.</div>
-          ) : (
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                <thead>
-                  <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-                    {['Type','Description','Amount','Date','Mode','Actions'].map(h=>(
-                      <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {timeline.map((r,i)=>{
-                    const tc = typeColor(r._type)
-                    return (
-                      <tr key={r.id+r._table+'-rv'} style={{ borderBottom:'1px solid #f8fafc' }}
-                        onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'}
-                        onMouseLeave={e=>e.currentTarget.style.background='white'}>
-                        <td style={{ padding:'9px 12px' }}>
-                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4, background:tc.bg, color:tc.color }}>{r._type}</span>
-                        </td>
-                        <td style={{ padding:'9px 12px', color:'#1e293b', fontWeight:600 }}>{r._desc}</td>
-                        <td style={{ padding:'9px 12px', fontWeight:800, color:'#16a34a', whiteSpace:'nowrap' }}>₹{n(r._amt)}</td>
-                        <td style={{ padding:'9px 12px', color:'#64748b', fontFamily:'monospace', fontSize:11 }}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td>
-                        <td style={{ padding:'9px 12px', color:'#475569' }}>{r.pay_mode||'—'}</td>
-                        <td style={{ padding:'9px 12px' }}>
-                          <div style={{ display:'flex', gap:6 }}>
-                            <button onClick={()=>doFixDate(r)} disabled={saving}
-                              style={{ padding:'5px 10px', borderRadius:6, border:'1px solid #bfdbfe', background:'#eff6ff', color:'#1e3a5f', fontSize:11, fontWeight:700, cursor:saving?'not-allowed':'pointer', whiteSpace:'nowrap' }}>
-                              📅 Fix Date
-                            </button>
-                            <button onClick={()=>doRevert(r)} disabled={saving}
-                              style={{ padding:'5px 10px', borderRadius:6, border:'1px solid #fca5a5', background:'#fef2f2', color:'#dc2626', fontSize:11, fontWeight:700, cursor:saving?'not-allowed':'pointer', whiteSpace:'nowrap' }}>
-                              ↩️ Revert
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Student Fee Ledger tab ─────────────────────────────────────────────────────
-
-function StudentLedgerTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees,
-                            liveRows, isAdmin, currentUser, onRefresh, onCollect }) {
-  const [search,     setSearch]     = useState('')
-  const [courseF,    setCourseF]    = useState('All')
-  const [hostelF,    setHostelF]    = useState('All')
-  const [statusF,    setStatusF]    = useState('All')
-  const [selected,   setSelected]   = useState(null)   // selected student object
-
-  const n = v => Number(v||0).toLocaleString('en-IN')
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return liveRows.filter(s => {
-      if (courseF!=='All' && s.course!==courseF) return false
-      if (hostelF!=='All' && s.hostel_type!==hostelF) return false
-      if (statusF!=='All' && s.liveStatus!==statusF) return false
-      return [s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))
-    })
-  }, [liveRows, search, courseF, hostelF, statusF])
-
-  const inp2 = { width:'100%', padding:'8px 12px', borderRadius:7, border:'1px solid #d1d5db', fontSize:13, outline:'none', background:'white' }
-
-  return (
-    <div style={{ display:'flex', gap:20, alignItems:'flex-start', flexWrap:'wrap' }}>
-
-      {/* ── Left: student list ── */}
-      <div style={{ flex:'0 0 340px', minWidth:280 }}>
-        <div style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
-          {/* Search + filter header */}
-          <div style={{ padding:'14px 14px 10px', borderBottom:'1px solid #f1f5f9', background:'#f8fafc' }}>
-            <div style={{ fontWeight:800, fontSize:13, color:'#1e3a5f', marginBottom:10 }}>👨‍🎓 Select Student</div>
-            <input placeholder="Search name or GCC No…" value={search} onChange={e=>setSearch(e.target.value)} style={inp2} />
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginTop:8 }}>
-              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}>
-                <option value="All">All Courses</option>
-                {['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}
-              </select>
-              <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}>
-                <option value="All">All Hostel</option>
-                {['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}
-              </select>
-              <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}>
-                <option value="All">All Status</option>
-                <option>Paid</option><option>Partial</option><option>Pending</option>
-              </select>
-            </div>
-            <div style={{ fontSize:11, color:'#94a3b8', marginTop:6 }}>{filtered.length} of {students.length} students</div>
-          </div>
-
-          {/* Student list */}
-          <div style={{ maxHeight:520, overflowY:'auto' }}>
-            {filtered.length===0 && (
-              <div style={{ padding:24, textAlign:'center', color:'#94a3b8', fontSize:12 }}>No students found</div>
-            )}
-            {filtered.map(s => {
-              const isSelected = selected?.id===s.id
-              const statusColor = s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':'#dc2626'
-              const statusBg    = s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':'#fee2e2'
-              return (
-                <div key={s.id} onClick={()=>setSelected(s)}
-                  style={{ padding:'11px 14px', cursor:'pointer', borderBottom:'1px solid #f8fafc',
-                    background: isSelected ? '#eff6ff' : 'white',
-                    borderLeft: isSelected ? '3px solid #1e3a5f' : '3px solid transparent' }}
-                  onMouseEnter={e=>{ if(!isSelected) e.currentTarget.style.background='#f8fafc' }}
-                  onMouseLeave={e=>{ if(!isSelected) e.currentTarget.style.background='white' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:'#1e293b', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                        {s.name}
-                        {s.is_repeater && <span style={{ fontSize:8, fontWeight:800, color:'#92400e', background:'#fef3c7', padding:'1px 4px', borderRadius:2, border:'1px solid #fcd34d' }}>RPT</span>}
-                      </div>
-                      <div style={{ fontSize:10, color:'#64748b', marginTop:2 }}>
-                        GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}
-                      </div>
-                      <div style={{ fontSize:10, color:'#94a3b8', marginTop:1 }}>{s.hostel_type||'—'}</div>
-                    </div>
-                    <div style={{ textAlign:'right', flexShrink:0 }}>
-                      <div style={{ fontSize:13, fontWeight:900, color: s.grandTotal>0?'#16a34a':'#94a3b8' }}>
-                        {s.grandTotal>0?`₹${n(s.grandTotal)}`:'₹0'}
-                      </div>
-                      <span style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:99, background:statusBg, color:statusColor, marginTop:3, display:'inline-block' }}>
-                        {s.liveStatus}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Right: student card ── */}
-      <div style={{ flex:1, minWidth:300 }}>
-        {!selected ? (
-          <div style={{ background:'white', border:'2px dashed #e2e8f0', borderRadius:14, padding:60, textAlign:'center', color:'#94a3b8' }}>
-            <div style={{ fontSize:48, marginBottom:12 }}>👈</div>
-            <div style={{ fontWeight:700, fontSize:15, color:'#64748b' }}>Select a student</div>
-            <div style={{ fontSize:12, marginTop:6 }}>Click any student on the left to view their full fee history and manage records.</div>
-          </div>
-        ) : (
-          <StudentFeeCard
-            student={selected}
-            adm_fee_collections={adm_fee_collections}
-            adm_flat_fees={adm_flat_fees}
-            adm_course_fees={adm_course_fees}
-            isAdmin={isAdmin}
-            currentUser={currentUser}
-            onRefresh={onRefresh}
-            onCollect={onCollect}
-          />
-        )}
-      </div>
     </div>
   )
 }
@@ -1727,8 +1877,8 @@ export default function Fees() {
     { id: 'dashboard', label: '🏠 Dashboard' },
     { id: 'payment',   label: '💳 Fee Payment' },
     { id: 'live',      label: '📊 Live Summary' },
-    { id: 'ledger',    label: '🗂️ Student Ledger' },
     { id: 'admin',     label: '🛡️ Admin View' },
+    { id: 'reports',   label: '📤 Reports & Export' },
   ]
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -1961,20 +2111,6 @@ export default function Fees() {
             </div>
           )}
         </>
-      )}
-
-      {tab === 'ledger' && (
-        <StudentLedgerTab
-          students={students}
-          adm_fee_collections={adm_fee_collections}
-          adm_flat_fees={adm_flat_fees}
-          adm_course_fees={adm_course_fees}
-          liveRows={liveRows}
-          isAdmin={isAdmin}
-          currentUser={currentUser}
-          onRefresh={loadAll}
-          onCollect={s => { setTab('payment') }}
-        />
       )}
 
       {tab === 'admin' && (
@@ -2221,6 +2357,16 @@ export default function Fees() {
             </div>
           </div>
         </>
+      )}
+
+      {tab === 'reports' && (
+        <ReportsExportTab
+          students={students}
+          adm_fee_collections={adm_fee_collections}
+          adm_flat_fees={adm_flat_fees}
+          adm_course_fees={adm_course_fees}
+          liveRows={liveRows}
+        />
       )}
     </div>
   )
