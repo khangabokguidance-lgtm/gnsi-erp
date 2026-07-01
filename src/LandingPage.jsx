@@ -648,12 +648,13 @@ window.submitGrievance = async () => {
     };
 
     window.ppLogin = async () => {
-      const gccNo     = document.getElementById('ppPhone')?.value?.trim();
+      const gccNoRaw  = document.getElementById('ppPhone')?.value?.trim();
+      const gccNo     = gccNoRaw;
       const nameInput = document.getElementById('ppSid')?.value?.trim().toUpperCase();
       const err       = document.getElementById('ppErr');
       const btn       = document.getElementById('ppLbtn');
 
-      if (!gccNo || !nameInput) {
+      if (!gccNoRaw || !nameInput) {
         if (err) { err.style.display = 'block'; err.textContent = 'Please enter both GCC No. and Student Name.'; }
         return;
       }
@@ -666,11 +667,11 @@ window.submitGrievance = async () => {
           .from('students')
           .select('id, name, course, class_name, batch, hostel_type, status, admission_no')
           .eq('gcc_no', gccNo)
-          .eq('is_soft_deleted', false)
           .single();
 
-        if (error || !data || data.name?.toUpperCase() !== nameInput) {
-          if (err) { err.style.display = 'block'; err.textContent = 'Student not found. Check GCC No. and Name.'; }
+        if (error || !data || data.name?.toUpperCase().replace(/\s+/g,' ').trim() !== nameInput.replace(/\s+/g,' ').trim()) {
+          const msg = error ? `Error: ${error.message}` : !data ? 'GCC No. not found.' : 'Name does not match.';
+          if (err) { err.style.display = 'block'; err.textContent = msg; }
           btn.disabled = false;
           btn.textContent = 'Login to Parents Portal →';
           return;
