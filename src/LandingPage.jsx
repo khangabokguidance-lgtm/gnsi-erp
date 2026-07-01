@@ -1048,6 +1048,19 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
       const student = window._ppStudent;
       if (!examTypeId || !examDate || !sid || !student) return;
 
+      // Open the destination window IMMEDIATELY, synchronously inside the
+      // click handler. If we wait until after the Supabase awaits below to
+      // call window.open(), most browsers no longer treat it as tied to the
+      // user's click and silently block the popup — which is why the button
+      // appeared to "do nothing." We open a blank tab now and write the
+      // finished report into it once the data has loaded.
+      const w = window.open('', '_blank');
+      if (!w) {
+        alert('Your browser blocked the report card pop-up. Please allow pop-ups for this site and try again.');
+        return;
+      }
+      w.document.write('<p style="font-family:sans-serif;padding:2rem;color:#333;">Preparing report card…</p>');
+
       const origText = btn.textContent;
       btn.disabled = true;
       btn.textContent = '⏳ Preparing…';
@@ -1110,7 +1123,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 
         const html = buildRCHTML(student, subjects, subjectMaxMap, courseMax, marksMap, allStudents, examTypeName, examDate, institute, remarkText);
 
-        const w = window.open('', '_blank');
+        w.document.open();
         w.document.write(`<!DOCTYPE html><html><head>
         <title>Report Card — ${student.name || ''}</title>
         <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet"/>
@@ -1119,6 +1132,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
         ${html}</body></html>`);
         w.document.close();
       } catch (e) {
+        w.close();
         alert('Could not generate the report card. Please try again.');
       } finally {
         btn.disabled = false;
