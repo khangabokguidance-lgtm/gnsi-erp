@@ -105,532 +105,87 @@ function ExportBar({ rows, filename, label = '' }) {
   )
 }
 
-// ── Report Export Engine ──────────────────────────────────────────────────────
-
-// ① CSV (already exists as exportCSV above, alias for clarity)
-const _dl = (blob, name) => { const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u) }
-
-// ② TSV
-function exportTSV(rows, filename) {
-  if (!rows?.length) { alert('No data.'); return }
-  const H = Object.keys(rows[0])
-  const body = [H.join('\t'), ...rows.map(r => H.map(h => String(r[h]??'').replace(/\t/g,' ')).join('\t'))].join('\n')
-  _dl(new Blob(['\ufeff'+body],{type:'text/tab-separated-values;charset=utf-8'}), filename+'.tsv')
+// ── Daily Income Report ───────────────────────────────────────────────────────
+const GNSI_INST = { name:'Guidance Navodaya & Sainik Institute', tagline:'Premier Coaching for NVS · Sainik School · RMS', address:'Khangabok Sorok Wangma, Thoubal District, Manipur – 795 131', website:'guidancekhangabok.in', estd:'2016' }
+const _inr  = v => Number(v||0).toLocaleString('en-IN')
+const _date = s => { if(!s)return '—'; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) }
+const _day  = s => { if(!s)return ''; return new Date(s+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long'}) }
+function _toWords(n){
+  if(!n||n===0)return 'Zero'
+  const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
+  const tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
+  const conv=x=>{if(x<20)return ones[x];if(x<100)return tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:'');if(x<1000)return ones[Math.floor(x/100)]+' Hundred'+(x%100?' '+conv(x%100):'');if(x<100000)return conv(Math.floor(x/1000))+' Thousand'+(x%1000?' '+conv(x%1000):'');if(x<10000000)return conv(Math.floor(x/100000))+' Lakh'+(x%100000?' '+conv(x%100000):'');return conv(Math.floor(x/10000000))+' Crore'+(x%10000000?' '+conv(x%10000000):'')}
+  return conv(Math.round(n))+' Only'
 }
-
-// ③ JSON
-function exportJSONFile(rows, filename) {
-  if (!rows?.length) { alert('No data.'); return }
-  _dl(new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}), filename+'.json')
-}
-
-// ④ Excel-compatible HTML table (opens correctly in Excel / LibreOffice)
-function exportXLS(rows, filename, sheetTitle='Report') {
-  if (!rows?.length) { alert('No data.'); return }
-  const H = Object.keys(rows[0])
-  const esc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-  const hdr = H.map(h=>`<th style="background:#1e3a5f;color:white;font-weight:bold;padding:6px 10px;border:1px solid #ccc">${esc(h)}</th>`).join('')
-  const bdy = rows.map((r,i)=>{
-    const bg = i%2===0?'#ffffff':'#f8fafc'
-    return `<tr>${H.map(h=>`<td style="padding:5px 10px;border:1px solid #ddd;background:${bg}">${esc(r[h])}</td>`).join('')}</tr>`
-  }).join('')
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
-<head><meta charset="UTF-8"/><title>${sheetTitle}</title>
-<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
-<x:Name>${sheetTitle}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-<style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px}</style></head>
-<body><h3 style="font-family:Arial;color:#1e3a5f">Guidance Navodaya &amp; Sainik Institute — ${sheetTitle}</h3>
-<table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table></body></html>`
-  _dl(new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'}), filename+'.xls')
-}
-
-// ⑤ Print-ready HTML (opens in new tab → Ctrl+P)
-function exportPrintHTML(rows, filename, title, meta={}) {
-  if (!rows?.length) { alert('No data.'); return }
-  const H = Object.keys(rows[0])
-  const esc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-  const hdr = H.map(h=>`<th>${esc(h)}</th>`).join('')
-  const bdy = rows.map((r,i)=>`<tr class="${i%2===0?'':'ev'}">${H.map(h=>`<td>${esc(r[h])}</td>`).join('')}</tr>`).join('')
-  const metaRows = Object.entries(meta).map(([k,v])=>`<div class="mi"><span class="mk">${esc(k)}</span><span class="mv">${esc(String(v))}</span></div>`).join('')
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${title}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:white;padding:12mm 14mm}
-.inst{font-size:18px;font-weight:900;color:#1e3a5f;font-family:Georgia,serif}
-.tag{font-size:9px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
-.addr{font-size:9px;color:#475569;margin-top:1px}
-.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1e3a5f;padding-bottom:8px;margin-bottom:10px}
-.rinfo{text-align:right}.rtype{font-size:11px;font-weight:900;color:white;background:#1e3a5f;padding:2px 10px;border-radius:4px;display:inline-block}
-.rdate{font-size:10px;color:#64748b;display:block;margin-top:3px}
-.meta{display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:10px}
-.mi{display:flex;flex-direction:column}.mk{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
-.mv{font-size:11px;font-weight:700;color:#1e3a5f}
-table{width:100%;border-collapse:collapse;font-size:10.5px}
-thead tr{background:#1e3a5f;color:white}th{padding:6px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}
-tbody tr{border-bottom:1px solid #f1f5f9}tbody tr.ev{background:#f8fafc}td{padding:5px 8px;vertical-align:middle}
-.foot{margin-top:10px;display:flex;justify-content:space-between;font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:5px}
-@media print{body{padding:0}.np{display:none}}
-@media screen{body{background:#e2e8f0;padding:20px}.wrap{background:white;padding:20mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:297mm;margin:0 auto}
-.pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
-.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}
-</style></head><body>
-<button class="pbtn np" onclick="window.print()">🖨 Print / PDF</button>
-<button class="cbtn np" onclick="window.close()">✕ Close</button>
-<div class="wrap">
-<div class="hdr">
-<div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div>
-<div class="tag">Premier Coaching for NVS · Sainik School · RMS</div>
-<div class="addr">Khangabok Sorok Wangma, Thoubal District, Manipur – 795 131</div></div>
-<div class="rinfo"><span class="rtype">${esc(title)}</span><span class="rdate">Generated: ${new Date().toLocaleString('en-IN')}</span></div>
-</div>
-<div class="meta">${metaRows}</div>
-<table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table>
-<div class="foot"><span>GNSI Portal · guidancekhangabok.in</span><span>Total records: ${rows.length}</span><span>CONFIDENTIAL — For Internal Use</span></div>
+function _buildDirHTML({date,transactions,generatedBy,offlineReceiptNo,reportTitle}){
+  const dateLabel=_date(date),dayLabel=_day(date),reportNo=`GNSI/DIR/${(date||'').replace(/-/g,'')}`,grand=transactions.reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const generated=new Date().toLocaleString('en-IN',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})
+  const admT=transactions.filter(r=>r.type==='Admission Fee').reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const flatT=transactions.filter(r=>r.type==='Flat Fee').reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const crsfT=transactions.filter(r=>r.type==='Course Fee').reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const modes={},courses={}
+  transactions.forEach(r=>{const m=r.pay_mode||'Unspecified';modes[m]=(modes[m]||0)+(Number(r.amount)||0)})
+  transactions.forEach(r=>{const c=r.course||'Unknown';courses[c]=(courses[c]||0)+(Number(r.amount)||0)})
+  const byStudent={}
+  transactions.forEach(r=>{const k=String(r.gcc_no||r.name);if(!byStudent[k])byStudent[k]={gcc_no:r.gcc_no,name:r.name,rows:[]};byStudent[k].rows.push(r)})
+  const groups=Object.values(byStudent).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+  let tRows='',serial=0
+  groups.forEach(sg=>{
+    const sub=sg.rows.reduce((s,r)=>s+(Number(r.amount)||0),0)
+    sg.rows.forEach(r=>{serial++;const tc=r.type==='Admission Fee'?'#3730a3':r.type==='Flat Fee'?'#166534':'#6d28d9',tb=r.type==='Admission Fee'?'#eef2ff':r.type==='Flat Fee'?'#dcfce7':'#f5f3ff'
+      tRows+=`<tr class="${serial%2===0?'ev':''}"><td>${serial}</td><td>${r.gcc_no?'GCC-'+r.gcc_no:'—'}</td><td>${r.name||'—'}${r.hostel_type?`<br>${r.hostel_type}`:''}</td><td><span style="padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;background:${tb};color:${tc}">${r.type}</span></td><td>${r.description||'—'}</td><td>${r.pay_mode||'—'}</td><td>${r.ref&&r.ref!=='—'?r.ref:'—'}</td><td style="font-weight:700;color:#16a34a">₹${_inr(r.amount)}</td></tr>`
+    })
+    if(sg.rows.length>1)tRows+=`<tr style="background:#f1f5f9"><td colspan="7" style="text-align:right;font-size:9px;color:#64748b">Sub-total — ${sg.name}</td><td style="font-weight:700;color:#1e3a5f">₹${_inr(sub)}</td></tr>`
+  })
+  if(!transactions.length)tRows=`<tr><td colspan="8" style="padding:40px;text-align:center;color:#94a3b8;font-style:italic">No transactions recorded.</td></tr>`
+  const modeRows=Object.entries(modes).map(([m,a])=>`<tr><td>${m}</td><td style="text-align:right;font-weight:700;color:#1e3a5f">₹${_inr(a)}</td><td style="text-align:right;color:#64748b">${grand>0?Math.round(a/grand*100):0}%</td></tr>`).join('')
+  const courseRows=Object.entries(courses).map(([c,a])=>`<tr><td>${c}</td><td style="text-align:right;font-weight:700;color:#1e3a5f">₹${_inr(a)}</td></tr>`).join('')
+  const upiT=(modes['UPI']||0)+(modes['Online']||0)+(modes['NEFT']||0)+(modes['RTGS']||0)
+  const CSS=`*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:12px;color:#0f172a;background:white}@page{size:A4 portrait;margin:12mm 14mm 16mm 14mm}.page{width:100%;max-width:210mm;margin:0 auto}.hdr{border-bottom:3px double #1e3a5f;padding-bottom:10px;margin-bottom:10px;display:flex;align-items:center;gap:14px}.hdr-logo{width:60px;height:60px;border-radius:50%;border:3px solid #1e3a5f;display:flex;align-items:center;justify-content:center;background:#1e3a5f;color:white;font-size:18px;font-weight:700;flex-shrink:0}.hdr-txt{flex:1}.hdr-inst{font-size:20px;font-weight:700;color:#1e3a5f;line-height:1.2}.hdr-tag{font-size:9px;color:#b45309;font-weight:700;text-transform:uppercase;margin-top:3px}.hdr-addr{font-size:9px;color:#475569;margin-top:2px}.hdr-rt{text-align:right;flex-shrink:0}.rtype{font-size:10px;font-weight:900;color:white;background:#1e3a5f;padding:2px 8px;border-radius:3px;text-transform:uppercase;display:inline-block;margin-bottom:3px}.rno{font-size:9px;color:#64748b;display:block}.rdate{font-size:10px;font-weight:700;color:#1e3a5f;display:block;margin-top:1px}.meta{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid #1e3a5f;border-radius:5px;overflow:hidden;margin-bottom:10px}.mc{padding:6px 8px;border-right:1px solid #cbd5e1}.mc:last-child{border-right:none}.ml{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase}.mv{font-size:11px;font-weight:700;color:#1e3a5f;margin-top:1px}.sg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.sc{border:1px solid #e2e8f0;border-radius:5px;padding:7px 9px;border-top:3px solid var(--c)}.sl{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase}.sv{font-size:15px;font-weight:900;color:var(--c);margin-top:2px}.ss{font-size:8px;color:#94a3b8;margin-top:2px}.stitle{font-size:10px;font-weight:900;color:#1e3a5f;text-transform:uppercase;border-left:3px solid #1e3a5f;padding:2px 7px;margin:10px 0 5px;background:#f8fafc}table{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:10px}thead tr{background:#1e3a5f;color:white}th{padding:6px 7px;text-align:left;font-size:9.5px;font-weight:700;white-space:nowrap}tbody tr{border-bottom:1px solid #f1f5f9}tbody tr.ev{background:#f8fafc}td{padding:5px 7px;vertical-align:middle}tfoot tr{background:#1e3a5f;color:white}tfoot td{padding:7px;font-weight:900;font-size:11px}.side{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}.totbox{border:2px solid #1e3a5f;border-radius:7px;padding:11px 15px;margin-bottom:12px;background:linear-gradient(135deg,#eff6ff,#f5f3ff);display:flex;align-items:center;justify-content:space-between;gap:18px}.tl{font-size:12px;font-weight:800;color:#1e3a5f}.ta{font-size:24px;font-weight:900;color:#1e3a5f}.tw{font-size:9.5px;color:#64748b;font-style:italic;margin-top:1px}.rcptbox{border:1.5px dashed #94a3b8;border-radius:5px;padding:9px 12px;margin-bottom:12px;background:#fffbeb;display:flex;gap:12px}.sigrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-top:18px;margin-bottom:8px}.sigbox{text-align:center}.sigline{border-top:1.5px solid #1e3a5f;margin:0 auto;width:80%;margin-top:32px;margin-bottom:3px}.signame{font-size:10px;font-weight:700;color:#1e3a5f}.sigrole{font-size:9px;color:#64748b}.foot{border-top:1px solid #e2e8f0;padding-top:5px;display:flex;justify-content:space-between}.fl,.fc,.fr{font-size:8.5px;color:#94a3b8}.fc{color:#b45309;font-weight:700;text-align:center}.fr{text-align:right}.pnote{font-size:8px;color:#94a3b8;text-align:center;margin-top:3px;font-style:italic}@media print{body{padding:0}.np{display:none!important}tr{page-break-inside:avoid}}@media screen{body{background:#e2e8f0;padding:20px}.page{background:white;padding:18mm;box-shadow:0 4px 24px rgba(0,0,0,.15);margin:0 auto}.pbtn{position:fixed;top:18px;right:18px;z-index:999;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}.cbtn{position:fixed;top:18px;right:185px;z-index:999;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}}`
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>${reportTitle||'Daily Income Report'} — ${dateLabel}</title><style>${CSS}</style></head><body>
+<button class="pbtn np" onclick="window.print()">Print / Save PDF</button><button class="cbtn np" onclick="window.close()">Close</button>
+<div class="page">
+<div class="hdr"><div class="hdr-logo">GNSI</div><div class="hdr-txt"><div class="hdr-inst">${GNSI_INST.name}</div><div class="hdr-tag">${GNSI_INST.tagline}</div><div class="hdr-addr">${GNSI_INST.address} | ${GNSI_INST.website}</div></div><div class="hdr-rt"><div class="rtype">${reportTitle||'Daily Income Report'}</div><span class="rno">Ref: ${reportNo}</span><span class="rdate">${dayLabel}, ${dateLabel}</span></div></div>
+<div class="meta"><div class="mc"><div class="ml">Report Date</div><div class="mv">${dateLabel}</div></div><div class="mc"><div class="ml">Transactions</div><div class="mv">${transactions.length}</div></div><div class="mc"><div class="ml">Offline Receipt No.</div><div class="mv">${offlineReceiptNo||'—'}</div></div><div class="mc"><div class="ml">Generated By</div><div class="mv">${generatedBy||'Admin'}</div></div></div>
+<div class="sg"><div class="sc" style="--c:#1e3a5f"><div class="sl">Grand Total</div><div class="sv">₹${_inr(grand)}</div><div class="ss">${transactions.length} receipts</div></div><div class="sc" style="--c:#3730a3"><div class="sl">Admission Fees</div><div class="sv">₹${_inr(admT)}</div></div><div class="sc" style="--c:#166534"><div class="sl">Flat Fees</div><div class="sv">₹${_inr(flatT)}</div></div><div class="sc" style="--c:#6d28d9"><div class="sl">Course Fees</div><div class="sv">₹${_inr(crsfT)}</div></div></div>
+${offlineReceiptNo?`<div class="rcptbox"><div><div style="font-size:9px;font-weight:700;color:#92400e;text-transform:uppercase">Offline Receipt No.</div><div style="font-size:16px;font-weight:900;color:#b45309">${offlineReceiptNo}</div><div style="font-size:9px;color:#92400e">Manually issued receipt — attach physical copy</div></div><div style="flex:1;border-left:1.5px dashed #fcd34d;padding-left:10px;margin-left:8px"><div style="font-size:9px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:2px">Mode Breakdown</div><div style="font-size:10px;color:#92400e">Cash: ₹${_inr(modes['Cash']||0)} | UPI/Online: ₹${_inr(upiT)} | Cheque: ₹${_inr(modes['Cheque']||0)}</div></div></div>`:''}
+<div class="stitle">Detailed Transaction Register</div>
+<table><thead><tr><th>#</th><th>GCC No.</th><th>Student / Hostel</th><th>Fee Type</th><th>Description</th><th>Mode</th><th>Ref No.</th><th>Amount</th></tr></thead><tbody>${tRows}</tbody><tfoot><tr><td colspan="7" style="text-align:right;font-size:10px">TOTAL COLLECTED</td><td>₹${_inr(grand)}</td></tr></tfoot></table>
+<div class="totbox"><div><div class="tl">Total Income for ${dateLabel}</div><div class="tw">Rupees ${_toWords(grand)}</div></div><div class="ta">₹ ${_inr(grand)}</div></div>
+<div class="side"><div><div class="stitle" style="margin-top:0">By Payment Mode</div><table><thead><tr><th>Mode</th><th>Amount</th><th>Share</th></tr></thead><tbody>${modeRows||'<tr><td colspan="3" style="text-align:center;color:#94a3b8">No data</td></tr>'}</tbody><tfoot><tr><td>Total</td><td style="font-weight:700;color:white">₹${_inr(grand)}</td><td style="color:white">100%</td></tr></tfoot></table></div><div><div class="stitle" style="margin-top:0">By Course</div><table><thead><tr><th>Course</th><th>Amount</th></tr></thead><tbody>${courseRows||'<tr><td colspan="2" style="text-align:center;color:#94a3b8">No data</td></tr>'}</tbody><tfoot><tr><td>Total</td><td style="font-weight:700;color:white">₹${_inr(grand)}</td></tr></tfoot></table></div></div>
+<div style="border:1px solid #e2e8f0;border-radius:5px;padding:9px 12px;margin-bottom:12px"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:5px">Remarks / Notes</div><div style="height:32px;border-bottom:1px dashed #cbd5e1;width:100%"></div></div>
+<div class="sigrow"><div class="sigbox"><div class="sigline"></div><div class="signame">${generatedBy||'Fee In-Charge'}</div><div class="sigrole">Fee In-Charge / Prepared By</div></div><div class="sigbox"><div class="sigline"></div><div class="signame">Vice Principal</div><div class="sigrole">Verified &amp; Checked</div></div><div class="sigbox"><div class="sigline"></div><div class="signame">Moirangthem Himan Singh</div><div class="sigrole">Founder &amp; Administrator</div></div></div>
+<div class="foot"><div class="fl">Generated: ${generated}<br>GNSI Portal · ${GNSI_INST.website}</div><div class="fc">${GNSI_INST.name}<br>Estd. ${GNSI_INST.estd} · ${GNSI_INST.address}</div><div class="fr">Ref: ${reportNo}<br>CONFIDENTIAL</div></div>
+<div class="pnote">Computer-generated report. Authorised signatures above validate this document.</div>
 </div></body></html>`
-  const win = window.open('','_blank','width=1000,height=700,scrollbars=yes')
-  win.document.write(html); win.document.close()
 }
-
-// ── Report presets (what data + columns each report contains) ─────────────────
-function buildReports({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows, todayStr, afDateFrom, afDateTo }) {
-  const n  = v => Number(v||0).toLocaleString('en-IN')
-  const gs = v => gccStr(v)
-
-  // helper: lookup student
-  const stu = gcc => students.find(s=>String(s.gcc_no)===String(gcc))
-
-  // ─ 1. Fee Status Summary (all students) ──────────────────────────────────
-  const feeStatusRows = liveRows.map(s => ({
-    'GCC No':        `GCC-${s.gcc_no}`,
-    'Student Name':  s.name || '—',
-    'Batch/Class':   s.class_name || s.batch || '—',
-    'Course':        s.course || '—',
-    'Hostel Type':   s.hostel_type || '—',
-    'Admission Fee': s.admTotal  > 0 ? s.admTotal  : 0,
-    'Flat Fees':     s.flatTotal > 0 ? s.flatTotal : 0,
-    'Course Fees':   s.crsfTotal > 0 ? s.crsfTotal : 0,
-    'Total Paid':    s.grandTotal,
-    'Status':        s.liveStatus,
-    'Repeater':      s.is_repeater ? 'Yes' : 'No',
-  }))
-
-  // ─ 2. Pending Students ────────────────────────────────────────────────────
-  const pendingRows = liveRows.filter(s=>s.grandTotal===0).map(s=>({
-    'GCC No':       `GCC-${s.gcc_no}`,
-    'Student Name': s.name||'—',
-    'Batch/Class':  s.class_name||s.batch||'—',
-    'Course':       s.course||'—',
-    'Hostel Type':  s.hostel_type||'—',
-    'Status':       'Pending',
-  }))
-
-  // ─ 3. Flat Fee Collection Register ───────────────────────────────────────
-  const flatRows = adm_flat_fees.map(r => {
-    const s = stu(r.adm_app_id)
-    return {
-      'GCC No':       `GCC-${r.adm_app_id}`,
-      'Student Name': s?.name||'—',
-      'Course':       s?.course||'—',
-      'Hostel Type':  s?.hostel_type||'—',
-      'Month':        r.month||'—',
-      'Year':         r.year||'—',
-      'Amount':       r.amount||0,
-      'Pay Date':     r.pay_date||'—',
-      'Pay Mode':     r.pay_mode||'—',
-      'Txn Ref':      r.txn_ref||'—',
-      'Collected By': r.collected_by||'—',
-    }
-  }).sort((a,b)=>(b['Pay Date']).localeCompare(a['Pay Date']))
-
-  // ─ 4. Course Fee Collection Register ─────────────────────────────────────
-  const crsfRows = adm_course_fees.map(r => {
-    const s = stu(r.adm_app_id)
-    return {
-      'GCC No':       `GCC-${r.adm_app_id}`,
-      'Student Name': s?.name||'—',
-      'Course':       r.course||'—',
-      'Hostel Type':  s?.hostel_type||'—',
-      'For Month':    r.for_month||'—',
-      'Year':         r.year||'—',
-      'Amount Paid':  Number(r.amount_paid)||0,
-      'Pay Date':     r.pay_date||'—',
-      'Pay Mode':     r.pay_mode||'—',
-      'Txn Ref':      r.txn_ref||'—',
-      'Collected By': r.collected_by||'—',
-    }
-  }).sort((a,b)=>(b['Pay Date']).localeCompare(a['Pay Date']))
-
-  // ─ 5. Admission Fee Register ──────────────────────────────────────────────
-  const admRows = adm_fee_collections.map(r => {
-    const s = stu(r.adm_app_id)
-    return {
-      'GCC No':       `GCC-${r.adm_app_id}`,
-      'Student Name': s?.name||'—',
-      'Course':       s?.course||'—',
-      'Fee Type':     r.fee_type||'—',
-      'Description':  r.description||'—',
-      'Amount Paid':  Number(r.amount_paid)||0,
-      'Pay Date':     r.pay_date||'—',
-      'Pay Mode':     r.pay_mode||'—',
-      'Txn Ref':      r.txn_ref||'—',
-      'Collected By': r.collected_by||'—',
-    }
-  }).sort((a,b)=>(b['Pay Date']).localeCompare(a['Pay Date']))
-
-  // ─ 6. Course-wise Summary ────────────────────────────────────────────────
-  const courses = ['Sainik','Navodaya','Foundation','Combined Course']
-  const courseRows = courses.map(c => {
-    const ss = liveRows.filter(s=>s.course===c)
-    return {
-      'Course':            c,
-      'Total Students':    ss.length,
-      'Boarders':          ss.filter(s=>s.hostel_type==='Boarder').length,
-      'Day Boarders':      ss.filter(s=>s.hostel_type==='Day Boarder').length,
-      'Day Scholars':      ss.filter(s=>s.hostel_type==='Day Scholar').length,
-      'Total Adm Fees':    ss.reduce((t,s)=>t+s.admTotal,0),
-      'Total Flat Fees':   ss.reduce((t,s)=>t+s.flatTotal,0),
-      'Total Course Fees': ss.reduce((t,s)=>t+s.crsfTotal,0),
-      'Grand Total':       ss.reduce((t,s)=>t+s.grandTotal,0),
-    }
-  }).filter(r=>r['Total Students']>0)
-
-  // ─ 7. Monthly Collection Summary ─────────────────────────────────────────
-  const monthMap = {}
-  const addToMonth = (monthKey, type, amt) => {
-    if (!monthMap[monthKey]) monthMap[monthKey] = { 'Month':monthKey, 'Flat Fee':0, 'Course Fee':0, 'Admission Fee':0 }
-    monthMap[monthKey][type] = (monthMap[monthKey][type]||0) + amt
-  }
-  adm_flat_fees.forEach(r => { if(r.month && r.year) addToMonth(`${r.month} ${r.year}`,'Flat Fee',r.amount||0) })
-  adm_course_fees.forEach(r => { if(r.for_month && r.year) addToMonth(`${r.for_month} ${r.year}`,'Course Fee',Number(r.amount_paid)||0) })
-  adm_fee_collections.forEach(r => { if(r.pay_date) { const d=new Date(r.pay_date+'T00:00:00'); addToMonth(`${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`,'Admission Fee',Number(r.amount_paid)||0) } })
-  const monthlyRows = Object.values(monthMap).map(m => ({
-    ...m,
-    'Total': (m['Flat Fee']||0)+(m['Course Fee']||0)+(m['Admission Fee']||0)
-  }))
-
-  // ─ 8. Daily transactions (date-range) ────────────────────────────────────
-  const from = afDateFrom||'2020-01-01', to = afDateTo||todayStr
-  const inRange = d => d && d>=from && d<=to
-  const dailyRows = [
-    ...adm_flat_fees.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Flat Fee','Description':`${r.month} ${r.year}`,'Amount':r.amount||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
-    ...adm_course_fees.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':r.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Course Fee','Description':`${r.course} — ${r.for_month} ${r.year}`,'Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
-    ...adm_fee_collections.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Admission Fee','Description':r.description||r.fee_type||'—','Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
-  ].sort((a,b)=>b['Date'].localeCompare(a['Date']))
-
-  return { feeStatusRows, pendingRows, flatRows, crsfRows, admRows, courseRows, monthlyRows, dailyRows }
-}
-
-// ── Reports Export Tab ────────────────────────────────────────────────────────
-function ReportsExportTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows }) {
-  const w = useWindowWidth()
-  const isMobile = w < 768
-  const todayStr = new Date().toLocaleDateString('en-CA')
-
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo,   setDateTo]   = useState('')
-  const [courseF,  setCourseF]  = useState('All')
-  const [hostelF,  setHostelF]  = useState('All')
-  const [statusF,  setStatusF]  = useState('All')
-  const [lastExport, setLastExport] = useState(null)
-
-  const n  = v => Number(v||0).toLocaleString('en-IN')
-
-  // Apply course/hostel/status filter to liveRows for status report
-  const filteredLive = useMemo(() => liveRows.filter(s => {
-    if (courseF!=='All' && s.course!==courseF) return false
-    if (hostelF!=='All' && s.hostel_type!==hostelF) return false
-    if (statusF!=='All' && s.liveStatus!==statusF) return false
-    return true
-  }), [liveRows, courseF, hostelF, statusF])
-
-  const reports = useMemo(() => buildReports({
-    students, adm_fee_collections, adm_flat_fees, adm_course_fees,
-    liveRows: filteredLive, todayStr,
-    afDateFrom: dateFrom, afDateTo: dateTo,
-  }), [students, adm_fee_collections, adm_flat_fees, adm_course_fees, filteredLive, dateFrom, dateTo, todayStr])
-
-  const toast = (name) => setLastExport(`✅ ${name} exported successfully`)
-
-  // Summary cards
-  const grandTotal = liveRows.reduce((s,r)=>s+r.grandTotal,0)
-  const admTotal   = adm_fee_collections.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
-  const flatTotal  = adm_flat_fees.reduce((s,r)=>s+(r.amount||0),0)
-  const crsfTotal  = adm_course_fees.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
-
-  const inp3 = { padding:'8px 11px', borderRadius:7, border:'1px solid #d1d5db', fontSize:12, outline:'none', background:'white', width:'100%' }
-
-  // ── Report definitions ────────────────────────────────────────────────────
-  const REPORT_GROUPS = [
-    {
-      group: 'Student Reports',
-      icon: '👨‍🎓',
-      color: '#1e3a5f',
-      bg: '#eff6ff',
-      reports: [
-        {
-          id: 'fee_status',
-          name: 'Fee Status Summary',
-          desc: 'All students with admission, flat, course fees and overall status',
-          rows: () => reports.feeStatusRows,
-          meta: () => ({ 'Total Students': students.length, 'Grand Total': `₹${n(grandTotal)}`, 'Filters': `${courseF}/${hostelF}/${statusF}`, 'Generated': todayStr }),
-        },
-        {
-          id: 'pending',
-          name: 'Pending Fee Students',
-          desc: 'Students who have not made any payment yet',
-          rows: () => reports.pendingRows,
-          meta: () => ({ 'Pending Count': reports.pendingRows.length, 'Generated': todayStr }),
-        },
-      ],
-    },
-    {
-      group: 'Collection Registers',
-      icon: '📋',
-      color: '#166534',
-      bg: '#f0fdf4',
-      reports: [
-        {
-          id: 'flat_register',
-          name: 'Flat Fee Register',
-          desc: 'All monthly flat fee payments with dates, mode and reference',
-          rows: () => reports.flatRows,
-          meta: () => ({ 'Total Records': reports.flatRows.length, 'Total Amount': `₹${n(flatTotal)}`, 'Generated': todayStr }),
-        },
-        {
-          id: 'course_register',
-          name: 'Course Fee Register',
-          desc: 'All course fee payments per month per student',
-          rows: () => reports.crsfRows,
-          meta: () => ({ 'Total Records': reports.crsfRows.length, 'Total Amount': `₹${n(crsfTotal)}`, 'Generated': todayStr }),
-        },
-        {
-          id: 'adm_register',
-          name: 'Admission Fee Register',
-          desc: 'Admission, dress kit, prospectus and advance fee collections',
-          rows: () => reports.admRows,
-          meta: () => ({ 'Total Records': reports.admRows.length, 'Total Amount': `₹${n(admTotal)}`, 'Generated': todayStr }),
-        },
-      ],
-    },
-    {
-      group: 'Summary Reports',
-      icon: '📊',
-      color: '#6d28d9',
-      bg: '#f5f3ff',
-      reports: [
-        {
-          id: 'course_summary',
-          name: 'Course-wise Collection Summary',
-          desc: 'Fee totals broken down by course and hostel type',
-          rows: () => reports.courseRows,
-          meta: () => ({ 'Courses': reports.courseRows.length, 'Grand Total': `₹${n(grandTotal)}`, 'Generated': todayStr }),
-        },
-        {
-          id: 'monthly_summary',
-          name: 'Monthly Collection Summary',
-          desc: 'Month-wise totals for flat, course and admission fees',
-          rows: () => reports.monthlyRows,
-          meta: () => ({ 'Months': reports.monthlyRows.length, 'Generated': todayStr }),
-        },
-      ],
-    },
-    {
-      group: 'Date Range Report',
-      icon: '📅',
-      color: '#d97706',
-      bg: '#fffbeb',
-      reports: [
-        {
-          id: 'daily_range',
-          name: 'Transaction Register',
-          desc: `All fee transactions${dateFrom?' from '+dateFrom:''}${dateTo?' to '+dateTo:' (all time)'}`,
-          rows: () => reports.dailyRows,
-          meta: () => ({ 'Date From': dateFrom||'All', 'Date To': dateTo||'Today', 'Records': reports.dailyRows.length, 'Total': `₹${n(reports.dailyRows.reduce((s,r)=>s+r['Amount'],0))}` }),
-        },
-      ],
-    },
-  ]
-
-  // Export dispatcher
-  const doExport = (report, format) => {
-    const rows = report.rows()
-    const meta = report.meta()
-    if (!rows?.length) { alert('No data to export for this report.'); return }
-    const filename = `GNSI_${report.id}_${todayStr}`
-    const title    = `${report.name} — GNSI`
-    if (format==='csv')   { exportCSV(rows, filename); toast(report.name+' CSV') }
-    if (format==='tsv')   { exportTSV(rows, filename); toast(report.name+' TSV') }
-    if (format==='json')  { exportJSONFile(rows, filename); toast(report.name+' JSON') }
-    if (format==='xls')   { exportXLS(rows, filename, report.name); toast(report.name+' XLS') }
-    if (format==='print') { exportPrintHTML(rows, filename, title, meta); toast(report.name+' Print') }
-  }
-
-  const FmtBtn = ({ format, label, color, onClick }) => (
-    <button onClick={onClick}
-      style={{ padding:'6px 10px', borderRadius:6, border:`1.5px solid ${color}20`, background:`${color}10`,
-        color, fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}
-      onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}}
-      onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>
-      {label}
-    </button>
-  )
-
-  return (
-    <div style={{ fontFamily:'system-ui,sans-serif' }}>
-
-      {/* ── Header ── */}
-      <div style={{ background:'linear-gradient(135deg,#1e3a5f,#1e40af)', borderRadius:14, padding:'20px 24px', color:'white', marginBottom:20 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
-          <div style={{ fontSize:36 }}>📤</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:20, fontWeight:900 }}>Reports &amp; Export Centre</div>
-            <div style={{ fontSize:12, opacity:.8, marginTop:3 }}>Export any fee report in CSV · TSV · XLS · JSON · Print/PDF format</div>
-          </div>
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            {[{l:'Students',v:students.length,icon:'👨‍🎓'},{l:'Total Collected',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(
-              <div key={c.l} style={{ background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.2)', borderRadius:8, padding:'8px 14px', textAlign:'center', minWidth:80 }}>
-                <div style={{ fontSize:11, opacity:.8 }}>{c.icon} {c.l}</div>
-                <div style={{ fontSize:14, fontWeight:900, marginTop:2 }}>{c.v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+function DailyIncomeReport({date,transactions=[],generatedBy='Admin'}){
+  const todayStr=new Date().toLocaleDateString('en-CA'),reportDate=date||todayStr
+  const [offlineRcpt,setOfflineRcpt]=useState(''),[reportTitle,setReportTitle]=useState('Daily Income Report')
+  const grand=transactions.reduce((s,r)=>s+(Number(r.amount)||0),0)
+  const handlePrint=()=>{const html=_buildDirHTML({date:reportDate,transactions,generatedBy,offlineReceiptNo:offlineRcpt.trim()||null,reportTitle});const win=window.open('','_blank','width=960,height=750,scrollbars=yes');win.document.write(html);win.document.close()}
+  return(
+    <div style={{background:'#fffbeb',border:'1.5px solid #fcd34d',borderRadius:12,padding:'16px 20px',marginTop:24}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <span style={{fontSize:22}}>🖨️</span>
+        <div style={{flex:1}}><div style={{fontSize:14,fontWeight:900,color:'#92400e'}}>Print Daily Income Report</div><div style={{fontSize:11,color:'#b45309',marginTop:2}}>For Vice-Principal &amp; Founder/Administrator · {_date(reportDate)}</div></div>
+        <div style={{fontSize:13,fontWeight:800,color:'#1e3a5f',background:'#eff6ff',padding:'6px 14px',borderRadius:8,border:'1px solid #bfdbfe'}}>{transactions.length} txns · ₹{_inr(grand)}</div>
       </div>
-
-      {/* ── Global filters ── */}
-      <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:12, padding:'14px 18px', marginBottom:20 }}>
-        <div style={{ fontSize:12, fontWeight:800, color:'#1e3a5f', marginBottom:12 }}>🔧 Report Filters — applies to Fee Status, Pending &amp; Date Range reports</div>
-        <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5,1fr)', gap:10 }}>
-          <div>
-            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Course</div>
-            <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={inp3}>
-              <option value="All">All Courses</option>
-              {['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Hostel Type</div>
-            <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={inp3}>
-              <option value="All">All Types</option>
-              {['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Status</div>
-            <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={inp3}>
-              <option value="All">All Status</option>
-              <option>Paid</option><option>Partial</option><option>Pending</option>
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Date From</div>
-            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp3} />
-          </div>
-          <div>
-            <div style={{ fontSize:10, fontWeight:700, color:'#64748b', marginBottom:4, textTransform:'uppercase' }}>Date To</div>
-            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp3} />
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
-          <button onClick={()=>{setDateFrom(todayStr);setDateTo(todayStr)}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #bfdbfe', background:'#eff6ff', color:'#1e3a5f', fontSize:11, fontWeight:700, cursor:'pointer' }}>📅 Today</button>
-          <button onClick={()=>{const d=new Date();d.setDate(1);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #d1fae5', background:'#ecfdf5', color:'#059669', fontSize:11, fontWeight:700, cursor:'pointer' }}>📅 This Month</button>
-          <button onClick={()=>{const d=new Date();d.setDate(d.getDate()-30);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #ede9fe', background:'#f5f3ff', color:'#7c3aed', fontSize:11, fontWeight:700, cursor:'pointer' }}>📅 Last 30 Days</button>
-          <button onClick={()=>{setCourseF('All');setHostelF('All');setStatusF('All');setDateFrom('');setDateTo('')}} style={{ padding:'5px 12px', borderRadius:6, border:'1px solid #fca5a5', background:'#fef2f2', color:'#dc2626', fontSize:11, fontWeight:700, cursor:'pointer' }}>✕ Clear All</button>
-        </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Report Title</div><input value={reportTitle} onChange={e=>setReportTitle(e.target.value)} style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:600,outline:'none',background:'white',color:'#92400e'}}/></div>
+        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a5f',fontFamily:'monospace'}}/></div>
       </div>
-
-      {/* ── Success toast ── */}
-      {lastExport && (
-        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, padding:'10px 16px', marginBottom:16, fontSize:12, fontWeight:700, color:'#16a34a', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          {lastExport}
-          <button onClick={()=>setLastExport(null)} style={{ background:'none', border:'none', color:'#16a34a', cursor:'pointer', fontSize:16, fontWeight:900 }}>×</button>
-        </div>
-      )}
-
-      {/* ── Format legend ── */}
-      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:16, padding:'10px 14px', background:'#f8fafc', borderRadius:8, border:'1px solid #e2e8f0' }}>
-        <span style={{ fontSize:11, fontWeight:700, color:'#64748b', marginRight:4 }}>FORMAT GUIDE:</span>
-        {[
-          {l:'📄 CSV', d:'Excel / Google Sheets (comma-separated)', c:'#1e3a5f'},
-          {l:'📋 TSV', d:'Tab-separated, safe for all locales', c:'#059669'},
-          {l:'📊 XLS', d:'Opens directly in Microsoft Excel', c:'#166534'},
-          {l:'{ } JSON', d:'For developers / API integration', c:'#7c3aed'},
-          {l:'🖨 Print', d:'Formatted A4 printout / PDF', c:'#d97706'},
-        ].map(f=>(
-          <div key={f.l} style={{ display:'flex', alignItems:'center', gap:4 }}>
-            <span style={{ fontSize:11, fontWeight:800, color:f.c }}>{f.l}</span>
-            <span style={{ fontSize:10, color:'#94a3b8' }}>— {f.d}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Report groups ── */}
-      <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-        {REPORT_GROUPS.map(group => (
-          <div key={group.group} style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:14, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
-            {/* Group header */}
-            <div style={{ background:`linear-gradient(135deg,${group.color}15,${group.color}08)`, borderBottom:`2px solid ${group.color}20`, padding:'12px 18px', display:'flex', alignItems:'center', gap:10 }}>
-              <span style={{ fontSize:20 }}>{group.icon}</span>
-              <div style={{ fontWeight:800, fontSize:14, color:group.color }}>{group.group}</div>
-              <div style={{ marginLeft:'auto', fontSize:11, color:group.color, opacity:.7 }}>{group.reports.length} report{group.reports.length!==1?'s':''}</div>
-            </div>
-
-            {/* Reports in group */}
-            <div style={{ padding:'0 6px 6px' }}>
-              {group.reports.map((report, ri) => {
-                const rows = report.rows()
-                const meta = report.meta()
-                return (
-                  <div key={report.id} style={{ padding:'14px 12px', borderBottom: ri<group.reports.length-1 ? '1px solid #f1f5f9' : 'none' }}>
-                    <div style={{ display:'flex', alignItems:'flex-start', gap:14, flexWrap:'wrap' }}>
-                      <div style={{ flex:1, minWidth:200 }}>
-                        <div style={{ fontSize:13, fontWeight:800, color:'#1e293b', marginBottom:3 }}>{report.name}</div>
-                        <div style={{ fontSize:11, color:'#64748b', marginBottom:6 }}>{report.desc}</div>
-                        <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-                          {Object.entries(meta).map(([k,v])=>(
-                            <div key={k} style={{ fontSize:10 }}>
-                              <span style={{ color:'#94a3b8', fontWeight:600 }}>{k}: </span>
-                              <span style={{ color:'#1e293b', fontWeight:800 }}>{String(v)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', flexShrink:0 }}>
-                        <span style={{ fontSize:10, color:'#94a3b8', fontWeight:700, marginRight:4 }}>{rows.length} rows</span>
-                        <FmtBtn format="csv"   label="📄 CSV"   color="#1e3a5f" onClick={()=>doExport(report,'csv')} />
-                        <FmtBtn format="tsv"   label="📋 TSV"   color="#059669" onClick={()=>doExport(report,'tsv')} />
-                        <FmtBtn format="xls"   label="📊 XLS"   color="#166534" onClick={()=>doExport(report,'xls')} />
-                        <FmtBtn format="json"  label="{} JSON"  color="#7c3aed" onClick={()=>doExport(report,'json')} />
-                        <FmtBtn format="print" label="🖨 Print"  color="#d97706" onClick={()=>doExport(report,'print')} />
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Quick export all ── */}
-      <div style={{ marginTop:20, background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:12, padding:'16px 18px' }}>
-        <div style={{ fontSize:13, fontWeight:800, color:'#1e3a5f', marginBottom:10 }}>⚡ Quick Export All Reports as CSV</div>
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-          {REPORT_GROUPS.flatMap(g=>g.reports).map(r=>(
-            <button key={r.id} onClick={()=>doExport(r,'csv')}
-              style={{ padding:'7px 14px', borderRadius:7, border:'1px solid #e2e8f0', background:'white', color:'#1e3a5f', fontSize:12, fontWeight:700, cursor:'pointer' }}
-              onMouseEnter={e=>e.currentTarget.style.background='#eff6ff'}
-              onMouseLeave={e=>e.currentTarget.style.background='white'}>
-              📄 {r.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      <button onClick={handlePrint} disabled={transactions.length===0} style={{width:'100%',padding:'12px',borderRadius:9,background:transactions.length===0?'#94a3b8':'linear-gradient(135deg,#1e3a5f,#3730a3)',color:'white',border:'none',fontSize:14,fontWeight:800,cursor:transactions.length===0?'not-allowed':'pointer'}}>
+        {transactions.length===0?'No transactions — select a date range above':`🖨️ Open Print Preview — ₹${_inr(grand)} · ${transactions.length} receipt${transactions.length!==1?'s':''}`}
+      </button>
+      <div style={{fontSize:10,color:'#92400e',marginTop:8,textAlign:'center',opacity:.75}}>Opens in new tab · Use browser Print (Ctrl+P) to save as PDF</div>
     </div>
   )
 }
+
+// PLACEHOLDER_ANOMALY
+// PLACEHOLDER_LEDGER
+// PLACEHOLDER_REPORTS
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -718,13 +273,23 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const crsfTotal       = adm_course_fees.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
 
   // This month collections
-  const thisMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === thisMonth && r.year === thisYear).reduce((s, r) => s + (r.amount || 0), 0)
-  const thisMonthCrsf   = adm_course_fees.filter(r => r.for_month === thisMonth && r.year === thisYear).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-  const thisMonthTotal  = thisMonthFlat + thisMonthCrsf
+  // FIX: Supabase stores r.year as STRING ("2026") but getFullYear() returns NUMBER (2026).
+  // "2026" === 2026 is always false → was showing ₹0. Use String() to normalise.
+  const thisYearStr     = String(thisYear)
+  const thisMonthStart  = `${thisYearStr}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const todayStr2       = new Date().toLocaleDateString('en-CA')
+  const thisMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === thisMonth && String(r.year) === thisYearStr).reduce((s, r) => s + (r.amount || 0), 0)
+  const thisMonthCrsf   = adm_course_fees.filter(r => r.for_month === thisMonth && String(r.year) === thisYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const thisMonthAdm    = adm_fee_collections.filter(r => r.pay_date >= thisMonthStart && r.pay_date <= todayStr2).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const thisMonthTotal  = thisMonthFlat + thisMonthCrsf + thisMonthAdm
 
-  const prevMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === prevMonth).reduce((s, r) => s + (r.amount || 0), 0)
-  const prevMonthCrsf   = adm_course_fees.filter(r => r.for_month === prevMonth).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-  const prevMonthTotal  = prevMonthFlat + prevMonthCrsf
+  const prevYearStr     = String(now.getMonth() === 0 ? thisYear - 1 : thisYear)
+  const prevMonthStart  = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleDateString('en-CA')
+  const prevMonthEnd    = new Date(now.getFullYear(), now.getMonth(), 0).toLocaleDateString('en-CA')
+  const prevMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === prevMonth && String(r.year) === prevYearStr).reduce((s, r) => s + (r.amount || 0), 0)
+  const prevMonthCrsf   = adm_course_fees.filter(r => r.for_month === prevMonth && String(r.year) === prevYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const prevMonthAdm    = adm_fee_collections.filter(r => r.pay_date >= prevMonthStart && r.pay_date <= prevMonthEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const prevMonthTotal  = prevMonthFlat + prevMonthCrsf + prevMonthAdm
   const monthChange     = prevMonthTotal > 0 ? Math.round(((thisMonthTotal - prevMonthTotal) / prevMonthTotal) * 100) : null
 
   // Today's collections
@@ -749,18 +314,21 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const fullyPaid       = liveRows.filter(s => paidFlatGccs.has(gccStr(s.gcc_no)) && paidCrsfGccs.has(gccStr(s.gcc_no)))
 
   // This month defaulters — paid no course fee this month
-  const paidThisMonthCrsf = new Set(adm_course_fees.filter(r => r.for_month === thisMonth && r.year === thisYear).map(r => gccStr(r.adm_app_id)))
+  const paidThisMonthCrsf = new Set(adm_course_fees.filter(r => r.for_month === thisMonth && String(r.year) === thisYearStr).map(r => gccStr(r.adm_app_id)))
   const defaultersThisMonth = liveRows.filter(s => !paidThisMonthCrsf.has(gccStr(s.gcc_no)))
 
   // ── Monthly trend (last 6 months) ───────────────────────────────────────────
   const last6 = Array.from({ length: 6 }, (_, i) => {
-    const d   = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
-    const mon = d.toLocaleString('default', { month: 'short' })
-    const yr  = d.getFullYear()
-    const fullMon = d.toLocaleString('default', { month: 'long' })
-    const flat = adm_flat_fees.filter(r => r.paid && r.month === fullMon && r.year === yr).reduce((s, r) => s + (r.amount || 0), 0)
-    const crsf = adm_course_fees.filter(r => r.for_month === fullMon && r.year === yr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-    return { label: mon, flat, crsf, total: flat + crsf }
+    const d      = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+    const mon    = d.toLocaleString('default', { month: 'short' })
+    const yrStr  = String(d.getFullYear())
+    const fullMon= d.toLocaleString('default', { month: 'long' })
+    const mStart = d.toLocaleDateString('en-CA')
+    const mEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0).toLocaleDateString('en-CA')
+    const flat   = adm_flat_fees.filter(r => r.paid && r.month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (r.amount || 0), 0)
+    const crsf   = adm_course_fees.filter(r => r.for_month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+    const adm    = adm_fee_collections.filter(r => r.pay_date >= mStart && r.pay_date <= mEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+    return { label: mon, flat, crsf, adm, total: flat + crsf + adm }
   })
   const maxBar = Math.max(...last6.map(m => m.total), 1)
 
@@ -824,7 +392,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         {/* ── Monthly trend bar chart ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>📈 Monthly Collection Trend</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Last 6 months — flat + course fees</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Last 6 months — admission + flat + course fees</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 140 }}>
             {last6.map(m => (
               <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -832,7 +400,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   {m.total > 0 ? `₹${Math.round(m.total / 1000)}k` : '—'}
                 </div>
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <div style={{ width: '100%', height: Math.max(4, Math.round((m.crsf / maxBar) * 100)), background: '#7c3aed', borderRadius: '3px 3px 0 0' }} />
+                  <div style={{ width: '100%', height: Math.max(4, Math.round((m.adm  / maxBar) * 100)), background: '#4f46e5', borderRadius: '3px 3px 0 0' }} />
+                  <div style={{ width: '100%', height: Math.max(4, Math.round((m.crsf / maxBar) * 100)), background: '#7c3aed' }} />
                   <div style={{ width: '100%', height: Math.max(4, Math.round((m.flat / maxBar) * 100)), background: '#059669', borderRadius: '0 0 3px 3px' }} />
                 </div>
                 <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b' }}>{m.label}</div>
@@ -840,6 +409,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             ))}
           </div>
           <div style={{ display: 'flex', gap: 14, marginTop: 10 }}>
+            <span style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: '#4f46e5', borderRadius: 2, display: 'inline-block' }} />Adm</span>
             <span style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: '#7c3aed', borderRadius: 2, display: 'inline-block' }} />Course</span>
             <span style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: '#059669', borderRadius: 2, display: 'inline-block' }} />Flat</span>
           </div>
@@ -1878,7 +1448,6 @@ export default function Fees() {
     { id: 'payment',   label: '💳 Fee Payment' },
     { id: 'live',      label: '📊 Live Summary' },
     { id: 'admin',     label: '🛡️ Admin View' },
-    { id: 'reports',   label: '📤 Reports & Export' },
   ]
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -2357,16 +1926,6 @@ export default function Fees() {
             </div>
           </div>
         </>
-      )}
-
-      {tab === 'reports' && (
-        <ReportsExportTab
-          students={students}
-          adm_fee_collections={adm_fee_collections}
-          adm_flat_fees={adm_flat_fees}
-          adm_course_fees={adm_course_fees}
-          liveRows={liveRows}
-        />
       )}
     </div>
   )
