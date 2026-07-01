@@ -4,6 +4,7 @@ import {
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
   getLiveKPIs, getEvents, submitEnquiry, submitScholarRegistration, submitGrievance
 } from './websiteApi';
+import { supabase } from './supabase';
 
 // TODO: consider moving to Supabase storage for consistency with other site assets
 const FOUNDER_PHOTO_URL = "https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg";
@@ -621,7 +622,8 @@ window.submitGrievance = async () => {
       }
     };
 
-    // Parents Portal
+    // ── PARENTS PORTAL ────────────────────────────────────────────────────────
+
     window.openPP = () => {
       document.getElementById('ppOverlay')?.classList.add('open');
       document.body.style.overflow = 'hidden';
@@ -630,29 +632,294 @@ window.submitGrievance = async () => {
       document.getElementById('ppOverlay')?.classList.remove('open');
       document.body.style.overflow = '';
     };
+
     window.ppTab = (id, btn) => {
       document.querySelectorAll('.pp-sec').forEach(s => s.classList.remove('active'));
       document.getElementById('sec-' + id)?.classList.add('active');
       document.querySelectorAll('.pp-tab').forEach(b => b.classList.remove('active'));
       btn?.classList.add('active');
+      const sid = window._ppStudentId;
+      if (!sid) return;
+      if (id === 'att')     ppLoadAtt(sid);
+      if (id === 'exams')   ppLoadExams(sid);
+      if (id === 'notices') ppLoadNotices();
+      if (id === 'leave')   ppLoadLeave(sid);
+      if (id === 'alerts')  ppLoadAlerts(sid);
     };
-    window.ppLogin = () => {
-      const phone = document.getElementById('ppPhone')?.value;
-      const sid = document.getElementById('ppSid')?.value;
-      const err = document.getElementById('ppErr');
+
+    window.ppLogin = async () => {
+      const phone = document.getElementById('ppPhone')?.value?.trim();
+      const sid   = document.getElementById('ppSid')?.value?.trim();
+      const err   = document.getElementById('ppErr');
+      const btn   = document.getElementById('ppLbtn');
+
       if (!phone || !sid) {
         if (err) { err.style.display = 'block'; err.textContent = 'Please enter both phone number and student ID.'; }
         return;
       }
-      document.getElementById('ppLoginWrap').style.display = 'none';
-      document.getElementById('ppShell').classList.add('show');
-      document.getElementById('ppStuName').textContent = 'Student (' + sid + ')';
-      document.getElementById('ppDashName').textContent = 'Parents Portal';
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+      if (err) err.style.display = 'none';
+
+      try {
+        const { data, error } = await supabase
+          .from('students')
+          .select('id, name, course, class_name, batch, hostel_type, status, admission_no')
+          .eq('phone', phone)
+          .eq('admission_no', sid)
+          .eq('is_soft_deleted', false)
+          .single();
+
+        if (error || !data) {
+          if (err) { err.style.display = 'block'; err.textContent = 'Student not found. Check phone number and admission number.'; }
+          btn.disabled = false;
+          btn.textContent = 'Login to Parents Portal →';
+          return;
+        }
+
+        window._ppStudentId = data.id;
+
+        document.getElementById('ppStuName').textContent  = data.name || 'Student';
+        document.getElementById('ppDashName').textContent = data.name || 'Student';
+        document.getElementById('ppStuClass').textContent = [data.course, data.class_name, data.batch].filter(Boolean).join(' · ');
+        document.getElementById('ppAv').textContent       = (data.name || 'S')[0].toUpperCase();
+        document.getElementById('ppStuType').textContent  = data.hostel_type || '—';
+        document.getElementById('ppStuStat').textContent  = data.status || 'Active';
+
+        document.getElementById('ppLoginWrap').style.display = 'none';
+        document.getElementById('ppShell').classList.add('show');
+        ppLoadAtt(data.id);
+
+      } catch (e) {
+        if (err) { err.style.display = 'block'; err.textContent = 'Connection error. Try again.'; }
+        btn.disabled = false;
+        btn.textContent = 'Login to Parents Portal →';
+      }
     };
+
     window.ppLogout = () => {
+      window._ppStudentId = null;
+      document.getElementById('ppPhone').value = '';
+      document.getElementById('ppSid').value   = '';
       document.getElementById('ppLoginWrap').style.display = 'flex';
       document.getElementById('ppShell').classList.remove('show');
+      document.querySelectorAll('.pp-tab').forEach((b, i) => b.classList.toggle('active', i === 0));
+      document.querySelectorAll('.pp-sec').forEach((s, i) => s.classList.toggle('active', i === 0));
     };
+
+    // ── TAB: ATTENDANCE ───────────────────────────────────────────────────────
+
+    async function ppLoadAtt(studentId) {
+      const grid   = document.getElementById('attGrid');
+      const recent = document.getElementById('attRecent');
+      const month  = document.getElementById('attMonth');
+      if (!grid) return;
+
+      const now  = new Date();
+      const y    = now.getFullYear();
+      const m    = String(now.getMonth() + 1).padStart(2, '0');
+      const from = `${y}-${m}-01`;
+      const to   = `${y}-${m}-31`;
+      month.textContent = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+      const { data } = await supabase
+        .from('attendance')
+        .select('date, status')
+        .eq('student_id', studentId)
+        .gte('date', from)
+        .lte('date', to)
+        .order('date', { ascending: true });
+
+      const rows = data || [];
+      const daysInMonth = new Date(y, now.getMonth() + 1, 0).getDate();
+      const byDate = Object.fromEntries(rows.map(r => [r.date.slice(8, 10), r.status]));
+
+      let gridHTML = '';
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dd  = String(d).padStart(2, '0');
+        const st  = byDate[dd];
+        const cls = st === 'Present' ? 'att-p' : st === 'Absent' ? 'att-a' : 'att-h';
+        gridHTML += `<div class="att-day ${cls}" title="${y}-${m}-${dd}">${d}</div>`;
+      }
+      grid.innerHTML = gridHTML || '<div class="pp-empty"><p>No data</p></div>';
+
+      const p   = rows.filter(r => r.status === 'Present').length;
+      const a   = rows.filter(r => r.status === 'Absent').length;
+      const pct = rows.length ? Math.round((p / rows.length) * 100) : 0;
+      document.getElementById('attP').textContent   = p;
+      document.getElementById('attA').textContent   = a;
+      document.getElementById('attPct').textContent = pct + '%';
+
+      const last10 = rows.slice(-10).reverse();
+      recent.innerHTML = last10.length
+        ? `<table class="pp-table"><thead><tr><th>Date</th><th>Status</th></tr></thead><tbody>
+            ${last10.map(r => {
+              const badge = r.status === 'Present' ? 'sc-hi' : 'sc-lo';
+              return `<tr><td>${r.date}</td><td><span class="${badge}">${r.status}</span></td></tr>`;
+            }).join('')}
+          </tbody></table>`
+        : '<div class="pp-empty"><div class="pp-empty-icon">📅</div><p>No recent records</p></div>';
+    }
+
+    // ── TAB: EXAM SCORES ──────────────────────────────────────────────────────
+
+    async function ppLoadExams(studentId) {
+      const el = document.getElementById('examList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      // exam_marks stores total_marks directly on each row — no join needed
+      const { data: marks } = await supabase
+        .from('exam_marks')
+        .select('subject, marks_obtained, total_marks, exam_date, exam_type_id')
+        .eq('student_id', studentId)
+        .order('exam_date', { ascending: false });
+
+      if (!marks?.length) {
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">📝</div><p>No results yet</p></div>';
+        return;
+      }
+
+      // Resolve exam type names in one query
+      const typeIds = [...new Set(marks.map(r => r.exam_type_id).filter(Boolean))];
+      const { data: types } = typeIds.length
+        ? await supabase.from('exam_types').select('id, name').in('id', typeIds)
+        : { data: [] };
+      const typeMap = Object.fromEntries((types || []).map(t => [t.id, t.name]));
+
+      el.innerHTML = `<table class="pp-table">
+        <thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>Date</th></tr></thead>
+        <tbody>${marks.map(r => {
+          const total    = r.total_marks ?? '—';
+          const name     = typeMap[r.exam_type_id] || '—';
+          const pct      = total !== '—' ? Math.round((r.marks_obtained / total) * 100) : null;
+          const badge    = pct === null ? 'sc-mi' : pct >= 75 ? 'sc-hi' : pct >= 50 ? 'sc-mi' : 'sc-lo';
+          const marksStr = total !== '—' ? `${r.marks_obtained}/${total}` : r.marks_obtained;
+          return `<tr>
+            <td>${name}</td>
+            <td>${r.subject || '—'}</td>
+            <td><span class="${badge}">${marksStr}</span></td>
+            <td>${r.exam_date ? r.exam_date.slice(0, 10) : '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    }
+
+    // ── TAB: NOTICES ─────────────────────────────────────────────────────────
+
+    async function ppLoadNotices() {
+      const el = document.getElementById('noticeList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      const { data } = await supabase
+        .from('notices')
+        .select('title, body, priority, notice_date')
+        .eq('is_archived', false)
+        .order('notice_date', { ascending: false })
+        .limit(15);
+
+      const rows = data || [];
+      if (!rows.length) {
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">📣</div><p>No notices</p></div>';
+        return;
+      }
+      el.innerHTML = rows.map(n => {
+        const priCls = n.priority === 'High' ? 'pri-h' : n.priority === 'Medium' ? 'pri-m' : 'pri-l';
+        return `<div class="pp-ni">
+          <span class="pp-npri ${priCls}">${n.priority || 'Low'}</span>
+          <div class="pp-ntitle">${n.title}</div>
+          <div class="pp-nbody">${n.body || ''}</div>
+          <div class="pp-ndate">${n.notice_date || ''}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // ── TAB: HOSTEL LEAVE ────────────────────────────────────────────────────
+
+    async function ppLoadLeave(studentId) {
+      const el = document.getElementById('leaveList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      const { data } = await supabase
+        .from('leave_requests')
+        .select('from_date, to_date, reason, status, created_at')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      const rows = data || [];
+      if (!rows.length) {
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">🏠</div><p>No leave history</p></div>';
+        return;
+      }
+      el.innerHTML = rows.map(r => {
+        const stCls = r.status === 'approved' ? 'ls-ap' : r.status === 'rejected' ? 'ls-re' : 'ls-pe';
+        return `<div class="leave-item">
+          <div class="leave-hd">
+            <span>${r.from_date} → ${r.to_date}</span>
+            <span class="ls ${stCls}">${r.status || 'pending'}</span>
+          </div>
+          <div class="leave-rsn">${r.reason || '—'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // ── TAB: ALERTS ──────────────────────────────────────────────────────────
+
+    async function ppLoadAlerts(studentId) {
+      const el = document.getElementById('alertList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      const [attRes, examRes] = await Promise.all([
+        supabase
+          .from('attendance')
+          .select('date, status')
+          .eq('student_id', studentId)
+          .eq('status', 'Absent')
+          .order('date', { ascending: false })
+          .limit(5),
+        supabase
+          .from('exam_marks')
+          .select('exam_type_id, marks_obtained, total_marks, exam_date')
+          .eq('student_id', studentId)
+          .order('exam_date', { ascending: false })
+          .limit(20),
+      ]);
+
+      // Resolve exam type names
+      const examRows = examRes.data || [];
+      const typeIds  = [...new Set(examRows.map(r => r.exam_type_id).filter(Boolean))];
+      const { data: types } = typeIds.length
+        ? await supabase.from('exam_types').select('id, name').in('id', typeIds)
+        : { data: [] };
+      const typeMap = Object.fromEntries((types || []).map(t => [t.id, t.name]));
+
+      const alerts = [];
+      (attRes.data || []).forEach(r => {
+        alerts.push({ type: 'att', msg: `Absent on ${r.date}`, date: r.date });
+      });
+      examRows.forEach(r => {
+        const total = r.total_marks;
+        const pct   = total ? Math.round((r.marks_obtained / total) * 100) : null;
+        if (pct !== null && pct < 50) {
+          const name = typeMap[r.exam_type_id] || 'Exam';
+          alerts.push({ type: 'exam', msg: `Low score in ${name}: ${r.marks_obtained}/${total} (${pct}%)`, date: r.exam_date });
+        }
+      });
+
+      if (!alerts.length) {
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">✅</div><p>No alerts — all good!</p></div>';
+        return;
+      }
+      el.innerHTML = alerts.map(a => `
+        <div class="alert-item ${a.type}">
+          <div class="alert-msg">${a.msg}</div>
+          <div class="alert-meta">${a.date ? a.date.slice(0, 10) : ''}</div>
+        </div>`).join('');
+    }
 
     // Form submissions (mock) 
     window.fetchAdmitCard = () => {
