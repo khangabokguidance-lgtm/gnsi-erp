@@ -1119,8 +1119,16 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
         if (!overlay) {
           overlay = document.createElement('div');
           overlay.id = 'rcPrintOverlay';
-          overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#f4f4f4;overflow:auto;';
+          // NOTE: deliberately NOT position:fixed. Safari (desktop and iOS) has a
+          // long-standing bug where position:fixed content fails to print at all —
+          // even when a @media print rule overrides it to static — because Safari's
+          // print renderer snapshots fixed layers before print styles apply. Using
+          // position:absolute anchored to the page (with body scroll locked while
+          // open) gives the same full-screen overlay behavior on screen but prints
+          // correctly in every browser, no print-time position override needed.
+          overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100vh;z-index:99999;background:#f4f4f4;';
           document.body.appendChild(overlay);
+          document.body.style.overflow = 'hidden'; // lock background scroll while overlay is open
 
           // Print-only CSS: hide everything except the overlay when printing
           if (!document.getElementById('rcPrintStyles')) {
@@ -1129,7 +1137,6 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
             styleTag.textContent = `
               @media print {
                 body > *:not(#rcPrintOverlay) { display: none !important; }
-                #rcPrintOverlay { position: static !important; }
                 #rcPrintOverlay .no-print { display: none !important; }
               }
             `;
@@ -1140,7 +1147,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
           <style>${RC_CSS}</style>
           <div class="no-print" style="position:sticky;top:0;z-index:2;background:#0B1F3A;padding:.8rem 1.2rem;display:flex;gap:.6rem;justify-content:flex-end;box-shadow:0 2px 10px rgba(0,0,0,.2);">
             <button onclick="window.print()" style="padding:.6rem 1.2rem;background:#B8922A;color:#0B1F3A;border:none;font-weight:700;cursor:pointer;border-radius:4px;">🖨️ Print / Save as PDF</button>
-            <button onclick="document.getElementById('rcPrintOverlay').remove()" style="padding:.6rem 1.2rem;background:transparent;color:#F8F3E8;border:1px solid #B8922A;cursor:pointer;border-radius:4px;">✕ Close</button>
+            <button onclick="document.getElementById('rcPrintOverlay').remove();document.body.style.overflow='';" style="padding:.6rem 1.2rem;background:transparent;color:#F8F3E8;border:1px solid #B8922A;cursor:pointer;border-radius:4px;">✕ Close</button>
           </div>
           ${html}
         `;
