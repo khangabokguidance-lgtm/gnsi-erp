@@ -622,7 +622,7 @@ window.submitGrievance = async () => {
       }
     };
 
-    // ── PARENTS PORTAL ────────────────────────────────────────────────────────
+       // ── PARENTS PORTAL ────────────────────────────────────────────────────────
 
     window.openPP = () => {
       document.getElementById('ppOverlay')?.classList.add('open');
@@ -644,14 +644,15 @@ window.submitGrievance = async () => {
       if (id === 'exams')      ppLoadExams(sid);
       if (id === 'reportcard') ppLoadReportCard(sid);
       if (id === 'notices')    ppLoadNotices();
-      if (id === 'leave')   ppLoadLeave(sid);
-      if (id === 'alerts')  ppLoadAlerts(sid);
+      if (id === 'leave')      ppLoadLeave(sid);
+      if (id === 'alerts')     ppLoadAlerts(sid);
     };
 
     window.ppLogin = async () => {
       const gccNoRaw  = document.getElementById('ppPhone')?.value?.trim();
       const gccNo     = gccNoRaw;
-      const nameInput = document.getElementById('ppSid')?.value?.trim().toUpperCase();
+      // FIX #4: Guard against undefined value before calling string methods
+      const nameInput = (document.getElementById('ppSid')?.value || '').trim().toUpperCase();
       const err       = document.getElementById('ppErr');
       const btn       = document.getElementById('ppLbtn');
 
@@ -664,10 +665,6 @@ window.submitGrievance = async () => {
       if (err) err.style.display = 'none';
 
       try {
-        // Guard against a request that never resolves (paused backend, blocked
-        // network, dead connection, etc.) — without this, a hung request leaves
-        // the button stuck on "Checking…" forever with no way to recover short
-        // of reloading the page.
         const timeout = (ms) => new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), ms));
 
@@ -680,7 +677,11 @@ window.submitGrievance = async () => {
           timeout(15000),
         ]);
 
-        if (error || !data || data.name?.toUpperCase().replace(/\s+/g,' ').trim() !== nameInput.replace(/\s+/g,' ').trim()) {
+        // FIX #5: Guard data.name against null/undefined before comparison
+        const normalizedDataName = (data?.name || '').toUpperCase().replace(/\s+/g,' ').trim();
+        const normalizedInput    = nameInput.replace(/\s+/g,' ').trim();
+
+        if (error || !data || normalizedDataName !== normalizedInput) {
           const msg = error ? `Error: ${error.message}` : !data ? 'GCC No. not found.' : 'Name does not match.';
           if (err) { err.style.display = 'block'; err.textContent = msg; }
           btn.disabled = false;
@@ -694,7 +695,7 @@ window.submitGrievance = async () => {
         document.getElementById('ppStuName').textContent  = data.name || 'Student';
         document.getElementById('ppDashName').textContent = data.name || 'Student';
         document.getElementById('ppStuClass').textContent = [data.course, data.class_name, data.batch].filter(Boolean).join(' · ');
-        document.getElementById('ppAv').textContent       = (data.name || 'S')[0].toUpperCase();
+        document.getElementById('ppAv').textContent       = ((data.name || 'S')[0]).toUpperCase();
         document.getElementById('ppStuType').textContent  = data.hostel_type || '—';
         document.getElementById('ppStuStat').textContent  = data.status || 'Active';
 
@@ -716,10 +717,445 @@ window.submitGrievance = async () => {
       document.getElementById('ppSid').value   = '';
       document.getElementById('ppLoginWrap').style.display = 'flex';
       document.getElementById('ppShell').classList.remove('show');
+      // FIX: Reset tabs to first (attendance) tab
       document.querySelectorAll('.pp-tab').forEach((b, i) => b.classList.toggle('active', i === 0));
       document.querySelectorAll('.pp-sec').forEach((s, i) => s.classList.toggle('active', i === 0));
     };
 
+    // ── TAB: ATTENDANCE ───────────────────────────────────────────────────────
+
+    async function ppLoadAtt(studentId) {
+      const grid   = document.getElementById('attGrid');
+      const recent = document.getElementById('attRecent');
+      const month  = document.getElementById('attMonth');
+      // FIX #1: Guard all required elements
+      if (!grid || !recent || !month) return;
+
+      const now  = new Date();
+      const y    = now.getFullYear();
+      const m    = String(now.getMonth() + 1).padStart(2, '0');
+      const from = `${y}-${m}-01`;
+      const to   = `${y}-${m}-31`;
+      month.textContent = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+      try {
+        const { data } = await supabase
+          .from('attendance')
+          .select('date, status')
+          .eq('student_id', studentId)
+          .gte('date', from)
+          .lte('date', to)
+          .order('date', { ascending: true });
+
+        const rows = data || [];
+        const daysInMonth = new Date(y, now.getMonth() + 1, 0).getDate();
+        const byDate = Object.fromEntries(rows.map(r => [r.date.slice(8, 10), r.status]));
+
+        let gridHTML = '';
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dd  = String(d).padStart(2, '0');
+          const st  = byDate[dd];
+          const cls = st === 'Present' ? 'att-p' : st === 'Absent' ? 'att-a' : 'att-h';
+          gridHTML += `<div class="att-day ${cls}" title="${y}-${m}-${dd}">${d}</div>`;
+        }
+        grid.innerHTML = gridHTML || '<div class="pp-empty"><p>No data</p></div>';
+
+        const p   = rows.filter(r => r.status === 'Present').length;
+        const a   = rows.filter(r => r.status === 'Absent').length;
+        const pct = rows.length ? Math.round((p / rows.length) * 100) : 0;
+        document.getElementById('attP').textContent   = p;
+        document.getElementById('attA').textContent   = a;
+        document.getElementById('attPct').textContent = pct + '%';
+
+        const last10 = rows.slice(-10).reverse();
+        recent.innerHTML = last10.length
+          ? `<table class="pp-table"><thead><tr><th>Date</th><th>Status</th></tr></thead><tbody>
+              ${last10.map(r => {
+                const badge = r.status === 'Present' ? 'sc-hi' : 'sc-lo';
+                return `<tr><td>${r.date}</td><td><span class="${badge}">${r.status}</span></td></tr>`;
+              }).join('')}
+            </tbody></table>`
+          : '<div class="pp-empty"><div class="pp-empty-icon">📅</div><p>No recent records</p></div>';
+      } catch (e) {
+        console.error('Attendance load failed:', e);
+        grid.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">⚠️</div><p>Failed to load attendance</p></div>';
+        recent.innerHTML = '';
+      }
+    }
+
+    // ── TAB: EXAM SCORES ──────────────────────────────────────────────────────
+
+    async function ppLoadExams(studentId) {
+      const el = document.getElementById('examList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      try {
+        const { data: marks } = await supabase
+          .from('exam_marks')
+          .select('subject, marks_obtained, total_marks, exam_date, exam_type_id')
+          .eq('student_id', studentId)
+          .order('exam_date', { ascending: false });
+
+        if (!marks?.length) {
+          el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">📝</div><p>No results yet</p></div>';
+          return;
+        }
+
+        const typeIds = [...new Set(marks.map(r => r.exam_type_id).filter(Boolean))];
+        const { data: types } = typeIds.length
+          ? await supabase.from('exam_types').select('id, name').in('id', typeIds)
+          : { data: [] };
+        const typeMap = Object.fromEntries((types || []).map(t => [t.id, t.name]));
+
+        el.innerHTML = `<table class="pp-table">
+          <thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>Date</th></tr></thead>
+          <tbody>${marks.map(r => {
+            const total    = r.total_marks ?? '—';
+            const name     = typeMap[r.exam_type_id] || '—';
+            const pct      = total !== '—' ? Math.round((r.marks_obtained / total) * 100) : null;
+            const badge    = pct === null ? 'sc-mi' : pct >= 75 ? 'sc-hi' : pct >= 50 ? 'sc-mi' : 'sc-lo';
+            const marksStr = total !== '—' ? `${r.marks_obtained}/${total}` : r.marks_obtained;
+            return `<tr>
+              <td>${name}</td>
+              <td>${r.subject || '—'}</td>
+              <td><span class="${badge}">${marksStr}</span></td>
+              <td>${r.exam_date ? r.exam_date.slice(0, 10) : '—'}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>`;
+      } catch (e) {
+        console.error('Exams load failed:', e);
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">⚠️</div><p>Failed to load exam scores</p></div>';
+      }
+    }
+
+    // ── TAB: REPORT CARD ──────────────────────────────────────────────────────
+
+    const RC_GRADE_PRESETS = [
+      { min: 90, label: "A+", color: "#0F6E56", gpa: 4.0 },
+      { min: 80, label: "A",  color: "#185FA5", gpa: 3.5 },
+      { min: 70, label: "B+", color: "#534AB7", gpa: 3.0 },
+      { min: 60, label: "B",  color: "#2563eb", gpa: 2.5 },
+      { min: 50, label: "C",  color: "#BA7517", gpa: 2.0 },
+      { min: 40, label: "D",  color: "#ea580c", gpa: 1.0 },
+      { min: 0,  label: "F",  color: "#A32D2D", gpa: 0.0 },
+    ];
+    function rcGetGrade(pct) {
+      for (const g of RC_GRADE_PRESETS) if (pct >= g.min) return g;
+      return RC_GRADE_PRESETS[RC_GRADE_PRESETS.length - 1];
+    }
+    const RC_COURSE_MAX_MARKS = {
+      ACHIEVER:  { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
+      ELITE:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
+      PRIME:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
+      LAKSHYA:   { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
+      UMEED:     { "Grammar & Vocabulary": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
+      CHAMPION:  { "Vocabulary": 10, "General Knowledge": 10, "Mathematics-II": 20, "Mathematics - I": 20, "Reasoning": 20, "Grammar": 10, "Science": 10 },
+      LEADER:    { "Vocabulary": 10, "Grammar": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
+    };
+
+    async function ppLoadReportCard(studentId) {
+      const sel = document.getElementById('rcExamType');
+      // FIX #2: Guard all required elements
+      if (!sel) return;
+      const dateSel = document.getElementById('rcExamDate');
+      const btn = document.getElementById('rcPrintBtn');
+      if (!dateSel) return;
+      
+      sel.innerHTML = '<option value="">Loading…</option>';
+      dateSel.innerHTML = '<option value="">—</option>';
+      if (btn) btn.disabled = true;
+
+      try {
+        const { data: marks } = await supabase
+          .from('exam_marks')
+          .select('exam_type_id')
+          .eq('student_id', studentId);
+
+        const typeIds = [...new Set((marks || []).map(r => r.exam_type_id).filter(Boolean))];
+        if (!typeIds.length) {
+          sel.innerHTML = '<option value="">— No exams recorded —</option>';
+          return;
+        }
+        const { data: types } = await supabase.from('exam_types').select('id, name').in('id', typeIds);
+        sel.innerHTML = '<option value="">Select exam…</option>' +
+          (types || []).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+      } catch (e) {
+        console.error('Report card load failed:', e);
+        sel.innerHTML = '<option value="">— Error loading exams —</option>';
+      }
+    }
+
+    window.ppRCExamChange = async (examTypeId) => {
+      const dateSel = document.getElementById('rcExamDate');
+      const btn = document.getElementById('rcPrintBtn');
+      if (!dateSel) return;
+      if (btn) btn.disabled = true;
+      
+      if (!examTypeId) { dateSel.innerHTML = '<option value="">—</option>'; return; }
+      
+      const sid = window._ppStudentId;
+      dateSel.innerHTML = '<option value="">Loading…</option>';
+      
+      try {
+        const { data } = await supabase
+          .from('exam_marks')
+          .select('exam_date')
+          .eq('student_id', sid)
+          .eq('exam_type_id', examTypeId);
+        const dates = [...new Set((data || []).map(r => (r.exam_date || '').slice(0, 10)).filter(Boolean))].sort().reverse();
+        dateSel.innerHTML = dates.length
+          ? dates.map(d => `<option value="${d}">${d}</option>`).join('')
+          : '<option value="">— No dates —</option>';
+        if (btn) btn.disabled = !dates.length;
+      } catch (e) {
+        console.error('Exam date load failed:', e);
+        dateSel.innerHTML = '<option value="">— Error —</option>';
+        if (btn) btn.disabled = true;
+      }
+    };
+
+    window.ppPrintReportCard = async () => {
+      const btn = document.getElementById('rcPrintBtn');
+      const examTypeSel = document.getElementById('rcExamType');
+      const examTypeId = examTypeSel?.value;
+      const examDate = document.getElementById('rcExamDate')?.value;
+      const sid = window._ppStudentId;
+      const student = window._ppStudent;
+      
+      // FIX #3: Guard btn before accessing properties
+      if (!examTypeId || !examDate || !sid || !student || !btn) return;
+
+      const origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ Preparing…';
+
+      try {
+        const course = (student.class_name || student.batch || '').toUpperCase();
+        const examTypeName = examTypeSel.selectedOptions[0]?.textContent || 'Examination';
+
+        const { data: sched } = await supabase
+          .from('exam_schedule')
+          .select('id, subject, total_marks')
+          .eq('exam_type_id', examTypeId)
+          .eq('course', course);
+
+        let subjects = [], subjectMaxMap = {}, courseMax = 0;
+        if (sched && sched.length) {
+          subjects = sched.map(s => s.subject);
+          sched.forEach(s => { subjectMaxMap[s.subject] = Number(s.total_marks) || 100; });
+          courseMax = sched.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0);
+        } else {
+          const { data: csSetting } = await supabase.from('system_settings').select('value').eq('key', 'course_subjects').maybeSingle();
+          let cfg = {};
+          try { cfg = JSON.parse(csSetting?.value || '{}'); } catch (_) {}
+          subjects = cfg[course] || [];
+          subjectMaxMap = RC_COURSE_MAX_MARKS[course] || {};
+          courseMax = Object.values(subjectMaxMap).reduce((s, v) => s + v, 0) || 100;
+        }
+
+        const { data: classmates } = await supabase
+          .from('students')
+          .select('id, name, gcc_no, class_name, course, admission_no')
+          .ilike('class_name', course);
+        const allStudents = (classmates && classmates.length) ? classmates : [student];
+
+        const ids = allStudents.map(s => s.id);
+        const [{ data: schedRows }, { data: markRows }] = await Promise.all([
+          supabase.from('exam_schedule').select('id, subject').eq('exam_type_id', examTypeId).eq('course', course),
+          supabase.from('exam_marks').select('student_id, exam_id, subject, marks_obtained, exam_date').eq('exam_type_id', examTypeId).in('student_id', ids),
+        ]);
+        const examIdToSubject = {};
+        (schedRows || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+        const marksMap = {};
+        (markRows || []).forEach(r => {
+          if ((r.exam_date || '').slice(0, 10) !== examDate) return;
+          const sub = examIdToSubject[r.exam_id] || r.subject;
+          if (sub) marksMap[`${r.student_id}-${sub}`] = r.marks_obtained;
+        });
+
+        const { data: remarkRow } = await supabase.from('exam_remarks').select('remark')
+          .eq('student_id', sid).eq('exam_type_id', examTypeId).eq('exam_date', examDate).maybeSingle();
+        const remarkText = remarkRow?.remark || '';
+
+        const { data: instSetting } = await supabase.from('system_settings').select('value').eq('key', 'exam_institute_config').maybeSingle();
+        let institute = { name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok, Thoubal, Manipur', academicYear: '2026-2027' };
+        try { institute = { ...institute, ...JSON.parse(instSetting?.value || '{}') }; } catch (_) {}
+
+        const html = buildRCHTML(student, subjects, subjectMaxMap, courseMax, marksMap, allStudents, examTypeName, examDate, institute, remarkText);
+
+        let overlay = document.getElementById('rcPrintOverlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'rcPrintOverlay';
+          overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100vh;z-index:99999;background:#f4f4f4;';
+          document.body.appendChild(overlay);
+          document.body.style.overflow = 'hidden';
+          window.scrollTo(0, 0);
+
+          if (!document.getElementById('rcPrintStyles')) {
+            const styleTag = document.createElement('style');
+            styleTag.id = 'rcPrintStyles';
+            styleTag.textContent = `
+              @media print {
+                body > *:not(#rcPrintOverlay) { display: none !important; }
+                #rcPrintOverlay .no-print { display: none !important; }
+              }
+            `;
+            document.head.appendChild(styleTag);
+          }
+        }
+        overlay.innerHTML = `
+          <style>${RC_CSS}</style>
+          <div class="no-print" style="position:sticky;top:0;z-index:2;background:#0B1F3A;padding:.8rem 1.2rem;display:flex;gap:.6rem;justify-content:flex-end;box-shadow:0 2px 10px rgba(0,0,0,.2);">
+            <button onclick="window.print()" style="padding:.6rem 1.2rem;background:#B8922A;color:#0B1F3A;border:none;font-weight:700;cursor:pointer;border-radius:4px;">🖨️ Print / Save as PDF</button>
+            <button onclick="document.getElementById('rcPrintOverlay').remove();document.body.style.overflow='';" style="padding:.6rem 1.2rem;background:transparent;color:#F8F3E8;border:1px solid #B8922A;cursor:pointer;border-radius:4px;">✕ Close</button>
+          </div>
+          ${html}
+        `;
+        overlay.scrollTop = 0;
+      } catch (e) {
+        console.error('Report card generation failed:', e);
+        alert('Could not generate the report card: ' + (e?.message || 'unknown error') + '. Please try again or contact support.');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = origText;
+        }
+      }
+    };
+
+    // ── TAB: NOTICES ─────────────────────────────────────────────────────────
+
+    async function ppLoadNotices() {
+      const el = document.getElementById('noticeList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      try {
+        const { data } = await supabase
+          .from('notices')
+          .select('title, body, priority, notice_date')
+          .eq('is_archived', false)
+          .order('notice_date', { ascending: false })
+          .limit(15);
+
+        const rows = data || [];
+        if (!rows.length) {
+          el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">📣</div><p>No notices</p></div>';
+          return;
+        }
+        el.innerHTML = rows.map(n => {
+          const priCls = n.priority === 'High' ? 'pri-h' : n.priority === 'Medium' ? 'pri-m' : 'pri-l';
+          return `<div class="pp-ni">
+            <span class="pp-npri ${priCls}">${n.priority || 'Low'}</span>
+            <div class="pp-ntitle">${n.title}</div>
+            <div class="pp-nbody">${n.body || ''}</div>
+            <div class="pp-ndate">${n.notice_date || ''}</div>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        console.error('Notices load failed:', e);
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">⚠️</div><p>Failed to load notices</p></div>';
+      }
+    }
+
+    // ── TAB: HOSTEL LEAVE ────────────────────────────────────────────────────
+
+    async function ppLoadLeave(studentId) {
+      const el = document.getElementById('leaveList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      try {
+        const { data } = await supabase
+          .from('leave_requests')
+          .select('from_date, to_date, reason, status, created_at')
+          .eq('student_id', studentId)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        const rows = data || [];
+        if (!rows.length) {
+          el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">🏠</div><p>No leave history</p></div>';
+          return;
+        }
+        el.innerHTML = rows.map(r => {
+          const stCls = r.status === 'approved' ? 'ls-ap' : r.status === 'rejected' ? 'ls-re' : 'ls-pe';
+          return `<div class="leave-item">
+            <div class="leave-hd">
+              <span>${r.from_date} → ${r.to_date}</span>
+              <span class="ls ${stCls}">${r.status || 'pending'}</span>
+            </div>
+            <div class="leave-rsn">${r.reason || '—'}</div>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        console.error('Leave load failed:', e);
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">⚠️</div><p>Failed to load leave history</p></div>';
+      }
+    }
+
+    // ── TAB: ALERTS ──────────────────────────────────────────────────────────
+
+    async function ppLoadAlerts(studentId) {
+      const el = document.getElementById('alertList');
+      if (!el) return;
+      el.innerHTML = '<div class="pp-loading"><div class="spin"></div>Loading…</div>';
+
+      try {
+        const [attRes, examRes] = await Promise.all([
+          supabase
+            .from('attendance')
+            .select('date, status')
+            .eq('student_id', studentId)
+            .eq('status', 'Absent')
+            .order('date', { ascending: false })
+            .limit(5),
+          supabase
+            .from('exam_marks')
+            .select('exam_type_id, marks_obtained, total_marks, exam_date')
+            .eq('student_id', studentId)
+            .order('exam_date', { ascending: false })
+            .limit(20),
+        ]);
+
+        const examRows = examRes.data || [];
+        const typeIds  = [...new Set(examRows.map(r => r.exam_type_id).filter(Boolean))];
+        const { data: types } = typeIds.length
+          ? await supabase.from('exam_types').select('id, name').in('id', typeIds)
+          : { data: [] };
+        const typeMap = Object.fromEntries((types || []).map(t => [t.id, t.name]));
+
+        const alerts = [];
+        (attRes.data || []).forEach(r => {
+          alerts.push({ type: 'att', msg: `Absent on ${r.date}`, date: r.date });
+        });
+        examRows.forEach(r => {
+          const total = r.total_marks;
+          const pct   = total ? Math.round((r.marks_obtained / total) * 100) : null;
+          if (pct !== null && pct < 50) {
+            const name = typeMap[r.exam_type_id] || 'Exam';
+            alerts.push({ type: 'exam', msg: `Low score in ${name}: ${r.marks_obtained}/${total} (${pct}%)`, date: r.exam_date });
+          }
+        });
+
+        if (!alerts.length) {
+          el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">✅</div><p>No alerts — all good!</p></div>';
+          return;
+        }
+        el.innerHTML = alerts.map(a => `
+          <div class="alert-item ${a.type}">
+            <div class="alert-msg">${a.msg}</div>
+            <div class="alert-meta">${a.date ? a.date.slice(0, 10) : ''}</div>
+          </div>`).join('');
+      } catch (e) {
+        console.error('Alerts load failed:', e);
+        el.innerHTML = '<div class="pp-empty"><div class="pp-empty-icon">⚠️</div><p>Failed to load alerts</p></div>';
+      }
+    }
+    
     // ── TAB: ATTENDANCE ───────────────────────────────────────────────────────
 
     async function ppLoadAtt(studentId) {
