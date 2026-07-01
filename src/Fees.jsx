@@ -144,7 +144,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const monthChange     = prevMonthTotal > 0 ? Math.round(((thisMonthTotal - prevMonthTotal) / prevMonthTotal) * 100) : null
 
   // Today's collections
-  const todayStr        = new Date().toISOString().slice(0, 10)
+  // NOTE: use local date (en-CA => YYYY-MM-DD), matching Accounts.jsx's getToday().
+  // toISOString() returns the UTC date, which is a day behind local time (IST)
+  // between 12:00 AM and 5:30 AM — causing Fees and Accounts to disagree on
+  // "today" and show different totals for payments made in that window.
+  const todayStr        = new Date().toLocaleDateString('en-CA')
   const todayFlat       = adm_flat_fees.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (r.amount || 0), 0)
   const todayCrsf       = adm_course_fees.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const todayAdm        = adm_fee_collections.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)

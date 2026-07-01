@@ -75,7 +75,17 @@ function HostelBadge({ type }) {
 
 export default function FeeCollectionModal({ app, student, onClose, onSaved, isAdmin = false, currentUser = null }) {
 
-  const gcc    = gccStr(app?.gcc ?? app?.gcc_no ?? student?.gcc_no ?? '')
+  // Guards against upstream bugs that stringify a missing value, e.g. `${obj.gcc_no}`
+  // when gcc_no is JS `undefined` — this produces the literal text "undefined", which
+  // is a truthy, non-null string. It passes straight through `??` and `if (!gcc)`
+  // checks, silently writing "undefined" into adm_app_id. This treats those cases
+  // as genuinely missing so the fallback chain (and the guards below) actually catch them.
+  const validGcc = v => {
+    const s = v === undefined || v === null ? '' : String(v).trim()
+    return (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') ? undefined : s
+  }
+
+  const gcc    = gccStr(validGcc(app?.gcc) ?? validGcc(app?.gcc_no) ?? validGcc(student?.gcc_no) ?? '')
   const name   = app?.name       ?? app?.applicant_name ?? student?.name       ?? ''
   const course = app?.course     ?? student?.course     ?? ''
   const batch  = app?.cls        ?? app?.batch          ?? student?.batch      ?? ''
@@ -297,7 +307,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // ── UNIFIED save — all fee types go through collectFee (feeEngine) ────────────────
   const saveAdmission = async () => {
     if (saving) return
-    if (!gcc) return alert('Student GCC number is missing.')
+    if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     const admFeeItems = FEE_ITEMS.filter(f => selected[f.id] && !paidAdmItems.includes(f.label))
     if (!admFeeItems.length) return alert('Select at least one unpaid fee item.')
     setSaving(true); setError(null)
@@ -325,7 +335,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   const saveFlat = async () => {
     if (saving) return
-    if (!gcc) return alert('Student GCC number is missing.')
+    if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     const unpaid = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f))
     if (!unpaid.length) return alert('Select at least one unpaid month.')
     setSaving(true); setError(null)
@@ -349,7 +359,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   const saveCourse = async () => {
     if (saving) return
-    if (!gcc) return alert('Student GCC number is missing.')
+    if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     const amt = Number(courseAmt)
     if (!amt || amt <= 0) return alert('Enter a valid amount.')
     if (isCourseMonthPaid()) { setError(`Course fee for ${courseMonth} ${courseYear} is already recorded.`); return }
