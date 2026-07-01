@@ -105,321 +105,378 @@ function ExportBar({ rows, filename, label = '' }) {
   )
 }
 
-// ── Daily Income Report ───────────────────────────────────────────────────────
+// ── Student Fee Card (per-student history + admin revert) ─────────────────────
 
-const GNSI_INST = {
-  name:    'Guidance Navodaya & Sainik Institute',
-  tagline: 'Premier Coaching for NVS · Sainik School · RMS Entrance Examinations',
-  address: 'Khangabok Sorok Wangma, Thoubal District, Manipur – 795 131',
-  website: 'guidancekhangabok.in',
-  estd:    '2016',
-}
+function StudentFeeCard({ student, adm_fee_collections, adm_flat_fees, adm_course_fees,
+                          isAdmin, currentUser, onRefresh, onCollect }) {
+  const n     = v => Number(v||0).toLocaleString('en-IN')
+  const gcc   = gccStr(student.gcc_no)
+  const [tab, setTab]     = useState('history')   // history | revert
+  const [toast, setToast] = useState(null)
+  const [saving, setSaving] = useState(false)
 
-const _inr  = v => Number(v || 0).toLocaleString('en-IN')
-const _date = s => { if (!s) return '—'; const d = new Date(s + 'T00:00:00'); return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) }
-const _day  = s => { if (!s) return ''; return new Date(s + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long' }) }
+  const showToast = (msg, color='#16a34a') => { setToast({msg,color}); setTimeout(()=>setToast(null),3500) }
 
-function _toWords(n) {
-  if (!n || n === 0) return 'Zero'
-  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
-  const tens  = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
-  const conv  = x => {
-    if (x < 20)       return ones[x]
-    if (x < 100)      return tens[Math.floor(x/10)] + (x%10 ? ' '+ones[x%10] : '')
-    if (x < 1000)     return ones[Math.floor(x/100)] + ' Hundred' + (x%100 ? ' '+conv(x%100) : '')
-    if (x < 100000)   return conv(Math.floor(x/1000)) + ' Thousand' + (x%1000 ? ' '+conv(x%1000) : '')
-    if (x < 10000000) return conv(Math.floor(x/100000)) + ' Lakh' + (x%100000 ? ' '+conv(x%100000) : '')
-    return conv(Math.floor(x/10000000)) + ' Crore' + (x%10000000 ? ' '+conv(x%10000000) : '')
+  // ── All fee records for this student ──
+  const myAdm  = adm_fee_collections.filter(r => gccStr(r.adm_app_id)===gcc)
+  const myFlat = adm_flat_fees.filter(r => gccStr(r.adm_app_id)===gcc)
+  const myCrsf = adm_course_fees.filter(r => gccStr(r.adm_app_id)===gcc)
+
+  const admTotal  = myAdm.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  const flatTotal = myFlat.reduce((s,r)=>s+(r.amount||0),0)
+  const crsfTotal = myCrsf.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  const grandTotal = admTotal + flatTotal + crsfTotal
+
+  // Combined timeline sorted by pay_date desc
+  const timeline = [
+    ...myAdm.map(r=>({ ...r, _type:'Admission Fee', _amt: Number(r.amount_paid)||0, _desc: r.description||r.fee_type||'Admission', _date: r.pay_date, _table:'adm_fee_collections' })),
+    ...myFlat.map(r=>({ ...r, _type:'Flat Fee',      _amt: r.amount||0,              _desc: `${r.month} ${r.year}`,                 _date: r.pay_date, _table:'adm_flat_fees'       })),
+    ...myCrsf.map(r=>({ ...r, _type:'Course Fee',    _amt: Number(r.amount_paid)||0, _desc: `${r.course} — ${r.for_month} ${r.year}`,_date: r.pay_date, _table:'adm_course_fees'     })),
+  ].sort((a,b)=>(b._date||'').localeCompare(a._date||''))
+
+  // ── Revert handler ──
+  const doRevert = async (row) => {
+    if (!isAdmin) return
+    const reason = window.prompt(
+      `Revert "${row._desc}" (₹${n(row._amt)})?\n\nThis removes the entry from books so it can be re-collected.\nReason (optional):`
+    )
+    if (reason === null) return
+    setSaving(true)
+    try {
+      // Build accountSourceRef based on type
+      let accountSourceRef = null, accountSourceType = null
+      if (row._table === 'adm_fee_collections') {
+        accountSourceType = row.fee_type==='advance' ? 'advance_fee' : 'adm_fee'
+        if (row.fee_type==='admission')     accountSourceRef = sourceRef.admission(gcc)
+        else if (row.fee_type==='advance')  accountSourceRef = row.id
+        else if (row.fee_type==='item')     accountSourceRef = sourceRef.admItem(gcc, row.description==='Prospectus'?'prospectus':(row.description||'').replace(/^Dress Kit — /,''))
+      } else if (row._table === 'adm_flat_fees') {
+        accountSourceType = 'flat_fee'
+        accountSourceRef  = sourceRef.flatFee(gcc, row.month, row.year)
+      } else if (row._table === 'adm_course_fees') {
+        accountSourceType = 'course_fee'
+        accountSourceRef  = sourceRef.courseFee(gcc, row.for_month, row.year)
+      }
+      await revertFeeCollection({ table: row._table, id: row.id, accountSourceRef, accountSourceType,
+        revertedBy: currentUser?.name||'Admin', reason })
+      showToast(`↩️ Reverted: ${row._desc}`, '#dc2626')
+      onRefresh()
+    } catch (err) { showToast('Revert failed: '+err.message, '#dc2626') }
+    setSaving(false)
   }
-  return conv(Math.round(n)) + ' Only'
-}
 
-function _buildDirHTML({ date, transactions, generatedBy, offlineReceiptNo, reportTitle }) {
-  const dateLabel  = _date(date)
-  const dayLabel   = _day(date)
-  const generated  = new Date().toLocaleString('en-IN', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })
-  const reportNo   = `GNSI/DIR/${(date||'').replace(/-/g,'')}`
-  const grand      = transactions.reduce((s,r) => s+(Number(r.amount)||0), 0)
-  const admT       = transactions.filter(r=>r.type==='Admission Fee').reduce((s,r)=>s+(Number(r.amount)||0),0)
-  const flatT      = transactions.filter(r=>r.type==='Flat Fee').reduce((s,r)=>s+(Number(r.amount)||0),0)
-  const crsfT      = transactions.filter(r=>r.type==='Course Fee').reduce((s,r)=>s+(Number(r.amount)||0),0)
-
-  const modes = {}
-  transactions.forEach(r => { const m=r.pay_mode||'Unspecified'; modes[m]=(modes[m]||0)+(Number(r.amount)||0) })
-  const courses = {}
-  transactions.forEach(r => { const c=r.course||'Unknown'; courses[c]=(courses[c]||0)+(Number(r.amount)||0) })
-
-  // group by student for sub-totals
-  const byStudent = {}
-  transactions.forEach(r => {
-    const k = String(r.gcc_no||r.name)
-    if (!byStudent[k]) byStudent[k] = { gcc_no:r.gcc_no, name:r.name, course:r.course, hostel_type:r.hostel_type, batch:r.batch, rows:[] }
-    byStudent[k].rows.push(r)
-  })
-  const groups = Object.values(byStudent).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
-
-  let tRows = ''; let serial = 0
-  groups.forEach(sg => {
-    const sub = sg.rows.reduce((s,r)=>s+(Number(r.amount)||0),0)
-    sg.rows.forEach(r => {
-      serial++
-      const tc = r.type==='Admission Fee'?'#3730a3':r.type==='Flat Fee'?'#166534':'#6d28d9'
-      const tb = r.type==='Admission Fee'?'#eef2ff':r.type==='Flat Fee'?'#dcfce7':'#f5f3ff'
-      tRows += `<tr class="${serial%2===0?'ev':''}">
-        <td class="ctr mono">${serial}</td>
-        <td class="ctr mono b navy">${r.gcc_no?'GCC-'+r.gcc_no:'—'}</td>
-        <td class="b">${r.name||'—'}${r.hostel_type?`<br><span class="sub">${r.hostel_type} · ${r.batch||r.course||''}</span>`:''}
-        </td>
-        <td><span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:700;background:${tb};color:${tc}">${r.type}</span></td>
-        <td class="sub">${r.description||'—'}</td>
-        <td class="ctr">${r.pay_mode||'—'}</td>
-        <td class="ctr mono sub">${r.ref&&r.ref!=='—'?r.ref:'—'}</td>
-        <td class="rt b grn">₹${_inr(r.amount)}</td></tr>`
-    })
-    if (sg.rows.length>1) tRows += `<tr class="strow"><td colspan="7" class="rt" style="font-size:9.5px;color:#64748b">Sub-total — ${sg.name}</td><td class="rt b navy">₹${_inr(sub)}</td></tr>`
-  })
-  if (!transactions.length) tRows = `<tr><td colspan="8" class="ctr" style="padding:40px;color:#94a3b8;font-style:italic">No transactions recorded for this period.</td></tr>`
-
-  const modeRows   = Object.entries(modes).map(([m,a])=>`<tr><td class="b">${m}</td><td class="rt b navy">₹${_inr(a)}</td><td class="rt sub">${grand>0?Math.round(a/grand*100):0}%</td></tr>`).join('')
-  const courseRows = Object.entries(courses).map(([c,a])=>`<tr><td class="b">${c}</td><td class="rt b navy">₹${_inr(a)}</td></tr>`).join('')
-
-  const upiTotal = (modes['UPI']||0)+(modes['Online']||0)+(modes['NEFT']||0)+(modes['RTGS']||0)
-
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
-<title>${reportTitle||'Daily Income Report'} — ${dateLabel}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&family=Source+Sans+3:wght@400;600;700;900&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Source Sans 3',Arial,sans-serif;font-size:12px;color:#0f172a;background:white}
-@page{size:A4 portrait;margin:12mm 14mm 16mm 14mm}
-.page{width:100%;max-width:210mm;margin:0 auto}
-/* HEADER */
-.hdr{border-bottom:3px double #1e3a5f;padding-bottom:10px;margin-bottom:10px;display:flex;align-items:center;gap:14px}
-.hdr-logo{width:64px;height:64px;border-radius:50%;border:3px solid #1e3a5f;display:flex;align-items:center;justify-content:center;background:#1e3a5f;color:white;font-family:'EB Garamond',serif;font-size:20px;font-weight:700;flex-shrink:0;letter-spacing:1px}
-.hdr-txt{flex:1}
-.hdr-inst{font-family:'EB Garamond',serif;font-size:22px;font-weight:700;color:#1e3a5f;letter-spacing:.5px;line-height:1.2}
-.hdr-tag{font-size:9.5px;color:#b45309;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-top:3px}
-.hdr-addr{font-size:10px;color:#475569;margin-top:3px}
-.hdr-rt{text-align:right;flex-shrink:0}
-.hdr-rt .rtype{font-size:11px;font-weight:900;color:white;background:#1e3a5f;padding:3px 10px;border-radius:4px;letter-spacing:.5px;text-transform:uppercase;display:inline-block;margin-bottom:4px}
-.hdr-rt .rno{font-size:9.5px;color:#64748b;display:block}
-.hdr-rt .rdate{font-size:11px;font-weight:700;color:#1e3a5f;display:block;margin-top:2px}
-/* META BAR */
-.meta{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid #1e3a5f;border-radius:6px;overflow:hidden;margin-bottom:10px}
-.mc{padding:7px 10px;border-right:1px solid #cbd5e1}.mc:last-child{border-right:none}
-.ml{font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px}
-.mv{font-size:12px;font-weight:700;color:#1e3a5f;margin-top:2px}
-/* SUMMARY CARDS */
-.sg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
-.sc{border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid var(--c)}
-.sc .sl{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
-.sc .sv{font-size:16px;font-weight:900;color:var(--c);margin-top:3px;line-height:1}
-.sc .ss{font-size:9px;color:#94a3b8;margin-top:3px}
-/* SECTION TITLE */
-.stitle{font-size:11px;font-weight:900;color:#1e3a5f;text-transform:uppercase;letter-spacing:.5px;border-left:4px solid #1e3a5f;padding:2px 8px;margin:12px 0 6px;background:#f8fafc}
-/* MAIN TABLE */
-.mt{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px}
-.mt thead tr{background:#1e3a5f;color:white}
-.mt thead th{padding:7px 8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:.3px;white-space:nowrap}
-.mt tbody tr{border-bottom:1px solid #f1f5f9}
-.mt tbody tr.ev{background:#f8fafc}
-.mt tbody td{padding:6px 8px;vertical-align:middle}
-.mt tfoot tr{background:#1e3a5f;color:white}
-.mt tfoot td{padding:8px;font-weight:900;font-size:12px}
-.strow td{padding:3px 8px;background:#f1f5f9;font-size:9.5px}
-/* SIDE TABLES */
-.side{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-.st{width:100%;border-collapse:collapse;font-size:11px}
-.st thead tr{background:#334155;color:white}
-.st thead th{padding:6px 8px;text-align:left;font-size:10px;font-weight:700}
-.st tbody tr{border-bottom:1px solid #f1f5f9}
-.st tbody tr:nth-child(even){background:#f8fafc}
-.st tbody td{padding:5px 8px}
-.st tfoot td{padding:6px 8px;font-weight:900;background:#f1f5f9;font-size:11px;border-top:1.5px solid #334155}
-/* TOTAL BOX */
-.totbox{border:2px solid #1e3a5f;border-radius:8px;padding:12px 16px;margin-bottom:14px;background:linear-gradient(135deg,#eff6ff,#f5f3ff);display:flex;align-items:center;justify-content:space-between;gap:20px}
-.totbox .tl{font-size:13px;font-weight:800;color:#1e3a5f}
-.totbox .ta{font-size:26px;font-weight:900;color:#1e3a5f;font-family:'EB Garamond',serif}
-.totbox .tw{font-size:10px;color:#64748b;font-style:italic;margin-top:2px}
-/* OFFLINE RECEIPT */
-.rcptbox{border:1.5px dashed #94a3b8;border-radius:6px;padding:10px 14px;margin-bottom:14px;background:#fffbeb;display:flex;align-items:center;gap:12px}
-.rl{font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
-.rn{font-size:18px;font-weight:900;color:#b45309;font-family:'EB Garamond',serif;letter-spacing:1px}
-.rnt{font-size:9.5px;color:#92400e;margin-top:2px}
-/* SIGNATURE */
-.sigrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:20px;margin-bottom:10px}
-.sigbox{text-align:center}
-.sigline{border-top:1.5px solid #1e3a5f;margin:0 auto;width:80%;margin-top:36px;margin-bottom:4px}
-.signame{font-size:11px;font-weight:700;color:#1e3a5f}
-.sigrole{font-size:9.5px;color:#64748b}
-/* FOOTER */
-.foot{border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between;align-items:center}
-.fl{font-size:9px;color:#94a3b8}.fc{font-size:8.5px;color:#b45309;font-weight:700;text-align:center}.fr{font-size:9px;color:#94a3b8;text-align:right}
-.pnote{font-size:8.5px;color:#94a3b8;text-align:center;margin-top:4px;font-style:italic}
-/* UTILS */
-.b{font-weight:700}.rt{text-align:right}.ctr{text-align:center}.mono{font-family:'Courier New',monospace}.navy{color:#1e3a5f}.grn{color:#16a34a}.sub{font-size:9.5px;color:#64748b}
-/* PRINT/SCREEN */
-@media print{body{padding:0}.np{display:none!important}.mt tbody tr{page-break-inside:avoid}}
-@media screen{body{background:#e2e8f0;padding:20px}.page{background:white;padding:20mm 18mm;box-shadow:0 4px 24px rgba(0,0,0,.15);margin:0 auto}
-.pbtn{position:fixed;top:20px;right:20px;z-index:999;background:#1e3a5f;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2)}
-.cbtn{position:fixed;top:20px;right:200px;z-index:999;background:#64748b;color:white;border:none;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}}
-</style></head><body>
-<button class="pbtn np" onclick="window.print()">🖨️ Print / Save PDF</button>
-<button class="cbtn np" onclick="window.close()">✕ Close</button>
-<div class="page">
-  <!-- LETTERHEAD -->
-  <div class="hdr">
-    <div class="hdr-logo">GNSI</div>
-    <div class="hdr-txt">
-      <div class="hdr-inst">${GNSI_INST.name}</div>
-      <div class="hdr-tag">${GNSI_INST.tagline}</div>
-      <div class="hdr-addr">${GNSI_INST.address} &nbsp;|&nbsp; ${GNSI_INST.website}</div>
-    </div>
-    <div class="hdr-rt">
-      <div class="rtype">${reportTitle||'Daily Income Report'}</div>
-      <span class="rno">Ref: ${reportNo}</span>
-      <span class="rdate">${dayLabel}, ${dateLabel}</span>
-    </div>
-  </div>
-  <!-- META BAR -->
-  <div class="meta">
-    <div class="mc"><div class="ml">Report Date</div><div class="mv">${dateLabel}</div></div>
-    <div class="mc"><div class="ml">Total Transactions</div><div class="mv">${transactions.length}</div></div>
-    <div class="mc"><div class="ml">Offline Receipt No.</div><div class="mv">${offlineReceiptNo||'—'}</div></div>
-    <div class="mc"><div class="ml">Generated By</div><div class="mv">${generatedBy||'Admin'}</div></div>
-  </div>
-  <!-- SUMMARY CARDS -->
-  <div class="sg">
-    <div class="sc" style="--c:#1e3a5f"><div class="sl">Grand Total</div><div class="sv">₹${_inr(grand)}</div><div class="ss">${transactions.length} receipts</div></div>
-    <div class="sc" style="--c:#3730a3"><div class="sl">Admission Fees</div><div class="sv">₹${_inr(admT)}</div><div class="ss">${transactions.filter(r=>r.type==='Admission Fee').length} entries</div></div>
-    <div class="sc" style="--c:#166534"><div class="sl">Flat Fees</div><div class="sv">₹${_inr(flatT)}</div><div class="ss">${transactions.filter(r=>r.type==='Flat Fee').length} entries</div></div>
-    <div class="sc" style="--c:#6d28d9"><div class="sl">Course Fees</div><div class="sv">₹${_inr(crsfT)}</div><div class="ss">${transactions.filter(r=>r.type==='Course Fee').length} entries</div></div>
-  </div>
-  <!-- OFFLINE RECEIPT BOX -->
-  ${offlineReceiptNo ? `<div class="rcptbox">
-    <div><div class="rl">Offline Receipt Number</div><div class="rn">${offlineReceiptNo}</div><div class="rnt">Manually issued receipt — attach physical copy</div></div>
-    <div style="flex:1;border-left:1.5px dashed #fcd34d;padding-left:12px;margin-left:8px">
-      <div class="rl" style="margin-bottom:3px">Mode Breakdown</div>
-      <div style="font-size:11px;color:#92400e">Cash: <b>₹${_inr(modes['Cash']||0)}</b> &nbsp;|&nbsp; UPI/Online: <b>₹${_inr(upiTotal)}</b> &nbsp;|&nbsp; Cheque: <b>₹${_inr(modes['Cheque']||0)}</b></div>
-    </div>
-  </div>` : ''}
-  <!-- TRANSACTION TABLE -->
-  <div class="stitle">Detailed Transaction Register</div>
-  <table class="mt">
-    <thead><tr>
-      <th class="ctr" style="width:28px">#</th>
-      <th style="width:72px">GCC No.</th>
-      <th>Student / Hostel</th>
-      <th style="width:90px">Fee Type</th>
-      <th>Description</th>
-      <th class="ctr" style="width:58px">Mode</th>
-      <th class="ctr" style="width:68px">Ref No.</th>
-      <th class="rt" style="width:78px">Amount</th>
-    </tr></thead>
-    <tbody>${tRows}</tbody>
-    <tfoot><tr><td colspan="7" class="rt" style="font-size:11px;letter-spacing:.3px">TOTAL COLLECTED</td><td class="rt">₹${_inr(grand)}</td></tr></tfoot>
-  </table>
-  <!-- TOTAL BOX -->
-  <div class="totbox">
-    <div><div class="tl">Total Income for ${dateLabel}</div><div class="tw">Rupees ${_toWords(grand)}</div></div>
-    <div class="ta">₹ ${_inr(grand)}</div>
-  </div>
-  <!-- BREAKDOWNS -->
-  <div class="side">
-    <div>
-      <div class="stitle" style="margin-top:0">Collection by Payment Mode</div>
-      <table class="st">
-        <thead><tr><th>Mode</th><th class="rt">Amount</th><th class="rt">Share</th></tr></thead>
-        <tbody>${modeRows||'<tr><td colspan="3" class="ctr sub">No data</td></tr>'}</tbody>
-        <tfoot><tr><td class="b">Total</td><td class="rt b navy">₹${_inr(grand)}</td><td class="rt sub">100%</td></tr></tfoot>
-      </table>
-    </div>
-    <div>
-      <div class="stitle" style="margin-top:0">Collection by Course</div>
-      <table class="st">
-        <thead><tr><th>Course</th><th class="rt">Amount</th></tr></thead>
-        <tbody>${courseRows||'<tr><td colspan="2" class="ctr sub">No data</td></tr>'}</tbody>
-        <tfoot><tr><td class="b">Total</td><td class="rt b navy">₹${_inr(grand)}</td></tr></tfoot>
-      </table>
-    </div>
-  </div>
-  <!-- REMARKS -->
-  <div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:14px">
-    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Remarks / Notes</div>
-    <div style="height:36px;border-bottom:1px dashed #cbd5e1;width:100%"></div>
-  </div>
-  <!-- SIGNATURES -->
-  <div class="sigrow">
-    <div class="sigbox"><div class="sigline"></div><div class="signame">${generatedBy||'Fee In-Charge'}</div><div class="sigrole">Fee In-Charge / Prepared By</div></div>
-    <div class="sigbox"><div class="sigline"></div><div class="signame">Vice Principal</div><div class="sigrole">Verified &amp; Checked</div></div>
-    <div class="sigbox"><div class="sigline"></div><div class="signame">Moirangthem Himan Singh</div><div class="sigrole">Founder &amp; Administrator</div></div>
-  </div>
-  <!-- FOOTER -->
-  <div class="foot">
-    <div class="fl">Generated: ${generated}<br>GNSI Portal · ${GNSI_INST.website}</div>
-    <div class="fc">${GNSI_INST.name}<br>Estd. ${GNSI_INST.estd} · ${GNSI_INST.address}</div>
-    <div class="fr">Report Ref: ${reportNo}<br>CONFIDENTIAL — For Internal Use</div>
-  </div>
-  <div class="pnote">This is a computer-generated report. Authorised signatures above validate this document.</div>
-</div></body></html>`
-}
-
-function DailyIncomeReport({ date, transactions = [], generatedBy = 'Admin' }) {
-  const todayStr   = new Date().toLocaleDateString('en-CA')
-  const reportDate = date || todayStr
-  const [offlineRcpt,  setOfflineRcpt]  = useState('')
-  const [reportTitle,  setReportTitle]  = useState('Daily Income Report')
-  const grand = transactions.reduce((s,r) => s+(Number(r.amount)||0), 0)
-
-  const handlePrint = () => {
-    const html = _buildDirHTML({ date: reportDate, transactions, generatedBy, offlineReceiptNo: offlineRcpt.trim()||null, reportTitle })
-    const win  = window.open('', '_blank', 'width=960,height=750,scrollbars=yes')
-    win.document.write(html)
-    win.document.close()
+  // ── Fix date handler ──
+  const doFixDate = async (row) => {
+    if (!isAdmin) return
+    const newDate = window.prompt(
+      `Fix payment date for "${row._desc}"\nCurrent: ${row._date||'—'}\n\nEnter correct date (YYYY-MM-DD):`,
+      row._date || new Date().toLocaleDateString('en-CA')
+    )
+    if (!newDate) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { showToast('Invalid date — use YYYY-MM-DD','#dc2626'); return }
+    setSaving(true)
+    try {
+      let accountSourceRef = null, accountSourceType = null
+      if (row._table==='adm_flat_fees')   { accountSourceType='flat_fee';   accountSourceRef=sourceRef.flatFee(gcc,row.month,row.year) }
+      if (row._table==='adm_course_fees') { accountSourceType='course_fee'; accountSourceRef=sourceRef.courseFee(gcc,row.for_month,row.year) }
+      if (row._table==='adm_fee_collections') {
+        accountSourceType = row.fee_type==='advance'?'advance_fee':'adm_fee'
+        accountSourceRef  = row.fee_type==='admission'?sourceRef.admission(gcc):row.fee_type==='advance'?row.id:null
+      }
+      await correctFeeCollectionDate({ table:row._table, id:row.id, newDate, accountSourceRef, accountSourceType })
+      showToast(`📅 Date corrected to ${newDate}`, '#1e3a5f')
+      onRefresh()
+    } catch (err) { showToast('Date fix failed: '+err.message, '#dc2626') }
+    setSaving(false)
   }
+
+  const typeColor = t => t==='Admission Fee'?{bg:'#eef2ff',color:'#3730a3'}:t==='Flat Fee'?{bg:'#dcfce7',color:'#166534'}:{bg:'#f5f3ff',color:'#6d28d9'}
 
   return (
-    <div style={{ background:'#fffbeb', border:'1.5px solid #fcd34d', borderRadius:12, padding:'16px 20px', marginTop:24 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
-        <span style={{ fontSize:22 }}>🖨️</span>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:14, fontWeight:900, color:'#92400e' }}>Print Daily Income Report</div>
-          <div style={{ fontSize:11, color:'#b45309', marginTop:2 }}>
-            For Vice-Principal &amp; Founder / Administrator · {_date(reportDate)}
+    <div style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:14, overflow:'hidden', boxShadow:'0 4px 16px rgba(0,0,0,.08)' }}>
+      {toast && (
+        <div style={{ position:'fixed', top:20, right:20, zIndex:99999, background:'white', border:`1px solid #e2e8f0`, borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, boxShadow:'0 8px 32px rgba(0,0,0,.12)', maxWidth:320, color:'#1e293b' }}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* ── Header ── */}
+      <div style={{ background:'linear-gradient(135deg,#1e3a5f,#1e40af)', padding:'18px 20px', color:'white' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+          <div style={{ width:52, height:52, borderRadius:'50%', background:'rgba(255,255,255,.2)', border:'2px solid rgba(255,255,255,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:900, flexShrink:0 }}>
+            {(student.name||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()}
+          </div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:18, fontWeight:900, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              {student.name}
+              {student.is_repeater && <span style={{ fontSize:9, fontWeight:800, background:'#fef3c7', color:'#92400e', padding:'1px 7px', borderRadius:3, border:'1px solid #fcd34d' }}>REPEATER</span>}
+            </div>
+            <div style={{ fontSize:12, opacity:.8, marginTop:3, display:'flex', gap:10, flexWrap:'wrap' }}>
+              {student.gcc_no && <span style={{ fontWeight:700 }}>GCC-{student.gcc_no}</span>}
+              {(student.class_name||student.batch) && <span>{student.class_name||student.batch}</span>}
+              {student.course && <span>{student.course}</span>}
+              {student.hostel_type && <span style={{ background:'rgba(255,255,255,.15)', padding:'1px 8px', borderRadius:4 }}>{student.hostel_type}</span>}
+            </div>
+          </div>
+          <div style={{ textAlign:'right', flexShrink:0 }}>
+            <div style={{ fontSize:24, fontWeight:900 }}>₹{n(grandTotal)}</div>
+            <div style={{ fontSize:10, opacity:.7, marginTop:2 }}>Total paid</div>
           </div>
         </div>
-        <div style={{ fontSize:13, fontWeight:800, color:'#1e3a5f', background:'#eff6ff', padding:'6px 14px', borderRadius:8, border:'1px solid #bfdbfe' }}>
-          {transactions.length} txn{transactions.length!==1?'s':''} · ₹{_inr(grand)}
+
+        {/* Mini summary row */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(255,255,255,.2)' }}>
+          {[{l:'Admission',v:admTotal,i:'🎓'},{l:'Flat Fees',v:flatTotal,i:'📅'},{l:'Course Fees',v:crsfTotal,i:'📚'}].map(c=>(
+            <div key={c.l} style={{ textAlign:'center' }}>
+              <div style={{ fontSize:11, opacity:.7 }}>{c.i} {c.l}</div>
+              <div style={{ fontSize:15, fontWeight:800, marginTop:2 }}>₹{n(c.v)}</div>
+            </div>
+          ))}
         </div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
-        <div>
-          <div style={{ fontSize:10, fontWeight:700, color:'#92400e', marginBottom:4, textTransform:'uppercase', letterSpacing:'.4px' }}>Report Title</div>
-          <input value={reportTitle} onChange={e=>setReportTitle(e.target.value)}
-            placeholder="Daily Income Report"
-            style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1.5px solid #fcd34d', fontSize:12, fontWeight:600, outline:'none', background:'white', color:'#92400e' }} />
-        </div>
-        <div>
-          <div style={{ fontSize:10, fontWeight:700, color:'#92400e', marginBottom:4, textTransform:'uppercase', letterSpacing:'.4px' }}>
-            Offline Receipt No. <span style={{ fontWeight:400, color:'#b45309' }}>(optional)</span>
+
+      {/* ── Sub-tabs ── */}
+      <div style={{ display:'flex', borderBottom:'2px solid #f1f5f9', background:'#f8fafc' }}>
+        {[{id:'history',l:'📋 Fee History'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(
+          <button key={t.id} onClick={()=>isAdmin||t.id==='history'?setTab(t.id):null}
+            style={{ padding:'10px 18px', border:'none', borderBottom:tab===t.id?'2px solid #1e3a5f':'2px solid transparent', background:'none',
+              cursor:isAdmin||t.id==='history'?'pointer':'not-allowed', fontSize:12, fontWeight:tab===t.id?800:500,
+              color:tab===t.id?'#1e3a5f':isAdmin||t.id==='history'?'#64748b':'#cbd5e1', marginBottom:-2 }}>
+            {t.l}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Fee History tab ── */}
+      {tab==='history' && (
+        <div style={{ padding:'0 0 4px' }}>
+          {timeline.length===0 ? (
+            <div style={{ padding:40, textAlign:'center', color:'#94a3b8' }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>💳</div>
+              <div style={{ fontWeight:600 }}>No fee records yet</div>
+            </div>
+          ) : (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                    {['#','Type','Description','Amount','Date','Mode','Ref / TxnID','By'].map(h=>(
+                      <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeline.map((r,i)=>{
+                    const tc = typeColor(r._type)
+                    return (
+                      <tr key={r.id+r._table} style={{ borderBottom:'1px solid #f8fafc' }}
+                        onMouseEnter={e=>e.currentTarget.style.background='#f8fafc'}
+                        onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                        <td style={{ padding:'8px 12px', color:'#94a3b8', fontSize:10 }}>{i+1}</td>
+                        <td style={{ padding:'8px 12px' }}>
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4, background:tc.bg, color:tc.color, whiteSpace:'nowrap' }}>{r._type}</span>
+                        </td>
+                        <td style={{ padding:'8px 12px', color:'#1e293b', fontWeight:600 }}>{r._desc}</td>
+                        <td style={{ padding:'8px 12px', fontWeight:800, color:'#16a34a', whiteSpace:'nowrap' }}>₹{n(r._amt)}</td>
+                        <td style={{ padding:'8px 12px', color:'#64748b', fontFamily:'monospace', fontSize:11 }}>{r._date||'—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#475569' }}>{r.pay_mode||'—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#94a3b8', fontFamily:'monospace', fontSize:10 }}>{r.txn_ref||'—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#64748b', fontSize:11 }}>{r.collected_by||'—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background:'#1e3a5f' }}>
+                    <td colSpan={3} style={{ padding:'10px 12px', fontWeight:800, color:'white', fontSize:12 }}>Total Paid</td>
+                    <td style={{ padding:'10px 12px', fontWeight:900, color:'#6ee7b7', fontSize:13 }}>₹{n(grandTotal)}</td>
+                    <td colSpan={4} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          {/* Collect button */}
+          <div style={{ padding:'12px 16px', borderTop:'1px solid #f1f5f9' }}>
+            <button onClick={()=>onCollect(student)}
+              style={{ width:'100%', padding:'10px', borderRadius:8, background:'linear-gradient(135deg,#1e3a5f,#3730a3)', color:'white', border:'none', fontSize:13, fontWeight:800, cursor:'pointer' }}>
+              💳 Collect Fee for {student.name.split(' ')[0]}
+            </button>
           </div>
-          <input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)}
-            placeholder="e.g.  GNSI/RCP/2025-26/001"
-            style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1.5px solid #fcd34d', fontSize:12, fontWeight:700, outline:'none', background:'white', color:'#1e3a5f', fontFamily:'monospace', letterSpacing:'.5px' }} />
+        </div>
+      )}
+
+      {/* ── Revert / Fix tab (Admin only) ── */}
+      {tab==='revert' && isAdmin && (
+        <div style={{ padding:'4px 0' }}>
+          <div style={{ padding:'12px 16px 8px', fontSize:11, color:'#dc2626', fontWeight:700, background:'#fef2f2', borderBottom:'1px solid #fca5a5' }}>
+            ⚠️ Admin-only — Revert removes a payment from books. Fix Date corrects a wrong date without reverting. Both actions are logged.
+          </div>
+          {timeline.length===0 ? (
+            <div style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No fee records to manage.</div>
+          ) : (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                    {['Type','Description','Amount','Date','Mode','Actions'].map(h=>(
+                      <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeline.map((r,i)=>{
+                    const tc = typeColor(r._type)
+                    return (
+                      <tr key={r.id+r._table+'-rv'} style={{ borderBottom:'1px solid #f8fafc' }}
+                        onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'}
+                        onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                        <td style={{ padding:'9px 12px' }}>
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4, background:tc.bg, color:tc.color }}>{r._type}</span>
+                        </td>
+                        <td style={{ padding:'9px 12px', color:'#1e293b', fontWeight:600 }}>{r._desc}</td>
+                        <td style={{ padding:'9px 12px', fontWeight:800, color:'#16a34a', whiteSpace:'nowrap' }}>₹{n(r._amt)}</td>
+                        <td style={{ padding:'9px 12px', color:'#64748b', fontFamily:'monospace', fontSize:11 }}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td>
+                        <td style={{ padding:'9px 12px', color:'#475569' }}>{r.pay_mode||'—'}</td>
+                        <td style={{ padding:'9px 12px' }}>
+                          <div style={{ display:'flex', gap:6 }}>
+                            <button onClick={()=>doFixDate(r)} disabled={saving}
+                              style={{ padding:'5px 10px', borderRadius:6, border:'1px solid #bfdbfe', background:'#eff6ff', color:'#1e3a5f', fontSize:11, fontWeight:700, cursor:saving?'not-allowed':'pointer', whiteSpace:'nowrap' }}>
+                              📅 Fix Date
+                            </button>
+                            <button onClick={()=>doRevert(r)} disabled={saving}
+                              style={{ padding:'5px 10px', borderRadius:6, border:'1px solid #fca5a5', background:'#fef2f2', color:'#dc2626', fontSize:11, fontWeight:700, cursor:saving?'not-allowed':'pointer', whiteSpace:'nowrap' }}>
+                              ↩️ Revert
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Student Fee Ledger tab ─────────────────────────────────────────────────────
+
+function StudentLedgerTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees,
+                            liveRows, isAdmin, currentUser, onRefresh, onCollect }) {
+  const [search,     setSearch]     = useState('')
+  const [courseF,    setCourseF]    = useState('All')
+  const [hostelF,    setHostelF]    = useState('All')
+  const [statusF,    setStatusF]    = useState('All')
+  const [selected,   setSelected]   = useState(null)   // selected student object
+
+  const n = v => Number(v||0).toLocaleString('en-IN')
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return liveRows.filter(s => {
+      if (courseF!=='All' && s.course!==courseF) return false
+      if (hostelF!=='All' && s.hostel_type!==hostelF) return false
+      if (statusF!=='All' && s.liveStatus!==statusF) return false
+      return [s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))
+    })
+  }, [liveRows, search, courseF, hostelF, statusF])
+
+  const inp2 = { width:'100%', padding:'8px 12px', borderRadius:7, border:'1px solid #d1d5db', fontSize:13, outline:'none', background:'white' }
+
+  return (
+    <div style={{ display:'flex', gap:20, alignItems:'flex-start', flexWrap:'wrap' }}>
+
+      {/* ── Left: student list ── */}
+      <div style={{ flex:'0 0 340px', minWidth:280 }}>
+        <div style={{ background:'white', border:'1px solid #e2e8f0', borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
+          {/* Search + filter header */}
+          <div style={{ padding:'14px 14px 10px', borderBottom:'1px solid #f1f5f9', background:'#f8fafc' }}>
+            <div style={{ fontWeight:800, fontSize:13, color:'#1e3a5f', marginBottom:10 }}>👨‍🎓 Select Student</div>
+            <input placeholder="Search name or GCC No…" value={search} onChange={e=>setSearch(e.target.value)} style={inp2} />
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginTop:8 }}>
+              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}>
+                <option value="All">All Courses</option>
+                {['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}
+              </select>
+              <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}>
+                <option value="All">All Hostel</option>
+                {['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}
+              </select>
+              <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}>
+                <option value="All">All Status</option>
+                <option>Paid</option><option>Partial</option><option>Pending</option>
+              </select>
+            </div>
+            <div style={{ fontSize:11, color:'#94a3b8', marginTop:6 }}>{filtered.length} of {students.length} students</div>
+          </div>
+
+          {/* Student list */}
+          <div style={{ maxHeight:520, overflowY:'auto' }}>
+            {filtered.length===0 && (
+              <div style={{ padding:24, textAlign:'center', color:'#94a3b8', fontSize:12 }}>No students found</div>
+            )}
+            {filtered.map(s => {
+              const isSelected = selected?.id===s.id
+              const statusColor = s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':'#dc2626'
+              const statusBg    = s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':'#fee2e2'
+              return (
+                <div key={s.id} onClick={()=>setSelected(s)}
+                  style={{ padding:'11px 14px', cursor:'pointer', borderBottom:'1px solid #f8fafc',
+                    background: isSelected ? '#eff6ff' : 'white',
+                    borderLeft: isSelected ? '3px solid #1e3a5f' : '3px solid transparent' }}
+                  onMouseEnter={e=>{ if(!isSelected) e.currentTarget.style.background='#f8fafc' }}
+                  onMouseLeave={e=>{ if(!isSelected) e.currentTarget.style.background='white' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:'#1e293b', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                        {s.name}
+                        {s.is_repeater && <span style={{ fontSize:8, fontWeight:800, color:'#92400e', background:'#fef3c7', padding:'1px 4px', borderRadius:2, border:'1px solid #fcd34d' }}>RPT</span>}
+                      </div>
+                      <div style={{ fontSize:10, color:'#64748b', marginTop:2 }}>
+                        GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}
+                      </div>
+                      <div style={{ fontSize:10, color:'#94a3b8', marginTop:1 }}>{s.hostel_type||'—'}</div>
+                    </div>
+                    <div style={{ textAlign:'right', flexShrink:0 }}>
+                      <div style={{ fontSize:13, fontWeight:900, color: s.grandTotal>0?'#16a34a':'#94a3b8' }}>
+                        {s.grandTotal>0?`₹${n(s.grandTotal)}`:'₹0'}
+                      </div>
+                      <span style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:99, background:statusBg, color:statusColor, marginTop:3, display:'inline-block' }}>
+                        {s.liveStatus}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
-      <button onClick={handlePrint} disabled={transactions.length===0}
-        style={{ width:'100%', padding:'12px', borderRadius:9,
-          background: transactions.length===0 ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)',
-          color:'white', border:'none', fontSize:14, fontWeight:800,
-          cursor: transactions.length===0 ? 'not-allowed' : 'pointer',
-          boxShadow: transactions.length>0 ? '0 4px 16px rgba(30,58,95,.3)' : 'none', letterSpacing:'.3px' }}>
-        {transactions.length===0
-          ? '⚠ No transactions — select a date range above'
-          : `🖨️ Open Print Preview — ₹${_inr(grand)} · ${transactions.length} receipt${transactions.length!==1?'s':''}`}
-      </button>
-      <div style={{ fontSize:10, color:'#92400e', marginTop:8, textAlign:'center', opacity:.75 }}>
-        Opens in new tab · Use browser Print (Ctrl+P) → Save as PDF for physical copy &amp; records
+
+      {/* ── Right: student card ── */}
+      <div style={{ flex:1, minWidth:300 }}>
+        {!selected ? (
+          <div style={{ background:'white', border:'2px dashed #e2e8f0', borderRadius:14, padding:60, textAlign:'center', color:'#94a3b8' }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>👈</div>
+            <div style={{ fontWeight:700, fontSize:15, color:'#64748b' }}>Select a student</div>
+            <div style={{ fontSize:12, marginTop:6 }}>Click any student on the left to view their full fee history and manage records.</div>
+          </div>
+        ) : (
+          <StudentFeeCard
+            student={selected}
+            adm_fee_collections={adm_fee_collections}
+            adm_flat_fees={adm_flat_fees}
+            adm_course_fees={adm_course_fees}
+            isAdmin={isAdmin}
+            currentUser={currentUser}
+            onRefresh={onRefresh}
+            onCollect={onCollect}
+          />
+        )}
       </div>
     </div>
   )
@@ -1670,6 +1727,7 @@ export default function Fees() {
     { id: 'dashboard', label: '🏠 Dashboard' },
     { id: 'payment',   label: '💳 Fee Payment' },
     { id: 'live',      label: '📊 Live Summary' },
+    { id: 'ledger',    label: '🗂️ Student Ledger' },
     { id: 'admin',     label: '🛡️ Admin View' },
   ]
 
@@ -1903,6 +1961,20 @@ export default function Fees() {
             </div>
           )}
         </>
+      )}
+
+      {tab === 'ledger' && (
+        <StudentLedgerTab
+          students={students}
+          adm_fee_collections={adm_fee_collections}
+          adm_flat_fees={adm_flat_fees}
+          adm_course_fees={adm_course_fees}
+          liveRows={liveRows}
+          isAdmin={isAdmin}
+          currentUser={currentUser}
+          onRefresh={loadAll}
+          onCollect={s => { setTab('payment') }}
+        />
       )}
 
       {tab === 'admin' && (
@@ -2148,13 +2220,6 @@ export default function Fees() {
               </table>
             </div>
           </div>
-
-          {/* ── Daily Income Report ── */}
-          <DailyIncomeReport
-            date={afDateFrom || todayStr}
-            transactions={!afDateFrom && !afDateTo ? todayTransactions : rangeTransactions}
-            generatedBy={currentUser?.name || 'Admin'}
-          />
         </>
       )}
     </div>
