@@ -1328,7 +1328,7 @@ window.submitGrievance = async () => {
   <nav>
     <div className="nav-inner">
       <a className="brand" href="#">
-        <img src={EMBLEM_URL} alt="GNSI" style={{ height: 46, width: "auto" }} />
+        <img src={EMBLEM_URL} alt="GNSI" style={{ height: 46, width: 46, objectFit: "contain", flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
         <div className="brand-text">
           <h2>GNSI</h2>
           <small>Est. 2016 · Khangabok, Manipur</small>
@@ -1417,7 +1417,7 @@ window.submitGrievance = async () => {
   <div className={"mob-menu" + (mobileOpen ? " open" : "")}>
     <div className="mob-menu-hd">
       <div className="mob-menu-brand">
-        <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: "auto" }} />
+        <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={(e) => { e.target.style.display = "none"; }} />
         <span>GNSI</span>
       </div>
       <button className="mob-menu-close" onClick={closeMobile} aria-label="Close menu">
@@ -4995,7 +4995,8 @@ window.submitGrievance = async () => {
           <img
             src={EMBLEM_URL}
             alt="GNSI"
-            style={{ height: 70, width: "auto", margin: "0 auto .8rem", display: "block" }}
+            style={{ height: 70, width: 70, objectFit: "contain", margin: "0 auto .8rem", display: "block" }}
+            onError={(e) => { e.target.style.display = 'none'; }}
           />
           <h2>Parents Portal</h2>
           <p>GNSI · Khangabok, Manipur</p>
@@ -5039,7 +5040,7 @@ window.submitGrievance = async () => {
     <div className="pp-shell" id="ppShell">
       <div className="pp-topbar">
         <div className="pp-topbar-l">
-          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 36, width: "auto" }} />
+          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 36, width: 36, objectFit: "contain" }} onError={(e) => { e.target.style.display = "none"; }} />
           <div>
             <h3 id="ppDashName">—</h3>
             <p id="ppDashMeta">GNSI Parents Portal</p>
