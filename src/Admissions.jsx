@@ -2355,7 +2355,7 @@ export default function Admissions() {
   return (
     <>
       {feePanel && (
-        <FeeCollectionModal app={feePanel} onClose={()=>setFeePanel(null)} onSaved={()=>{ setFeePanel(null); loadAll(); showToast('Payment recorded!','#059669') }} />
+        <FeeCollectionModal app={feePanel} isAdmin={checkPermission(userRole,'delete')} currentUser={getSessionInfo()} onClose={()=>setFeePanel(null)} onSaved={()=>{ setFeePanel(null); loadAll(); showToast('Payment recorded!','#059669') }} />
       )}
       {waBlastApps && <WABlastModal apps={waBlastApps} onClose={()=>setWABlastApps(null)} />}
       {showCSVImport && <CSVImportModal onClose={()=>setShowCSVImport(false)} onImport={handleCSVImport} />}

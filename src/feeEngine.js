@@ -432,15 +432,221 @@ export const revertFeeCollection = async ({
   if (error) throw error
 
   if (accountSourceRef && accountSourceType) {
-    await supabase.from(TABLES.accounts).delete()
+    // Soft-delete the accounts ledger row so it is recoverable and auditable
+    const { data: acctRows } = await supabase.from(TABLES.accounts)
+      .select('id')
       .eq('source_ref', accountSourceRef)
       .eq('source_type', accountSourceType)
+    for (const row of (acctRows || [])) {
+      await supabase.from(TABLES.accounts).update({
+        is_soft_deleted: true,
+        deleted_by: revertedBy,
+        deleted_at: new Date().toISOString(),
+      }).eq('id', row.id)
+      try {
+        await supabase.from('audit_log').insert({
+          action: 'fee_revert', changed_by: revertedBy, target_id: row.id,
+          old_values: JSON.stringify({ source_ref: accountSourceRef, source_type: accountSourceType, revert_reason: reason }),
+          created_at: new Date().toISOString(),
+        })
+      } catch (e) { console.warn('Audit log failed during revert', e) }
+    }
   }
 }
 
 // ─── Correct a mistakenly-entered payment date (admin) ───────────────────────
 // Fixes the date on the source row AND on the matching `accounts` entry, so
 // the books and the collection record never disagree. Does not touch
+
+// =============================================================================
+// 8c. collectFee — SINGLE SOURCE OF TRUTH FOR ALL FEE WRITES
+// =============================================================================
+// Every fee write in the portal goes through this one function.
+// Fees.jsx (FeePaymentTab) and FeeCollectionModal.jsx both call this.
+// Fixes: INSERT vs UPSERT, missing revert fields, wrong source_type,
+//        missing subtype column, no audit trail from FeeCollectionModal.
+//
+// items[] shapes:
+//   { kind: 'admission', amount }
+//   { kind: 'item',      label, amount }          <- dress/prospectus
+//   { kind: 'flat',      month, year, amount }
+//   { kind: 'course',    course, subtype, month, year, amount }
+//   { kind: 'advance',   label, amount }
+//
+// Returns { sections, total } ready for printReceipt().
+// =============================================================================
+export const collectFee = async ({
+  gcc, studentName, admNo = '--', className = '', course = '',
+  hostelType = 'Day Scholar', payDate, payMode = 'Cash',
+  txnRef = null, collectedBy = 'Admin',
+  studentId = null, receiptNo, items = [],
+}) => {
+  if (!gcc)       throw new Error('collectFee: gcc is required')
+  if (!payDate)   throw new Error('collectFee: payDate is required')
+  if (!receiptNo) throw new Error('collectFee: receiptNo is required')
+  if (!items.length) throw new Error('collectFee: at least one item is required')
+
+  const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
+  const invoiceMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  const admItems = [], flatItems = [], crsfItems = [], sections = []
+
+  for (const item of items) {
+
+    // 1. ADMISSION FEE
+    if (item.kind === 'admission') {
+      const { error } = await supabase.from(TABLES.admFeeCollections).upsert({
+        id: `${receiptNo}-adm`, adm_app_id: gcc, fee_type: 'admission',
+        amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
+        txn_ref: txnRef || null, description: 'Admission Fee',
+        receipt_no: receiptNo, student_name: studentName,
+        adm_no: admNo, class_name: className || null, collected_by: collectedBy,
+        ...noRevert,
+      }, { onConflict: 'id' })
+      if (error) throw new Error('Admission fee save failed: ' + error.message)
+      await upsertAccount({
+        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
+        amount: item.amount, payment_mode: payMode,
+        note: `${studentName} · Admission Fee · ${receiptNo}`,
+        source_ref: sourceRef.admission(gcc), source_type: 'adm_fee',
+      })
+      admItems.push({ label: 'Admission Fee', amount: item.amount })
+    }
+
+    // 2. DRESS / ITEM
+    else if (item.kind === 'item') {
+      const lbl     = item.label || 'Item'
+      const itemKey = lbl.replace(/^Dress Kit — /, '').toLowerCase().replace(/\s+/g, '_')
+      const rowId   = `${receiptNo}-item-${itemKey}`
+      const sRef    = lbl.toLowerCase().includes('prospectus')
+        ? sourceRef.admItem(gcc, 'prospectus')
+        : sourceRef.admItem(gcc, lbl.replace(/^Dress Kit — /, ''))
+      const { error } = await supabase.from(TABLES.admFeeCollections).upsert({
+        id: rowId, adm_app_id: gcc, fee_type: 'item',
+        amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
+        txn_ref: txnRef || null, description: lbl,
+        receipt_no: receiptNo, student_name: studentName,
+        adm_no: admNo, class_name: className || null, collected_by: collectedBy,
+        ...noRevert,
+      }, { onConflict: 'id' })
+      if (error) throw new Error(`Item (${lbl}) save failed: ` + error.message)
+      await upsertAccount({
+        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
+        amount: item.amount, payment_mode: payMode,
+        note: `${studentName} · ${lbl} · ${receiptNo}`,
+        source_ref: sRef, source_type: 'adm_fee',
+      })
+      admItems.push({ label: lbl, amount: item.amount })
+    }
+
+    // 3. FLAT FEE
+    else if (item.kind === 'flat') {
+      const alreadyPaid = await checkFlatFeeExists(gcc, item.month, item.year)
+      if (alreadyPaid) { console.warn(`collectFee: flat ${item.month} ${item.year} already paid for GCC-${gcc}`); continue }
+      const flatId = `${gcc}_flat_${item.month.slice(0, 3).toLowerCase()}_${item.year}`
+      const sRef   = sourceRef.flatFee(gcc, item.month, item.year)
+      const { error } = await supabase.from(TABLES.admFlatFees).upsert({
+        id: flatId, adm_app_id: gcc, month: item.month, year: item.year,
+        amount: item.amount, hostel_type: hostelType, paid: true,
+        pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
+        receipt_no: receiptNo, student_name: studentName, adm_no: admNo,
+        ...noRevert,
+      }, { onConflict: 'id' })
+      if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
+      await upsertAccount({
+        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
+        amount: item.amount, payment_mode: payMode,
+        note: `${studentName} · ${item.month} ${item.year} Flat Fee [${hostelType}] · ${receiptNo}`,
+        source_ref: sRef, source_type: 'flat_fee',
+      })
+      await mirrorToFeeInvoice({
+        gcc, studentId, studentName, course, hostelType, className,
+        feeType: 'Monthly Flat Fee', amount: item.amount, payDate, invoiceMonth,
+      })
+      flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]`, amount: item.amount })
+    }
+
+    // 4. COURSE FEE
+    else if (item.kind === 'course') {
+      const yr  = item.year || CURRENT_YEAR
+      const crs = item.course || course
+      const sub = item.subtype || ''
+      const alreadyPaid = await checkCourseFeeExists(gcc, item.month, yr)
+      if (alreadyPaid) { console.warn(`collectFee: course ${item.month} ${yr} already paid for GCC-${gcc}`); continue }
+      const recId = `${gcc}_course_${item.month.slice(0, 3).toLowerCase()}_${yr}`
+      const sRef  = sourceRef.courseFee(gcc, item.month, yr)
+      const { error } = await supabase.from(TABLES.admCourseFees).upsert({
+        id: recId, adm_app_id: gcc, course: crs, subtype: sub,
+        hostel_type: hostelType, for_month: item.month, year: yr,
+        amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
+        txn_ref: txnRef || null, receipt_no: receiptNo,
+        student_name: studentName, adm_no: admNo,
+        ...noRevert,
+      }, { onConflict: 'id' })
+      if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
+      await upsertAccount({
+        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
+        amount: item.amount, payment_mode: payMode,
+        note: `${studentName} · ${crs}${sub ? ' ' + sub : ''} ${item.month} · ${receiptNo}`,
+        source_ref: sRef, source_type: 'course_fee',
+      })
+      await mirrorToFeeInvoice({
+        gcc, studentId, studentName, course: crs, hostelType, className,
+        feeType: 'Course Fee', amount: item.amount, payDate, invoiceMonth,
+      })
+      crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}`, amount: item.amount })
+    }
+
+    // 5. ADVANCE
+    else if (item.kind === 'advance') {
+      const advId = sourceRef.advance(gcc, Date.now())
+      const { error } = await supabase.from(TABLES.admFeeCollections).upsert({
+        id: advId, adm_app_id: gcc, fee_type: 'advance',
+        amount_paid: item.amount, advance_for: item.label || '',
+        pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
+        description: 'Advance — ' + (item.label || ''),
+        receipt_no: receiptNo, student_name: studentName,
+        adm_no: admNo, class_name: className || null, collected_by: collectedBy,
+        ...noRevert,
+      }, { onConflict: 'id' })
+      if (error) throw new Error('Advance fee save failed: ' + error.message)
+      await upsertAccount({
+        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Advance',
+        amount: item.amount, payment_mode: payMode,
+        note: `${studentName} · Advance (${item.label || ''}) · ${receiptNo}`,
+        source_ref: advId, source_type: 'advance_fee',
+      })
+      sections.push({ title: 'Advance', color: '#b45309',
+        items: [{ label: item.label || 'Advance', amount: item.amount }],
+        subtotal: item.amount })
+    }
+  }
+
+  // Build receipt sections
+  if (admItems.length)  sections.unshift({ title: 'Admission Package',           color: '#4f46e5', items: admItems,  subtotal: admItems.reduce((s, i) => s + i.amount, 0) })
+  if (flatItems.length) sections.push(   { title: `Monthly Flat Fees — ${hostelType}`, color: '#059669', items: flatItems, subtotal: flatItems.reduce((s, i) => s + i.amount, 0) })
+  if (crsfItems.length) sections.push(   { title: 'Course Fees',                 color: '#7c3aed', items: crsfItems, subtotal: crsfItems.reduce((s, i) => s + i.amount, 0) })
+
+  const total = sections.reduce((s, sec) => s + sec.subtotal, 0)
+  return { sections, total }
+}
+
+// deleteLegacyFeeRecord — admin hard-delete for the legacy `fees` table only.
+// Live tables (adm_fee_collections / adm_flat_fees / adm_course_fees) are
+// always soft-reverted via revertFeeCollection so there is always an audit trail.
+export const deleteLegacyFeeRecord = async (id, role = 'admin') => {
+  if (!id) throw new Error('deleteLegacyFeeRecord: id is required')
+  const { data: original } = await supabase.from('fees').select('*').eq('id', id).maybeSingle()
+  const { error } = await supabase.from('fees').delete().eq('id', id)
+  if (error) throw new Error('Delete failed: ' + error.message)
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'legacy_fee_delete', changed_by: role, target_id: id,
+      old_values: original ? JSON.stringify(original) : null,
+      created_at: new Date().toISOString(),
+    })
+  } catch (e) { console.warn('Audit log failed', e) }
+}
+
 // amount/mode/anything else — date-only correction.
 export const correctFeeCollectionDate = async ({
   table, id, newDate, accountSourceRef = null, accountSourceType = null,

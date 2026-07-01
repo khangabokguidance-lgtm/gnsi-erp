@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { getFlatFeeAmtSync } from './feeEngine'
+import { getFlatFeeAmtSync, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
 import { useAuth } from './AuthContext'
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -300,6 +300,7 @@ function usePermissions() {
   const role = user?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'viewer'
   return {
     role,
+    user,
     can: {
       write:   ['admin','manager','Admin','Manager'].includes(role),
       fees:    ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
@@ -1050,13 +1051,36 @@ function BulkFeeModal({ students, selectedIds, can, onClose, onSaved, showToast 
   const handleSave=async()=>{
     if(!can.fees){showToast('No permission',T.red);return}
     if(!amount||Number(amount)<=0){showToast('Enter valid amount',T.red);return}
-    if(!monthFor){showToast('Enter month',T.red);return}
+    if(!monthFor){showToast('Enter month/description',T.red);return}
     setSaving(true)
     try{
-      const{error}=await supabase.from('fee_collections').insert(selected.map(s=>({student_id:s.id,amount:Number(amount),payment_date:new Date().toISOString().slice(0,10),month_for:monthFor,payment_method:method,session:s.session})))
-      if(error)throw error
-      await auditLog('bulk_fee_collection',{count:selected.length,amount:Number(amount),monthFor,method})
-      showToast(`Fee collected for ${selected.length} students`,T.green);onSaved();onClose()
+      // Parse month for course fee — expects format like "January" or "Jan 2026"
+      const monthName=monthFor.trim().split(' ')[0]
+      const yr=Number(monthFor.trim().split(' ')[1])||new Date().getFullYear()
+      let errors=0
+      for(const s of selected){
+        const gcc=gccStrFee(s.gcc_no)
+        if(!gcc||gcc==='0'){errors++;continue}
+        try{
+          await collectFee({
+            gcc,
+            studentName:s.name,
+            admNo:s.admission_no||'--',
+            className:s.batch||s.class_name||'',
+            course:s.course||'',
+            hostelType:s.hostel_type||'Day Scholar',
+            payDate:new Date().toISOString().slice(0,10),
+            payMode:method,
+            collectedBy:'Admin',
+            receiptNo:rcptNo('BULK'),
+            items:[{kind:'course',course:s.course||'',subtype:s.batch||'',month:monthName,year:yr,amount:Number(amount)}],
+          })
+        }catch(e){console.error('collectFee failed for',s.name,e);errors++}
+      }
+      await auditLog('bulk_fee_collection',{count:selected.length,errors,amount:Number(amount),monthFor,method})
+      const msg=errors>0?`Collected for ${selected.length-errors}/${selected.length} students (${errors} failed)`:
+        `Fee collected for ${selected.length} students`
+      showToast(msg,errors>0?T.amber:T.green);onSaved();onClose()
     }catch(err){showToast('Failed: '+err.message,T.red)}
     setSaving(false)
   }
@@ -2655,7 +2679,7 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
 }
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Students() {
-  const { role, can }=usePermissions()
+  const { role, can, user }=usePermissions()
   const isMobile=useIsMobile()
 
   const [students,setStudents]=useState([])
@@ -2783,23 +2807,33 @@ const effectiveCols = visibleCols.filter(col => {
   const loadFeeData=useCallback(async(ids,studentRows)=>{
     if(!ids?.length||!studentRows?.length)return
     try{
-      const{data}=await supabase.from('fee_collections').select('*').in('student_id',ids).order('payment_date',{ascending:false})
-      if(!data)return
-      const map={}
-      data.forEach(row=>{if(!map[row.student_id])map[row.student_id]=[];map[row.student_id].push(row)})
+      // Build gcc list from student rows (adm_ tables key on gcc, not student UUID)
+      const gccList=studentRows.map(s=>gccStrFee(s.gcc_no)).filter(Boolean)
+      const [admRes,flatRes,crsfRes]=await Promise.all([
+        supabase.from('adm_fee_collections').select('adm_app_id,amount_paid,pay_date').in('adm_app_id',gccList).eq('reverted',false),
+        supabase.from('adm_flat_fees').select('adm_app_id,amount,pay_date').in('adm_app_id',gccList).eq('paid',true).eq('reverted',false),
+        supabase.from('adm_course_fees').select('adm_app_id,amount_paid,pay_date').in('adm_app_id',gccList).eq('reverted',false),
+      ])
+      // Build per-gcc totals and last-paid date
+      const totals={},lastPaid={}
+      ;(admRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date})
+      ;(flatRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date})
+      ;(crsfRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date})
       const result={},histResult={}
       for(const s of studentRows){
-        const pmts=map[s.id]||[];histResult[s.id]=pmts
+        const gcc=gccStrFee(s.gcc_no)
+        const totalPaid=totals[gcc]||0
         const effectiveDue=getEffectiveMonthlyDue(s)
-        const totalPaid=pmts.reduce((a,p)=>a+Number(p.amount||0),0)
         const admitDate=s.admission_date?new Date(s.admission_date):new Date()
         const now=new Date()
         const monthsEnrolled=Math.max(0,(now.getFullYear()-admitDate.getFullYear())*12+(now.getMonth()-admitDate.getMonth()))
         const arrears=Math.max(0,monthsEnrolled*effectiveDue-totalPaid)
-        result[s.id]={dues:arrears,lastPaid:pmts[0]?new Date(pmts[0].payment_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}):null,history:pmts.slice(0,3)}
+        const lp=lastPaid[gcc]
+        result[s.id]={dues:arrears,lastPaid:lp?new Date(lp).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}):null}
+        histResult[s.id]=[]
       }
       setFeeData(result);setFeeHistory(histResult)
-    }catch{}
+    }catch(e){console.error('loadFeeData error',e)}
   },[])
 
   useEffect(()=>{if(students.length){const ids=students.map(s=>s.id);loadFeeData(ids,students);loadAttData(ids);loadExamData(ids)}},[students])
@@ -2999,7 +3033,7 @@ const effectiveCols = visibleCols.filter(col => {
 
       {/* Modals */}
       {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null)}} showToast={showToast}/>}
-      {feePanel&&<FeeCollectionModal app={feePanel} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
+      {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {showBulkOps&&<BulkOperationsModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkOps(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showRollover&&<SessionRolloverWizard students={students} can={can} onClose={()=>setShowRollover(false)} onRefresh={loadAll} showToast={showToast}/>}

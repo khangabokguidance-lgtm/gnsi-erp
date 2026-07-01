@@ -283,7 +283,7 @@ supabase.from("adm_applications").select("gcc_no,applicant_name,batch,status,cre
     fetchAllRows("accounts","id,amount,category,entry_date,type,payment_mode,note",{
       orderCol:"id", filterFn:q=>q.eq("is_soft_deleted",false),
     }),
-    supabase.from("adm_fee_collections").select("amount_paid,fee_type,adm_app_id,student_name,pay_date,pay_mode,description").order("pay_date",{ascending:false}).limit(6),
+    supabase.from("adm_fee_collections").select("amount_paid,fee_type,adm_app_id,student_name,pay_date,pay_mode,description").eq("reverted",false).order("pay_date",{ascending:false}).limit(6),
     safeFetch(()=>supabase.from("staff_profiles").select("id,name,department,status,designation")),
     safeFetch(()=>supabase.from("management_checklist").select("id,status,priority,section,task,assigned_to,created_at")),
     safeFetch(()=>supabase.from("staff_monthly_scores").select("staff_id,month,total_score,level").order("month",{ascending:false}).limit(50)),
@@ -318,8 +318,8 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
     safeFetch(()=>supabase.from("student_fee_overrides").select("gcc_no,flat_fee_override,reason,created_at")),
     // FIX: removed .limit(200) — was silently dropping older flat/course fee records
     // for a 10-year-old institute; now pages through the full table via fetchAllRows.
-    fetchAllRows("adm_flat_fees","adm_app_id,amount,status,month,year"),
-    fetchAllRows("adm_course_fees","adm_app_id,amount_paid,status,for_month,year"),
+    fetchAllRows("adm_flat_fees","adm_app_id,amount,status,month,year",{orderCol:"id",filterFn:q=>q.eq("paid",true).eq("reverted",false)}),
+    fetchAllRows("adm_course_fees","adm_app_id,amount_paid,status,for_month,year",{orderCol:"id",filterFn:q=>q.eq("reverted",false)}),
     safeFetch(()=>supabase.from("entrance_exams").select("id,exam_type,exam_date,status,total_seats,venue").order("exam_date",{ascending:false})),
     safeFetch(()=>supabase.from("entrance_candidates").select("id,exam_id,status,roll_number").order("created_at",{ascending:false})),
     safeFetch(()=>supabase.from("entrance_results").select("id,exam_id,total_marks,marks_obtained,result_status").order("created_at",{ascending:false})),

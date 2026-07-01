@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import {
   fmt, today, gccStr, rcptNo,
+  collectFee, rcptNo,
   upsertAccount, printReceipt, sourceRef,
   getFeeRates, getFlatFees, clearFeeRateCache,
   CURRENT_YEAR, PAY_MODES, MONTHS_LIST,
@@ -72,7 +73,7 @@ function HostelBadge({ type }) {
   )
 }
 
-export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
+export default function FeeCollectionModal({ app, student, onClose, onSaved, isAdmin = false, currentUser = null }) {
 
   const gcc    = gccStr(app?.gcc ?? app?.gcc_no ?? student?.gcc_no ?? '')
   const name   = app?.name       ?? app?.applicant_name ?? student?.name       ?? ''
@@ -208,7 +209,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   useEffect(() => {
     if (!gcc) return
     setLoadingAdm(true)
-    supabase.from('adm_fee_collections').select('description').eq('adm_app_id', gcc)
+    supabase.from('adm_fee_collections').select('description').eq('adm_app_id', gcc).eq('reverted', false)
       .then(({ data }) => { if (data) setPaidAdmItems(data.map(r => r.description)); setLoadingAdm(false) })
   }, [gcc])
 
@@ -216,7 +217,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   useEffect(() => {
     if (!gcc) return
     setLoadingPaid(true)
-    supabase.from('adm_flat_fees').select('month, year').eq('adm_app_id', gcc)
+    supabase.from('adm_flat_fees').select('month, year').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
       .then(({ data }) => {
         if (data) setPaidMonths(data.map(r => `${r.month}_${r.year}`))
         setLoadingPaid(false)
@@ -227,7 +228,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
   useEffect(() => {
     if (!gcc) return
     setLoadingCourse(true)
-    supabase.from('adm_course_fees').select('for_month, year').eq('adm_app_id', gcc)
+    supabase.from('adm_course_fees').select('for_month, year').eq('adm_app_id', gcc).eq('reverted', false)
       .then(({ data }) => {
         if (data) setPaidCourseMonths(data.map(r => `${r.for_month}_${r.year}`))
         setLoadingCourse(false)
@@ -265,6 +266,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
 
   // ── Remove override inline ────────────────────────────────────────────────
   const removeOverrideInline = async () => {
+    if (!isAdmin) { alert('Only admin can remove fee overrides.'); return }
     if (!window.confirm('Remove override? This student will revert to the standard flat fee rate.')) return
     setOverrideSaving(true)
     try {
@@ -292,89 +294,59 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     course, hostel_type: hostelType,
   })
 
-  // ── Save: Admission ───────────────────────────────────────────────────────
+  // ── UNIFIED save — all fee types go through collectFee (feeEngine) ────────────────
   const saveAdmission = async () => {
     if (saving) return
     if (!gcc) return alert('Student GCC number is missing.')
-    const items = FEE_ITEMS.filter(f => selected[f.id] && !isAdmItemPaid(f.label))
-    if (!items.length) return alert('Select at least one unpaid fee item.')
+    const admFeeItems = FEE_ITEMS.filter(f => selected[f.id] && !paidAdmItems.includes(f.label))
+    if (!admFeeItems.length) return alert('Select at least one unpaid fee item.')
     setSaving(true); setError(null)
     try {
-      const rcpt  = rcptNo()
-      const total = items.reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
-      for (const item of items) {
-        const amt = Number(customAmts[item.id]) || item.amount
-        const { error: e } = await supabase.from('adm_fee_collections').insert({
-          id: `${rcpt}-${item.id}`, adm_app_id: gcc, fee_type: item.type,
-          amount_paid: amt, pay_date: payDate, pay_mode: payMode,
-          txn_ref: txnRef || null, description: item.label,
-          receipt_no: rcpt, student_name: name,
-          adm_no: admNo || null, class_name: batch || null,
-          collected_by: collectedBy || null,
-        })
-        if (e) throw e
-        setPaidAdmItems(p => [...new Set([...p, item.label])])
-      }
-      await upsertAccount({
-        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
-        amount: total, payment_mode: payMode,
-        note: `Admission fees — ${name} (GCC-${gcc})`,
-        source_ref: sourceRef.admission(gcc), source_type: 'admission',
+      const rNo = rcptNo()
+      const items = admFeeItems.map(f => ({
+        kind: f.id === 'admission' ? 'admission' : 'item',
+        label: f.label,
+        amount: Number(customAmts[f.id]) || f.amount,
+      }))
+      const { sections, total } = await collectFee({
+        gcc, studentName: name, admNo: admNo || '--',
+        className: batch || '', course: course || '',
+        hostelType, payDate, payMode, txnRef: txnRef || null,
+        collectedBy: collectedBy || null, receiptNo: rNo, items,
       })
-      printReceipt({ ...commonReceiptFields(rcpt), items: items.map(i => ({ label: i.label, amount: Number(customAmts[i.id]) || i.amount })), total })
-      setSaved({ rcpt, items: items.map(i => i.label).join(', '), total })
+      printReceipt({ ...commonReceiptFields(rNo), sections, total })
+      setSaved({ rcpt: rNo, items: admFeeItems.map(i => i.label).join(', '), total })
+      setPaidAdmItems(p => [...new Set([...p, ...admFeeItems.map(i => i.label)])])
       setSelected({})
       onSaved?.()
-    } catch (err) {
-      setError(err.message || 'Failed to save.')
-    } finally { setSaving(false) }
+    } catch (err) { setError(err.message || 'Failed to save.') }
+    finally { setSaving(false) }
   }
 
-  // ── Save: Flat fees ───────────────────────────────────────────────────────
   const saveFlat = async () => {
     if (saving) return
     if (!gcc) return alert('Student GCC number is missing.')
-    const items = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f))
-    if (!items.length) return alert('Select at least one unpaid month.')
+    const unpaid = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f))
+    if (!unpaid.length) return alert('Select at least one unpaid month.')
     setSaving(true); setError(null)
     try {
-      const rcpt = rcptNo()
-      for (const item of items) {
-        const alreadyPaid = await checkFlatFeeExists(gcc, item.month, item.year)
-        if (alreadyPaid) { setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])]); continue }
-        const flatId = `${gcc}_flat_${item.month.slice(0,3).toLowerCase()}_${item.year}`
-        const { error: e } = await supabase.from('adm_flat_fees').insert({
-          id: flatId, adm_app_id: gcc,
-          month: item.month, year: item.year,
-          amount: item.amount, hostel_type: hostelType,
-          paid: true, pay_date: payDate, pay_mode: payMode,
-          txn_ref: txnRef || null, receipt_no: rcpt,
-          student_name: name, adm_no: admNo || null,
-        })
-        if (e) throw e
-        await upsertAccount({
-          entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
-          amount: item.amount, payment_mode: payMode,
-          note: `Flat fees [${hostelType}] — ${name} (GCC-${gcc}) · ${item.month} ${item.year}`,
-          source_ref: sourceRef.flatFee(gcc, item.month, item.year),
-          source_type: 'flat_fee',
-        })
-        setPaidMonths(p => [...new Set([...p, `${item.month}_${item.year}`])])
-      }
-      printReceipt({
-        ...commonReceiptFields(rcpt),
-        items: items.map(i => ({ label: `${i.month} ${i.year} — Monthly Fee (${hostelType})`, amount: i.amount })),
-        total: items.reduce((s, i) => s + i.amount, 0),
+      const rNo = rcptNo()
+      const items = unpaid.map(f => ({ kind: 'flat', month: f.month, year: f.year, amount: f.amount }))
+      const { sections, total } = await collectFee({
+        gcc, studentName: name, admNo: admNo || '--',
+        className: batch || '', course: course || '',
+        hostelType, payDate, payMode, txnRef: txnRef || null,
+        collectedBy: collectedBy || null, receiptNo: rNo, items,
       })
-      setSaved({ rcpt, items: items.map(i => `${i.month} ${i.year}`).join(', '), total: flatTotal })
+      printReceipt({ ...commonReceiptFields(rNo), sections, total })
+      setSaved({ rcpt: rNo, items: unpaid.map(i => `${i.month} ${i.year}`).join(', '), total })
+      setPaidMonths(p => [...new Set([...p, ...unpaid.map(i => `${i.month}_${i.year}`)])])
       setFlatSel({})
       onSaved?.()
-    } catch (err) {
-      setError(err.message || 'Failed to save.')
-    } finally { setSaving(false) }
+    } catch (err) { setError(err.message || 'Failed to save.') }
+    finally { setSaving(false) }
   }
 
-  // ── Save: Course fee ──────────────────────────────────────────────────────
   const saveCourse = async () => {
     if (saving) return
     if (!gcc) return alert('Student GCC number is missing.')
@@ -383,40 +355,50 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved }) {
     if (isCourseMonthPaid()) { setError(`Course fee for ${courseMonth} ${courseYear} is already recorded.`); return }
     setSaving(true); setError(null)
     try {
-      const alreadyPaid = await checkCourseFeeExists(gcc, courseMonth, courseYear)
-      if (alreadyPaid) {
-        setError(`Course fee for ${courseMonth} ${courseYear} already recorded.`)
-        setPaidCourseMonths(p => [...new Set([...p, `${courseMonth}_${courseYear}`])])
-        setSaving(false); return
-      }
-      const rcpt  = rcptNo()
-      const recId = `${gcc}_course_${courseMonth.slice(0,3).toLowerCase()}_${courseYear}`
-      const { error: e } = await supabase.from('adm_course_fees').insert({
-        id: recId, adm_app_id: gcc, course: course || '', batch: batch || '',
-        hostel_type: hostelType, for_month: courseMonth, year: courseYear,
-        amount_paid: amt, pay_date: payDate, pay_mode: payMode,
-        txn_ref: txnRef || null, receipt_no: rcpt,
-        student_name: name, adm_no: admNo || null,
+      const rNo = rcptNo()
+      const { sections, total } = await collectFee({
+        gcc, studentName: name, admNo: admNo || '--',
+        className: batch || '', course: course || '',
+        hostelType, payDate, payMode, txnRef: txnRef || null,
+        collectedBy: collectedBy || null, receiptNo: rNo,
+        items: [{ kind: 'course', course: course || '', subtype: batch || '', month: courseMonth, year: courseYear, amount: amt }],
       })
-      if (e) throw e
-      await upsertAccount({
-        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees', amount: amt, payment_mode: payMode,
-        note: `Course fee (${courseMonth} ${courseYear}) — ${name} (GCC-${gcc}) [${hostelType}]`,
-        source_ref: sourceRef.courseFee(gcc, courseMonth, courseYear),
-        source_type: 'course_fee',
-      })
-      printReceipt({
-        ...commonReceiptFields(rcpt),
-        items: [{ label: `Course fee — ${course} · ${batch} · ${courseMonth} ${courseYear} [${hostelType}]`, amount: amt }],
-        total: amt,
-      })
+      printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setPaidCourseMonths(p => [...new Set([...p, `${courseMonth}_${courseYear}`])])
-      setSaved({ rcpt, items: `${course} · ${batch} · ${courseMonth} ${courseYear}`, total: amt })
+      setSaved({ rcpt: rNo, items: `${course} · ${batch} · ${courseMonth} ${courseYear}`, total: amt })
       onSaved?.()
-    } catch (err) {
-      setError(err.message || 'Failed to save.')
-    } finally { setSaving(false) }
+    } catch (err) { setError(err.message || 'Failed to save.') }
+    finally { setSaving(false) }
   }
+
+    // ── Remove override inline ────────────────────────────────────────────────
+  const removeOverrideInline = async () => {
+    if (!window.confirm('Remove override? This student will revert to the standard flat fee rate.')) return
+    setOverrideSaving(true)
+    try {
+      await saveStudentFlatFeeOverride(parseInt(gcc), sessionYear, null)
+      clearFeeRateCache()
+      const rates = await getFeeRates(sessionYear, course, batch, hostelType, null)
+      setFeeRates(rates)
+      setHasOverride(false)
+      setOverrideAmt('')
+      setOverrideReason('')
+      const updated = await getFlatFees(hostelType, course, batch, sessionYear, null)
+      setFlatFees(updated)
+      setOverrideMode(false)
+      setOverrideFeedback({ type: 'ok', msg: 'Override removed. Standard rate restored.' })
+    } catch (err) {
+      setOverrideFeedback({ type: 'err', msg: err.message || 'Remove failed.' })
+    } finally { setOverrideSaving(false) }
+  }
+
+  const commonReceiptFields = rcpt => ({
+    receipt_no: rcpt, pay_date: payDate, pay_mode: payMode,
+    txn_ref: txnRef || null, collected_by: collectedBy || null,
+    student_name: name, adm_no: admNo || null,
+    gcc_no: gcc, class_name: batch || null,
+    course, hostel_type: hostelType,
+  })
 
   const handleClose = () => typeof onClose === 'function' && onClose()
 

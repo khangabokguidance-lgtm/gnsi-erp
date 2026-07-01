@@ -304,9 +304,9 @@ export default function StudentFeeLedger() {
     setSelected(student); setLoading(true)
     const gcc = gccStr(student.gcc_no)
     const [a, f, c] = await Promise.all([
-      supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).order('pay_date', { ascending: true }),
-      supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).order('pay_date', { ascending: true }),
-      supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).order('pay_date', { ascending: true }),
+      supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: true }),
+      supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false).order('pay_date', { ascending: true }),
+      supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: true }),
     ])
     setAdmRows(a.data || []); setFlatRows(f.data || []); setCrsRows(c.data || [])
     setLoading(false)

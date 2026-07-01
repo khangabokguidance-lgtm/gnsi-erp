@@ -825,9 +825,9 @@ function Student360({ students }) {
     const gcc = gccStr(student.gcc_no)
     const [hostelAlloc, admFees, flatFees, crsFees, gatePasses, enquiries, parentItems] = await Promise.all([
       supabase.from('hostel_allocations').select('*,hostel_rooms(room_no,floor,capacity,room_type)').eq('student_id', student.id).order('created_at', { ascending: false }).limit(1),
-      supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).order('pay_date', { ascending: false }),
-      supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).order('pay_date', { ascending: false }),
-      supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).order('pay_date', { ascending: false }),
+      supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: false }),
+      supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false).order('pay_date', { ascending: false }),
+      supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: false }),
       supabase.from('reception_gatepasses').select('*').eq('student_name', student.name).is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_enquiries').select('*').or(`student_name.eq.${student.name},phone.eq.${student.phone || '__'}`).is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_parent_items').select('*').eq('student_name', student.name).is('deleted_at', null).order('created_at', { ascending: false }),

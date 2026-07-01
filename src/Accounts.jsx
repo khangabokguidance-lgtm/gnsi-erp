@@ -478,21 +478,38 @@ function Accounts({role,userId}){
   }
 
   const handleDelete=async(id)=>{
+    if(!isAdmin){alert('Only admin can delete transactions.');return}
     if(!window.confirm('Delete this transaction?'))return
     const original=entries.find(e=>e.id===id)
     const{error}=await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id)
     if(error){alert('Error: '+error.message);return}
     await writeAuditLog({action:'delete',role,targetId:id,oldValues:original})
-    fetchEntries();if(isAdmin)fetchDeletedRows()
+    fetchEntries();fetchDeletedRows()
   }
 
   const handleRestore=async(id)=>{
+    if(!isAdmin)return
     await supabase.from('accounts').update({is_soft_deleted:false,deleted_by:null,deleted_at:null}).eq('id',id)
     await writeAuditLog({action:'restore',role,targetId:id})
     fetchEntries();fetchDeletedRows()
   }
 
+  const handlePermanentDelete=async(id)=>{
+    if(!isAdmin)return
+    const item=deletedRows.find(e=>e.id===id)
+    if(!window.confirm(`Permanently delete this entry?\n\n"${item?.category||''} — ${item?.type||''} — ₹${Number(item?.amount||0).toLocaleString('en-IN')}"\n\nThis CANNOT be undone.`))return
+    if(item?.receipt_url){
+      const path=item.receipt_url.split('/').pop()
+      await supabase.storage.from(RECEIPT_BUCKET).remove([path])
+    }
+    const{error}=await supabase.from('accounts').delete().eq('id',id)
+    if(error){alert('Error: '+error.message);return}
+    await writeAuditLog({action:'permanent_delete',role,targetId:id,oldValues:item})
+    fetchDeletedRows()
+  }
+
   const handleBulkDelete=async()=>{
+    if(!isAdmin){alert('Only admin can delete transactions.');return}
     if(!selected.size)return
     if(!window.confirm(`Delete ${selected.size} selected transaction(s)?`))return
     for(const id of[...selected]){
@@ -500,7 +517,7 @@ function Accounts({role,userId}){
       await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id)
       await writeAuditLog({action:'bulk_delete',role,targetId:id,oldValues:original})
     }
-    setSelected(new Set());fetchEntries();if(isAdmin)fetchDeletedRows()
+    setSelected(new Set());fetchEntries();fetchDeletedRows()
   }
 
   const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
@@ -1661,7 +1678,7 @@ function Accounts({role,userId}){
           </div>
           {deletedRows.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No deleted entries.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#faf5ff'}}>{['Date','Type','Category','Amount','Deleted by','Deleted at','Restore'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#6d28d9',fontSize:12,borderBottom:'1px solid #e9d5ff'}}>{h}</th>)}</tr></thead>
+              <thead><tr style={{backgroundColor:'#faf5ff'}}>{['Date','Type','Category','Amount','Deleted by','Deleted at','Restore','Purge'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#6d28d9',fontSize:12,borderBottom:'1px solid #e9d5ff'}}>{h}</th>)}</tr></thead>
               <tbody>{deletedRows.map(item=>(<tr key={item.id} style={{borderBottom:'1px solid #faf5ff'}}>
                 <td style={tdS}>{item.entry_date}</td>
                 <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:item.type==='Income'?'#dcfce7':'#fee2e2',color:item.type==='Income'?'#16a34a':'#dc2626'}}>{item.type}</span></td>
@@ -1670,6 +1687,7 @@ function Accounts({role,userId}){
                 <td style={{...tdS,color:'#7c3aed',fontWeight:600}}>{item.deleted_by||'—'}</td>
                 <td style={tdS}>{item.deleted_at?new Date(item.deleted_at).toLocaleString('en-IN'):'—'}</td>
                 <td style={tdS}><button onClick={()=>handleRestore(item.id)} style={smallBtn('#f0fdf4','#16a34a')}>↩ Restore</button></td>
+                <td style={tdS}><button onClick={()=>handlePermanentDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')} title="Permanently delete — cannot be undone">🗑 Purge</button></td>
               </tr>))}</tbody>
             </table>
           )}
