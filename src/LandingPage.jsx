@@ -1048,19 +1048,6 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
       const student = window._ppStudent;
       if (!examTypeId || !examDate || !sid || !student) return;
 
-      // Open the destination window IMMEDIATELY, synchronously inside the
-      // click handler. If we wait until after the Supabase awaits below to
-      // call window.open(), most browsers no longer treat it as tied to the
-      // user's click and silently block the popup — which is why the button
-      // appeared to "do nothing." We open a blank tab now and write the
-      // finished report into it once the data has loaded.
-      const w = window.open('', '_blank');
-      if (!w) {
-        alert('Your browser blocked the report card pop-up. Please allow pop-ups for this site and try again.');
-        return;
-      }
-      w.document.write('<p style="font-family:sans-serif;padding:2rem;color:#333;">Preparing report card…</p>');
-
       const origText = btn.textContent;
       btn.disabled = true;
       btn.textContent = '⏳ Preparing…';
@@ -1084,7 +1071,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
           sched.forEach(s => { subjectMaxMap[s.subject] = Number(s.total_marks) || 100; });
           courseMax = sched.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0);
         } else {
-          const { data: csSetting } = await supabase.from('system_settings').select('value').eq('key', 'course_subjects').single();
+          const { data: csSetting } = await supabase.from('system_settings').select('value').eq('key', 'course_subjects').maybeSingle();
           let cfg = {};
           try { cfg = JSON.parse(csSetting?.value || '{}'); } catch (_) {}
           subjects = cfg[course] || [];
@@ -1117,23 +1104,50 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
           .eq('student_id', sid).eq('exam_type_id', examTypeId).eq('exam_date', examDate).maybeSingle();
         const remarkText = remarkRow?.remark || '';
 
-        const { data: instSetting } = await supabase.from('system_settings').select('value').eq('key', 'exam_institute_config').single();
+        const { data: instSetting } = await supabase.from('system_settings').select('value').eq('key', 'exam_institute_config').maybeSingle();
         let institute = { name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok, Thoubal, Manipur', academicYear: '2026-2027' };
         try { institute = { ...institute, ...JSON.parse(instSetting?.value || '{}') }; } catch (_) {}
 
         const html = buildRCHTML(student, subjects, subjectMaxMap, courseMax, marksMap, allStudents, examTypeName, examDate, institute, remarkText);
 
-        w.document.open();
-        w.document.write(`<!DOCTYPE html><html><head>
-        <title>Report Card — ${student.name || ''}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&family=EB+Garamond:wght@400;500;600&display=swap" rel="stylesheet"/>
-        <style>${RC_CSS}</style></head><body>
-        <div class="no-print"><button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button><button class="btn-close" onclick="window.close()">✕ Close</button></div>
-        ${html}</body></html>`);
-        w.document.close();
+        // ── Render as an in-page overlay instead of window.open() ──────────
+        // window.open() gets silently blocked by popup blockers once several
+        // awaits have happened, AND is always blocked outright inside sandboxed
+        // preview iframes (common in site-builder / live-preview tools) with
+        // no visible error at all. An in-page overlay works everywhere.
+        let overlay = document.getElementById('rcPrintOverlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'rcPrintOverlay';
+          overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#f4f4f4;overflow:auto;';
+          document.body.appendChild(overlay);
+
+          // Print-only CSS: hide everything except the overlay when printing
+          if (!document.getElementById('rcPrintStyles')) {
+            const styleTag = document.createElement('style');
+            styleTag.id = 'rcPrintStyles';
+            styleTag.textContent = `
+              @media print {
+                body > *:not(#rcPrintOverlay) { display: none !important; }
+                #rcPrintOverlay { position: static !important; }
+                #rcPrintOverlay .no-print { display: none !important; }
+              }
+            `;
+            document.head.appendChild(styleTag);
+          }
+        }
+        overlay.innerHTML = `
+          <style>${RC_CSS}</style>
+          <div class="no-print" style="position:sticky;top:0;z-index:2;background:#0B1F3A;padding:.8rem 1.2rem;display:flex;gap:.6rem;justify-content:flex-end;box-shadow:0 2px 10px rgba(0,0,0,.2);">
+            <button onclick="window.print()" style="padding:.6rem 1.2rem;background:#B8922A;color:#0B1F3A;border:none;font-weight:700;cursor:pointer;border-radius:4px;">🖨️ Print / Save as PDF</button>
+            <button onclick="document.getElementById('rcPrintOverlay').remove()" style="padding:.6rem 1.2rem;background:transparent;color:#F8F3E8;border:1px solid #B8922A;cursor:pointer;border-radius:4px;">✕ Close</button>
+          </div>
+          ${html}
+        `;
+        overlay.scrollTop = 0;
       } catch (e) {
-        w.close();
-        alert('Could not generate the report card. Please try again.');
+        console.error('Report card generation failed:', e);
+        alert('Could not generate the report card: ' + (e?.message || 'unknown error') + '. Please try again or contact support.');
       } finally {
         btn.disabled = false;
         btn.textContent = origText;
