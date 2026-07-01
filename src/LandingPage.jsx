@@ -1129,6 +1129,11 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
           overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100vh;z-index:99999;background:#f4f4f4;';
           document.body.appendChild(overlay);
           document.body.style.overflow = 'hidden'; // lock background scroll while overlay is open
+          window.scrollTo(0, 0); // overlay is position:absolute (not fixed, for Safari print compat)
+                                  // so it sits at the top of the DOCUMENT, not the viewport —
+                                  // if the page was scrolled at all before opening, the overlay
+                                  // would render off-screen above the visible area. Reset scroll
+                                  // so it's actually visible.
 
           // Print-only CSS: hide everything except the overlay when printing
           if (!document.getElementById('rcPrintStyles')) {
