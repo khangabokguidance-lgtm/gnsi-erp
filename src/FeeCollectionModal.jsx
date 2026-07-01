@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import {
   fmt, today, gccStr, rcptNo,
-  collectFee, rcptNo,
+  collectFee,
   upsertAccount, printReceipt, sourceRef,
   getFeeRates, getFlatFees, clearFeeRateCache,
   CURRENT_YEAR, PAY_MODES, MONTHS_LIST,
@@ -370,35 +370,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     } catch (err) { setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
   }
-
-    // ── Remove override inline ────────────────────────────────────────────────
-  const removeOverrideInline = async () => {
-    if (!window.confirm('Remove override? This student will revert to the standard flat fee rate.')) return
-    setOverrideSaving(true)
-    try {
-      await saveStudentFlatFeeOverride(parseInt(gcc), sessionYear, null)
-      clearFeeRateCache()
-      const rates = await getFeeRates(sessionYear, course, batch, hostelType, null)
-      setFeeRates(rates)
-      setHasOverride(false)
-      setOverrideAmt('')
-      setOverrideReason('')
-      const updated = await getFlatFees(hostelType, course, batch, sessionYear, null)
-      setFlatFees(updated)
-      setOverrideMode(false)
-      setOverrideFeedback({ type: 'ok', msg: 'Override removed. Standard rate restored.' })
-    } catch (err) {
-      setOverrideFeedback({ type: 'err', msg: err.message || 'Remove failed.' })
-    } finally { setOverrideSaving(false) }
-  }
-
-  const commonReceiptFields = rcpt => ({
-    receipt_no: rcpt, pay_date: payDate, pay_mode: payMode,
-    txn_ref: txnRef || null, collected_by: collectedBy || null,
-    student_name: name, adm_no: admNo || null,
-    gcc_no: gcc, class_name: batch || null,
-    course, hostel_type: hostelType,
-  })
 
   const handleClose = () => typeof onClose === 'function' && onClose()
 
