@@ -3037,7 +3037,7 @@ window.submitGrievance = async () => {
               style={{
                 display: "inline-flex",
                 borderColor: "rgba(255,0,0,.5)",
-                color: "#f87171"
+                color: "#c53030"
               }}
             >
               ▶ View All Videos on YouTube →
