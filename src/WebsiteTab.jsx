@@ -14,6 +14,9 @@
 //  ⑪ Scholarship Test Dates (website_settings)
 //  ⑫ Site Settings (deadline, brochure, UPI, social, stats)
 //  ⑬ Events & Schedule (website_events)
+//  ⑭ Testimonials (website_testimonials — "What Parents Say" slider)
+//  ⑮ Exam Calendar (website_exam_calendar)
+//  ⑯ Important Dates Timeline (website_timeline)
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
@@ -30,6 +33,9 @@ import {
   getAllBanners, saveBanner, toggleBannerActive, deleteBanner,
   getFaculty, saveFaculty, deleteFaculty,
   getSettings, saveSettings,
+  getAllTestimonials, saveTestimonial, toggleTestimonialFeatured, deleteTestimonial,
+  getExamCalendar, saveExamCalendarRow, deleteExamCalendarRow,
+  getTimeline, saveTimelineItem, deleteTimelineItem,
 } from './websiteApi';
 
 // ── colours ─────────────────────────────────────────────────
@@ -50,9 +56,12 @@ const SUB_TABS = [
   { id:"videos",     icon:"▶️",  label:"Videos" },
   { id:"blog",       icon:"📰", label:"Blog/News" },
   { id:"reviews",    icon:"⭐", label:"Reviews" },
+  { id:"testimonials",icon:"💬", label:"Testimonials" },
   { id:"papers",     icon:"📄", label:"Papers" },
   { id:"banners",    icon:"🎉", label:"Result Banners" },
   { id:"faculty",    icon:"👨‍🏫", label:"Faculty" },
+  { id:"examcal",    icon:"🗓️",  label:"Exam Calendar" },
+  { id:"timeline",   icon:"📌", label:"Important Dates" },
   { id:"settings",   icon:"⚙️",  label:"Settings" },
 ];
 
@@ -866,6 +875,101 @@ function ReviewsSection() {
 }
 
 // ════════════════════════════════════════════════════════════
+//  ⑦b TESTIMONIALS ("What Parents Say" quote slider)
+// ════════════════════════════════════════════════════════════
+function TestimonialsSection() {
+  const blank={quote:"",attribution:"",rating:5,is_featured:true,sort_order:0};
+  const [rows,setRows]=useState([]);
+  const [load,setLoad]=useState(true);
+  const [form,setForm]=useState(blank);
+  const [editing,setEdit]=useState(null);
+  const [saving,setSave]=useState(false);
+
+  const SQL=`CREATE TABLE IF NOT EXISTS website_testimonials (
+  id           bigserial primary key,
+  quote        text not null,
+  attribution  text,
+  rating       int default 5,
+  is_featured  boolean default true,
+  sort_order   int default 0,
+  created_at   timestamptz default now()
+);`;
+
+  const load_=useCallback(async()=>{
+    setLoad(true);
+    const data=await getAllTestimonials();
+    setRows(data);setLoad(false);
+  },[]);
+  useEffect(()=>{load_();},[load_]);
+
+  const save=async()=>{
+    if(!form.quote)return toast("Quote text required","error");
+    setSave(true);
+    const{error}=await saveTestimonial(form,editing);
+    setSave(false);if(error)return toast("Error: "+error.message,"error");
+    toast(editing?"Testimonial updated ✓":"Testimonial added ✓");
+    setForm({...blank,sort_order:rows.length});
+    setEdit(null);load_();
+  };
+  const toggle=async(id,cur)=>{await toggleTestimonialFeatured(id,cur);toast(cur?"Hidden from slider":"Showing in slider ✓");load_();};
+  const del=async id=>{if(!confirm("Delete testimonial?"))return;await deleteTestimonial(id);toast("Deleted");load_();};
+  const startEdit=t=>{setEdit(t.id);setForm({quote:t.quote||"",attribution:t.attribution||"",rating:t.rating||5,is_featured:t.is_featured!==false,sort_order:t.sort_order||0});};
+
+  return (
+    <div>
+      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+        <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL</span></div>
+        <div style={s.cardBdy}>
+          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
+          <p style={{color:"rgba(248,243,232,.45)",fontSize:".8rem",lineHeight:1.6,marginTop:".7rem"}}>Powers the "What Parents Say" quote slider on the landing page. Reviewer names are never shown publicly — only the <strong style={{color:C.goldL}}>Attribution</strong> text (e.g. "Parent of NVS Selectee, Batch 2025") is displayed, to protect student privacy.</p>
+        </div>
+      </div>
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Testimonial":"💬 Add Testimonial"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm(blank)}}>Cancel</button>}</div>
+        <div style={s.cardBdy}>
+          <label style={s.lbl}>Quote *</label>
+          <textarea style={s.ta} placeholder="The quote text shown in the slider…" value={form.quote} onChange={e=>setForm(f=>({...f,quote:e.target.value}))} rows={3}/>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Attribution</label><input style={s.inp} placeholder="e.g. Parent of NVS Selectee, Batch 2025" value={form.attribution} onChange={e=>setForm(f=>({...f,attribution:e.target.value}))}/></div>
+            <div style={s.g2}>
+              <div><label style={s.lbl}>Rating</label><select style={s.sel} value={form.rating} onChange={e=>setForm(f=>({...f,rating:+e.target.value}))}>{[5,4,3,2,1].map(n=><option key={n} value={n}>{n} ★</option>)}</select></div>
+              <div><label style={s.lbl}>Sort Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
+            <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Testimonial":"Add to Slider →"}</button>
+            <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"'Rajdhani',sans-serif",fontSize:".75rem",color:"rgba(248,243,232,.5)"}}>
+              <input type="checkbox" checked={form.is_featured} onChange={e=>setForm(f=>({...f,is_featured:e.target.checked}))}/> Show in slider
+            </label>
+          </div>
+        </div>
+      </div>
+      {load?<div style={s.loading}><Spin/>Loading…</div>:!rows.length?<div style={s.empty}>No testimonials yet</div>:rows.map(t=>(
+        <div key={t.id} style={{...s.card,opacity:t.is_featured?1:.5}}>
+          <div style={s.cardHd}>
+            <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
+              <span style={{color:C.gold,fontSize:".9rem"}}>{"★".repeat(t.rating||5)}</span>
+              <span style={{color:"rgba(248,243,232,.3)",fontFamily:"'Rajdhani',sans-serif",fontSize:".68rem",letterSpacing:".06em"}}>#{t.sort_order??0}</span>
+              {!t.is_featured&&<span style={{...s.badge("Low"),fontSize:".55rem"}}>Hidden</span>}
+            </div>
+            <div style={{display:"flex",gap:".4rem"}}>
+              <button style={s.btnG} onClick={()=>startEdit(t)}>Edit</button>
+              <button style={s.btnGrn} onClick={()=>toggle(t.id,t.is_featured)}>{t.is_featured?"Hide":"Show"}</button>
+              <button style={s.btnR} onClick={()=>del(t.id)}>Delete</button>
+            </div>
+          </div>
+          <div style={{padding:".7rem 1.1rem"}}>
+            <p style={{color:"rgba(248,243,232,.6)",fontSize:".83rem",lineHeight:1.7,fontStyle:"italic",marginBottom:".4rem"}}>"{t.quote?.slice(0,200)}{t.quote?.length>200?"…":""}"</p>
+            {t.attribution&&<p style={{color:C.goldL,fontFamily:"'Rajdhani',sans-serif",fontSize:".72rem",letterSpacing:".05em",textTransform:"uppercase"}}>— {t.attribution}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 //  ⑧ QUESTION PAPERS
 // ════════════════════════════════════════════════════════════
 function PapersSection() {
@@ -1125,6 +1229,213 @@ function FacultySection() {
 }
 
 // ════════════════════════════════════════════════════════════
+//  ⑩b EXAM CALENDAR
+// ════════════════════════════════════════════════════════════
+function ExamCalendarSection() {
+  const blank={exam_name:"",sub_label:"",exam_type:"NVS",application_opens:"",application_closes:"",exam_date:"",result_date:"",status:"Upcoming",sort_order:0,exam_date_sort:""};
+  const [rows,setRows]=useState([]);
+  const [load,setLoad]=useState(true);
+  const [form,setForm]=useState(blank);
+  const [editing,setEdit]=useState(null);
+  const [saving,setSave]=useState(false);
+
+  const SQL=`CREATE TABLE IF NOT EXISTS website_exam_calendar (
+  id                  bigserial primary key,
+  exam_name           text not null,
+  sub_label           text,
+  exam_type           text default 'NVS',
+  application_opens   text,
+  application_closes  text,
+  exam_date           text,
+  exam_date_sort      date,
+  result_date         text,
+  status              text default 'Upcoming',
+  sort_order          int default 0
+);`;
+
+  const load_=useCallback(async()=>{
+    setLoad(true);
+    const data=await getExamCalendar();
+    setRows(data);setLoad(false);
+  },[]);
+  useEffect(()=>{load_();},[load_]);
+
+  const save=async()=>{
+    if(!form.exam_name)return toast("Exam name required","error");
+    setSave(true);
+    const{error}=await saveExamCalendarRow(form,editing);
+    setSave(false);if(error)return toast("Error: "+error.message,"error");
+    toast(editing?"Exam calendar row updated ✓":"Exam calendar row added ✓");
+    setForm({...blank,sort_order:rows.length});
+    setEdit(null);load_();
+  };
+  const del=async id=>{if(!confirm("Delete this exam calendar row?"))return;await deleteExamCalendarRow(id);toast("Deleted");load_();};
+  const startEdit=r=>{setEdit(r.id);setForm({
+    exam_name:r.exam_name||"", sub_label:r.sub_label||"", exam_type:r.exam_type||"NVS",
+    application_opens:r.application_opens||"", application_closes:r.application_closes||"",
+    exam_date:r.exam_date||"", result_date:r.result_date||"", status:r.status||"Upcoming",
+    sort_order:r.sort_order||0, exam_date_sort:r.exam_date_sort||"",
+  });};
+
+  const statusColor={Upcoming:"Med",Open:"Med",Closed:"Low",Done:"High"};
+
+  return (
+    <div>
+      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+        <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL</span></div>
+        <div style={s.cardBdy}>
+          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
+          <p style={{color:"rgba(248,243,232,.45)",fontSize:".8rem",lineHeight:1.6,marginTop:".7rem"}}>Powers the Exam Calendar table on the landing page (NVS / Sainik / RMS admission timelines). Date columns can be free-text (e.g. "15 Aug – 15 Sep") — use <strong style={{color:C.goldL}}>Sort Date</strong> only to control table ordering.</p>
+        </div>
+      </div>
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Row":"🗓️ Add Exam Calendar Row"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm(blank)}}>Cancel</button>}</div>
+        <div style={s.cardBdy}>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Exam Name *</label><input style={s.inp} placeholder="e.g. JNVST Class VI 2026" value={form.exam_name} onChange={e=>setForm(f=>({...f,exam_name:e.target.value}))}/></div>
+            <div><label style={s.lbl}>Sub Label</label><input style={s.inp} placeholder="e.g. Navodaya Vidyalaya" value={form.sub_label} onChange={e=>setForm(f=>({...f,sub_label:e.target.value}))}/></div>
+          </div>
+          <div style={s.g3}>
+            <div><label style={s.lbl}>Exam Type</label><select style={s.sel} value={form.exam_type} onChange={e=>setForm(f=>({...f,exam_type:e.target.value}))}>{["NVS","Sainik","RMS"].map(c=><option key={c}>{c}</option>)}</select></div>
+            <div><label style={s.lbl}>Status</label><select style={s.sel} value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>{["Upcoming","Open","Closed","Done"].map(c=><option key={c}>{c}</option>)}</select></div>
+            <div><label style={s.lbl}>Sort Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
+          </div>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Application Opens</label><input style={s.inp} placeholder="e.g. 15 Aug 2026" value={form.application_opens} onChange={e=>setForm(f=>({...f,application_opens:e.target.value}))}/></div>
+            <div><label style={s.lbl}>Application Closes</label><input style={s.inp} placeholder="e.g. 15 Sep 2026" value={form.application_closes} onChange={e=>setForm(f=>({...f,application_closes:e.target.value}))}/></div>
+          </div>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Exam Date</label><input style={s.inp} placeholder="e.g. 12 Dec 2026" value={form.exam_date} onChange={e=>setForm(f=>({...f,exam_date:e.target.value}))}/></div>
+            <div><label style={s.lbl}>Result Date</label><input style={s.inp} placeholder="e.g. Mar 2027" value={form.result_date} onChange={e=>setForm(f=>({...f,result_date:e.target.value}))}/></div>
+          </div>
+          <label style={s.lbl}>Sort Date (used only for table ordering, not displayed)</label>
+          <input type="date" style={s.inp} value={form.exam_date_sort} onChange={e=>setForm(f=>({...f,exam_date_sort:e.target.value}))}/>
+          <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Row":"Add to Calendar →"}</button>
+        </div>
+      </div>
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>Exam Calendar ({rows.length})</span></div>
+        {load?<div style={s.loading}><Spin/>Loading…</div>:!rows.length?<div style={s.empty}>No exam calendar rows yet</div>:(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:".83rem"}}>
+              <thead><tr>{["Exam","Type","Opens","Closes","Exam Date","Result","Status",""].map(h=><th key={h} style={{background:"rgba(11,31,58,.6)",padding:".55rem .8rem",textAlign:"left",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:C.goldL,borderBottom:"1px solid rgba(184,146,42,.12)"}}>{h}</th>)}</tr></thead>
+              <tbody>{rows.map(r=>(
+                <tr key={r.id}>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.85)"}}>{r.exam_name}{r.sub_label&&<div style={{color:"rgba(248,243,232,.35)",fontSize:".7rem"}}>{r.sub_label}</div>}</td>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)"}}><span style={s.badge()}>{r.exam_type}</span></td>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.5)",fontSize:".78rem"}}>{r.application_opens||"—"}</td>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.5)",fontSize:".78rem"}}>{r.application_closes||"—"}</td>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:C.goldL,fontWeight:600}}>{r.exam_date||"—"}</td>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.5)",fontSize:".78rem"}}>{r.result_date||"—"}</td>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)"}}><span style={s.badge(statusColor[r.status])}>{r.status}</span></td>
+                  <td style={{padding:".55rem .8rem",borderBottom:"1px solid rgba(184,146,42,.06)"}}><div style={{display:"flex",gap:".4rem"}}><button style={s.btnG} onClick={()=>startEdit(r)}>Edit</button><button style={s.btnR} onClick={()=>del(r.id)}>Del</button></div></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+//  ⑩c IMPORTANT DATES TIMELINE
+// ════════════════════════════════════════════════════════════
+function TimelineSection() {
+  const blank={title:"",description:"",event_date:new Date().toISOString().slice(0,10),status:"upcoming",sort_order:0};
+  const [rows,setRows]=useState([]);
+  const [load,setLoad]=useState(true);
+  const [form,setForm]=useState(blank);
+  const [editing,setEdit]=useState(null);
+  const [saving,setSave]=useState(false);
+
+  const SQL=`CREATE TABLE IF NOT EXISTS website_timeline (
+  id           bigserial primary key,
+  title        text not null,
+  description  text,
+  event_date   date,
+  month_label  text,
+  day_label    text,
+  status       text default 'upcoming',
+  tag_html     text,
+  sort_order   int default 0
+);`;
+
+  const load_=useCallback(async()=>{
+    setLoad(true);
+    const data=await getTimeline();
+    setRows(data);setLoad(false);
+  },[]);
+  useEffect(()=>{load_();},[load_]);
+
+  const save=async()=>{
+    if(!form.title)return toast("Title required","error");
+    setSave(true);
+    const{error}=await saveTimelineItem(form,editing);
+    setSave(false);if(error)return toast("Error: "+error.message,"error");
+    toast(editing?"Timeline item updated ✓":"Timeline item added ✓");
+    setForm({...blank,sort_order:rows.length});
+    setEdit(null);load_();
+  };
+  const del=async id=>{if(!confirm("Delete this timeline item?"))return;await deleteTimelineItem(id);toast("Deleted");load_();};
+  const startEdit=t=>{setEdit(t.id);setForm({
+    title:t.title||"", description:t.description||"",
+    event_date:t.event_date||new Date().toISOString().slice(0,10),
+    status:t.status||"upcoming", sort_order:t.sort_order||0,
+  });};
+
+  const statusColor={upcoming:"Med",open:"Med",done:"Low"};
+
+  return (
+    <div>
+      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+        <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL</span></div>
+        <div style={s.cardBdy}>
+          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
+          <p style={{color:"rgba(248,243,232,.45)",fontSize:".8rem",lineHeight:1.6,marginTop:".7rem"}}>Powers the "Important Dates" vertical timeline on the landing page. Status controls the dot/marker styling: <strong style={{color:"#4AE382"}}>upcoming</strong> (hollow), <strong style={{color:C.goldLL}}>open</strong> (highlighted/glowing), <strong style={{color:C.mist}}>done</strong> (faded).</p>
+        </div>
+      </div>
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Timeline Item":"📌 Add Timeline Item"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm(blank)}}>Cancel</button>}</div>
+        <div style={s.cardBdy}>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Title *</label><input style={s.inp} placeholder="e.g. Admission Form Release" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
+            <div style={s.g2}>
+              <div><label style={s.lbl}>Date</label><input type="date" style={s.inp} value={form.event_date} onChange={e=>setForm(f=>({...f,event_date:e.target.value}))}/></div>
+              <div><label style={s.lbl}>Status</label><select style={s.sel} value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>{["upcoming","open","done"].map(c=><option key={c}>{c}</option>)}</select></div>
+            </div>
+          </div>
+          <label style={s.lbl}>Description</label>
+          <textarea style={s.ta} placeholder="Short description shown under the title…" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={2}/>
+          <label style={s.lbl}>Sort Order</label>
+          <input type="number" style={{...s.inp,maxWidth:"140px"}} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/>
+          <div><button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Item":"Add to Timeline →"}</button></div>
+        </div>
+      </div>
+      {load?<div style={s.loading}><Spin/>Loading…</div>:!rows.length?<div style={s.empty}>No timeline items yet</div>:rows.map(t=>(
+        <div key={t.id} style={s.card}>
+          <div style={s.cardHd}>
+            <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
+              <span style={{color:C.goldLL,fontFamily:"'EB Garamond',serif",fontSize:"1rem"}}>{fmt(t.event_date)}</span>
+              <span style={{color:"#F8F3E8",fontSize:".9rem"}}>{t.title}</span>
+              <span style={s.badge(statusColor[t.status])}>{t.status}</span>
+            </div>
+            <div style={{display:"flex",gap:".4rem"}}>
+              <button style={s.btnG} onClick={()=>startEdit(t)}>Edit</button>
+              <button style={s.btnR} onClick={()=>del(t.id)}>Delete</button>
+            </div>
+          </div>
+          {t.description&&<div style={{padding:".7rem 1.1rem"}}><p style={{color:"rgba(248,243,232,.5)",fontSize:".82rem",lineHeight:1.6}}>{t.description}</p></div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 //  ⑪ SITE SETTINGS
 // ════════════════════════════════════════════════════════════
 function SettingsSection() {
@@ -1199,7 +1510,10 @@ CREATE TABLE IF NOT EXISTS website_settings (key text primary key, value text, u
 CREATE TABLE IF NOT EXISTS enquiries (id bigserial primary key, student_name text, parent_name text, phone text, class_grade text, course text, message text, replied boolean default false, replied_at timestamptz, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS website_gallery (id bigserial primary key, image_url text not null, caption text, category text default 'Campus', sort_order int default 0, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS website_faculty (id bigserial primary key, name text not null, role text, subject text, experience text, photo_url text, sort_order int default 0);
-CREATE TABLE IF NOT EXISTS website_events (id bigserial primary key, title text not null, description text, event_date date not null, sort_order int default 0, is_active boolean default true, created_at timestamptz default now());`;
+CREATE TABLE IF NOT EXISTS website_events (id bigserial primary key, title text not null, description text, event_date date not null, sort_order int default 0, is_active boolean default true, created_at timestamptz default now());
+CREATE TABLE IF NOT EXISTS website_testimonials (id bigserial primary key, quote text not null, attribution text, rating int default 5, is_featured boolean default true, sort_order int default 0, created_at timestamptz default now());
+CREATE TABLE IF NOT EXISTS website_exam_calendar (id bigserial primary key, exam_name text not null, sub_label text, exam_type text default 'NVS', application_opens text, application_closes text, exam_date text, exam_date_sort date, result_date text, status text default 'Upcoming', sort_order int default 0);
+CREATE TABLE IF NOT EXISTS website_timeline (id bigserial primary key, title text not null, description text, event_date date, month_label text, day_label text, status text default 'upcoming', tag_html text, sort_order int default 0);`;
 
   if(load)return<div style={s.loading}><Spin/>Loading settings…</div>;
 
@@ -1260,9 +1574,12 @@ export default function WebsiteTab() {
     videos:    <VideosSection/>,
     blog:      <BlogSection/>,
     reviews:   <ReviewsSection/>,
+    testimonials: <TestimonialsSection/>,
     papers:    <PapersSection/>,
     banners:   <BannersSection/>,
     faculty:   <FacultySection/>,
+    examcal:   <ExamCalendarSection/>,
+    timeline:  <TimelineSection/>,
     settings:  <SettingsSection/>,
   };
 

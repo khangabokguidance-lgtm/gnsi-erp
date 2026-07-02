@@ -1361,7 +1361,7 @@ window.submitGrievance = async () => {
   <meta property="og:url" content="https://guidancekhangabok.in" />
   <meta
     property="og:image"
-    content="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"
+    content="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"
   />
   <meta property="og:image:width" content={1200} />
   <meta property="og:image:height" content={630} />
@@ -1378,7 +1378,7 @@ window.submitGrievance = async () => {
   />
   <meta
     name="twitter:image"
-    content="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"
+    content="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/og-image.jpg"
   />
   <meta name="theme-color" content="#0B1F3A" />
   <link rel="canonical" href="https://guidancekhangabok.in" />
@@ -1552,63 +1552,16 @@ window.submitGrievance = async () => {
   {/* ② RESULT CELEBRATION BANNER SLIDER */}
   <div className="result-banner" id="resultBanner">
     <div className="result-banner-track" id="rbTrack">
-      {/* Slide 1 — no external image dependency; ghost numeral + icon */}
+      {/* Single settings-driven fallback slide — replaced entirely once
+          website_result_banners has active rows (see RESULT BANNERS script block).
+          Numbers below pull from Settings → Stats in the Website Manager. */}
       <div className="result-banner-slide no-photo">
-        <div className="rb-ghost">66</div>
         <div className="result-banner-overlay">
           <div className="result-banner-content">
             <span className="rb-icon">🏆</span>
-            <div className="result-banner-year">Result 2025–26</div>
+            <div className="result-banner-year">GNSI</div>
             <div className="result-banner-title">
-              GNSI's Best Year — <strong>66 Students Selected</strong>
-            </div>
-            <div className="result-banner-sub">
-              NVS Jawahar Navodaya · Sainik School · RMS · Across Manipur
-            </div>
-          </div>
-        </div>
-      </div>
-      {/* Slide 2 */}
-      <div className="result-banner-slide no-photo">
-        <div className="rb-ghost">#1</div>
-        <div className="result-banner-overlay">
-          <div className="result-banner-content">
-            <span className="rb-icon">⭐</span>
-            <div className="result-banner-year">Sainik School 2025</div>
-            <div className="result-banner-title">
-              Manipur's <strong>Highest Selection Rate</strong> in Sainik School
-            </div>
-            <div className="result-banner-sub">
-              AISSEE Class 6 &amp; Class 9 · Tilaiya · Imphal · All India
-            </div>
-          </div>
-        </div>
-      </div>
-      {/* Slide 3 */}
-      <div className="result-banner-slide no-photo">
-        <div className="rb-ghost">94%</div>
-        <div className="result-banner-overlay">
-          <div className="result-banner-content">
-            <span className="rb-icon">📚</span>
-            <div className="result-banner-year">NVS 2025</div>
-            <div className="result-banner-title">
-              <strong>94% Selection Rate</strong> in Jawahar Navodaya
-            </div>
-            <div className="result-banner-sub">
-              JNVST Class 6 &amp; Class 9 · Thoubal District · Manipur
-            </div>
-          </div>
-        </div>
-      </div>
-      {/* Slide 4 — achievement, no-photo card style */}
-      <div className="result-banner-slide no-photo">
-        <div className="rb-ghost">10+</div>
-        <div className="result-banner-overlay">
-          <div className="result-banner-content">
-            <span className="rb-icon">🎖️</span>
-            <div className="result-banner-year">Est. 2016</div>
-            <div className="result-banner-title">
-              A Decade Shaping <strong>200+ Commissioned Officers</strong>
+              Guidance Navodaya &amp; Sainik Institute
             </div>
             <div className="result-banner-sub">
               Khangabok, Thoubal District · Manipur
@@ -1829,7 +1782,7 @@ window.submitGrievance = async () => {
         {/* ② BROCHURE + FREE DEMO */}
         <div className="hero-quick">
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
             className="btn-brochure"
             target="_blank"
             download=""
@@ -2112,95 +2065,19 @@ window.submitGrievance = async () => {
         />
       </div>
       <div className="ranker-grid" id="rankerGrid">
-        {/* Static placeholders — replace with real photos from Supabase */}
-        <div className="ranker-card reveal-scale">
-          <div className="ranker-badge">AIR Rank</div>
-          <div className="rc-rank">01</div>
-          <div className="ranker-photo">L</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">Sainik School Tilaiya</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">02</div>
-          <div className="ranker-photo">K</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">NVS Jawahar Navodaya</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">03</div>
-          <div className="ranker-photo">R</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">Sainik School Imphal</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">04</div>
-          <div className="ranker-photo">M</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">NVS Class 6</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">05</div>
-          <div className="ranker-photo">T</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">RMS Selection</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">06</div>
-          <div className="ranker-photo">S</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">NVS Class 9</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">07</div>
-          <div className="ranker-photo">P</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">Sainik School Tilaiya</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">08</div>
-          <div className="ranker-photo">A</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">NVS Jawahar Navodaya</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
+        <div
+          style={{
+            gridColumn: "1/-1",
+            textAlign: "center",
+            padding: "2.5rem 1rem",
+            color: "var(--mist)",
+            fontFamily: "'Rajdhani',sans-serif",
+            letterSpacing: ".08em",
+            textTransform: "uppercase",
+            fontSize: ".8rem"
+          }}
+        >
+          Topper profiles will appear here once added in the Website Manager.
         </div>
       </div>
       <div className="ranker-cta">
@@ -2209,8 +2086,8 @@ window.submitGrievance = async () => {
         </a>
       </div>
       <p className="ranker-note">
-        66 students selected in 2025–26 · Names withheld for privacy · Contact
-        institute for verified result letters
+        Names withheld for privacy · Contact institute for verified result
+        letters
       </p>
     </div>
   </section>
@@ -2279,67 +2156,10 @@ window.submitGrievance = async () => {
         <div className="testi-wrap">
           <div className="testi-track" id="testiTrack">
             <div className="testi-card">
-              <div className="stars">★★★★★</div>
-              <blockquote>
-                "My son was selected for Sainik School Tilaiya on his first
-                attempt. The discipline and teaching at GNSI is unlike anything
-                in Thoubal District. The teachers genuinely care about each
-                child's progress."
+              <blockquote style={{ fontStyle: "normal", textAlign: "center" }}>
+                Parent testimonials will appear here once added in the
+                Website Manager.
               </blockquote>
-              <div className="testi-foot">
-                <div className="testi-avatar">🎓</div>
-                <div className="testi-id">
-                  <cite>Parent</cite>
-                  <span className="testi-meta">Sainik School Tilaiya Selection · 2024</span>
-                </div>
-              </div>
-            </div>
-            <div className="testi-card">
-              <div className="stars">★★★★★</div>
-              <blockquote>
-                "We live far from Khangabok but the hostel facility gave us
-                complete peace of mind. The Parents Portal means we can check
-                attendance and notices from our phone without even calling the
-                school."
-              </blockquote>
-              <div className="testi-foot">
-                <div className="testi-avatar">🎓</div>
-                <div className="testi-id">
-                  <cite>Parent</cite>
-                  <span className="testi-meta">Navodaya Vidyalaya Selection · 2025</span>
-                </div>
-              </div>
-            </div>
-            <div className="testi-card">
-              <div className="stars">★★★★★</div>
-              <blockquote>
-                "Our daughter was an average student before joining GNSI. Within
-                six months the improvement in her confidence and scores was
-                visible to everyone. She cleared NVS Class 6 with merit."
-              </blockquote>
-              <div className="testi-foot">
-                <div className="testi-avatar">🎓</div>
-                <div className="testi-id">
-                  <cite>Parent</cite>
-                  <span className="testi-meta">Jawahar Navodaya Selection · 2025</span>
-                </div>
-              </div>
-            </div>
-            <div className="testi-card">
-              <div className="stars">★★★★★</div>
-              <blockquote>
-                "The mock test every Sunday is what made the difference. By exam
-                day my son had sat through so many practice papers that the real
-                exam felt easy to him. Excellent faculty and structured
-                programme."
-              </blockquote>
-              <div className="testi-foot">
-                <div className="testi-avatar">🎓</div>
-                <div className="testi-id">
-                  <cite>Parent</cite>
-                  <span className="testi-meta">Sainik School Selection · 2023</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -2382,71 +2202,24 @@ window.submitGrievance = async () => {
           <span className="score-count" id="reviews-score-count">Based on 80+ Reviews</span>
         </div>
         <p className="reviews-desc">
-          Trusted by hundreds of families across Manipur. Our parents
-          consistently rate GNSI as the best coaching institute in Thoubal
-          District for Sainik School and NVS preparation.
+          Read what parents across Manipur say about GNSI's coaching for
+          Sainik School and NVS entrance preparation.
         </p>
       </div>
       <div className="reviews-grid" id="reviewsGrid">
-        <div className="review-card reveal">
-          <div className="review-top">
-            <div className="review-av">L</div>
-            <div>
-              <div className="review-name">Laishram Ibeton Singh</div>
-              <div className="review-date">May 2026</div>
-            </div>
-          </div>
-          <div className="review-stars">★★★★★</div>
-          <p className="review-text">
-            "My son got selected in Sainik School Tilaiya. GNSI's structured
-            coaching and discipline made all the difference. Highly recommend to
-            every parent in Manipur."
-          </p>
-        </div>
-        <div className="review-card reveal">
-          <div className="review-top">
-            <div className="review-av">N</div>
-            <div>
-              <div className="review-name">Ningombam Priya Devi</div>
-              <div className="review-date">April 2026</div>
-            </div>
-          </div>
-          <div className="review-stars">★★★★★</div>
-          <p className="review-text">
-            "Best institute in Thoubal District. The teachers are very
-            dedicated. My daughter cleared NVS Class 6 on the first attempt. The
-            parents portal is very helpful."
-          </p>
-        </div>
-        <div className="review-card reveal">
-          <div className="review-top">
-            <div className="review-av">K</div>
-            <div>
-              <div className="review-name">Konthoujam Ranjit Singh</div>
-              <div className="review-date">March 2026</div>
-            </div>
-          </div>
-          <div className="review-stars">★★★★★</div>
-          <p className="review-text">
-            "The Sunday mock tests were the key. My son sat more than 30 full
-            papers before the real exam. The practice and review sessions are
-            excellent and very systematic."
-          </p>
-        </div>
-        <div className="review-card reveal">
-          <div className="review-top">
-            <div className="review-av">T</div>
-            <div>
-              <div className="review-name">Thokchom Sushila Devi</div>
-              <div className="review-date">February 2026</div>
-            </div>
-          </div>
-          <div className="review-stars">★★★★★</div>
-          <p className="review-text">
-            "The hostel is safe and well supervised. As a parent from a distant
-            village I was worried, but the warden and staff take excellent care
-            of the students. Very satisfied."
-          </p>
+        <div
+          style={{
+            gridColumn: "1/-1",
+            textAlign: "center",
+            padding: "2.2rem 1rem",
+            color: "rgba(248,243,232,.85)",
+            fontFamily: "'Rajdhani',sans-serif",
+            letterSpacing: ".08em",
+            textTransform: "uppercase",
+            fontSize: ".8rem"
+          }}
+        >
+          Reviews will appear here once added in the Website Manager.
         </div>
       </div>
       <div style={{ marginTop: "1.5rem" }} className="reveal">
@@ -2668,53 +2441,20 @@ window.submitGrievance = async () => {
         <div className="rule-line" />
       </div>
       <div className="faculty-grid" id="facultyGrid">
-        <div className="faculty-card reveal">
-          <div className="fc-rank">01</div>
-          <div className="faculty-photo">H</div>
-          <div className="fc-shade" />
-          <div className="fc-edge" />
-          <div className="fc-cap">
-            <h3>Moirangthem Himan Singh</h3>
-            <div className="role">Head of the Institute </div>
-            <div className="subj">Mathematics · Strategic Leadership</div>
-            <div className="exp">10+ Years · Est. GNSI 2016</div>
-          </div>
-        </div>
-        <div className="faculty-card reveal">
-          <div className="fc-rank">02</div>
-          <div className="faculty-photo">A</div>
-          <div className="fc-shade" />
-          <div className="fc-edge" />
-          <div className="fc-cap">
-            <h3>Moirangthem Arunkumar Singh</h3>
-            <div className="role">Vice Principal</div>
-            <div className="subj">Academic Oversight · Administration</div>
-            <div className="exp">Senior Faculty</div>
-          </div>
-        </div>
-        <div className="faculty-card reveal">
-          <div className="fc-rank">03</div>
-          <div className="faculty-photo">D</div>
-          <div className="fc-shade" />
-          <div className="fc-edge" />
-          <div className="fc-cap">
-            <h3>Ningthoujam Deepak Singh</h3>
-            <div className="role">Hostel Superintendent</div>
-            <div className="subj">Residential Life · Discipline</div>
-            <div className="exp">Hostel Management</div>
-          </div>
-        </div>
-        <div className="faculty-card reveal">
-          <div className="fc-rank">04</div>
-          <div className="faculty-photo">✦</div>
-          <div className="fc-shade" />
-          <div className="fc-edge" />
-          <div className="fc-cap">
-            <h3>Teaching Faculty</h3>
-            <div className="role">Subject Specialists</div>
-            <div className="subj">Mathematics · Science · English · GK</div>
-            <div className="exp">Sainik &amp; NVS Exam Specialists</div>
-          </div>
+        <div
+          style={{
+            gridColumn: "1/-1",
+            textAlign: "center",
+            padding: "2.2rem 1rem",
+            color: "rgba(248,243,232,.85)",
+            fontFamily: "'Rajdhani',sans-serif",
+            letterSpacing: ".08em",
+            textTransform: "uppercase",
+            fontSize: ".8rem"
+          }}
+        >
+          Faculty profiles will appear here once added in the Website
+          Manager.
         </div>
       </div>
     </div>
@@ -2889,33 +2629,19 @@ window.submitGrievance = async () => {
         <div className="rule-line" />
       </div>
       <div className="cards-row" id="publicNoticeCards">
-        <div className="notice-card urgent reveal">
-          <div className="notice-badge badge-open">Open</div>
-          <h3>Admissions 2026–27</h3>
-          <p>
-            Applications are open for the 2026–27 session. Limited seats
-            available for both day scholars and hostel boarders. Contact the
-            institute at the earliest.
-          </p>
-          <div className="notice-date">Issued: June 2026</div>
-        </div>
-        <div className="notice-card reveal">
-          <div className="notice-badge badge-weekly">Weekly</div>
-          <h3>Sunday Mock Tests</h3>
-          <p>
-            Mock test series continues every Sunday for NVS and Sainik School
-            aspirants. Detailed review sessions follow each examination.
-          </p>
-          <div className="notice-date">Ongoing · Every Sunday</div>
-        </div>
-        <div className="notice-card reveal">
-          <div className="notice-badge badge-limited">Limited</div>
-          <h3>Hostel Seats</h3>
-          <p>
-            Very few residential hostel seats remain available for the new
-            academic session. Parents are urged to confirm at the earliest.
-          </p>
-          <div className="notice-date">Issued: June 2026</div>
+        <div
+          style={{
+            gridColumn: "1/-1",
+            textAlign: "center",
+            padding: "2.2rem 1rem",
+            color: "var(--mist)",
+            fontFamily: "'Rajdhani',sans-serif",
+            letterSpacing: ".08em",
+            textTransform: "uppercase",
+            fontSize: ".8rem"
+          }}
+        >
+          No active notices — check back soon.
         </div>
       </div>
     </div>
@@ -2931,61 +2657,19 @@ window.submitGrievance = async () => {
         <div className="rule-line" />
       </div>
       <div className="blog-grid" id="blogGrid">
-        <div className="blog-card reveal-scale">
-          <div className="blog-thumb">
-            📰<span className="blog-cat">Results</span>
-          </div>
-          <div className="blog-body">
-            <div className="blog-date">June 2026</div>
-            <h3>
-              GNSI Records Best-Ever Result: 66 Students Selected in 2025–26
-            </h3>
-            <p>
-              Guidance Navodaya &amp; Sainik Institute achieves its highest ever
-              annual selection count, with 66 students clearing NVS and Sainik
-              School entrance exams across Manipur.
-            </p>
-            <a href="#results" className="blog-read">
-              Read More →
-            </a>
-          </div>
-        </div>
-        <div className="blog-card reveal-scale">
-          <div className="blog-thumb">
-            📋<span className="blog-cat">Admissions</span>
-          </div>
-          <div className="blog-body">
-            <div className="blog-date">June 2026</div>
-            <h3>Admissions Open for 2026–27: What Parents Need to Know</h3>
-            <p>
-              Seats are limited for the new session beginning July 2026. Here is
-              everything you need to know about the admission process, courses,
-              hostel options, and fee structure at GNSI.
-            </p>
-            <a href="#enquiry" className="blog-read">
-              Apply Now →
-            </a>
-          </div>
-        </div>
-        <div className="blog-card reveal-scale">
-          <div className="blog-thumb">
-            📝<span className="blog-cat">Exam Tips</span>
-          </div>
-          <div className="blog-body">
-            <div className="blog-date">May 2026</div>
-            <h3>
-              How to Prepare Your Child for JNVST Class 6: A Parent's Guide
-            </h3>
-            <p>
-              The Jawahar Navodaya Vidyalaya Selection Test is one of India's
-              most competitive entrance exams. Our faculty shares the
-              preparation strategy that has produced 94% selection rates at
-              GNSI.
-            </p>
-            <a href="#enquiry" className="blog-read">
-              Get Guidance →
-            </a>
-          </div>
+        <div
+          style={{
+            gridColumn: "1/-1",
+            textAlign: "center",
+            padding: "2.2rem 1rem",
+            color: "var(--mist)",
+            fontFamily: "'Rajdhani',sans-serif",
+            letterSpacing: ".08em",
+            textTransform: "uppercase",
+            fontSize: ".8rem"
+          }}
+        >
+          Articles will appear here once published in the Website Manager.
         </div>
       </div>
     </div>
@@ -3002,22 +2686,18 @@ window.submitGrievance = async () => {
       </div>
       <div className="gallery-grid reveal" id="galleryGrid">
         <div
-          className="gcell"
-          style={{ gridRow: "span 2", aspectRatio: "auto", minHeight: 280 }}
+          style={{
+            gridColumn: "1/-1",
+            textAlign: "center",
+            padding: "2.2rem 1rem",
+            color: "var(--mist)",
+            fontFamily: "'Rajdhani',sans-serif",
+            letterSpacing: ".08em",
+            textTransform: "uppercase",
+            fontSize: ".8rem"
+          }}
         >
-          <div className="gcell-lbl">Morning Assembly</div>
-        </div>
-        <div className="gcell">
-          <div className="gcell-lbl">Classroom Session</div>
-        </div>
-        <div className="gcell">
-          <div className="gcell-lbl">Hostel Block</div>
-        </div>
-        <div className="gcell">
-          <div className="gcell-lbl">Mock Test Day</div>
-        </div>
-        <div className="gcell">
-          <div className="gcell-lbl">Award Ceremony</div>
+          Photos will appear here once uploaded in the Website Manager.
         </div>
       </div>
       <div
@@ -3406,7 +3086,7 @@ window.submitGrievance = async () => {
           <h3>Navodaya Vidyalaya (NVS)</h3>
           <div className="papers-sub">JNVST · Class 6 Entry</div>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3415,7 +3095,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2024.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2024.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3424,7 +3104,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2023.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2023.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3433,7 +3113,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2025.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2025.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3442,7 +3122,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2024.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class9-2024.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3468,7 +3148,7 @@ window.submitGrievance = async () => {
             All India Sainik Schools Entrance · Class 6 &amp; 9
           </div>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2025.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2025.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3477,7 +3157,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2024.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2024.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3486,7 +3166,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2023.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class6-2023.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3495,7 +3175,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2025.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2025.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3504,7 +3184,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2024.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/sainik-class9-2024.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3527,7 +3207,7 @@ window.submitGrievance = async () => {
           <h3>Rashtriya Military School (RMS)</h3>
           <div className="papers-sub">RMS CET · Class 6 &amp; Class 9</div>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2025.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2025.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3536,7 +3216,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2024.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2024.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3545,7 +3225,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2025.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2025.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3554,7 +3234,7 @@ window.submitGrievance = async () => {
             <span className="paper-dl">⬇</span>
           </a>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2024.pdf"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class9-2024.pdf"
             className="paper-link"
             target="_blank"
             download=""
@@ -3663,7 +3343,7 @@ window.submitGrievance = async () => {
           </div>
         </div>
         <a
-          href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class6-syllabus.pdf"
+          href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class6-syllabus.pdf"
           className="syl-download"
           target="_blank"
           download=""
@@ -3713,7 +3393,7 @@ window.submitGrievance = async () => {
           </div>
         </div>
         <a
-          href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class9-syllabus.pdf"
+          href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class9-syllabus.pdf"
           className="syl-download"
           target="_blank"
           download=""
@@ -3779,7 +3459,7 @@ window.submitGrievance = async () => {
           </div>
         </div>
         <a
-          href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class6-syllabus.pdf"
+          href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class6-syllabus.pdf"
           className="syl-download"
           target="_blank"
           download=""
@@ -3840,7 +3520,7 @@ window.submitGrievance = async () => {
           </div>
         </div>
         <a
-          href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class9-syllabus.pdf"
+          href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class9-syllabus.pdf"
           className="syl-download"
           target="_blank"
           download=""
@@ -3897,7 +3577,7 @@ window.submitGrievance = async () => {
           </div>
         </div>
         <a
-          href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/rms-syllabus.pdf"
+          href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/syllabus/rms-syllabus.pdf"
           className="syl-download"
           target="_blank"
           download=""
@@ -4100,7 +3780,7 @@ window.submitGrievance = async () => {
         </table>
       </div>
       <a
-        href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Exam-Calendar-2026-27.pdf"
+        href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Exam-Calendar-2026-27.pdf"
         className="cal-download"
         target="_blank"
         download=""
@@ -4837,7 +4517,7 @@ window.submitGrievance = async () => {
         </div>
         <div className="app-btns">
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/gnsi-app.apk"
+            href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-app.apk"
             className="app-btn"
             target="_blank"
             download=""
@@ -5118,7 +4798,7 @@ window.submitGrievance = async () => {
         Apply / Enquire →
       </a>
       <a
-        href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
+        href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
         className="btn btn-out"
         download=""
         target="_blank"
@@ -5218,7 +4898,7 @@ window.submitGrievance = async () => {
         <a href="#courses">Combined Course</a>
         <a href="#enquiry">Apply Now</a>
         <a
-          href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
+          href="https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
           target="_blank"
           download=""
         >
