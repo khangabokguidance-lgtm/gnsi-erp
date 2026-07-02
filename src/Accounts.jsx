@@ -187,6 +187,15 @@ function Accounts({role,userId}){
   const [editEntry, setEditEntry] = useState(null)
   const [rows,      setRows]      = useState([{...emptyRow}])
 
+  // custom expense categories — user-added, persisted locally, merged with the built-in list
+  const [customExpCats, setCustomExpCats] = useState(()=>{
+    try{return JSON.parse(localStorage.getItem('acc_custom_expense_categories')||'[]')}catch{return []}
+  })
+  const expenseCategoryOptions = useMemo(()=>{
+    const base=EXPENSE_CATEGORIES.filter(c=>c!=='Other')
+    return [...base,...customExpCats.filter(c=>!base.includes(c)),'Other']
+  },[customExpCats])
+
   // filters
   const [search,       setSearch]       = useState('')
   const [typeFilter,   setTypeFilter]   = useState('All')
@@ -211,6 +220,10 @@ function Accounts({role,userId}){
   const [budgetMeta,  setBudgetMeta]  = useState(null)
   const [editBudgets, setEditBudgets] = useState(false)
   const [budgetDraft, setBudgetDraft] = useState(DEFAULT_BUDGETS)
+
+  // staff list — powers the Voucher Head "who takes it" field
+  const [staffList,   setStaffList]   = useState([])
+  const [staffLoaded, setStaffLoaded] = useState(false)
 
   // AI insights
   const [insights,  setInsights]  = useState('')
@@ -303,6 +316,15 @@ function Accounts({role,userId}){
     else{try{const b=JSON.parse(localStorage.getItem('acc_budgets')||'null');if(b){setBudgets(b);setBudgetDraft(b)}}catch{}}
   },[])
 
+  // staff list — used to populate the Voucher Head "who takes it" field.
+  // Matches the logged-in user via staff.user_id === userId (falls back to staff.id).
+  const fetchStaff = useCallback(async()=>{
+    const {data,error}=await supabase.from('staff').select('*').order('name')
+    if(!error)setStaffList(data||[])
+    else console.error('Could not load staff list:',error.message)
+    setStaffLoaded(true)
+  },[])
+
   const fetchDeletedRows = useCallback(async()=>{
     if(!isAdmin)return
     const PAGE_SIZE=1000
@@ -347,9 +369,29 @@ function Accounts({role,userId}){
   },[isAdmin])
 
   useEffect(()=>{
-    fetchEntries();fetchBudgets()
+    fetchEntries();fetchBudgets();fetchStaff()
     if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials()}
-  },[fetchEntries,fetchBudgets,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,isAdmin])
+  },[fetchEntries,fetchBudgets,fetchStaff,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,isAdmin])
+
+  // ── detect logged-in user against the staff list, auto-add if missing ───
+  const currentStaff = useMemo(
+    ()=>staffList.find(s=>String(s.user_id)===String(userId)||String(s.id)===String(userId)),
+    [staffList,userId]
+  )
+
+  useEffect(()=>{
+    if(!staffLoaded||!userId||currentStaff)return
+    const cacheKey=`acc_staff_registered_${userId}`
+    if(localStorage.getItem(cacheKey))return // already registered / already asked this device
+    const name=window.prompt("We don't have you listed under Staff yet. Enter your name to add yourself as a Voucher Head option:")?.trim()
+    if(!name)return
+    ;(async()=>{
+      const{data,error}=await supabase.from('staff').insert({user_id:userId,name}).select()
+      if(error){console.error('Could not auto-register staff member:',error.message);return}
+      localStorage.setItem(cacheKey,'1')
+      setStaffList(prev=>[...prev,...(data||[{user_id:userId,name}])])
+    })()
+  },[staffLoaded,currentStaff,userId])
 
   // ── recurring ─────────────────────────────────────────────────────────
   // PHASE 2 FIX: DB-level unique constraint handles dupes; error code 23505 caught gracefully
@@ -399,7 +441,7 @@ function Accounts({role,userId}){
   // ── CRUD ──────────────────────────────────────────────────────────────
   const openAdd=()=>{
     setEditEntry(null)
-    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today}])
+    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:currentStaff?.name||''}])
     setReceiptFile(null);setShowForm(true)
   }
 
@@ -533,8 +575,30 @@ function Accounts({role,userId}){
     if(key==='entry_date'&&(r.payment_date===r.entry_date||!r.payment_date))return{...r,entry_date:val,payment_date:val}
     return{...r,[key]:val}
   }))
-  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today}])
+  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:currentStaff?.name||''}])
   const removeRow=(i)=>setRows(prev=>prev.filter((_,idx)=>idx!==i))
+
+  const addCustomExpenseCategory=(i)=>{
+    const name=window.prompt('New expense category name:')?.trim()
+    if(!name)return
+    const existing=expenseCategoryOptions.find(c=>c.toLowerCase()===name.toLowerCase())
+    if(existing){updateRow(i,'category',existing);return}
+    const next=[...customExpCats,name]
+    setCustomExpCats(next)
+    localStorage.setItem('acc_custom_expense_categories',JSON.stringify(next))
+    updateRow(i,'category',name)
+  }
+
+  const addNewStaffMember=async(i)=>{
+    const name=window.prompt('New staff member name (Voucher Head):')?.trim()
+    if(!name)return
+    const existing=staffList.find(s=>s.name?.toLowerCase()===name.toLowerCase())
+    if(existing){updateRow(i,'voucher_head',existing.name);return}
+    const{data,error}=await supabase.from('staff').insert({name}).select()
+    if(error){alert('Could not add staff member: '+error.message);return}
+    setStaffList(prev=>[...prev,...(data||[{name}])])
+    updateRow(i,'voucher_head',name)
+  }
 
   // PHASE 1 FIX: budget save confirmation to prevent silent overwrite
   const saveBudgets=async()=>{
@@ -954,9 +1018,9 @@ function Accounts({role,userId}){
   // ── Report Generator memos ───────────────────────────────────────────────
   const rptCategoryOptions = useMemo(()=>{
     if(rptType==='Income')return INCOME_CATEGORIES
-    if(rptType==='Expense')return EXPENSE_CATEGORIES
-    return [...new Set([...INCOME_CATEGORIES,...EXPENSE_CATEGORIES])]
-  },[rptType])
+    if(rptType==='Expense')return expenseCategoryOptions
+    return [...new Set([...INCOME_CATEGORIES,...expenseCategoryOptions])]
+  },[rptType,expenseCategoryOptions])
 
   const reportEntries = useMemo(()=>{
     const list = entries.filter(item=>{
@@ -1222,9 +1286,13 @@ function Accounts({role,userId}){
                   </select>
                 </div>
                 <div><label style={lStyle}>Category</label>
-                  <select value={row.category} onChange={e=>updateRow(i,'category',e.target.value)} required style={iStyle}>
+                  <select value={row.category} onChange={e=>{
+                    if(e.target.value==='__add_new__'){addCustomExpenseCategory(i);return}
+                    updateRow(i,'category',e.target.value)
+                  }} required style={iStyle}>
                     <option value="">Select</option>
-                    {(row.type==='Income'?INCOME_CATEGORIES:EXPENSE_CATEGORIES).map(c=><option key={c}>{c}</option>)}
+                    {(row.type==='Income'?INCOME_CATEGORIES:expenseCategoryOptions).map(c=><option key={c}>{c}</option>)}
+                    {row.type==='Expense'&&<option value="__add_new__">+ Add New Category…</option>}
                   </select>
                 </div>
                 <div><label style={lStyle}>Amount</label><input type="number" min="0" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/></div>
@@ -1238,7 +1306,17 @@ function Accounts({role,userId}){
                     {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
                   </select>
                 </div>
-                <div><label style={lStyle}>Voucher Head</label><input type="text" placeholder="e.g. Sir Arunkumar" value={row.voucher_head||''} onChange={e=>updateRow(i,'voucher_head',e.target.value)} style={iStyle}/></div>
+                <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#94a3b8'}}>(who takes it)</span></label>
+                  <select value={row.voucher_head||''} onChange={e=>{
+                    if(e.target.value==='__add_staff__'){addNewStaffMember(i);return}
+                    updateRow(i,'voucher_head',e.target.value)
+                  }} style={iStyle}>
+                    <option value="">Select</option>
+                    {row.voucher_head&&!staffList.some(s=>s.name===row.voucher_head)&&<option value={row.voucher_head}>{row.voucher_head} (unlisted)</option>}
+                    {staffList.map(s=><option key={s.id??s.name} value={s.name}>{s.name}{String(s.user_id)===String(userId)||String(s.id)===String(userId)?' (You)':''}</option>)}
+                    <option value="__add_staff__">+ Add New Staff Member…</option>
+                  </select>
+                </div>
                 <div><label style={lStyle}>Status</label>
                   <select value={row.status} onChange={e=>updateRow(i,'status',e.target.value)} style={iStyle}>
                     {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
