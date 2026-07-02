@@ -17,7 +17,20 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from './supabase';
+import {
+  getAllEnquiries, markEnquiryReplied, deleteEnquiry,
+  getAllNotices, saveNotice, archiveNotice, deleteNotice,
+  getAllEvents, saveEvent, deleteEvent, toggleEventActive,
+  getRankers, saveRanker, deleteRanker,
+  getGallery, addGalleryImage, updateGalleryCaption, deleteGalleryImage,
+  getVideos, saveVideo, deleteVideo, getYouTubeThumb, getYouTubeEmbed,
+  getAllPosts, savePost, togglePostPublished, deletePost,
+  getAllReviews, saveReview, toggleReviewFeatured, deleteReview,
+  getPapers, savePaper, deletePaper,
+  getAllBanners, saveBanner, toggleBannerActive, deleteBanner,
+  getFaculty, saveFaculty, deleteFaculty,
+  getSettings, saveSettings,
+} from './websiteApi';
 
 // ── colours ─────────────────────────────────────────────────
 const C = {
@@ -97,7 +110,7 @@ function EnquiriesSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("enquiries").select("*").order("created_at",{ascending:false});
+    const data=await getAllEnquiries();
     if(data){
       setRows(data);
       const now=new Date(),today=now.toISOString().slice(0,10),week=new Date(now-7*86400000).toISOString();
@@ -115,12 +128,12 @@ function EnquiriesSection() {
   useEffect(()=>{load_();},[load_]);
 
   const markReplied=async id=>{
-    await supabase.from("enquiries").update({replied:true,replied_at:new Date().toISOString()}).eq("id",id);
+    await markEnquiryReplied(id);
     toast("Marked as replied ✓");load_();setOpen(null);
   };
   const del=async id=>{
     if(!confirm("Delete this enquiry?"))return;
-    await supabase.from("enquiries").delete().eq("id",id);
+    await deleteEnquiry(id);
     toast("Deleted");load_();setOpen(null);
   };
   const exportCSV=()=>{
@@ -228,7 +241,7 @@ function NoticesSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("notices").select("*").order("created_at",{ascending:false}).limit(40);
+    const data=await getAllNotices(40);
     if(data)setRows(data);
     setLoad(false);
   },[]);
@@ -237,16 +250,15 @@ function NoticesSection() {
   const save=async()=>{
     if(!form.title||!form.body)return toast("Title and body required","error");
     setSave(true);
-    const payload={title:form.title,body:form.body,priority:form.priority,notice_date:form.notice_date,is_archived:false};
-    const{error}=editing?await supabase.from("notices").update(payload).eq("id",editing):await supabase.from("notices").insert(payload);
+    const{error}=await saveNotice(form,editing);
     setSave(false);
     if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Notice updated ✓":"Published to website ✓");
     setForm({title:"",body:"",priority:"Medium",notice_date:new Date().toISOString().slice(0,10)});
     setEdit(null);load_();
   };
-  const archive=async(id,cur)=>{await supabase.from("notices").update({is_archived:!cur}).eq("id",id);toast(cur?"Restored":"Archived");load_();};
-  const del=async id=>{if(!confirm("Delete permanently?"))return;await supabase.from("notices").delete().eq("id",id);toast("Deleted");load_();};
+  const archive=async(id,cur)=>{await archiveNotice(id,cur);toast(cur?"Restored":"Archived");load_();};
+  const del=async id=>{if(!confirm("Delete permanently?"))return;await deleteNotice(id);toast("Deleted");load_();};
   const startEdit=n=>{setEdit(n.id);setForm({title:n.title,body:n.body,priority:n.priority||"Medium",notice_date:n.notice_date||new Date().toISOString().slice(0,10)});window.scrollTo({top:0,behavior:"smooth"});};
 
   return (
@@ -303,7 +315,7 @@ function RankersSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_rankers").select("*").order("sort_order").order("id");
+    const data=await getRankers();
     if(data)setRows(data);
     setLoad(false);
   },[]);
@@ -312,14 +324,14 @@ function RankersSection() {
   const save=async()=>{
     if(!form.name||!form.school)return toast("Name and school required","error");
     setSave(true);
-    const{error}=editing?await supabase.from("website_rankers").update(form).eq("id",editing):await supabase.from("website_rankers").insert(form);
+    const{error}=await saveRanker(form,editing);
     setSave(false);
     if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Ranker updated ✓":"Ranker added to website ✓");
     setForm({name:"",school:"",batch:"",rank:"",photo_url:"",sort_order:rows.length});
     setEdit(null);load_();
   };
-  const del=async id=>{if(!confirm("Remove ranker?"))return;await supabase.from("website_rankers").delete().eq("id",id);toast("Removed");load_();};
+  const del=async id=>{if(!confirm("Remove ranker?"))return;await deleteRanker(id);toast("Removed");load_();};
   const startEdit=r=>{setEdit(r.id);setForm({name:r.name,school:r.school||"",batch:r.batch||"",rank:r.rank||"",photo_url:r.photo_url||"",sort_order:r.sort_order||0});};
 
   const SQL=`CREATE TABLE IF NOT EXISTS website_rankers (
@@ -402,20 +414,20 @@ function GallerySection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_gallery").select("*").order("sort_order").order("created_at");
-    if(data)setRows(data);setLoad(false);
+    const data=await getGallery();
+    setRows(data);setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
   const save=async()=>{
     if(!form.image_url)return toast("Image URL required","error");
     setSave(true);
-    const{error}=await supabase.from("website_gallery").insert({...form,created_at:new Date().toISOString()});
+    const{error}=await addGalleryImage(form);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
     toast("Image added ✓");setForm({image_url:"",caption:"",category:"Campus",sort_order:rows.length});load_();
   };
-  const del=async id=>{if(!confirm("Remove image?"))return;await supabase.from("website_gallery").delete().eq("id",id);toast("Removed");load_();};
-  const updateCaption=async(id,caption)=>{await supabase.from("website_gallery").update({caption}).eq("id",id);toast("Caption updated ✓");};
+  const del=async id=>{if(!confirm("Remove image?"))return;await deleteGalleryImage(id);toast("Removed");load_();};
+  const updateCaption=async(id,caption)=>{await updateGalleryCaption(id,caption);toast("Caption updated ✓");};
 
   return (
     <div>
@@ -490,8 +502,8 @@ function EventsSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_events").select("*").order("event_date").order("sort_order");
-    if(data)setRows(data);
+    const data=await getAllEvents();
+    setRows(data);
     setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
@@ -499,15 +511,15 @@ function EventsSection() {
   const save=async()=>{
     if(!form.title||!form.event_date)return toast("Title and date required","error");
     setSave(true);
-    const{error}=editing?await supabase.from("website_events").update(form).eq("id",editing):await supabase.from("website_events").insert(form);
+    const{error}=await saveEvent(form,editing);
     setSave(false);
     if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Event updated ✓":"Event added ✓");
     setForm({title:"",description:"",event_date:new Date().toISOString().slice(0,10),sort_order:rows.length,is_active:true});
     setEdit(null);load_();
   };
-  const del=async id=>{if(!confirm("Delete this event?"))return;await supabase.from("website_events").delete().eq("id",id);toast("Deleted");load_();};
-  const toggleActive=async(id,cur)=>{await supabase.from("website_events").update({is_active:!cur}).eq("id",id);toast(cur?"Hidden from website":"Now visible on website");load_();};
+  const del=async id=>{if(!confirm("Delete this event?"))return;await deleteEvent(id);toast("Deleted");load_();};
+  const toggleActive=async(id,cur)=>{await toggleEventActive(id,cur);toast(cur?"Hidden from website":"Now visible on website");load_();};
   const startEdit=ev=>{setEdit(ev.id);setForm({title:ev.title,description:ev.description||"",event_date:ev.event_date,sort_order:ev.sort_order||0,is_active:ev.is_active!==false});window.scrollTo({top:0,behavior:"smooth"});};
 
   return (
@@ -593,31 +605,24 @@ function VideosSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_videos").select("*").order("sort_order").order("created_at",{ascending:false});
-    if(data)setRows(data);setLoad(false);
+    const data=await getVideos();
+    setRows(data);setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
-  const getThumb=url=>{
-    const m=url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/);
-    return m?`https://img.youtube.com/vi/${m[1]}/mqdefault.jpg`:null;
-  };
-  const getEmbed=url=>{
-    const m=url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/);
-    return m?`https://www.youtube.com/embed/${m[1]}`:url;
-  };
+  const getThumb=getYouTubeThumb;
+  const getEmbed=getYouTubeEmbed;
 
   const save=async()=>{
     if(!form.title)return toast("Title required","error");
     setSave(true);
-    const payload={...form,youtube_url:form.youtube_url?getEmbed(form.youtube_url):""};
-    const{error}=editing?await supabase.from("website_videos").update(payload).eq("id",editing):await supabase.from("website_videos").insert(payload);
+    const{error}=await saveVideo(form,editing);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Video updated ✓":"Video added ✓");
     setForm({title:"",youtube_url:"",description:"",category:"Campus",sort_order:rows.length});
     setEdit(null);load_();
   };
-  const del=async id=>{if(!confirm("Remove video?"))return;await supabase.from("website_videos").delete().eq("id",id);toast("Removed");load_();};
+  const del=async id=>{if(!confirm("Remove video?"))return;await deleteVideo(id);toast("Removed");load_();};
   const startEdit=v=>{setEdit(v.id);setForm({title:v.title,youtube_url:v.youtube_url||"",description:v.description||"",category:v.category||"Campus",sort_order:v.sort_order||0});};
 
   const thumb=form.youtube_url?getThumb(form.youtube_url):null;
@@ -693,22 +698,22 @@ function BlogSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_blog").select("*").order("published_date",{ascending:false}).limit(20);
-    if(data)setRows(data);setLoad(false);
+    const data=await getAllPosts(20);
+    setRows(data);setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
   const save=async()=>{
     if(!form.title||!form.body)return toast("Title and body required","error");
     setSave(true);
-    const{error}=editing?await supabase.from("website_blog").update(form).eq("id",editing):await supabase.from("website_blog").insert(form);
+    const{error}=await savePost(form,editing);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Post updated ✓":"Published ✓");
     setForm({title:"",body:"",category:"News",image_url:"",published_date:new Date().toISOString().slice(0,10),is_published:true});
     setEdit(null);load_();
   };
-  const toggle=async(id,cur)=>{await supabase.from("website_blog").update({is_published:!cur}).eq("id",id);toast(cur?"Unpublished":"Published ✓");load_();};
-  const del=async id=>{if(!confirm("Delete post?"))return;await supabase.from("website_blog").delete().eq("id",id);toast("Deleted");load_();};
+  const toggle=async(id,cur)=>{await togglePostPublished(id,cur);toast(cur?"Unpublished":"Published ✓");load_();};
+  const del=async id=>{if(!confirm("Delete post?"))return;await deletePost(id);toast("Deleted");load_();};
   const startEdit=p=>{setEdit(p.id);setForm({title:p.title,body:p.body||"",category:p.category||"News",image_url:p.image_url||"",published_date:p.published_date||new Date().toISOString().slice(0,10),is_published:p.is_published!==false});};
 
   return (
@@ -789,22 +794,22 @@ function ReviewsSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_reviews").select("*").order("is_featured",{ascending:false}).order("review_date",{ascending:false});
-    if(data)setRows(data);setLoad(false);
+    const data=await getAllReviews();
+    setRows(data);setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
   const save=async()=>{
     if(!form.reviewer_name||!form.review_text)return toast("Name and review text required","error");
     setSave(true);
-    const{error}=editing?await supabase.from("website_reviews").update(form).eq("id",editing):await supabase.from("website_reviews").insert(form);
+    const{error}=await saveReview(form,editing);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Review updated ✓":"Review added ✓");
     setForm({reviewer_name:"",review_text:"",rating:5,review_date:new Date().toISOString().slice(0,10),is_featured:true});
     setEdit(null);load_();
   };
-  const toggle=async(id,cur)=>{await supabase.from("website_reviews").update({is_featured:!cur}).eq("id",id);toast(cur?"Hidden from website":"Showing on website ✓");load_();};
-  const del=async id=>{if(!confirm("Delete review?"))return;await supabase.from("website_reviews").delete().eq("id",id);toast("Deleted");load_();};
+  const toggle=async(id,cur)=>{await toggleReviewFeatured(id,cur);toast(cur?"Hidden from website":"Showing on website ✓");load_();};
+  const del=async id=>{if(!confirm("Delete review?"))return;await deleteReview(id);toast("Deleted");load_();};
   const startEdit=r=>{setEdit(r.id);setForm({reviewer_name:r.reviewer_name,review_text:r.review_text||"",rating:r.rating||5,review_date:r.review_date||new Date().toISOString().slice(0,10),is_featured:r.is_featured!==false});};
 
   return (
@@ -883,21 +888,21 @@ function PapersSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_papers").select("*").order("exam_type").order("year",{ascending:false});
-    if(data)setRows(data);setLoad(false);
+    const data=await getPapers();
+    setRows(data);setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
   const save=async()=>{
     if(!form.title)return toast("Title required","error");
     setSave(true);
-    const{error}=editing?await supabase.from("website_papers").update(form).eq("id",editing):await supabase.from("website_papers").insert(form);
+    const{error}=await savePaper(form,editing);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Paper updated ✓":"Paper added ✓");
     setForm({title:"",exam_type:"NVS",class_level:"Class 6",year:"2025",pdf_url:"",sort_order:rows.length});
     setEdit(null);load_();
   };
-  const del=async id=>{if(!confirm("Remove paper?"))return;await supabase.from("website_papers").delete().eq("id",id);toast("Removed");load_();};
+  const del=async id=>{if(!confirm("Remove paper?"))return;await deletePaper(id);toast("Removed");load_();};
   const startEdit=p=>{setEdit(p.id);setForm({title:p.title,exam_type:p.exam_type||"NVS",class_level:p.class_level||"Class 6",year:p.year||"2025",pdf_url:p.pdf_url||"",sort_order:p.sort_order||0});};
 
   const grouped=rows.reduce((acc,p)=>{const k=p.exam_type||"NVS";if(!acc[k])acc[k]=[];acc[k].push(p);return acc;},{});
@@ -975,22 +980,22 @@ function BannersSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_result_banners").select("*").order("sort_order").order("created_at",{ascending:false});
-    if(data)setRows(data);setLoad(false);
+    const data=await getAllBanners();
+    setRows(data);setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
   const save=async()=>{
     if(!form.title)return toast("Title required","error");
     setSave(true);
-    const{error}=editing?await supabase.from("website_result_banners").update(form).eq("id",editing):await supabase.from("website_result_banners").insert(form);
+    const{error}=await saveBanner(form,editing);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Banner updated ✓":"Banner added ✓");
     setForm({title:"",subtitle:"",year_label:"",image_url:"",sort_order:rows.length,is_active:true});
     setEdit(null);load_();
   };
-  const toggle=async(id,cur)=>{await supabase.from("website_result_banners").update({is_active:!cur}).eq("id",id);toast(cur?"Hidden":"Active ✓");load_();};
-  const del=async id=>{if(!confirm("Delete banner?"))return;await supabase.from("website_result_banners").delete().eq("id",id);toast("Deleted");load_();};
+  const toggle=async(id,cur)=>{await toggleBannerActive(id,cur);toast(cur?"Hidden":"Active ✓");load_();};
+  const del=async id=>{if(!confirm("Delete banner?"))return;await deleteBanner(id);toast("Deleted");load_();};
   const startEdit=b=>{setEdit(b.id);setForm({title:b.title,subtitle:b.subtitle||"",year_label:b.year_label||"",image_url:b.image_url||"",sort_order:b.sort_order||0,is_active:b.is_active!==false});};
 
   return (
@@ -1059,21 +1064,21 @@ function FacultySection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_faculty").select("*").order("sort_order").order("name");
-    if(data)setRows(data);setLoad(false);
+    const data=await getFaculty();
+    setRows(data);setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
   const save=async()=>{
     if(!form.name||!form.role)return toast("Name and role required","error");
     setSave(true);
-    const{error}=editing?await supabase.from("website_faculty").update(form).eq("id",editing):await supabase.from("website_faculty").insert(form);
+    const{error}=await saveFaculty(form,editing);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
     toast(editing?"Updated ✓":"Added ✓");
     setForm({name:"",role:"",subject:"",experience:"",photo_url:"",sort_order:rows.length});
     setEdit(null);load_();
   };
-  const del=async id=>{if(!confirm("Remove faculty?"))return;await supabase.from("website_faculty").delete().eq("id",id);toast("Removed");load_();};
+  const del=async id=>{if(!confirm("Remove faculty?"))return;await deleteFaculty(id);toast("Removed");load_();};
   const startEdit=f=>{setEdit(f.id);setForm({name:f.name,role:f.role,subject:f.subject||"",experience:f.experience||"",photo_url:f.photo_url||"",sort_order:f.sort_order||0});};
 
   return (
@@ -1168,16 +1173,15 @@ function SettingsSection() {
 
   const load_=useCallback(async()=>{
     setLoad(true);
-    const{data}=await supabase.from("website_settings").select("key,value");
-    if(data){const m={};data.forEach(r=>m[r.key]=r.value);setCfg(m);}
+    const settings=await getSettings();
+    setCfg(settings);
     setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
   const saveAll=async()=>{
     setSave(true);
-    const upserts=Object.entries(cfg).filter(([,v])=>v!==undefined).map(([key,value])=>({key,value,updated_at:new Date().toISOString()}));
-    const{error}=await supabase.from("website_settings").upsert(upserts,{onConflict:"key"});
+    const{error}=await saveSettings(cfg);
     setSave(false);
     if(error)return toast("Error: "+error.message,"error");
     toast("All settings saved ✓");
