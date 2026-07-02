@@ -240,6 +240,16 @@ function Accounts({role,userId}){
   const [voucherHead,      setVoucherHead]      = useState('')
   // PAYMENT-DATE FILTER FIX: Daily register can now show Income (payments) or Expense
   const [dailyTypeFilter,  setDailyTypeFilter]  = useState('Expense')
+
+  // ── dedicated Daily Expenditure tab (separate table, sits side by side with Daily/Reports) ──
+  const [expSearch,     setExpSearch]     = useState('')
+  const [expAcctFilter, setExpAcctFilter] = useState('All')
+  const [expModeFilter, setExpModeFilter] = useState('All')
+  const [expCategory,   setExpCategory]   = useState('All')
+  const [expDateFrom,   setExpDateFrom]   = useState('')
+  const [expDateTo,     setExpDateTo]     = useState('')
+  const [expQuick,      setExpQuick]      = useState('')
+  const [generatingExpReport, setGeneratingExpReport] = useState('') // '' | 'pdf' | 'docx' | 'excel'
   // ACTUAL PAYMENT DATE FIX: for Income, choose whether the date filter goes by when money was
   // actually received (payment_date) or when the row was recorded (entry_date)
   const [dailyDateMode,    setDailyDateMode]    = useState('payment') // 'payment' | 'entry'
@@ -436,6 +446,14 @@ function Accounts({role,userId}){
   const resetRptFilters=()=>{
     setRptType('All');setRptCategory('All');setRptMode('All');setRptAccount('All');setRptStatus('All')
     setRptVoucherHead('');setRptSearch('');setRptDateFrom('');setRptDateTo('');setRptQuick('')
+  }
+
+  // ── dedicated Daily Expenditure tab: quick-range + reset ─────────────────
+  const applyExpQuick=(key)=>{const{from,to}=getQuickRange(key);setExpDateFrom(from);setExpDateTo(to);setExpQuick(key)}
+  const clearExpQuick=()=>{setExpDateFrom('');setExpDateTo('');setExpQuick('')}
+  const resetExpFilters=()=>{
+    setExpSearch('');setExpAcctFilter('All');setExpModeFilter('All');setExpCategory('All')
+    setExpDateFrom('');setExpDateTo('');setExpQuick('')
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────────
@@ -698,12 +716,13 @@ function Accounts({role,userId}){
   }
 
   // ── Report Generator: shared export-log helper ──────────────────────────
-  const logReportExport=(format)=>{
+  // opts lets callers (e.g. the dedicated Expenditure report) override what gets logged
+  const logReportExport=(format,opts={})=>{
     supabase.from('export_log').insert({
       exported_by:role,
-      filter_type:`Report (${format}): ${rptReportType} / ${rptType}`,
-      filter_dates:`${rptDateFrom||'all'}–${rptDateTo||'present'}`,
-      row_count:reportEntries.length,
+      filter_type:opts.logLabel||`Report (${format}): ${rptReportType} / ${rptType}`,
+      filter_dates:`${(opts.dateFrom??rptDateFrom)||'all'}–${(opts.dateTo??rptDateTo)||'present'}`,
+      row_count:opts.rowCount??reportEntries.length,
       created_at:new Date().toISOString(),
     }).then(({error})=>{
       if(error)console.warn('Export log failed:',error.message)
@@ -712,9 +731,17 @@ function Accounts({role,userId}){
   }
 
   // ── Report Generator: Professional PDF (jsPDF + autoTable) ──────────────
-  const generateReportPDF=()=>{
-    if(reportEntries.length===0){alert('No entries match the selected filters.');return}
-    setGeneratingReport('pdf')
+  // opts (optional) lets the dedicated Expenditure tab reuse this exact letterheaded
+  // export with its own filtered dataset, without touching the generic Reports tab state.
+  const generateReportPDF=(opts={})=>{
+    const entriesData     = opts.entries     || reportEntries
+    const totalsData      = opts.totals      || reportTotals
+    const byCategoryData  = opts.byCategory  || reportByCategory
+    const titleData       = opts.title       || rptReportType
+    const filterSummaryData = opts.filterSummary || reportFilterSummary
+    const setBusy         = opts.setBusy     || setGeneratingReport
+    if(entriesData.length===0){alert('No entries match the selected filters.');return}
+    setBusy('pdf')
     try{
       // jsPDF's built-in fonts don't render the ₹ glyph, so PDF output uses "Rs." prefix
       const fmtPdf=(n)=>`Rs. ${Number(n).toLocaleString('en-IN')}`
@@ -734,9 +761,9 @@ function Accounts({role,userId}){
       if(contact)doc.text(contact,pageW/2,80,{align:'center'})
       doc.setDrawColor(30,58,95);doc.setLineWidth(1.2);doc.line(margin,90,pageW-margin,90)
       doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(30,41,59)
-      doc.text(rptReportType,pageW/2,108,{align:'center'})
+      doc.text(titleData,pageW/2,108,{align:'center'})
       doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(100,116,139)
-      doc.text(reportFilterSummary,pageW/2,121,{align:'center',maxWidth:pageW-2*margin})
+      doc.text(filterSummaryData,pageW/2,121,{align:'center',maxWidth:pageW-2*margin})
       doc.setFontSize(8)
       doc.text(`Printed on: ${printDate}`,pageW-margin,121,{align:'right'})
       let y=134
@@ -746,7 +773,7 @@ function Accounts({role,userId}){
         startY:y,theme:'plain',margin:{left:margin,right:margin},
         body:[
           ['Total Income','Total Expense','Net Balance','Total Entries'],
-          [fmtPdf(reportTotals.income),fmtPdf(reportTotals.expense),fmtPdf(reportTotals.net),String(reportTotals.count)],
+          [fmtPdf(totalsData.income),fmtPdf(totalsData.expense),fmtPdf(totalsData.net),String(totalsData.count)],
         ],
         styles:{halign:'center',fontSize:9,cellPadding:4},
         didParseCell:(data)=>{
@@ -761,13 +788,13 @@ function Accounts({role,userId}){
       y=doc.lastAutoTable.finalY+16
 
       // break-up by category
-      if(reportByCategory.length){
+      if(byCategoryData.length){
         doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(30,58,95)
         doc.text('Break-up by Category',margin,y);y+=6
         autoTable(doc,{
           startY:y,
           head:[['Category','Type','Entries','Amount']],
-          body:reportByCategory.map(r=>[r.category,r.type,String(r.count),fmtPdf(r.total)]),
+          body:byCategoryData.map(r=>[r.category,r.type,String(r.count),fmtPdf(r.total)]),
           headStyles:{fillColor:[30,58,95],textColor:255,fontSize:8.5},
           bodyStyles:{fontSize:8.5},
           columnStyles:{3:{halign:'right'}},
@@ -789,7 +816,7 @@ function Accounts({role,userId}){
       autoTable(doc,{
         startY:y,
         head:[['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount']],
-        body:reportEntries.map((e,i)=>[i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmtPdf(e.amount)}`]),
+        body:entriesData.map((e,i)=>[i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmtPdf(e.amount)}`]),
         headStyles:{fillColor:[30,58,95],textColor:255,fontSize:8.5},
         bodyStyles:{fontSize:8},
         alternateRowStyles:{fillColor:[248,250,252]},
@@ -821,19 +848,24 @@ function Accounts({role,userId}){
       doc.text(`Date: ${getToday()}`,margin,sigY+27)
       doc.text(`Date: ${getToday()}`,pageW-margin-180,sigY+27)
 
-      doc.save(`GNSI-${rptReportType.replace(/\s+/g,'-')}-${getToday()}.pdf`)
-      logReportExport('PDF')
+      doc.save(`GNSI-${titleData.replace(/\s+/g,'-')}-${getToday()}.pdf`)
+      logReportExport('PDF',{logLabel:opts.logLabel,dateFrom:opts.dateFrom,dateTo:opts.dateTo,rowCount:entriesData.length})
     }catch(err){
       console.error(err)
       alert('PDF generation failed: '+err.message+'\n\nMake sure these packages are installed:\nnpm install jspdf jspdf-autotable')
     }
-    setGeneratingReport('')
+    setBusy('')
   }
 
   // ── Report Generator: Professional DOCX (docx library) ──────────────────
-  const generateReportDOCX=async()=>{
-    if(reportEntries.length===0){alert('No entries match the selected filters.');return}
-    setGeneratingReport('docx')
+  const generateReportDOCX=async(opts={})=>{
+    const entriesData     = opts.entries     || reportEntries
+    const totalsData      = opts.totals      || reportTotals
+    const titleData       = opts.title       || rptReportType
+    const filterSummaryData = opts.filterSummary || reportFilterSummary
+    const setBusy         = opts.setBusy     || setGeneratingReport
+    if(entriesData.length===0){alert('No entries match the selected filters.');return}
+    setBusy('docx')
     try{
       const printDate=new Date().toLocaleString('en-IN')
       const headerCellShade='1E3A5F'
@@ -848,8 +880,8 @@ function Accounts({role,userId}){
         spacing:{after:200},
         children:[new TextRun({text:contact?`${INSTITUTE_INFO.address}   |   ${contact}`:INSTITUTE_INFO.address,size:20,color:'475569'})],
       })
-      const reportTitlePara=new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:60},children:[new TextRun({text:rptReportType,bold:true,size:26,color:'1E293B'})]})
-      const filterLine=new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:60},children:[new TextRun({text:reportFilterSummary,size:16,italics:true,color:'64748B'})]})
+      const reportTitlePara=new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:60},children:[new TextRun({text:titleData,bold:true,size:26,color:'1E293B'})]})
+      const filterLine=new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:60},children:[new TextRun({text:filterSummaryData,size:16,italics:true,color:'64748B'})]})
       const printedLine=new Paragraph({alignment:AlignmentType.RIGHT,spacing:{after:200},children:[new TextRun({text:`Printed on: ${printDate}`,size:16,color:'94A3B8'})]})
 
       const sumCell=(label,value,color)=>new TableCell({
@@ -862,10 +894,10 @@ function Accounts({role,userId}){
       const summaryTable=new Table({
         width:{size:100,type:WidthType.PERCENTAGE},
         rows:[new TableRow({children:[
-          sumCell('Total Income',fmt(reportTotals.income),'16A34A'),
-          sumCell('Total Expense',fmt(reportTotals.expense),'DC2626'),
-          sumCell('Net Balance',fmt(reportTotals.net),'1E3A5F'),
-          sumCell('Entries',String(reportTotals.count),'7C3AED'),
+          sumCell('Total Income',fmt(totalsData.income),'16A34A'),
+          sumCell('Total Expense',fmt(totalsData.expense),'DC2626'),
+          sumCell('Net Balance',fmt(totalsData.net),'1E3A5F'),
+          sumCell('Entries',String(totalsData.count),'7C3AED'),
         ]})],
       })
 
@@ -876,7 +908,7 @@ function Accounts({role,userId}){
           children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:'FFFFFF',size:16})]})],
         })),
       })
-      const dataRows=reportEntries.map((e,i)=>new TableRow({
+      const dataRows=entriesData.map((e,i)=>new TableRow({
         children:[String(i+1),e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmt(e.amount)}`]
           .map((val,ci)=>new TableCell({
             shading:i%2===1?{type:ShadingType.CLEAR,fill:'F8FAFC'}:undefined,
@@ -889,7 +921,7 @@ function Accounts({role,userId}){
       const totalRow=new TableRow({
         children:[
           new TableCell({columnSpan:8,children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'NET TOTAL',bold:true,size:16})]})]}),
-          new TableCell({children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:fmt(reportTotals.net),bold:true,size:16})]})]}),
+          new TableCell({children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:fmt(totalsData.net),bold:true,size:16})]})]}),
         ],
       })
       const detailTable=new Table({width:{size:100,type:WidthType.PERCENTAGE},rows:[headRow,...dataRows,totalRow]})
@@ -927,39 +959,44 @@ function Accounts({role,userId}){
 
       const blob=await Packer.toBlob(docFile)
       const url=URL.createObjectURL(blob)
-      const a=Object.assign(document.createElement('a'),{href:url,download:`GNSI-${rptReportType.replace(/\s+/g,'-')}-${getToday()}.docx`})
+      const a=Object.assign(document.createElement('a'),{href:url,download:`GNSI-${titleData.replace(/\s+/g,'-')}-${getToday()}.docx`})
       a.click();URL.revokeObjectURL(url)
-      logReportExport('DOCX')
+      logReportExport('DOCX',{logLabel:opts.logLabel,dateFrom:opts.dateFrom,dateTo:opts.dateTo,rowCount:entriesData.length})
     }catch(err){
       console.error(err)
       alert('DOCX generation failed: '+err.message+'\n\nMake sure the "docx" package is installed:\nnpm install docx')
     }
-    setGeneratingReport('')
+    setBusy('')
   }
 
   // ── Report Generator: Professional Excel (SheetJS) ──────────────────────
-  const generateReportExcel=()=>{
-    if(reportEntries.length===0){alert('No entries match the selected filters.');return}
-    setGeneratingReport('excel')
+  const generateReportExcel=(opts={})=>{
+    const entriesData     = opts.entries     || reportEntries
+    const totalsData      = opts.totals      || reportTotals
+    const titleData       = opts.title       || rptReportType
+    const filterSummaryData = opts.filterSummary || reportFilterSummary
+    const setBusy         = opts.setBusy     || setGeneratingReport
+    if(entriesData.length===0){alert('No entries match the selected filters.');return}
+    setBusy('excel')
     try{
       const printDate=new Date().toLocaleString('en-IN')
       const headerLines=[INSTITUTE_INFO.name,INSTITUTE_INFO.tagline,INSTITUTE_INFO.address]
       const contact=[INSTITUTE_INFO.phone,INSTITUTE_INFO.email,INSTITUTE_INFO.website].filter(Boolean).join('  |  ')
       if(contact)headerLines.push(contact)
       headerLines.push('')
-      headerLines.push(rptReportType)
-      headerLines.push(reportFilterSummary)
+      headerLines.push(titleData)
+      headerLines.push(filterSummaryData)
       headerLines.push(`Printed on: ${printDate}`)
 
       const wsData=headerLines.map(l=>[l])
       wsData.push([])
-      wsData.push(['Total Income',reportTotals.income,'','Total Expense',reportTotals.expense,'','Net Balance',reportTotals.net,'','Entries',reportTotals.count])
+      wsData.push(['Total Income',totalsData.income,'','Total Expense',totalsData.expense,'','Net Balance',totalsData.net,'','Entries',totalsData.count])
       wsData.push([])
       wsData.push(['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'])
-      reportEntries.forEach((e,i)=>{
+      entriesData.forEach((e,i)=>{
         wsData.push([i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',e.type==='Income'?Number(e.amount):-Number(e.amount)])
       })
-      wsData.push(['','','','','','','','NET TOTAL',reportTotals.net])
+      wsData.push(['','','','','','','','NET TOTAL',totalsData.net])
       wsData.push([])
       wsData.push([])
       wsData.push(['Prepared By:','','','','Authorized Signature:'])
@@ -971,13 +1008,13 @@ function Accounts({role,userId}){
       ws['!merges']=headerLines.map((_,r)=>({s:{r,c:0},e:{r,c:8}}))
       const wb=XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb,ws,'Report')
-      XLSX.writeFile(wb,`GNSI-${rptReportType.replace(/\s+/g,'-')}-${getToday()}.xlsx`)
-      logReportExport('Excel')
+      XLSX.writeFile(wb,`GNSI-${titleData.replace(/\s+/g,'-')}-${getToday()}.xlsx`)
+      logReportExport('Excel',{logLabel:opts.logLabel,dateFrom:opts.dateFrom,dateTo:opts.dateTo,rowCount:entriesData.length})
     }catch(err){
       console.error(err)
       alert('Excel generation failed: '+err.message+'\n\nMake sure the "xlsx" package is installed:\nnpm install xlsx')
     }
-    setGeneratingReport('')
+    setBusy('')
   }
 
   // PHASE 1 FIX: AI insights routed through /api/ai-insights serverless function
@@ -1076,6 +1113,101 @@ function Accounts({role,userId}){
     parts.push(`Period: ${rptDateFrom||'Beginning'} to ${rptDateTo||'Present'}`)
     return parts.join('   •   ')
   },[rptType,rptCategory,rptMode,rptAccount,rptStatus,rptVoucherHead,rptSearch,rptDateFrom,rptDateTo])
+
+  // ── dedicated Daily Expenditure tab: filtered dataset, totals, category break-up ──
+  // Always type==='Expense' — a separate table from the combined Daily register above,
+  // and feeds its own one-click PDF/DOCX/Excel report generation (side by side with the
+  // generic multi-type Reports tab, not a replacement for it).
+  const expenditureFilteredEntries = useMemo(()=>{
+    const list = entries.filter(item=>{
+      if(item.type!=='Expense')return false
+      if(expCategory!=='All'&&item.category!==expCategory)return false
+      if(expAcctFilter!=='All'&&(item.account_type||'Cash A/c')!==expAcctFilter)return false
+      if(expModeFilter!=='All'&&item.payment_mode!==expModeFilter)return false
+      if(expDateFrom&&item.entry_date<expDateFrom)return false
+      if(expDateTo&&item.entry_date>expDateTo)return false
+      const q=expSearch.toLowerCase()
+      if(!q)return true
+      return(item.category||'').toLowerCase().includes(q)||(item.note||'').toLowerCase().includes(q)||(item.voucher_head||'').toLowerCase().includes(q)
+    })
+    return [...list].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
+  },[entries,expCategory,expAcctFilter,expModeFilter,expDateFrom,expDateTo,expSearch])
+
+  const expenditureGroups = useMemo(()=>groupByDate(expenditureFilteredEntries),[expenditureFilteredEntries])
+
+  const expenditureTotals = useMemo(()=>{
+    const expense = expenditureFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)
+    return { income:0, expense, net:-expense, count: expenditureFilteredEntries.length }
+  },[expenditureFilteredEntries])
+
+  const expenditureByCategory = useMemo(()=>{
+    const map={}
+    expenditureFilteredEntries.forEach(e=>{
+      const k=e.category||'Other'
+      if(!map[k])map[k]={category:k,type:'Expense',total:0,count:0}
+      map[k].total+=Number(e.amount);map[k].count+=1
+    })
+    return Object.values(map).sort((a,b)=>b.total-a.total)
+  },[expenditureFilteredEntries])
+
+  const expenditureCashAmt = useMemo(()=>expenditureFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0),[expenditureFilteredEntries])
+  const expenditureBankAmt = useMemo(()=>expenditureFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0),[expenditureFilteredEntries])
+
+  const expenditureFilterSummary = useMemo(()=>{
+    const parts=['Type: Expense']
+    if(expCategory!=='All')parts.push(`Category: ${expCategory}`)
+    if(expModeFilter!=='All')parts.push(`Mode: ${expModeFilter}`)
+    if(expAcctFilter!=='All')parts.push(`Account: ${expAcctFilter}`)
+    if(expSearch)parts.push(`Search: "${expSearch}"`)
+    parts.push(`Period: ${expDateFrom||'Beginning'} to ${expDateTo||'Present'}`)
+    return parts.join('   •   ')
+  },[expCategory,expModeFilter,expAcctFilter,expSearch,expDateFrom,expDateTo])
+
+  // ── dedicated Daily Expenditure tab: CSV export + print register ─────────
+  const exportExpenditureCSV=()=>{
+    const filtered=expenditureFilteredEntries
+    const header=['Date','Category','Account','Mode','Voucher Head','Note','Amount']
+    const rows_=filtered.map(e=>[e.entry_date,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'',e.note||'',e.amount])
+    const csv=[header,...rows_].map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n')
+    const blob=new Blob([csv],{type:'text/csv'})
+    const url=URL.createObjectURL(blob)
+    const a=Object.assign(document.createElement('a'),{href:url,download:`daily-expenditure-${getToday()}.csv`})
+    a.click();URL.revokeObjectURL(url)
+  }
+
+  const printExpenditureRegister=()=>{
+    const filtered=expenditureFilteredEntries
+    const groups=groupByDate(filtered)
+    const totalAmt=filtered.reduce((s,e)=>s+Number(e.amount),0)
+    const win=window.open('','_blank')
+    win.document.write(`<html><head><title>Daily Expenditure Register</title><style>
+      body{font-family:Arial,sans-serif;padding:24px;color:#1e293b}
+      h1{font-size:16px;color:#1e3a5f;margin-bottom:2px}
+      p{font-size:11px;color:#64748b;margin:2px 0}
+      table{width:100%;border-collapse:collapse;margin-top:14px;font-size:11px}
+      th{background:#1e3a5f;color:white;padding:6px 8px;text-align:left}
+      td{padding:5px 8px;border-bottom:1px solid #f1f5f9}
+      .day-header{background:#f0f9ff;font-weight:bold;color:#0369a1}
+      .subtotal{background:#f8fafc;font-weight:bold}
+      .amt{text-align:right;color:#c0392b;font-weight:600}
+      .total-amt{text-align:right;font-weight:bold}
+      .grand{background:#1e3a5f;color:white;font-weight:bold}
+    </style></head><body>
+    <h1>${INSTITUTE_INFO.name}</h1>
+    <p>${INSTITUTE_INFO.tagline} · ${INSTITUTE_INFO.address}</p>
+    <p><b>Daily Expenditure Register</b> — ${expenditureFilterSummary}</p>
+    <p>Printed on: ${new Date().toLocaleString('en-IN')}</p>
+    <table><tr><th>#</th><th>Sl</th><th>Account</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount (Dr.)</th></tr>
+    ${Object.entries(groups).map(([date,rows])=>{
+      let rowNum=0
+      const dayTotal=rows.reduce((s,e)=>s+Number(e.amount),0)
+      const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:10px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td><td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
+      return`<tr><td colspan="6" class="day-header">${date} — ${new Date(date).toLocaleDateString('en-IN',{weekday:'long'})} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="5">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
+    }).join('')}
+    <tr class="grand"><td colspan="4">GRAND TOTAL</td><td>Cash: ${fmt(expenditureCashAmt)} | Bank: ${fmt(expenditureBankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
+    </table></body></html>`)
+    win.document.close();win.focus();win.print()
+  }
 
   // ACTUAL PAYMENT DATE FIX: resolves which date field the Daily register filters/groups by
   const getDailyDate = useCallback((e)=>{
@@ -1356,6 +1488,7 @@ function Accounts({role,userId}){
         ['budgets','💰 Budgets'],
         ['recurring','🔁 Recurring'],
         ['daily','📋 Daily'],
+        ['expenditure','💵 Expenditure'],
         ['reports','📑 Reports'],
         ...(isAdmin?[['fraud',totalFraudAlerts>0?`🕵️ Fraud (${totalFraudAlerts})`:'🕵️ Fraud']]:[] ),
         // PHASE 4: Balance Sheet tab (admin only)
@@ -1367,6 +1500,7 @@ function Accounts({role,userId}){
           ...tabStyle(id),
           ...(id==='fraud'?{backgroundColor:activeTab===id?'#7c3aed':'#faf5ff',color:activeTab===id?'white':'#7c3aed',border:'1px solid #e9d5ff'}:{}),
           ...(id==='daily'?{backgroundColor:activeTab===id?'#0369a1':'#f0f9ff',color:activeTab===id?'white':'#0369a1',border:'1px solid #bae6fd'}:{}),
+          ...(id==='expenditure'?{backgroundColor:activeTab===id?'#b91c1c':'#fef2f2',color:activeTab===id?'white':'#b91c1c',border:'1px solid #fecaca'}:{}),
           ...(id==='reports'?{backgroundColor:activeTab===id?'#be185d':'#fdf2f8',color:activeTab===id?'white':'#be185d',border:'1px solid #fbcfe8'}:{}),
           ...(id==='balancesheet'?{backgroundColor:activeTab===id?'#047857':'#f0fdf4',color:activeTab===id?'white':'#047857',border:'1px solid #bbf7d0'}:{}),
         }} onClick={()=>setActiveTab(id)}>{label}</button>
@@ -1452,6 +1586,86 @@ function Accounts({role,userId}){
             dailyCashAmt={dailyFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)}
             dailyBankAmt={dailyFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)}
             dailyTotalAmt={dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)}
+            fraudFlags={fraudFlags}
+            canWrite={canWrite}
+            fmt={fmt}
+            openEdit={openEdit}
+            handleDelete={handleDelete}
+            isMobile={isMobile}
+          />
+        )}
+      </div>
+    )}
+
+    {/* ══ TAB: DAILY EXPENDITURE (dedicated — separate from the combined Daily register) ══ */}
+    {activeTab==='expenditure'&&(
+      <div>
+        <div style={{backgroundColor:'#7f1d1d',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
+            <div>
+              <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>💵 Daily Expenditure</h2>
+              <p style={{fontSize:12,color:'rgba(255,255,255,0.55)',margin:'4px 0 0'}}>All expense entries, grouped by entry date — a dedicated table separate from the combined Daily register.</p>
+            </div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button onClick={exportExpenditureCSV} style={{backgroundColor:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⬇ CSV</button>
+              <button onClick={printExpenditureRegister} style={{backgroundColor:'rgba(255,255,255,0.15)',color:'white',border:'1px solid rgba(255,255,255,0.3)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>
+            </div>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:dailySumCols,gap:12}}>
+            {[{label:'Total Days',value:expenditureGroups.length,isCurrency:false},{label:'Total Entries',value:expenditureFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:expenditureCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:expenditureBankAmt,color:'#f87171'}].map(c=>(
+              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.08)',borderRadius:10,padding:'12px 14px'}}>
+                <p style={{fontSize:11,color:c.color||'rgba(255,255,255,0.6)',fontWeight:600,margin:'0 0 4px'}}>{c.label}</p>
+                <p style={{fontSize: isMobile ? 16 : 19,fontWeight:800,color:'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── one-click Expenditure Report — reuses the same letterheaded PDF/DOCX/Excel export as the Reports tab ── */}
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:10}}>
+            <div>
+              <h3 style={{...chartTitle,fontSize:15,margin:0}}>📑 Expenditure Report</h3>
+              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>Generates the same letterheaded report as the Reports tab, pre-filtered to Expense entries using the filters below.</p>
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              <button onClick={()=>generateReportPDF({entries:expenditureFilteredEntries,totals:expenditureTotals,byCategory:expenditureByCategory,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (PDF): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
+              <button onClick={()=>generateReportDOCX({entries:expenditureFilteredEntries,totals:expenditureTotals,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (DOCX): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
+              <button onClick={()=>generateReportExcel({entries:expenditureFilteredEntries,totals:expenditureTotals,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (Excel): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
+            </div>
+          </div>
+
+          {/* ── filters (shared by the table below and the report export above) ── */}
+          <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : isTablet ? 'repeat(3,1fr)' : 'repeat(6,1fr)',gap:12}}>
+            <input placeholder="🔍 Search…" value={expSearch} onChange={e=>setExpSearch(e.target.value)} style={{...iStyle, gridColumn: isMobile ? 'span 2' : 'auto'}}/>
+            <select value={expCategory} onChange={e=>setExpCategory(e.target.value)} style={iStyle}><option value="All">All Categories</option>{expenseCategoryOptions.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={expAcctFilter} onChange={e=>setExpAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
+            <select value={expModeFilter} onChange={e=>setExpModeFilter(e.target.value)} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
+            <input type="date" value={expDateFrom} onChange={e=>{setExpDateFrom(e.target.value);setExpQuick('')}} title="Entry date from" style={iStyle}/>
+            <input type="date" value={expDateTo} onChange={e=>{setExpDateTo(e.target.value);setExpQuick('')}} title="Entry date to" style={iStyle}/>
+          </div>
+          <div style={{display:'flex',gap:8,marginTop:12,alignItems:'center',flexWrap:'wrap'}}>
+            <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
+            {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
+              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f1f5f9',color:expQuick===k?'white':'#64748b'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
+            ))}
+            {(expSearch||expAcctFilter!=='All'||expModeFilter!=='All'||expCategory!=='All'||expDateFrom||expDateTo)&&
+              <button onClick={resetExpFilters} style={{...smallBtn('#fee2e2','#dc2626'),padding:'5px 12px',fontSize:12}}>✖ Reset</button>}
+          </div>
+        </div>
+
+        {/* ── separate daily expenditure table ── */}
+        {expenditureGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No expenditure entries found for this date range.</div>:(
+          <TransactionsViewBanking
+            dayRows={expenditureFilteredEntries}
+            dailyIsIncome={false}
+            dailyDateMode="entry"
+            dailyAmtColor="#c0392b"
+            dayTotal={expenditureTotals.expense}
+            dailyCashAmt={expenditureCashAmt}
+            dailyBankAmt={expenditureBankAmt}
+            dailyTotalAmt={expenditureTotals.expense}
             fraudFlags={fraudFlags}
             canWrite={canWrite}
             fmt={fmt}
@@ -1556,9 +1770,9 @@ function Accounts({role,userId}){
         <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
           <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 12px',fontWeight:600}}>EXPORT — every file includes the GNSI letterhead, applied filters, print date, and signature lines for "Prepared By" &amp; "Authorized Signature".</p>
           <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-            <button onClick={generateReportPDF} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 Generate PDF'}</button>
-            <button onClick={generateReportDOCX} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='docx'?'⏳ Generating…':'📝 Generate Word (DOCX)'}</button>
-            <button onClick={generateReportExcel} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Generate Excel'}</button>
+            <button onClick={()=>generateReportPDF()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 Generate PDF'}</button>
+            <button onClick={()=>generateReportDOCX()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='docx'?'⏳ Generating…':'📝 Generate Word (DOCX)'}</button>
+            <button onClick={()=>generateReportExcel()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Generate Excel'}</button>
           </div>
         </div>
 

@@ -14,6 +14,13 @@
 
 import React, { useMemo, useState } from 'react'
 
+// ── Type system ────────────────────────────────────────────────────────────
+// Fraunces (a characterful, slightly ink-trapped serif) carries the "private
+// treasury" identity on the wordmark, balance figure, and section titles.
+// JetBrains Mono gives every amount and date true tabular alignment.
+const FONT_DISPLAY = "'Fraunces', Georgia, 'Times New Roman', serif"
+const FONT_MONO     = "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace"
+
 export const AccountsDashboardBanking = ({
   entries = [],
   canWrite = false,
@@ -44,9 +51,234 @@ export const AccountsDashboardBanking = ({
     [entries]
   )
 
+  const sortedIncomeEntries = useMemo(
+    () => sortedEntries.filter((e) => e.type === 'Income'),
+    [sortedEntries]
+  )
+  const sortedExpenseEntries = useMemo(
+    () => sortedEntries.filter((e) => e.type === 'Expense'),
+    [sortedEntries]
+  )
+
+  // Renders one ledger card (used twice below — once for Income, once for Expenditure —
+  // so the two tables share identical styling/behavior while staying visually separate).
+  const renderLedgerCard = (list, { title, subtitle, accent, emptyIcon, emptyTitle, emptyBody, delay }) => {
+    const rows = list.slice(0, isMobile ? 15 : 30)
+    return (
+      <div
+        className="gnsi-animate"
+        style={{
+          backgroundColor: 'white',
+          borderRadius: '16px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
+          border: '1px solid rgba(0,0,0,0.06)',
+          overflow: 'hidden',
+          animationDelay: delay,
+        }}
+      >
+        {/* Accent bar */}
+        <div style={{ height: '3px', background: `linear-gradient(90deg, ${accent}, ${accent}55)` }} />
+
+        {/* Header */}
+        <div
+          style={{
+            padding: isMobile ? '16px' : '20px 24px',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <div>
+            <p
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontSize: '17px',
+                fontWeight: 600,
+                margin: 0,
+                color: accent,
+              }}
+            >
+              {title}
+            </p>
+            <p
+              style={{
+                fontSize: '12px',
+                color: '#65676F',
+                margin: '4px 0 0 0',
+              }}
+            >
+              {subtitle}
+            </p>
+          </div>
+        </div>
+
+        {/* Rows */}
+        <div>
+          {list.length === 0 ? (
+            <div
+              style={{
+                padding: isMobile ? '40px 20px' : '60px 40px',
+                textAlign: 'center',
+                color: '#9C9EA6',
+              }}
+            >
+              <div style={{ fontSize: '40px', marginBottom: '16px', opacity: 0.6 }}>{emptyIcon}</div>
+              <p style={{ fontSize: '15px', fontWeight: 500, margin: 0 }}>
+                {emptyTitle}
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  color: '#C7C9D1',
+                  margin: '6px 0 0 0',
+                }}
+              >
+                {emptyBody}
+              </p>
+            </div>
+          ) : (
+            rows.map((entry, idx) => {
+              const isIncome = entry.type === 'Income'
+              return (
+                <div
+                  key={entry.id}
+                  tabIndex={0}
+                  role="button"
+                  className="gnsi-row"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: isMobile ? '14px 16px' : '16px 24px',
+                    borderBottom:
+                      idx < rows.length - 1
+                        ? '1px solid rgba(0,0,0,0.04)'
+                        : 'none',
+                    backgroundColor: 'transparent',
+                    transition: 'background-color 0.15s ease, transform 0.15s ease',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#FAFAF8'
+                    e.currentTarget.style.transform = 'translateX(2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                    e.currentTarget.style.transform = 'translateX(0)'
+                  }}
+                  onClick={() => setSelectedTxn(entry)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setSelectedTxn(entry)
+                    }
+                  }}
+                >
+                  {/* Left side */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '14px',
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '16px',
+                        flexShrink: 0,
+                        backgroundColor: isIncome
+                          ? 'rgba(10, 128, 66, 0.1)'
+                          : 'rgba(215, 0, 21, 0.1)',
+                        color: isIncome ? '#0E7A4C' : '#AF1830',
+                      }}
+                    >
+                      {isIncome ? '↑' : '↓'}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          margin: 0,
+                          color: '#16171B',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {entry.note || entry.category || 'Transaction'}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: '12px',
+                          color: '#9C9EA6',
+                          margin: '4px 0 0 0',
+                        }}
+                      >
+                        {entry.entry_date} · {entry.payment_mode || 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right side */}
+                  <div
+                    style={{
+                      textAlign: 'right',
+                      marginLeft: '16px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        margin: 0,
+                        fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                        color: isIncome ? '#0E7A4C' : '#AF1830',
+                      }}
+                    >
+                      {isIncome ? '+' : '−'}{fmt(entry.amount || 0)}
+                    </p>
+                    {entry.status !== 'Confirmed' && (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          padding: '4px 8px',
+                          borderRadius: '5px',
+                          marginTop: '6px',
+                          backgroundColor: '#FBF0DE',
+                          color: '#9C6410',
+                        }}
+                      >
+                        Pending
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#FBFBFD', color: '#1D1D1F', padding: isMobile ? '16px' : '24px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#F6F5F2', color: '#16171B', padding: isMobile ? '16px' : '24px' }}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
         * {
           margin: 0;
           padding: 0;
@@ -60,23 +292,53 @@ export const AccountsDashboardBanking = ({
         }
 
         button:focus-visible {
-          outline: 2px solid #0084FF;
+          outline: 2px solid #B9902F;
           outline-offset: 2px;
+        }
+
+        .gnsi-row:focus-visible {
+          outline: 2px solid #B9902F;
+          outline-offset: -2px;
         }
 
         .smooth-transition {
           transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
+        @keyframes gnsiRise {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes gnsiSheen {
+          0%   { transform: translateX(-120%) rotate(8deg); }
+          100% { transform: translateX(220%) rotate(8deg); }
+        }
+
+        .gnsi-animate {
+          animation: gnsiRise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .gnsi-sheen {
+          animation: gnsiSheen 3.2s ease-in-out infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .gnsi-animate, .gnsi-sheen {
+            animation: none !important;
+          }
+        }
       `}</style>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
+      <div className="gnsi-animate" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
         <div
           style={{
             width: 40,
             height: 40,
             borderRadius: '10px',
-            background: 'linear-gradient(135deg, #1D1D1F 0%, #3A3A3C 100%)',
+            background: 'linear-gradient(135deg, #16171B 0%, #2B2C31 100%)',
+            border: '1px solid rgba(185, 144, 47, 0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -96,19 +358,24 @@ export const AccountsDashboardBanking = ({
         <div>
           <p
             style={{
-              fontSize: '16px',
+              fontFamily: FONT_DISPLAY,
+              fontSize: '18px',
               fontWeight: 600,
               lineHeight: 1.3,
               marginBottom: '2px',
+              letterSpacing: '0.1px',
             }}
           >
             GNSI Treasury
           </p>
           <p
             style={{
-              fontSize: '13px',
-              color: '#AEAEB2',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#9C9EA6',
               lineHeight: 1.3,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
             }}
           >
             Accounts &amp; cash flow
@@ -118,31 +385,33 @@ export const AccountsDashboardBanking = ({
 
       {/* Treasury Card - Compact */}
       <div
+        className="gnsi-animate"
         style={{
           position: 'relative',
-          borderRadius: '16px',
-          padding: isMobile ? '16px' : '20px 24px',
+          borderRadius: '18px',
+          padding: isMobile ? '18px' : '22px 26px',
           marginBottom: '24px',
           color: 'white',
           overflow: 'hidden',
-          background: 'linear-gradient(135deg, #1D1D1F 0%, #2C2C2E 50%, #1D1D1F 100%)',
+          background: 'linear-gradient(135deg, #16171B 0%, #202126 50%, #16171B 100%)',
+          border: '1px solid rgba(185, 144, 47, 0.25)',
           boxShadow:
-            '0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.08)',
+            '0 1px 2px rgba(0,0,0,0.05), 0 12px 32px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.08)',
           backdropFilter: 'blur(20px)',
         }}
       >
-        {/* Glossy overlay */}
+        {/* Animated foil sheen */}
         <div
+          className="gnsi-sheen"
           style={{
             position: 'absolute',
             top: '-60%',
-            right: '-20%',
-            width: '60%',
+            left: '-30%',
+            width: '50%',
             height: '220%',
             pointerEvents: 'none',
             background:
-              'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)',
-            transform: 'rotate(8deg)',
+              'linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.07) 50%, transparent 70%)',
           }}
         />
 
@@ -153,7 +422,7 @@ export const AccountsDashboardBanking = ({
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-start',
-              marginBottom: '12px',
+              marginBottom: '14px',
             }}
           >
             <div>
@@ -182,25 +451,42 @@ export const AccountsDashboardBanking = ({
                 GNSI · Khangabok, Thoubal
               </p>
             </div>
+            {/* Foil seal — the card's signature mark, in place of a plain chip */}
             <div
               style={{
-                width: '32px',
-                height: '20px',
-                borderRadius: '4px',
-                background: 'linear-gradient(135deg, #D4AF6A 0%, #B8915A 100%)',
-                boxShadow: '0 2px 8px rgba(212, 175, 106, 0.25)',
+                width: '34px',
+                height: '34px',
+                borderRadius: '50%',
+                background: 'linear-gradient(150deg, #F1DFA6 0%, #C9A227 45%, #8C6D28 100%)',
+                boxShadow: '0 2px 10px rgba(180, 141, 46, 0.35), inset 0 1px 1px rgba(255,255,255,0.5), inset 0 -1px 2px rgba(0,0,0,0.25)',
                 flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid rgba(255,255,255,0.25)',
               }}
-            />
+            >
+              <span
+                style={{
+                  fontFamily: FONT_DISPLAY,
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: '#3A2E0E',
+                  lineHeight: 1,
+                }}
+              >
+                G
+              </span>
+            </div>
           </div>
 
           {/* Balance */}
           <p
             style={{
-              fontSize: isMobile ? '24px' : '32px',
-              fontWeight: 600,
-              margin: '8px 0 12px 0',
-              fontFamily: "'Courier New', monospace",
+              fontSize: isMobile ? '26px' : '34px',
+              fontWeight: 500,
+              margin: '8px 0 14px 0',
+              fontFamily: FONT_MONO,
               letterSpacing: '-0.3px',
               lineHeight: 1.1,
             }}
@@ -214,6 +500,8 @@ export const AccountsDashboardBanking = ({
               display: 'grid',
               gridTemplateColumns: '1fr 1fr 1fr',
               gap: isMobile ? '12px' : '16px',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              paddingTop: '14px',
             }}
           >
             <div>
@@ -234,8 +522,8 @@ export const AccountsDashboardBanking = ({
                   fontSize: '13px',
                   fontWeight: 600,
                   margin: 0,
-                  fontFamily: "'Courier New', monospace",
-                  color: '#6FDB9A',
+                  fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                  color: '#86D9AE',
                 }}
               >
                 +{fmt(stats.income)}
@@ -259,8 +547,8 @@ export const AccountsDashboardBanking = ({
                   fontSize: '13px',
                   fontWeight: 600,
                   margin: 0,
-                  fontFamily: "'Courier New', monospace",
-                  color: '#FF8A8A',
+                  fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                  color: '#FF9C93',
                 }}
               >
                 −{fmt(stats.expense)}
@@ -284,7 +572,7 @@ export const AccountsDashboardBanking = ({
                   fontSize: '13px',
                   fontWeight: 600,
                   margin: 0,
-                  fontFamily: "'Courier New', monospace",
+                  fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
                   color: 'rgba(255, 255, 255, 0.9)',
                 }}
               >
@@ -306,19 +594,29 @@ export const AccountsDashboardBanking = ({
       >
         {/* Pending */}
         <div
+          className="gnsi-animate smooth-transition"
           style={{
             backgroundColor: 'white',
             borderRadius: '14px',
             padding: '20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.05s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
           }}
         >
           <p
             style={{
               fontSize: '12px',
               fontWeight: 500,
-              color: '#6E6E73',
+              color: '#65676F',
               textTransform: 'uppercase',
               letterSpacing: '0.3px',
               margin: 0,
@@ -331,7 +629,7 @@ export const AccountsDashboardBanking = ({
               fontSize: isMobile ? '24px' : '28px',
               fontWeight: 600,
               margin: '12px 0 0 0',
-              fontFamily: "'Courier New', monospace",
+              fontFamily: FONT_MONO,
             }}
           >
             {stats.pending}
@@ -339,7 +637,7 @@ export const AccountsDashboardBanking = ({
           <p
             style={{
               fontSize: '12px',
-              color: '#AEAEB2',
+              color: '#9C9EA6',
               margin: '8px 0 0 0',
             }}
           >
@@ -349,19 +647,29 @@ export const AccountsDashboardBanking = ({
 
         {/* Total Transactions */}
         <div
+          className="gnsi-animate smooth-transition"
           style={{
             backgroundColor: 'white',
             borderRadius: '14px',
             padding: '20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.10s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
           }}
         >
           <p
             style={{
               fontSize: '12px',
               fontWeight: 500,
-              color: '#6E6E73',
+              color: '#65676F',
               textTransform: 'uppercase',
               letterSpacing: '0.3px',
               margin: 0,
@@ -374,7 +682,7 @@ export const AccountsDashboardBanking = ({
               fontSize: isMobile ? '24px' : '28px',
               fontWeight: 600,
               margin: '12px 0 0 0',
-              fontFamily: "'Courier New', monospace",
+              fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
             }}
           >
             {entries.length}
@@ -382,7 +690,7 @@ export const AccountsDashboardBanking = ({
           <p
             style={{
               fontSize: '12px',
-              color: '#AEAEB2',
+              color: '#9C9EA6',
               margin: '8px 0 0 0',
             }}
           >
@@ -392,19 +700,29 @@ export const AccountsDashboardBanking = ({
 
         {/* Income Count */}
         <div
+          className="gnsi-animate smooth-transition"
           style={{
             backgroundColor: 'white',
             borderRadius: '14px',
             padding: '20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
           }}
         >
           <p
             style={{
               fontSize: '12px',
               fontWeight: 500,
-              color: '#6E6E73',
+              color: '#65676F',
               textTransform: 'uppercase',
               letterSpacing: '0.3px',
               margin: 0,
@@ -417,8 +735,8 @@ export const AccountsDashboardBanking = ({
               fontSize: isMobile ? '24px' : '28px',
               fontWeight: 600,
               margin: '12px 0 0 0',
-              fontFamily: "'Courier New', monospace",
-              color: '#0A8042',
+              fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+              color: '#0E7A4C',
             }}
           >
             {entries.filter((e) => e.type === 'Income').length}
@@ -426,7 +744,7 @@ export const AccountsDashboardBanking = ({
           <p
             style={{
               fontSize: '12px',
-              color: '#AEAEB2',
+              color: '#9C9EA6',
               margin: '8px 0 0 0',
             }}
           >
@@ -436,19 +754,29 @@ export const AccountsDashboardBanking = ({
 
         {/* Expense Count */}
         <div
+          className="gnsi-animate smooth-transition"
           style={{
             backgroundColor: 'white',
             borderRadius: '14px',
             padding: '20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.20s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
           }}
         >
           <p
             style={{
               fontSize: '12px',
               fontWeight: 500,
-              color: '#6E6E73',
+              color: '#65676F',
               textTransform: 'uppercase',
               letterSpacing: '0.3px',
               margin: 0,
@@ -461,8 +789,8 @@ export const AccountsDashboardBanking = ({
               fontSize: isMobile ? '24px' : '28px',
               fontWeight: 600,
               margin: '12px 0 0 0',
-              fontFamily: "'Courier New', monospace",
-              color: '#D70015',
+              fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+              color: '#AF1830',
             }}
           >
             {entries.filter((e) => e.type === 'Expense').length}
@@ -470,7 +798,7 @@ export const AccountsDashboardBanking = ({
           <p
             style={{
               fontSize: '12px',
-              color: '#AEAEB2',
+              color: '#9C9EA6',
               margin: '8px 0 0 0',
             }}
           >
@@ -479,193 +807,32 @@ export const AccountsDashboardBanking = ({
         </div>
       </div>
 
-      {/* Transaction Ledger */}
+      {/* Transaction Ledgers — Income and Expenditure kept in separate tables */}
       <div
         style={{
-          backgroundColor: 'white',
-          borderRadius: '16px',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
-          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: '20px',
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            padding: isMobile ? '16px' : '20px 24px',
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div>
-            <p
-              style={{
-                fontSize: '15px',
-                fontWeight: 600,
-                margin: 0,
-              }}
-            >
-              Recent Transactions
-            </p>
-            <p
-              style={{
-                fontSize: '12px',
-                color: '#6E6E73',
-                margin: '4px 0 0 0',
-              }}
-            >
-              {entries.length} total · sorted by date
-            </p>
-          </div>
-        </div>
-
-        {/* Transactions List */}
-        <div>
-          {entries.length === 0 ? (
-            <div
-              style={{
-                padding: isMobile ? '40px 20px' : '60px 40px',
-                textAlign: 'center',
-                color: '#AEAEB2',
-              }}
-            >
-              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
-              <p style={{ fontSize: '15px', fontWeight: 500, margin: 0 }}>
-                No transactions yet
-              </p>
-              <p
-                style={{
-                  fontSize: '13px',
-                  color: '#D1D5DB',
-                  margin: '6px 0 0 0',
-                }}
-              >
-                Start recording income and expenses to see them here.
-              </p>
-            </div>
-          ) : (
-            sortedEntries.slice(0, isMobile ? 15 : 30).map((entry, idx) => {
-              const isIncome = entry.type === 'Income'
-              return (
-                <div
-                  key={entry.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: isMobile ? '14px 16px' : '16px 24px',
-                    borderBottom:
-                      idx < sortedEntries.slice(0, isMobile ? 15 : 30).length - 1
-                        ? '1px solid rgba(0,0,0,0.04)'
-                        : 'none',
-                    backgroundColor: 'transparent',
-                    transition: 'background-color 0.15s ease',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#FAFAFA'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent'
-                  }}
-                  onClick={() => setSelectedTxn(entry)}
-                >
-                  {/* Left side */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '14px',
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '16px',
-                        flexShrink: 0,
-                        backgroundColor: isIncome
-                          ? 'rgba(10, 128, 66, 0.1)'
-                          : 'rgba(215, 0, 21, 0.1)',
-                        color: isIncome ? '#0A8042' : '#D70015',
-                      }}
-                    >
-                      {isIncome ? '↑' : '↓'}
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p
-                        style={{
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          margin: 0,
-                          color: '#1D1D1F',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {entry.note || entry.category || 'Transaction'}
-                      </p>
-                      <p
-                        style={{
-                          fontSize: '12px',
-                          color: '#AEAEB2',
-                          margin: '4px 0 0 0',
-                        }}
-                      >
-                        {entry.entry_date} · {entry.payment_mode || 'Unknown'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Right side */}
-                  <div
-                    style={{
-                      textAlign: 'right',
-                      marginLeft: '16px',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        margin: 0,
-                        fontFamily: "'Courier New', monospace",
-                        color: isIncome ? '#0A8042' : '#D70015',
-                      }}
-                    >
-                      {isIncome ? '+' : '−'}{fmt(entry.amount || 0)}
-                    </p>
-                    {entry.status !== 'Confirmed' && (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontSize: '10px',
-                          fontWeight: 600,
-                          padding: '4px 8px',
-                          borderRadius: '5px',
-                          marginTop: '6px',
-                          backgroundColor: '#FDF1E3',
-                          color: '#B25E00',
-                        }}
-                      >
-                        Pending
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
+        {renderLedgerCard(sortedIncomeEntries, {
+          title: '↑ Income',
+          subtitle: `${sortedIncomeEntries.length} total · sorted by date`,
+          accent: '#0E7A4C',
+          emptyIcon: '📈',
+          emptyTitle: 'No income yet',
+          emptyBody: 'Recorded income will show up here.',
+          delay: '0.25s',
+        })}
+        {renderLedgerCard(sortedExpenseEntries, {
+          title: '↓ Expenditure',
+          subtitle: `${sortedExpenseEntries.length} total · sorted by date`,
+          accent: '#AF1830',
+          emptyIcon: '📉',
+          emptyTitle: 'No expenditure yet',
+          emptyBody: 'Recorded expenses will show up here.',
+          delay: '0.30s',
+        })}
       </div>
 
       {/* Transaction Detail Modal */}
@@ -674,7 +841,8 @@ export const AccountsDashboardBanking = ({
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            backgroundColor: 'rgba(15, 16, 20, 0.55)',
+            backdropFilter: 'blur(4px)',
             display: 'flex',
             alignItems: 'flex-end',
             justifyContent: 'center',
@@ -684,6 +852,7 @@ export const AccountsDashboardBanking = ({
           onClick={() => setSelectedTxn(null)}
         >
           <div
+            className="gnsi-sheet"
             style={{
               backgroundColor: 'white',
               borderRadius: '20px 20px 0 0',
@@ -693,6 +862,7 @@ export const AccountsDashboardBanking = ({
               maxHeight: '90vh',
               overflowY: 'auto',
               boxShadow: '0 16px 40px rgba(0,0,0,0.20)',
+              borderTop: '3px solid #C9A227',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -706,7 +876,7 @@ export const AccountsDashboardBanking = ({
                 background: 'none',
                 cursor: 'pointer',
                 fontSize: '24px',
-                color: '#AEAEB2',
+                color: '#9C9EA6',
                 width: '32px',
                 height: '32px',
                 display: 'flex',
@@ -716,12 +886,12 @@ export const AccountsDashboardBanking = ({
                 transition: 'all 0.2s ease',
               }}
               onMouseEnter={(e) => {
-                e.target.style.backgroundColor = '#F5F5F7'
-                e.target.style.color = '#1D1D1F'
+                e.target.style.backgroundColor = '#EFEFEC'
+                e.target.style.color = '#16171B'
               }}
               onMouseLeave={(e) => {
                 e.target.style.backgroundColor = 'transparent'
-                e.target.style.color = '#AEAEB2'
+                e.target.style.color = '#9C9EA6'
               }}
               aria-label="Close modal"
             >
@@ -731,14 +901,16 @@ export const AccountsDashboardBanking = ({
             {/* Content */}
             <h3
               style={{
-                fontSize: '18px',
+                fontFamily: FONT_DISPLAY,
+                fontSize: '20px',
                 fontWeight: 600,
-                margin: '0 0 24px 0',
+                margin: '0 0 6px 0',
                 paddingRight: '32px',
               }}
             >
               {selectedTxn.note || selectedTxn.category || 'Transaction'}
             </h3>
+            <div style={{ width: '36px', height: '2px', background: 'linear-gradient(90deg,#C9A227,#8C6D28)', margin: '0 0 20px 0' }} />
 
             <div style={{ marginBottom: '28px' }}>
               <div
@@ -752,7 +924,7 @@ export const AccountsDashboardBanking = ({
                   <p
                     style={{
                       fontSize: '12px',
-                      color: '#AEAEB2',
+                      color: '#9C9EA6',
                       textTransform: 'uppercase',
                       letterSpacing: '0.3px',
                       margin: '0 0 6px 0',
@@ -766,7 +938,7 @@ export const AccountsDashboardBanking = ({
                       fontSize: '15px',
                       fontWeight: 500,
                       margin: 0,
-                      color: '#1D1D1F',
+                      color: '#16171B',
                     }}
                   >
                     {selectedTxn.type}
@@ -776,7 +948,7 @@ export const AccountsDashboardBanking = ({
                   <p
                     style={{
                       fontSize: '12px',
-                      color: '#AEAEB2',
+                      color: '#9C9EA6',
                       textTransform: 'uppercase',
                       letterSpacing: '0.3px',
                       margin: '0 0 6px 0',
@@ -790,9 +962,9 @@ export const AccountsDashboardBanking = ({
                       fontSize: '15px',
                       fontWeight: 600,
                       margin: 0,
-                      fontFamily: "'Courier New', monospace",
+                      fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
                       color:
-                        selectedTxn.type === 'Income' ? '#0A8042' : '#D70015',
+                        selectedTxn.type === 'Income' ? '#0E7A4C' : '#AF1830',
                     }}
                   >
                     {selectedTxn.type === 'Income' ? '+' : '−'}
@@ -803,7 +975,7 @@ export const AccountsDashboardBanking = ({
                   <p
                     style={{
                       fontSize: '12px',
-                      color: '#AEAEB2',
+                      color: '#9C9EA6',
                       textTransform: 'uppercase',
                       letterSpacing: '0.3px',
                       margin: '0 0 6px 0',
@@ -817,7 +989,7 @@ export const AccountsDashboardBanking = ({
                       fontSize: '15px',
                       fontWeight: 500,
                       margin: 0,
-                      color: '#1D1D1F',
+                      color: '#16171B',
                     }}
                   >
                     {selectedTxn.entry_date}
@@ -827,7 +999,7 @@ export const AccountsDashboardBanking = ({
                   <p
                     style={{
                       fontSize: '12px',
-                      color: '#AEAEB2',
+                      color: '#9C9EA6',
                       textTransform: 'uppercase',
                       letterSpacing: '0.3px',
                       margin: '0 0 6px 0',
@@ -841,7 +1013,7 @@ export const AccountsDashboardBanking = ({
                       fontSize: '15px',
                       fontWeight: 500,
                       margin: 0,
-                      color: '#1D1D1F',
+                      color: '#16171B',
                     }}
                   >
                     {selectedTxn.payment_mode || '—'}
@@ -851,7 +1023,7 @@ export const AccountsDashboardBanking = ({
                   <p
                     style={{
                       fontSize: '12px',
-                      color: '#AEAEB2',
+                      color: '#9C9EA6',
                       textTransform: 'uppercase',
                       letterSpacing: '0.3px',
                       margin: '0 0 6px 0',
@@ -865,7 +1037,7 @@ export const AccountsDashboardBanking = ({
                       fontSize: '15px',
                       fontWeight: 500,
                       margin: 0,
-                      color: selectedTxn.status === 'Confirmed' ? '#0A8042' : '#B25E00',
+                      color: selectedTxn.status === 'Confirmed' ? '#0E7A4C' : '#9C6410',
                     }}
                   >
                     {selectedTxn.status}
@@ -875,7 +1047,7 @@ export const AccountsDashboardBanking = ({
                   <p
                     style={{
                       fontSize: '12px',
-                      color: '#AEAEB2',
+                      color: '#9C9EA6',
                       textTransform: 'uppercase',
                       letterSpacing: '0.3px',
                       margin: '0 0 6px 0',
@@ -889,7 +1061,7 @@ export const AccountsDashboardBanking = ({
                       fontSize: '15px',
                       fontWeight: 500,
                       margin: 0,
-                      color: '#1D1D1F',
+                      color: '#16171B',
                     }}
                   >
                     {selectedTxn.account_type || '—'}
@@ -914,7 +1086,7 @@ export const AccountsDashboardBanking = ({
                   style={{
                     flex: 1,
                     padding: '12px 16px',
-                    backgroundColor: '#1D1D1F',
+                    backgroundColor: '#16171B',
                     color: 'white',
                     fontWeight: 600,
                     fontSize: '14px',
@@ -923,10 +1095,10 @@ export const AccountsDashboardBanking = ({
                     transition: 'all 0.2s ease',
                   }}
                   onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = '#3A3A3C'
+                    e.target.style.backgroundColor = '#2B2C31'
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = '#1D1D1F'
+                    e.target.style.backgroundColor = '#16171B'
                   }}
                 >
                   Edit
@@ -940,7 +1112,7 @@ export const AccountsDashboardBanking = ({
                     flex: 1,
                     padding: '12px 16px',
                     backgroundColor: '#FDEAEC',
-                    color: '#D70015',
+                    color: '#AF1830',
                     fontWeight: 600,
                     fontSize: '14px',
                     borderRadius: '10px',
