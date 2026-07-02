@@ -453,6 +453,124 @@ export async function deleteEvent(id) {
   return supabase.from('website_events').delete().eq('id', id);
 }
 
+// ─── SITE STATS (stored as rows in website_settings — no new table needed) ─
+// Powers: hero stats-bar, ribbon strip, and the Live Dashboard's
+// "Hostel Occupancy" / "Next Mock Test" rows. Falls back to sensible
+// defaults if a key hasn't been set yet in WebsiteTab.
+const STATS_DEFAULTS = {
+  selection_rate: '95%',
+  years_of_excellence: '10+',
+  officers_produced: '200+',
+  students_trained: '500+',
+  selected_current_year: '66',
+  selected_current_year_label: 'Selected 2025–26',
+  hostel_occupancy: '92%',
+  next_mock_test: 'This Sunday',
+  google_review_score: '4.9',
+  google_review_count: '80+',
+};
+
+export async function getStats() {
+  const settings = await getSettings();
+  return { ...STATS_DEFAULTS, ...settings };
+}
+
+export async function saveStats(stats) {
+  return saveSettings(stats);
+}
+
+// ─── TESTIMONIALS (website_testimonials) ───────────────────────────────────
+// Distinct from website_reviews (Google Reviews): these are the "What
+// Parents Say" quote-slider cards. No reviewer name is shown on the
+// public site by default — just "Parent" — to protect student privacy.
+export async function getFeaturedTestimonials(limit = 8) {
+  const { data, error } = await supabase
+    .from('website_testimonials')
+    .select('id,quote,attribution,rating,sort_order')
+    .eq('is_featured', true)
+    .order('sort_order')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) return [];
+  return data || [];
+}
+
+export async function getAllTestimonials() {
+  const { data, error } = await supabase
+    .from('website_testimonials')
+    .select('*')
+    .order('is_featured', { ascending: false })
+    .order('sort_order');
+
+  if (error) return [];
+  return data || [];
+}
+
+export async function saveTestimonial(form, editingId = null) {
+  if (editingId) {
+    return supabase.from('website_testimonials').update(form).eq('id', editingId);
+  }
+
+  return supabase.from('website_testimonials').insert(form);
+}
+
+export async function toggleTestimonialFeatured(id, current) {
+  return supabase.from('website_testimonials').update({ is_featured: !current }).eq('id', id);
+}
+
+export async function deleteTestimonial(id) {
+  return supabase.from('website_testimonials').delete().eq('id', id);
+}
+
+// ─── EXAM CALENDAR (website_exam_calendar) ─────────────────────────────────
+export async function getExamCalendar() {
+  const { data, error } = await supabase
+    .from('website_exam_calendar')
+    .select('*')
+    .order('sort_order')
+    .order('exam_date_sort');
+
+  if (error) return [];
+  return data || [];
+}
+
+export async function saveExamCalendarRow(form, editingId = null) {
+  if (editingId) {
+    return supabase.from('website_exam_calendar').update(form).eq('id', editingId);
+  }
+
+  return supabase.from('website_exam_calendar').insert(form);
+}
+
+export async function deleteExamCalendarRow(id) {
+  return supabase.from('website_exam_calendar').delete().eq('id', id);
+}
+
+// ─── IMPORTANT DATES TIMELINE (website_timeline) ───────────────────────────
+export async function getTimeline() {
+  const { data, error } = await supabase
+    .from('website_timeline')
+    .select('*')
+    .order('sort_order')
+    .order('event_date');
+
+  if (error) return [];
+  return data || [];
+}
+
+export async function saveTimelineItem(form, editingId = null) {
+  if (editingId) {
+    return supabase.from('website_timeline').update(form).eq('id', editingId);
+  }
+
+  return supabase.from('website_timeline').insert(form);
+}
+
+export async function deleteTimelineItem(id) {
+  return supabase.from('website_timeline').delete().eq('id', id);
+}
+
 // ─── LIVE KPI (Dashboard Panel on Landing Page) ────────────────────────────
 export async function getLiveKPIs() {
   const today = new Date().toISOString().slice(0, 10);

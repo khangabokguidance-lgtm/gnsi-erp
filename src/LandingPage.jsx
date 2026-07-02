@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
-  getLiveKPIs, getEvents, submitEnquiry, submitScholarRegistration, submitGrievance
+  getLiveKPIs, getEvents, submitEnquiry, submitScholarRegistration, submitGrievance,
+  getStats, getFeaturedTestimonials, getExamCalendar, getTimeline
 } from './websiteApi';
 import { supabase } from './supabase';
 
@@ -219,10 +220,10 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
   } catch (e) { console.error('KPI load failed:', e); }
 })();
 
-// ---- 2. NOTICES (top 3 active, into #noticesGrid) ----
+// ---- 2. NOTICES (top 3 active, into #publicNoticeCards) ----
 (async () => {
-  const grid = document.getElementById('noticesGrid');
-  if (!grid) return; // add id="noticesGrid" to the .cards-row div in the Notices section
+  const grid = document.getElementById('publicNoticeCards');
+  if (!grid) return;
   try {
     const notices = await getActiveNotices(3);
     if (!notices.length) return; // leave existing static cards as fallback
@@ -475,6 +476,145 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
         </div>`;
     }).join('');
   } catch (e) { console.error('Faculty load failed:', e); }
+})();
+
+// ---- 10b. SITE STATS (stats-bar, ribbon, dashboard, reviews header) ----
+// Reads website_settings via getStats(). Any key an admin hasn't set yet
+// falls back to the STATS_DEFAULTS baked into websiteApi.js, so this is
+// safe to run even before WebsiteTab has a stats editor wired up.
+(async () => {
+  try {
+    const stats = await getStats();
+
+    // "97%" -> {target:97, suffix:'%'} ; "220+" -> {target:220, suffix:'+'} ; "66" -> {target:66, suffix:''}
+    const parseStat = (val) => {
+      const m = String(val ?? '').match(/^(\d+)(.*)$/);
+      return m ? { target: parseInt(m[1], 10), suffix: m[2] || '' } : { target: 0, suffix: '' };
+    };
+
+    const setCountUp = (id, rawVal) => {
+      const el = document.getElementById(id);
+      if (!el || rawVal == null) return;
+      const { target, suffix } = parseStat(rawVal);
+      el.setAttribute('data-target', target);
+      el.setAttribute('data-suffix', suffix);
+      el.textContent = `${target}${suffix}`;
+    };
+
+    const setText = (id, val) => {
+      const el = document.getElementById(id);
+      if (el && val != null) el.textContent = val;
+    };
+
+    setCountUp('stat-selection-rate', stats.selection_rate);
+    setCountUp('stat-years', stats.years_of_excellence);
+    setCountUp('stat-officers', stats.officers_produced);
+    setCountUp('stat-trained', stats.students_trained);
+
+    setCountUp('ribbon-years', stats.years_of_excellence);
+    setCountUp('ribbon-trained', stats.students_trained);
+    setCountUp('ribbon-selection-rate', stats.selection_rate);
+    setCountUp('ribbon-officers', stats.officers_produced);
+    setCountUp('ribbon-selected-year', stats.selected_current_year);
+    setText('ribbon-selected-year-label', stats.selected_current_year_label);
+
+    setText('stat-hostel-occupancy', stats.hostel_occupancy);
+    setText('stat-next-mock-test', stats.next_mock_test);
+
+    setText('reviews-score-num', stats.google_review_score);
+    setText('reviews-score-count', `Based on ${stats.google_review_count} Reviews`);
+  } catch (e) { console.error('Stats load failed:', e); }
+})();
+
+// ---- 10c. TESTIMONIALS (into #testiTrack, replacing the quote slider) ----
+(async () => {
+  const track = document.getElementById('testiTrack');
+  if (!track) return;
+  try {
+    const testimonials = await getFeaturedTestimonials(8);
+    if (!testimonials.length) return; // leave existing static cards as fallback
+    track.innerHTML = testimonials.map(t => `
+      <div class="testi-card">
+        <div class="stars">${'★'.repeat(t.rating || 5)}${'☆'.repeat(5 - (t.rating || 5))}</div>
+        <blockquote>"${escapeHtml(t.quote)}"</blockquote>
+        <div class="testi-foot">
+          <div class="testi-avatar">🎓</div>
+          <div class="testi-id">
+            <cite>Parent</cite>
+            <span class="testi-meta">${escapeHtml(t.attribution || '')}</span>
+          </div>
+        </div>
+      </div>`).join('');
+
+    // Rebuild the dot navigation to match the real card count
+    const dots = document.getElementById('testiDots');
+    if (dots) {
+      dots.innerHTML = '';
+      testimonials.forEach((_, i) => {
+        const dot = document.createElement('div');
+        dot.className = 'slider-dot' + (i === 0 ? ' active' : '');
+        dots.appendChild(dot);
+      });
+    }
+  } catch (e) { console.error('Testimonials load failed:', e); }
+})();
+
+// ---- 10d. EXAM CALENDAR (into #examCalBody) ----
+(async () => {
+  const body = document.getElementById('examCalBody');
+  if (!body) return;
+  try {
+    const rows = await getExamCalendar();
+    if (!rows.length) return; // leave existing static rows as fallback
+    const badgeClass = { NVS: 'cb-nvs', Sainik: 'cb-sainik', RMS: 'cb-rms' };
+    const statusClass = { Upcoming: 'cs-upcoming', Open: 'cs-open', Closed: 'cs-closed', Done: 'cs-done' };
+    body.innerHTML = rows.map(r => `
+      <tr>
+        <td>
+          <div class="cal-exam">${escapeHtml(r.exam_name)}</div>
+          ${r.sub_label ? `<small style="color:var(--mist);font-size:.72rem">${escapeHtml(r.sub_label)}</small>` : ''}
+        </td>
+        <td><span class="cal-badge ${badgeClass[r.exam_type] || 'cb-gnsi'}">${escapeHtml(r.exam_type || '')}</span></td>
+        <td>${escapeHtml(r.application_opens || '')}</td>
+        <td>${escapeHtml(r.application_closes || '')}</td>
+        <td><strong>${escapeHtml(r.exam_date || '')}</strong></td>
+        <td>${escapeHtml(r.result_date || '')}</td>
+        <td><span class="cal-status ${statusClass[r.status] || 'cs-upcoming'}">● ${escapeHtml(r.status || 'Upcoming')}</span></td>
+      </tr>`).join('');
+  } catch (e) { console.error('Exam calendar load failed:', e); }
+})();
+
+// ---- 10e. IMPORTANT DATES TIMELINE (into #timelineList) ----
+(async () => {
+  const list = document.getElementById('timelineList');
+  if (!list) return;
+  try {
+    const items = await getTimeline();
+    if (!items.length) return; // leave existing static timeline as fallback
+    const monthAbbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    list.innerHTML = items.map(t => {
+      let month = t.month_label, day = t.day_label;
+      if (t.event_date) {
+        const d = new Date(t.event_date + 'T00:00:00');
+        month = monthAbbr[d.getMonth()];
+        day = String(d.getDate()).padStart(2, '0');
+      }
+      const status = t.status || 'upcoming'; // done | open | upcoming
+      return `
+        <div class="tl-item">
+          <div class="tl-date">
+            <span class="tl-month">${escapeHtml(month || '')}</span>
+            <span class="tl-day">${escapeHtml(day || '—')}</span>
+          </div>
+          <div class="tl-dot ${status}"></div>
+          <div class="tl-content ${status}">
+            <h4>${escapeHtml(t.title)}</h4>
+            ${t.description ? `<p>${escapeHtml(t.description)}</p>` : ''}
+            ${t.tag_html ? `<div class="tl-tag">${t.tag_html}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) { console.error('Timeline load failed:', e); }
 })();
 
 // ---- 11. LIVE FORM SUBMISSIONS (replaces the 3 mock window.submit* functions) ----
@@ -1713,7 +1853,7 @@ window.submitGrievance = async () => {
         <div className="stats-bar">
           <div className="stat-item">
             <strong>
-              <span className="count-up" data-target={95} data-suffix="%">
+              <span className="count-up" id="stat-selection-rate" data-target={95} data-suffix="%">
                 95%
               </span>
             </strong>
@@ -1721,7 +1861,7 @@ window.submitGrievance = async () => {
           </div>
           <div className="stat-item">
             <strong>
-              <span className="count-up" data-target={10} data-suffix="+">
+              <span className="count-up" id="stat-years" data-target={10} data-suffix="+">
                 10+
               </span>
             </strong>
@@ -1729,7 +1869,7 @@ window.submitGrievance = async () => {
           </div>
           <div className="stat-item">
             <strong>
-              <span className="count-up" data-target={200} data-suffix="+">
+              <span className="count-up" id="stat-officers" data-target={200} data-suffix="+">
                 200+
               </span>
             </strong>
@@ -1737,7 +1877,7 @@ window.submitGrievance = async () => {
           </div>
           <div className="stat-item">
             <strong>
-              <span className="count-up" data-target={500} data-suffix="+">
+              <span className="count-up" id="stat-trained" data-target={500} data-suffix="+">
                 500+
               </span>
             </strong>
@@ -1782,11 +1922,11 @@ window.submitGrievance = async () => {
           </div>
           <div className="dash-row">
             <span>Hostel Occupancy</span>
-            <strong>92%</strong>
+            <strong id="stat-hostel-occupancy">92%</strong>
           </div>
           <div className="dash-row">
             <span>Next Mock Test</span>
-            <strong>This Sunday</strong>
+            <strong id="stat-next-mock-test">This Sunday</strong>
           </div>
           <div className="dash-row">
             <span>Latest Notice</span>
@@ -1803,7 +1943,7 @@ window.submitGrievance = async () => {
     <div className="ribbon-grid">
       <div className="ribbon-stat reveal">
         <strong>
-          <span className="count-up" data-target={10} data-suffix="+">
+          <span className="count-up" id="ribbon-years" data-target={10} data-suffix="+">
             10+
           </span>
         </strong>
@@ -1811,7 +1951,7 @@ window.submitGrievance = async () => {
       </div>
       <div className="ribbon-stat reveal">
         <strong>
-          <span className="count-up" data-target={500} data-suffix="+">
+          <span className="count-up" id="ribbon-trained" data-target={500} data-suffix="+">
             500+
           </span>
         </strong>
@@ -1819,7 +1959,7 @@ window.submitGrievance = async () => {
       </div>
       <div className="ribbon-stat reveal">
         <strong>
-          <span className="count-up" data-target={95} data-suffix="%">
+          <span className="count-up" id="ribbon-selection-rate" data-target={95} data-suffix="%">
             95%
           </span>
         </strong>
@@ -1827,7 +1967,7 @@ window.submitGrievance = async () => {
       </div>
       <div className="ribbon-stat reveal">
         <strong>
-          <span className="count-up" data-target={200} data-suffix="+">
+          <span className="count-up" id="ribbon-officers" data-target={200} data-suffix="+">
             200+
           </span>
         </strong>
@@ -1835,11 +1975,11 @@ window.submitGrievance = async () => {
       </div>
       <div className="ribbon-stat reveal">
         <strong>
-          <span className="count-up" data-target={66} data-suffix="">
+          <span className="count-up" id="ribbon-selected-year" data-target={66} data-suffix="">
             66
           </span>
         </strong>
-        <span>Selected 2025–26</span>
+        <span id="ribbon-selected-year-label">Selected 2025–26</span>
       </div>
     </div>
   </div>
@@ -2237,9 +2377,9 @@ window.submitGrievance = async () => {
       </div>
       <div className="reviews-header reveal">
         <div className="reviews-score">
-          <span className="score-num">4.9</span>
+          <span className="score-num" id="reviews-score-num">4.9</span>
           <div className="score-stars">★★★★★</div>
-          <span className="score-count">Based on 80+ Reviews</span>
+          <span className="score-count" id="reviews-score-count">Based on 80+ Reviews</span>
         </div>
         <p className="reviews-desc">
           Trusted by hundreds of families across Manipur. Our parents
@@ -2247,7 +2387,7 @@ window.submitGrievance = async () => {
           District for Sainik School and NVS preparation.
         </p>
       </div>
-      <div className="reviews-grid">
+      <div className="reviews-grid" id="reviewsGrid">
         <div className="review-card reveal">
           <div className="review-top">
             <div className="review-av">L</div>
@@ -2790,7 +2930,7 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
-      <div className="blog-grid">
+      <div className="blog-grid" id="blogGrid">
         <div className="blog-card reveal-scale">
           <div className="blog-thumb">
             📰<span className="blog-cat">Results</span>
@@ -3260,7 +3400,7 @@ window.submitGrievance = async () => {
         Download free previous year papers for NVS, Sainik School, and RMS
         entrance examinations. Practice is the key to selection.
       </p>
-      <div className="papers-grid">
+      <div className="papers-grid" id="papersGrid">
         {/* NVS Papers */}
         <div className="papers-card nvs reveal-scale">
           <h3>Navodaya Vidyalaya (NVS)</h3>
@@ -3797,7 +3937,7 @@ window.submitGrievance = async () => {
               <th>Status</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="examCalBody">
             <tr>
               <td>
                 <div className="cal-exam">JNVST Class 6</div>
@@ -3986,7 +4126,7 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
-      <div className="timeline reveal">
+      <div className="timeline reveal" id="timelineList">
         <div className="tl-item">
           <div className="tl-date">
             <span className="tl-month">Jun</span>
