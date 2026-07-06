@@ -976,8 +976,132 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
     else { showToast('Deleted'); onRefresh() }
   }
 
+  const [importing, setImporting] = useState(false)
+
+  // ── July 2026 Doubt Session & Class Time Table (from Doubt_Session_and_Class_Time_Table_July_2026.docx) ──
+  const JULY_2026_TT = [
+    { period_name:'10:25 AM–11:20 AM', rows:[
+      { class_name:'Achiever', section:'Sainik',    subject_name:'Grammar',              teacher_name:'Sir Bidyachandra' },
+      { class_name:'Leader',   section:'Sainik',    subject_name:'Science',              teacher_name:'Sir Arunkumar' },
+      { class_name:'Champion', section:'Sainik',    subject_name:'GK',                   teacher_name:'Sir Deepak' },
+      { class_name:'Lakshya',  section:'Navodaya',  subject_name:'Meitei Mayek',          teacher_name:'Sir Pawan' },
+      { class_name:'Umeed',    section:'Navodaya',  subject_name:'Mathematics I',         teacher_name:'Sir Himan' },
+      { class_name:'Elite',    section:'Foundation',subject_name:'Reasoning & Mental',    teacher_name:'Sir Roshan' },
+      { class_name:'Prime',    section:'Foundation',subject_name:'English Grammar II',    teacher_name:'Sir Manglemba' },
+    ]},
+    { period_name:'11:20 AM–12:10 PM', rows:[
+      { class_name:'Achiever', section:'Sainik',    subject_name:'Mathematics I',         teacher_name:'Sir Sumanta' },
+      { class_name:'Leader',   section:'Sainik',    subject_name:'Reasoning',             teacher_name:'Sir Johny' },
+      { class_name:'Champion', section:'Sainik',    subject_name:'Mathematics II',        teacher_name:'Sir Romen' },
+      { class_name:'Lakshya',  section:'Navodaya',  subject_name:'Grammar',               teacher_name:'Sir Chetan' },
+      { class_name:'Umeed',    section:'Navodaya',  subject_name:'Mental Ability Test',   teacher_name:'Sir Arjun' },
+      { class_name:'Elite',    section:'Foundation',subject_name:'English Grammar I',     teacher_name:'Sir Lenin' },
+      { class_name:'Prime',    section:'Foundation',subject_name:'Mathematics I',         teacher_name:'Sir Sunder' },
+    ]},
+    { period_name:'12:10 PM–1:00 PM', rows:[
+      { class_name:'Achiever', section:'Sainik',    subject_name:'Science',              teacher_name:'Sir Arunkumar' },
+      { class_name:'Leader',   section:'Sainik',    subject_name:'Mathematics',           teacher_name:'Sir Sunder' },
+      { class_name:'Champion', section:'Sainik',    subject_name:'Grammar',               teacher_name:'Sir Manglemba' },
+      { class_name:'Lakshya',  section:'Navodaya',  subject_name:'Mathematics I',         teacher_name:'Sir Himan' },
+      { class_name:'Umeed',    section:'Navodaya',  subject_name:'Meitei Mayek',          teacher_name:'Sir Pawan' },
+      { class_name:'Elite',    section:'Foundation',subject_name:'Science',              teacher_name:'Sir Arjun' },
+      { class_name:'Prime',    section:'Foundation',subject_name:'Reasoning & Mental',    teacher_name:'Sir Roshan' },
+    ]},
+    { period_name:'1:00 PM–1:25 PM', rows:[
+      { class_name:'ALL', section:null, subject_name:'TEA BREAK', teacher_name:null },
+    ]},
+    { period_name:'1:25 PM–2:15 PM', rows:[
+      { class_name:'Achiever', section:'Sainik',    subject_name:'Mathematics II',        teacher_name:'Sir Himan' },
+      { class_name:'Leader',   section:'Sainik',    subject_name:'Vocabulary',            teacher_name:'Sir Pawan' },
+      { class_name:'Champion', section:'Sainik',    subject_name:'Vocabulary',            teacher_name:'Sir Chetan' },
+      { class_name:'Lakshya',  section:'Navodaya',  subject_name:'Mathematics II',         teacher_name:'Sir Sumanta' },
+      { class_name:'Umeed',    section:'Navodaya',  subject_name:'Mathematics II',         teacher_name:'Sir Romen' },
+      { class_name:'Elite',    section:'Foundation',subject_name:'English Grammar II',    teacher_name:'Miss Fedrava' },
+      { class_name:'Prime',    section:'Foundation',subject_name:'English Grammar I',     teacher_name:'Sir Lenin' },
+    ]},
+    { period_name:'2:15 PM–3:05 PM', rows:[
+      { class_name:'Achiever', section:'Sainik',    subject_name:'Vocabulary',            teacher_name:'Sir Pawan' },
+      { class_name:'Leader',   section:'Sainik',    subject_name:'Grammar',               teacher_name:'Sir Manglemba' },
+      { class_name:'Champion', section:'Sainik',    subject_name:'Reasoning',             teacher_name:'Sir Lenin' },
+      { class_name:'Lakshya',  section:'Navodaya',  subject_name:'Mental Ability',        teacher_name:'Sir Roshan' },
+      { class_name:'Umeed',    section:'Navodaya',  subject_name:'Mental Ability',        teacher_name:'Sir Johny' },
+      { class_name:'Elite',    section:'Foundation',subject_name:'Meitei Mayek',          teacher_name:'Madam Sandhya' },
+      { class_name:'Prime',    section:'Foundation',subject_name:'Mathematics II',        teacher_name:'Sir Sumanta' },
+    ]},
+    { period_name:'3:05 PM–3:50 PM', rows:[
+      { class_name:'Achiever', section:'Sainik',    subject_name:'Reasoning',             teacher_name:'Sir Johny' },
+      { class_name:'Leader',   section:'Sainik',    subject_name:'GK',                    teacher_name:'Sir Deepak' },
+      { class_name:'Champion', section:'Sainik',    subject_name:'Mathematics I',         teacher_name:'Sir Himan' },
+      { class_name:'Lakshya',  section:'Navodaya',  subject_name:'Mental Ability Test',   teacher_name:'Sir Arjun' },
+      { class_name:'Umeed',    section:'Navodaya',  subject_name:'Grammar',               teacher_name:'Sir Chetan' },
+      { class_name:'Elite',    section:'Foundation',subject_name:'Mathematics I',         teacher_name:'Sir Sunder' },
+      { class_name:'Prime',    section:'Foundation',subject_name:'Meitei Mayek',          teacher_name:'Madam Sandhya' },
+    ]},
+    { period_name:'5:40 PM–6:35 PM', rows:[
+      { class_name:'Achiever/Leader/Champion/Lakshya', section:'Combined', subject_name:'DOUBT SESSION', teacher_name:null },
+      { class_name:'Elite/Prime', section:'Combined', subject_name:'DOUBT SESSION', teacher_name:null },
+    ]},
+    { period_name:'6:40 PM–7:35 PM', rows:[
+      { class_name:'Achiever', section:'Sainik',     subject_name:'GK',           teacher_name:'Sir Deepak' },
+      { class_name:'Leader',   section:'Sainik',     subject_name:'Mathematics', teacher_name:'Sir Himan' },
+      { class_name:'Champion', section:'Sainik',     subject_name:'Science',     teacher_name:'Sir Arunkumar' },
+      { class_name:'Lakshya/Umeed', section:'Navodaya', subject_name:'DOUBT SESSION', teacher_name:null },
+    ]},
+    { period_name:'5:40 PM–6:35 PM (Combined Group)', rows:[
+      { class_name:'Navodaya Course MM',  section:'Combined Group', subject_name:'Mathematics',           teacher_name:'Sir Bronson' },
+      { class_name:'Navodaya Course ENG', section:'Combined Group', subject_name:'English Passage',       teacher_name:'Sir Adison' },
+    ]},
+    { period_name:'6:30 AM–7:30 AM (Combined Group)', rows:[
+      { class_name:'Navodaya Course MM',  section:'Combined Group', subject_name:'Meitei Mayek Passage',  teacher_name:'Miss Deviya' },
+      { class_name:'Navodaya Course ENG', section:'Combined Group', subject_name:'Mathematics',           teacher_name:'Sir Umesh' },
+    ]},
+    { period_name:'7:40 PM–8:30 PM (Combined Group)', rows:[
+      { class_name:'Navodaya Course MM/ENG', section:'Combined Group', subject_name:'DOUBT SESSION', teacher_name:null },
+    ]},
+  ]
+
+  const handleImportJuly2026 = async () => {
+    if (!window.confirm('This will replace timetable entries for all batches in the July 2026 timetable (Achiever, Leader, Champion, Lakshya, Umeed, Elite, Prime, and the Navodaya Combined Group), across all six days (Mon–Sat). Continue?')) return
+    setImporting(true)
+    try {
+      const classNames = [...new Set(JULY_2026_TT.flatMap(p=>p.rows.map(r=>r.class_name)))]
+      const { error: delErr } = await supabase.from('timetable_entries').delete().in('class_name', classNames)
+      if (delErr) { showToast('Clear failed: '+delErr.message, 'error'); setImporting(false); return }
+
+      const rows = []
+      for (const day of DAYS) {
+        for (const period of JULY_2026_TT) {
+          for (const r of period.rows) {
+            rows.push({
+              class_name: r.class_name,
+              section: r.section,
+              day_name: day,
+              period_name: period.period_name,
+              subject_name: r.subject_name,
+              teacher_name: r.teacher_name,
+              room_name: null,
+            })
+          }
+        }
+      }
+      const CHUNK = 200
+      let total = 0
+      for (let i=0; i<rows.length; i+=CHUNK) {
+        const chunk = rows.slice(i, i+CHUNK)
+        const { error: insErr } = await supabase.from('timetable_entries').insert(chunk)
+        if (insErr) { showToast(`Import failed at row ${i}: ${insErr.message}`, 'error'); setImporting(false); return }
+        total += chunk.length
+      }
+      showToast(`Imported ${total} entries (July 2026 timetable, Mon–Sat)`)
+      onRefresh()
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const adminTabs = [
     { id:'batch', label:'Batch Entry' },
+    { id:'import',label:'Import July TT' },
     { id:'copy',  label:'Copy Day' },
     { id:'swap',  label:'Swap Periods' },
     { id:'delete',label:'Bulk Delete' },
@@ -1042,6 +1166,36 @@ function AdminSetupPanel({ staffList, entries, onRefresh, showToast }) {
             <button onClick={handleBatchSave} disabled={saving} style={{ ...S.btn.primary, opacity:saving?.7:1 }}>{saving?'Saving…':'Save All Slots'}</button>
             <button onClick={addSlot} style={S.btn.ghost}>+ Add Slot</button>
           </div>
+        </div>
+      )}
+
+      {tab==='import' && (
+        <div style={sectionCard}>
+          <div style={{ fontSize:15, fontWeight:700, color:C.ink900, marginBottom:3 }}>Import July 2026 Doubt Session &amp; Class Time Table</div>
+          <div style={{ fontSize:12, color:C.ink400, marginBottom:20 }}>
+            Loads the full timetable from <em>Doubt_Session_and_Class_Time_Table_July_2026.docx</em> — all regular class periods (10:25 AM–3:50 PM), evening doubt sessions, and the Navodaya Combined Group sessions — applied Monday through Saturday.
+          </div>
+
+          <div style={{ padding:16, background:C.ink20, borderRadius:10, marginBottom:18 }}>
+            <div style={{ fontSize:12, fontWeight:600, color:C.ink700, marginBottom:8 }}>What will be imported</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
+              {['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime','Navodaya Course MM','Navodaya Course ENG'].map(b=>(
+                <span key={b} style={S.pill(getBatchStyle(b).bg, getBatchStyle(b).text)}>{b}</span>
+              ))}
+            </div>
+            <div style={{ fontSize:12, color:C.ink400 }}>
+              {JULY_2026_TT.reduce((n,p)=>n+p.rows.length,0)} distinct slots × 6 days = <strong>{JULY_2026_TT.reduce((n,p)=>n+p.rows.length,0)*6} entries</strong>
+            </div>
+          </div>
+
+          <div style={{ padding:'10px 14px', background:C.amberLt, borderRadius:8, fontSize:12, color:C.amber, fontWeight:500, marginBottom:18 }}>
+            ⚠ This replaces any existing entries for the batches listed above (all six days). Other batches/classes are left untouched.
+          </div>
+
+          <button onClick={handleImportJuly2026} disabled={importing}
+            style={{ ...S.btn.primary, opacity:importing?.7:1, cursor:importing?'not-allowed':'pointer' }}>
+            {importing?'Importing…':'Import July 2026 Timetable'}
+          </button>
         </div>
       )}
 
@@ -1135,6 +1289,10 @@ export default function Timetable({ currentUser }) {
   const [dayFilter,     setDayFilter]     = useState('All')
   const [classFilter,   setClassFilter]   = useState('All')
   const [teacherFilter, setTeacherFilter] = useState('All')
+  const [subjectFilter, setSubjectFilter] = useState('All')
+  const [roomFilter,    setRoomFilter]    = useState('All')
+  const [sessionFilter, setSessionFilter] = useState('All')
+  const [showAdvanced,  setShowAdvanced]  = useState(false)
   const [viewMode,      setViewMode]      = useState('week')
   const [form,          setForm]          = useState(emptyForm)
   const [deleteId,      setDeleteId]      = useState(null)
@@ -1216,12 +1374,40 @@ export default function Timetable({ currentUser }) {
   }
 
   const dayOrder = {Monday:1,Tuesday:2,Wednesday:3,Thursday:4,Friday:5,Saturday:6,Sunday:7}
+
+  const getSessionType = item => {
+    const subj = (item.subject_name||'').toUpperCase()
+    if (BREAK_TYPES.some(b=>subj.includes(b))) {
+      if (subj.includes('DOUBT')) return 'Doubt Session'
+      return 'Break'
+    }
+    if ((item.section||'').toLowerCase().includes('combined')) return 'Combined Group'
+    return 'Regular Class'
+  }
+
   const filtered = useMemo(()=>entries.filter(item=>{
     const q=search.toLowerCase()
     const s=[item.class_name,item.section,item.day_name,item.period_name,item.subject_name,item.teacher_name,item.room_name].map(v=>(v||'').toLowerCase()).some(v=>v.includes(q))
-    return s&&(dayFilter==='All'||item.day_name===dayFilter)&&(classFilter==='All'||item.class_name===classFilter)&&(teacherFilter==='All'||item.teacher_name===teacherFilter)
+    return s
+      &&(dayFilter==='All'||item.day_name===dayFilter)
+      &&(classFilter==='All'||item.class_name===classFilter)
+      &&(teacherFilter==='All'||item.teacher_name===teacherFilter)
+      &&(subjectFilter==='All'||item.subject_name===subjectFilter)
+      &&(roomFilter==='All'||(item.room_name||'—')===roomFilter)
+      &&(sessionFilter==='All'||getSessionType(item)===sessionFilter)
   }).sort((a,b)=>{ const dd=(dayOrder[a.day_name]||9)-(dayOrder[b.day_name]||9); return dd!==0?dd:(a.period_name||'').localeCompare(b.period_name||'') })
-  ,[entries,search,dayFilter,classFilter,teacherFilter])
+  ,[entries,search,dayFilter,classFilter,teacherFilter,subjectFilter,roomFilter,sessionFilter])
+
+  const uniqueSubjects = [...new Set(entries.map(e=>e.subject_name).filter(Boolean))].sort()
+  const uniqueRooms    = [...new Set(entries.map(e=>e.room_name||'—'))].sort()
+  const sessionTypes   = ['Regular Class','Doubt Session','Break','Combined Group']
+
+  const activeAdvancedCount = [subjectFilter,roomFilter,sessionFilter].filter(v=>v!=='All').length
+  const hasAnyFilter = search||dayFilter!=='All'||classFilter!=='All'||teacherFilter!=='All'||activeAdvancedCount>0
+  const clearAllFilters = () => {
+    setSearch(''); setDayFilter('All'); setClassFilter('All'); setTeacherFilter('All')
+    setSubjectFilter('All'); setRoomFilter('All'); setSessionFilter('All')
+  }
 
   const uniqueClasses  = [...new Set(entries.map(e=>e.class_name).filter(Boolean))].sort()
   const uniqueTeachers = [...new Set(entries.map(e=>e.teacher_name).filter(Boolean))].sort()
@@ -1414,6 +1600,15 @@ export default function Timetable({ currentUser }) {
             <Select value={teacherFilter} onChange={e=>setTeacherFilter(e.target.value)} style={{ width:140 }}>
               <option value="All">All Teachers</option>{uniqueTeachers.map(t=><option key={t} value={t}>{t}</option>)}
             </Select>
+            <button onClick={()=>setShowAdvanced(v=>!v)}
+              style={{ ...S.btn.ghost, background:showAdvanced?C.indigoLt:'transparent', color:showAdvanced?C.indigo:C.ink500, position:'relative' }}>
+              ⚙ Advanced{activeAdvancedCount>0?` (${activeAdvancedCount})`:''}
+            </button>
+            {hasAnyFilter && (
+              <button onClick={clearAllFilters} style={{ ...S.btn.ghost, color:C.rose, borderColor:'#fecdd3' }}>
+                ✕ Clear
+              </button>
+            )}
             {viewMode==='table' && isAdmin && (
               <button onClick={()=>{ setBulkMode(!bulkMode); setSelectedIds(new Set()) }}
                 style={{ ...S.btn.ghost, background:bulkMode?C.indigoLt:'transparent', color:bulkMode?C.indigo:C.ink500 }}>
@@ -1422,6 +1617,27 @@ export default function Timetable({ currentUser }) {
             )}
           </div>
         </div>
+
+        {showAdvanced && (
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginTop:12, paddingTop:12, borderTop:`1px solid ${C.ink50}` }}>
+            <span style={{ fontSize:11, fontWeight:600, color:C.ink300, textTransform:'uppercase', letterSpacing:'.06em', marginRight:2 }}>Advanced:</span>
+            <Select value={subjectFilter} onChange={e=>setSubjectFilter(e.target.value)} style={{ width:170 }}>
+              <option value="All">All Subjects</option>{uniqueSubjects.map(s=><option key={s} value={s}>{s}</option>)}
+            </Select>
+            <Select value={roomFilter} onChange={e=>setRoomFilter(e.target.value)} style={{ width:130 }}>
+              <option value="All">All Rooms</option>{uniqueRooms.map(r=><option key={r} value={r}>{r}</option>)}
+            </Select>
+            <Select value={sessionFilter} onChange={e=>setSessionFilter(e.target.value)} style={{ width:160 }}>
+              <option value="All">All Session Types</option>{sessionTypes.map(t=><option key={t} value={t}>{t}</option>)}
+            </Select>
+            {activeAdvancedCount>0 && (
+              <button onClick={()=>{ setSubjectFilter('All'); setRoomFilter('All'); setSessionFilter('All') }}
+                style={{ ...S.btn.ghost, fontSize:12, padding:'6px 12px' }}>
+                Reset advanced
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* VIEWS */}
@@ -1503,7 +1719,7 @@ export default function Timetable({ currentUser }) {
           </div>
           {filtered.length > 0 && (
             <div style={{ padding:'10px 16px', borderTop:`1px solid ${C.ink50}`, fontSize:12, color:C.ink400 }}>
-              {filtered.length} entries{search||dayFilter!=='All'||classFilter!=='All'||teacherFilter!=='All'?' (filtered)':''}
+              {filtered.length} entries{hasAnyFilter?' (filtered)':''}
             </div>
           )}
         </div>
