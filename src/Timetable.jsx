@@ -1,45 +1,69 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from './supabase'
 import { staffDB } from './staffDB'
 
 // ══════════════════════════════════════════════════════════════════════════════
-// DESIGN TOKENS
+// DESIGN SYSTEM — "Ledger & Crest"
+// Deep navy authority + brass/gold achievement, in the register of a school
+// administration office, not a SaaS dashboard. Serif display for headers
+// (letterheads, section titles), clean grotesk for data-dense tables.
 // ══════════════════════════════════════════════════════════════════════════════
 const C = {
-  ink900: '#0c0f1a', ink700: '#1e2235', ink500: '#4a5068', ink300: '#8b91a8',
-  ink100: '#d4d8e8', ink50: '#f0f2f8', ink20: '#f8f9fc',
-  indigo: '#3d4dff', indigoDim: '#2433cc', indigoLt: '#eef0ff', indigoMid: '#c7cbff',
-  emerald: '#059669', emeraldLt: '#d1fae5',
-  amber: '#d97706', amberLt: '#fef3c7',
-  rose: '#e11d48', roseLt: '#ffe4e6',
-  violet: '#7c3aed', violetLt: '#ede9fe',
-  sky: '#0284c7', skyLt: '#e0f2fe',
-  teal: '#0d9488', tealLt: '#ccfbf1',
-  orange: '#ea580c', orangeLt: '#fff7ed',
-  pink: '#db2777', pinkLt: '#fce7f3',
+  navy900: '#0B1E3D',
+  navy700: '#14304F',
+  navy500: '#2A4A73',
+  navy100: '#DCE4F0',
+  navy50:  '#F2F5FA',
+  parchment: '#FAF7F0',
+  paper:   '#FFFFFF',
+  gold:    '#C9A24B',
+  goldDim: '#A6813A',
+  goldLt:  '#F6EDD8',
+  ink:     '#1C2430',
+  inkSoft: '#5B6472',
+  inkFaint:'#94A0AF',
+  line:    '#E4E8EF',
+  rose:    '#B3261E',
+  roseLt:  '#FBE9E7',
+  emerald: '#1B6E4B',
+  emeraldLt: '#E3F3EB',
 }
-const FONT = `'DM Sans', 'Outfit', system-ui, sans-serif`
+const SERIF = `'Source Serif Pro', 'Georgia', 'Times New Roman', serif`
+const SANS  = `'Inter', 'Segoe UI', system-ui, sans-serif`
 const ADMIN_PIN = '1950'
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+const INSTITUTE = {
+  name: 'GUIDANCE NAVODAYA & SAINIK INSTITUTE',
+  short: 'GNSI',
+  tagline: 'NVS · Sainik School · RMS Entrance Coaching',
+  address: 'Khangabok, Thoubal District, Manipur — 795138',
+  phone: '+91 XXXXX XXXXX',
+  email: 'admissions@guidancekhangabok.in',
+  website: 'guidancekhangabok.in',
+  founded: '2016',
+}
+
 const BATCH_PALETTE = {
-  Achiever: { bg: C.indigoLt, border: C.indigoMid, text: C.indigoDim, dot: C.indigo },
-  Leader: { bg: C.emeraldLt, border: '#6ee7b7', text: '#065f46', dot: C.emerald },
-  Champion: { bg: C.violetLt, border: '#c4b5fd', text: '#5b21b6', dot: C.violet },
-  Lakshya: { bg: C.orangeLt, border: '#fdba74', text: '#9a3412', dot: C.orange },
-  Umeed: { bg: C.pinkLt, border: '#f9a8d4', text: '#9d174d', dot: C.pink },
-  Elite: { bg: C.tealLt, border: '#5eead4', text: '#134e4a', dot: C.teal },
-  Prime: { bg: C.amberLt, border: '#fcd34d', text: '#92400e', dot: C.amber },
+  Achiever: { bg: '#EEF2FA', border: '#B9C7E6', text: '#1E3A6E', dot: '#2A4A9E' },
+  Leader:   { bg: '#E9F5EF', border: '#9FD6BB', text: '#155A3B', dot: '#1B8F55' },
+  Champion: { bg: '#F3EEFA', border: '#CBB6E8', text: '#5A2E8E', dot: '#7C3EC4' },
+  Lakshya:  { bg: '#FCF1E6', border: '#EABF8F', text: '#8A4A16', dot: '#C1701F' },
+  Umeed:    { bg: '#FCEEF3', border: '#EAB0C6', text: '#8A2050', dot: '#C22D6F' },
+  Elite:    { bg: '#EAF6F4', border: '#9CD8CE', text: '#0F5C50', dot: '#1A8D79' },
+  Prime:    { bg: '#FBF3DF', border: '#E7C878', text: '#7A5710', dot: '#B3861F' },
 }
 const getBatchStyle = n => {
-  if (!n) return { bg: C.ink50, border: C.ink100, text: C.ink500, dot: C.ink300 }
-  return BATCH_PALETTE[n.split(' ')[0]] || { bg: C.ink50, border: C.ink100, text: C.ink500, dot: C.ink300 }
+  if (!n) return { bg: C.navy50, border: C.line, text: C.inkSoft, dot: C.inkFaint }
+  return BATCH_PALETTE[n.split(' ')[0]] || { bg: C.navy50, border: C.line, text: C.inkSoft, dot: C.inkFaint }
 }
 const isBreak = subj => /TEA BREAK|LUNCH|DINNER|BREAK/i.test(subj || '')
 const isDoubt = subj => /DOUBT SESSION/i.test(subj || '')
 
-function todayName() { return new Date().toLocaleDateString('en-US', { weekday: 'long' }) }
 function todayISO() { return new Date().toISOString().split('T')[0] }
+function fmtDate(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SEED DATA — July 2026 Doubt Session & Class Time Table (Mon–Sat, repeats weekly)
@@ -148,38 +172,106 @@ function buildSeedRows() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// CREST — SVG signature mark, laurel + star + open book. Original device.
+// ══════════════════════════════════════════════════════════════════════════════
+function Crest({ size = 46 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="30" fill={C.navy900} stroke={C.gold} strokeWidth="2" />
+      <path d="M32 14 L36 26 L49 26 L38 34 L42 47 L32 39 L22 47 L26 34 L15 26 L28 26 Z" fill={C.gold} opacity="0.95" />
+      <path d="M18 44 Q32 52 46 44" stroke={C.gold} strokeWidth="1.6" fill="none" opacity="0.8" />
+      <path d="M14 40 Q32 50 50 40" stroke={C.gold} strokeWidth="1" fill="none" opacity="0.5" />
+    </svg>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LETTERHEAD
+// ══════════════════════════════════════════════════════════════════════════════
+function Letterhead({ reportTitle, reportMeta }) {
+  return (
+    <div style={{ borderBottom: `3px double ${C.navy900}`, paddingBottom: 14, marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <Crest size={54} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: SERIF, fontSize: 21, fontWeight: 700, color: C.navy900, letterSpacing: '0.3px', lineHeight: 1.15 }}>
+            {INSTITUTE.name}
+          </div>
+          <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.goldDim, fontWeight: 600, letterSpacing: '.04em', marginTop: 2 }}>
+            {INSTITUTE.tagline}
+          </div>
+          <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.inkSoft, marginTop: 4 }}>
+            {INSTITUTE.address} &nbsp;·&nbsp; {INSTITUTE.phone} &nbsp;·&nbsp; {INSTITUTE.email} &nbsp;·&nbsp; {INSTITUTE.website}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', fontFamily: SANS }}>
+          <div style={{ fontSize: 9.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Est. {INSTITUTE.founded}</div>
+        </div>
+      </div>
+      {reportTitle && (
+        <div style={{ marginTop: 14, textAlign: 'center' }}>
+          <div style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: C.navy900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            {reportTitle}
+          </div>
+          {reportMeta && <div style={{ fontFamily: SANS, fontSize: 11, color: C.inkSoft, marginTop: 3 }}>{reportMeta}</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ReportFooter({ generatedAt }) {
+  return (
+    <div style={{ marginTop: 28, paddingTop: 14, borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', fontFamily: SANS, fontSize: 10, color: C.inkFaint }}>
+      <div>Generated {generatedAt} · {INSTITUTE.short} Timetable System</div>
+      <div style={{ display: 'flex', gap: 40 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 140, borderTop: `1px solid ${C.inkFaint}`, marginBottom: 4 }} />
+          Prepared By
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 140, borderTop: `1px solid ${C.inkFaint}`, marginBottom: 4 }} />
+          Authorized Signature
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // SHARED UI PRIMITIVES
 // ══════════════════════════════════════════════════════════════════════════════
 const baseInput = {
-  width: '100%', padding: '9px 13px', borderRadius: 8, border: `1px solid ${C.ink100}`,
-  fontSize: 13, outline: 'none', fontFamily: FONT, color: C.ink900, background: 'white',
+  width: '100%', padding: '9px 13px', borderRadius: 7, border: `1px solid ${C.line}`,
+  fontSize: 13, outline: 'none', fontFamily: SANS, color: C.ink, background: 'white',
   boxSizing: 'border-box', transition: 'border-color .15s, box-shadow .15s',
 }
 const S = {
   inp: baseInput,
-  lbl: { display: 'block', fontSize: 11, fontWeight: 600, color: C.ink300, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.08em' },
-  pill: (bg, text) => ({ background: bg, color: text, padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 600 }),
+  lbl: { display: 'block', fontSize: 10.5, fontWeight: 700, color: C.inkFaint, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.07em' },
+  pill: (bg, text) => ({ background: bg, color: text, padding: '2px 9px', borderRadius: 5, fontSize: 11, fontWeight: 700 }),
   btn: {
-    primary: { background: C.indigo, color: 'white', border: 'none', borderRadius: 8, padding: '9px 20px', fontWeight: 600, cursor: 'pointer', fontSize: 13, fontFamily: FONT },
-    ghost: { background: 'transparent', color: C.ink500, border: `1px solid ${C.ink100}`, borderRadius: 8, padding: '9px 16px', fontWeight: 500, cursor: 'pointer', fontSize: 13, fontFamily: FONT },
-    danger: { background: C.rose, color: 'white', border: 'none', borderRadius: 8, padding: '9px 20px', fontWeight: 600, cursor: 'pointer', fontSize: 13, fontFamily: FONT },
-    icon: { background: C.ink50, color: C.ink500, border: `1px solid ${C.ink100}`, borderRadius: 7, padding: '5px 9px', fontWeight: 500, cursor: 'pointer', fontSize: 12, fontFamily: FONT },
-    iconDanger: { background: C.roseLt, color: C.rose, border: `1px solid #fecdd3`, borderRadius: 7, padding: '5px 9px', fontWeight: 500, cursor: 'pointer', fontSize: 12, fontFamily: FONT },
+    primary: { background: C.navy900, color: C.gold, border: `1px solid ${C.navy900}`, borderRadius: 7, padding: '9px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 13, fontFamily: SANS, letterSpacing: '.02em' },
+    gold: { background: C.gold, color: C.navy900, border: `1px solid ${C.goldDim}`, borderRadius: 7, padding: '9px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 13, fontFamily: SANS },
+    ghost: { background: 'transparent', color: C.navy700, border: `1px solid ${C.line}`, borderRadius: 7, padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13, fontFamily: SANS },
+    danger: { background: C.rose, color: 'white', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 13, fontFamily: SANS },
+    icon: { background: C.navy50, color: C.navy700, border: `1px solid ${C.line}`, borderRadius: 6, padding: '5px 9px', fontWeight: 600, cursor: 'pointer', fontSize: 12, fontFamily: SANS },
+    iconDanger: { background: C.roseLt, color: C.rose, border: `1px solid #f0c4c0`, borderRadius: 6, padding: '5px 9px', fontWeight: 600, cursor: 'pointer', fontSize: 12, fontFamily: SANS },
   },
 }
 
-function Input({ value, onChange, placeholder, style = {}, list }) {
+function Input({ value, onChange, placeholder, style = {}, list, type = 'text' }) {
   const [focused, setFocused] = useState(false)
   return (
-    <input value={value} onChange={onChange} placeholder={placeholder} list={list}
-      style={{ ...S.inp, ...(focused ? { borderColor: C.indigo, boxShadow: `0 0 0 3px ${C.indigoLt}` } : {}), ...style }}
+    <input type={type} value={value} onChange={onChange} placeholder={placeholder} list={list}
+      style={{ ...S.inp, ...(focused ? { borderColor: C.gold, boxShadow: `0 0 0 3px ${C.goldLt}` } : {}), ...style }}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />
   )
 }
 function Select({ value, onChange, children, style = {} }) {
   return (
     <select value={value} onChange={onChange}
-      style={{ ...S.inp, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b91a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32, ...style }}>
+      style={{ ...S.inp, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235B6472' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32, ...style }}>
       {children}
     </select>
   )
@@ -188,7 +280,7 @@ function Toast({ toast }) {
   if (!toast) return null
   const isErr = toast.type === 'error'
   return (
-    <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderRadius: 10, background: isErr ? C.rose : C.ink900, color: 'white', fontWeight: 500, fontSize: 13, fontFamily: FONT, boxShadow: '0 8px 40px rgba(0,0,0,.2)', minWidth: 280, maxWidth: 380 }}>
+    <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderRadius: 8, background: isErr ? C.rose : C.navy900, color: isErr ? 'white' : C.gold, fontWeight: 600, fontSize: 13, fontFamily: SANS, boxShadow: '0 8px 40px rgba(11,30,61,.28)', minWidth: 280, maxWidth: 380 }}>
       <span style={{ fontSize: 16 }}>{isErr ? '⚠' : '✓'}</span>{toast.msg}
     </div>
   )
@@ -197,13 +289,13 @@ function PinModal({ onSuccess, onClose }) {
   const [pin, setPin] = useState(''); const [err, setErr] = useState(false)
   const submit = () => { if (pin === ADMIN_PIN) onSuccess(); else { setErr(true); setPin('') } }
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,15,26,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }} onClick={onClose}>
-      <div style={{ background: 'white', borderRadius: 14, padding: 28, width: 320, fontFamily: FONT }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.ink900, marginBottom: 4 }}>Admin Access</div>
-        <div style={{ fontSize: 12, color: C.ink400, marginBottom: 16 }}>Enter PIN to edit the timetable</div>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,30,61,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }} onClick={onClose}>
+      <div style={{ background: 'white', borderRadius: 10, padding: 28, width: 320, fontFamily: SANS, border: `1px solid ${C.line}` }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, color: C.navy900, marginBottom: 4 }}>Admin Access</div>
+        <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 16 }}>Enter PIN to edit the timetable</div>
         <input type="password" autoFocus value={pin} onChange={e => { setPin(e.target.value); setErr(false) }}
           onKeyDown={e => e.key === 'Enter' && submit()}
-          style={{ ...S.inp, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 8, borderColor: err ? C.rose : C.ink100 }} placeholder="••••" />
+          style={{ ...S.inp, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 8, borderColor: err ? C.rose : C.line }} placeholder="••••" />
         {err && <div style={{ fontSize: 12, color: C.rose, marginBottom: 8 }}>Incorrect PIN</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <button onClick={submit} style={{ ...S.btn.primary, flex: 1 }}>Unlock</button>
@@ -215,10 +307,10 @@ function PinModal({ onSuccess, onClose }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GRID CELL — resolves substitute for a given date if one exists
+// GRID CELL
 // ══════════════════════════════════════════════════════════════════════════════
 function Cell({ entry, subMap, isAdmin, onEdit }) {
-  if (!entry) return <td style={{ padding: 8, background: C.ink20 }} />
+  if (!entry) return <td style={{ padding: 8, background: C.navy50 }} />
   const style = getBatchStyle(entry.class_name)
   const break_ = isBreak(entry.subject_name)
   const doubt = isDoubt(entry.subject_name)
@@ -226,7 +318,7 @@ function Cell({ entry, subMap, isAdmin, onEdit }) {
 
   if (break_) {
     return (
-      <td style={{ padding: '10px 12px', background: C.ink900, color: 'white', textAlign: 'center', fontWeight: 700, fontSize: 12 }}>
+      <td style={{ padding: '10px 12px', background: C.navy900, color: C.gold, textAlign: 'center', fontWeight: 700, fontSize: 12, letterSpacing: '.04em' }}>
         {entry.subject_name}
       </td>
     )
@@ -235,23 +327,23 @@ function Cell({ entry, subMap, isAdmin, onEdit }) {
     <td style={{ padding: 8, verticalAlign: 'top' }}>
       <div onClick={() => isAdmin && onEdit && onEdit(entry)}
         style={{
-          background: doubt ? C.ink50 : style.bg, border: `1px solid ${doubt ? C.ink100 : style.border}`,
-          borderRadius: 9, padding: '9px 11px', cursor: isAdmin ? 'pointer' : 'default', position: 'relative', minHeight: 54,
+          background: doubt ? C.navy50 : style.bg, border: `1px solid ${doubt ? C.line : style.border}`,
+          borderRadius: 8, padding: '9px 11px', cursor: isAdmin ? 'pointer' : 'default', position: 'relative', minHeight: 54,
         }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: doubt ? C.ink500 : style.text, marginBottom: 2 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: doubt ? C.inkSoft : style.text, marginBottom: 2 }}>
           {entry.subject_name}
         </div>
         {entry.teacher_name && !sub && (
-          <div style={{ fontSize: 11, color: doubt ? C.ink300 : style.text, opacity: .85 }}>{entry.teacher_name}</div>
+          <div style={{ fontSize: 11, color: doubt ? C.inkFaint : style.text, opacity: .85 }}>{entry.teacher_name}</div>
         )}
         {sub && (
-          <div style={{ marginTop: 4, padding: '4px 7px', background: C.roseLt, borderRadius: 6, fontSize: 10.5 }}>
-            <div style={{ color: C.ink300, textDecoration: 'line-through' }}>{entry.teacher_name || '—'}</div>
+          <div style={{ marginTop: 4, padding: '4px 7px', background: C.roseLt, borderRadius: 5, fontSize: 10.5 }}>
+            <div style={{ color: C.inkFaint, textDecoration: 'line-through' }}>{entry.teacher_name || '—'}</div>
             <div style={{ color: C.rose, fontWeight: 700 }}>→ {sub.substitute_teacher}</div>
           </div>
         )}
         {doubt && !entry.teacher_name && !sub && (
-          <div style={{ fontSize: 10.5, color: C.ink300, fontStyle: 'italic' }}>Duty teacher TBD</div>
+          <div style={{ fontSize: 10.5, color: C.inkFaint, fontStyle: 'italic' }}>Duty teacher TBD</div>
         )}
       </div>
     </td>
@@ -259,7 +351,7 @@ function Cell({ entry, subMap, isAdmin, onEdit }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// WEEKLY GRID VIEW — batch selector + Mon–Sat × period table
+// WEEKLY GRID VIEW
 // ══════════════════════════════════════════════════════════════════════════════
 function WeeklyGrid({ entries, batches, activeBatch, setActiveBatch, subMap, isAdmin, onEdit }) {
   const periods = useMemo(() => {
@@ -283,16 +375,15 @@ function WeeklyGrid({ entries, batches, activeBatch, setActiveBatch, subMap, isA
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
         {batches.map(b => {
-          const st = getBatchStyle(b)
           const active = activeBatch === b
           return (
             <button key={b} onClick={() => setActiveBatch(b)}
               style={{
-                padding: '8px 16px', borderRadius: 9, border: `1px solid ${active ? st.dot : C.ink100}`,
-                background: active ? st.dot : 'white', color: active ? 'white' : C.ink700,
-                fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: FONT,
+                padding: '8px 18px', borderRadius: 7, border: `1px solid ${active ? C.navy900 : C.line}`,
+                background: active ? C.navy900 : 'white', color: active ? C.gold : C.navy700,
+                fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: SANS, letterSpacing: '.02em',
               }}>
               {b}
             </button>
@@ -300,26 +391,31 @@ function WeeklyGrid({ entries, batches, activeBatch, setActiveBatch, subMap, isA
         })}
       </div>
 
-      <div style={{ background: 'white', borderRadius: 12, border: `1px solid ${C.ink50}`, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+      <div style={{ background: 'white', borderRadius: 10, border: `1px solid ${C.line}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(11,30,61,.06)' }}>
+        <div style={{ padding: '14px 18px', background: C.navy900, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Crest size={26} />
+          <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 700, color: 'white' }}>{activeBatch} Batch</div>
+          <div style={{ fontFamily: SANS, fontSize: 11, color: C.navy100, marginLeft: 'auto' }}>Monday – Saturday</div>
+        </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONT }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: SANS }}>
             <thead>
-              <tr style={{ background: C.ink900 }}>
-                <th style={{ padding: '11px 14px', textAlign: 'left', color: 'rgba(255,255,255,.6)', fontWeight: 600, fontSize: 11, letterSpacing: '.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Time</th>
+              <tr style={{ background: C.navy50 }}>
+                <th style={{ padding: '11px 14px', textAlign: 'left', color: C.navy700, fontWeight: 700, fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', borderBottom: `2px solid ${C.gold}` }}>Time</th>
                 {DAYS.map(d => (
-                  <th key={d} style={{ padding: '11px 14px', textAlign: 'left', color: 'white', fontWeight: 700, fontSize: 12, minWidth: 150 }}>{d}</th>
+                  <th key={d} style={{ padding: '11px 14px', textAlign: 'left', color: C.navy900, fontWeight: 700, fontSize: 12.5, minWidth: 150, borderBottom: `2px solid ${C.gold}` }}>{d}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {periods.map((p, i) => (
-                <tr key={p} style={{ borderBottom: `1px solid ${C.ink50}`, background: i % 2 === 0 ? 'white' : C.ink20 }}>
-                  <td style={{ padding: '10px 14px', fontWeight: 600, fontSize: 12, color: C.ink700, whiteSpace: 'nowrap' }}>{p}</td>
+                <tr key={p} style={{ borderBottom: `1px solid ${C.line}`, background: i % 2 === 0 ? 'white' : C.navy50 }}>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, fontSize: 12, color: C.navy700, whiteSpace: 'nowrap' }}>{p}</td>
                   {DAYS.map(d => <Cell key={d} entry={grid[p][d]} subMap={subMap} isAdmin={isAdmin} onEdit={onEdit} />)}
                 </tr>
               ))}
               {!periods.length && (
-                <tr><td colSpan={7} style={{ padding: 48, textAlign: 'center', color: C.ink300 }}>No periods found for this batch</td></tr>
+                <tr><td colSpan={7} style={{ padding: 48, textAlign: 'center', color: C.inkFaint }}>No periods found for this batch</td></tr>
               )}
             </tbody>
           </table>
@@ -330,17 +426,17 @@ function WeeklyGrid({ entries, batches, activeBatch, setActiveBatch, subMap, isA
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// EDIT ENTRY MODAL — admin edits the recurring Mon–Sat grid
+// EDIT ENTRY MODAL
 // ══════════════════════════════════════════════════════════════════════════════
 function EditEntryModal({ entry, staffList, onClose, onSave, onDelete }) {
   const [form, setForm] = useState({ ...entry })
   const [saving, setSaving] = useState(false)
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,15,26,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }} onClick={onClose}>
-      <div style={{ background: 'white', borderRadius: 14, padding: 26, width: 420, fontFamily: FONT }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.ink900, marginBottom: 3 }}>Edit Slot</div>
-        <div style={{ fontSize: 12, color: C.ink400, marginBottom: 18 }}>{form.class_name} · {form.day_name} · {form.period_name}</div>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,30,61,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }} onClick={onClose}>
+      <div style={{ background: 'white', borderRadius: 10, padding: 26, width: 420, fontFamily: SANS, border: `1px solid ${C.line}` }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, color: C.navy900, marginBottom: 3 }}>Edit Slot</div>
+        <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 18 }}>{form.class_name} · {form.day_name} · {form.period_name}</div>
 
         <label style={S.lbl}>Subject</label>
         <Input value={form.subject_name || ''} onChange={e => upd('subject_name', e.target.value)} style={{ marginBottom: 12 }} />
@@ -417,10 +513,10 @@ function SubstitutePanel({ entries, staffList, subs, onRefresh, showToast, isAdm
   const todaysSubs = subs.filter(s => s.date === date).sort((a, b) => a.class_name.localeCompare(b.class_name))
 
   return (
-    <div style={{ fontFamily: FONT }}>
-      <div style={{ background: 'white', borderRadius: 12, padding: 22, border: `1px solid ${C.ink50}`, boxShadow: '0 1px 4px rgba(0,0,0,.04)', marginBottom: 18 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: C.ink900, marginBottom: 3 }}>Record a Substitute</div>
-        <div style={{ fontSize: 12, color: C.ink400, marginBottom: 18 }}>
+    <div style={{ fontFamily: SANS }}>
+      <div style={{ background: 'white', borderRadius: 10, padding: 22, border: `1px solid ${C.line}`, boxShadow: '0 1px 3px rgba(11,30,61,.06)', marginBottom: 18 }}>
+        <div style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: C.navy900, marginBottom: 3 }}>Record a Substitute</div>
+        <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 18 }}>
           Log a one-off substitution for a specific date. The recurring Mon–Sat grid is not changed.
         </div>
 
@@ -428,7 +524,7 @@ function SubstitutePanel({ entries, staffList, subs, onRefresh, showToast, isAdm
           <div>
             <label style={S.lbl}>Date *</label>
             <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
-            <div style={{ fontSize: 11, color: C.ink300, marginTop: 4 }}>{dayName}</div>
+            <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 4 }}>{dayName}</div>
           </div>
           <div>
             <label style={S.lbl}>Batch *</label>
@@ -449,7 +545,7 @@ function SubstitutePanel({ entries, staffList, subs, onRefresh, showToast, isAdm
           </div>
           <div>
             <label style={S.lbl}>Original Teacher</label>
-            <Input value={matchedEntry?.teacher_name || '—'} onChange={() => {}} style={{ background: C.ink20, color: C.ink400 }} />
+            <Input value={matchedEntry?.teacher_name || '—'} onChange={() => {}} style={{ background: C.navy50, color: C.inkFaint }} />
           </div>
         </div>
 
@@ -472,33 +568,33 @@ function SubstitutePanel({ entries, staffList, subs, onRefresh, showToast, isAdm
         </button>
       </div>
 
-      <div style={{ background: 'white', borderRadius: 12, border: `1px solid ${C.ink50}`, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.ink50}`, fontSize: 13, fontWeight: 700, color: C.ink900 }}>
-          Substitutes for {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} ({dayName})
+      <div style={{ background: 'white', borderRadius: 10, border: `1px solid ${C.line}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(11,30,61,.06)' }}>
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.line}`, fontFamily: SERIF, fontSize: 14, fontWeight: 700, color: C.navy900 }}>
+          Substitutes for {fmtDate(date)} ({dayName})
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: FONT }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: SANS }}>
           <thead>
-            <tr style={{ background: C.ink20 }}>
+            <tr style={{ background: C.navy50 }}>
               {['Batch', 'Period', 'Original', 'Substitute', 'Reason', ''].map(h => (
-                <th key={h} style={{ padding: '9px 14px', textAlign: 'left', color: C.ink400, fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
+                <th key={h} style={{ padding: '9px 14px', textAlign: 'left', color: C.navy700, fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {todaysSubs.map(s => (
-              <tr key={s.id} style={{ borderBottom: `1px solid ${C.ink50}` }}>
+              <tr key={s.id} style={{ borderBottom: `1px solid ${C.line}` }}>
                 <td style={{ padding: '10px 14px' }}><span style={S.pill(getBatchStyle(s.class_name).bg, getBatchStyle(s.class_name).text)}>{s.class_name}</span></td>
                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{s.period_name}</td>
-                <td style={{ padding: '10px 14px', color: C.ink400 }}>{s.original_teacher || '—'}</td>
-                <td style={{ padding: '10px 14px', fontWeight: 600, color: C.rose }}>{s.substitute_teacher}</td>
-                <td style={{ padding: '10px 14px', color: C.ink400 }}>{s.reason || '—'}</td>
+                <td style={{ padding: '10px 14px', color: C.inkFaint }}>{s.original_teacher || '—'}</td>
+                <td style={{ padding: '10px 14px', fontWeight: 700, color: C.rose }}>{s.substitute_teacher}</td>
+                <td style={{ padding: '10px 14px', color: C.inkFaint }}>{s.reason || '—'}</td>
                 <td style={{ padding: '10px 14px' }}>
                   {isAdmin && <button onClick={() => handleDeleteSub(s.id)} style={S.btn.iconDanger}>🗑</button>}
                 </td>
               </tr>
             ))}
             {!todaysSubs.length && (
-              <tr><td colSpan={6} style={{ padding: 36, textAlign: 'center', color: C.ink300 }}>No substitutes recorded for this date</td></tr>
+              <tr><td colSpan={6} style={{ padding: 36, textAlign: 'center', color: C.inkFaint }}>No substitutes recorded for this date</td></tr>
             )}
           </tbody>
         </table>
@@ -508,7 +604,198 @@ function SubstitutePanel({ entries, staffList, subs, onRefresh, showToast, isAdm
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ADMIN SETUP — seed / reset the recurring grid
+// REPORT GENERATOR
+// ══════════════════════════════════════════════════════════════════════════════
+const REPORT_KINDS = [
+  { id: 'batch', label: 'Batch Timetable', desc: 'Full Mon–Sat schedule for one batch' },
+  { id: 'master', label: 'Master Timetable', desc: 'All batches, full week, single document' },
+  { id: 'substitute', label: 'Substitute Log', desc: 'Substitute records over a date range' },
+]
+
+function ReportGenerator({ entries, subs, batches }) {
+  const [kind, setKind] = useState('batch')
+  const [batch, setBatch] = useState(batches[0] || '')
+  const [dateFrom, setDateFrom] = useState(todayISO())
+  const [dateTo, setDateTo] = useState(todayISO())
+  const printRef = useRef(null)
+
+  const handlePrint = () => {
+    const printContents = printRef.current.innerHTML
+    const win = window.open('', '_blank', 'width=1000,height=1300')
+    win.document.write(`
+      <html><head><title>${INSTITUTE.short} Report</title>
+      <style>
+        @page { size: A4 landscape; margin: 14mm; }
+        * { box-sizing: border-box; }
+        body { font-family: ${SANS}; margin: 0; background: white; color: ${C.ink}; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { font-size: 11px; }
+      </style>
+      </head><body>${printContents}</body></html>
+    `)
+    win.document.close()
+    setTimeout(() => { win.focus(); win.print() }, 300)
+  }
+
+  const periodsFor = b => {
+    const seen = new Map()
+    entries.filter(e => e.class_name === b || e.class_name === 'ALL').forEach(e => { if (!seen.has(e.period_name)) seen.set(e.period_name, true) })
+    return [...seen.keys()]
+  }
+
+  const filteredSubs = subs.filter(s => s.date >= dateFrom && s.date <= dateTo).sort((a, b) => a.date.localeCompare(b.date) || a.class_name.localeCompare(b.class_name))
+
+  return (
+    <div style={{ fontFamily: SANS }}>
+      <div style={{ background: 'white', borderRadius: 10, padding: 22, border: `1px solid ${C.line}`, boxShadow: '0 1px 3px rgba(11,30,61,.06)', marginBottom: 20 }}>
+        <div style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: C.navy900, marginBottom: 3 }}>Report Generator</div>
+        <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 18 }}>
+          Produces a print-ready document with the {INSTITUTE.short} letterhead. Use your browser's Print dialog to save as PDF.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+          {REPORT_KINDS.map(k => (
+            <button key={k.id} onClick={() => setKind(k.id)}
+              style={{
+                padding: '10px 16px', borderRadius: 8, border: `1px solid ${kind === k.id ? C.navy900 : C.line}`,
+                background: kind === k.id ? C.navy900 : 'white', color: kind === k.id ? C.gold : C.navy700,
+                cursor: 'pointer', fontFamily: SANS, textAlign: 'left', minWidth: 200,
+              }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{k.label}</div>
+              <div style={{ fontSize: 10.5, opacity: .8, marginTop: 2 }}>{k.desc}</div>
+            </button>
+          ))}
+        </div>
+
+        {kind === 'batch' && (
+          <div style={{ marginBottom: 18 }}>
+            <label style={S.lbl}>Batch</label>
+            <Select value={batch} onChange={e => setBatch(e.target.value)} style={{ maxWidth: 260 }}>
+              {batches.map(b => <option key={b} value={b}>{b}</option>)}
+            </Select>
+          </div>
+        )}
+        {kind === 'substitute' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18, maxWidth: 500 }}>
+            <div><label style={S.lbl}>From</label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
+            <div><label style={S.lbl}>To</label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
+          </div>
+        )}
+
+        <button onClick={handlePrint} style={S.btn.gold}>🖨 Generate & Print Report</button>
+      </div>
+
+      <div style={{ background: C.parchment, borderRadius: 10, border: `1px solid ${C.line}`, padding: 24, boxShadow: '0 1px 3px rgba(11,30,61,.06)' }}>
+        <div ref={printRef}>
+          {kind === 'batch' && (
+            <div>
+              <Letterhead reportTitle="Batch Timetable" reportMeta={`${batch} Batch · Monday – Saturday`} />
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', background: C.navy900, color: C.gold, border: `1px solid ${C.navy900}` }}>Time</th>
+                    {DAYS.map(d => <th key={d} style={{ padding: '8px 10px', textAlign: 'left', background: C.navy900, color: 'white', border: `1px solid ${C.navy900}` }}>{d}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {periodsFor(batch).map((p, i) => (
+                    <tr key={p} style={{ background: i % 2 === 0 ? 'white' : C.navy50 }}>
+                      <td style={{ padding: '7px 10px', fontWeight: 700, border: `1px solid ${C.line}`, whiteSpace: 'nowrap' }}>{p}</td>
+                      {DAYS.map(d => {
+                        const e = entries.find(en => en.period_name === p && en.day_name === d && (en.class_name === batch || en.class_name === 'ALL'))
+                        return (
+                          <td key={d} style={{ padding: '7px 10px', border: `1px solid ${C.line}` }}>
+                            {e ? (isBreak(e.subject_name) ? <strong>{e.subject_name}</strong> : (
+                              <>
+                                <div style={{ fontWeight: 700 }}>{e.subject_name}</div>
+                                {e.teacher_name && <div style={{ fontSize: 10, color: C.inkSoft }}>{e.teacher_name}</div>}
+                              </>
+                            )) : '—'}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <ReportFooter generatedAt={new Date().toLocaleString('en-IN')} />
+            </div>
+          )}
+
+          {kind === 'master' && (
+            <div>
+              <Letterhead reportTitle="Master Timetable" reportMeta="All Batches · Monday – Saturday" />
+              {batches.map(b => (
+                <div key={b} style={{ marginBottom: 22, breakInside: 'avoid' }}>
+                  <div style={{ fontFamily: SERIF, fontSize: 13, fontWeight: 700, color: C.navy900, marginBottom: 6, borderBottom: `2px solid ${C.gold}`, display: 'inline-block', paddingBottom: 2 }}>{b} Batch</div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ padding: '6px 9px', textAlign: 'left', background: C.navy900, color: C.gold, border: `1px solid ${C.navy900}`, fontSize: 10 }}>Time</th>
+                        {DAYS.map(d => <th key={d} style={{ padding: '6px 9px', textAlign: 'left', background: C.navy900, color: 'white', border: `1px solid ${C.navy900}`, fontSize: 10 }}>{d.slice(0, 3)}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {periodsFor(b).map((p, i) => (
+                        <tr key={p} style={{ background: i % 2 === 0 ? 'white' : C.navy50 }}>
+                          <td style={{ padding: '5px 9px', fontWeight: 700, border: `1px solid ${C.line}`, whiteSpace: 'nowrap', fontSize: 10 }}>{p}</td>
+                          {DAYS.map(d => {
+                            const e = entries.find(en => en.period_name === p && en.day_name === d && (en.class_name === b || en.class_name === 'ALL'))
+                            return (
+                              <td key={d} style={{ padding: '5px 9px', border: `1px solid ${C.line}`, fontSize: 10 }}>
+                                {e ? (isBreak(e.subject_name) ? e.subject_name : `${e.subject_name}${e.teacher_name ? ' — ' + e.teacher_name : ''}`) : '—'}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              <ReportFooter generatedAt={new Date().toLocaleString('en-IN')} />
+            </div>
+          )}
+
+          {kind === 'substitute' && (
+            <div>
+              <Letterhead reportTitle="Substitute Teacher Log" reportMeta={`${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`} />
+              <table>
+                <thead>
+                  <tr>
+                    {['Date', 'Day', 'Batch', 'Period', 'Original Teacher', 'Substitute Teacher', 'Reason'].map(h => (
+                      <th key={h} style={{ padding: '8px 10px', textAlign: 'left', background: C.navy900, color: 'white', border: `1px solid ${C.navy900}`, fontSize: 11 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSubs.map((s, i) => (
+                    <tr key={s.id} style={{ background: i % 2 === 0 ? 'white' : C.navy50 }}>
+                      <td style={{ padding: '7px 10px', border: `1px solid ${C.line}` }}>{fmtDate(s.date)}</td>
+                      <td style={{ padding: '7px 10px', border: `1px solid ${C.line}` }}>{s.day_name}</td>
+                      <td style={{ padding: '7px 10px', border: `1px solid ${C.line}` }}>{s.class_name}</td>
+                      <td style={{ padding: '7px 10px', border: `1px solid ${C.line}`, whiteSpace: 'nowrap' }}>{s.period_name}</td>
+                      <td style={{ padding: '7px 10px', border: `1px solid ${C.line}` }}>{s.original_teacher || '—'}</td>
+                      <td style={{ padding: '7px 10px', border: `1px solid ${C.line}`, fontWeight: 700 }}>{s.substitute_teacher}</td>
+                      <td style={{ padding: '7px 10px', border: `1px solid ${C.line}` }}>{s.reason || '—'}</td>
+                    </tr>
+                  ))}
+                  {!filteredSubs.length && (
+                    <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: C.inkFaint, border: `1px solid ${C.line}` }}>No substitute records in this date range</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <ReportFooter generatedAt={new Date().toLocaleString('en-IN')} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN SETUP
 // ══════════════════════════════════════════════════════════════════════════════
 function AdminSetup({ entries, onRefresh, showToast }) {
   const [seeding, setSeeding] = useState(false)
@@ -534,12 +821,12 @@ function AdminSetup({ entries, onRefresh, showToast }) {
   }
 
   return (
-    <div style={{ background: 'white', borderRadius: 12, padding: 24, border: `1px solid ${C.ink50}`, boxShadow: '0 1px 4px rgba(0,0,0,.04)', fontFamily: FONT }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.ink900, marginBottom: 3 }}>Setup Timetable</div>
-      <div style={{ fontSize: 12, color: C.ink400, marginBottom: 18 }}>
+    <div style={{ background: 'white', borderRadius: 10, padding: 24, border: `1px solid ${C.line}`, boxShadow: '0 1px 3px rgba(11,30,61,.06)', fontFamily: SANS }}>
+      <div style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: C.navy900, marginBottom: 3 }}>Setup Timetable</div>
+      <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 18 }}>
         Currently {entries.length} slots stored, repeating every Monday–Saturday. Loading the standard schedule replaces everything below.
       </div>
-      <div style={{ padding: '10px 14px', background: C.amberLt, borderRadius: 8, fontSize: 12, color: C.amber, fontWeight: 500, marginBottom: 18 }}>
+      <div style={{ padding: '10px 14px', background: C.goldLt, borderRadius: 7, fontSize: 12, color: C.goldDim, fontWeight: 600, marginBottom: 18, border: `1px solid ${C.gold}` }}>
         ⚠ This clears and reloads the full weekly grid ({seedCount} slots). Substitute records are not affected.
       </div>
       <button disabled={seeding} onClick={handleSeed} style={{ ...S.btn.primary, opacity: seeding ? .7 : 1 }}>
@@ -610,11 +897,12 @@ export default function Timetable({ currentUser }) {
   const navTabs = [
     { id: 'grid', label: 'Timetable' },
     { id: 'substitute', label: 'Substitute Entry' },
+    { id: 'reports', label: 'Reports' },
     ...(isAdmin ? [{ id: 'admin', label: 'Setup' }] : []),
   ]
 
   return (
-    <div style={{ padding: 24, background: C.ink20, minHeight: '100vh', fontFamily: FONT }}>
+    <div style={{ padding: 24, background: C.navy50, minHeight: '100vh', fontFamily: SANS }}>
       <Toast toast={toast} />
       {showPinModal && (
         <PinModal onClose={() => setShowPinModal(false)} onSuccess={() => { setAdminUnlocked(true); setShowPinModal(false); setTab('admin') }} />
@@ -623,12 +911,15 @@ export default function Timetable({ currentUser }) {
         <EditEntryModal entry={editingEntry} staffList={staffList} onClose={() => setEditingEntry(null)} onSave={handleSaveEntry} onDelete={handleDeleteEntry} />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: C.ink900, letterSpacing: '-0.3px' }}>Time Table</div>
-          <div style={{ fontSize: 13, color: C.ink400 }}>Monday–Saturday recurring schedule</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22, flexWrap: 'wrap', gap: 12, background: C.navy900, borderRadius: 10, padding: '16px 22px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Crest size={40} />
+          <div>
+            <div style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 700, color: 'white', letterSpacing: '.02em' }}>Time Table</div>
+            <div style={{ fontSize: 12, color: C.navy100 }}>{INSTITUTE.short} · Monday–Saturday recurring schedule</div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 0, background: 'white', padding: 4, borderRadius: 10, border: `1px solid ${C.ink50}` }}>
+        <div style={{ display: 'flex', gap: 0, background: 'rgba(255,255,255,.08)', padding: 4, borderRadius: 8 }}>
           {navTabs.map(t => (
             <button key={t.id}
               onClick={() => {
@@ -636,8 +927,8 @@ export default function Timetable({ currentUser }) {
                 setTab(t.id)
               }}
               style={{
-                padding: '8px 16px', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontFamily: FONT,
-                fontWeight: tab === t.id ? 700 : 500, background: tab === t.id ? C.ink900 : 'transparent', color: tab === t.id ? 'white' : C.ink500,
+                padding: '8px 16px', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontFamily: SANS,
+                fontWeight: tab === t.id ? 700 : 500, background: tab === t.id ? C.gold : 'transparent', color: tab === t.id ? C.navy900 : C.navy100,
               }}>
               {t.label}
             </button>
@@ -646,28 +937,30 @@ export default function Timetable({ currentUser }) {
       </div>
 
       {loading ? (
-        <div style={{ background: 'white', borderRadius: 12, padding: 60, textAlign: 'center', color: C.ink400 }}>
+        <div style={{ background: 'white', borderRadius: 10, padding: 60, textAlign: 'center', color: C.inkFaint }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-          <div style={{ fontWeight: 500, fontSize: 15 }}>Loading timetable…</div>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>Loading timetable…</div>
         </div>
       ) : tab === 'grid' ? (
         entries.length ? (
           <WeeklyGrid entries={entries} batches={batches} activeBatch={activeBatch} setActiveBatch={setActiveBatch}
             subMap={subMap} isAdmin={isAdmin} onEdit={setEditingEntry} />
         ) : (
-          <div style={{ background: 'white', borderRadius: 12, padding: 60, textAlign: 'center', color: C.ink400 }}>
+          <div style={{ background: 'white', borderRadius: 10, padding: 60, textAlign: 'center', color: C.inkFaint }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>🗓️</div>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>No timetable loaded yet</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, color: C.navy900, fontFamily: SERIF }}>No timetable loaded yet</div>
             <div style={{ fontSize: 13 }}>{isAdmin ? 'Go to Setup to load the standard schedule.' : 'Ask an admin to set up the timetable.'}</div>
           </div>
         )
       ) : tab === 'substitute' ? (
         <SubstitutePanel entries={entries} staffList={staffList} subs={subs} onRefresh={loadData} showToast={showToast} isAdmin={isAdmin} />
+      ) : tab === 'reports' ? (
+        <ReportGenerator entries={entries} subs={subs} batches={batches.length ? batches : ['Achiever']} />
       ) : (
         <AdminSetup entries={entries} onRefresh={loadData} showToast={showToast} />
       )}
 
-      <div style={{ fontSize: 11, color: C.ink300, textAlign: 'center', marginTop: 24 }}>
+      <div style={{ fontSize: 11, color: C.inkFaint, textAlign: 'center', marginTop: 24 }}>
         Recurring Monday–Saturday timetable · Substitute records are date-specific and don't alter the base schedule
       </div>
     </div>
