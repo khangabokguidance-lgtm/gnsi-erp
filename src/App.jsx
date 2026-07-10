@@ -42,6 +42,7 @@ import StudyMaterial      from './StudyMaterial'
 import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
+import TeachingAids       from './TeachingAids'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -84,6 +85,7 @@ const ALL_GROUPS = [
       { id: 'questionbank',  label: 'Question Bank',   icon: '❓' },
       { id: 'entrance',      label: 'Entrance Exam',   icon: '🏆' },
       { id: 'studymaterial', label: 'Study Materials', icon: '📖' },
+      { id: 'teachingaids',  label: 'Teaching Aids',   icon: '🔒' },
       { id: 'studylockers',  label: 'Study Lockers',   icon: '🗃️' },
     ],
   },
@@ -664,6 +666,7 @@ export default function App() {
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
     questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={setActive} />,
     studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={setActive} />,
+    teachingaids:      <TeachingAids      currentUser={currentUser} perms={perms('teachingaids')}  />,
     studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={setActive} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
     reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
