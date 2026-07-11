@@ -43,6 +43,7 @@ import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachingAids       from './TeachingAids'
+import CastReceiver       from './CastReceiver'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -565,7 +566,16 @@ export default function App() {
       return p.user
     } catch { return null }
   })
-  const [active,           setActive]           = useState('dashboard')
+  const [active,           setActive]           = useState(() => {
+    // Public, unauthenticated pages must resolve correctly on a cold page
+    // load (no prior in-app navigation) — e.g. a QR code, a shared link, or
+    // a Chromecast/Android TV opening this URL directly via the
+    // Presentation API for cast-receiver. Everything else still defaults
+    // to 'dashboard' and is reached via in-app setActive(...) calls only.
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, '')
+    const publicPages = ['student-leave', 'verify', 'cast-receiver']
+    return publicPages.includes(path) ? path : 'dashboard'
+  })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => LS.get('gnsi_sidebar_collapsed', false))
   const [showLogin,        setShowLogin]        = useState(false)
   const [permMap,          setPermMap]          = useState({})
@@ -633,6 +643,16 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleBack)
   }, [active])
 
+  // These pages are intentionally public and must render even with no
+  // logged-in session — e.g. a QR code (verify), a student self-service
+  // link (student-leave), or a Chromecast/Android TV opening this URL cold
+  // via the Presentation API (cast-receiver). They must be checked before
+  // the login gate below, or a logged-out visitor/device just gets bounced
+  // to the landing page instead.
+  if (active === 'student-leave') return <StudentSelfService />
+  if (active === 'verify')        return <GatePassVerifyPage />
+  if (active === 'cast-receiver') return <CastReceiver />
+
   if (!currentUser) {
     if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} onLoginFailed={recordLoginAttempt} loginLock={checkLoginLock()} />
     return <LandingPage onLogin={() => setShowLogin(true)} />
@@ -696,6 +716,7 @@ export default function App() {
     // Both are intentionally unauthenticated — documented here
     if (active === 'student-leave') return <StudentSelfService />
     if (active === 'verify')        return <GatePassVerifyPage />
+    if (active === 'cast-receiver') return <CastReceiver />
     if (active === 'dashboard') return isAdmin
       ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
       : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
