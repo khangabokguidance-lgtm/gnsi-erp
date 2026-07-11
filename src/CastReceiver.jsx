@@ -19,9 +19,15 @@
 // PresentationConnection (not by reloading the hash) — see
 // navigator.presentation.receiver.connectionList below. This receiver:
 //   1. Waits for navigator.presentation.receiver to resolve a connection
-//   2. Listens for 'message' events shaped { type: 'page', idx }
+//   2. Listens for 'message' events shaped { type: 'page', idx },
+//      { type: 'refresh', pages }, or { type: 'nightMode', on }
 //   3. Also handles 'terminate' — connection is a live object,
 //      cleans up listeners on connection close.
+//
+// NIGHT MODE: the controlling KindleReader sends { type: 'nightMode', on }
+// whenever the student toggles night mode on their own screen, so the
+// classroom TV mirrors the same dark/inverted display rather than staying
+// bright while the student's own view is dimmed.
 //
 // SECURITY NOTE: signed URLs baked into the initial hash expire after the
 // same short TTL as everywhere else in this module (5 min). If a class runs
@@ -117,6 +123,11 @@ export default function CastReceiver() {
               setState(prev => prev ? { ...prev, idx: msg.idx } : prev)
             } else if (msg.type === 'refresh') {
               setState(prev => prev ? { ...prev, pages: msg.pages } : prev)
+            } else if (msg.type === 'nightMode') {
+              // Sent whenever the controlling reader's night-mode toggle
+              // changes, so the classroom TV matches what the student sees
+              // on their own screen.
+              setState(prev => prev ? { ...prev, nightMode: !!msg.on } : prev)
             } else if (msg.type === 'replace') {
               // Full state swap — e.g. teacher opened a different aid while casting.
               setState(msg.payload)
@@ -162,7 +173,7 @@ export default function CastReceiver() {
     )
   }
 
-  const { title, pages = [], idx = 0, wm = '', batch = '' } = state
+  const { title, pages = [], idx = 0, wm = '', batch = '', nightMode = false } = state
   const currentUrl = pages[idx] || pages[0]
   const total = pages.length
 
@@ -192,14 +203,18 @@ export default function CastReceiver() {
         </div>
       )}
 
-      <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', minHeight: 0 }}>
+      <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', minHeight: 0, background: nightMode ? '#000' : 'transparent' }}>
         <div style={{ position: 'relative', maxHeight: '100%', maxWidth: '92%' }}>
           <img
             src={currentUrl}
             alt=""
             draggable={false}
             onContextMenu={e => e.preventDefault()}
-            style={{ maxHeight: '78vh', maxWidth: '100%', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,.5)', display: 'block' }}
+            style={{
+              maxHeight: '78vh', maxWidth: '100%', objectFit: 'contain', borderRadius: 8,
+              boxShadow: '0 8px 40px rgba(0,0,0,.5)', display: 'block',
+              filter: nightMode ? 'invert(1) hue-rotate(180deg) brightness(.92)' : 'none',
+            }}
           />
           <WatermarkOverlay label={wm} />
         </div>
