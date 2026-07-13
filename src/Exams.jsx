@@ -2699,44 +2699,72 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
   const [dupChecking, setDupChecking] = useState(null); // exam_type_id currently being checked
   const [dupCleaning, setDupCleaning] = useState(false);
   const [dupResult, setDupResult] = useState(null); // { id, message } after a cleanup
+  const [includeCrossDate, setIncludeCrossDate] = useState(false); // whether cross-date repeats are included in the delete
 
-  // Finds exact duplicate exam_schedule rows for this exam type — same course + subject +
-  // exam_date is what actually makes two rows redundant (mirrors the guard now used by
-  // Auto-fill Schedule / Admit Cards' auto-populate). Only flags true duplicates; rows that
-  // differ by date, subject, or course are legitimately different sittings and left alone.
+  // Finds two categories of redundant exam_schedule rows for this exam type:
+  //  1. Exact duplicates — same course + subject + exam_date. Always redundant, safe to
+  //     auto-select for deletion.
+  //  2. Cross-date repeats — same course + subject scheduled on MORE THAN ONE date. This
+  //     can be a genuine re-sit/rescheduled exam, so these are shown separately and only
+  //     deleted if the user explicitly opts in via the "also remove cross-date repeats"
+  //     checkbox — never bundled silently into the exact-duplicate bucket.
   const checkDuplicateSchedule = async (examType) => {
     setDupChecking(examType.id);
     setDupResult(null);
+    setIncludeCrossDate(false);
     const { data: rows } = await supabase.from("exam_schedule").select("*").eq("exam_type_id", examType.id);
     setDupChecking(null);
-    const groups = {};
+
+    const exactGroups = {};
     (rows || []).forEach(r => {
       const key = `${(r.course || "").toUpperCase()}|${(r.subject || "").toLowerCase()}|${r.exam_date}`;
-      (groups[key] = groups[key] || []).push(r);
+      (exactGroups[key] = exactGroups[key] || []).push(r);
     });
-    const dupGroups = Object.values(groups).filter(g => g.length > 1);
-    if (!dupGroups.length) {
-      setDupResult({ id: examType.id, ok: true, message: "No duplicate schedule entries found for this exam type." });
+    const exactDupGroups = Object.values(exactGroups).filter(g => g.length > 1);
+    const exactWithKeep = exactDupGroups.map(g => {
+      const sorted = [...g].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      return { kind: "exact", course: sorted[0].course, subject: sorted[0].subject, exam_date: sorted[0].exam_date, rows: sorted, keepId: sorted[0].id };
+    });
+
+    // Cross-date: same course+subject appearing under more than one DISTINCT date —
+    // computed on rows with exact duplicates already collapsed to one, so a subject
+    // that's merely duplicated same-day doesn't also get flagged here.
+    const collapsedRows = exactWithKeep.length
+      ? (rows || []).filter(r => {
+          const key = `${(r.course || "").toUpperCase()}|${(r.subject || "").toLowerCase()}|${r.exam_date}`;
+          const grp = exactGroups[key];
+          return grp.length === 1 || r.id === grp.sort((a, b) => String(a.id).localeCompare(String(b.id)))[0].id;
+        })
+      : (rows || []);
+    const crossGroups = {};
+    collapsedRows.forEach(r => {
+      const key = `${(r.course || "").toUpperCase()}|${(r.subject || "").toLowerCase()}`;
+      (crossGroups[key] = crossGroups[key] || []).push(r);
+    });
+    const crossDupGroups = Object.values(crossGroups).filter(g => g.length > 1);
+    const crossWithKeep = crossDupGroups.map(g => {
+      const sorted = [...g].sort((a, b) => a.exam_date.localeCompare(b.exam_date)); // keep earliest date
+      return { kind: "cross", course: sorted[0].course, subject: sorted[0].subject, dates: sorted.map(r => r.exam_date), rows: sorted, keepId: sorted[0].id };
+    });
+
+    if (!exactWithKeep.length && !crossWithKeep.length) {
+      setDupResult({ id: examType.id, ok: true, message: "No duplicate or repeated schedule entries found for this exam type." });
       return;
     }
-    // Prefer keeping the earliest-created row (lowest id / first in insertion order) in
-    // each duplicate group — arbitrary but consistent, and since duplicates are exact
-    // copies (same course+subject+date), which one survives doesn't affect correctness.
-    const withKeep = dupGroups.map(g => {
-      const sorted = [...g].sort((a, b) => String(a.id).localeCompare(String(b.id)));
-      return { course: sorted[0].course, subject: sorted[0].subject, exam_date: sorted[0].exam_date, rows: sorted, keepId: sorted[0].id };
-    });
-    setDupPreview({ examTypeId: examType.id, examTypeName: examType.name, groups: withKeep });
+    setDupPreview({ examTypeId: examType.id, examTypeName: examType.name, exactGroups: exactWithKeep, crossGroups: crossWithKeep });
   };
 
   const confirmCleanupDuplicates = async () => {
     if (!dupPreview) return;
     setDupCleaning(true);
-    const idsToDelete = dupPreview.groups.flatMap(g => g.rows.filter(r => r.id !== g.keepId).map(r => r.id));
+    const idsToDelete = [
+      ...dupPreview.exactGroups.flatMap(g => g.rows.filter(r => r.id !== g.keepId).map(r => r.id)),
+      ...(includeCrossDate ? dupPreview.crossGroups.flatMap(g => g.rows.filter(r => r.id !== g.keepId).map(r => r.id)) : []),
+    ];
     const { error } = await supabase.from("exam_schedule").delete().in("id", idsToDelete);
     setDupCleaning(false);
     if (error) { setDupResult({ id: dupPreview.examTypeId, ok: false, message: error.message }); setDupPreview(null); return; }
-    setDupResult({ id: dupPreview.examTypeId, ok: true, message: `Removed ${idsToDelete.length} duplicate entr${idsToDelete.length !== 1 ? "ies" : "y"} across ${dupPreview.groups.length} group${dupPreview.groups.length !== 1 ? "s" : ""}.` });
+    setDupResult({ id: dupPreview.examTypeId, ok: true, message: `Removed ${idsToDelete.length} redundant entr${idsToDelete.length !== 1 ? "ies" : "y"}.` });
     setDupPreview(null);
     onScheduleChange?.();
   };
@@ -2912,30 +2940,60 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
     <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
       {dupPreview && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "white", borderRadius: 14, width: "100%", maxWidth: 560, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}>
+          <div style={{ background: "white", borderRadius: 14, width: "100%", maxWidth: 600, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}>
             <div style={{ background: "linear-gradient(135deg,#92400E,#B45309)", padding: "16px 22px", position: "sticky", top: 0 }}>
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, color: "white" }}>🧹 Duplicate Schedule Entries</div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginTop: 2 }}>{dupPreview.examTypeName}</div>
             </div>
             <div style={{ padding: 20 }}>
-              <div style={{ fontSize: 13, color: "#374151", marginBottom: 14, lineHeight: 1.6 }}>
-                Found <b>{dupPreview.groups.length}</b> group{dupPreview.groups.length !== 1 ? "s" : ""} of exact duplicates (same course + subject + date). One copy will be kept in each group — the rest will be permanently deleted.
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
-                {dupPreview.groups.map((g, i) => (
-                  <div key={i} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px" }}>
-                    <div style={{ fontWeight: 700, fontSize: 12.5, color: "#92400E" }}>{g.course} · {g.subject}</div>
-                    <div style={{ fontSize: 11.5, color: "#78350F", marginTop: 2 }}>
-                      {g.exam_date} — {g.rows.length} copies found, keeping 1, deleting {g.rows.length - 1}
-                    </div>
+              {dupPreview.exactGroups.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
+                    Exact duplicates ({dupPreview.exactGroups.length}) — same course, subject, and date
                   </div>
-                ))}
-              </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
+                    {dupPreview.exactGroups.map((g, i) => (
+                      <div key={i} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontWeight: 700, fontSize: 12.5, color: "#92400E" }}>{g.course} · {g.subject}</div>
+                        <div style={{ fontSize: 11.5, color: "#78350F", marginTop: 2 }}>
+                          {g.exam_date} — {g.rows.length} copies found, keeping 1, deleting {g.rows.length - 1}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {dupPreview.crossGroups.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#991B1B", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
+                    Same subject, different dates ({dupPreview.crossGroups.length})
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#7F1D1D", marginBottom: 10, lineHeight: 1.5 }}>
+                    These could be a genuine re-sit or rescheduled exam — review before removing. Unchecked below, these are left alone.
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                    {dupPreview.crossGroups.map((g, i) => (
+                      <div key={i} style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontWeight: 700, fontSize: 12.5, color: "#991B1B" }}>{g.course} · {g.subject}</div>
+                        <div style={{ fontSize: 11.5, color: "#7F1D1D", marginTop: 2 }}>
+                          Found on: {g.dates.join(", ")} — would keep {g.rows[0].exam_date}, remove {g.rows.length - 1} other date{g.rows.length - 1 !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#374151", marginBottom: 18, cursor: "pointer" }}>
+                    <input type="checkbox" checked={includeCrossDate} onChange={e => setIncludeCrossDate(e.target.checked)} />
+                    Also remove these cross-date repeats (keeping the earliest date for each)
+                  </label>
+                </>
+              )}
+
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => setDupPreview(null)} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
                 <button onClick={confirmCleanupDuplicates} disabled={dupCleaning}
                   style={{ ...css.btn, flex: 1, background: dupCleaning ? "#93C5FD" : "#DC2626", color: "white" }}>
-                  {dupCleaning ? "⏳ Removing…" : `🗑️ Delete ${dupPreview.groups.reduce((s, g) => s + g.rows.length - 1, 0)} Duplicate Rows`}
+                  {dupCleaning ? "⏳ Removing…" : `🗑️ Delete ${dupPreview.exactGroups.reduce((s, g) => s + g.rows.length - 1, 0) + (includeCrossDate ? dupPreview.crossGroups.reduce((s, g) => s + g.rows.length - 1, 0) : 0)} Rows`}
                 </button>
               </div>
             </div>
