@@ -911,6 +911,7 @@ function AddAidModal({ batch, allBatches, onBatchChange, onClose, onSaved, showT
     if (!files.length) { showToast('Choose at least one file', C.amber); return }
 
     setSaving(true)
+    let uploadedPaths = []
     try {
       let allBlobs = []
       for (const f of files) {
@@ -926,13 +927,41 @@ function AddAidModal({ batch, allBatches, onBatchChange, onClose, onSaved, showT
       }
       setConverting(null)
 
-      const uploadedPaths = []
       for (let i = 0; i < allBlobs.length; i++) {
         const { blob, name } = allBlobs[i]
         const path = `${batch}/${Date.now()}-p${i + 1}-${name}`
-        const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { upsert: false })
-        if (upErr) throw upErr
+        setConverting({ page: i + 1, total: allBlobs.length, name: `Uploading ${name}` })
+
+        // Retry each upload up to 3 times with backoff — protects against
+        // transient network drops that would otherwise leave a gap.
+        let lastErr = null
+        let ok = false
+        for (let attempt = 1; attempt <= 3 && !ok; attempt++) {
+          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { upsert: false })
+          if (!upErr) { ok = true; break }
+          lastErr = upErr
+          if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 800))
+        }
+        if (!ok) throw new Error(`Failed to upload page ${i + 1} (${name}): ${lastErr?.message || 'unknown error'}`)
         uploadedPaths.push(path)
+      }
+
+      // Verify every uploaded path actually exists in storage before writing
+      // the DB row — prevents a row referencing objects that silently failed
+      // to persist server-side despite a client-side "success" response.
+      setConverting({ page: allBlobs.length, total: allBlobs.length, name: 'Verifying upload…' })
+      const missing = []
+      for (const path of uploadedPaths) {
+        const folder = path.substring(0, path.lastIndexOf('/'))
+        const filename = path.substring(path.lastIndexOf('/') + 1)
+        const { data: listData, error: listErr } = await supabase.storage
+          .from(BUCKET)
+          .list(folder, { search: filename })
+        const found = !listErr && listData?.some(f => f.name === filename)
+        if (!found) missing.push(path)
+      }
+      if (missing.length) {
+        throw new Error(`${missing.length} of ${uploadedPaths.length} pages failed to save to storage. Please try uploading again.`)
       }
 
       const { error: insErr } = await supabase.from('teaching_aids').insert({
@@ -951,6 +980,11 @@ function AddAidModal({ batch, allBatches, onBatchChange, onClose, onSaved, showT
       showToast('Upload failed: ' + err.message, C.rose)
       setSaving(false)
       setConverting(null)
+      // Best-effort cleanup: remove any pages that did upload before the
+      // failure, so a retry doesn't leave orphaned objects in storage.
+      if (uploadedPaths.length) {
+        supabase.storage.from(BUCKET).remove(uploadedPaths).catch(() => {})
+      }
     }
   }
 

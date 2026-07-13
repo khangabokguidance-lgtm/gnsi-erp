@@ -49,6 +49,7 @@ const DEFAULT_COURSE_SUBJECTS = {
   UMEED:     ["Grammar & Vocabulary", "Mental", "Mathematics", "Meitei Mayek"],
   CHAMPION:  ["Vocabulary", "General Knowledge", "Mathematics-II", "Mathematics - I", "Reasoning", "Grammar", "Science"],
   LEADER:    ["Vocabulary", "Grammar", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
+  "Combined Navodaya Course (Sainik Appearing Group)": ["English Grammar", "Vocabulary", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
 };
 
 // ─── Track (real exam track) → Batches it contains ───────────────────────────
@@ -63,7 +64,7 @@ const TRACK_BATCHES = {
   Sainik:           ["ACHIEVER", "LEADER", "CHAMPION"],
   Navodaya:         ["LAKSHYA", "UMEED"],
   Foundation:       ["PRIME", "ELITE"],
-  "Combined Course": [],
+  "Combined Course": ["Combined Navodaya Course (Sainik Appearing Group)"],
 };
 const TRACKS = Object.keys(TRACK_BATCHES);
 function trackForBatch(batch) {
@@ -83,6 +84,7 @@ const COURSE_MAX_MARKS = {
   UMEED:     { "Grammar & Vocabulary": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   CHAMPION:  { "Vocabulary": 10, "General Knowledge": 10, "Mathematics-II": 20, "Mathematics - I": 20, "Reasoning": 20, "Grammar": 10, "Science": 10 },
   LEADER:    { "Vocabulary": 10, "Grammar": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
+  "Combined Navodaya Course (Sainik Appearing Group)": { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
 };
 
 function getCourseMax(course) {
@@ -486,7 +488,7 @@ function useMobile() {
   return useWindowWidth() < 768;
 }
 
-function TabNav({ active, onSelect, perms, isAdmin }) {
+function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
   const isMobile = useMobile();
   const [menuOpen, setMenuOpen] = React.useState(false);
 
@@ -494,11 +496,16 @@ function TabNav({ active, onSelect, perms, isAdmin }) {
   const WRITE_TABS = ["entry", "schedule", "seatplan"];
   const DOC_TABS   = ["admitcard", "reportcard", "bulkreport", "toppers"];
 
+  // Accounts and Manager can create/manage exam types even if an explicit
+  // `perms` object wasn't passed in — mirrors the role fallback in usePerm().
+  const role = currentUser?.role;
+  const roleCanEdit = role === 'Manager' || role === 'Accounts';
+
   const canShow = (tabId) => {
     if (isAdmin) return true;
     const p = perms || {};
-    if (SETUP_TABS.includes(tabId)) return p.edit === true;
-    if (WRITE_TABS.includes(tabId)) return p.add === true || p.edit === true;
+    if (SETUP_TABS.includes(tabId)) return p.edit === true || (!perms && roleCanEdit);
+    if (WRITE_TABS.includes(tabId)) return p.add === true || p.edit === true || (!perms && roleCanEdit);
     if (DOC_TABS.includes(tabId))   return p.read === true;
     return p.read === true;
   };
@@ -3462,6 +3469,31 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
   const [msRows, setMsRows] = useState([]);
   const [msSaving, setMsSaving] = useState(false);
   const [msSaved, setMsSaved] = useState(false);
+  const [msPreset, setMsPreset] = useState("");
+
+  // Applying a preset auto-fills date/shift/marks for the current course from
+  // that config's session/mark data — everything stays editable afterward.
+  const applyMsPreset = (presetId) => {
+    setMsPreset(presetId);
+    if (!presetId) return;
+    const cfg = EXAM_CONFIG_PRESETS.find(p => p.id === presetId);
+    if (!cfg) return;
+    if (cfg.examDate) setMsStartDate(cfg.examDate);
+    if (cfg.sessions?.[0]?.time) {
+      const t = cfg.sessions[0].time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (t) {
+        let [, hh, mm, ap] = t;
+        hh = parseInt(hh, 10);
+        if (/pm/i.test(ap) && hh !== 12) hh += 12;
+        if (/am/i.test(ap) && hh === 12) hh = 0;
+        setMsTime(`${String(hh).padStart(2, "0")}:${mm}`);
+      }
+      setMsShift(cfg.sessions[0].label || "Morning");
+    }
+    const subs = cfg.courseSubjects?.[msCourse] || courseSubjects[msCourse] || [];
+    const maxMap = cfg.courseMaxMarks?.[msCourse] || {};
+    setMsRows(subs.map((subject) => ({ subject, date: "", marks: maxMap[subject] || getSubjectMax(msCourse, subject) })));
+  };
 
   const [bkExamType, setBkExamType] = useState(examTypes[0]?.id || "");
   const [bkSubject, setBkSubject] = useState("");
@@ -3504,6 +3536,15 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
   useEffect(() => { fetchSchedule(); }, []);
 
   useEffect(() => {
+    if (msPreset) {
+      const cfg = EXAM_CONFIG_PRESETS.find(p => p.id === msPreset);
+      if (cfg) {
+        const subs = cfg.courseSubjects?.[msCourse] || courseSubjects[msCourse] || [];
+        const maxMap = cfg.courseMaxMarks?.[msCourse] || {};
+        setMsRows(subs.map((subject) => ({ subject, date: "", marks: maxMap[subject] || getSubjectMax(msCourse, subject) })));
+        return;
+      }
+    }
     const subs = courseSubjects[msCourse] || [];
     setMsRows(subs.map((subject) => ({ subject, date: "", marks: getSubjectMax(msCourse, subject) })));
   }, [msCourse]);
@@ -3719,6 +3760,11 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
             <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>📋 Multi-Subject Entry</div>
             <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 14 }}>Add all subjects for a course at once.</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+              <div><FieldLabel>Preset (optional)</FieldLabel>
+                <select value={msPreset} onChange={e => applyMsPreset(e.target.value)} style={css.input}>
+                  <option value="">— No preset, fill manually —</option>
+                  {EXAM_CONFIG_PRESETS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select></div>
               <div><FieldLabel>Exam Type</FieldLabel>
                 <select value={msExamType} onChange={e => setMsExamType(e.target.value)} style={css.input}>
                   {examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
@@ -5244,9 +5290,36 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
     },
   },
+  {
+    id: "monthly_test_july_2026",
+    name: "1st Monthly Test July 2026",
+    description: "OMR-based — per official notice GNSI/EXAM/2026–27/008",
+    examDate: "2026-07-15",
+    examMode: "OMR",
+    sessions: [
+      { label: "Morning Shift – I",  time: "10:15 AM – 12:45 PM" },
+      { label: "Evening Shift – II", time: "01:30 PM – 03:30 PM" },
+    ],
+    courseSubjects: {
+      ACHIEVER:  ["Mathematics I","Mathematics II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      CHAMPION:  ["Mathematics I","Mathematics II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      LEADER:    ["Mathematics I","Mathematics II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
+      LAKSHYA:   ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
+      UMEED:     ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
+      ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+    },
+    courseMaxMarks: {
+      ACHIEVER:  {"Mathematics I":75,"Mathematics II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      CHAMPION:  {"Mathematics I":75,"Mathematics II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      LEADER:    {"Mathematics I":75,"Mathematics II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
+      LAKSHYA:   {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
+      UMEED:     {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
+      ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+    },
+  },
 ];
-
-// ── helpers ────────────────────────────────────────────────────────────────
 
 /** Deep-clone a config and return it with a fresh id and "Copy of …" name */
 function cloneConfig(cfg) {
@@ -6488,7 +6561,7 @@ export default function Exams({ currentUser, perms }) {
   return (
     <div className="exams-root" style={{ minHeight: "100vh", background: "#F7F6F1", fontFamily: "'DM Sans','Inter',sans-serif" }}>
       <ExamHubHeader institute={institute} students={students} courses={courses} examTypes={examTypes} currentUser={currentUser} />
-      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={currentUser?.role === 'Admin'} />
+      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={currentUser?.role === 'Admin'} currentUser={currentUser} />
       <div style={{ padding: isMobile ? "14px 12px" : "24px 28px", maxWidth: 1400 }}>
         <div style={{ marginBottom: 18 }}>
           <h2 style={{ margin: 0, fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 400, color: "#1C1A16" }}>
