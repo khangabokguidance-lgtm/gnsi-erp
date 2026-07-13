@@ -2682,7 +2682,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
 }
 
 // ─── EXAM TYPES MANAGER (mobile: stacked) ─────────────────────────────────────
-function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule }) {
+function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects, onScheduleChange }) {
   const isMobile = useMobile();
   const [list, setList] = useState(examTypes);
   const [form, setForm] = useState({ name: "", description: "" });
@@ -2693,6 +2693,56 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule }) {
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectRows, setInspectRows] = useState([]);
   const [lastAddedName, setLastAddedName] = useState("");
+  const [autoFilling, setAutoFilling] = useState(null); // exam_type_id currently being auto-filled, or null
+  const [autoFillResult, setAutoFillResult] = useState(null); // { id, message } after an attempt
+
+  // Auto-fills real exam_schedule rows for EVERY course covered by the Exam Config preset
+  // whose name matches this exam type — unlike "Set up schedule" (which only opens the
+  // config builder), this directly creates the schedule data Admit Cards / Report Cards /
+  // Certificates all read from. Skips courses that already have schedule entries for this
+  // exam type, so it's safe to click again after adding a course to the preset later.
+  const autoFillSchedule = async (examType) => {
+    const preset = EXAM_CONFIG_PRESETS.find(p => p.name.trim().toLowerCase() === examType.name.trim().toLowerCase());
+    if (!preset) {
+      setAutoFillResult({ id: examType.id, ok: false, message: `No Exam Config preset named "${examType.name}" exists yet. Use "Set up schedule" to create one first.` });
+      return;
+    }
+    setAutoFilling(examType.id);
+    setAutoFillResult(null);
+    const { data: existing } = await supabase.from("exam_schedule").select("course").eq("exam_type_id", examType.id);
+    const coursesWithSchedule = new Set((existing || []).map(s => (s.course || "").toUpperCase()));
+    const presetCourses = Object.keys(preset.courseSubjects || {});
+    const today = new Date().toISOString().split("T")[0];
+    const rows = [];
+    for (const course of presetCourses) {
+      if (coursesWithSchedule.has(course.toUpperCase())) continue; // don't duplicate what's already there
+      const subs = preset.courseSubjects[course] || [];
+      const maxMap = preset.courseMaxMarks?.[course] || {};
+      for (const subject of subs) {
+        rows.push({
+          exam_type_id: examType.id,
+          course,
+          subject,
+          exam_date: preset.examDate || today,
+          time: "09:00",
+          shift: preset.sessions?.[0]?.label || "Morning",
+          room: "",
+          total_marks: maxMap[subject] || (courseSubjects && getSubjectMax(course, subject)) || 100,
+        });
+      }
+    }
+    if (!rows.length) {
+      setAutoFilling(null);
+      setAutoFillResult({ id: examType.id, ok: true, message: presetCourses.length ? "All courses already have schedule entries for this exam type." : "The matching preset has no courses/subjects defined." });
+      return;
+    }
+    const { error } = await supabase.from("exam_schedule").insert(rows);
+    setAutoFilling(null);
+    if (error) { setAutoFillResult({ id: examType.id, ok: false, message: error.message }); return; }
+    const coveredCourses = [...new Set(rows.map(r => r.course))];
+    setAutoFillResult({ id: examType.id, ok: true, message: `Created ${rows.length} schedule entries across ${coveredCourses.length} course${coveredCourses.length !== 1 ? "s" : ""}: ${coveredCourses.join(", ")}.` });
+    onScheduleChange?.();
+  };
 
   // Fetch how many marks exist per exam type once, so duplicate (same-name) entries
   // can be told apart by which one actually holds data vs. which is an empty twin.
@@ -2889,9 +2939,18 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule }) {
                     🔗 Set up schedule
                   </button>
                 )}
+                <button onClick={() => autoFillSchedule(et)} disabled={autoFilling === et.id}
+                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: autoFilling === et.id ? "#93C5FD" : "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>
+                  {autoFilling === et.id ? "⏳ Filling…" : "⚡ Auto-fill Schedule"}
+                </button>
                 <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕</button>
               </div>
             </div>
+            {autoFillResult?.id === et.id && (
+              <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, fontSize: 11.5, background: autoFillResult.ok ? "#F0FDF4" : "#FEF2F2", color: autoFillResult.ok ? "#166534" : "#991B1B", border: `1px solid ${autoFillResult.ok ? "#BBF7D0" : "#FECACA"}` }}>
+                {autoFillResult.ok ? "✅ " : "⚠️ "}{autoFillResult.message}
+              </div>
+            )}
             {inspectId === et.id && <InspectPanel />}
           </div>
         ))}
@@ -6660,7 +6719,7 @@ export default function Exams({ currentUser, perms }) {
     studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
     // ── SYNCED: CourseSubjectsManager uses centralized handler ──
     coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
-    examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); setTab("examconfig"); }} />,
+    examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); setTab("examconfig"); }} courseSubjects={courseSubjects} onScheduleChange={refetchSchedule} />,
     // ── SYNCED: ExamConfigManager notifies on config switch ──
     examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} prefillName={examConfigPrefillName} onPrefillConsumed={() => setExamConfigPrefillName("")} />,
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
