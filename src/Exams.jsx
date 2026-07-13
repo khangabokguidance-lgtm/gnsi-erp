@@ -3655,7 +3655,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
       const exam_date = r[col("date")]?.toString().trim();
       const exam_type_id = examTypes.find(et => et.name.toLowerCase().includes(r[col("type")]?.toString().toLowerCase()))?.id || examTypes[0]?.id;
       if (!course || !subject || !exam_date) { errors.push(`Row ${i+1}: missing course/subject/date`); continue; }
-      parsed.push({ exam_type_id, course, subject, exam_date, time: r[col("time")]?.toString().trim() || "09:00", shift: r[col("shift")]?.toString().trim() || "Morning", room: r[col("room")]?.toString().trim() || "", total_marks: Number(r[col("marks")]) || 100 });
+      parsed.push({ exam_type_id, course, subject, exam_date, time: r[col("time")]?.toString().trim() || "09:00", shift: r[col("shift")]?.toString().trim() || "Morning", room: r[col("room")]?.toString().trim() || "", total_marks: Number(r[col("marks")]) || getSubjectMax(course, subject) });
     }
     setImportRows(parsed); setImportErrors(errors); setImportDone(false);
   };
@@ -3733,7 +3733,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
                   {courses.map(c => <option key={c} value={c}>{c}</option>)}
                 </select></div>
               <div><FieldLabel>Subject</FieldLabel>
-                <select value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} style={css.input}>
+                <select value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value, total_marks: e.target.value ? getSubjectMax(p.course, e.target.value) : p.total_marks }))} style={css.input}>
                   <option value="">— Select Subject —</option>
                   {(courseSubjects[form.course] || []).map(s => <option key={s} value={s}>{s}</option>)}
                 </select></div>
@@ -3816,7 +3816,14 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
               <div><FieldLabel>Exam Type</FieldLabel><select value={bkExamType} onChange={e => setBkExamType(e.target.value)} style={css.input}>{examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
               <div><FieldLabel>Subject Name</FieldLabel><input value={bkSubject} onChange={e => setBkSubject(e.target.value)} placeholder="e.g. Mathematics" style={css.input} /></div>
               <div><FieldLabel>Date</FieldLabel><input type="date" value={bkDate} onChange={e => setBkDate(e.target.value)} style={css.input} /></div>
-              <div><FieldLabel>Total Marks</FieldLabel><input type="number" value={bkMarks} onChange={e => setBkMarks(e.target.value)} style={css.input} /></div>
+              <div><FieldLabel>Total Marks <span style={{ fontWeight:400, color:"#9CA3AF", textTransform:"none" }}>(applied to all selected courses)</span></FieldLabel>
+                <input type="number" value={bkMarks} onChange={e => setBkMarks(e.target.value)} style={css.input} />
+                {bkSubject && bkCourses.size > 0 && (
+                  <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>
+                    Config suggests: {[...bkCourses].map(c => `${c} ${getSubjectMax(c, bkSubject)}`).join(" · ")}
+                  </div>
+                )}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div><FieldLabel>Shift</FieldLabel><select value={bkShift} onChange={e => setBkShift(e.target.value)} style={css.input}><option>Morning</option><option>Afternoon</option><option>Evening</option></select></div>
                 <div><FieldLabel>Time</FieldLabel><input type="time" value={bkTime} onChange={e => setBkTime(e.target.value)} style={css.input} /></div>
