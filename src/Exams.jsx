@@ -2682,7 +2682,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
 }
 
 // ─── EXAM TYPES MANAGER (mobile: stacked) ─────────────────────────────────────
-function ExamTypesManager({ examTypes, onUpdate }) {
+function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule }) {
   const isMobile = useMobile();
   const [list, setList] = useState(examTypes);
   const [form, setForm] = useState({ name: "", description: "" });
@@ -2692,6 +2692,7 @@ function ExamTypesManager({ examTypes, onUpdate }) {
   const [inspectId, setInspectId] = useState(null);     // exam_type_id currently being inspected, or null
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectRows, setInspectRows] = useState([]);
+  const [lastAddedName, setLastAddedName] = useState("");
 
   // Fetch how many marks exist per exam type once, so duplicate (same-name) entries
   // can be told apart by which one actually holds data vs. which is an empty twin.
@@ -2728,7 +2729,7 @@ function ExamTypesManager({ examTypes, onUpdate }) {
     }
     setSaving(true);
     const { data } = await supabase.from("exam_types").insert([{ name: trimmed, description: form.description }]).select();
-    if (data) { const updated = [...list, data[0]]; setList(updated); onUpdate(updated); }
+    if (data) { const updated = [...list, data[0]]; setList(updated); onUpdate(updated); setLastAddedName(trimmed); }
     setForm({ name: "", description: "" }); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
   const remove = async id => {
@@ -2823,6 +2824,14 @@ function ExamTypesManager({ examTypes, onUpdate }) {
           <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Optional" style={css.input} />
         </div>
         <SaveBtn onClick={add} saving={saving} saved={saved} label="Add Type" />
+        {saved && lastAddedName && onSetupSchedule && (
+          <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "10px 14px", marginTop: 12, fontSize: 12.5, color: "#166534" }}>
+            ✅ "{lastAddedName}" added.{" "}
+            <button onClick={() => onSetupSchedule(lastAddedName)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11.5, background: "#166534", color: "white", marginLeft: 4 }}>
+              🔗 Set up its schedule now
+            </button>
+          </div>
+        )}
       </div>
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>⚙️ Configured Exam Types</div>
@@ -2871,10 +2880,15 @@ function ExamTypesManager({ examTypes, onUpdate }) {
                   {markCounts[et.id] ? `${markCounts[et.id]} mark${markCounts[et.id] !== 1 ? "s" : ""} recorded` : "no marks yet"}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 5 }}>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: inspectId === et.id ? "#1a3c2e" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
                   🔍 {inspectId === et.id ? "Hide" : "Inspect"}
                 </button>
+                {onSetupSchedule && (
+                  <button onClick={() => onSetupSchedule(et.name)} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#F0FDF4", color: "#166534", border: "1px solid #BBF7D0" }}>
+                    🔗 Set up schedule
+                  </button>
+                )}
                 <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕</button>
               </div>
             </div>
@@ -5359,7 +5373,7 @@ const COURSE_TARGET_TOTAL = {
   // everything else defaults to 100
 };
 
-function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) {
+function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, prefillName }) {
   const isMobile = useMobile();
   const allCourses = Object.keys(courseSubjects);
   const isEdit = !!editingConfig;
@@ -5384,7 +5398,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
   const TOTAL_STEPS = 5;
 
   // Step 1
-  const [name, setName]         = useState(editingConfig?.name || "");
+  const [name, setName]         = useState(editingConfig?.name || prefillName || "");
   const [description, setDesc]  = useState(editingConfig?.description || "");
   const [examDate, setExamDate] = useState(toISODate(editingConfig?.examDate));
   const [examMode, setExamMode] = useState(editingConfig?.examMode || "Written");
@@ -6078,7 +6092,7 @@ function ExamPreviewModal({ cfg, onClose }) {
 }
 
 // ── Main ExamConfigManager ─────────────────────────────────────────────────
-function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigSwitch }) {
+function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigSwitch, prefillName, onPrefillConsumed }) {
   const isMobile = useMobile();
   const [configs, setConfigs]       = useState(EXAM_CONFIG_PRESETS);
   const [loading, setLoading]       = useState(true);
@@ -6092,6 +6106,17 @@ function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigS
   const [previewCfg, setPreviewCfg] = useState(null);   // NEW: admit-card preview
   const [importError, setImportError] = useState("");   // NEW: import feedback
   const importRef = React.useRef();
+
+  // Arrived here via "Set up schedule" from Exam Types — open the builder straight
+  // away with the exam type's name already filled in, instead of a blank form.
+  const [builderPrefillName, setBuilderPrefillName] = useState("");
+  useEffect(() => {
+    if (!prefillName) return;
+    setEditingConfig(null);
+    setBuilderPrefillName(prefillName);
+    setShowBuilder(true);
+    onPrefillConsumed?.();
+  }, [prefillName]);
 
   useEffect(() => {
     Promise.all([
@@ -6210,8 +6235,9 @@ setLoading(false);
     <ExamFormatBuilder
       courseSubjects={courseSubjects}
       onSave={handleSaveNew}
-      onCancel={() => { setShowBuilder(false); setEditingConfig(null); }}
+      onCancel={() => { setShowBuilder(false); setEditingConfig(null); setBuilderPrefillName(""); }}
       editingConfig={editingConfig}
+      prefillName={builderPrefillName}
     />
   );
 
@@ -6435,6 +6461,7 @@ setLoading(false);
 // ─── ROOT EXPORT ──────────────────────────────────────────────────────────────
 export default function Exams({ currentUser, perms }) {
   const [tab, setTab]               = useState("entry");
+  const [examConfigPrefillName, setExamConfigPrefillName] = useState("");
   const [students, setStudents]     = useState([]);
   const [examTypes, setExamTypes]   = useState([]);
   const [courseSubjects, setCourseSubjects] = useState(DEFAULT_COURSE_SUBJECTS);
@@ -6581,9 +6608,9 @@ export default function Exams({ currentUser, perms }) {
     studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
     // ── SYNCED: CourseSubjectsManager uses centralized handler ──
     coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
-    examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} />,
+    examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); setTab("examconfig"); }} />,
     // ── SYNCED: ExamConfigManager notifies on config switch ──
-    examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} />,
+    examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} prefillName={examConfigPrefillName} onPrefillConsumed={() => setExamConfigPrefillName("")} />,
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
     progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
