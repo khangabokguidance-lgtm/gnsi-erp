@@ -5612,7 +5612,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
       <div>
         <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Name *</label>
-        <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. 3rd Monthly Test — August 2026" style={{ ...css.input, fontSize:15 }} autoFocus />
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. 3rd Monthly Test — August 2026" style={{ ...css.input, fontSize:15 }} />
       </div>
       <div>
         <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Short Description</label>
@@ -5890,7 +5890,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
     );
   };
 
-  const stepContent = [<Step1/>, <Step2/>, <Step3/>, <Step4/>, <Step5/>];
+  const stepFns = [Step1, Step2, Step3, Step4, Step5];
   const stepTitles  = ["Basic Information", "Select Courses", "Subjects & Marks", "Exam Sessions", "Review & " + (isEdit ? "Save" : "Create")];
 
   return (
@@ -5904,7 +5904,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
 
       <div style={{ padding: isMobile ? "16px 14px" : "24px 28px" }}>
         <StepBar />
-        {stepContent[step - 1]}
+        {stepFns[step - 1]()}
         <NavButtons />
       </div>
 
