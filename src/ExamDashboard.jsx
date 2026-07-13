@@ -10,7 +10,11 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from './supabase';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const COURSE_MAX_MARKS = {
+// Last-resort fallback only — the live source of truth is window.__gnsiCourseMaxMarks,
+// which Exams.jsx keeps in sync with whatever exam config is currently active. Reading
+// that global (instead of hand-copying a static table here) means this file can never
+// drift out of sync when a new batch or a mark scheme changes in Exams.jsx.
+const COURSE_MAX_MARKS_FALLBACK = {
   ACHIEVER:  { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
   ELITE:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
   PRIME:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
@@ -20,7 +24,7 @@ const COURSE_MAX_MARKS = {
   LEADER:    { "Vocabulary": 10, "Grammar": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
 };
 function getCourseMax(course) {
-  const m = COURSE_MAX_MARKS[course] || {};
+  const m = (window.__gnsiCourseMaxMarks || COURSE_MAX_MARKS_FALLBACK)[course] || {};
   const t = Object.values(m).reduce((s, v) => s + v, 0);
   return t || 100;
 }

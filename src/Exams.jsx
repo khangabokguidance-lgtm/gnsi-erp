@@ -891,6 +891,10 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const calcPctLocal = (total) => courseMax ? (total / courseMax) * 100 : 0;
 
   const handleSave = async () => {
+    if (perm.canEdit === false && perm.canImport === false) {
+      setSaveError("You don't have permission to save marks. Contact an Admin.");
+      return;
+    }
     setSaving(true);
     setSaveError("");
     
@@ -5354,6 +5358,20 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
   const isEdit = !!editingConfig;
   const getTarget = (course) => COURSE_TARGET_TOTAL[course] || 100;
 
+  // Normalizes any stored date string to YYYY-MM-DD (what <input type="date"> requires).
+  // Handles ISO ("2026-07-15"), DD-MM-YYYY / DD/MM/YYYY ("10-07-2026"), and garbage —
+  // anything unparseable falls back to "" instead of corrupting the picker.
+  const toISODate = (v) => {
+    if (!v) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    const m = String(v).match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (m) {
+      const [, dd, mm, yyyy] = m;
+      return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+    }
+    return "";
+  };
+
   // Wizard steps
   const [step, setStep] = useState(1);
   const TOTAL_STEPS = 5;
@@ -5361,7 +5379,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
   // Step 1
   const [name, setName]         = useState(editingConfig?.name || "");
   const [description, setDesc]  = useState(editingConfig?.description || "");
-  const [examDate, setExamDate] = useState(editingConfig?.examDate || "");
+  const [examDate, setExamDate] = useState(toISODate(editingConfig?.examDate));
   const [examMode, setExamMode] = useState(editingConfig?.examMode || "Written");
   const [copyFrom, setCopyFrom] = useState("");
 
@@ -5735,7 +5753,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig }) 
   style={{ ...css.input, width: 70, MozAppearance: "textfield" }}
   onKeyDown={e => { if (e.key === "Enter") addSubjectWithMark(); }}
 />
-            <button onClick={addSubjectWithMark}
+            <button onClick={() => addSubjectWithMark()}
               style={{ ...css.btn, background:"#1a3c2e", color:"white", whiteSpace:"nowrap" }}>+ Add</button>
           </div>
 
@@ -6458,7 +6476,16 @@ export default function Exams({ currentUser, perms }) {
 
       setStudents((sts || []).map(normalizeStudent));
       setExamTypes(types && types.length ? types : [{ id: "default", name: "1st Monthly Test" }]);
-      if (csSetting?.value)   { try { setCourseSubjects(JSON.parse(csSetting.value)); }   catch (_) {} }
+      if (csSetting?.value) {
+        try {
+          const saved = JSON.parse(csSetting.value);
+          // Merge in any batches present in DEFAULT_COURSE_SUBJECTS but missing from the
+          // saved config — e.g. a newly-added batch shouldn't silently disappear just
+          // because the DB row predates it. Existing saved batches are never overwritten.
+          const merged = { ...DEFAULT_COURSE_SUBJECTS, ...saved };
+          setCourseSubjects(merged);
+        } catch (_) {}
+      }
       setSchedule(sched || []);
       if (instSetting?.value) { try { setInstitute({ ...INSTITUTE_DEFAULT, ...JSON.parse(instSetting.value) }); } catch (_) {} }
       setLoading(false);
