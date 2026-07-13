@@ -5034,12 +5034,14 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
 }
 
 // ─── ADMIT CARDS TAB ──────────────────────────────────────────────────────────
-function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedule }) {
+function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedule, onScheduleChange }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [search, setSearch] = useState("");
+  const [populating, setPopulating] = useState(false);
+  const [populateError, setPopulateError] = useState("");
 
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase()
@@ -5051,6 +5053,44 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   const examSchedule = schedule.filter(s =>
     s.exam_type_id === examType && (!s.course || s.course.toUpperCase() === course.toUpperCase())
   );
+
+  // Finds an Exam Config preset whose name matches the selected Exam Type (case-insensitive,
+  // ignoring extra whitespace) — the same matching a person would do by eye when picking the
+  // right preset in Schedule's Multi-Subject mode. Null if no such preset exists.
+  const matchingPreset = EXAM_CONFIG_PRESETS.find(p =>
+    p.name.trim().toLowerCase() === examTypeName.trim().toLowerCase()
+  );
+
+  // Auto-populates exam_schedule for the CURRENT course from the matching Exam Config preset,
+  // using today's date as a placeholder — same subjects/marks a person would get by using the
+  // Schedule tab's preset dropdown, just triggered directly from this warning banner.
+  const autoPopulateFromConfig = async () => {
+    if (!matchingPreset) return;
+    setPopulating(true);
+    setPopulateError("");
+    const subs = matchingPreset.courseSubjects?.[course] || courseSubjects[course] || [];
+    const maxMap = matchingPreset.courseMaxMarks?.[course] || {};
+    if (!subs.length) {
+      setPopulateError(`The preset "${matchingPreset.name}" has no subjects defined for ${course}. Add them in Exam Config first.`);
+      setPopulating(false);
+      return;
+    }
+    const today = new Date().toISOString().split("T")[0];
+    const rows = subs.map(subject => ({
+      exam_type_id: examType,
+      course,
+      subject,
+      exam_date: matchingPreset.examDate || today,
+      time: "09:00",
+      shift: matchingPreset.sessions?.[0]?.label || "Morning",
+      room: "",
+      total_marks: maxMap[subject] || getSubjectMax(course, subject),
+    }));
+    const { error } = await supabase.from("exam_schedule").insert(rows);
+    setPopulating(false);
+    if (error) { setPopulateError(error.message); return; }
+    onScheduleChange?.();
+  };
 
   const generateCardHTML = (st) => generateAdmitCardHTML(st, { examTypeName, examSchedule, institute, course });
   const printAll = () => openAdmitCardPrintWindow(filtered.map(st => generateCardHTML(st)), `Admit Cards — ${course} — ${examTypeName}`);
@@ -5076,7 +5116,19 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
       </div>
       {examSchedule.length === 0 && (
         <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 13, color: "#92400E" }}>
-          ⚠️ No schedule entries for this exam type. Go to <b>Schedule</b> tab and add entries.
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <span>
+              ⚠️ No schedule entries for this exam type
+              {matchingPreset ? <> — matches Exam Config preset "<b>{matchingPreset.name}</b>".</> : <>. Go to <b>Schedule</b> tab and add entries.</>}
+            </span>
+            {matchingPreset && (
+              <button onClick={autoPopulateFromConfig} disabled={populating}
+                style={{ ...css.btn, padding: "7px 14px", fontSize: 12, background: populating ? "#93C5FD" : "#1a3c2e", color: "white", whiteSpace: "nowrap" }}>
+                {populating ? "⏳ Populating…" : `⚡ Auto-populate for ${course}`}
+              </button>
+            )}
+          </div>
+          {populateError && <div style={{ marginTop: 8, color: "#991B1B", fontSize: 12 }}>{populateError}</div>}
         </div>
       )}
       {examSchedule.length > 0 && (
@@ -6614,7 +6666,7 @@ export default function Exams({ currentUser, perms }) {
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
     progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
     compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    admitcard:      () => <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
+    admitcard:      () => <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} onScheduleChange={refetchSchedule} />,
     bulkreport:     () => <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
   };
  
