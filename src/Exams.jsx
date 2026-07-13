@@ -2695,6 +2695,51 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
   const [lastAddedName, setLastAddedName] = useState("");
   const [autoFilling, setAutoFilling] = useState(null); // exam_type_id currently being auto-filled, or null
   const [autoFillResult, setAutoFillResult] = useState(null); // { id, message } after an attempt
+  const [dupPreview, setDupPreview] = useState(null); // { examTypeId, groups: [{ course, subject, exam_date, rows, keepId }] } while confirming
+  const [dupChecking, setDupChecking] = useState(null); // exam_type_id currently being checked
+  const [dupCleaning, setDupCleaning] = useState(false);
+  const [dupResult, setDupResult] = useState(null); // { id, message } after a cleanup
+
+  // Finds exact duplicate exam_schedule rows for this exam type — same course + subject +
+  // exam_date is what actually makes two rows redundant (mirrors the guard now used by
+  // Auto-fill Schedule / Admit Cards' auto-populate). Only flags true duplicates; rows that
+  // differ by date, subject, or course are legitimately different sittings and left alone.
+  const checkDuplicateSchedule = async (examType) => {
+    setDupChecking(examType.id);
+    setDupResult(null);
+    const { data: rows } = await supabase.from("exam_schedule").select("*").eq("exam_type_id", examType.id);
+    setDupChecking(null);
+    const groups = {};
+    (rows || []).forEach(r => {
+      const key = `${(r.course || "").toUpperCase()}|${(r.subject || "").toLowerCase()}|${r.exam_date}`;
+      (groups[key] = groups[key] || []).push(r);
+    });
+    const dupGroups = Object.values(groups).filter(g => g.length > 1);
+    if (!dupGroups.length) {
+      setDupResult({ id: examType.id, ok: true, message: "No duplicate schedule entries found for this exam type." });
+      return;
+    }
+    // Prefer keeping the earliest-created row (lowest id / first in insertion order) in
+    // each duplicate group — arbitrary but consistent, and since duplicates are exact
+    // copies (same course+subject+date), which one survives doesn't affect correctness.
+    const withKeep = dupGroups.map(g => {
+      const sorted = [...g].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      return { course: sorted[0].course, subject: sorted[0].subject, exam_date: sorted[0].exam_date, rows: sorted, keepId: sorted[0].id };
+    });
+    setDupPreview({ examTypeId: examType.id, examTypeName: examType.name, groups: withKeep });
+  };
+
+  const confirmCleanupDuplicates = async () => {
+    if (!dupPreview) return;
+    setDupCleaning(true);
+    const idsToDelete = dupPreview.groups.flatMap(g => g.rows.filter(r => r.id !== g.keepId).map(r => r.id));
+    const { error } = await supabase.from("exam_schedule").delete().in("id", idsToDelete);
+    setDupCleaning(false);
+    if (error) { setDupResult({ id: dupPreview.examTypeId, ok: false, message: error.message }); setDupPreview(null); return; }
+    setDupResult({ id: dupPreview.examTypeId, ok: true, message: `Removed ${idsToDelete.length} duplicate entr${idsToDelete.length !== 1 ? "ies" : "y"} across ${dupPreview.groups.length} group${dupPreview.groups.length !== 1 ? "s" : ""}.` });
+    setDupPreview(null);
+    onScheduleChange?.();
+  };
 
   // Auto-fills real exam_schedule rows for EVERY course covered by the Exam Config preset
   // whose name matches this exam type — unlike "Set up schedule" (which only opens the
@@ -2709,21 +2754,28 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
     }
     setAutoFilling(examType.id);
     setAutoFillResult(null);
-    const { data: existing } = await supabase.from("exam_schedule").select("course").eq("exam_type_id", examType.id);
-    const coursesWithSchedule = new Set((existing || []).map(s => (s.course || "").toUpperCase()));
-    const presetCourses = Object.keys(preset.courseSubjects || {});
     const today = new Date().toISOString().split("T")[0];
+    const targetDate = preset.examDate || today;
+    // Guard against duplicates by the exact combination that would make two rows
+    // redundant — same course + subject + date — not just "this course has *something*
+    // scheduled somewhere," which previously let a second full batch get inserted
+    // alongside unrelated rows from a different Schedule mode (e.g. Auto-Generate,
+    // which spreads subjects across separate days).
+    const { data: existing } = await supabase.from("exam_schedule").select("course, subject, exam_date").eq("exam_type_id", examType.id);
+    const existingKey = new Set((existing || []).map(s => `${(s.course || "").toUpperCase()}|${(s.subject || "").toLowerCase()}|${s.exam_date}`));
+    const presetCourses = Object.keys(preset.courseSubjects || {});
     const rows = [];
     for (const course of presetCourses) {
-      if (coursesWithSchedule.has(course.toUpperCase())) continue; // don't duplicate what's already there
       const subs = preset.courseSubjects[course] || [];
       const maxMap = preset.courseMaxMarks?.[course] || {};
       for (const subject of subs) {
+        const key = `${course.toUpperCase()}|${subject.toLowerCase()}|${targetDate}`;
+        if (existingKey.has(key)) continue; // this exact course+subject+date already exists — skip
         rows.push({
           exam_type_id: examType.id,
           course,
           subject,
-          exam_date: preset.examDate || today,
+          exam_date: targetDate,
           time: "09:00",
           shift: preset.sessions?.[0]?.label || "Morning",
           room: "",
@@ -2733,14 +2785,14 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
     }
     if (!rows.length) {
       setAutoFilling(null);
-      setAutoFillResult({ id: examType.id, ok: true, message: presetCourses.length ? "All courses already have schedule entries for this exam type." : "The matching preset has no courses/subjects defined." });
+      setAutoFillResult({ id: examType.id, ok: true, message: presetCourses.length ? `All courses already have schedule entries for ${targetDate}.` : "The matching preset has no courses/subjects defined." });
       return;
     }
     const { error } = await supabase.from("exam_schedule").insert(rows);
     setAutoFilling(null);
     if (error) { setAutoFillResult({ id: examType.id, ok: false, message: error.message }); return; }
     const coveredCourses = [...new Set(rows.map(r => r.course))];
-    setAutoFillResult({ id: examType.id, ok: true, message: `Created ${rows.length} schedule entries across ${coveredCourses.length} course${coveredCourses.length !== 1 ? "s" : ""}: ${coveredCourses.join(", ")}.` });
+    setAutoFillResult({ id: examType.id, ok: true, message: `Created ${rows.length} schedule entries on ${targetDate} across ${coveredCourses.length} course${coveredCourses.length !== 1 ? "s" : ""}: ${coveredCourses.join(", ")}.` });
     onScheduleChange?.();
   };
 
@@ -2858,6 +2910,38 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
 
   return (
     <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
+      {dupPreview && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "white", borderRadius: 14, width: "100%", maxWidth: 560, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}>
+            <div style={{ background: "linear-gradient(135deg,#92400E,#B45309)", padding: "16px 22px", position: "sticky", top: 0 }}>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, color: "white" }}>🧹 Duplicate Schedule Entries</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginTop: 2 }}>{dupPreview.examTypeName}</div>
+            </div>
+            <div style={{ padding: 20 }}>
+              <div style={{ fontSize: 13, color: "#374151", marginBottom: 14, lineHeight: 1.6 }}>
+                Found <b>{dupPreview.groups.length}</b> group{dupPreview.groups.length !== 1 ? "s" : ""} of exact duplicates (same course + subject + date). One copy will be kept in each group — the rest will be permanently deleted.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
+                {dupPreview.groups.map((g, i) => (
+                  <div key={i} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ fontWeight: 700, fontSize: 12.5, color: "#92400E" }}>{g.course} · {g.subject}</div>
+                    <div style={{ fontSize: 11.5, color: "#78350F", marginTop: 2 }}>
+                      {g.exam_date} — {g.rows.length} copies found, keeping 1, deleting {g.rows.length - 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setDupPreview(null)} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+                <button onClick={confirmCleanupDuplicates} disabled={dupCleaning}
+                  style={{ ...css.btn, flex: 1, background: dupCleaning ? "#93C5FD" : "#DC2626", color: "white" }}>
+                  {dupCleaning ? "⏳ Removing…" : `🗑️ Delete ${dupPreview.groups.reduce((s, g) => s + g.rows.length - 1, 0)} Duplicate Rows`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>➕ Add Exam Type</div>
         {addError && (
@@ -2943,12 +3027,21 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
                   style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: autoFilling === et.id ? "#93C5FD" : "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>
                   {autoFilling === et.id ? "⏳ Filling…" : "⚡ Auto-fill Schedule"}
                 </button>
+                <button onClick={() => checkDuplicateSchedule(et)} disabled={dupChecking === et.id}
+                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: dupChecking === et.id ? "#FDE68A" : "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}>
+                  {dupChecking === et.id ? "⏳ Checking…" : "🧹 Clean up duplicates"}
+                </button>
                 <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "4px 10px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>✕</button>
               </div>
             </div>
             {autoFillResult?.id === et.id && (
               <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, fontSize: 11.5, background: autoFillResult.ok ? "#F0FDF4" : "#FEF2F2", color: autoFillResult.ok ? "#166534" : "#991B1B", border: `1px solid ${autoFillResult.ok ? "#BBF7D0" : "#FECACA"}` }}>
                 {autoFillResult.ok ? "✅ " : "⚠️ "}{autoFillResult.message}
+              </div>
+            )}
+            {dupResult?.id === et.id && (
+              <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, fontSize: 11.5, background: dupResult.ok ? "#F0FDF4" : "#FEF2F2", color: dupResult.ok ? "#166534" : "#991B1B", border: `1px solid ${dupResult.ok ? "#BBF7D0" : "#FECACA"}` }}>
+                {dupResult.ok ? "✅ " : "⚠️ "}{dupResult.message}
               </div>
             )}
             {inspectId === et.id && <InspectPanel />}
@@ -5135,16 +5228,29 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
       return;
     }
     const today = new Date().toISOString().split("T")[0];
-    const rows = subs.map(subject => ({
-      exam_type_id: examType,
-      course,
-      subject,
-      exam_date: matchingPreset.examDate || today,
-      time: "09:00",
-      shift: matchingPreset.sessions?.[0]?.label || "Morning",
-      room: "",
-      total_marks: maxMap[subject] || getSubjectMax(course, subject),
-    }));
+    const targetDate = matchingPreset.examDate || today;
+    // Guard against duplicates: only insert subject+date combinations that don't
+    // already exist for this course + exam type (e.g. from a prior Auto-Generate
+    // Timetable run or an earlier click of this same button).
+    const { data: existing } = await supabase.from("exam_schedule").select("subject, exam_date").eq("exam_type_id", examType).eq("course", course);
+    const existingKey = new Set((existing || []).map(s => `${(s.subject || "").toLowerCase()}|${s.exam_date}`));
+    const rows = subs
+      .filter(subject => !existingKey.has(`${subject.toLowerCase()}|${targetDate}`))
+      .map(subject => ({
+        exam_type_id: examType,
+        course,
+        subject,
+        exam_date: targetDate,
+        time: "09:00",
+        shift: matchingPreset.sessions?.[0]?.label || "Morning",
+        room: "",
+        total_marks: maxMap[subject] || getSubjectMax(course, subject),
+      }));
+    if (!rows.length) {
+      setPopulating(false);
+      setPopulateError(`${course} already has schedule entries for ${targetDate} — nothing new to add.`);
+      return;
+    }
     const { error } = await supabase.from("exam_schedule").insert(rows);
     setPopulating(false);
     if (error) { setPopulateError(error.message); return; }
