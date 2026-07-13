@@ -293,7 +293,7 @@ function usePerm(currentUser, perms) {
   const role = currentUser?.role
   if (role === 'Admin')    return { canEdit:true,  canDelete:true,  canImport:true,  canPrint:true  }
   if (role === 'Manager')  return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
-  if (role === 'Accounts') return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
+  if (role === 'Accounts' || role === 'Accountant') return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
   return                          { canEdit:true,  canDelete:false, canImport:false, canPrint:true  }
 }
 
@@ -496,16 +496,18 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
   const WRITE_TABS = ["entry", "schedule", "seatplan"];
   const DOC_TABS   = ["admitcard", "reportcard", "bulkreport", "toppers"];
 
-  // Accounts and Manager can create/manage exam types even if an explicit
-  // `perms` object wasn't passed in — mirrors the role fallback in usePerm().
+  // Accounts/Accountant and Manager can always reach Schedule, Mark Entry,
+  // Seat Plan, and Setup screens — this is a role-based floor, not overridden
+  // by a `perms` object that may under-grant these roles.
   const role = currentUser?.role;
-  const roleCanEdit = role === 'Manager' || role === 'Accounts';
+  const roleCanEdit = role === 'Manager' || role === 'Accounts' || role === 'Accountant';
 
   const canShow = (tabId) => {
     if (isAdmin) return true;
+    if (roleCanEdit && (SETUP_TABS.includes(tabId) || WRITE_TABS.includes(tabId))) return true;
     const p = perms || {};
-    if (SETUP_TABS.includes(tabId)) return p.edit === true || (!perms && roleCanEdit);
-    if (WRITE_TABS.includes(tabId)) return p.add === true || p.edit === true || (!perms && roleCanEdit);
+    if (SETUP_TABS.includes(tabId)) return p.edit === true;
+    if (WRITE_TABS.includes(tabId)) return p.add === true || p.edit === true;
     if (DOC_TABS.includes(tabId))   return p.read === true;
     return p.read === true;
   };
