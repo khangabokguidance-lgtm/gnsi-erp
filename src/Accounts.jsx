@@ -150,6 +150,13 @@ function SeverityBadge({severity}){
 // ══════════════════════════════════════════════════════════════════════════
 function Accounts({role,userId}){
   const isAdmin      = role==='admin'
+  // Named users authorized to edit expenditure entries regardless of their
+  // generic `role` string — matched against staff.id (see currentStaff below).
+  // Add/remove staff.id values here as authorized editors change.
+  const AUTHORIZED_EXPENDITURE_EDITOR_IDS = [
+    '28d0346d-97b7-41b9-b4a5-6692262d47b5', // Ranbir (Administrator)
+    'dfe4e59a-3f20-4b0c-9f19-cb64996f788f', // Moirangthem Arunkumar Singh (Administrator)
+  ]
   const canWrite     = isAdmin||role==='accounts'||role==='manager'
   const canAddIncome = isAdmin
   // Any non-admin user can log an expenditure entry, even without full write
@@ -177,6 +184,7 @@ function Accounts({role,userId}){
   const [receiptFile,      setReceiptFile]      = useState(null)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [viewReceipt,      setViewReceipt]      = useState(null)
+  const [receiptMemoEntry, setReceiptMemoEntry]  = useState(null)
   const fileInputRef = useRef(null)
 
   // tabs
@@ -389,6 +397,11 @@ function Accounts({role,userId}){
     [staffList,userId]
   )
 
+  // Named-user override: Accountant (canWrite via role) plus the two named
+  // Administrators, matched by staff.id — can edit expenditure entries even
+  // though their generic `role` might not be 'admin'.
+  const canEditExpenditure = canWrite || AUTHORIZED_EXPENDITURE_EDITOR_IDS.includes(String(currentStaff?.id))
+
   useEffect(()=>{
     if(!staffLoaded||!userId||currentStaff)return
     const cacheKey=`acc_staff_registered_${userId}`
@@ -510,6 +523,7 @@ function Accounts({role,userId}){
 
   const handleSubmit=async(e)=>{
     e.preventDefault();setSaving(true)
+    const enteredByName = currentStaff?.name || role
     if(editEntry){
       const r=rows[0],receiptUrl=await uploadReceipt(editEntry.id)
       const payload={
@@ -517,24 +531,26 @@ function Accounts({role,userId}){
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:r.status,
-        receipt_url:receiptUrl,edited_by:role,edited_at:new Date().toISOString(),
+        receipt_url:receiptUrl,edited_by:enteredByName,edited_at:new Date().toISOString(),
       }
       const{error}=await supabase.from('accounts').update(payload).eq('id',editEntry.id)
       if(error)alert('Error: '+error.message)
-      else{await writeAuditLog({action:'update',role,targetId:editEntry.id,oldValues:editEntry,newValues:payload});setShowForm(false);setEditEntry(null);setReceiptFile(null);fetchEntries()}
+      else{await writeAuditLog({action:'update',role:enteredByName,targetId:editEntry.id,oldValues:editEntry,newValues:payload});setShowForm(false);setEditEntry(null);setReceiptFile(null);fetchEntries()}
     }else{
       const payloads=rows.filter(r=>canAddIncome||r.type==='Expense').map(r=>({
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
-        note:r.note,is_recurring:r.is_recurring,status:r.status,added_by:role,
+        note:r.note,is_recurring:r.is_recurring,status:r.status,added_by:enteredByName,
       }))
       const{data:inserted,error}=await supabase.from('accounts').insert(payloads).select()
       if(error)alert('Error: '+error.message)
       else{
         if(receiptFile&&inserted?.[0]){const ru=await uploadReceipt(inserted[0].id);if(ru)await supabase.from('accounts').update({receipt_url:ru}).eq('id',inserted[0].id)}
-        for(const ins of(inserted||[]))await writeAuditLog({action:'insert',role,targetId:ins.id,newValues:ins})
-        setShowForm(false);setReceiptFile(null);setRows([{...emptyRow}]);fetchEntries()
+        for(const ins of(inserted||[]))await writeAuditLog({action:'insert',role:enteredByName,targetId:ins.id,newValues:ins})
+        setShowForm(false);setReceiptFile(null);setRows([{...emptyRow}])
+        if(inserted?.[0])setReceiptMemoEntry({...inserted[0],receipt_url:rows[0].receipt_url||inserted[0].receipt_url})
+        fetchEntries()
       }
     }
     setSaving(false)
@@ -692,6 +708,50 @@ function Accounts({role,userId}){
     }).join('')}
     <tr class="grand"><td colspan="4">GRAND TOTAL</td><td colspan="${dailyIsIncome?2:1}">Cash: ${fmt(cashAmt)} | Bank: ${fmt(bankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
     </table></body></html>`)
+    w.document.close();w.print()
+  }
+
+  // ── Receipt / Voucher Memo (print-ready, single entry) ───────────────────
+  const printReceiptMemo=(item)=>{
+    const w=window.open('','_blank');if(!w)return
+    const isIncome=item.type==='Income'
+    w.document.write(`<html><head><title>Voucher Memo - ${item.id||''}</title><style>
+      body{font-family:Arial,sans-serif;padding:36px;color:#1e293b}
+      .head{text-align:center;border-bottom:2px solid #1e3a5f;padding-bottom:12px;margin-bottom:20px}
+      .head h1{font-size:18px;color:#1e3a5f;margin:0 0 4px}
+      .head p{font-size:12px;color:#64748b;margin:2px 0}
+      h2{font-size:15px;color:#1e3a5f;margin:20px 0 10px;text-align:center;text-decoration:underline}
+      table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
+      td{padding:8px 12px;border-bottom:1px solid #f1f5f9}
+      td.label{color:#64748b;font-weight:600;width:40%}
+      .amt{font-size:20px;font-weight:800;text-align:center;padding:14px;border:2px solid ${isIncome?'#16a34a':'#dc2626'};border-radius:8px;color:${isIncome?'#16a34a':'#dc2626'};margin:16px 0}
+      .sig{display:flex;justify-content:space-between;margin-top:60px}
+      .sig div{width:45%;text-align:center;border-top:1px solid #1e293b;padding-top:6px;font-size:12px;color:#374151}
+    </style></head><body>
+    <div class="head">
+      <h1>${INSTITUTE_INFO.name}</h1>
+      <p>${INSTITUTE_INFO.tagline}</p>
+      <p>${INSTITUTE_INFO.address}</p>
+    </div>
+    <h2>${isIncome?'RECEIPT VOUCHER':'PAYMENT VOUCHER'}</h2>
+    <table>
+      <tr><td class="label">Voucher No.</td><td>${item.id||'-'}</td></tr>
+      <tr><td class="label">Date</td><td>${item.entry_date}</td></tr>
+      <tr><td class="label">Type</td><td>${item.type}</td></tr>
+      <tr><td class="label">Category</td><td>${item.category}</td></tr>
+      <tr><td class="label">Account</td><td>${item.account_type||'Cash A/c'}</td></tr>
+      <tr><td class="label">Payment Mode</td><td>${item.payment_mode}</td></tr>
+      <tr><td class="label">Voucher Head</td><td>${item.voucher_head||'-'}</td></tr>
+      <tr><td class="label">Particulars / Note</td><td>${(item.note||'-').replace(/</g,'&lt;')}</td></tr>
+      <tr><td class="label">Entered By</td><td>${item.added_by||item.edited_by||'-'}</td></tr>
+      <tr><td class="label">Status</td><td>${item.status||'Confirmed'}</td></tr>
+    </table>
+    <div class="amt">${isIncome?'Received':'Paid'}: ${fmt(item.amount)}</div>
+    <div class="sig">
+      <div>Received/Paid By</div>
+      <div>Authorized Signature</div>
+    </div>
+    </body></html>`)
     w.document.close();w.print()
   }
 
@@ -1105,6 +1165,54 @@ function Accounts({role,userId}){
     return Object.values(map)
   },[reportEntries])
 
+  // ── Weekly Income & Expenditure Report (for Admin's PA) ──────────────────
+  // Independent of the manual Reports-tab filters above — always "last 7 days
+  // including today", all types/categories/accounts. One-click PDF/DOCX/Excel
+  // using the same letterheaded generator functions.
+  const weeklyRange = useMemo(()=>{
+    const to=new Date(today)
+    const from=new Date(to);from.setDate(to.getDate()-6) // last 7 days inclusive
+    const pad=(n)=>String(n).padStart(2,'0')
+    const fmtDate=(d)=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+    return {from:fmtDate(from),to:fmtDate(to)}
+  },[today])
+
+  const weeklyEntries = useMemo(()=>{
+    return entries
+      .filter(e=>e.entry_date>=weeklyRange.from&&e.entry_date<=weeklyRange.to)
+      .sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
+  },[entries,weeklyRange])
+
+  const weeklyTotals = useMemo(()=>{
+    const income  = weeklyEntries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+    const expense = weeklyEntries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    return { income, expense, net: income-expense, count: weeklyEntries.length }
+  },[weeklyEntries])
+
+  const weeklyByCategory = useMemo(()=>{
+    const map={}
+    weeklyEntries.forEach(e=>{
+      const k=e.category||'Other'
+      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
+      map[k].total+=Number(e.amount);map[k].count+=1
+    })
+    return Object.values(map).sort((a,b)=>b.total-a.total)
+  },[weeklyEntries])
+
+  const weeklyFilterSummary = `Weekly Report for Admin's PA — ${weeklyRange.from} to ${weeklyRange.to} (all types, categories, accounts)`
+
+  const generateWeeklyReport=(format)=>{
+    const opts={
+      entries:weeklyEntries,totals:weeklyTotals,byCategory:weeklyByCategory,
+      title:'Weekly Income & Expenditure Report',filterSummary:weeklyFilterSummary,
+      logLabel:`Report (${format}): Weekly Income & Expenditure Report (${weeklyRange.from} to ${weeklyRange.to})`,
+      dateFrom:weeklyRange.from,dateTo:weeklyRange.to,
+    }
+    if(format==='PDF')generateReportPDF(opts)
+    else if(format==='DOCX')generateReportDOCX(opts)
+    else generateReportExcel(opts)
+  }
+
   const reportFilterSummary = useMemo(()=>{
     const parts=[`Type: ${rptType}`]
     if(rptCategory!=='All')parts.push(`Category: ${rptCategory}`)
@@ -1401,7 +1509,7 @@ function Accounts({role,userId}){
     </div>
 
     {/* ── add/edit form ── */}
-    {showForm&&(editEntry?canWrite:canAddEntry)&&(
+    {showForm&&(editEntry?canEditExpenditure:canAddEntry)&&(
       <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 16 : 24,marginBottom:24,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',borderLeft:'4px solid #1e3a5f'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
           <h2 style={{fontSize: isMobile ? 16 : 18,fontWeight:600,color:'#1e3a5f',margin:0}}>{editEntry?'✏️ Edit Entry':`➕ Add ${rows.length>1?`${rows.length} Entries`:'Entry'}`}</h2>
@@ -1430,14 +1538,15 @@ function Accounts({role,userId}){
                     {row.type==='Expense'&&<option value="__add_new__">+ Add New Category…</option>}
                   </select>
                 </div>
-                <div><label style={lStyle}>Amount</label><input type="number" min="0" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/></div>
+                <div><label style={lStyle}>Amount</label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/></div>
                 <div><label style={lStyle}>Payment Mode</label>
-                  <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} style={iStyle}>
+                  <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={iStyle}>
+                    <option value="">Select</option>
                     {PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div><label style={lStyle}>Account Type</label>
-                  <select value={row.account_type||'Cash A/c'} onChange={e=>updateRow(i,'account_type',e.target.value)} style={iStyle}>
+                  <select value={row.account_type||'Cash A/c'} onChange={e=>updateRow(i,'account_type',e.target.value)} required style={iStyle}>
                     {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
                   </select>
                 </div>
@@ -1445,19 +1554,21 @@ function Accounts({role,userId}){
                   <select value={row.voucher_head||''} onChange={e=>{
                     if(e.target.value==='__add_staff__'){addNewStaffMember(i);return}
                     updateRow(i,'voucher_head',e.target.value)
-                  }} style={iStyle}>
-                    <option value="">Select</option>
-                    {row.voucher_head&&!staffList.some(s=>s.name===row.voucher_head)&&<option value={row.voucher_head}>{row.voucher_head} (unlisted)</option>}
+                  }} required style={iStyle}>
+                    <option value="">Select from Staff…</option>
                     {staffList.map(s=><option key={s.id??s.name} value={s.name}>{s.name}{String(s.user_id)===String(userId)||String(s.id)===String(userId)?' (You)':''}</option>)}
                     <option value="__add_staff__">+ Add New Staff Member…</option>
                   </select>
                 </div>
+                <div><label style={lStyle}>Entered By</label>
+                  <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...iStyle,backgroundColor:'#f8fafc',color:'#64748b',fontWeight:600,cursor:'not-allowed'}}/>
+                </div>
                 <div><label style={lStyle}>Status</label>
-                  <select value={row.status} onChange={e=>updateRow(i,'status',e.target.value)} style={iStyle}>
+                  <select value={row.status} onChange={e=>updateRow(i,'status',e.target.value)} required style={iStyle}>
                     {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </div>
-                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>Description / Note</label><input type="text" placeholder="Transaction description" value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} style={iStyle}/></div>
+                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>Description / Note</label><input type="text" placeholder="Transaction description" value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/></div>
               </div>
               <label style={{display:'flex',alignItems:'center',gap:8,marginTop:12,cursor:'pointer',fontSize:14,color:'#374151'}}>
                 <input type="checkbox" checked={row.is_recurring} onChange={e=>updateRow(i,'is_recurring',e.target.checked)}/>
@@ -1466,9 +1577,9 @@ function Accounts({role,userId}){
             </div>
           ))}
           <div style={{marginTop:16}}>
-            <label style={lStyle}>🧾 Receipt / Attachment</label>
+            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#dc2626'}}>(required)</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" required={!editEntry&&!rows[0]?.receipt_url} onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
               {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eff6ff',color:'#1e3a5f',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
               {rows[0]?.receipt_url&&!receiptFile&&<span style={{fontSize:12,color:'#16a34a'}}>✅ Receipt on file</span>}
             </div>
@@ -1497,7 +1608,9 @@ function Accounts({role,userId}){
         // PHASE 4: Balance Sheet tab (admin only)
         ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
         ['income','💰 Income Analysis'],
-['timeline','🕐 Activity'],
+        // Activity Timeline shows every user's inserts/edits/deletes — admin-only visibility.
+        // Entries are still logged the same way for everyone; this only restricts who can view the log.
+        ...(isAdmin?[['timeline','🕐 Activity']]:[] ),
       ].map(([id,label])=>(
         <button key={id} style={{
           ...tabStyle(id),
@@ -1517,9 +1630,11 @@ function Accounts({role,userId}){
     fraudFlags={fraudFlags}
     budgets={budgets}
     canWrite={canWrite}
+            canEditExpenditure={canEditExpenditure}
     fmt={fmt}
     isMobile={isMobile}
     openEdit={openEdit}
+            printReceiptMemo={printReceiptMemo}
     handleDelete={handleDelete}
   />
 )}
@@ -1591,8 +1706,10 @@ function Accounts({role,userId}){
             dailyTotalAmt={dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)}
             fraudFlags={fraudFlags}
             canWrite={canWrite}
+            canEditExpenditure={canEditExpenditure}
             fmt={fmt}
             openEdit={openEdit}
+            printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
             isMobile={isMobile}
           />
@@ -1671,8 +1788,10 @@ function Accounts({role,userId}){
             dailyTotalAmt={expenditureTotals.expense}
             fraudFlags={fraudFlags}
             canWrite={canWrite}
+            canEditExpenditure={canEditExpenditure}
             fmt={fmt}
             openEdit={openEdit}
+            printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
             isMobile={isMobile}
           />
@@ -1686,6 +1805,35 @@ function Accounts({role,userId}){
         <div style={{backgroundColor:'#831843',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📑 Professional Report Generator</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Build a filtered financial report and export it as a letterheaded PDF, Word (DOCX), or Excel file — ready to print and sign.</p>
+        </div>
+
+        {/* ── Weekly Report for Admin's PA — one-click, always last 7 days ── */}
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:'4px solid #831843'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:10}}>
+            <div>
+              <h3 style={{...chartTitle,fontSize:15,margin:0}}>🗓️ Weekly Report — for Admin's PA</h3>
+              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>{weeklyRange.from} to {weeklyRange.to} · {weeklyTotals.count} entries · always the last 7 days, no filters needed</p>
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              <button onClick={()=>generateWeeklyReport('PDF')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
+              <button onClick={()=>generateWeeklyReport('DOCX')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
+              <button onClick={()=>generateWeeklyReport('Excel')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginTop:8}}>
+            <div style={{backgroundColor:'#dcfce7',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #16a34a'}}>
+              <p style={{fontSize:11,color:'#16a34a',fontWeight:600,margin:'0 0 2px'}}>Income (7 days)</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#16a34a',margin:0}}>{fmt(weeklyTotals.income)}</p>
+            </div>
+            <div style={{backgroundColor:'#fee2e2',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #dc2626'}}>
+              <p style={{fontSize:11,color:'#dc2626',fontWeight:600,margin:'0 0 2px'}}>Expense (7 days)</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#dc2626',margin:0}}>{fmt(weeklyTotals.expense)}</p>
+            </div>
+            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a5f'}}>
+              <p style={{fontSize:11,color:'#1e3a5f',fontWeight:600,margin:'0 0 2px'}}>Net</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#1e3a5f',margin:0}}>{fmt(weeklyTotals.net)}</p>
+            </div>
+          </div>
         </div>
 
         {/* ── report type ── */}
@@ -1900,7 +2048,10 @@ function Accounts({role,userId}){
                     <span style={{fontSize:12,color:'#7c3aed'}}>{item.voucher_head||''}</span>
                     <span style={{fontSize:12,color:'#64748b'}}>{item.payment_mode}</span>
                   </div>
-                  {canWrite&&<button onClick={()=>openEdit(item)} style={{...smallBtn('#eff6ff','#1e3a5f'),padding:'6px 12px',fontSize:12}}>✏️ Edit</button>}
+                  <div style={{display:'flex',gap:8}}>
+                    {canEditExpenditure&&<button onClick={()=>openEdit(item)} style={{...smallBtn('#eff6ff','#1e3a5f'),padding:'6px 12px',fontSize:12}}>✏️ Edit</button>}
+                    <button onClick={()=>printReceiptMemo(item)} style={{...smallBtn('#f0fdf4','#16a34a'),padding:'6px 12px',fontSize:12}}>🧾 Memo</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1918,7 +2069,7 @@ function Accounts({role,userId}){
                       <td style={tdS}><span style={{fontSize:11,padding:'2px 7px',borderRadius:4,backgroundColor:'#e8f0fa',color:'#1e3a5f',fontWeight:700}}>{item.account_type||'Cash A/c'}</span></td>
                       <td style={{...tdS,color:'#7c3aed'}}>{item.voucher_head||'—'}</td>
                       <td style={tdS}>{item.note||'—'}</td>
-                      <td style={tdS}>{canWrite&&<button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️ Edit</button>}</td>
+                      <td style={tdS}><div style={{display:'flex',gap:6}}>{canEditExpenditure&&<button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️ Edit</button>}<button onClick={()=>printReceiptMemo(item)} style={smallBtn('#f0fdf4','#16a34a')}>🧾 Memo</button></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -2117,7 +2268,7 @@ function Accounts({role,userId}){
       <IncomeAnalysis entries={entries} today={today} isMobile={isMobile}/>
     )}
     {/* ══ TAB: TIMELINE ══ */}
-    {activeTab==='timeline'&&(
+    {activeTab==='timeline'&&isAdmin&&(
       <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
         <h3 style={{fontSize:16,fontWeight:700,color:'#1e3a5f',marginBottom:16}}>🕐 Activity Timeline</h3>
         {auditLog.length===0
@@ -2140,6 +2291,23 @@ function Accounts({role,userId}){
               )
             })
         }
+      </div>
+    )}
+
+    {/* ══ RECEIPT MEMO MODAL (auto-shown after saving a new entry) ══ */}
+    {receiptMemoEntry&&(
+      <div onClick={()=>setReceiptMemoEntry(null)} style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,padding: isMobile ? 12 : 0}}>
+        <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:14,padding: isMobile ? 20 : 28,width: isMobile ? '100%' : 420,maxWidth:'95vw',boxShadow:'0 20px 60px rgba(0,0,0,0.3)',textAlign:'center'}}>
+          <div style={{fontSize:36,marginBottom:8}}>✅</div>
+          <h2 style={{fontSize:17,fontWeight:800,color:'#1e3a5f',margin:'0 0 6px'}}>Entry Saved</h2>
+          <p style={{fontSize:13,color:'#64748b',margin:'0 0 20px'}}>
+            {receiptMemoEntry.type} of <strong>{fmt(receiptMemoEntry.amount)}</strong> recorded for <strong>{receiptMemoEntry.voucher_head||'-'}</strong>.
+          </p>
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={()=>setReceiptMemoEntry(null)} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:600,cursor:'pointer',fontSize:14,flex:1}}>Close</button>
+            <button onClick={()=>{printReceiptMemo(receiptMemoEntry);setReceiptMemoEntry(null)}} style={{backgroundColor:'#16a34a',color:'white',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:600,cursor:'pointer',fontSize:14,flex:1}}>🧾 Print Receipt Memo</button>
+          </div>
+        </div>
       </div>
     )}
 

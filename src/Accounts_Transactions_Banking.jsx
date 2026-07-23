@@ -26,12 +26,15 @@ export const TransactionsViewBanking = ({
   dailyTotalAmt = 0,
   fraudFlags = {},
   canWrite = false,
+  canEditExpenditure = null, // if not passed, falls back to canWrite (backward compatible)
   fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`,
   openEdit = () => {},
   handleDelete = () => {},
+  printReceiptMemo = () => {},
   isMobile = false,
   runningBalance = null,
 }) => {
+  const canEdit = canEditExpenditure !== null ? canEditExpenditure : canWrite
   // Compute running balance with corrected logic
   const balances = useMemo(() => {
     if (runningBalance && Array.isArray(runningBalance)) {
@@ -322,54 +325,81 @@ export const TransactionsViewBanking = ({
         </div>
 
         {/* Action Buttons */}
-        {canWrite && (
-          <div
-            style={{
-              display: 'flex',
-              gap: 6,
-              marginLeft: 4,
-              flexShrink: 0,
-            }}
-          >
-            <style>{`
-              .txn-edit-btn {
-                background: #eff6ff;
-                border: 1px solid #bfdbfe;
-                color: #1e3a5f;
-                padding: 6px 8px;
-                borderRadius: 6px;
-                cursor: pointer;
-                fontSize: 13px;
-                fontWeight: 500;
-                transition: all 0.15s ease;
-              }
-              .txn-edit-btn:hover {
-                background: #dbeafe;
-                border-color: #93c5fd;
-              }
-              .txn-edit-btn:active {
-                background: #bfdbfe;
-              }
+        <div
+          style={{
+            display: 'flex',
+            gap: 6,
+            marginLeft: 4,
+            flexShrink: 0,
+          }}
+        >
+          <style>{`
+            .txn-edit-btn {
+              background: #eff6ff;
+              border: 1px solid #bfdbfe;
+              color: #1e3a5f;
+              padding: 6px 8px;
+              borderRadius: 6px;
+              cursor: pointer;
+              fontSize: 13px;
+              fontWeight: 500;
+              transition: all 0.15s ease;
+            }
+            .txn-edit-btn:hover {
+              background: #dbeafe;
+              border-color: #93c5fd;
+            }
+            .txn-edit-btn:active {
+              background: #bfdbfe;
+            }
 
-              .txn-delete-btn {
-                background: #fee2e2;
-                border: 1px solid #fecaca;
-                color: #dc2626;
-                padding: 6px 8px;
-                borderRadius: 6px;
-                cursor: pointer;
-                fontSize: 13px;
-                fontWeight: 500;
-                transition: all 0.15s ease;
-              }
-              .txn-delete-btn:hover {
-                background: #fecaca;
-                border-color: #fca5a5;
-              }
-              .txn-delete-btn:active {
-                background: #fca5a5;
-              }
-            `}</style>
+            .txn-memo-btn {
+              background: #f0fdf4;
+              border: 1px solid #bbf7d0;
+              color: #16a34a;
+              padding: 6px 8px;
+              borderRadius: 6px;
+              cursor: pointer;
+              fontSize: 13px;
+              fontWeight: 500;
+              transition: all 0.15s ease;
+            }
+            .txn-memo-btn:hover {
+              background: #dcfce7;
+              border-color: #86efac;
+            }
+            .txn-memo-btn:active {
+              background: #bbf7d0;
+            }
+
+            .txn-delete-btn {
+              background: #fee2e2;
+              border: 1px solid #fecaca;
+              color: #dc2626;
+              padding: 6px 8px;
+              borderRadius: 6px;
+              cursor: pointer;
+              fontSize: 13px;
+              fontWeight: 500;
+              transition: all 0.15s ease;
+            }
+            .txn-delete-btn:hover {
+              background: #fecaca;
+              border-color: #fca5a5;
+            }
+            .txn-delete-btn:active {
+              background: #fca5a5;
+            }
+          `}</style>
+          <button
+            onClick={() => printReceiptMemo(item)}
+            className="txn-memo-btn"
+            aria-label="Print receipt memo"
+            title="Print Receipt Memo"
+          >
+            🧾
+          </button>
+          {canEdit && (
             <button
               onClick={() => openEdit(item)}
               className="txn-edit-btn"
@@ -378,6 +408,8 @@ export const TransactionsViewBanking = ({
             >
               ✏️
             </button>
+          )}
+          {canWrite && (
             <button
               onClick={() => handleDelete(item.id)}
               className="txn-delete-btn"
@@ -386,8 +418,8 @@ export const TransactionsViewBanking = ({
             >
               🗑
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     )
   }
