@@ -391,6 +391,14 @@ function Accounts({role,userId}){
     if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials()}
   },[fetchEntries,fetchBudgets,fetchStaff,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,isAdmin])
 
+  // Voucher Head / person pickers should only show real people — system rows
+  // (e.g. "Admin", test/placeholder entries) are flagged is_system=true in the
+  // staff table and excluded here, without removing them from the DB.
+  const selectableStaffList = useMemo(
+    ()=>staffList.filter(s=>!s.is_system),
+    [staffList]
+  )
+
   // ── detect logged-in user against the staff list, auto-add if missing ───
   const currentStaff = useMemo(
     ()=>staffList.find(s=>String(s.user_id)===String(userId)||String(s.id)===String(userId)),
@@ -1556,7 +1564,7 @@ function Accounts({role,userId}){
                     updateRow(i,'voucher_head',e.target.value)
                   }} required style={iStyle}>
                     <option value="">Select from Staff…</option>
-                    {staffList.map(s=><option key={s.id??s.name} value={s.name}>{s.name}{String(s.user_id)===String(userId)||String(s.id)===String(userId)?' (You)':''}</option>)}
+                    {selectableStaffList.map(s=><option key={s.id??s.name} value={s.name}>{s.name}{String(s.user_id)===String(userId)||String(s.id)===String(userId)?' (You)':''}</option>)}
                     <option value="__add_staff__">+ Add New Staff Member…</option>
                   </select>
                 </div>
