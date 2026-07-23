@@ -815,17 +815,20 @@ function Accounts({role,userId}){
       doc.text('Transaction Detail',margin,y);y+=6
       autoTable(doc,{
         startY:y,
-        head:[['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount']],
-        body:entriesData.map((e,i)=>[i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmtPdf(e.amount)}`]),
-        headStyles:{fillColor:[30,58,95],textColor:255,fontSize:8.5},
-        bodyStyles:{fontSize:8},
+        head:[['#','Date','Type','Category','Account','Mode','Voucher Head','Particulars / Note','Entered By','Receipt','Status','Amount']],
+        body:entriesData.map((e,i)=>[i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.note||'-',e.added_by||e.edited_by||'admin',e.receipt_url?'Yes':'No',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmtPdf(e.amount)}`]),
+        headStyles:{fillColor:[30,58,95],textColor:255,fontSize:8},
+        bodyStyles:{fontSize:7.5},
         alternateRowStyles:{fillColor:[248,250,252]},
-        columnStyles:{0:{cellWidth:24},8:{halign:'right'}},
+        columnStyles:{0:{cellWidth:20},7:{cellWidth:110},11:{halign:'right'}},
         margin:{left:margin,right:margin,bottom:70},
         didParseCell:(data)=>{
-          if(data.section==='body'&&data.column.index===8){
+          if(data.section==='body'&&data.column.index===11){
             const type=data.row.raw[2]
             data.cell.styles.textColor=type==='Income'?[22,163,74]:[220,38,38]
+          }
+          if(data.section==='body'&&data.column.index===9){
+            data.cell.styles.textColor=data.cell.raw==='Yes'?[22,163,74]:[148,163,184]
           }
         },
         didDrawPage:(data)=>{
@@ -903,24 +906,24 @@ function Accounts({role,userId}){
 
       const headRow=new TableRow({
         tableHeader:true,
-        children:['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'].map(h=>new TableCell({
+        children:['#','Date','Type','Category','Account','Mode','Voucher Head','Particulars / Note','Entered By','Receipt','Status','Amount'].map(h=>new TableCell({
           shading:{type:ShadingType.CLEAR,fill:headerCellShade},
           children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:'FFFFFF',size:16})]})],
         })),
       })
       const dataRows=entriesData.map((e,i)=>new TableRow({
-        children:[String(i+1),e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmt(e.amount)}`]
+        children:[String(i+1),e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.note||'-',e.added_by||e.edited_by||'admin',e.receipt_url?'Yes':'No',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmt(e.amount)}`]
           .map((val,ci)=>new TableCell({
             shading:i%2===1?{type:ShadingType.CLEAR,fill:'F8FAFC'}:undefined,
             children:[new Paragraph({
-              alignment:ci===8?AlignmentType.RIGHT:AlignmentType.LEFT,
-              children:[new TextRun({text:String(val),size:16,color:ci===8?(e.type==='Income'?'16A34A':'DC2626'):'1E293B'})],
+              alignment:ci===11?AlignmentType.RIGHT:AlignmentType.LEFT,
+              children:[new TextRun({text:String(val),size:16,color:ci===11?(e.type==='Income'?'16A34A':'DC2626'):(ci===9?(val==='Yes'?'16A34A':'94A3B8'):'1E293B')})],
             })],
           })),
       }))
       const totalRow=new TableRow({
         children:[
-          new TableCell({columnSpan:8,children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'NET TOTAL',bold:true,size:16})]})]}),
+          new TableCell({columnSpan:11,children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'NET TOTAL',bold:true,size:16})]})]}),
           new TableCell({children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:fmt(totalsData.net),bold:true,size:16})]})]}),
         ],
       })
@@ -992,20 +995,20 @@ function Accounts({role,userId}){
       wsData.push([])
       wsData.push(['Total Income',totalsData.income,'','Total Expense',totalsData.expense,'','Net Balance',totalsData.net,'','Entries',totalsData.count])
       wsData.push([])
-      wsData.push(['#','Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'])
+      wsData.push(['#','Date','Type','Category','Account','Mode','Voucher Head','Particulars / Note','Entered By','Receipt','Status','Amount'])
       entriesData.forEach((e,i)=>{
-        wsData.push([i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.status||'Confirmed',e.type==='Income'?Number(e.amount):-Number(e.amount)])
+        wsData.push([i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.note||'-',e.added_by||e.edited_by||'admin',e.receipt_url?'Yes':'No',e.status||'Confirmed',e.type==='Income'?Number(e.amount):-Number(e.amount)])
       })
-      wsData.push(['','','','','','','','NET TOTAL',totalsData.net])
+      wsData.push(['','','','','','','','','','','NET TOTAL',totalsData.net])
       wsData.push([])
       wsData.push([])
-      wsData.push(['Prepared By:','','','','Authorized Signature:'])
-      wsData.push(['______________________','','','','______________________'])
-      wsData.push([`Date: ${getToday()}`,'','','',`Date: ${getToday()}`])
+      wsData.push(['Prepared By:','','','','','','Authorized Signature:'])
+      wsData.push(['______________________','','','','','','______________________'])
+      wsData.push([`Date: ${getToday()}`,'','','','','',`Date: ${getToday()}`])
 
       const ws=XLSX.utils.aoa_to_sheet(wsData)
-      ws['!cols']=[{wch:6},{wch:12},{wch:10},{wch:16},{wch:14},{wch:10},{wch:20},{wch:12},{wch:14}]
-      ws['!merges']=headerLines.map((_,r)=>({s:{r,c:0},e:{r,c:8}}))
+      ws['!cols']=[{wch:6},{wch:12},{wch:10},{wch:16},{wch:14},{wch:10},{wch:20},{wch:30},{wch:14},{wch:10},{wch:12},{wch:14}]
+      ws['!merges']=headerLines.map((_,r)=>({s:{r,c:0},e:{r,c:11}}))
       const wb=XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb,ws,'Report')
       XLSX.writeFile(wb,`GNSI-${titleData.replace(/\s+/g,'-')}-${getToday()}.xlsx`)
