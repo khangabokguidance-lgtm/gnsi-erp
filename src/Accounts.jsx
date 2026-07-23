@@ -1521,14 +1521,14 @@ function Accounts({role,userId}){
             <div key={i} style={{border:rows.length>1?'1px solid #e2e8f0':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
               {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a5f'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
               <div style={{display:'grid',gridTemplateColumns:formCols,gap:14}}>
-                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''}</label><input type="date" value={row.entry_date} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
-                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date</label><input type="date" value={row.payment_date||row.entry_date} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
-                <div><label style={lStyle}>Type</label>
+                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
+                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
+                <div><label style={lStyle}>Type <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#f8fafc':'white'}}>
                     {canAddIncome&&<option>Income</option>}<option>Expense</option>
                   </select>
                 </div>
-                <div><label style={lStyle}>Category</label>
+                <div><label style={lStyle}>Category <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.category} onChange={e=>{
                     if(e.target.value==='__add_new__'){addCustomExpenseCategory(i);return}
                     updateRow(i,'category',e.target.value)
@@ -1538,19 +1538,19 @@ function Accounts({role,userId}){
                     {row.type==='Expense'&&<option value="__add_new__">+ Add New Category…</option>}
                   </select>
                 </div>
-                <div><label style={lStyle}>Amount</label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/></div>
-                <div><label style={lStyle}>Payment Mode</label>
+                <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/></div>
+                <div><label style={lStyle}>Payment Mode <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={iStyle}>
                     <option value="">Select</option>
                     {PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}
                   </select>
                 </div>
-                <div><label style={lStyle}>Account Type</label>
+                <div><label style={lStyle}>Account Type <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.account_type||'Cash A/c'} onChange={e=>updateRow(i,'account_type',e.target.value)} required style={iStyle}>
                     {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
                   </select>
                 </div>
-                <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#94a3b8'}}>(who takes it)</span></label>
+                <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#94a3b8'}}>(who takes it)</span> <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.voucher_head||''} onChange={e=>{
                     if(e.target.value==='__add_staff__'){addNewStaffMember(i);return}
                     updateRow(i,'voucher_head',e.target.value)
@@ -1563,12 +1563,12 @@ function Accounts({role,userId}){
                 <div><label style={lStyle}>Entered By</label>
                   <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...iStyle,backgroundColor:'#f8fafc',color:'#64748b',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
-                <div><label style={lStyle}>Status</label>
+                <div><label style={lStyle}>Status <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.status} onChange={e=>updateRow(i,'status',e.target.value)} required style={iStyle}>
                     {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </div>
-                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>Description / Note</label><input type="text" placeholder="Transaction description" value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/></div>
+                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>Description / Note <span style={{color:'#dc2626'}}>*</span></label><input type="text" placeholder="Transaction description" value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/></div>
               </div>
               <label style={{display:'flex',alignItems:'center',gap:8,marginTop:12,cursor:'pointer',fontSize:14,color:'#374151'}}>
                 <input type="checkbox" checked={row.is_recurring} onChange={e=>updateRow(i,'is_recurring',e.target.checked)}/>
@@ -1577,9 +1577,9 @@ function Accounts({role,userId}){
             </div>
           ))}
           <div style={{marginTop:16}}>
-            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#dc2626'}}>(required)</span></label>
+            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" required={!editEntry&&!rows[0]?.receipt_url} onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
               {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eff6ff',color:'#1e3a5f',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
               {rows[0]?.receipt_url&&!receiptFile&&<span style={{fontSize:12,color:'#16a34a'}}>✅ Receipt on file</span>}
             </div>
