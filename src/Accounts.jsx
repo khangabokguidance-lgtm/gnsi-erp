@@ -158,10 +158,13 @@ function Accounts({role,userId}){
     'dfe4e59a-3f20-4b0c-9f19-cb64996f788f', // Moirangthem Arunkumar Singh (Administrator)
   ]
   const canWrite     = isAdmin||role==='accounts'||role==='manager'
+  const isSuperintendent = role==='superintendent'
   const canAddIncome = isAdmin
   // Any non-admin user can log an expenditure entry, even without full write
   // access — edit/delete/budgets/income stay restricted to canWrite/canAddIncome.
-  const canAddEntry  = canWrite||!isAdmin
+  // Superintendent is edit-only (see canEditExpenditure below) — explicitly
+  // excluded here so they cannot add new entries, only edit existing ones.
+  const canAddEntry  = (canWrite||!isAdmin) && !isSuperintendent
 
   // responsive
   const windowWidth  = useWindowWidth()
@@ -266,6 +269,7 @@ function Accounts({role,userId}){
   const [deletedRows, setDeletedRows] = useState([])
   const [auditLog,    setAuditLog]    = useState([])
   const [exportLog,   setExportLog]   = useState([])
+  const [superintendentFlags, setSuperintendentFlags] = useState([])
 
   // PHASE 3: fraud flags now fetched from DB (fraud_alerts table)
   const [fraudFlags,  setFraudFlags]  = useState({})
@@ -373,6 +377,14 @@ function Accounts({role,userId}){
     setExportLog(data||[])
   },[isAdmin])
 
+  // Superintendent edit flags — every edit a superintendent makes is auto-
+  // flagged (see handleSubmit); admin reviews and marks each Verified here.
+  const fetchSuperintendentFlags = useCallback(async()=>{
+    if(!isAdmin)return
+    const {data}=await supabase.from('superintendent_edit_flags').select('*').order('created_at',{ascending:false}).limit(200)
+    setSuperintendentFlags(data||[])
+  },[isAdmin])
+
   // PHASE 4: fetch trial balance + balance sheet from DB views
   const fetchFinancials = useCallback(async()=>{
     if(!isAdmin)return
@@ -388,8 +400,8 @@ function Accounts({role,userId}){
 
   useEffect(()=>{
     fetchEntries();fetchBudgets();fetchStaff()
-    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials()}
-  },[fetchEntries,fetchBudgets,fetchStaff,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,isAdmin])
+    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials();fetchSuperintendentFlags()}
+  },[fetchEntries,fetchBudgets,fetchStaff,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,isAdmin])
 
   // Voucher Head / person pickers should only show real people — system rows
   // (e.g. "Admin", test/placeholder entries) are flagged is_system=true in the
@@ -405,10 +417,10 @@ function Accounts({role,userId}){
     [staffList,userId]
   )
 
-  // Named-user override: Accountant (canWrite via role) plus the two named
-  // Administrators, matched by staff.id — can edit expenditure entries even
-  // though their generic `role` might not be 'admin'.
-  const canEditExpenditure = canWrite || AUTHORIZED_EXPENDITURE_EDITOR_IDS.includes(String(currentStaff?.id))
+  // Named-user override: Accountant (canWrite via role), the two named
+  // Administrators (matched by staff.id), and Superintendent (edit-only,
+  // every edit auto-flagged for admin verification — see handleSubmit).
+  const canEditExpenditure = canWrite || isSuperintendent || AUTHORIZED_EXPENDITURE_EDITOR_IDS.includes(String(currentStaff?.id))
 
   useEffect(()=>{
     if(!staffLoaded||!userId||currentStaff)return
@@ -543,7 +555,19 @@ function Accounts({role,userId}){
       }
       const{error}=await supabase.from('accounts').update(payload).eq('id',editEntry.id)
       if(error)alert('Error: '+error.message)
-      else{await writeAuditLog({action:'update',role:enteredByName,targetId:editEntry.id,oldValues:editEntry,newValues:payload});setShowForm(false);setEditEntry(null);setReceiptFile(null);fetchEntries()}
+      else{
+        await writeAuditLog({action:'update',role:enteredByName,targetId:editEntry.id,oldValues:editEntry,newValues:payload})
+        // Superintendent is edit-only — every edit they make is auto-flagged
+        // here for admin verification. This is a permanent record; admin can
+        // separately mark it "Verified" once reviewed (see Fraud/Alerts tab).
+        if(isSuperintendent){
+          await supabase.from('superintendent_edit_flags').insert({
+            entry_id:editEntry.id,edited_by:enteredByName,
+            old_values:editEntry,new_values:payload,
+          })
+        }
+        setShowForm(false);setEditEntry(null);setReceiptFile(null);fetchEntries()
+      }
     }else{
       const payloads=rows.filter(r=>canAddIncome||r.type==='Expense').map(r=>({
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
@@ -1396,6 +1420,77 @@ function Accounts({role,userId}){
     return Object.values(map)
   },[entries])
 
+  // ── Savings Tracker: daily/weekly income vs expense + category trends ────
+  // Admin-only tab. Reuses groupByDate/monthKey — no new data sources, just
+  // a different lens on the same entries: last 14 days, last 8 weeks, an
+  // all-time running savings figure, and category-level week-over-week flags.
+  const dailyTrend=useMemo(()=>{
+    if(!isAdmin)return[]
+    const map={}
+    entries.forEach(e=>{
+      const d=e.entry_date;if(!d)return
+      if(!map[d])map[d]={date:d,Income:0,Expense:0}
+      map[d][e.type]+=Number(e.amount)
+    })
+    return Object.values(map).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0).slice(-14)
+      .map(r=>({...r,Net:r.Income-r.Expense}))
+  },[entries,isAdmin])
+
+  const weekKey=(dateStr)=>{
+    const d=new Date(dateStr)
+    const day=(d.getDay()+6)%7 // Monday=0
+    const monday=new Date(d);monday.setDate(d.getDate()-day)
+    const pad=(n)=>String(n).padStart(2,'0')
+    return `${monday.getFullYear()}-${pad(monday.getMonth()+1)}-${pad(monday.getDate())}`
+  }
+
+  const weeklyTrend=useMemo(()=>{
+    if(!isAdmin)return[]
+    const map={}
+    entries.forEach(e=>{
+      if(!e.entry_date)return
+      const wk=weekKey(e.entry_date)
+      if(!map[wk])map[wk]={week:wk,Income:0,Expense:0}
+      map[wk][e.type]+=Number(e.amount)
+    })
+    return Object.values(map).sort((a,b)=>a.week<b.week?-1:a.week>b.week?1:0).slice(-8)
+      .map(r=>({...r,Net:r.Income-r.Expense}))
+  },[entries,isAdmin])
+
+  const savingsTracker=useMemo(()=>{
+    if(!isAdmin)return null
+    const totalIncomeAll=entries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+    const totalExpenseAll=entries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    const netSavings=totalIncomeAll-totalExpenseAll
+    const savingsRate=totalIncomeAll>0?(netSavings/totalIncomeAll)*100:0
+    const thisWeek=weeklyTrend[weeklyTrend.length-1]||{Income:0,Expense:0,Net:0}
+    const lastWeek=weeklyTrend[weeklyTrend.length-2]||{Income:0,Expense:0,Net:0}
+    return{totalIncomeAll,totalExpenseAll,netSavings,savingsRate,thisWeek,lastWeek}
+  },[entries,weeklyTrend,isAdmin])
+
+  const categoryTrendFlags=useMemo(()=>{
+    if(!isAdmin||weeklyTrend.length<2)return[]
+    // Compare this week's per-category expense spend vs last week's, per category.
+    const thisWk=weeklyTrend[weeklyTrend.length-1]?.week
+    const lastWk=weeklyTrend[weeklyTrend.length-2]?.week
+    if(!thisWk||!lastWk)return[]
+    const sumByCatWeek=(wk)=>{
+      const map={}
+      entries.filter(e=>e.type==='Expense'&&e.entry_date&&weekKey(e.entry_date)===wk)
+        .forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)})
+      return map
+    }
+    const thisMap=sumByCatWeek(thisWk),lastMap=sumByCatWeek(lastWk)
+    const cats=new Set([...Object.keys(thisMap),...Object.keys(lastMap)])
+    return[...cats].map(cat=>{
+      const cur=thisMap[cat]||0,prev=lastMap[cat]||0
+      const change=prev>0?((cur-prev)/prev)*100:(cur>0?100:0)
+      return{category:cat,current:cur,previous:prev,change}
+    }).filter(r=>r.current>0||r.previous>0)
+      .sort((a,b)=>b.change-a.change)
+      .slice(0,6)
+  },[entries,weeklyTrend,isAdmin])
+
   const plData=useMemo(()=>{
     const thisM=entries.filter(e=>e.entry_date.startsWith(plMonth))
     const prevM=(()=>{const[y,m]=plMonth.split('-').map(Number);const d=new Date(y,m-2,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return entries.filter(e=>e.entry_date.startsWith(key))})()
@@ -1434,6 +1529,82 @@ function Accounts({role,userId}){
   },[fraudFlags,entries,deletedRows,isAdmin,today])
 
   const totalFraudAlerts=isAdmin?(fraudSummary.high||0)+(fraudSummary.medium||0):0
+  const pendingSuperintendentCount=isAdmin?superintendentFlags.filter(f=>!f.verified).length:0
+  const superintendentFlaggedIds=useMemo(
+    ()=>new Set(superintendentFlags.filter(f=>!f.verified).map(f=>f.entry_id)),
+    [superintendentFlags]
+  )
+
+  // ── For Admin: daily/weekly digest ───────────────────────────────────────
+  // Pulls together everything already computed elsewhere (fraud flags,
+  // superintendent edits, budget overruns, pending status, recent deletes)
+  // into one prioritized "what needs your attention" list. No new data
+  // sources — just surfaces what's already tracked, in one glance.
+  const overBudgetCategories=useMemo(()=>{
+    if(!isAdmin)return[]
+    return EXPENSE_CATEGORIES
+      .map(cat=>{
+        const limit=Number(budgets[cat])||0
+        const spent=monthlyExpenses[cat]||0
+        return{cat,limit,spent,pct:limit>0?(spent/limit)*100:0}
+      })
+      .filter(r=>r.limit>0&&r.spent>r.limit)
+      .sort((a,b)=>b.pct-a.pct)
+  },[budgets,monthlyExpenses,isAdmin])
+
+  const recentDeletesToday=useMemo(()=>{
+    if(!isAdmin)return[]
+    return deletedRows.filter(e=>e.deleted_at?.startsWith(today))
+  },[deletedRows,today,isAdmin])
+
+  const digestItems=useMemo(()=>{
+    if(!isAdmin)return[]
+    const items=[]
+    if(pendingSuperintendentCount>0)items.push({
+      severity:'high',icon:'🛡️',
+      title:`${pendingSuperintendentCount} Superintendent edit${pendingSuperintendentCount>1?'s':''} awaiting verification`,
+      detail:'Edits made under the edit-only Superintendent role need your review.',
+      tab:'fraud',
+    })
+    if((fraudSummary.high||0)>0)items.push({
+      severity:'high',icon:'🚨',
+      title:`${fraudSummary.high} high-risk flagged transaction${fraudSummary.high>1?'s':''}`,
+      detail:'Outside campus, device clash, or other high-severity fraud signals.',
+      tab:'fraud',
+    })
+    if((fraudSummary.medium||0)>0)items.push({
+      severity:'medium',icon:'⚠️',
+      title:`${fraudSummary.medium} medium-risk flagged transaction${fraudSummary.medium>1?'s':''}`,
+      detail:'Worth a second look when you have a moment.',
+      tab:'fraud',
+    })
+    if(recentDeletesToday.length>0)items.push({
+      severity:'medium',icon:'👻',
+      title:`${recentDeletesToday.length} entr${recentDeletesToday.length>1?'ies':'y'} deleted today`,
+      detail:'Confirm these were intentional — restorable from Fraud & Alerts.',
+      tab:'fraud',
+    })
+    overBudgetCategories.forEach(r=>items.push({
+      severity:r.pct>150?'high':'medium',icon:'💸',
+      title:`${r.cat} is over budget — ${fmt(r.spent)} of ${fmt(r.limit)}`,
+      detail:`${Math.round(r.pct)}% of this month's ${r.cat} budget used.`,
+      tab:'budgets',
+    }))
+    if(pendingCount>0)items.push({
+      severity:'low',icon:'⏳',
+      title:`${pendingCount} entr${pendingCount>1?'ies':'y'} still marked Pending`,
+      detail:'Uncleared transactions waiting on confirmation.',
+      tab:'transactions',
+    })
+    if(fraudSummary.freqAnomalies?.length>0)items.push({
+      severity:'low',icon:'🔁',
+      title:`${fraudSummary.freqAnomalies.length} repeated-entry pattern${fraudSummary.freqAnomalies.length>1?'s':''} this month`,
+      detail:'Same category and amount logged more than twice — worth a glance.',
+      tab:'fraud',
+    })
+    const order={high:0,medium:1,low:2}
+    return items.sort((a,b)=>order[a.severity]-order[b.severity])
+  },[isAdmin,pendingSuperintendentCount,fraudSummary,recentDeletesToday,overBudgetCategories,pendingCount,fmt])
 
   const dailyGroups=useMemo(()=>groupByDate(dailyFilteredEntries,getDailyDate),[dailyFilteredEntries,getDailyDate])
   const dailyTotalAmt=dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)
@@ -1612,7 +1783,8 @@ function Accounts({role,userId}){
         ['daily','📋 Daily'],
         ['expenditure','💵 Expenditure'],
         ['reports','📑 Reports'],
-        ...(isAdmin?[['fraud',totalFraudAlerts>0?`🕵️ Fraud (${totalFraudAlerts})`:'🕵️ Fraud']]:[] ),
+        ...(isAdmin?[['fraud',digestItems.length>0?`📌 For Admin (${digestItems.length})`:'📌 For Admin']]:[] ),
+        ...(isAdmin?[['savings','💹 Savings Tracker']]:[] ),
         // PHASE 4: Balance Sheet tab (admin only)
         ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
         ['income','💰 Income Analysis'],
@@ -1639,6 +1811,7 @@ function Accounts({role,userId}){
     budgets={budgets}
     canWrite={canWrite}
             canEditExpenditure={canEditExpenditure}
+            superintendentFlaggedIds={superintendentFlaggedIds}
     fmt={fmt}
     isMobile={isMobile}
     openEdit={openEdit}
@@ -1715,6 +1888,7 @@ function Accounts({role,userId}){
             fraudFlags={fraudFlags}
             canWrite={canWrite}
             canEditExpenditure={canEditExpenditure}
+            superintendentFlaggedIds={superintendentFlaggedIds}
             fmt={fmt}
             openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
@@ -1797,6 +1971,7 @@ function Accounts({role,userId}){
             fraudFlags={fraudFlags}
             canWrite={canWrite}
             canEditExpenditure={canEditExpenditure}
+            superintendentFlaggedIds={superintendentFlaggedIds}
             fmt={fmt}
             openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
@@ -2091,6 +2266,37 @@ function Accounts({role,userId}){
     {/* ══ TAB: FRAUD WATCH (admin only) ══ */}
     {activeTab==='fraud'&&isAdmin&&(
       <div>
+        {/* ══ For Admin: what needs your attention right now ══ */}
+        <div style={{backgroundColor:'#1e293b',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📌 For Admin — Today's Digest</h2>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.6)',margin:'4px 0 0'}}>Everything across the portal that needs your attention, in one glance — no need to check every tab.</p>
+        </div>
+        <div style={{...chartCard,marginBottom:24}}>
+          {digestItems.length===0?(
+            <div style={{textAlign:'center',padding:32,color:'#16a34a'}}>
+              <div style={{fontSize:32,marginBottom:8}}>✅</div>
+              <p style={{fontSize:14,fontWeight:600,margin:0}}>Nothing needs your attention right now.</p>
+            </div>
+          ):(
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {digestItems.map((item,i)=>{
+                const sevColor={high:'#dc2626',medium:'#d97706',low:'#64748b'}[item.severity]
+                const sevBg={high:'#fee2e2',medium:'#fef3c7',low:'#f1f5f9'}[item.severity]
+                return(
+                  <div key={i} onClick={()=>setActiveTab(item.tab)} style={{display:'flex',gap:12,alignItems:'flex-start',padding:'12px 14px',backgroundColor:sevBg,borderRadius:10,borderLeft:`4px solid ${sevColor}`,cursor:'pointer'}}>
+                    <span style={{fontSize:20,flexShrink:0}}>{item.icon}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{margin:0,fontSize:13,fontWeight:700,color:'#1e293b'}}>{item.title}</p>
+                      <p style={{margin:'2px 0 0',fontSize:12,color:'#64748b'}}>{item.detail}</p>
+                    </div>
+                    <span style={{fontSize:11,fontWeight:700,color:sevColor,textTransform:'uppercase',flexShrink:0,paddingTop:2}}>{item.severity}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
         <div style={{display:'grid',gridTemplateColumns:fraudGridCols,gap: isMobile ? 10 : 14,marginBottom:24}}>
           {[{label:'High Risk',value:fraudSummary.high||0,color:'#dc2626',bg:'#fee2e2',icon:'🚨'},{label:'Medium Risk',value:fraudSummary.medium||0,color:'#d97706',bg:'#fef3c7',icon:'⚠️'},{label:'Deleted Today',value:fraudSummary.phantoms?.length||0,color:'#7c3aed',bg:'#f3e8ff',icon:'👻'},{label:'CSV Exports',value:exportLog.length,color:'#1e3a5f',bg:'#eff6ff',icon:'📤'}].map(c=>(
             <div key={c.label} style={{backgroundColor:c.bg,borderRadius:12,padding:16,borderLeft:`4px solid ${c.color}`}}>
@@ -2099,6 +2305,26 @@ function Accounts({role,userId}){
               <h2 style={{fontSize:28,fontWeight:'bold',color:c.color,margin:'4px 0 0'}}>{c.value}</h2>
             </div>
           ))}
+        </div>
+        <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #d97706',overflowX:'auto'}}>
+          <h3 style={{...chartTitle,color:'#d97706'}}>🛡️ Superintendent Edits — Pending Verification</h3>
+          <p style={{fontSize:12,color:'#94a3b8',margin:'-8px 0 12px'}}>Superintendent role can edit existing entries only (no add/delete). Every such edit is logged here permanently; mark it Verified once you've reviewed it.</p>
+          {superintendentFlags.filter(f=>!f.verified).length===0?<p style={{color:'#94a3b8',fontSize:14}}>No pending superintendent edits.</p>:(
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead><tr style={{backgroundColor:'#fffbeb'}}>{['Edited At','Edited By','Entry ID','Old Amount','New Amount','Verify'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#92400e',fontSize:12,borderBottom:'1px solid #fde68a'}}>{h}</th>)}</tr></thead>
+              <tbody>{superintendentFlags.filter(f=>!f.verified).map(f=>(<tr key={f.id} style={{borderBottom:'1px solid #fffbeb'}}>
+                <td style={tdS}>{f.edited_at?new Date(f.edited_at).toLocaleString('en-IN'):''}</td>
+                <td style={tdS}><strong>{f.edited_by}</strong></td>
+                <td style={{...tdS,fontSize:11,color:'#94a3b8'}}>{f.entry_id}</td>
+                <td style={{...tdS,color:'#94a3b8'}}>{f.old_values?.amount!=null?fmt(f.old_values.amount):'-'}</td>
+                <td style={{...tdS,fontWeight:600}}>{f.new_values?.amount!=null?fmt(f.new_values.amount):'-'}</td>
+                <td style={tdS}><button onClick={async()=>{
+                  await supabase.from('superintendent_edit_flags').update({verified:true,verified_by:role,verified_at:new Date().toISOString()}).eq('id',f.id)
+                  fetchSuperintendentFlags()
+                }} style={{...smallBtn('#f0fdf4','#16a34a'),fontSize:12}}>✓ Verified</button></td>
+              </tr>))}</tbody>
+            </table>
+          )}
         </div>
         <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #dc2626',overflowX:'auto'}}>
           <h3 style={{...chartTitle,color:'#dc2626'}}>🚨 Flagged Transactions</h3>
@@ -2160,6 +2386,102 @@ function Accounts({role,userId}){
                 <td style={tdS}>{log.filter_type||'All'}</td>
                 <td style={{...tdS,fontWeight:600}}>{log.row_count}</td>
               </tr>))}</tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* ══ TAB: SAVINGS TRACKER (admin only) ══ */}
+    {activeTab==='savings'&&isAdmin&&(
+      <div>
+        <div style={{backgroundColor:'#064e3b',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>💹 Savings Tracker</h2>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Daily and weekly income vs. expense, and which categories to watch for future saving.</p>
+        </div>
+
+        {/* ── overall savings summary ── */}
+        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)',gap: isMobile ? 10 : 14,marginBottom:24}}>
+          <StatCard label="Total Income (All Time)" value={savingsTracker?.totalIncomeAll||0} color="#16a34a" bg="#dcfce7" icon="💰"/>
+          <StatCard label="Total Expense (All Time)" value={savingsTracker?.totalExpenseAll||0} color="#dc2626" bg="#fee2e2" icon="💸"/>
+          <StatCard label="Net Savings (All Time)" value={savingsTracker?.netSavings||0} color={savingsTracker?.netSavings>=0?'#16a34a':'#dc2626'} bg={savingsTracker?.netSavings>=0?'#dcfce7':'#fee2e2'} icon="🏦"/>
+          <StatCard label="Savings Rate" value={`${(savingsTracker?.savingsRate||0).toFixed(1)}%`} color="#1e3a5f" bg="#eff6ff" icon="📈" isCurrency={false} sub="of total income saved"/>
+        </div>
+
+        {/* ── this week vs last week ── */}
+        <div style={{...chartCard,marginBottom:24}}>
+          <h3 style={chartTitle}>This Week vs Last Week</h3>
+          <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:16}}>
+            {[{label:'Last Week',data:savingsTracker?.lastWeek},{label:'This Week',data:savingsTracker?.thisWeek}].map(({label,data})=>(
+              <div key={label} style={{backgroundColor:'#f8fafc',borderRadius:10,padding:16}}>
+                <p style={{fontSize:12,color:'#64748b',fontWeight:600,margin:'0 0 8px'}}>{label}</p>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#16a34a'}}>Income</span><strong style={{fontSize:13,color:'#16a34a'}}>{fmt(data?.Income||0)}</strong></div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#dc2626'}}>Expense</span><strong style={{fontSize:13,color:'#dc2626'}}>{fmt(data?.Expense||0)}</strong></div>
+                <div style={{display:'flex',justifyContent:'space-between',paddingTop:6,borderTop:'1px solid #e2e8f0'}}><span style={{fontSize:12,color:'#1e3a5f',fontWeight:700}}>Net</span><strong style={{fontSize:14,color:data?.Net>=0?'#16a34a':'#dc2626'}}>{fmt(data?.Net||0)}</strong></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── daily trend (last 14 days) ── */}
+        <div style={{...chartCard,marginBottom:24}}>
+          <h3 style={chartTitle}>📅 Daily Income vs Expense — Last 14 Days</h3>
+          {dailyTrend.length===0?<p style={{textAlign:'center',color:'#94a3b8',fontSize:14,padding:32}}>No entries yet.</p>:(
+            <ResponsiveContainer width="100%" height={isMobile?220:280}>
+              <LineChart data={dailyTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <XAxis dataKey="date" tick={{fontSize:10}} tickFormatter={d=>d.slice(5)}/>
+                <YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/>
+                <Tooltip formatter={v=>fmt(v)}/>
+                <Legend/>
+                <Line type="monotone" dataKey="Income" stroke="#16a34a" strokeWidth={2} dot={false}/>
+                <Line type="monotone" dataKey="Expense" stroke="#dc2626" strokeWidth={2} dot={false}/>
+                <Line type="monotone" dataKey="Net" stroke="#1e3a5f" strokeWidth={2} strokeDasharray="4 4" dot={false}/>
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* ── weekly trend (last 8 weeks) ── */}
+        <div style={{...chartCard,marginBottom:24}}>
+          <h3 style={chartTitle}>🗓️ Weekly Income vs Expense — Last 8 Weeks</h3>
+          {weeklyTrend.length===0?<p style={{textAlign:'center',color:'#94a3b8',fontSize:14,padding:32}}>No entries yet.</p>:(
+            <ResponsiveContainer width="100%" height={isMobile?220:280}>
+              <BarChart data={weeklyTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <XAxis dataKey="week" tick={{fontSize:10}} tickFormatter={d=>d.slice(5)}/>
+                <YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/>
+                <Tooltip formatter={v=>fmt(v)}/>
+                <Legend/>
+                <Bar dataKey="Income" fill="#16a34a" radius={[3,3,0,0]}/>
+                <Bar dataKey="Expense" fill="#dc2626" radius={[3,3,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* ── category trend flags: what to watch for future saving ── */}
+        <div style={{...chartCard,marginBottom:20}}>
+          <h3 style={chartTitle}>🔍 Categories to Watch — This Week vs Last Week</h3>
+          {categoryTrendFlags.length===0?<p style={{color:'#94a3b8',fontSize:14}}>Not enough weekly data yet to compare trends.</p>:(
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Category','Last Week','This Week','Change','Signal'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <tbody>{categoryTrendFlags.map(r=>{
+                const rising=r.change>20,falling=r.change<-20
+                return(
+                  <tr key={r.category} style={{borderBottom:'1px solid #f1f5f9'}}>
+                    <td style={{...tdS,fontWeight:600,color:'#1e293b'}}>{r.category}</td>
+                    <td style={tdS}>{fmt(r.previous)}</td>
+                    <td style={{...tdS,fontWeight:600}}>{fmt(r.current)}</td>
+                    <td style={{...tdS,fontWeight:700,color:rising?'#dc2626':falling?'#16a34a':'#64748b'}}>{r.change>0?'+':''}{r.change.toFixed(0)}%</td>
+                    <td style={tdS}>
+                      {rising&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#fee2e2',color:'#dc2626'}}>⬆ Trending up — consider cutting back</span>}
+                      {falling&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#dcfce7',color:'#16a34a'}}>⬇ Trending down</span>}
+                      {!rising&&!falling&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:'#f1f5f9',color:'#64748b'}}>Stable</span>}
+                    </td>
+                  </tr>
+                )
+              })}</tbody>
             </table>
           )}
         </div>
