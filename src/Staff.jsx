@@ -276,6 +276,25 @@ function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
   })
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [resettingAttendance, setResettingAttendance] = useState(false)
+
+  const handleResetAttendance = async () => {
+    if (!window.confirm(`Reset today's attendance record for ${staffMember.name}?\n\nThis clears today's check-in so they can check in again, and resolves any fraud alerts tied to it. This cannot be undone.`)) return
+    setResettingAttendance(true)
+    try {
+      const { data, error } = await supabase.rpc('admin_reset_today_attendance', {
+        p_staff_id: staffMember.id, p_admin_name: 'Admin'
+      })
+      if (error) { showToast('❌ ' + error.message, '#dc2626'); return }
+      if (!data?.ok) { showToast('❌ Reset failed — ' + (data?.error || 'unknown'), '#dc2626'); return }
+      showToast(data.deleted_count > 0 ? `✅ ${data.message}` : 'ℹ️ ' + data.message, data.deleted_count > 0 ? '#16a34a' : '#64748b')
+    } catch (err) {
+      showToast('❌ Error: ' + err.message, '#dc2626')
+    } finally {
+      setResettingAttendance(false)
+    }
+  }
+
   const validate = () => {
     const e = {}
     if (!form.name.trim()) e.name = 'Name is required'
@@ -324,6 +343,18 @@ function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
             <div><label style={S.label}>Role</label><select value={form.role} onChange={e => setForm({...form, role:e.target.value})} style={{ ...S.input, backgroundColor:'white' }}>{ROLE_OPTIONS.map(r => <option key={r}>{r}</option>)}</select></div>
             <div><label style={S.label}>Status</label><select value={form.status} onChange={e => setForm({...form, status:e.target.value})} style={{ ...S.input, backgroundColor:'white' }}><option>Active</option><option>Inactive</option></select></div>
           </div>
+
+          <div style={{ marginTop:20, padding:14, borderRadius:10, background:'#fff7ed', border:'1px solid #fed7aa' }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'#9a3412', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>📍 Attendance Reset</div>
+            <div style={{ fontSize:12, color:'#7c2d12', marginBottom:10 }}>
+              Clears {staffMember.name}'s check-in record for today only — use this if they're stuck behind a "device clash" flag, duplicate check-in error, or GPS issue and need to check in again.
+            </div>
+            <button type="button" onClick={handleResetAttendance} disabled={resettingAttendance}
+              style={{ ...S.btnSm(resettingAttendance ? '#94a3b8' : '#ea580c'), width:'100%', padding:'10px 12px', fontSize:12 }}>
+              {resettingAttendance ? '⏳ Resetting…' : '🔄 Reset Today\'s Attendance'}
+            </button>
+          </div>
+
           <div style={{ display:'flex', gap:10, marginTop:18, flexWrap:'wrap' }}>
             <button type="button" onClick={onClose} style={{ ...S.btn('#64748b'), flex:1 }}>Cancel</button>
             <button type="submit" disabled={saving} style={{ ...S.btn('#16a34a', saving), flex:2 }}>{saving ? '⏳ Saving…' : '💾 Update Staff'}</button>
