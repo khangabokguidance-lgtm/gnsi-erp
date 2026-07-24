@@ -24,11 +24,13 @@ const FONT_MONO     = "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospac
 export const AccountsDashboardBanking = ({
   entries = [],
   canWrite = false,
+  canEditExpenditure = null, // if not passed, falls back to canWrite (backward compatible)
   fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`,
   isMobile = false,
   openEdit = () => {},
   handleDelete = () => {},
 }) => {
+  const canEdit = canEditExpenditure !== null ? canEditExpenditure : canWrite
   const [selectedTxn, setSelectedTxn] = useState(null)
 
   const stats = useMemo(() => {
@@ -1071,13 +1073,14 @@ export const AccountsDashboardBanking = ({
             </div>
 
             {/* Action Buttons */}
-            {canWrite && (
+            {(canEdit || canWrite) && (
               <div
                 style={{
                   display: 'flex',
                   gap: '12px',
                 }}
               >
+                {canEdit && (
                 <button
                   onClick={() => {
                     openEdit(selectedTxn)
@@ -1103,6 +1106,8 @@ export const AccountsDashboardBanking = ({
                 >
                   Edit
                 </button>
+                )}
+                {canWrite && (
                 <button
                   onClick={() => {
                     handleDelete(selectedTxn.id)
@@ -1128,6 +1133,7 @@ export const AccountsDashboardBanking = ({
                 >
                   Delete
                 </button>
+                )}
               </div>
             )}
           </div>
