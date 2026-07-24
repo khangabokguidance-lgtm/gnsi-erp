@@ -9,6 +9,20 @@ const cm        = () => new Date().toISOString().slice(0, 7)
 const fmtMonth  = (m) => { if (!m) return ''; const [y, mo] = m.split('-'); return new Date(y, parseInt(mo) - 1).toLocaleString('default', { month: 'long', year: 'numeric' }) }
 const fmtDate   = (d) => { if (!d) return '-'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const gross     = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance)||0) + (Number(s.loyalty_bonus)||0) + (Number(s.role_bonus)||0)
+
+// Translates a staff_monthly_scores.level into a signed ₹ adjustment using
+// admin-configured rates. Bonuses are positive (added to net), the
+// Probation penalty is stored/entered as a positive rate but applied as a
+// negative adjustment (subtracted from net) — mirrors late/absent deductions.
+const performanceAdjustment = (level, rules) => {
+  switch (level) {
+    case 'Elite':       return Number(rules.perf_elite_bonus)||0
+    case 'Outstanding':  return Number(rules.perf_outstanding_bonus)||0
+    case 'Good':         return Number(rules.perf_good_bonus)||0
+    case 'Probation':    return -(Number(rules.perf_probation_penalty)||0)
+    default:              return 0 // 'Excellent' and unset scores are neutral — no adjustment
+  }
+}
 const pctBar    = (val, max) => Math.min(100, max > 0 ? Math.round((val/max)*100) : 0)
 const scoreClr  = (p) => p >= 75 ? '#16a34a' : p >= 40 ? '#f59e0b' : '#dc2626'
 
@@ -56,7 +70,8 @@ function injectPrintCSS() {
 
 function buildSlipHTML(s, ded, month, copy) {
   const g=gross(s), adv=Number(ded?.advance_deduction||0), lat=Number(ded?.late_deduction||0), adm=Number(ded?.admin_deduction||0), pf=Number(ded?.pf_deduction||0)
-  const totDed=adv+lat+adm+pf, net=g-totDed
+  const perfAdj=Number(ded?.performance_adjustment||0), perfBonus=perfAdj>0?perfAdj:0, perfPenalty=perfAdj<0?-perfAdj:0
+  const totDed=adv+lat+adm+pf+perfPenalty, net=g+perfBonus-totDed
   const ini=(s.name||'').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase()
   const isOff=copy==='office', ctag=isOff?'OFFICE COPY':'STAFF COPY', cbg=isOff?'#FCEBEB':'#E6F1FB', cclr=isOff?'#6B1A1A':'#0C447C'
   const mo=fmtMonth(month), genDate=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
@@ -97,10 +112,11 @@ function buildSlipHTML(s, ded, month, copy) {
         ${erow('Seniority Allow.',s.seniority_allowance,'Late / Absent',lat,false)}
         ${erow('Loyalty Bonus',s.loyalty_bonus,'Admin Deduction',adm,true)}
         ${erow('Role Bonus',s.role_bonus,'PF Deduction',pf,false)}
+        ${perfBonus>0?erow('Performance Bonus',perfBonus,'',null,false):(perfPenalty>0?erow('',null,'Performance Penalty',perfPenalty,true):'')}
       </tbody>
     </table>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid #C5D8F5"><tr>
-      <td style="background:#E6F1FB;padding:10px 12px;text-align:center;width:33%"><div style="font-size:10px;color:#185FA5;font-weight:700">GROSS EARNINGS</div><div style="font-size:20px;font-weight:700;color:#0C447C">${fmt(g)}</div></td>
+      <td style="background:#E6F1FB;padding:10px 12px;text-align:center;width:33%"><div style="font-size:10px;color:#185FA5;font-weight:700">GROSS EARNINGS</div><div style="font-size:20px;font-weight:700;color:#0C447C">${fmt(g+perfBonus)}</div></td>
       <td style="background:#FCEBEB;padding:10px 12px;text-align:center;width:33%;border:1px solid #FCEAEA"><div style="font-size:10px;color:#A32D2D;font-weight:700">TOTAL DEDUCTIONS</div><div style="font-size:20px;font-weight:700;color:#A32D2D">${fmt(totDed)}</div></td>
       <td style="background:#EAF3DE;padding:10px 12px;text-align:center;width:34%;border:1.5px solid #1B3A6B"><div style="font-size:10px;color:#1B3A6B;font-weight:700">NET SALARY PAYABLE</div><div style="font-size:20px;font-weight:700;color:#27500A">${fmt(net)}</div></td>
     </tr></table>
@@ -147,12 +163,14 @@ function printRegister(tableRef) {
 // ─── Export to CSV ────────────────────────────────────────────────────────────
 
 function exportToCSV(staffList, dedMap, month) {
-  const headers = ['S.N.','Name','Designation','Basic','Seniority','Loyalty','Role Bonus','Gross','Advance Ded','Late Ded','Admin Ded','PF Ded','Total Ded','Net Salary','Payment Mode','Status']
+  const headers = ['S.N.','Name','Designation','Basic','Seniority','Loyalty','Role Bonus','Gross','Advance Ded','Late Ded','Admin Ded','PF Ded','Performance Adj.','Total Ded','Net Salary','Payment Mode','Status']
   const rows = staffList.map((s,i) => {
     const d = dedMap[s.id]||{}
     const g = gross(s)
-    const totDed = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)
-    return [i+1, s.name, s.designation||s.department||'', s.basic_salary||0, s.seniority_allowance||0, s.loyalty_bonus||0, s.role_bonus||0, g, d.advance_deduction||0, d.late_deduction||0, d.admin_deduction||0, d.pf_deduction||0, totDed, g-totDed, d.payment_mode||'', d.status||'Unpaid']
+    const perfAdj = Number(d.performance_adjustment||0)
+    const totDed = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
+    const net = g+(perfAdj>0?perfAdj:0)-totDed
+    return [i+1, s.name, s.designation||s.department||'', s.basic_salary||0, s.seniority_allowance||0, s.loyalty_bonus||0, s.role_bonus||0, g, d.advance_deduction||0, d.late_deduction||0, d.admin_deduction||0, d.pf_deduction||0, perfAdj, totDed, net, d.payment_mode||'', d.status||'Unpaid']
   })
   const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type:'text/csv' })
@@ -190,8 +208,9 @@ function SlipModal({ s, ded, month, onClose }) {
 function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSelected, toggleSelect, isPaid, regMonth }) {
   const [expanded, setExpanded] = useState(false)
   const g = gross(s)
-  const td = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)
-  const net = g - td
+  const perfAdj = Number(d.performance_adjustment||0)
+  const td = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
+  const net = g+(perfAdj>0?perfAdj:0) - td
 
   return (
     <div style={{ background: isPaid ? '#f0fdf4' : 'white', border: `1px solid ${isPaid ? '#bbf7d0' : '#e2e8f0'}`, borderRadius:'10px', marginBottom:'8px', overflow:'hidden', borderLeft: `4px solid ${isPaid ? '#16a34a' : '#1e3a5f'}` }}>
@@ -251,6 +270,16 @@ function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSe
             ))}
           </div>
 
+          {/* Performance adjustment — signed: positive = bonus, negative = penalty. Auto-filled from Teaching module score, editable by admin. */}
+          <div style={{ fontSize:'11px', fontWeight:'700', color: perfAdj>=0?'#16a34a':'#dc2626', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+            🎓 Performance {perfAdj>=0?'Bonus':'Penalty'} (from Teaching)
+          </div>
+          <div style={{ marginBottom:'10px' }}>
+            <input type="number" value={perfAdj}
+              onChange={e=>setDed(s.id, 'performance_adjustment', e.target.value)}
+              style={{ ...S.inpSm, background: perfAdj>=0?'#f0fdf4':'#fef2f2', color: perfAdj>=0?'#16a34a':'#dc2626', fontWeight:700, textAlign:'right' }} />
+          </div>
+
           {/* Net summary */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'6px', marginBottom:'10px' }}>
             <div style={{ background:'#FCEBEB', borderRadius:'6px', padding:'6px 8px', textAlign:'center' }}>
@@ -304,7 +333,8 @@ function PendingDashboard({ staff, salaryRows, regMonth, onMarkPaid, dedMap, isM
           <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(260px,1fr))', gap:'10px' }}>
             {unpaid.map(s => {
               const d=dedMap[s.id]||{}
-              const g=gross(s), totDed=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0), net=g-totDed
+              const perfAdj=Number(d.performance_adjustment||0)
+              const g=gross(s), totDed=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0), net=g+(perfAdj>0?perfAdj:0)-totDed
               const row=monthRows.find(r=>String(r.staff_id)===String(s.id))
               return (
                 <div key={s.id} style={{ border:'1px solid #fecaca', borderRadius:'10px', padding:'12px 14px', background:'#fff1f2' }}>
@@ -554,8 +584,8 @@ const [scoreMap, setScoreMap] = useState({})
 const [probationMap, setProbationMap] = useState({})
 
 // Deduction rules
-const [dedRules, setDedRules]         = useState({ late_rate:10, absent_rate:100, early_out_rate:50 })
-const [rulesForm, setRulesForm]       = useState({ late_rate:10, absent_rate:100, early_out_rate:50 })
+const [dedRules, setDedRules]         = useState({ late_rate:10, absent_rate:100, early_out_rate:50, perf_elite_bonus:0, perf_outstanding_bonus:0, perf_good_bonus:0, perf_probation_penalty:0 })
+const [rulesForm, setRulesForm]       = useState({ late_rate:10, absent_rate:100, early_out_rate:50, perf_elite_bonus:0, perf_outstanding_bonus:0, perf_good_bonus:0, perf_probation_penalty:0 })
 const [rulesSaving, setRulesSaving]   = useState(false)
 const [rulesHistory, setRulesHistory] = useState([])
 
@@ -602,8 +632,12 @@ const fetchDeductionRules = useCallback(async () => {
     .limit(1)
     .maybeSingle()
   if (data) {
-    setDedRules({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate })
-    setRulesForm({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate })
+    setDedRules({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate,
+      perf_elite_bonus: data.perf_elite_bonus||0, perf_outstanding_bonus: data.perf_outstanding_bonus||0,
+      perf_good_bonus: data.perf_good_bonus||0, perf_probation_penalty: data.perf_probation_penalty||0 })
+    setRulesForm({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate,
+      perf_elite_bonus: data.perf_elite_bonus||0, perf_outstanding_bonus: data.perf_outstanding_bonus||0,
+      perf_good_bonus: data.perf_good_bonus||0, perf_probation_penalty: data.perf_probation_penalty||0 })
   }
   const { data: hist } = await supabase
     .from('salary_deduction_rules')
@@ -643,13 +677,14 @@ useEffect(() => { fetchScores(regMonth) }, [regMonth, fetchScores])
   }, [staff, roleFilter, search])
 
   const regTotals = useMemo(() => {
-    let tG=0,tA=0,tL=0,tAd=0,tPf=0,tN=0
+    let tG=0,tA=0,tL=0,tAd=0,tPf=0,tPerf=0,tN=0
     filteredStaff.forEach(s => {
       const g=gross(s), d=dedMap[s.id]||{}
-      const td=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)
-      tG+=g; tA+=d.advance_deduction||0; tL+=d.late_deduction||0; tAd+=d.admin_deduction||0; tPf+=d.pf_deduction||0; tN+=g-td
+      const perfAdj=Number(d.performance_adjustment||0)
+      const td=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
+      tG+=g; tA+=d.advance_deduction||0; tL+=d.late_deduction||0; tAd+=d.admin_deduction||0; tPf+=d.pf_deduction||0; tPerf+=perfAdj; tN+=g+(perfAdj>0?perfAdj:0)-td
     })
-    return { tG,tA,tL,tAd,tPf,tD:tA+tL+tAd+tPf,tN }
+    return { tG,tA,tL,tAd,tPf,tPerf,tD:tA+tL+tAd+tPf+(tPerf<0?-tPerf:0),tN }
   }, [filteredStaff, dedMap])
 
   const historyData = useMemo(() => {
@@ -684,6 +719,7 @@ useEffect(() => {
         late_deduction:    r.late_deduction    || 0,
         admin_deduction:   r.admin_deduction   || 0,
         pf_deduction:      r.pf_deduction      || 0,
+        performance_adjustment: r.performance_adjustment || 0,
         payment_mode:      r.payment_mode      || 'Cash',
         status:            r.status            || 'Unpaid',
       }
@@ -718,11 +754,14 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
         const autoLateDed = geo
           ? (geo.lateMin * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
           : 0
+        const level = scoreMap[s.id]?.level || null
+        const autoPerfAdj = level ? performanceAdjustment(level, dedRules) : 0
         map[s.id] = {
           advance_deduction: pendingAdvance(s.id),
           late_deduction:    autoLateDed,
           admin_deduction:   0,
           pf_deduction:      0,
+          performance_adjustment: autoPerfAdj,
           payment_mode:      'Cash',
           status:            'Unpaid',
           _geo:              geo || null, // store for display
@@ -734,16 +773,16 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
   }
 
   load()
-}, [regMonth, salaryRows, staff, pendingAdvance, dedRules]) // eslint-disable-line
+}, [regMonth, salaryRows, staff, pendingAdvance, dedRules, scoreMap]) // eslint-disable-line
 
   // ── Handlers ──
 
   const setDed = useCallback((staffId, field, value) => {
-    setDedMap(prev => ({ ...prev, [staffId]: { ...(prev[staffId]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}), [field]: field==='payment_mode'?value:Math.max(0,parseInt(value)||0) } }))
+    setDedMap(prev => ({ ...prev, [staffId]: { ...(prev[staffId]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid'}), [field]: field==='payment_mode'?value:(field==='performance_adjustment'?(parseInt(value)||0):Math.max(0,parseInt(value)||0)) } }))
   }, [])
 
   const resetDeductions = useCallback(() => {
-    setDedMap(prev => { const m={...prev}; filteredStaff.forEach(s=>{m[s.id]={advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}}); return m })
+    setDedMap(prev => { const m={...prev}; filteredStaff.forEach(s=>{m[s.id]={advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid'}}); return m })
   }, [filteredStaff])
 
   const toggleSelect = (id) => setSelected(prev => { const s=new Set(prev); s.has(id)?s.delete(id):s.add(id); return s })
@@ -754,9 +793,10 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
     setSaving(true)
     try {
       const rows = filteredStaff.map(s => {
-        const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,payment_mode:'Cash',status:'Unpaid'}
-        const g=gross(s), totDed=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)
-        return { staff_id:s.id, month:regMonth, basic_salary:s.basic_salary||0, seniority_allowance:s.seniority_allowance||0, loyalty_bonus:s.loyalty_bonus||0, role_bonus:s.role_bonus||0, allowance:(s.seniority_allowance||0)+(s.loyalty_bonus||0)+(s.role_bonus||0), advance_deduction:d.advance_deduction||0, late_deduction:d.late_deduction||0, admin_deduction:d.admin_deduction||0, pf_deduction:d.pf_deduction||0, deduction:totDed, net_salary:g-totDed, status:d.status||'Unpaid', payment_mode:d.payment_mode||'Cash' }
+        const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid'}
+        const perfAdj=Number(d.performance_adjustment||0)
+        const g=gross(s), totDed=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
+        return { staff_id:s.id, month:regMonth, basic_salary:s.basic_salary||0, seniority_allowance:s.seniority_allowance||0, loyalty_bonus:s.loyalty_bonus||0, role_bonus:s.role_bonus||0, allowance:(s.seniority_allowance||0)+(s.loyalty_bonus||0)+(s.role_bonus||0), advance_deduction:d.advance_deduction||0, late_deduction:d.late_deduction||0, admin_deduction:d.admin_deduction||0, pf_deduction:d.pf_deduction||0, performance_adjustment:perfAdj, deduction:totDed, net_salary:g+(perfAdj>0?perfAdj:0)-totDed, status:d.status||'Unpaid', payment_mode:d.payment_mode||'Cash' }
       })
       const { error } = await supabase.from('salary').upsert(rows,{onConflict:'staff_id,month'})
       if (error) throw error
@@ -778,10 +818,11 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
       fetchAll();
       for (const s of filteredStaff) {
         const d = dedMap[s.id] || {};
+        const perfAdj = Number(d.performance_adjustment||0)
         EventBus.emit(GNSI_EVENTS.SALARY_SAVED, { 
           staffId: s.id, 
           month: regMonth,
-          netSalary: gross(s) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)),
+          netSalary: gross(s) + (perfAdj>0?perfAdj:0) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)),
           status: d.status || 'Unpaid'
         });
       }
@@ -874,6 +915,10 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
         late_rate:      Number(rulesForm.late_rate),
         absent_rate:    Number(rulesForm.absent_rate),
         early_out_rate: Number(rulesForm.early_out_rate),
+        perf_elite_bonus:       Number(rulesForm.perf_elite_bonus)||0,
+        perf_outstanding_bonus: Number(rulesForm.perf_outstanding_bonus)||0,
+        perf_good_bonus:        Number(rulesForm.perf_good_bonus)||0,
+        perf_probation_penalty: Number(rulesForm.perf_probation_penalty)||0,
         effective_from: new Date().toISOString().split('T')[0],
         created_by:     'Admin',
         is_active:      true,
@@ -1081,10 +1126,11 @@ const handleDeleteAdvance = useCallback(async (id) => {
                 gap: 20
               }}>
                 {filteredStaff.map((s, i) => {
-                  const d = dedMap[s.id] || { advance_deduction: 0, late_deduction: 0, admin_deduction: 0, pf_deduction: 0, payment_mode: 'Cash', status: 'Unpaid' }
+                  const d = dedMap[s.id] || { advance_deduction: 0, late_deduction: 0, admin_deduction: 0, pf_deduction: 0, performance_adjustment: 0, payment_mode: 'Cash', status: 'Unpaid' }
                   const g = gross(s)
-                  const td = (d.advance_deduction || 0) + (d.late_deduction || 0) + (d.admin_deduction || 0) + (d.pf_deduction || 0)
-                  const net = g - td
+                  const perfAdj = Number(d.performance_adjustment || 0)
+                  const td = (d.advance_deduction || 0) + (d.late_deduction || 0) + (d.admin_deduction || 0) + (d.pf_deduction || 0) + (perfAdj < 0 ? -perfAdj : 0)
+                  const net = g + (perfAdj > 0 ? perfAdj : 0) - td
                   const isPaid = d.status === 'Paid'
                   const initials = (s.name || '').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
                   const hue = (s.name?.charCodeAt(0) || 0) % 360
@@ -1263,6 +1309,18 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                               />
                             </div>
                           ))}
+                        </div>
+
+                        {/* Performance adjustment — signed: positive = bonus, negative = penalty. Auto-filled from Teaching module score (staff_monthly_scores.level), editable by admin like the fields above. */}
+                        <div style={{ fontSize: 11, fontWeight: 700, color: perfAdj>=0?'#16a34a':'#dc2626', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          🎓 Performance {perfAdj>=0?'Bonus':'Penalty'} (from Teaching)
+                        </div>
+                        <div style={{ marginBottom: 10 }}>
+                          <input
+                            type="number" value={perfAdj}
+                            onChange={e => setDed(s.id, 'performance_adjustment', e.target.value)}
+                            style={{ ...S.inpSm, background: perfAdj>=0?'#f0fdf4':'#fef2f2', color: perfAdj>=0?'#16a34a':'#dc2626', fontWeight:700, textAlign: 'right' }}
+                          />
                         </div>
 
                         {/* Net Summary */}
@@ -1578,7 +1636,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                   {historyData.map(r => {
                     const s=staff.find(x=>String(x.id)===String(r.staff_id))
                     const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
-                    const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, payment_mode:r.payment_mode }
+                    const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, performance_adjustment:r.performance_adjustment, payment_mode:r.payment_mode }
                     const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,_dedOverride:dedR,_monthOverride:r.month}:null
                     const isCmp=compareMonth&&r.month===compareMonth
                     return (
@@ -1620,7 +1678,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                       {historyData.map(r => {
                         const s=staff.find(x=>String(x.id)===String(r.staff_id))
                         const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
-                        const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, payment_mode:r.payment_mode }
+                        const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, performance_adjustment:r.performance_adjustment, payment_mode:r.payment_mode }
                         const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,_dedOverride:dedR,_monthOverride:r.month}:null
                         const isCmp=compareMonth&&r.month===compareMonth
                         return (
@@ -1685,6 +1743,10 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
           <span>🕐 Late: <strong style={{ color:'#dc2626' }}>₹{dedRules.late_rate}/min</strong></span>
           <span>⭕ Absent: <strong style={{ color:'#dc2626' }}>₹{dedRules.absent_rate}/day</strong></span>
           <span>🏃 Early Out: <strong style={{ color:'#dc2626' }}>₹{dedRules.early_out_rate}/day</strong></span>
+          <span>💎 Elite: <strong style={{ color:'#16a34a' }}>+₹{dedRules.perf_elite_bonus}</strong></span>
+          <span>🥇 Outstanding: <strong style={{ color:'#16a34a' }}>+₹{dedRules.perf_outstanding_bonus}</strong></span>
+          <span>🥉 Good: <strong style={{ color:'#16a34a' }}>+₹{dedRules.perf_good_bonus}</strong></span>
+          <span>🔰 Probation: <strong style={{ color:'#dc2626' }}>−₹{dedRules.perf_probation_penalty}</strong></span>
         </div>
       </div>
     </div>
@@ -1755,6 +1817,74 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
         </div>
       </div>
 
+      <h2 style={{ fontSize:15, fontWeight:700, color:'#1e3a5f', marginTop:24, marginBottom:4 }}>
+        🎓 Teaching Performance Rewards
+      </h2>
+      <p style={{ fontSize:12, color:'#64748b', marginBottom:20 }}>
+        Applied automatically each month from a teacher's performance level in the Teaching module (Staff → Scoring). Editable per staff before payment, same as the deductions above.
+      </p>
+
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 1fr', gap:16, marginBottom:20 }}>
+        {[
+          {
+            key:   'perf_elite_bonus',
+            label: '💎 Elite Bonus',
+            desc:  'Awarded when monthly performance level is Elite',
+            color: '#7c3aed',
+            bg:    '#f3e8ff',
+            unit:  '₹ / month',
+          },
+          {
+            key:   'perf_outstanding_bonus',
+            label: '🥇 Outstanding Bonus',
+            desc:  'Awarded when monthly performance level is Outstanding',
+            color: '#b45309',
+            bg:    '#fef3c7',
+            unit:  '₹ / month',
+          },
+          {
+            key:   'perf_good_bonus',
+            label: '🥉 Good Bonus',
+            desc:  'Awarded when monthly performance level is Good',
+            color: '#0891b2',
+            bg:    '#e0f2fe',
+            unit:  '₹ / month',
+          },
+          {
+            key:   'perf_probation_penalty',
+            label: '🔰 Probation Penalty',
+            desc:  'Deducted when monthly performance level is Probation',
+            color: '#dc2626',
+            bg:    '#fee2e2',
+            unit:  '₹ / month',
+          },
+        ].map(field => (
+          <div key={field.key} style={{ background:field.bg, borderRadius:10, padding:16, border:`1.5px solid ${field.color}33` }}>
+            <div style={{ fontSize:13, fontWeight:700, color:field.color, marginBottom:4 }}>{field.label}</div>
+            <div style={{ fontSize:11, color:'#64748b', marginBottom:10 }}>{field.desc}</div>
+            <div style={{ position:'relative' }}>
+              <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:14, fontWeight:700, color:field.color }}>₹</span>
+              <input
+                type="number" min="0" step="1"
+                value={rulesForm[field.key]}
+                onChange={e => setRulesForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                style={{ ...S.inp, paddingLeft:28, fontWeight:700, fontSize:16, color:field.color, border:`1.5px solid ${field.color}44` }}
+              />
+            </div>
+            <div style={{ fontSize:11, color:field.color, marginTop:6, fontWeight:600 }}>{field.unit}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background:'#f8fafc', borderRadius:10, padding:'12px 14px', marginBottom:20, border:'1px solid #e2e8f0' }}>
+        <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:8 }}>📊 Example — Performance Rewards</div>
+        <div style={{ fontSize:12, color:'#64748b', display:'flex', flexDirection:'column', gap:4 }}>
+          <span>Teacher rated <strong>Elite</strong> this month → <span style={{ color:'#16a34a', fontWeight:700 }}>+₹{Number(rulesForm.perf_elite_bonus||0)}</span> added to net pay</span>
+          <span>Teacher rated <strong>Probation</strong> this month → <span style={{ color:'#dc2626', fontWeight:700 }}>−₹{Number(rulesForm.perf_probation_penalty||0)}</span> deducted from net pay</span>
+          <span style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>"Excellent" level is treated as the neutral baseline — no adjustment either way.</span>
+        </div>
+      </div>
+
       <button
         onClick={handleSaveRules}
         disabled={rulesSaving}
@@ -1773,7 +1903,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
           <thead>
             <tr style={{ background:'#f8fafc' }}>
-              {['Effective From','Late/min','Absent/day','Early Out/day','Status','Set By'].map(h => (
+              {['Effective From','Late/min','Absent/day','Early Out/day','Elite','Outstanding','Good','Probation','Status','Set By'].map(h => (
                 <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:600, color:'#374151', fontSize:11 }}>{h}</th>
               ))}
             </tr>
@@ -1785,6 +1915,10 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                 <td style={{ padding:'9px 12px', color:'#b45309', fontWeight:700 }}>₹{r.late_rate}</td>
                 <td style={{ padding:'9px 12px', color:'#dc2626', fontWeight:700 }}>₹{r.absent_rate}</td>
                 <td style={{ padding:'9px 12px', color:'#7c3aed', fontWeight:700 }}>₹{r.early_out_rate}</td>
+                <td style={{ padding:'9px 12px', color:'#7c3aed', fontWeight:700 }}>+₹{r.perf_elite_bonus||0}</td>
+                <td style={{ padding:'9px 12px', color:'#b45309', fontWeight:700 }}>+₹{r.perf_outstanding_bonus||0}</td>
+                <td style={{ padding:'9px 12px', color:'#0891b2', fontWeight:700 }}>+₹{r.perf_good_bonus||0}</td>
+                <td style={{ padding:'9px 12px', color:'#dc2626', fontWeight:700 }}>−₹{r.perf_probation_penalty||0}</td>
                 <td style={{ padding:'9px 12px' }}>
                   <span style={{ padding:'2px 8px', borderRadius:99, fontSize:10, fontWeight:700, background:r.is_active?'#dcfce7':'#f1f5f9', color:r.is_active?'#16a34a':'#94a3b8' }}>
                     {r.is_active ? '✅ Active' : 'Inactive'}
