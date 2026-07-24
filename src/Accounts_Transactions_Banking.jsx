@@ -399,7 +399,7 @@ export const TransactionsViewBanking = ({
           >
             🧾
           </button>
-          {canEdit && (
+          {(canWrite || (canEdit && item.type === 'Expense')) && (
             <button
               onClick={() => openEdit(item)}
               className="txn-edit-btn"

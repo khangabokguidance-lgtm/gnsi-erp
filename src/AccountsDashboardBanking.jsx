@@ -1073,14 +1073,17 @@ export const AccountsDashboardBanking = ({
             </div>
 
             {/* Action Buttons */}
-            {(canEdit || canWrite) && (
+            {(() => {
+              const isExpense = selectedTxn.type === 'Expense'
+              const showEdit = canWrite || (canEdit && isExpense)
+              return (canWrite || showEdit) && (
               <div
                 style={{
                   display: 'flex',
                   gap: '12px',
                 }}
               >
-                {canEdit && (
+                {showEdit && (
                 <button
                   onClick={() => {
                     openEdit(selectedTxn)
@@ -1135,7 +1138,8 @@ export const AccountsDashboardBanking = ({
                 </button>
                 )}
               </div>
-            )}
+            )
+            })()}
           </div>
         </div>
       )}

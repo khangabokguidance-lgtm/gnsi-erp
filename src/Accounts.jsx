@@ -2241,7 +2241,7 @@ function Accounts({role,userId}){
                     <span style={{fontSize:12,color:'#64748b'}}>{item.payment_mode}</span>
                   </div>
                   <div style={{display:'flex',gap:8}}>
-                    {canEditExpenditure&&<button onClick={()=>openEdit(item)} style={{...smallBtn('#eff6ff','#1e3a5f'),padding:'6px 12px',fontSize:12}}>✏️ Edit</button>}
+                    {(canWrite||(canEditExpenditure&&item.type==='Expense'))&&<button onClick={()=>openEdit(item)} style={{...smallBtn('#eff6ff','#1e3a5f'),padding:'6px 12px',fontSize:12}}>✏️ Edit</button>}
                     <button onClick={()=>printReceiptMemo(item)} style={{...smallBtn('#f0fdf4','#16a34a'),padding:'6px 12px',fontSize:12}}>🧾 Memo</button>
                   </div>
                 </div>
@@ -2261,7 +2261,7 @@ function Accounts({role,userId}){
                       <td style={tdS}><span style={{fontSize:11,padding:'2px 7px',borderRadius:4,backgroundColor:'#e8f0fa',color:'#1e3a5f',fontWeight:700}}>{item.account_type||'Cash A/c'}</span></td>
                       <td style={{...tdS,color:'#7c3aed'}}>{item.voucher_head||'—'}</td>
                       <td style={tdS}>{item.note||'—'}</td>
-                      <td style={tdS}><div style={{display:'flex',gap:6}}>{canEditExpenditure&&<button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️ Edit</button>}<button onClick={()=>printReceiptMemo(item)} style={smallBtn('#f0fdf4','#16a34a')}>🧾 Memo</button></div></td>
+                      <td style={tdS}><div style={{display:'flex',gap:6}}>{(canWrite||(canEditExpenditure&&item.type==='Expense'))&&<button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️ Edit</button>}<button onClick={()=>printReceiptMemo(item)} style={smallBtn('#f0fdf4','#16a34a')}>🧾 Memo</button></div></td>
                     </tr>
                   ))}
                 </tbody>
