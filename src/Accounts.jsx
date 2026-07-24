@@ -545,6 +545,15 @@ function Accounts({role,userId}){
     e.preventDefault();setSaving(true)
     const enteredByName = currentStaff?.name || role
     if(editEntry){
+      let editReason=''
+      if(isSuperintendent){
+        editReason=window.prompt('Reason for this change (required):','')
+        if(!editReason||!editReason.trim()){
+          alert('A reason is required to save this edit.')
+          setSaving(false)
+          return
+        }
+      }
       const r=rows[0],receiptUrl=await uploadReceipt(editEntry.id)
       const payload={
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
@@ -563,7 +572,7 @@ function Accounts({role,userId}){
         if(isSuperintendent){
           await supabase.from('superintendent_edit_flags').insert({
             entry_id:editEntry.id,edited_by:enteredByName,
-            old_values:editEntry,new_values:payload,
+            old_values:editEntry,new_values:payload,reason:editReason.trim(),
           })
         }
         setShowForm(false);setEditEntry(null);setReceiptFile(null);fetchEntries()
@@ -2311,13 +2320,14 @@ function Accounts({role,userId}){
           <p style={{fontSize:12,color:'#94a3b8',margin:'-8px 0 12px'}}>Superintendent role can edit existing entries only (no add/delete). Every such edit is logged here permanently; mark it Verified once you've reviewed it.</p>
           {superintendentFlags.filter(f=>!f.verified).length===0?<p style={{color:'#94a3b8',fontSize:14}}>No pending superintendent edits.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#fffbeb'}}>{['Edited At','Edited By','Entry ID','Old Amount','New Amount','Verify'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#92400e',fontSize:12,borderBottom:'1px solid #fde68a'}}>{h}</th>)}</tr></thead>
+              <thead><tr style={{backgroundColor:'#fffbeb'}}>{['Edited At','Edited By','Entry ID','Old Amount','New Amount','Reason','Verify'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#92400e',fontSize:12,borderBottom:'1px solid #fde68a'}}>{h}</th>)}</tr></thead>
               <tbody>{superintendentFlags.filter(f=>!f.verified).map(f=>(<tr key={f.id} style={{borderBottom:'1px solid #fffbeb'}}>
                 <td style={tdS}>{f.edited_at?new Date(f.edited_at).toLocaleString('en-IN'):''}</td>
                 <td style={tdS}><strong>{f.edited_by}</strong></td>
                 <td style={{...tdS,fontSize:11,color:'#94a3b8'}}>{f.entry_id}</td>
                 <td style={{...tdS,color:'#94a3b8'}}>{f.old_values?.amount!=null?fmt(f.old_values.amount):'-'}</td>
                 <td style={{...tdS,fontWeight:600}}>{f.new_values?.amount!=null?fmt(f.new_values.amount):'-'}</td>
+                <td style={{...tdS,maxWidth:220,whiteSpace:'normal'}}>{f.reason||<span style={{color:'#cbd5e1'}}>—</span>}</td>
                 <td style={tdS}><button onClick={async()=>{
                   await supabase.from('superintendent_edit_flags').update({verified:true,verified_by:role,verified_at:new Date().toISOString()}).eq('id',f.id)
                   fetchSuperintendentFlags()
