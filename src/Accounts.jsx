@@ -164,7 +164,7 @@ function Accounts({role,userId}){
   // access — edit/delete/budgets/income stay restricted to canWrite/canAddIncome.
   // Superintendent is edit-only (see canEditExpenditure below) — explicitly
   // excluded here so they cannot add new entries, only edit existing ones.
-  const canAddEntry  = (canWrite||!isAdmin) && !isSuperintendent
+  const canAddEntry  = (canWrite||!isAdmin) || isSuperintendent
 
   // responsive
   const windowWidth  = useWindowWidth()
