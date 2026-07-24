@@ -520,6 +520,9 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const [shiftForms,    setShiftForms]    = useState([])
   const [savingShifts,  setSavingShifts]  = useState(false)
   const [selectedStaff, setSelectedStaff] = useState('')
+  const [bulkStaffIds, setBulkStaffIds]   = useState(new Set())   // multi-select for bulk shift assignment
+  const [bulkShiftForm, setBulkShiftForm] = useState({ shift_label: '', shift_start: '08:00', shift_end: '14:00', check_in_window_min: 10 })
+  const [savingBulkShift, setSavingBulkShift] = useState(false)
   const [monthFilter,   setMonthFilter]   = useState(new Date().toISOString().slice(0, 7))
   const [resolvingId,   setResolvingId]   = useState(null)
   const [resolveNote,   setResolveNote]   = useState('')
@@ -999,6 +1002,49 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
   }
 
   // ── Shifts save ───────────────────────────────────────────────────────────
+
+  // ── Bulk shift assignment ──────────────────────────────────────────────
+  // Applies ONE shift definition to every selected staff member in one go.
+  // Kept fully separate from saveShifts/selectedStaff above so the existing
+  // per-staff editor (with its own edit/history behavior) is untouched.
+  const saveBulkShift = async () => {
+    if (bulkStaffIds.size === 0) { showToast('❌ Select at least one staff member', 'err'); return }
+    if (!bulkShiftForm.shift_label || !bulkShiftForm.shift_start || !bulkShiftForm.shift_end) {
+      showToast('❌ Fill in shift label, start, and end time', 'err'); return
+    }
+    setSavingBulkShift(true)
+    const payload = {
+      shift_label: bulkShiftForm.shift_label,
+      shift_start: bulkShiftForm.shift_start,
+      shift_end: bulkShiftForm.shift_end,
+      check_in_window_min: parseInt(bulkShiftForm.check_in_window_min) || 10,
+      is_active: true, effective_from: today(), created_by: 'Admin',
+    }
+    let successCount = 0
+    for (const staffId of bulkStaffIds) {
+      const { error } = await supabase.from('staff_shifts').insert({ ...payload, staff_id: parseInt(staffId) })
+      if (!error) successCount++
+    }
+    setSavingBulkShift(false)
+    if (successCount === bulkStaffIds.size) {
+      showToast(`✅ Shift assigned to ${successCount} staff`, 'ok')
+      setBulkStaffIds(new Set())
+    } else {
+      showToast(`⚠️ ${successCount}/${bulkStaffIds.size} saved — check console for errors`, 'warn')
+    }
+    if (selectedStaff && bulkStaffIds.has(String(selectedStaff))) {
+      const sh = await fetchShiftsFor(selectedStaff)
+      setShiftForms(sh.map(s => ({ ...s, _edit: false })))
+    }
+  }
+
+  const toggleBulkStaff = (id) => setBulkStaffIds(prev => {
+    const next = new Set(prev)
+    next.has(String(id)) ? next.delete(String(id)) : next.add(String(id))
+    return next
+  })
+  const selectAllBulkStaff  = () => setBulkStaffIds(new Set(safeAllStaff.map(s => String(s.id))))
+  const clearAllBulkStaff   = () => setBulkStaffIds(new Set())
 
   const saveShifts = async () => {
     if (!selectedStaff) { showToast('❌ Select a staff member first', 'err'); return }
@@ -1494,6 +1540,69 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
                 ⚠️ No staff loaded — pass the <code>allStaff</code> prop.
               </div>
             )}
+
+            {/* ── Bulk Assign Shift — one shift definition, many staff at once ── */}
+            <div style={{ ...S.card, marginBottom: 20, border: '1.5px solid #0ea5e9', background: '#f0f9ff' }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: '#0369a1', marginTop: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                ⚡ Bulk Assign Shift
+              </h2>
+              <p style={{ fontSize: 12.5, color: '#0c4a6e', marginTop: -4, marginBottom: 16 }}>
+                Set one shift and apply it to multiple staff in a single save — useful for initial setup when most staff share the same timing.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                <div>
+                  <label style={S.label}>Shift Label</label>
+                  <input type="text" placeholder="e.g. Morning" value={bulkShiftForm.shift_label}
+                    onChange={e => setBulkShiftForm(prev => ({ ...prev, shift_label: e.target.value }))}
+                    style={{ ...S.input, backgroundColor: 'white' }} />
+                </div>
+                <div>
+                  <label style={S.label}>Grace Window (min)</label>
+                  <input type="number" min="5" max="60" value={bulkShiftForm.check_in_window_min}
+                    onChange={e => setBulkShiftForm(prev => ({ ...prev, check_in_window_min: e.target.value }))}
+                    style={{ ...S.input, backgroundColor: 'white' }} />
+                </div>
+                <div>
+                  <label style={S.label}>Shift Start</label>
+                  <input type="time" value={bulkShiftForm.shift_start}
+                    onChange={e => setBulkShiftForm(prev => ({ ...prev, shift_start: e.target.value }))}
+                    style={{ ...S.input, backgroundColor: 'white' }} />
+                </div>
+                <div>
+                  <label style={S.label}>Shift End</label>
+                  <input type="time" value={bulkShiftForm.shift_end}
+                    onChange={e => setBulkShiftForm(prev => ({ ...prev, shift_end: e.target.value }))}
+                    style={{ ...S.input, backgroundColor: 'white' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label style={S.label}>Apply To ({bulkStaffIds.size} selected)</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={selectAllBulkStaff} style={{ ...S.btn('#0ea5e9'), padding: '4px 10px', fontSize: 12 }}>Select All</button>
+                  <button onClick={clearAllBulkStaff} style={{ ...S.btn('#64748b'), padding: '4px 10px', fontSize: 12 }}>Clear</button>
+                </div>
+              </div>
+
+              <div style={{ maxHeight: 220, overflowY: 'auto', background: 'white', border: '1px solid #bae6fd', borderRadius: 8, padding: 8, marginBottom: 14 }}>
+                {safeAllStaff.length === 0 && <div style={{ fontSize: 13, color: '#94a3b8', padding: 8 }}>No staff to show.</div>}
+                {safeAllStaff.map(s => (
+                  <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 13.5 }}>
+                    <input type="checkbox" checked={bulkStaffIds.has(String(s.id))} onChange={() => toggleBulkStaff(s.id)} />
+                    <span>{s.name} — <span style={{ color: '#64748b' }}>{s.designation}</span></span>
+                  </label>
+                ))}
+              </div>
+
+              <button onClick={saveBulkShift} disabled={savingBulkShift} style={S.btn('#0369a1', savingBulkShift)}>
+                {savingBulkShift ? '⏳ Assigning…' : `💾 Assign Shift to ${bulkStaffIds.size || 0} Staff`}
+              </button>
+              <p style={{ fontSize: 11.5, color: '#64748b', marginTop: 10, marginBottom: 0 }}>
+                This adds a new shift for each selected staff member — it does not remove or edit shifts they already have. Use the single-staff editor below for edits or to remove a duplicate.
+              </p>
+            </div>
+
             <div style={S.card}>
               <h2 style={{ fontSize: 17, fontWeight: 700, color: '#1e3a5f', marginTop: 0 }}>⏰ Shift Configuration</h2>
               <div style={{ marginBottom: 20 }}>
