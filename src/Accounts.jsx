@@ -230,6 +230,7 @@ function Accounts({role,userId}){
   const [budgets,     setBudgets]     = useState(DEFAULT_BUDGETS)
   const [budgetMeta,  setBudgetMeta]  = useState(null)
   const [editBudgets, setEditBudgets] = useState(false)
+  const [expandedBudgetCat, setExpandedBudgetCat] = useState(null) // category name currently showing its "where spent" entry list, or null
   const [budgetDraft, setBudgetDraft] = useState(DEFAULT_BUDGETS)
 
   // staff list — powers the Voucher Head "who takes it" field
@@ -1753,6 +1754,22 @@ function Accounts({role,userId}){
     return map
   },[entries,thisMonth])
 
+  // ── Budget drilldown: "where it was spent" — this month's individual
+  // expense entries, grouped by category, newest first. Powers the
+  // expandable entry list under each budget category card.
+  const monthlyExpensesByCategory=useMemo(()=>{
+    const map={}
+    entries
+      .filter(e=>e.type==='Expense'&&monthKey(e.entry_date)===thisMonth)
+      .forEach(e=>{
+        const k=e.category||'Other'
+        if(!map[k])map[k]=[]
+        map[k].push(e)
+      })
+    Object.keys(map).forEach(k=>map[k].sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0))
+    return map
+  },[entries,thisMonth])
+
   const budgetChartData=useMemo(()=>{
     const months=[]
     for(let i=5;i>=0;i--){const d=new Date();d.setMonth(d.getMonth()-i);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)}
@@ -2449,12 +2466,32 @@ function Accounts({role,userId}){
           :<div style={{display:'flex',gap:10,flexWrap:'wrap'}}><button onClick={saveBudgets} style={{backgroundColor:'#16a34a',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✅ Save</button><button onClick={()=>setEditBudgets(false)} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>Cancel</button></div>}
         </div>
         <div style={{display:'grid',gridTemplateColumns:budgetGridCols,gap:16,marginBottom:28}}>
-          {EXPENSE_CATEGORIES.map(cat=>{const limit=Number(budgets[cat])||0,spent=monthlyExpenses[cat]||0,pct=limit>0?Math.min((spent/limit)*100,100):0,over=limit>0&&spent>limit,barColor=over?'#dc2626':pct>75?'#f59e0b':'#16a34a';return(
+          {EXPENSE_CATEGORIES.map(cat=>{const limit=Number(budgets[cat])||0,spent=monthlyExpenses[cat]||0,pct=limit>0?Math.min((spent/limit)*100,100):0,over=limit>0&&spent>limit,barColor=over?'#dc2626':pct>75?'#f59e0b':'#16a34a';const catEntries=monthlyExpensesByCategory[cat]||[];const isExpanded=expandedBudgetCat===cat;return(
             <div key={cat} style={{backgroundColor:'white',borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:`4px solid ${over?'#dc2626':'#e2e8f0'}`}}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}><span style={{fontWeight:600,color:'#1e293b'}}>{cat}</span>{over&&<span style={{fontSize:12,color:'#dc2626',fontWeight:600}}>⚠️ Over!</span>}</div>
               {editBudgets&&canWrite&&<input type="number" min="0" value={budgetDraft[cat]||''} placeholder="Set budget limit" onChange={e=>setBudgetDraft({...budgetDraft,[cat]:e.target.value})} style={{...iStyle,marginBottom:10}}/>}
               <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#64748b',marginBottom:6}}><span>Spent: <strong style={{color:over?'#dc2626':'#1e293b'}}>{fmt(spent)}</strong></span><span>Limit: <strong>{limit>0?fmt(limit):'Not set'}</strong></span></div>
               {limit>0&&<><div style={{backgroundColor:'#f1f5f9',borderRadius:999,height:8,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',backgroundColor:barColor,borderRadius:999,transition:'width .4s'}}/></div><div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>{pct.toFixed(0)}% used</div></>}
+              <button onClick={()=>setExpandedBudgetCat(isExpanded?null:cat)} style={{marginTop:12,width:'100%',backgroundColor:isExpanded?'#eff6ff':'#f8fafc',color:'#1e3a5f',border:'1px solid #e2e8f0',borderRadius:8,padding:'7px 10px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                {isExpanded?'▲ Hide entries':`▼ Where it was spent (${catEntries.length})`}
+              </button>
+              {isExpanded&&(
+                <div style={{marginTop:10,maxHeight:220,overflowY:'auto',borderTop:'1px solid #f1f5f9',paddingTop:8}}>
+                  {catEntries.length===0?(
+                    <p style={{fontSize:12,color:'#94a3b8',textAlign:'center',padding:'8px 0'}}>No expense entries for {cat} this month.</p>
+                  ):(
+                    catEntries.map(e=>(
+                      <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,padding:'7px 0',borderBottom:'1px solid #f8fafc'}}>
+                        <div style={{minWidth:0}}>
+                          <p style={{margin:0,fontSize:12.5,fontWeight:600,color:'#1e293b',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{e.note||e.voucher_head||'—'}</p>
+                          <p style={{margin:'2px 0 0',fontSize:11,color:'#94a3b8'}}>{e.entry_date} · {e.payment_mode}{e.account_type?` · ${e.account_type}`:''}</p>
+                        </div>
+                        <span style={{fontSize:12.5,fontWeight:700,color:'#dc2626',flexShrink:0}}>{fmt(e.amount)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )})}
         </div>
