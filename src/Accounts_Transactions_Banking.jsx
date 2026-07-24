@@ -33,6 +33,8 @@ export const TransactionsViewBanking = ({
   printReceiptMemo = () => {},
   isMobile = false,
   runningBalance = null,
+  onExportReport = null, // (format:'pdf'|'docx'|'excel') => void — generates a full report of ALL entries, independent of this tab's date/filter selection
+  exportingReport = '', // '' | 'pdf' | 'docx' | 'excel' — disables buttons while generating
 }) => {
   const canEdit = canEditExpenditure !== null ? canEditExpenditure : canWrite
   // Compute running balance with corrected logic
@@ -446,6 +448,60 @@ export const TransactionsViewBanking = ({
   // Main render
   return (
     <div style={{ paddingTop: 8, paddingBottom: 16 }}>
+      {/* Export Report — generates a full letterheaded report of ALL entries, not just this tab's filtered date range */}
+      {onExportReport && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          <button
+            onClick={() => onExportReport('pdf')}
+            disabled={!!exportingReport}
+            style={{
+              padding: isMobile ? '8px 14px' : '9px 18px',
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 13,
+              color: 'white',
+              border: 'none',
+              backgroundColor: exportingReport === 'pdf' ? '#94a3b8' : '#dc2626',
+              cursor: exportingReport ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exportingReport === 'pdf' ? '⏳ Generating…' : '📄 Export PDF'}
+          </button>
+          <button
+            onClick={() => onExportReport('docx')}
+            disabled={!!exportingReport}
+            style={{
+              padding: isMobile ? '8px 14px' : '9px 18px',
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 13,
+              color: 'white',
+              border: 'none',
+              backgroundColor: exportingReport === 'docx' ? '#94a3b8' : '#1d4ed8',
+              cursor: exportingReport ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exportingReport === 'docx' ? '⏳ Generating…' : '📝 Export DOCX'}
+          </button>
+          <button
+            onClick={() => onExportReport('excel')}
+            disabled={!!exportingReport}
+            style={{
+              padding: isMobile ? '8px 14px' : '9px 18px',
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 13,
+              color: 'white',
+              border: 'none',
+              backgroundColor: exportingReport === 'excel' ? '#94a3b8' : '#16a34a',
+              cursor: exportingReport ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exportingReport === 'excel' ? '⏳ Generating…' : '📊 Export Excel'}
+          </button>
+        </div>
+      )}
+
       {/* Date Group Headers + Cards */}
       {dates.map((dateKey) => {
         const dateTransactions = grouped[dateKey]

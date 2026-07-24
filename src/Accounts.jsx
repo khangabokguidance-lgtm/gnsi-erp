@@ -14,7 +14,7 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-  AlignmentType, BorderStyle, WidthType, ShadingType, PageOrientation,
+  AlignmentType, BorderStyle, WidthType, ShadingType, PageOrientation, ImageRun,
 } from 'docx'
 
 // ── constants ──────────────────────────────────────────────────────────────
@@ -834,6 +834,120 @@ function Accounts({role,userId}){
   // ── Report Generator: Professional PDF (jsPDF + autoTable) ──────────────
   // opts (optional) lets the dedicated Expenditure tab reuse this exact letterheaded
   // export with its own filtered dataset, without touching the generic Reports tab state.
+  // ── Report Generator: chart image (Canvas 2D → PNG data URL) ────────────
+  // Renders a compact bar chart (Income vs Expense, or category break-up) to
+  // an off-screen canvas and returns a PNG data URL for embedding into PDF/DOCX.
+  // Kept dependency-free (no charting library) since jsPDF/docx only need a bitmap.
+  const renderChartImage = ({ bars, width = 900, height = 320, title = '' }) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+
+    // background
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, width, height)
+
+    const padLeft = 70, padRight = 30, padTop = title ? 44 : 20, padBottom = 60
+    const chartW = width - padLeft - padRight
+    const chartH = height - padTop - padBottom
+    const maxVal = Math.max(1, ...bars.map(b => b.value))
+
+    if (title) {
+      ctx.fillStyle = '#1E3A5F'
+      ctx.font = 'bold 18px Arial, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(title, width / 2, 26)
+    }
+
+    // gridlines + y-axis labels (4 steps)
+    ctx.strokeStyle = '#E2E8F0'
+    ctx.lineWidth = 1
+    ctx.font = '11px Arial, sans-serif'
+    ctx.fillStyle = '#94A3B8'
+    ctx.textAlign = 'right'
+    const steps = 4
+    for (let i = 0; i <= steps; i++) {
+      const y = padTop + chartH - (chartH * i) / steps
+      ctx.beginPath()
+      ctx.moveTo(padLeft, y)
+      ctx.lineTo(width - padRight, y)
+      ctx.stroke()
+      const val = (maxVal * i) / steps
+      ctx.fillText('₹' + Math.round(val).toLocaleString('en-IN'), padLeft - 10, y + 4)
+    }
+
+    // bars
+    const gap = 18
+    const barW = Math.min(70, (chartW - gap * (bars.length + 1)) / Math.max(1, bars.length))
+    let x = padLeft + gap
+    bars.forEach((b) => {
+      const barH = (b.value / maxVal) * chartH
+      const y = padTop + chartH - barH
+      ctx.fillStyle = b.color || '#1E3A5F'
+      ctx.beginPath()
+      const r = 4
+      ctx.moveTo(x, y + r)
+      ctx.arcTo(x, y, x + r, y, r)
+      ctx.lineTo(x + barW - r, y)
+      ctx.arcTo(x + barW, y, x + barW, y + r, r)
+      ctx.lineTo(x + barW, padTop + chartH)
+      ctx.lineTo(x, padTop + chartH)
+      ctx.closePath()
+      ctx.fill()
+
+      // value label above bar
+      ctx.fillStyle = '#1E293B'
+      ctx.font = 'bold 11px Arial, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('₹' + Math.round(b.value).toLocaleString('en-IN'), x + barW / 2, y - 6)
+
+      // x-axis label (wrapped if long)
+      ctx.fillStyle = '#475569'
+      ctx.font = '11px Arial, sans-serif'
+      const label = b.label.length > 14 ? b.label.slice(0, 13) + '…' : b.label
+      ctx.fillText(label, x + barW / 2, padTop + chartH + 18)
+
+      x += barW + gap
+    })
+
+    // baseline
+    ctx.strokeStyle = '#CBD5E1'
+    ctx.lineWidth = 1.4
+    ctx.beginPath()
+    ctx.moveTo(padLeft, padTop + chartH)
+    ctx.lineTo(width - padRight, padTop + chartH)
+    ctx.stroke()
+
+    return canvas.toDataURL('image/png')
+  }
+
+  // Builds the two standard chart images (Income vs Expense, Top Categories)
+  // reused across PDF/DOCX. Returns { summaryChart, categoryChart } data URLs,
+  // or nulls for a chart if there's nothing to plot.
+  const buildReportCharts = (totalsData, byCategoryData) => {
+    const summaryChart = renderChartImage({
+      title: 'Income vs Expense',
+      bars: [
+        { label: 'Income', value: totalsData.income, color: '#16A34A' },
+        { label: 'Expense', value: totalsData.expense, color: '#DC2626' },
+      ],
+    })
+    let categoryChart = null
+    if (byCategoryData && byCategoryData.length) {
+      const top = [...byCategoryData].sort((a, b) => b.total - a.total).slice(0, 6)
+      categoryChart = renderChartImage({
+        title: 'Top Categories',
+        bars: top.map(c => ({
+          label: c.category,
+          value: c.total,
+          color: c.type === 'Income' ? '#16A34A' : '#DC2626',
+        })),
+      })
+    }
+    return { summaryChart, categoryChart }
+  }
+
   const generateReportPDF=(opts={})=>{
     const entriesData     = opts.entries     || reportEntries
     const totalsData      = opts.totals      || reportTotals
@@ -869,24 +983,36 @@ function Accounts({role,userId}){
       doc.text(`Printed on: ${printDate}`,pageW-margin,121,{align:'right'})
       let y=134
 
-      // summary cards
-      autoTable(doc,{
-        startY:y,theme:'plain',margin:{left:margin,right:margin},
-        body:[
-          ['Total Income','Total Expense','Net Balance','Total Entries'],
-          [fmtPdf(totalsData.income),fmtPdf(totalsData.expense),fmtPdf(totalsData.net),String(totalsData.count)],
-        ],
-        styles:{halign:'center',fontSize:9,cellPadding:4},
-        didParseCell:(data)=>{
-          if(data.row.index===0){data.cell.styles.fontStyle='bold';data.cell.styles.textColor=[100,116,139];data.cell.styles.fontSize=8}
-          if(data.row.index===1){
-            data.cell.styles.fontStyle='bold';data.cell.styles.fontSize=11
-            const colors=[[22,163,74],[220,38,38],[30,58,95],[124,58,237]]
-            data.cell.styles.textColor=colors[data.column.index]
-          }
-        },
+      // summary cards — colored boxes instead of a plain table for a more
+      // "dashboard" feel
+      const cardW=(pageW-2*margin-3*12)/4
+      const cardH=48
+      const cards=[
+        {label:'Total Income',value:fmtPdf(totalsData.income),bg:[220,252,231],fg:[22,163,74]},
+        {label:'Total Expense',value:fmtPdf(totalsData.expense),bg:[254,226,226],fg:[220,38,38]},
+        {label:'Net Balance',value:fmtPdf(totalsData.net),bg:[239,246,255],fg:[30,58,95]},
+        {label:'Total Entries',value:String(totalsData.count),bg:[243,232,255],fg:[124,58,237]},
+      ]
+      cards.forEach((c,i)=>{
+        const cx=margin+i*(cardW+12)
+        doc.setFillColor(...c.bg)
+        doc.roundedRect(cx,y,cardW,cardH,4,4,'F')
+        doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(100,116,139)
+        doc.text(c.label,cx+10,y+16)
+        doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(...c.fg)
+        doc.text(c.value,cx+10,y+34)
       })
-      y=doc.lastAutoTable.finalY+16
+      y+=cardH+18
+
+      // charts — Income vs Expense, and Top Categories (if any breakdown exists)
+      try{
+        const {summaryChart,categoryChart}=buildReportCharts(totalsData,byCategoryData)
+        const chartW=(pageW-2*margin-16)/(categoryChart?2:1)
+        const chartH=chartW*(320/900)
+        if(summaryChart)doc.addImage(summaryChart,'PNG',margin,y,chartW,chartH)
+        if(categoryChart)doc.addImage(categoryChart,'PNG',margin+chartW+16,y,chartW,chartH)
+        y+=chartH+16
+      }catch(chartErr){console.error('Chart render skipped:',chartErr)}
 
       // break-up by category
       if(byCategoryData.length){
@@ -1005,6 +1131,26 @@ function Accounts({role,userId}){
         ]})],
       })
 
+      // charts — embedded as PNG images for visual polish, same generator as PDF
+      let chartParas=[]
+      try{
+        const byCategoryForChart = opts.byCategory || reportByCategory
+        const {summaryChart,categoryChart}=buildReportCharts(totalsData,byCategoryForChart)
+        const toBuffer=async(dataUrl)=>{
+          const res=await fetch(dataUrl)
+          return new Uint8Array(await res.arrayBuffer())
+        }
+        const imgChildren=[]
+        if(summaryChart)imgChildren.push(new ImageRun({data:await toBuffer(summaryChart),transformation:{width:430,height:153}}))
+        if(categoryChart)imgChildren.push(new ImageRun({data:await toBuffer(categoryChart),transformation:{width:430,height:153}}))
+        if(imgChildren.length){
+          chartParas=[
+            new Paragraph({text:'',spacing:{after:200}}),
+            new Paragraph({alignment:AlignmentType.CENTER,children:imgChildren.flatMap((img,i)=>i===0?[img]:[new TextRun({text:'   '}),img])}),
+          ]
+        }
+      }catch(chartErr){console.error('Chart render skipped:',chartErr)}
+
       const headRow=new TableRow({
         tableHeader:true,
         children:['#','Date','Type','Category','Account','Mode','Voucher Head','Particulars / Note','Entered By','Receipt','Status','Amount'].map(h=>new TableCell({
@@ -1053,6 +1199,7 @@ function Accounts({role,userId}){
             titleHeading,taglineLine,addressLine,
             reportTitlePara,filterLine,printedLine,
             summaryTable,
+            ...chartParas,
             new Paragraph({text:'',spacing:{after:200}}),
             detailTable,
             new Paragraph({text:'',spacing:{after:600}}),
@@ -1077,6 +1224,7 @@ function Accounts({role,userId}){
   const generateReportExcel=(opts={})=>{
     const entriesData     = opts.entries     || reportEntries
     const totalsData      = opts.totals      || reportTotals
+    const byCategoryData  = opts.byCategory  || reportByCategory
     const titleData       = opts.title       || rptReportType
     const filterSummaryData = opts.filterSummary || reportFilterSummary
     const setBusy         = opts.setBusy     || setGeneratingReport
@@ -1094,12 +1242,16 @@ function Accounts({role,userId}){
 
       const wsData=headerLines.map(l=>[l])
       wsData.push([])
+      const summaryRowIdx=wsData.length
       wsData.push(['Total Income',totalsData.income,'','Total Expense',totalsData.expense,'','Net Balance',totalsData.net,'','Entries',totalsData.count])
       wsData.push([])
+      const headRowIdx=wsData.length
       wsData.push(['#','Date','Type','Category','Account','Mode','Voucher Head','Particulars / Note','Entered By','Receipt','Status','Amount'])
+      const firstDataRowIdx=wsData.length
       entriesData.forEach((e,i)=>{
         wsData.push([i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.note||'-',e.added_by||e.edited_by||'admin',e.receipt_url?'Yes':'No',e.status||'Confirmed',e.type==='Income'?Number(e.amount):-Number(e.amount)])
       })
+      const lastDataRowIdx=wsData.length-1
       wsData.push(['','','','','','','','','','','NET TOTAL',totalsData.net])
       wsData.push([])
       wsData.push([])
@@ -1110,8 +1262,54 @@ function Accounts({role,userId}){
       const ws=XLSX.utils.aoa_to_sheet(wsData)
       ws['!cols']=[{wch:6},{wch:12},{wch:10},{wch:16},{wch:14},{wch:10},{wch:20},{wch:30},{wch:14},{wch:10},{wch:12},{wch:14}]
       ws['!merges']=headerLines.map((_,r)=>({s:{r,c:0},e:{r,c:11}}))
+      // freeze the header rows so the ledger scrolls under a fixed title/column-header
+      // (freeze panes + cell styling below require the SheetJS Pro build;
+      // on the free/community build these properties are simply ignored,
+      // so the file still opens correctly either way)
+      ws['!freeze']={xSplit:0,ySplit:headRowIdx+1}
+      ws['!sheetView']=[{state:'frozen',ySplit:headRowIdx+1}]
+      // number-format the amount column and summary figures as Rupee currency
+      const currencyFmt='₹#,##0.00;[RED]-₹#,##0.00'
+      for(let r=firstDataRowIdx;r<=lastDataRowIdx;r++){
+        const cell=ws[XLSX.utils.encode_cell({r,c:11})]
+        if(cell)cell.z=currencyFmt
+      }
+      ;[1,4,7].forEach(c=>{
+        const cell=ws[XLSX.utils.encode_cell({r:summaryRowIdx,c})]
+        if(cell)cell.z=currencyFmt
+      })
+      // bold the header row + summary labels (cell styling requires the
+      // SheetJS Pro build; safely ignored on the free/community build)
+      for(let c=0;c<=11;c++){
+        const cell=ws[XLSX.utils.encode_cell({r:headRowIdx,c})]
+        if(cell)cell.s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E3A5F'}}}
+      }
+
       const wb=XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb,ws,'Report')
+
+      // ── Chart Data sheet — a tidy category/amount table laid out so the
+      // user can select it and hit Insert → Chart in Excel for a one-click
+      // bar chart. SheetJS (free) can't embed a chart object directly, so
+      // this hands the person a ready-made range instead of raw ledger rows.
+      if(byCategoryData && byCategoryData.length){
+        const chartRows=[['Category','Type','Amount']]
+        byCategoryData.forEach(c=>chartRows.push([c.category,c.type,c.type==='Income'?c.total:-c.total]))
+        chartRows.push(['Total Income','',totalsData.income])
+        chartRows.push(['Total Expense','',-totalsData.expense])
+        const chartWs=XLSX.utils.aoa_to_sheet(chartRows)
+        chartWs['!cols']=[{wch:22},{wch:10},{wch:14}]
+        for(let r=1;r<chartRows.length;r++){
+          const cell=chartWs[XLSX.utils.encode_cell({r,c:2})]
+          if(cell)cell.z=currencyFmt
+        }
+        for(let c=0;c<=2;c++){
+          const cell=chartWs[XLSX.utils.encode_cell({r:0,c})]
+          if(cell)cell.s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E3A5F'}}}
+        }
+        XLSX.utils.book_append_sheet(wb,chartWs,'Chart Data')
+      }
+
       XLSX.writeFile(wb,`GNSI-${titleData.replace(/\s+/g,'-')}-${getToday()}.xlsx`)
       logReportExport('Excel',{logLabel:opts.logLabel,dateFrom:opts.dateFrom,dateTo:opts.dateTo,rowCount:entriesData.length})
     }catch(err){
@@ -1195,6 +1393,46 @@ function Accounts({role,userId}){
     })
     return Object.values(map).sort((a,b)=>b.total-a.total)
   },[reportEntries])
+
+  // ── "All Entries" export — used by the Transactions / Daily / Expenditure
+  // modules' Export buttons. Deliberately ignores every on-screen filter
+  // (search, date range, type, etc.) and reuses the same PDF/DOCX/Excel
+  // generators as the main Reports tab, just fed the complete entries list.
+  const allEntriesTotals = useMemo(()=>{
+    const income  = entries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+    const expense = entries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    return { income, expense, net: income-expense, count: entries.length }
+  },[entries])
+
+  const allEntriesByCategory = useMemo(()=>{
+    const map={}
+    entries.forEach(e=>{
+      const k=e.category||'Other'
+      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
+      map[k].total+=Number(e.amount);map[k].count+=1
+    })
+    return Object.values(map).sort((a,b)=>b.total-a.total)
+  },[entries])
+
+  const sortedAllEntries = useMemo(
+    ()=>[...entries].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0),
+    [entries]
+  )
+
+  const exportAllEntriesReport = (format, moduleLabel='All Entries')=>{
+    const opts={
+      entries:sortedAllEntries,
+      totals:allEntriesTotals,
+      byCategory:allEntriesByCategory,
+      title:`Transaction Statement — ${moduleLabel}`,
+      filterSummary:'All entries · no filters applied',
+      setBusy:setGeneratingReport,
+      logLabel:`Report (${format.toUpperCase()}): All Entries / ${moduleLabel}`,
+    }
+    if(format==='pdf')generateReportPDF(opts)
+    else if(format==='docx')generateReportDOCX(opts)
+    else generateReportExcel(opts)
+  }
 
   const reportByAccount = useMemo(()=>{
     const map={}
@@ -1826,6 +2064,8 @@ function Accounts({role,userId}){
     openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
     handleDelete={handleDelete}
+            onExportReport={(fmt)=>exportAllEntriesReport(fmt,'Transactions')}
+            exportingReport={generatingReport}
   />
 )}
 
@@ -1903,6 +2143,8 @@ function Accounts({role,userId}){
             printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
             isMobile={isMobile}
+            onExportReport={(fmt2)=>exportAllEntriesReport(fmt2,'Daily')}
+            exportingReport={generatingReport}
           />
         )}
       </div>
@@ -1986,6 +2228,8 @@ function Accounts({role,userId}){
             printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
             isMobile={isMobile}
+            onExportReport={(fmt2)=>exportAllEntriesReport(fmt2,'Expenditure')}
+            exportingReport={generatingReport}
           />
         )}
       </div>

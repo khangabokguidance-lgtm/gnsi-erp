@@ -29,9 +29,20 @@ export const AccountsDashboardBanking = ({
   isMobile = false,
   openEdit = () => {},
   handleDelete = () => {},
+  onExportReport = null, // (format:'pdf'|'docx'|'excel') => void — generates a full report of all entries, independent of on-screen filters
+  exportingReport = '', // '' | 'pdf' | 'docx' | 'excel' — disables buttons while generating
 }) => {
   const canEdit = canEditExpenditure !== null ? canEditExpenditure : canWrite
   const [selectedTxn, setSelectedTxn] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [incomePage, setIncomePage] = useState(1)
+  const [expensePage, setExpensePage] = useState(1)
+  const PAGE_SIZE = isMobile ? 10 : 15
+
+  React.useEffect(() => {
+    setIncomePage(1)
+    setExpensePage(1)
+  }, [searchQuery])
 
   const stats = useMemo(() => {
     const income = entries
@@ -53,19 +64,31 @@ export const AccountsDashboardBanking = ({
     [entries]
   )
 
+  const searchedEntries = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return sortedEntries
+    return sortedEntries.filter((e) =>
+      [e.category, e.note, e.voucher_head, e.payment_mode, e.account_type]
+        .filter(Boolean)
+        .some((f) => String(f).toLowerCase().includes(q))
+    )
+  }, [sortedEntries, searchQuery])
+
   const sortedIncomeEntries = useMemo(
-    () => sortedEntries.filter((e) => e.type === 'Income'),
-    [sortedEntries]
+    () => searchedEntries.filter((e) => e.type === 'Income'),
+    [searchedEntries]
   )
   const sortedExpenseEntries = useMemo(
-    () => sortedEntries.filter((e) => e.type === 'Expense'),
-    [sortedEntries]
+    () => searchedEntries.filter((e) => e.type === 'Expense'),
+    [searchedEntries]
   )
 
   // Renders one ledger card (used twice below — once for Income, once for Expenditure —
   // so the two tables share identical styling/behavior while staying visually separate).
-  const renderLedgerCard = (list, { title, subtitle, accent, emptyIcon, emptyTitle, emptyBody, delay }) => {
-    const rows = list.slice(0, isMobile ? 15 : 30)
+  const renderLedgerCard = (list, { title, subtitle, accent, emptyIcon, emptyTitle, emptyBody, delay, page, setPage }) => {
+    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE))
+    const safePage = Math.min(page, totalPages)
+    const rows = list.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
     return (
       <div
         className="gnsi-animate"
@@ -272,6 +295,53 @@ export const AccountsDashboardBanking = ({
             })
           )}
         </div>
+
+        {/* Pagination */}
+        {list.length > PAGE_SIZE && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: isMobile ? '10px 16px' : '10px 24px',
+              borderTop: '1px solid rgba(0,0,0,0.06)',
+            }}
+          >
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 600,
+                backgroundColor: safePage === 1 ? '#F1F0EC' : '#EFEFEC',
+                color: safePage === 1 ? '#C7C9D1' : '#16171B',
+                cursor: safePage === 1 ? 'default' : 'pointer',
+              }}
+            >
+              ← Prev
+            </button>
+            <span style={{ fontSize: '12px', color: '#9C9EA6', fontWeight: 500 }}>
+              Page {safePage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 600,
+                backgroundColor: safePage === totalPages ? '#F1F0EC' : '#EFEFEC',
+                color: safePage === totalPages ? '#C7C9D1' : '#16171B',
+                cursor: safePage === totalPages ? 'default' : 'pointer',
+              }}
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -809,6 +879,116 @@ export const AccountsDashboardBanking = ({
         </div>
       </div>
 
+      {/* Export Report — generates a full letterheaded report of ALL entries (not just the filtered/paginated view) */}
+      {onExportReport && (
+        <div
+          className="gnsi-animate"
+          style={{
+            display: 'flex',
+            gap: '10px',
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+            animationDelay: '0.18s',
+          }}
+        >
+          <button
+            onClick={() => onExportReport('pdf')}
+            disabled={!!exportingReport}
+            style={{
+              padding: isMobile ? '8px 14px' : '9px 18px',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '13px',
+              color: 'white',
+              backgroundColor: exportingReport === 'pdf' ? '#94a3b8' : '#dc2626',
+              cursor: exportingReport ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exportingReport === 'pdf' ? '⏳ Generating…' : '📄 Export PDF'}
+          </button>
+          <button
+            onClick={() => onExportReport('docx')}
+            disabled={!!exportingReport}
+            style={{
+              padding: isMobile ? '8px 14px' : '9px 18px',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '13px',
+              color: 'white',
+              backgroundColor: exportingReport === 'docx' ? '#94a3b8' : '#1d4ed8',
+              cursor: exportingReport ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exportingReport === 'docx' ? '⏳ Generating…' : '📝 Export DOCX'}
+          </button>
+          <button
+            onClick={() => onExportReport('excel')}
+            disabled={!!exportingReport}
+            style={{
+              padding: isMobile ? '8px 14px' : '9px 18px',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '13px',
+              color: 'white',
+              backgroundColor: exportingReport === 'excel' ? '#94a3b8' : '#16a34a',
+              cursor: exportingReport ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exportingReport === 'excel' ? '⏳ Generating…' : '📊 Export Excel'}
+          </button>
+        </div>
+      )}
+
+      {/* Search */}
+      <div
+        className="gnsi-animate"
+        style={{ marginBottom: '20px', animationDelay: '0.2s' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            backgroundColor: 'white',
+            border: '1px solid rgba(0,0,0,0.08)',
+            borderRadius: '12px',
+            padding: isMobile ? '10px 14px' : '12px 16px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          }}
+        >
+          <span style={{ fontSize: '15px', color: '#9C9EA6' }}>🔍</span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search category, note, voucher head, mode…"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: '14px',
+              color: '#16171B',
+              backgroundColor: 'transparent',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              style={{
+                fontSize: '13px',
+                color: '#9C9EA6',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                padding: '4px 8px',
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Transaction Ledgers — Income and Expenditure kept in separate tables */}
       <div
         style={{
@@ -822,18 +1002,22 @@ export const AccountsDashboardBanking = ({
           subtitle: `${sortedIncomeEntries.length} total · sorted by date`,
           accent: '#0E7A4C',
           emptyIcon: '📈',
-          emptyTitle: 'No income yet',
-          emptyBody: 'Recorded income will show up here.',
+          emptyTitle: searchQuery ? 'No matches' : 'No income yet',
+          emptyBody: searchQuery ? 'Try a different search term.' : 'Recorded income will show up here.',
           delay: '0.25s',
+          page: incomePage,
+          setPage: setIncomePage,
         })}
         {renderLedgerCard(sortedExpenseEntries, {
           title: '↓ Expenditure',
           subtitle: `${sortedExpenseEntries.length} total · sorted by date`,
           accent: '#AF1830',
           emptyIcon: '📉',
-          emptyTitle: 'No expenditure yet',
-          emptyBody: 'Recorded expenses will show up here.',
+          emptyTitle: searchQuery ? 'No matches' : 'No expenditure yet',
+          emptyBody: searchQuery ? 'Try a different search term.' : 'Recorded expenses will show up here.',
           delay: '0.30s',
+          page: expensePage,
+          setPage: setExpensePage,
         })}
       </div>
 
