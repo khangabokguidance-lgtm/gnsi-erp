@@ -757,6 +757,59 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
     if (data) setAllMonthlyScores(data)
   }
 
+  // ── Cross-module signal: Teaching.jsx (via EnhancedLogEntry) emits these
+  // when a teacher submits a log late, or when a log is auto-flagged
+  // excellent. Rather than a separate deduction table, this nudges the same
+  // manually-entered `initiative_score` (p5) field the admin already fills
+  // in on the Scoring tab — auto-adjustment + manual override, same pattern
+  // as days_present/late_count. Only touches the CURRENT month, and only if
+  // that teacher's row isn't already confirmed & locked for payroll.
+  const INITIATIVE_STEP = 0.25 // small nudge per event; admin can still override manually
+  const nudgeInitiativeScore = useCallback(async ({ staffId, delta }) => {
+    if (!staffId) return
+    const month = currentMonth()
+    try {
+      const { data: existing } = await supabase
+        .from('staff_monthly_scores')
+        .select('*')
+        .eq('staff_id', staffId)
+        .eq('month', month)
+        .maybeSingle()
+
+      if (existing?.is_confirmed) return // locked month — never touch confirmed payroll-linked scores
+
+      const base = existing || { ...emptyScore, staff_id: staffId, month, working_days: workingDays }
+      const nextInitiative = Math.max(0, Math.min(5, (Number(base.initiative_score) || 0) + delta))
+      const merged = { ...base, initiative_score: nextInitiative, working_days: base.working_days || workingDays }
+      const computed = calcScores(merged)
+      const row = {
+        staff_id: staffId, month, working_days: merged.working_days,
+        days_present: merged.days_present || 0, late_count: merged.late_count || 0,
+        early_leave_count: merged.early_leave_count || 0, tasks_assigned: merged.tasks_assigned || 0,
+        tasks_completed_on_time: merged.tasks_completed_on_time || 0,
+        feedback_avg: merged.feedback_avg || 0, initiative_score: nextInitiative,
+        p1_attendance: computed.p1, p2_punctuality: computed.p2, p3_tasks: computed.p3,
+        p4_feedback: computed.p4, p5_initiative: computed.p5,
+        total_score: computed.total, level: getLevel(computed.total)?.label || 'Probation',
+      }
+      const { error } = await supabase.from('staff_monthly_scores').upsert([row], { onConflict: 'staff_id,month' })
+      if (!error) {
+        setScores(prev => ({ ...prev, [staffId]: { ...prev[staffId], ...row } }))
+        if (scoreMonth === month) fetchScoresForMonth(month)
+      }
+    } catch (e) { console.error('Teaching-signal score nudge failed:', e.message) }
+  }, [workingDays, scoreMonth])
+
+  useEffect(() => {
+    const offLate = EventBus.on(GNSI_EVENTS.TEACHING_LOG_LATE, ({ staffId }) => {
+      nudgeInitiativeScore({ staffId, delta: -INITIATIVE_STEP })
+    })
+    const offExcellent = EventBus.on(GNSI_EVENTS.TEACHING_LOG_EXCELLENT, ({ staffId }) => {
+      nudgeInitiativeScore({ staffId, delta: +INITIATIVE_STEP })
+    })
+    return () => { offLate(); offExcellent() }
+  }, [nudgeInitiativeScore])
+
   useEffect(() => { if (activeTab === 'tasks')       fetchTasks() },                             [activeTab])
   useEffect(() => { if (activeTab === 'scoring')     fetchScoresForMonth(scoreMonth) },          [activeTab, scoreMonth])
   useEffect(() => { if (activeTab === 'leaderboard') { fetchScoresForMonth(scoreMonth); fetchAllScores() } }, [activeTab, scoreMonth])

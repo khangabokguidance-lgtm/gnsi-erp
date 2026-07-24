@@ -63,4 +63,8 @@ export const GNSI_EVENTS = {
   QUESTION_SAVED:      'gnsi:question_saved',    // { subject, chapter, count }
   LOCKER_UNLOCKED:     'gnsi:locker_unlocked',   // { lockerId }
   NAVIGATE_TO:         'gnsi:navigate_to',       // { module, params: { subject?, chapter? } }
+
+  // ── Teaching module events ────────────────────────────────────────────────────
+  TEACHING_LOG_LATE:      'teaching:log_late',      // { staffId, logId, teachingDate, subtype }
+  TEACHING_LOG_EXCELLENT: 'teaching:log_excellent',  // { staffId, logId, teachingDate, subtype }
 }

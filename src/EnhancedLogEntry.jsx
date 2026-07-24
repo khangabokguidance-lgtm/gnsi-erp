@@ -18,6 +18,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1557,6 +1558,19 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         return
       }
 
+      // ── Cross-module signal: feed Staff.jsx's performance scoring ──────────
+      // A late submission nudges the teacher's initiative score down there;
+      // this is purely a signal emit, no direct write to staff_monthly_scores
+      // from here — Staff.jsx owns that table and decides how to weight it.
+      if (isLate) {
+        EventBus.emit(GNSI_EVENTS.TEACHING_LOG_LATE, {
+          staffId: form.staff_id || null,
+          logId,
+          teachingDate: form.teaching_date,
+          subtype: form.subtype || null,
+        })
+      }
+
       // ── Similarity check ──────────────────────────────────────────────────
       let isCopyPasteFlagged = false
       try {
@@ -1641,12 +1655,24 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
             const excellent = isExcellentLog({ ...logPayload, ...form })
             if (excellent) {
               await supabase.from('teaching_logs').update({ excellence_flag: true }).eq('id', logId)
+              EventBus.emit(GNSI_EVENTS.TEACHING_LOG_EXCELLENT, {
+                staffId: form.staff_id || null,
+                logId,
+                teachingDate: form.teaching_date,
+                subtype: form.subtype || null,
+              })
             }
           }
         } else {
           const excellent = isExcellentLog({ ...logPayload, ...form })
           if (excellent) {
             await supabase.from('teaching_logs').update({ excellence_flag: true }).eq('id', logId)
+            EventBus.emit(GNSI_EVENTS.TEACHING_LOG_EXCELLENT, {
+              staffId: form.staff_id || null,
+              logId,
+              teachingDate: form.teaching_date,
+              subtype: form.subtype || null,
+            })
           }
         }
       } catch(e) { console.warn('Similarity check failed:', e.message) }
