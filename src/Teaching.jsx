@@ -42,10 +42,8 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
-import TabMonthlySyllabus from './TabMonthlySyllabus'
 import TabSyllabus from './TabSyllabus'
 import { EnhancedLogForm, HMDoubtSessionPanel } from './EnhancedLogEntry'
-import SyllabusManager from './SyllabusManager'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -63,30 +61,18 @@ const TAB_ROLES = {
   logs:           ['admin','manager','teacher','superintendent'],
   calendar:       ['admin','manager','teacher','superintendent'],
   syllabus:       ['admin','manager','teacher','house master','superintendent'],
-  timetable:      ['admin','manager','superintendent'],
   reports:        ['admin','manager','accounts','superintendent'],
-  search:         ['admin','manager','teacher','hostel','house master','superintendent'],
-  monthly:        ['admin','manager','teacher','hostel','house master','superintendent'],
   performance:    ['admin','manager','teacher','superintendent'],
   hmdash:         ['admin','manager','hostel','house master','superintendent'],
-  admin:          ['admin','superintendent'],
-  remediation:    ['admin','manager','superintendent'],
-  syllabus_admin: ['admin'],
 }
 
 const ALL_TABS = [
   { key:'logs',        label:'Daily Logs',       icon:'📋' },
   { key:'calendar',    label:'Calendar',          icon:'📅' },
   { key:'syllabus',    label:'Syllabus',          icon:'📊' },
-  { key:'timetable',   label:'Timetable',         icon:'🕐' },
   { key:'reports',     label:'Reports',           icon:'📈' },
-  { key:'search',      label:'Topic Search',      icon:'🔍' },
-  { key:'monthly',     label:'Monthly Syllabus',  icon:'📆' },
   { key:'performance', label:'Class Test Scores', icon:'🎯' },
   { key:'hmdash',      label:'HM Dashboard',      icon:'🏠' },
-  { key:'admin',       label:'Admin Monitor',     icon:'🛡️' },
-  { key:'remediation', label:'Remediation',       icon:'🔄' },
-  { key:'syllabus_admin', label:'Syllabus Admin', icon:'📚' }
 ]
 
 const today            = () => new Date().toISOString().split('T')[0]
@@ -2963,15 +2949,9 @@ useEffect(() => {
       {activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser}/>}
       {activeTab==='calendar'    && <TabCalendar logs={logs} missed={missed}/>}
       {activeTab==='syllabus' && <TabSyllabus logs={logs} courseData={courseData} monthlySyllabus={monthlySyllabus} currentUser={currentUser}/>}
-      {activeTab==='timetable'   && <TabTimetable timetable={timetable} fetchTimetable={fetchTimetable} staff={staff} courseData={courseData}/>}
       {activeTab==='reports'     && <TabReports logs={logs} missed={missed} staff={staff} courseData={courseData}/>}
-      {activeTab==='search'      && <TabSearch logs={logs} monthlySyllabus={monthlySyllabus} onNavigateTab={handleTabChange}/>}
-      {activeTab==='monthly'     && <TabMonthlySyllabus logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser} onNavigateTab={key=>handleTabChange(key)}/>}
       {activeTab==='performance' && <TabStudentPerformance courseData={courseData} logs={logs} currentUser={currentUser}/>}
       {activeTab==='hmdash'      && <TabHMDashboard currentUser={currentUser}/>}
-      {activeTab==='admin'       && <TabAdminMonitor logs={logs} missed={missed} timetable={timetable} staff={staff} courseData={courseData}/>}
-      {activeTab==='remediation' && <TabRemediation logs={logs} courseData={courseData}/>}
-      {activeTab==='syllabus_admin' && <SyllabusManager/>}
     </div>
   )
 }
