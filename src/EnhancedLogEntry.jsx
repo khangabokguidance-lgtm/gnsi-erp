@@ -1357,6 +1357,83 @@ function computeTeacherStats(logs, warnings) {
   })
 }
 
+function getTeacherStatus(t) {
+  if (!t || t.totalLogs === 0) {
+    return { label:'No Logs Yet', tone:'neutral', color:'#64748b', bg:'#f1f5f9', icon:'📭',
+      message:'Submit your first teaching log to get a status.' }
+  }
+  if (t.warningCount >= 3) {
+    return { label:'Weak — At Risk', tone:'critical', color:C.red, bg:'#fee2e2', icon:'🚨',
+      message:'Your log entries are weak and repeatedly flagged. Continued issues may lead to blocking and salary deduction.' }
+  }
+  if (t.warningCount > 0) {
+    return { label:'Weak', tone:'warning', color:'#d97706', bg:'#fef3c7', icon:'⚠️',
+      message:'Your log entry quality needs improvement. Write more specific, original content to avoid further warnings.' }
+  }
+  if (t.excellentLogs >= 5 && t.onTimeRate >= 85) {
+    return { label:'Excellent', tone:'excellent', color:C.green, bg:'#dcfce7', icon:'🌟',
+      message:'Great work! Your logs are detailed, original and consistently on time.' }
+  }
+  if (t.onTimeRate < 60 || t.totalLogs < 5) {
+    return { label:'Poor', tone:'poor', color:C.red, bg:'#fee2e2', icon:'📉',
+      message:'Your submission consistency is low. Log every class on time to improve your status.' }
+  }
+  return { label:'Average', tone:'average', color:'#0891b2', bg:'#e0f2fe', icon:'📊',
+    message:'You are meeting expectations. A few more detailed, on-time logs will push you to Excellent.' }
+}
+
+function MyStatusBanner({ myStat, loading }) {
+  if (loading) {
+    return (
+      <div style={{ ...S.card, textAlign:'center', color:'#64748b', fontSize:13, padding:16 }}>
+        ⏳ Checking your status...
+      </div>
+    )
+  }
+  const status = getTeacherStatus(myStat)
+  const hasDeductionRisk = status.tone === 'warning' || status.tone === 'critical' || status.tone === 'poor'
+
+  return (
+    <div style={{ ...S.card, background:status.bg, border:`1.5px solid ${status.color}55` }}>
+      <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+        <span style={{ fontSize:30, flexShrink:0 }}>{status.icon}</span>
+        <div style={{ flex:1, minWidth:200 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:2 }}>
+            Your Status
+          </div>
+          <div style={{ fontSize:19, fontWeight:800, color:status.color }}>{status.label}</div>
+          <div style={{ fontSize:13, color:'#374151', marginTop:4, lineHeight:1.5 }}>{status.message}</div>
+        </div>
+        {myStat && myStat.totalLogs > 0 && (
+          <div style={{ display:'flex', gap:16, flexShrink:0 }}>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:18, fontWeight:800, color:'#1e293b' }}>{myStat.totalLogs}</div>
+              <div style={{ fontSize:10, color:'#64748b', fontWeight:600 }}>LOGS</div>
+            </div>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:18, fontWeight:800, color:'#1e293b' }}>{myStat.onTimeRate}%</div>
+              <div style={{ fontSize:10, color:'#64748b', fontWeight:600 }}>ON-TIME</div>
+            </div>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:18, fontWeight:800, color:'#1e293b' }}>{myStat.excellentLogs}</div>
+              <div style={{ fontSize:10, color:'#64748b', fontWeight:600 }}>EXCELLENT</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {hasDeductionRisk && (
+        <div style={{ marginTop:12, padding:'10px 14px', background:'white', border:`1px solid ${C.red}55`, borderRadius:8, display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:16, flexShrink:0 }}>💰</span>
+          <span style={{ fontSize:12, fontWeight:600, color:C.red, lineHeight:1.5 }}>
+            Warning: Some amount will be deducted from your salary if you miss a teaching log entry or continue submitting weak/late logs.
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TeacherLeaderboard({ currentUser }) {
   const [logs, setLogs] = useState([])
   const [warnings, setWarnings] = useState([])
@@ -1407,12 +1484,15 @@ function TeacherLeaderboard({ currentUser }) {
 
   const myName = currentUser?.name
   const myRank = myName ? ranked.findIndex(t => t.name === myName) + 1 : 0
+  const myStat = myName ? stats.find(t => t.name === myName) || { name:myName, totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, onTimeRate:0, composite:0 } : null
 
   const medalFor = i => i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `#${i+1}`
   const warnColor = wt => wt==='blocked' ? C.red : wt==='final_warning' ? '#d97706' : '#eab308'
   const warnBg    = wt => wt==='blocked' ? '#fee2e2' : wt==='final_warning' ? '#fef3c7' : '#fefce8'
 
   return (
+    <>
+    {myName && <MyStatusBanner myStat={myStat} loading={loading}/>}
     <div style={{ ...S.card, cursor:'pointer' }} onClick={() => setExpanded(e => !e)}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -1514,6 +1594,7 @@ function TeacherLeaderboard({ currentUser }) {
         </div>
       )}
     </div>
+    </>
   )
 }
 
