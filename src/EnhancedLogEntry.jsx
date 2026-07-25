@@ -1898,62 +1898,43 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     onSaved?.()
   }
 
-  // FIX 1: corrected focus_student_ids guard (students.length > 0, not === 0)
-  const canNext = () => {
-    if (step === 0) {
-      return form.course && form.subtype && form.class_name && form.subject_name &&
-             form.teaching_date && form.period_number &&
-             (form.chapter || form.chapter_custom) &&
-             (form.subtopic || form.subtopic_custom) &&
-             isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff)
-    }
-    if (step === 1) {
-      return form.range_from && form.range_to &&
-             form.topic_taught?.trim()
-    }
-    if (step === 2) {
-      return (form.techniques || []).length > 0 &&
-             form.technique_detail?.trim()
-    }
-    if (step === 3) return true
-    if (step === 4) {
-      if (form.needs_doubt_session) {
-        // FIX 1: guard is students.length > 0 (has students) → require focus selection
-        return (form.assigned_hm_id || form.assigned_hm_name) && form.doubt_date &&
-               form.doubt_time_slot && form.hm_instruction_message &&
-               (students.length === 0 || (form.focus_student_ids || []).length > 0)
-      }
-      return true
-    }
-    return true
+  // Single-page form: all section requirements combined into one gate,
+  // checked when the teacher hits Save (there are no more per-step Next buttons).
+  const canSave = () => {
+    const step0Ok = form.course && form.subtype && form.class_name && form.subject_name &&
+      form.teaching_date && form.period_number &&
+      (form.chapter || form.chapter_custom) &&
+      (form.subtopic || form.subtopic_custom) &&
+      isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff)
+    const step1Ok = form.range_from && form.range_to && form.topic_taught?.trim()
+    const step2Ok = (form.techniques || []).length > 0 && form.technique_detail?.trim()
+    const step4Ok = !form.needs_doubt_session || (
+      (form.assigned_hm_id || form.assigned_hm_name) && form.doubt_date &&
+      form.doubt_time_slot && form.hm_instruction_message &&
+      (students.length === 0 || (form.focus_student_ids || []).length > 0)
+    )
+    return step0Ok && step1Ok && step2Ok && step4Ok
   }
 
-  const handleNext = async () => {
+  const handleSaveClick = async () => {
     setAttemptedNext(true)
-    if (step === 0) {
-      if (isDuplicate()) {
-        setDupWarn(`⚠️ A log for ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
-        return
-      }
-      // FIX 4: only run GPS check once per Step-0 advance attempt
-      if (!gpsCheckedRef.current) {
-        const gpsOk = await checkGPS()
-        if (!gpsOk) return
-        gpsCheckedRef.current = true
-      }
-      const attOk = await checkAttendance()
-      if (!attOk) { setAttWarn(true); return }
-      setAttWarn(false)
-    }
-    setDupWarn('')
-    // Skip Practice Questions + HM steps entirely when no doubt session is
-    // needed — most classes don't need one, so this jumps straight to Review.
-    if (step === 2 && !form.needs_doubt_session) {
-      setStep(STEPS.length - 1)
+    if (isDuplicate()) {
+      setDupWarn(`⚠️ A log for ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
       return
     }
-    if (step < STEPS.length - 1) setStep(s => s + 1)
+    if (!gpsCheckedRef.current) {
+      const gpsOk = await checkGPS()
+      if (!gpsOk) return
+      gpsCheckedRef.current = true
+    }
+    const attOk = await checkAttendance()
+    if (!attOk) { setAttWarn(true); return }
+    setAttWarn(false)
+    setDupWarn('')
+    if (!canSave()) return
+    setConfirm(true)
   }
+
 
   const handleSave = async () => {
     if (savingRef.current) return
@@ -2275,21 +2256,18 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
 
       <div style={S.card}>
         {/* Draft banner */}
-        {hasDraft && step === 0 && (
+        {hasDraft && (
           <div style={{ padding:'10px 14px', background:'#fef9c3', border:'1px solid #fde68a', borderRadius:8, marginBottom:14, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
             <span style={{ fontSize:13, fontWeight:600, color:'#92400e' }}>📝 Draft restored — continue where you left off.</span>
             <button type="button" onClick={discardDraft} style={{ fontSize:12, color:'#dc2626', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>✕ Discard Draft</button>
           </div>
         )}
 
-        {/* FIX 9: stale period warning */}
-        {draftPeriodStaleWarn && step === 0 && (
+        {draftPeriodStaleWarn && (
           <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
             🔒 Your draft has Period {form.period_number} selected, which is now locked. Please select a different period before proceeding.
           </div>
         )}
-
-        <StepBar current={step} steps={STEPS} onChange={setStep}/>
 
         {dupWarn && (
           <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, color:C.red, fontSize:13, marginBottom:14, fontWeight:600 }}>{dupWarn}</div>
@@ -2319,38 +2297,46 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
             ✅ On campus ({gpsDistance}m from centre) — location verified.
           </div>
         )}
-        {attemptedNext && <ValidationMessage form={form} step={step} staff={staff}/>}
-
-        {step === 0 && <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters} staff={staff}/>}
-        {step === 1 && <Step2WhatTaught form={form} setForm={setForm}/>}
-        {step === 2 && <Step3Technique form={form} setForm={setForm}/>}
-        {step === 3 && <Step4BulkQuestions form={form} setForm={setForm}/>}
-        {step === 4 && <Step5HMAssign form={form} setForm={setForm} staff={staff} students={students} loadingStudents={loadingStudents}/>}
-        {step === 5 && <StepReview form={form}/>}
-
-        <div style={{ display:'flex', justifyContent:'space-between', marginTop:24, paddingTop:16, borderTop:'1px solid #f1f5f9', flexWrap:'wrap', gap:10 }}>
-          <button type="button" onClick={() => {
-            setAttemptedNext(false)
-            // Symmetric with the forward skip: if we're on Review and no doubt
-            // session was requested, Back should return to Teaching Method,
-            // not land on the hidden Practice Questions / HM steps.
-            if (step === STEPS.length - 1 && !form.needs_doubt_session) {
-              setStep(2)
-            } else {
-              setStep(s => Math.max(0, s-1))
-            }
-          }} disabled={step === 0} style={{ ...S.btn('#94a3b8', step===0), background:'white', color: step===0?'#cbd5e1':'#374151', border:'1px solid #e2e8f0' }}>← Back</button>
-          <div style={{ display:'flex', gap:8 }}>
-            {step === 3 && (
-              <button type="button" onClick={() => setStep(s => s+1)} style={{ ...S.btn('#64748b'), background:'white', color:'#64748b', border:'1px solid #e2e8f0' }}>Skip →</button>
-            )}
-            {step < STEPS.length - 1
-              ? <button type="button" onClick={handleNext} disabled={!canNext()} style={S.btn(C.navy, !canNext())}>
-                  {STEPS[step].page !== STEPS[step+1]?.page ? 'Continue to Wrap-up →' : 'Continue →'}
-                </button>
-              : <button type="button" onClick={() => setConfirm(true)} disabled={saving} style={S.btn(C.green, saving)}>{saving ? '⏳ Saving...' : '✅ Save Log'}</button>
-            }
+        {attemptedNext && !canSave() && (
+          <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
+            ⚠️ Please fill in all required fields (marked *) before saving.
           </div>
+        )}
+
+        {/* All sections stacked on one page — no step navigation */}
+        <div style={{ marginBottom:20, paddingBottom:20, borderBottom:'1px solid #f1f5f9' }}>
+          <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>1 · Course &amp; Chapter</div>
+          <Step1CourseChapter form={form} setForm={setForm} courseData={courseData} chapters={chapters} loadingChapters={loadingChapters} staff={staff}/>
+        </div>
+
+        <div style={{ marginBottom:20, paddingBottom:20, borderBottom:'1px solid #f1f5f9' }}>
+          <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>2 · What Was Taught</div>
+          <Step2WhatTaught form={form} setForm={setForm}/>
+        </div>
+
+        <div style={{ marginBottom: form.needs_doubt_session ? 20 : 0, paddingBottom: form.needs_doubt_session ? 20 : 0, borderBottom: form.needs_doubt_session ? '1px solid #f1f5f9' : 'none' }}>
+          <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>3 · Teaching Method</div>
+          <Step3Technique form={form} setForm={setForm}/>
+        </div>
+
+        {form.needs_doubt_session && (
+          <>
+            <div style={{ marginBottom:20, paddingBottom:20, borderBottom:'1px solid #f1f5f9' }}>
+              <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>4 · Practice Questions <span style={{ fontWeight:500, textTransform:'none' }}>(optional)</span></div>
+              <Step4BulkQuestions form={form} setForm={setForm}/>
+            </div>
+
+            <div>
+              <div style={{ fontSize:11, fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>5 · HM &amp; Notify</div>
+              <Step5HMAssign form={form} setForm={setForm} staff={staff} students={students} loadingStudents={loadingStudents}/>
+            </div>
+          </>
+        )}
+
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:24, paddingTop:16, borderTop:'1px solid #f1f5f9' }}>
+          <button type="button" onClick={handleSaveClick} disabled={saving} style={S.btn(C.green, saving)}>
+            {saving ? '⏳ Saving...' : '✅ Save Log'}
+          </button>
         </div>
       </div>
     </>
