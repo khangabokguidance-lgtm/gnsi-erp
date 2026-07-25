@@ -44,6 +44,9 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import TabSyllabus from './TabSyllabus'
 import { EnhancedLogForm, HMDoubtSessionPanel } from './EnhancedLogEntry'
+import Attendance from './Attendance'
+import GeoAttendance from './GeoAttendance'
+import TabReportCards from './TabReportCards'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -64,6 +67,9 @@ const TAB_ROLES = {
   reports:        ['admin','manager','accounts','superintendent'],
   performance:    ['admin','manager','teacher','superintendent'],
   hmdash:         ['admin','manager','hostel','house master','superintendent'],
+  attendance:     ['admin','manager','teacher','hostel','house master','superintendent'],
+  geoattendance:  ['admin','manager','teacher','hostel','house master','superintendent'],
+  reportcards:    ['admin','manager','teacher','superintendent'],
 }
 
 const ALL_TABS = [
@@ -73,6 +79,9 @@ const ALL_TABS = [
   { key:'reports',     label:'Reports',           icon:'📈' },
   { key:'performance', label:'Class Test Scores', icon:'🎯' },
   { key:'hmdash',      label:'HM Dashboard',      icon:'🏠' },
+  { key:'attendance',  label:'Attendance',        icon:'✅' },
+  { key:'geoattendance', label:'Geo Check-In',    icon:'📍' },
+  { key:'reportcards', label:'Report Cards',      icon:'🎓' },
 ]
 
 const today            = () => new Date().toISOString().split('T')[0]
@@ -2952,6 +2961,9 @@ useEffect(() => {
       {activeTab==='reports'     && <TabReports logs={logs} missed={missed} staff={staff} courseData={courseData}/>}
       {activeTab==='performance' && <TabStudentPerformance courseData={courseData} logs={logs} currentUser={currentUser}/>}
       {activeTab==='hmdash'      && <TabHMDashboard currentUser={currentUser}/>}
+      {activeTab==='attendance'  && <Attendance currentUser={currentUser} isAdmin={(currentUser?.role||'').toLowerCase()==='admin'}/>}
+      {activeTab==='geoattendance' && <GeoAttendance currentStaff={staff.find(s => s.name===currentUser?.name)} isAdmin={(currentUser?.role||'').toLowerCase()==='admin'} allStaff={staff}/>}
+      {activeTab==='reportcards' && <TabReportCards courseData={courseData} staff={staff} currentUser={currentUser}/>}
     </div>
   )
 }

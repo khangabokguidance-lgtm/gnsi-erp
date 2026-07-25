@@ -526,6 +526,7 @@ const staffName = _name
   const [topicForm,     setTopicForm]    = useState({ name:'', expected_date:'', tags:[] })
   const [addingTopicTo, setAddingTopicTo]= useState(null)
   const [editingTopicId, setEditingTopicId] = useState(null)
+  const [filterCourse,  setFilterCourse] = useState('All')
   const [filterBatch,   setFilterBatch]  = useState('All')
   const [filterSubject, setFilterSubject]= useState('All')
   const [topicSearch,   setTopicSearch]  = useState('')
@@ -586,6 +587,7 @@ const staffName = _name
   const getCompleted = useCallback(row => getLogsFor(row).length, [getLogsFor])
 
   // ── Computed ──
+  const allCourses  = [...new Set(syllabus.map(s => s.course).filter(Boolean))].sort()
   const allBatches  = [...new Set(syllabus.map(s => s.subtype).filter(Boolean))]
   const allSubjects = [...new Set(syllabus.map(s => s.subject_name).filter(Boolean))]
 
@@ -599,8 +601,15 @@ const staffName = _name
   // subjects they have actually taught (per their own logs). Delete stays admin-only.
   const canEditTopicsFor = row => isAdmin || (isStaff && staffSubjects.has(row?.subject_name))
 
+  // Subject list narrows to the selected course, so you're not scanning
+  // Sainik + Navodaya + Foundation + Combined subjects all mixed together.
+  const subjectsInCourse = filterCourse === 'All'
+    ? allSubjects
+    : [...new Set(syllabus.filter(s => s.course === filterCourse).map(s => s.subject_name).filter(Boolean))]
+
   const filtered = useMemo(() => {
     let rows = syllabus.filter(r =>
+      (filterCourse==='All'  || r.course===filterCourse) &&
       (filterBatch==='All'   || r.subtype===filterBatch) &&
       (filterSubject==='All' || r.subject_name===filterSubject)
     )
@@ -612,14 +621,14 @@ const staffName = _name
       rows = rows.filter(r =>
         r.subject_name?.toLowerCase().includes(q) ||
         r.subtype?.toLowerCase().includes(q) ||
-        (topics[r.id]||[]).some(t => t.topic_name?.toLowerCase().includes(q))
+        (topics[r.id]||[]).some(t => t.chapter_name?.toLowerCase().includes(q))
       )
     }
     if (tagFilter !== 'All') {
       rows = rows.filter(r => (topics[r.id]||[]).some(t => (t.tags||[]).includes(tagFilter)))
     }
     return rows
-  }, [syllabus, filterBatch, filterSubject, topicSearch, tagFilter, topics, isStaff, staffName, staffSubjects])
+  }, [syllabus, filterCourse, filterBatch, filterSubject, topicSearch, tagFilter, topics, isStaff, staffName, staffSubjects])
 
   // ── Stats ──
   const stats = useMemo(() => {
@@ -660,7 +669,7 @@ const staffName = _name
     if (!topicForm.name.trim()) return
     const existing = topics[syllabusId]||[]
     const { error } = await supabase.from('syllabus_topics').insert([{
-      syllabus_id:syllabusId, topic_name:topicForm.name,
+      syllabus_id:syllabusId, chapter_name:topicForm.name,
       expected_date:topicForm.expected_date||null,
       order_num:existing.length+1,
       tags:topicForm.tags||[],
@@ -672,9 +681,9 @@ const staffName = _name
   // Staff/admin: edit an existing topic's name, expected date, and tags.
   // Gated by canEditTopicsFor at the call site (own-subject check for staff).
   const handleEditTopic = async (topicId, updates) => {
-    if (!updates.topic_name?.trim()) { showToast('Topic name cannot be empty', '#dc2626'); return }
+    if (!updates.chapter_name?.trim()) { showToast('Topic name cannot be empty', '#dc2626'); return }
     const { error } = await supabase.from('syllabus_topics').update({
-      topic_name: updates.topic_name.trim(),
+      chapter_name: updates.chapter_name.trim(),
       expected_date: updates.expected_date || null,
       tags: updates.tags || [],
     }).eq('id', topicId)
@@ -710,7 +719,7 @@ const staffName = _name
     let synced = 0
     for (const t of rowTopics) {
       if (t.completed) continue
-      const match = rowLogs.find(l => l.topic_taught?.toLowerCase().includes(t.topic_name?.toLowerCase().slice(0,12)))
+      const match = rowLogs.find(l => l.topic_taught?.toLowerCase().includes(t.chapter_name?.toLowerCase().slice(0,12)))
       if (match) {
         await supabase.from('syllabus_topics').update({ completed:true, completed_at:new Date().toISOString() }).eq('id', t.id)
         synced++
@@ -729,11 +738,11 @@ const staffName = _name
     )
     if (!matching.length) { showToast('No matching monthly syllabus topics found', '#d97706'); return }
     const existing = topics[syllabusId]||[]
-    const existingNames = new Set(existing.map(t => t.topic_name?.toLowerCase()))
+    const existingNames = new Set(existing.map(t => t.chapter_name?.toLowerCase()))
     const newTopics = matching.filter(m => !existingNames.has(m.topic?.toLowerCase()))
     if (!newTopics.length) { showToast('All monthly topics already added', '#d97706'); return }
     const payloads = newTopics.map((m, i) => ({
-      syllabus_id:syllabusId, topic_name:m.topic, completed:m.completed||false,
+      syllabus_id:syllabusId, chapter_name:m.topic, completed:m.completed||false,
       completed_at:m.completed_at||null, order_num:existing.length+i+1, tags:[],
     }))
     const { error } = await supabase.from('syllabus_topics').insert(payloads)
@@ -759,7 +768,7 @@ const staffName = _name
     const existing= topics[csvSyllabusId]||[]
     const payloads= lines.map((line, i) => {
       const parts = line.split(',')
-      return { syllabus_id:csvSyllabusId, topic_name:parts[0]?.trim()||line, expected_date:parts[1]?.trim()||null, tags:parts[2]?parts[2].split('|').map(t=>t.trim()):[], order_num:existing.length+i+1 }
+      return { syllabus_id:csvSyllabusId, chapter_name:parts[0]?.trim()||line, expected_date:parts[1]?.trim()||null, tags:parts[2]?parts[2].split('|').map(t=>t.trim()):[], order_num:existing.length+i+1 }
     })
     const { error } = await supabase.from('syllabus_topics').insert(payloads)
     if (error) showToast('Import failed: '+error.message, '#dc2626')
@@ -772,7 +781,7 @@ const staffName = _name
     const srcTopics = topics[copyFrom]||[]
     if (!srcTopics.length) { showToast('Source has no topics', '#d97706'); return }
     const destExisting = topics[copyTo]||[]
-    const payloads = srcTopics.map((t, i) => ({ syllabus_id:copyTo, topic_name:t.topic_name, expected_date:t.expected_date||null, tags:t.tags||[], order_num:destExisting.length+i+1 }))
+    const payloads = srcTopics.map((t, i) => ({ syllabus_id:copyTo, chapter_name:t.chapter_name, expected_date:t.expected_date||null, tags:t.tags||[], order_num:destExisting.length+i+1 }))
     const { error } = await supabase.from('syllabus_topics').insert(payloads)
     if (error) showToast('Copy failed: '+error.message, '#dc2626')
     else { fetchSyllabus(); showToast(`Copied ${payloads.length} topics ✅`, '#16a34a'); setCopyFrom(''); setCopyTo('') }
@@ -796,7 +805,7 @@ const staffName = _name
       const ds2 = cur.toISOString().split('T')[0]
       const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow]
       if (teachingDays.includes(dayName) && !holidays.includes(ds2)) {
-        sched.push({ date:ds2, day:dayName, topic:pending[ti].topic_name })
+        sched.push({ date:ds2, day:dayName, topic:pending[ti].chapter_name })
         ti++
       }
       cur.setDate(cur.getDate()+1)
@@ -933,9 +942,25 @@ Save, push, reload the page. The grey 🔍 banner will show exactly what role va
           {/* Controls */}
           <div style={{ ...S.card, padding:'14px 16px', marginBottom:14 }}>
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+              {/* Quick-jump course chips — the fastest way to narrow down before typing anything */}
+              {!isStaff && allCourses.length > 1 && (
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', width:'100%', marginBottom:2 }}>
+                  <button onClick={()=>{ setFilterCourse('All'); setFilterSubject('All') }}
+                    style={{ ...S.btnSm(filterCourse==='All'?'#1e3a5f':'#e2e8f0'), color:filterCourse==='All'?'white':'#374151' }}>
+                    All Courses
+                  </button>
+                  {allCourses.map(c => (
+                    <button key={c} onClick={()=>{ setFilterCourse(c); setFilterSubject('All') }}
+                      style={{ ...S.btnSm(filterCourse===c?'#1e3a5f':'#e2e8f0'), color:filterCourse===c?'white':'#374151' }}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
               <input placeholder="🔍 Search subjects or topics..." value={topicSearch} onChange={e=>setTopicSearch(e.target.value)} style={{ ...S.input, flex:'1 1 180px', minWidth:150 }}/>
+              {!isStaff && <select value={filterCourse} onChange={e=>{ setFilterCourse(e.target.value); setFilterSubject('All') }} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Courses</option>{allCourses.map(c=><option key={c} value={c}>{c}</option>)}</select>}
               {!isStaff && <select value={filterBatch} onChange={e=>setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 120px' }}><option value="All">All Batches</option>{allBatches.map(b=><option key={b} value={b}>{b}</option>)}</select>}
-              <select value={filterSubject} onChange={e=>setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 140px' }}><option value="All">All Subjects</option>{allSubjects.map(s=><option key={s} value={s}>{s}</option>)}</select>
+              <select value={filterSubject} onChange={e=>setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 140px' }}><option value="All">All Subjects</option>{subjectsInCourse.map(s=><option key={s} value={s}>{s}</option>)}</select>
               <select value={tagFilter} onChange={e=>setTagFilter(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 110px' }}><option value="All">All Tags</option>{TOPIC_TAGS.map(t=><option key={t} value={t}>{t}</option>)}</select>
               <div style={{ display:'flex', gap:4 }}>
                 {[['cards','📋'],['pace','📈']].map(([m,icon]) => (
@@ -1126,7 +1151,7 @@ Save, push, reload the page. The grey 🔍 banner will show exactly what role va
                                   ))}
                                 </div>
                                 <div style={{ display:'flex', gap:6 }}>
-                                  <button onClick={()=>handleEditTopic(t.id, { topic_name:topicForm.name, expected_date:topicForm.expected_date, tags:topicForm.tags })} style={S.btnSm('#16a34a')}>✓ Save</button>
+                                  <button onClick={()=>handleEditTopic(t.id, { chapter_name:topicForm.name, expected_date:topicForm.expected_date, tags:topicForm.tags })} style={S.btnSm('#16a34a')}>✓ Save</button>
                                   <button onClick={()=>setEditingTopicId(null)} style={S.btnSm('#94a3b8')}>✖ Cancel</button>
                                 </div>
                               </div>
@@ -1141,12 +1166,12 @@ Save, push, reload the page. The grey 🔍 banner will show exactly what role va
                               style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px', border:`1px solid ${dragOver===idx?'#1e3a5f':'#e2e8f0'}`, borderRadius:7, marginBottom:4, background:t.completed?'#f0fdf4':'white', cursor:isAdmin?'grab':'default', transition:'all .1s' }}>
                               {isAdmin && <span style={{ color:'#cbd5e1', fontSize:11 }}>⠿</span>}
                               <input type="checkbox" checked={!!t.completed} onChange={e=>canMark&&handleMarkTopic(t,e.target.checked)} disabled={!canMark} style={{ width:14, height:14, cursor:canMark?'pointer':'not-allowed', accentColor:'#16a34a' }}/>
-                              <span style={{ flex:1, fontSize:13, color:t.completed?'#16a34a':'#374151', textDecoration:t.completed?'line-through':'none' }}>{t.topic_name}</span>
+                              <span style={{ flex:1, fontSize:13, color:t.completed?'#16a34a':'#374151', textDecoration:t.completed?'line-through':'none' }}>{t.chapter_name}</span>
                               <div style={{ display:'flex', gap:3, flexWrap:'wrap' }}>
                                 {(t.tags||[]).map(tag => <TagPill key={tag} tag={tag}/>)}
                               </div>
                               {t.expected_date && <span style={{ fontSize:11, color:'#94a3b8' }}>{fmtDate(t.expected_date)}</span>}
-                              {canEdit && <button onClick={()=>{ setEditingTopicId(t.id); setTopicForm({ name:t.topic_name, expected_date:t.expected_date||'', tags:t.tags||[] }) }} style={{ background:'none', border:'none', color:'#60a5fa', cursor:'pointer', fontSize:13, padding:'0 2px' }} title="Edit topic">✏️</button>}
+                              {canEdit && <button onClick={()=>{ setEditingTopicId(t.id); setTopicForm({ name:t.chapter_name, expected_date:t.expected_date||'', tags:t.tags||[] }) }} style={{ background:'none', border:'none', color:'#60a5fa', cursor:'pointer', fontSize:13, padding:'0 2px' }} title="Edit topic">✏️</button>}
                               {isAdmin && <button onClick={()=>handleDeleteTopic(t.id)} style={{ background:'none', border:'none', color:'#fca5a5', cursor:'pointer', fontSize:13, padding:'0 2px' }} title="Delete topic (admin only)">✕</button>}
                             </div>
                           )
