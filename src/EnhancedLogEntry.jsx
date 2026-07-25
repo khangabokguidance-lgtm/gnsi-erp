@@ -332,10 +332,16 @@ function SuggestionPicker({ field, value, onChange, form }) {
   }
 
   return (
-    <div style={{ position:'relative', display:'inline-block', marginLeft:8 }}>
+    <div style={{ position:'relative', display:'inline-flex', alignItems:'center', gap:6, marginLeft:8 }}>
+      {suggestions[0] && !value?.trim() && (
+        <button type="button" onClick={() => fillSuggestion(suggestions[0])}
+          style={{ fontSize:10, padding:'2px 8px', borderRadius:4, border:`1px solid ${C.navy}`, background:'#eff6ff', color:C.navy, cursor:'pointer', fontWeight:700 }}>
+          ⚡ Quick-fill
+        </button>
+      )}
       <button type="button" onClick={() => setOpen(!open)}
         style={{ fontSize:10, padding:'2px 8px', borderRadius:4, border:'1px solid #d1d5db', background: open?'#1e3a5f':'#f8fafc', color: open?'white':'#64748b', cursor:'pointer', fontWeight:600 }}>
-        💡 Suggestions {open ? '▲' : '▼'}
+        💡 Templates {open ? '▲' : '▼'}
       </button>
       {open && (
         <div style={{ position:'absolute', top:'100%', left:0, zIndex:9999, background:'white', border:'1px solid #e2e8f0', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.12)', width:420, maxWidth:'90vw', marginTop:4 }}>
@@ -451,17 +457,60 @@ function SpotCheckModal({ question, onSubmit, onSkip }) {
 // ─── Step Bar ─────────────────────────────────────────────────────────────────
 
 function StepBar({ current, steps, onChange }) {
+  const currentPage = steps[current]?.page ?? 0
+  const stepsInPage = (p) => steps.filter(s => s.page === p)
+  const pageDone = (p) => {
+    const inPage = stepsInPage(p)
+    const lastIdx = steps.findIndex(s => s.key === inPage[inPage.length-1].key)
+    return current > lastIdx
+  }
   return (
-    <div style={{ display:'flex', alignItems:'center', marginBottom:28 }}>
-      {steps.map((s, i) => (
-        <React.Fragment key={s.key}>
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flex:1, cursor:'pointer' }} onClick={() => current > i && onChange(i)}>
-            <div style={S.stepDot(current===i, current>i)}>{current > i ? '✓' : i+1}</div>
-            <span style={{ fontSize:10, fontWeight:700, color:current===i?C.navy:current>i?C.green:'#94a3b8', textAlign:'center', maxWidth:64, lineHeight:1.3 }}>{s.label}</span>
-          </div>
-          {i < steps.length-1 && <div style={S.stepLine(current>i)}/>}
-        </React.Fragment>
-      ))}
+    <div style={{ marginBottom:28 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        {PAGES.map((pg, pi) => {
+          const active = currentPage === pi
+          const done = pageDone(pi)
+          const firstStepOfPage = steps.findIndex(s => s.page === pi)
+          return (
+            <React.Fragment key={pg.label}>
+              <div
+                onClick={() => done && onChange(firstStepOfPage)}
+                style={{
+                  flex:1, display:'flex', alignItems:'center', gap:10, padding:'12px 16px',
+                  borderRadius:12, cursor: done ? 'pointer' : 'default',
+                  background: active ? C.navy : done ? '#f0fdf4' : '#f8fafc',
+                  border: `1.5px solid ${active ? C.navy : done ? '#bbf7d0' : '#e2e8f0'}`,
+                }}
+              >
+                <div style={{
+                  width:30, height:30, borderRadius:'50%', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:13, fontWeight:800, background: done ? C.green : active ? 'rgba(255,255,255,.2)' : '#e2e8f0',
+                  color: done || active ? 'white' : '#94a3b8',
+                }}>
+                  {done ? '✓' : pi+1}
+                </div>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:800, color: active ? 'white' : done ? '#166534' : '#374151' }}>{pg.label}</div>
+                  <div style={{ fontSize:11, color: active ? 'rgba(255,255,255,.75)' : '#94a3b8', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{pg.hint}</div>
+                </div>
+              </div>
+              {pi < PAGES.length-1 && <div style={{ width:20, height:2, background: done ? C.green : '#e2e8f0', flexShrink:0 }}/>}
+            </React.Fragment>
+          )
+        })}
+      </div>
+      {/* sub-progress dots within the active page */}
+      <div style={{ display:'flex', gap:6, marginTop:12, paddingLeft:2 }}>
+        {stepsInPage(currentPage).map(s => {
+          const idx = steps.findIndex(x => x.key === s.key)
+          return (
+            <div key={s.key} title={s.label} style={{
+              flex:1, height:4, borderRadius:2,
+              background: current === idx ? C.navy : current > idx ? '#93c5fd' : '#e2e8f0',
+            }}/>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -1240,12 +1289,16 @@ function StepReview({ form }) {
 // ─── Steps Config + Empty Form ────────────────────────────────────────────────
 
 const STEPS = [
-  { key:'course',     label:'Course & Chapter' },
-  { key:'taught',     label:'What Was Taught' },
-  { key:'technique',  label:'Teaching Method' },
-  { key:'questions',  label:'Practice Qs' },
-  { key:'hm',         label:'HM & Notify' },
-  { key:'review',     label:'Review & Save' },
+  { key:'course',     label:'Course & Chapter', page:0 },
+  { key:'taught',     label:'What Was Taught',  page:0 },
+  { key:'technique',  label:'Teaching Method',  page:0 },
+  { key:'questions',  label:'Practice Qs',      page:1 },
+  { key:'hm',         label:'HM & Notify',      page:1 },
+  { key:'review',     label:'Review & Save',    page:1 },
+]
+const PAGES = [
+  { label:'Class Details', hint:'Course, chapter and what you taught today' },
+  { label:'Wrap-up',       hint:'Practice questions, HM notification and review' },
 ]
 
 const emptyForm = {
@@ -1260,7 +1313,209 @@ const emptyForm = {
   hm_instruction_message:'', focus_student_ids:[], weak_students:[],
 }
 
-// ─── Main: Enhanced Log Form ──────────────────────────────────────────────────
+// ─── Teacher Leaderboard & Warnings Dashboard ─────────────────────────────────
+// Public, clickable-by-everyone dashboard shown inside the teaching log flow.
+// Composite ranking uses three signals from teaching_logs / teacher_warnings:
+//   - excellent logs   (teaching_logs.excellence_flag)
+//   - on-time rate     (teaching_logs.late_submission)
+//   - active warnings  (teacher_warnings.warning_type, most recent per teacher)
+
+const RANK_MODES = [
+  { key:'composite', label:'🏆 Overall' },
+  { key:'excellent', label:'🌟 Excellent Logs' },
+  { key:'ontime',    label:'⏱️ On-Time Rate' },
+  { key:'warnings',  label:'⚠️ Warnings' },
+]
+
+function computeTeacherStats(logs, warnings) {
+  const map = {}
+  const ensure = name => {
+    if (!map[name]) map[name] = { name, totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, latestWarning:null }
+    return map[name]
+  }
+  logs.forEach(l => {
+    if (!l.teacher_name) return
+    const t = ensure(l.teacher_name)
+    t.totalLogs += 1
+    if (l.excellence_flag) t.excellentLogs += 1
+    if (l.late_submission) t.lateLogs += 1
+  })
+  warnings.forEach(w => {
+    if (!w.teacher_name) return
+    const t = ensure(w.teacher_name)
+    t.warningCount += 1
+    if (!t.latestWarning || new Date(w.created_at) > new Date(t.latestWarning.created_at)) {
+      t.latestWarning = w
+    }
+  })
+  return Object.values(map).map(t => {
+    const onTimeRate = t.totalLogs > 0 ? Math.round(((t.totalLogs - t.lateLogs) / t.totalLogs) * 100) : 0
+    // Composite score: reward excellence & on-time delivery, penalise warnings.
+    // Weighting is intentionally simple and transparent so teachers can see why they rank where they do.
+    const composite = (t.excellentLogs * 3) + (onTimeRate * 0.2) + (t.totalLogs * 0.5) - (t.warningCount * 5)
+    return { ...t, onTimeRate, composite: Math.round(composite * 10) / 10 }
+  })
+}
+
+function TeacherLeaderboard({ currentUser }) {
+  const [logs, setLogs] = useState([])
+  const [warnings, setWarnings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(false)
+  const [rankMode, setRankMode] = useState('composite')
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchAll = async () => {
+      setLoading(true)
+      const [{ data: logData }, { data: warnData }] = await Promise.all([
+        supabase.from('teaching_logs')
+          .select('teacher_name,excellence_flag,late_submission,teaching_date')
+          .order('teaching_date', { ascending:false })
+          .limit(1000),
+        supabase.from('teacher_warnings')
+          .select('teacher_name,warning_type,message,created_at')
+          .order('created_at', { ascending:false })
+          .limit(300),
+      ])
+      if (cancelled) return
+      setLogs(logData || [])
+      setWarnings(warnData || [])
+      setLoading(false)
+    }
+    fetchAll()
+    return () => { cancelled = true }
+  }, [])
+
+  const stats = useMemo(() => computeTeacherStats(logs, warnings), [logs, warnings])
+
+  const sortKeyFor = mode => {
+    if (mode === 'excellent') return t => t.excellentLogs
+    if (mode === 'ontime')    return t => t.onTimeRate
+    if (mode === 'warnings')  return t => -t.warningCount
+    return t => t.composite
+  }
+
+  const ranked = useMemo(() => {
+    const key = sortKeyFor(rankMode)
+    return [...stats].sort((a,b) => key(b) - key(a))
+  }, [stats, rankMode])
+
+  const warnedTeachers = useMemo(() =>
+    stats.filter(t => t.warningCount > 0).sort((a,b) => b.warningCount - a.warningCount),
+  [stats])
+
+  const myName = currentUser?.name
+  const myRank = myName ? ranked.findIndex(t => t.name === myName) + 1 : 0
+
+  const medalFor = i => i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `#${i+1}`
+  const warnColor = wt => wt==='blocked' ? C.red : wt==='final_warning' ? '#d97706' : '#eab308'
+  const warnBg    = wt => wt==='blocked' ? '#fee2e2' : wt==='final_warning' ? '#fef3c7' : '#fefce8'
+
+  return (
+    <div style={{ ...S.card, cursor:'pointer' }} onClick={() => setExpanded(e => !e)}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <span style={{ fontSize:22 }}>🏆</span>
+          <div>
+            <div style={{ fontWeight:800, fontSize:15, color:C.navy }}>Teacher Leaderboard</div>
+            <div style={{ fontSize:12, color:'#64748b' }}>
+              {loading ? 'Loading rankings...' : myName && myRank
+                ? `You're ranked #${myRank} of ${ranked.length} · Tap to ${expanded?'collapse':'view all'}`
+                : `${ranked.length} teachers ranked · Tap to ${expanded?'collapse':'view all'}`}
+            </div>
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {warnedTeachers.length > 0 && (
+            <span style={S.badge(C.red, '#fee2e2')}>⚠️ {warnedTeachers.length} with warnings</span>
+          )}
+          <span style={{ fontSize:18, color:'#94a3b8', transform: expanded?'rotate(180deg)':'none', transition:'transform .15s' }}>▾</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div onClick={e => e.stopPropagation()} style={{ marginTop:18, paddingTop:18, borderTop:'1px solid #f1f5f9' }}>
+          {loading ? (
+            <div style={{ textAlign:'center', padding:24, color:'#64748b', fontSize:13 }}>⏳ Loading leaderboard...</div>
+          ) : (
+            <>
+              {/* Ranking mode tabs */}
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
+                {RANK_MODES.map(m => (
+                  <button key={m.key} type="button" onClick={() => setRankMode(m.key)}
+                    style={S.tag(rankMode === m.key)}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Leaderboard list */}
+              <div style={{ marginBottom:20 }}>
+                {ranked.length === 0 ? (
+                  <div style={{ fontSize:13, color:'#94a3b8', textAlign:'center', padding:16 }}>No teaching logs yet.</div>
+                ) : ranked.map((t, i) => {
+                  const isMe = t.name === myName
+                  return (
+                    <div key={t.name} style={{
+                      display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:10, marginBottom:6,
+                      background: isMe ? '#eff6ff' : i < 3 ? '#fffbeb' : '#f8fafc',
+                      border: `1px solid ${isMe ? '#bfdbfe' : i < 3 ? '#fde68a' : '#f1f5f9'}`,
+                    }}>
+                      <span style={{ fontSize: i < 3 ? 18 : 13, fontWeight:800, color: i < 3 ? undefined : '#94a3b8', width:32, textAlign:'center', flexShrink:0 }}>
+                        {medalFor(i)}
+                      </span>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:700, fontSize:13, color: isMe ? C.navy : '#1e293b' }}>
+                          {t.name}{isMe ? ' (You)' : ''}
+                        </div>
+                        <div style={{ fontSize:11, color:'#64748b' }}>
+                          {t.totalLogs} logs · {t.excellentLogs} excellent · {t.onTimeRate}% on-time
+                          {t.warningCount > 0 ? ` · ${t.warningCount} warning${t.warningCount>1?'s':''}` : ''}
+                        </div>
+                      </div>
+                      <span style={S.badge(C.navy, '#eff6ff')}>
+                        {rankMode === 'composite' ? t.composite
+                          : rankMode === 'excellent' ? t.excellentLogs
+                          : rankMode === 'ontime' ? `${t.onTimeRate}%`
+                          : t.warningCount}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Warnings section */}
+              {warnedTeachers.length > 0 && (
+                <div>
+                  <div style={{ fontWeight:800, fontSize:13, color:C.red, marginBottom:10 }}>⚠️ Teachers with Active Warnings</div>
+                  {warnedTeachers.map(t => (
+                    <div key={t.name} style={{
+                      padding:'10px 12px', borderRadius:10, marginBottom:6,
+                      background: warnBg(t.latestWarning?.warning_type), border:`1px solid ${warnColor(t.latestWarning?.warning_type)}33`,
+                    }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+                        <span style={{ fontWeight:700, fontSize:13, color:'#1e293b' }}>
+                          {t.name}{t.name === myName ? ' (You)' : ''}
+                        </span>
+                        <span style={{ ...S.badge(warnColor(t.latestWarning?.warning_type), 'white'), border:`1px solid ${warnColor(t.latestWarning?.warning_type)}` }}>
+                          {t.warningCount} warning{t.warningCount>1?'s':''}
+                        </span>
+                      </div>
+                      {t.latestWarning?.message && (
+                        <div style={{ fontSize:12, color:'#374151', marginTop:4 }}>{t.latestWarning.message}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs }) {
   const [step, setStep] = useState(0)
@@ -1809,6 +2064,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     <>
       <style>{css}</style>
       {toastEl}
+      <TeacherLeaderboard currentUser={currentUser}/>
       {spotCheck && (
         <SpotCheckModal
           question={spotCheck.question}
@@ -1888,7 +2144,9 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
               <button type="button" onClick={() => setStep(s => s+1)} style={{ ...S.btn('#64748b'), background:'white', color:'#64748b', border:'1px solid #e2e8f0' }}>Skip →</button>
             )}
             {step < STEPS.length - 1
-              ? <button type="button" onClick={handleNext} disabled={!canNext()} style={S.btn(C.navy, !canNext())}>Next →</button>
+              ? <button type="button" onClick={handleNext} disabled={!canNext()} style={S.btn(C.navy, !canNext())}>
+                  {STEPS[step].page !== STEPS[step+1]?.page ? 'Continue to Wrap-up →' : 'Continue →'}
+                </button>
               : <button type="button" onClick={() => setConfirm(true)} disabled={saving} style={S.btn(C.green, saving)}>{saving ? '⏳ Saving...' : '✅ Save Log'}</button>
             }
           </div>
