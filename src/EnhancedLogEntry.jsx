@@ -104,84 +104,119 @@ const SUGGESTIONS = {
 
 // ─── Doubt Session Map (Batch + Subject → HM + Time Slot) ─────────────────────
 
+// SOP: GNSI/ACAD/SOP/13/2026-27 dated 13.07.2026 — Annexure-I
+// Main Morning Session — All Batches (Mon–Sat), 10:20 AM to 3:50 PM,
+// six teaching periods with tea break fixed at 12:50–1:20 PM.
+const PERIODS = [1,2,3,4,5,6]
+
+const PERIOD_TIMES = {
+  1: { label:'Period 1 (10:20–11:10 AM)', start:[10,20], end:[11,10] },
+  2: { label:'Period 2 (11:10 AM–12:00 PM)', start:[11,10], end:[12,0] },
+  3: { label:'Period 3 (12:00–12:50 PM)', start:[12,0],  end:[12,50] },
+  // 12:50–1:20 PM — TEA BREAK (SOP Clause 4(ii)). No class shall be extended into this period.
+  4: { label:'Period 4 (1:25–2:15 PM)',   start:[13,25], end:[14,15] },
+  5: { label:'Period 5 (2:15–3:05 PM)',   start:[14,15], end:[15,5]  },
+  6: { label:'Period 6 (3:05–3:50 PM)',   start:[15,5],  end:[15,50] },
+}
+
+// SOP Annexures V–IX — Doubt-session / combined-course teacher assignments.
+// Each entry's `slot` matches a key in DOUBT_TIME_SLOTS below.
 const DOUBT_SESSION_MAP = [
-  // 6:20–7:20 AM
-  { batch:'Achiever A',  subject:'General Knowledge', hm:'Sir Bidyachandra', slot:'6:20–7:20 AM' },
-  { batch:'Achiever B',  subject:'General Knowledge', hm:'Sir Shrinivash',   slot:'6:20–7:20 AM' },
-  { batch:'Leader',      subject:'General Knowledge', hm:'Sir Romesh',       slot:'6:20–7:20 AM' },
-  { batch:'Champion',    subject:'General Knowledge', hm:'Miss Geetanjali',  slot:'6:20–7:20 AM' },
-  { batch:'Lakshya A',   subject:'General Knowledge', hm:'Miss Deviya',      slot:'6:20–7:20 AM' },
-  { batch:'Lakshya B',   subject:'Grammar',           hm:'Sir Adison',       slot:'6:20–7:20 AM' },
-  { batch:'Umeed A',     subject:'Grammar',           hm:'Miss Fedrava',     slot:'6:20–7:20 AM' },
-  { batch:'Umeed B',     subject:'General Knowledge', hm:'Miss Bindyarani',  slot:'6:20–7:20 AM' },
-  { batch:'Elite',       subject:'General Science',   hm:'Sir Mahesh',       slot:'6:20–7:20 AM' },
-  { batch:'Prime',       subject:'Reasoning',         hm:'Sir Umesh',        slot:'6:20–7:20 AM' },
-  // 7:20–8:10 AM
-  { batch:'Achiever A',  subject:'Mathematics',       hm:'Sir Himan',        slot:'7:20–8:10 AM' },
-  { batch:'Achiever B',  subject:'Reasoning',         hm:'Sir James',        slot:'7:20–8:10 AM' },
-  { batch:'Leader A',    subject:'Reasoning',         hm:'Sir Bidyachandra', slot:'7:20–8:10 AM' },
-  { batch:'Leader B',    subject:'Reasoning',         hm:'Miss Geetanjali',  slot:'7:20–8:10 AM' },
-  { batch:'Champion A',  subject:'Reasoning',         hm:'Sir Shrinivash',   slot:'7:20–8:10 AM' },
-  { batch:'Champion B',  subject:'Grammar',           hm:'Sir Adison',       slot:'7:20–8:10 AM' },
-  { batch:'Lakshya A',   subject:'General Knowledge', hm:'Miss Deviya',      slot:'7:20–8:10 AM' },
-  { batch:'Lakshya B',   subject:'General Knowledge', hm:'Miss Bidyarani',   slot:'7:20–8:10 AM' },
-  { batch:'Umeed A',     subject:'Grammar',           hm:'Miss Fedrava',     slot:'7:20–8:10 AM' },
-  { batch:'Umeed B',     subject:'Mathematics',       hm:'Sir Romesh',       slot:'7:20–8:10 AM' },
-  { batch:'Elite',       subject:'General Science',   hm:'Sir Mahesh',       slot:'7:20–8:10 AM' },
-  // 5:30–6:30 PM
-  { batch:'Achiever A',  subject:'Grammar',           hm:'Miss Fedrava',     slot:'5:30–6:30 PM' },
-  { batch:'Achiever B',  subject:'Grammar',           hm:'Sir Bidyachandra', slot:'5:30–6:30 PM' },
-  { batch:'Leader',      subject:'Mathematics',       hm:'Sir Himan',        slot:'5:30–6:30 PM' },
-  { batch:'Champion',    subject:'Mathematics',       hm:'Sir Umesh',        slot:'5:30–6:30 PM' },
-  { batch:'Lakshya',     subject:'Mathematics',       hm:'Miss Deviya',      slot:'5:30–6:30 PM' },
-  { batch:'Umeed',       subject:'Mathematics',       hm:'Sir Bronson',      slot:'5:30–6:30 PM' },
-  { batch:'Elite',       subject:'Mathematics',       hm:'Miss Geetanjali',  slot:'5:30–6:30 PM' },
-  { batch:'Prime',       subject:'Reasoning',         hm:'Sir James',        slot:'5:30–6:30 PM' },
-  { batch:'Prime',       subject:'Mathematics',       hm:'Sir Mahesh',       slot:'5:30–6:30 PM' },
-  // 6:35–7:35 PM
-  { batch:'Achiever A',  subject:'Mathematics',       hm:'Sir Romesh',       slot:'6:35–7:35 PM' },
-  { batch:'Achiever B',  subject:'Mathematics',       hm:'Miss Deviya',      slot:'6:35–7:35 PM' },
-  { batch:'Leader',      subject:'Grammar',           hm:'Sir Adison',       slot:'6:35–7:35 PM' },
-  { batch:'Champion',    subject:'Grammar',           hm:'Miss Fedrava',     slot:'6:35–7:35 PM' },
-  { batch:'Lakshya',     subject:'Mathematics',       hm:'Miss Geetanjali',  slot:'6:35–7:35 PM' },
-  { batch:'Umeed',       subject:'Mathematics',       hm:'Sir Bidyachandra', slot:'6:35–7:35 PM' },
-  { batch:'Elite',       subject:'Mathematics',       hm:'Sir Mahesh',       slot:'6:35–7:35 PM' },
-  { batch:'Elite',       subject:'Vocabulary',        hm:'Sir Arjun',        slot:'6:35–7:35 PM' },
-  { batch:'Prime',       subject:'Hindi',             hm:'Sir Boy',          slot:'6:35–7:35 PM' },
-  // 7:40–8:30 PM
-  { batch:'Achiever A',  subject:'Reasoning',         hm:'Sir Umesh',        slot:'7:40–8:30 PM' },
-  { batch:'Achiever B',  subject:'Reasoning',         hm:'Sir James',        slot:'7:40–8:30 PM' },
-  { batch:'Leader',      subject:'General Science',   hm:'Sir Arunkumar',    slot:'7:40–8:30 PM' },
-  { batch:'Champion',    subject:'General Knowledge', hm:'Miss Bidyarani',   slot:'7:40–8:30 PM' },
-  { batch:'Lakshya',     subject:'Mental Ability',    hm:'Sir Shrinivash',   slot:'7:40–8:30 PM' },
-  { batch:'Umeed',       subject:'Mental Ability',    hm:'Sir Romesh',       slot:'7:40–8:30 PM' },
-  { batch:'Elite',       subject:'Mathematics',       hm:'Sir Mahesh',       slot:'7:40–8:30 PM' },
-  { batch:'Prime',       subject:'Vocabulary',        hm:'Sir Adison',       slot:'7:40–8:30 PM' },
+  // ── Annexure-II: Early Morning Combined Course (Navodaya) — 6:30–7:20 AM ──
+  { batch:'Lakshya', subject:'Meitei Mayek', hm:'Miss Deviya',  slot:'6:30–7:20 AM (Navodaya MM)' },
+  { batch:'Umeed',   subject:'Meitei Mayek', hm:'Miss Deviya',  slot:'6:30–7:20 AM (Navodaya MM)' },
+  { batch:'Lakshya', subject:'English Grammar', hm:'Miss Fedrava', slot:'6:30–7:20 AM (Navodaya ENG)' },
+  { batch:'Umeed',   subject:'English Grammar', hm:'Miss Fedrava', slot:'6:30–7:20 AM (Navodaya ENG)' },
+
+  // ── Annexure-IV: Evening Combined Course (Navodaya) ──
+  { batch:'Lakshya', subject:'Mathematics', hm:'Sir Bronson', slot:'6:00–6:50 PM (Navodaya MM)' },
+  { batch:'Umeed',   subject:'Mathematics', hm:'Sir Umesh',   slot:'6:00–6:50 PM (Navodaya ENG)' },
+  { batch:'Lakshya', subject:'General Science', hm:'Sir Deepak',  slot:'6:50–7:40 PM (Navodaya MM)' },
+  { batch:'Umeed',   subject:'General Science', hm:'Sir Basanta', slot:'6:50–7:40 PM (Navodaya ENG)' },
+
+  // ── Annexure-III: Evening Doubt-Clearing (Sainik Stream) ──
+  { batch:'Champion', subject:'General Knowledge', hm:'Sir Shrinivash',  slot:'7:40–8:30 PM (Sainik)' },
+  { batch:'Leader',   subject:'General Science',   hm:'Sir Arunkumar',   slot:'7:40–8:30 PM (Sainik)' },
+  { batch:'Achiever', subject:'Mathematics',       hm:'Sir Himan',       slot:'7:40–8:30 PM (Sainik)' },
+  { batch:'Lakshya',  subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Lakshya/Umeed)' },
+  { batch:'Umeed',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Lakshya/Umeed)' },
+  { batch:'Elite',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Elite/Prime)' },
+  { batch:'Prime',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Elite/Prime)' },
+
+  // ── Annexure-V: Foundation Group (Elite & Prime) — Morning Doubt Session ──
+  { batch:'Elite', subject:'English Grammar', hm:'Sir Shrinivash', slot:'6:30–7:20 AM Foundation Doubt (Group A)' },
+  { batch:'Prime', subject:'English Grammar', hm:'Sir James',      slot:'6:30–7:20 AM Foundation Doubt (Group B)' },
+  { batch:'Elite', subject:'Mathematics',     hm:'Sir James',      slot:'7:20–8:20 AM Foundation Doubt (Group A)' },
+  { batch:'Prime', subject:'Mathematics',     hm:'Sir Shrinivash', slot:'7:20–8:20 AM Foundation Doubt (Group B)' },
+
+  // ── Annexure-VI: Foundation Group (Elite & Prime) — Evening Doubt Session ──
+  { batch:'Elite', subject:'Reasoning',        hm:'Sir Bidyachandra', slot:'6:00–7:15 PM Foundation Doubt (Group A)' },
+  { batch:'Prime', subject:'Reasoning',        hm:'Sir Shrinivash',   slot:'6:00–7:15 PM Foundation Doubt (Group B)' },
+  { batch:'Elite', subject:'General Science',  hm:'Sir James',        slot:'7:15–8:30 PM Foundation Doubt (Group A)' },
+  { batch:'Prime', subject:'General Science',  hm:'Miss Bidyarani',   slot:'7:15–8:30 PM Foundation Doubt (Group B)' },
+
+  // ── Annexure-VII: Navodaya Group (Lakshya & Umeed) — Morning Doubt Session ──
+  { batch:'Lakshya', subject:'General Science', hm:'Sir Adison', slot:'6:30–7:20 AM Navodaya Doubt (Group A)' },
+  { batch:'Umeed',   subject:'General Science', hm:'Sir Romesh', slot:'6:30–7:20 AM Navodaya Doubt (Group C)' },
+  { batch:'Umeed',   subject:'English Grammar', hm:'Miss Bidyarani', slot:'6:30–7:20 AM Navodaya Doubt (Group B)' },
+  { batch:'Lakshya', subject:'Mathematics',     hm:'Miss Deviya',    slot:'7:20–8:20 AM Navodaya Doubt (Group A)' },
+  { batch:'Umeed',   subject:'Mathematics',     hm:'Sir Adison',     slot:'7:20–8:20 AM Navodaya Doubt (Group B)' },
+
+  // ── Annexure-VIII: Navodaya Group (Lakshya & Umeed) — Evening Doubt Session ──
+  { batch:'Lakshya', subject:'English Grammar', hm:'Miss Deviya',    slot:'6:00–7:15 PM Navodaya Doubt (Group A)' },
+  { batch:'Umeed',   subject:'English Grammar', hm:'Miss Bidyarani', slot:'6:00–7:15 PM Navodaya Doubt (Group C)' },
+  { batch:'Umeed',   subject:'General Science', hm:'Sir Romesh',     slot:'6:00–7:15 PM Navodaya Doubt (Group B)' },
+  { batch:'Lakshya', subject:'Mathematics',     hm:'Sir Adison',     slot:'7:15–8:30 PM Navodaya Doubt (Group A)' },
+  { batch:'Umeed',   subject:'Mathematics',     hm:'Sir Bidyachandra', slot:'7:15–8:30 PM Navodaya Doubt (Group B)' },
+
+  // ── Annexure-IX: Sainik Group — Doubt/Class Sessions (Till September) ──
+  { batch:'Achiever', subject:'English Grammar', hm:'Sir Bidyachandra', slot:'6:30–7:20 AM Sainik (Till Sep)' },
+  { batch:'Leader',   subject:'English Grammar', hm:'Sir Umesh',        slot:'6:30–7:20 AM Sainik (Till Sep)' },
+  { batch:'Champion', subject:'English Grammar', hm:'Miss Geetanjali',  slot:'6:30–7:20 AM Sainik (Till Sep)' },
+  { batch:'Achiever', subject:'General Science', hm:'Miss Bidyarani',   slot:'7:20–8:10 AM Sainik (Till Sep)' },
+  { batch:'Leader',   subject:'General Science', hm:'Miss Geetanjali',  slot:'7:20–8:10 AM Sainik (Till Sep)' },
+  { batch:'Champion', subject:'General Science', hm:'Sir Umesh',        slot:'7:20–8:10 AM Sainik (Till Sep)' },
+  { batch:'Achiever', subject:'Mathematics',     hm:'Miss Geetanjali',  slot:'6:00–6:50 PM Sainik (Till Sep)' },
+  { batch:'Leader',   subject:'Mathematics',     hm:'Miss Fedrava',     slot:'6:00–6:50 PM Sainik (Till Sep)' },
+  { batch:'Champion', subject:'Mathematics',     hm:'Sir James',        slot:'6:00–6:50 PM Sainik (Till Sep)' },
+  { batch:'Achiever', subject:'Reasoning',       hm:'Sir Umesh',        slot:'6:50–7:40 PM Sainik (Till Sep)' },
+  { batch:'Leader',   subject:'Reasoning',       hm:'Miss Geetanjali',  slot:'6:50–7:40 PM Sainik (Till Sep)' },
+  { batch:'Champion', subject:'Reasoning',       hm:'Miss Fedrava',     slot:'6:50–7:40 PM Sainik (Till Sep)' },
 ]
 
 const DOUBT_TIME_SLOTS = [
-  '6:20–7:20 AM',
-  '7:20–8:10 AM',
-  '5:30–6:30 PM',
-  '6:35–7:35 PM',
-  '7:40–8:30 PM',
-  '9:30–10:15 PM (Dormitory Practice)',
+  '6:30–7:20 AM (Navodaya MM)',
+  '6:30–7:20 AM (Navodaya ENG)',
+  '6:00–6:50 PM (Navodaya MM)',
+  '6:00–6:50 PM (Navodaya ENG)',
+  '6:50–7:40 PM (Navodaya MM)',
+  '6:50–7:40 PM (Navodaya ENG)',
+  '7:40–8:30 PM (Sainik)',
+  '6:00–7:40 PM Doubt Session (Lakshya/Umeed)',
+  '6:00–7:40 PM Doubt Session (Elite/Prime)',
+  '6:30–7:20 AM Foundation Doubt (Group A)',
+  '6:30–7:20 AM Foundation Doubt (Group B)',
+  '7:20–8:20 AM Foundation Doubt (Group A)',
+  '7:20–8:20 AM Foundation Doubt (Group B)',
+  '6:00–7:15 PM Foundation Doubt (Group A)',
+  '6:00–7:15 PM Foundation Doubt (Group B)',
+  '7:15–8:30 PM Foundation Doubt (Group A)',
+  '7:15–8:30 PM Foundation Doubt (Group B)',
+  '6:30–7:20 AM Navodaya Doubt (Group A)',
+  '6:30–7:20 AM Navodaya Doubt (Group B)',
+  '6:30–7:20 AM Navodaya Doubt (Group C)',
+  '7:20–8:20 AM Navodaya Doubt (Group A)',
+  '7:20–8:20 AM Navodaya Doubt (Group B)',
+  '6:00–7:15 PM Navodaya Doubt (Group A)',
+  '6:00–7:15 PM Navodaya Doubt (Group B)',
+  '6:00–7:15 PM Navodaya Doubt (Group C)',
+  '7:15–8:30 PM Navodaya Doubt (Group A)',
+  '7:15–8:30 PM Navodaya Doubt (Group B)',
+  '6:30–7:20 AM Sainik (Till Sep)',
+  '7:20–8:10 AM Sainik (Till Sep)',
+  '6:00–6:50 PM Sainik (Till Sep)',
+  '6:50–7:40 PM Sainik (Till Sep)',
 ]
-
-const PERIODS = [1,2,3,4,5,6,7,8,9,10]
-
-const PERIOD_TIMES = {
-  1:  { label:'Period 1 (7:20–8:10 AM)',   start:[7,20],  end:[8,10]  },
-  2:  { label:'Period 2 (10:20–11:10 AM)', start:[10,20], end:[11,10] },
-  3:  { label:'Period 3 (11:10 AM–12:00)', start:[11,10], end:[12,0]  },
-  4:  { label:'Period 4 (12:00–12:50 PM)', start:[12,0],  end:[12,50] },
-  5:  { label:'Period 5 (1:20–2:10 PM)',   start:[13,20], end:[14,10] },
-  6:  { label:'Period 6 (2:10–2:55 PM)',   start:[14,10], end:[14,55] },
-  7:  { label:'Period 7 (2:55–3:40 PM)',   start:[14,55], end:[15,40] },
-  8:  { label:'Period 8 (5:30–6:30 PM)',   start:[17,30], end:[18,30] },
-  9:  { label:'Period 9 (6:35–7:35 PM)',   start:[18,35], end:[19,35] },
-  10: { label:'Period 10 (7:40–8:30 PM)',  start:[19,40], end:[20,30] },
-}
 
 const SCHOOL_LAT = 24.62181
 const SCHOOL_LNG = 94.0193087
@@ -195,36 +230,15 @@ const getDistanceMeters = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-const LEGACY_EVENING_TEACHERS = [
-  'Sir Himan','Sir Arunkumar','Sir Bronson','Sir Basanta',
-]
-const LEGACY_DAYTIME_ONLY_TEACHERS = [
-  'Sir Sumanta','Sir Deepak','Sir Pawan','Sir Lenin','Sir Roshan',
-  'Sir Johny','Sir Bidyachandra','Sir Chetan','Sir Arjun',
-  'Madam Sandhya','Sir Sunder','Miss Fedrava',
-]
-
-const getScheduleType = (teacherName, staffList) => {
-  const staffRecord = staffList?.find(s => s.name === teacherName)
-  if (staffRecord?.schedule_type) return staffRecord.schedule_type
-  if (LEGACY_EVENING_TEACHERS.includes(teacherName)) return 'evening'
-  if (LEGACY_DAYTIME_ONLY_TEACHERS.includes(teacherName)) return 'daytime'
-  return 'both'
-}
-
+// SOP Clause 4(iii): teachers must be in the classroom by the period start time.
+// All six main-session periods (Annexure-I) now fall within 10:20 AM–3:50 PM,
+// so the old evening/period-8+ daytime lockout no longer applies here.
 const isPeriodUnlocked = (periodNo, teacherName, staffList = []) => {
   const pt = PERIOD_TIMES[periodNo]
   if (!pt) return true
   const now = new Date()
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const startMins = pt.start[0] * 60 + pt.start[1]
-  const scheduleType = getScheduleType(teacherName, staffList)
-  if (periodNo >= 8 && scheduleType === 'daytime') return false
-  if (scheduleType === 'daytime') {
-    const lockMins = 15 * 60 + 30
-    if (startMins >= lockMins) return false
-    return nowMins >= startMins - 5
-  }
   return nowMins >= startMins - 5
 }
 
@@ -694,6 +708,16 @@ function Step1CourseChapter({ form, setForm, courseData, chapters, loadingChapte
           {form.period_number && !isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff) && (
             <div style={{ color:C.red, fontSize:12, marginTop:5, fontWeight:600 }}>
               🔒 This period hasn't started yet.
+            </div>
+          )}
+          {form.period_number === '3' && (
+            <div style={{ color:'#d97706', fontSize:11, marginTop:5, fontWeight:600 }}>
+              ☕ Tea break is 12:50–1:20 PM (SOP Clause 4(ii)) — do not extend class into this window.
+            </div>
+          )}
+          {form.period_number === '4' && (
+            <div style={{ color:'#d97706', fontSize:11, marginTop:5, fontWeight:600 }}>
+              🚪 Be in classroom by 1:25 PM sharp — not a grace period (SOP Clause 4(iii)).
             </div>
           )}
         </div>
@@ -1380,6 +1404,52 @@ function getTeacherStatus(t) {
   }
   return { label:'Average', tone:'average', color:'#0891b2', bg:'#e0f2fe', icon:'📊',
     message:'You are meeting expectations. A few more detailed, on-time logs will push you to Excellent.' }
+}
+
+// ─── SOP Reference Panel ───────────────────────────────────────────────────────
+// Source: GNSI/ACAD/SOP/13/2026-27 dated 13.07.2026, "GNSI Class Timetable —
+// Standard Operating Procedure, 2026", effective 09 July 2026.
+const SOP_RULES = [
+  { icon:'🕐', title:'Main Session Timing', text:'10:20 AM – 3:50 PM, Monday–Saturday, six teaching periods (Annexure-I).' },
+  { icon:'☕', title:'Tea Break', text:'Fixed uniformly at 12:50 PM – 1:20 PM. No class shall be extended into this period (Clause 4(ii)).' },
+  { icon:'🚪', title:'Post-Break Re-entry', text:'All teachers must be physically present in their classroom by 1:25 PM without fail — this is a transition period, not a grace period (Clause 4(iii)).' },
+  { icon:'🙋', title:'Morning Assembly', text:'Attendance before 10:20 AM is compulsory for all teaching staff without exception (Clause 4(i)).' },
+  { icon:'🌅', title:'Early & Evening Sessions', text:'Sessions starting 6:00/6:30 AM and 6:00 PM follow the same punctuality standard as the main session (Clause 4(iv)).' },
+  { icon:'🔁', title:'Substitution', text:'Unable to attend an assigned period? Inform the Batch Coordinator and Administrator at least two hours in advance (Clause 9(a)).' },
+]
+
+function SOPReferencePanel() {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div style={{ ...S.card, cursor:'pointer', background:'#f8fafc' }} onClick={() => setExpanded(e => !e)}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <span style={{ fontSize:20 }}>📋</span>
+          <div>
+            <div style={{ fontWeight:800, fontSize:14, color:C.navy }}>Timetable SOP — Quick Reference</div>
+            <div style={{ fontSize:11, color:'#64748b' }}>F. No. GNSI/ACAD/SOP/13/2026-27 · Effective 09 Jul 2026 · Tap to {expanded?'collapse':'view rules'}</div>
+          </div>
+        </div>
+        <span style={{ fontSize:16, color:'#94a3b8', transform: expanded?'rotate(180deg)':'none', transition:'transform .15s' }}>▾</span>
+      </div>
+      {expanded && (
+        <div onClick={e => e.stopPropagation()} style={{ marginTop:14, paddingTop:14, borderTop:'1px solid #e2e8f0', display:'grid', gap:8 }}>
+          {SOP_RULES.map(r => (
+            <div key={r.title} style={{ display:'flex', gap:10, padding:'8px 10px', background:'white', border:'1px solid #e2e8f0', borderRadius:8 }}>
+              <span style={{ fontSize:16, flexShrink:0 }}>{r.icon}</span>
+              <div>
+                <div style={{ fontSize:12, fontWeight:700, color:'#1e293b' }}>{r.title}</div>
+                <div style={{ fontSize:12, color:'#64748b', lineHeight:1.5, marginTop:2 }}>{r.text}</div>
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize:10, color:'#94a3b8', marginTop:2, fontStyle:'italic' }}>
+            Doubt-session slots and period timings in this form now follow the SOP's Annexures I–IX. For the full document, contact the Administrator's office.
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function MyStatusBanner({ myStat, loading }) {
@@ -2145,6 +2215,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     <>
       <style>{css}</style>
       {toastEl}
+      <SOPReferencePanel/>
       <TeacherLeaderboard currentUser={currentUser}/>
       {spotCheck && (
         <SpotCheckModal
