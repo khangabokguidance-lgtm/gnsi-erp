@@ -525,6 +525,7 @@ const staffName = _name
   const [expandedId,    setExpandedId]   = useState(null)
   const [topicForm,     setTopicForm]    = useState({ name:'', expected_date:'', tags:[] })
   const [addingTopicTo, setAddingTopicTo]= useState(null)
+  const [editingTopicId, setEditingTopicId] = useState(null)
   const [filterBatch,   setFilterBatch]  = useState('All')
   const [filterSubject, setFilterSubject]= useState('All')
   const [topicSearch,   setTopicSearch]  = useState('')
@@ -594,6 +595,10 @@ const staffName = _name
     return new Set(logs.filter(l => l.teacher_name===staffName).map(l => l.subject_name))
   }, [logs, isStaff, staffName])
 
+  // Admin can add/edit topics on any row. Staff can add/edit topics only for
+  // subjects they have actually taught (per their own logs). Delete stays admin-only.
+  const canEditTopicsFor = row => isAdmin || (isStaff && staffSubjects.has(row?.subject_name))
+
   const filtered = useMemo(() => {
     let rows = syllabus.filter(r =>
       (filterBatch==='All'   || r.subtype===filterBatch) &&
@@ -662,6 +667,19 @@ const staffName = _name
     }])
     if (error) showToast('Topic add failed: '+error.message, '#dc2626')
     else { setTopicForm({ name:'', expected_date:'', tags:[] }); setAddingTopicTo(null); fetchSyllabus(); showToast('Topic added', '#16a34a') }
+  }
+
+  // Staff/admin: edit an existing topic's name, expected date, and tags.
+  // Gated by canEditTopicsFor at the call site (own-subject check for staff).
+  const handleEditTopic = async (topicId, updates) => {
+    if (!updates.topic_name?.trim()) { showToast('Topic name cannot be empty', '#dc2626'); return }
+    const { error } = await supabase.from('syllabus_topics').update({
+      topic_name: updates.topic_name.trim(),
+      expected_date: updates.expected_date || null,
+      tags: updates.tags || [],
+    }).eq('id', topicId)
+    if (error) showToast('Update failed: '+error.message, '#dc2626')
+    else { setEditingTopicId(null); fetchSyllabus(); showToast('Topic updated ✅', '#16a34a') }
   }
 
   const handleMarkTopic = async (topic, done) => {
@@ -851,7 +869,7 @@ const staffName = _name
       {/* Role badge */}
       <div style={{ marginBottom:12, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
         {isAdmin && <span style={{ ...S.badge('white','#1e3a5f'), padding:'4px 10px', fontSize:12 }}>🛡️ Admin — full access</span>}
-        {isStaff && <span style={{ ...S.badge('white','#16a34a'), padding:'4px 10px', fontSize:12 }}>👨‍🏫 Staff — {staffName} — view own subjects</span>}
+        {isStaff && <span style={{ ...S.badge('white','#16a34a'), padding:'4px 10px', fontSize:12 }}>👨‍🏫 Staff — {staffName} — add/edit topics for your own subjects</span>}
        {durationSettings.length===0 && isAdmin && (
   <span style={{ ...S.badge('#dc2626','#fee2e2'), padding:'4px 10px', fontSize:12 }}>⚠️ No course durations set — go to ⚙️ Course Duration</span>
 )}
@@ -1090,6 +1108,30 @@ Save, push, reload the page. The grey 🔍 banner will show exactly what role va
 
                         {rowTopics.map((t, idx) => {
                           const canMark = isAdmin || (isStaff && staffSubjects.has(row.subject_name))
+                          const canEdit = canEditTopicsFor(row)
+                          const isEditingThis = editingTopicId === t.id
+                          if (isEditingThis) {
+                            return (
+                              <div key={t.id} style={{ padding:'10px 12px', background:'#eff6ff', borderRadius:8, border:'1px solid #bfdbfe', marginBottom:4 }}>
+                                <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:8 }}>
+                                  <input value={topicForm.name} onChange={e=>setTopicForm(f=>({...f,name:e.target.value}))} placeholder="Topic name..." style={{ ...S.input, flex:2, minWidth:120 }}/>
+                                  <input type="date" value={topicForm.expected_date} onChange={e=>setTopicForm(f=>({...f,expected_date:e.target.value}))} style={{ ...S.input, flex:1, minWidth:120 }}/>
+                                </div>
+                                <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:8 }}>
+                                  {TOPIC_TAGS.map(tag => (
+                                    <button key={tag} onClick={()=>setTopicForm(f=>({...f,tags:f.tags.includes(tag)?f.tags.filter(x=>x!==tag):[...f.tags,tag]}))}
+                                      style={{ ...S.btnSm(topicForm.tags.includes(tag)?TAG_META[tag]?.color:'#e2e8f0'), color:topicForm.tags.includes(tag)?'white':'#374151', fontSize:11, padding:'4px 8px' }}>
+                                      {TAG_META[tag]?.icon} {tag}
+                                    </button>
+                                  ))}
+                                </div>
+                                <div style={{ display:'flex', gap:6 }}>
+                                  <button onClick={()=>handleEditTopic(t.id, { topic_name:topicForm.name, expected_date:topicForm.expected_date, tags:topicForm.tags })} style={S.btnSm('#16a34a')}>✓ Save</button>
+                                  <button onClick={()=>setEditingTopicId(null)} style={S.btnSm('#94a3b8')}>✖ Cancel</button>
+                                </div>
+                              </div>
+                            )
+                          }
                           return (
                             <div key={t.id}
                               draggable={isAdmin}
@@ -1104,12 +1146,13 @@ Save, push, reload the page. The grey 🔍 banner will show exactly what role va
                                 {(t.tags||[]).map(tag => <TagPill key={tag} tag={tag}/>)}
                               </div>
                               {t.expected_date && <span style={{ fontSize:11, color:'#94a3b8' }}>{fmtDate(t.expected_date)}</span>}
-                              {isAdmin && <button onClick={()=>handleDeleteTopic(t.id)} style={{ background:'none', border:'none', color:'#fca5a5', cursor:'pointer', fontSize:13, padding:'0 2px' }}>✕</button>}
+                              {canEdit && <button onClick={()=>{ setEditingTopicId(t.id); setTopicForm({ name:t.topic_name, expected_date:t.expected_date||'', tags:t.tags||[] }) }} style={{ background:'none', border:'none', color:'#60a5fa', cursor:'pointer', fontSize:13, padding:'0 2px' }} title="Edit topic">✏️</button>}
+                              {isAdmin && <button onClick={()=>handleDeleteTopic(t.id)} style={{ background:'none', border:'none', color:'#fca5a5', cursor:'pointer', fontSize:13, padding:'0 2px' }} title="Delete topic (admin only)">✕</button>}
                             </div>
                           )
                         })}
 
-                        {isAdmin && (
+                        {canEditTopicsFor(row) && (
                           addingTopicTo===row.id ? (
                             <div style={{ marginTop:8, padding:'10px 12px', background:'#f8fafc', borderRadius:8, border:'1px solid #e2e8f0' }}>
                               <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:8 }}>

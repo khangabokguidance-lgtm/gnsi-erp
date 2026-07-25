@@ -1732,13 +1732,44 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   }
 }, [currentUser, staff])
 
+  // Pulls the real syllabus (seeded/maintained in the Syllabus tab) for this
+  // course + subtype + subject, so the log form's Chapter/Sub-topic pickers
+  // stay in sync with whatever staff/admin have entered there.
+  // teaching_syllabus (course, subtype, subject_name) -> syllabus_topics (topic_name, order_num)
   useEffect(() => {
-    if (!form.subject_name) return
+    if (!form.subject_name || !form.course) { setChapters([]); return }
     setLoadingChapters(true)
-    supabase.from('syllabus_topics').select('*').eq('subject_name', form.subject_name)
-      .order('chapter_name')
-      .then(({ data }) => { setChapters(data || []); setLoadingChapters(false) })
-  }, [form.subject_name])
+    const fetchChapters = async () => {
+      // A row may be batch-specific (subtype set) or apply to all batches in
+      // the stream (subtype null) — prefer the batch-specific row if it exists.
+      let query = supabase.from('teaching_syllabus')
+        .select('id,subject_name,subtype')
+        .eq('course', form.course)
+        .eq('subject_name', form.subject_name)
+      const { data: rows } = await query
+      if (!rows?.length) { setChapters([]); setLoadingChapters(false); return }
+
+      const specific = rows.find(r => r.subtype === form.subtype)
+      const fallback = rows.find(r => !r.subtype)
+      const row = specific || fallback
+      if (!row) { setChapters([]); setLoadingChapters(false); return }
+
+      const { data: topicRows } = await supabase.from('syllabus_topics')
+        .select('id,topic_name')
+        .eq('syllabus_id', row.id)
+        .order('order_num')
+
+      // Shape into { id, chapter_name, subject_name, subtopics } expected below.
+      // Real syllabus data here is one level (topic = lesson), so subtopics
+      // stays empty and teachers free-type the specific sub-topic taught.
+      const shaped = (topicRows || []).map(t => ({
+        id: t.id, chapter_name: t.topic_name, subject_name: form.subject_name, subtopics: [],
+      }))
+      setChapters(shaped)
+      setLoadingChapters(false)
+    }
+    fetchChapters()
+  }, [form.subject_name, form.course, form.subtype])
 
   useEffect(() => {
     if (!form.batch_id) return
