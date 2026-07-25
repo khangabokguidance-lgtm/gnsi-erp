@@ -344,6 +344,10 @@ const loadLastSelection = (teacherName) => {
     return raw ? JSON.parse(raw) : null
   } catch(e) { return null }
 }
+const clearLastSelection = (teacherName) => {
+  if (!teacherName) return
+  try { localStorage.removeItem(LAST_SELECTION_PREFIX + teacherName) } catch(e) {}
+}
 
 // ─── Suggestion Picker ────────────────────────────────────────────────────────
 
@@ -2220,6 +2224,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   // FIX 10: discardDraft resets all warning/GPS state too
   const discardDraft = () => {
     clearDraft()
+    clearLastSelection(currentUser?.name)
     setHasDraft(false)
     setDraftPeriodStaleWarn(false)
     setDupWarn('')
