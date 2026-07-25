@@ -102,6 +102,52 @@ const SUGGESTIONS = {
   ],
 }
 
+// 20 short "how you taught it" method reasons — tapping one appends it to
+// the field (not overwrite), since a teacher may combine more than one method.
+const TEACHING_METHOD_REASONS = [
+  'Explained with real-life examples',
+  'Used diagrams/visuals on board',
+  'Step-by-step demonstration',
+  'Socratic questioning (led students to discover)',
+  'Group/pair activity',
+  'Peer explanation between students',
+  'Rapid-fire oral questions',
+  'Board work — called students up one by one',
+  'Practice drill with timed questions',
+  'Started from a common mistake, corrected it',
+  'Revision of previous topic first',
+  'Used analogy/comparison to familiar concept',
+  'Hands-on/practical demonstration',
+  'Broke problem into smaller steps',
+  'Repetition with increasing difficulty',
+  'Storytelling / narrative approach',
+  'Compared two methods, let students choose',
+  'Focused on weak students individually',
+  'Used mnemonics/memory tricks',
+  'Quick quiz at the end to check understanding',
+]
+
+function TeachingMethodPicker({ value, onChange }) {
+  const addReason = (r) => {
+    const current = value?.trim() || ''
+    if (current.includes(r)) return
+    onChange(current ? `${current}. ${r}` : r)
+  }
+  return (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:6, marginBottom:8 }}>
+      {TEACHING_METHOD_REASONS.map((r, i) => (
+        <button key={i} type="button" onClick={() => addReason(r)}
+          style={{
+            fontSize:11, padding:'5px 10px', borderRadius:14, border:'1px solid #bfdbfe',
+            background:'#eff6ff', color:C.navy, cursor:'pointer', fontWeight:600,
+          }}>
+          + {r}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Doubt Session Map (Batch + Subject → HM + Time Slot) ─────────────────────
 
 // SOP: GNSI/ACAD/SOP/13/2026-27 dated 13.07.2026 — Annexure-I
@@ -352,7 +398,6 @@ const clearLastSelection = (teacherName) => {
 // ─── Suggestion Picker ────────────────────────────────────────────────────────
 
 function SuggestionPicker({ field, value, onChange, form }) {
-  const [open, setOpen] = useState(false)
   const suggestions = SUGGESTIONS[field] || []
 
   const fillSuggestion = (s) => {
@@ -362,37 +407,22 @@ function SuggestionPicker({ field, value, onChange, form }) {
       .replace(/{range_from}/g, form?.range_from || '1')
       .replace(/{range_to}/g, form?.range_to || '10')
     onChange(filled)
-    setOpen(false)
   }
 
+  if (!suggestions.length) return null
+
   return (
-    <div style={{ position:'relative', display:'inline-flex', alignItems:'center', gap:6, marginLeft:8 }}>
-      {suggestions[0] && !value?.trim() && (
-        <button type="button" onClick={() => fillSuggestion(suggestions[0])}
-          style={{ fontSize:10, padding:'2px 8px', borderRadius:4, border:`1px solid ${C.navy}`, background:'#eff6ff', color:C.navy, cursor:'pointer', fontWeight:700 }}>
-          ⚡ Quick-fill
+    <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:6, marginBottom:8 }}>
+      {suggestions.map((s, i) => (
+        <button key={i} type="button" onClick={() => fillSuggestion(s)} title={s}
+          style={{
+            fontSize:11, padding:'5px 10px', borderRadius:14, border:'1px solid #bfdbfe',
+            background:'#eff6ff', color:C.navy, cursor:'pointer', fontWeight:600,
+            maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+          }}>
+          💡 {s.slice(0, 40)}{s.length > 40 ? '…' : ''}
         </button>
-      )}
-      <button type="button" onClick={() => setOpen(!open)}
-        style={{ fontSize:10, padding:'2px 8px', borderRadius:4, border:'1px solid #d1d5db', background: open?'#1e3a5f':'#f8fafc', color: open?'white':'#64748b', cursor:'pointer', fontWeight:600 }}>
-        💡 Templates {open ? '▲' : '▼'}
-      </button>
-      {open && (
-        <div style={{ position:'absolute', top:'100%', left:0, zIndex:9999, background:'white', border:'1px solid #e2e8f0', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.12)', width:420, maxWidth:'90vw', marginTop:4 }}>
-          <div style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase' }}>Click to use template</div>
-          {suggestions.map((s, i) => (
-            <div key={i} onClick={() => fillSuggestion(s)}
-              style={{ padding:'10px 12px', fontSize:12, color:'#374151', cursor:'pointer', borderBottom:'1px solid #f8fafc', lineHeight:1.6 }}
-              onMouseEnter={e => e.currentTarget.style.background='#f0f9ff'}
-              onMouseLeave={e => e.currentTarget.style.background='white'}>
-              {s.slice(0, 100)}...
-            </div>
-          ))}
-          <div style={{ padding:'8px 12px', borderTop:'1px solid #f1f5f9' }}>
-            <button type="button" onClick={() => setOpen(false)} style={{ fontSize:11, color:'#94a3b8', background:'none', border:'none', cursor:'pointer' }}>✕ Close</button>
-          </div>
-        </div>
-      )}
+      ))}
     </div>
   )
 }
@@ -812,12 +842,14 @@ function Step2WhatTaught({ form, setForm }) {
       </div>
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Topic Taught (summary) <span style={S.required}>*</span><WCBadge field="topic_taught" value={form.topic_taught}/><SuggestionPicker field="topic_taught" value={form.topic_taught} onChange={v => setForm(f=>({...f,topic_taught:v}))} form={form}/></label>
+        <label style={S.label}>Topic Taught (summary) <span style={S.required}>*</span><WCBadge field="topic_taught" value={form.topic_taught}/></label>
+        {/* Quick-fill removed — plain text entry */}
         <textarea value={form.topic_taught} onChange={e => setForm(f => ({ ...f, topic_taught:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="Brief description of what was covered today..."/>
       </div>
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Classwork, Homework &amp; Remarks <span style={{ fontSize:11, color:'#94a3b8', fontWeight:500 }}>(optional)</span><WCBadge field="classwork" value={form.classwork}/><SuggestionPicker field="classwork" value={form.classwork} onChange={v => setForm(f=>({...f,classwork:v}))} form={form}/></label>
+        <label style={S.label}>Classwork, Homework &amp; Remarks <span style={{ fontSize:11, color:'#94a3b8', fontWeight:500 }}>(optional)</span><WCBadge field="classwork" value={form.classwork}/></label>
+        {/* Quick-fill removed — plain text entry */}
         <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork:e.target.value }))} rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Classwork done, homework assigned, and any observations — combine as needed"/>
       </div>
     </div>
@@ -851,7 +883,8 @@ function Step3Technique({ form, setForm }) {
       )}
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Notes for HM — how you taught it, key points, what to avoid <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/><SuggestionPicker field="technique_detail" value={form.technique_detail} onChange={v => setForm(f=>({...f,technique_detail:v}))} form={form}/></label>
+        <label style={S.label}>Notes for HM — how you taught it, key points, what to avoid <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/></label>
+        <TeachingMethodPicker value={form.technique_detail} onChange={v => setForm(f=>({...f,technique_detail:v}))}/>
         <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="How you taught it, key concepts to emphasise, and anything a doubt-session teacher should avoid doing."/>
       </div>
 
