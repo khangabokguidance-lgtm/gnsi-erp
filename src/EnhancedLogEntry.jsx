@@ -329,6 +329,22 @@ const clearDraft = () => {
   try { localStorage.removeItem(DRAFT_KEY) } catch(e) {}
 }
 
+// Remembers the last course/batch/class/subject a teacher picked, so the next
+// log starts pre-filled instead of asking the same 4 fields every single time.
+// Keyed per teacher name so a shared device doesn't mix up different teachers.
+const LAST_SELECTION_PREFIX = 'gnsi_last_selection_'
+const saveLastSelection = (teacherName, sel) => {
+  if (!teacherName) return
+  try { localStorage.setItem(LAST_SELECTION_PREFIX + teacherName, JSON.stringify(sel)) } catch(e) {}
+}
+const loadLastSelection = (teacherName) => {
+  if (!teacherName) return null
+  try {
+    const raw = localStorage.getItem(LAST_SELECTION_PREFIX + teacherName)
+    return raw ? JSON.parse(raw) : null
+  } catch(e) { return null }
+}
+
 // ─── Suggestion Picker ────────────────────────────────────────────────────────
 
 function SuggestionPicker({ field, value, onChange, form }) {
@@ -548,15 +564,12 @@ function ValidationMessage({ form, step, staff }) {
     if (!form.range_from) errors.push('Range From is required')
     if (!form.range_to) errors.push('Range To is required')
     if (!form.topic_taught?.trim()) errors.push('Topic Taught is required')
-    if (!form.classwork?.trim()) errors.push('Classwork is required')
-    if (!form.homework?.trim()) errors.push('Homework is required')
-    if (!form.remarks?.trim()) errors.push('Remarks are required')
+    // classwork/homework/remarks are optional as of the shortened Step 2
   }
   if (step === 2) {
     if (!(form.techniques || []).length) errors.push('Select at least one Teaching Technique')
-    if (!form.technique_detail?.trim()) errors.push('Technique Details are required')
-    if (!form.key_concepts?.trim()) errors.push('Key Concepts are required')
-    if (!form.technique_avoid?.trim()) errors.push('Avoid Instructions are required')
+    if (!form.technique_detail?.trim()) errors.push('Technique/HM notes are required')
+    // key_concepts and technique_avoid merged into technique_detail as of the shortened flow
   }
   if (step === 4 && form.needs_doubt_session) {
     if (!form.assigned_hm_id && !form.assigned_hm_name) errors.push('HM is required')
@@ -800,26 +813,8 @@ function Step2WhatTaught({ form, setForm }) {
       </div>
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Classwork done <span style={S.required}>*</span><WCBadge field="classwork" value={form.classwork}/><SuggestionPicker field="classwork" value={form.classwork} onChange={v => setForm(f=>({...f,classwork:v}))} form={form}/></label>
-        <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="What exercises or work was done in class?"/>
-      </div>
-
-      <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Homework assigned <span style={S.required}>*</span><WCBadge field="homework" value={form.homework}/><SuggestionPicker field="homework" value={form.homework} onChange={v => setForm(f=>({...f,homework:v}))} form={form}/></label>
-        <textarea value={form.homework} onChange={e => setForm(f => ({ ...f, homework:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Questions/exercises assigned for home"/>
-      </div>
-
-      <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Remarks / Observations <span style={S.required}>*</span><WCBadge field="remarks" value={form.remarks}/><SuggestionPicker field="remarks" value={form.remarks} onChange={v => setForm(f=>({...f,remarks:v}))} form={form}/></label>
-        <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Student response, pace, anything notable"/>
-      </div>
-
-      <div style={{ marginTop:14, padding:'14px 16px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10 }}>
-        <div style={{ fontSize:13, fontWeight:700, color:'#166534', marginBottom:4 }}>📱 WhatsApp Group Photo</div>
-        <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>
-          Please upload today's class photo to the <strong>GNSI WhatsApp Group</strong> as proof of teaching.
-        </div>
-        <div style={{ fontSize:12, color:'#64748b', marginTop:6 }}>This is for your information only — no upload required here.</div>
+        <label style={S.label}>Classwork, Homework &amp; Remarks <span style={{ fontSize:11, color:'#94a3b8', fontWeight:500 }}>(optional)</span><WCBadge field="classwork" value={form.classwork}/><SuggestionPicker field="classwork" value={form.classwork} onChange={v => setForm(f=>({...f,classwork:v}))} form={form}/></label>
+        <textarea value={form.classwork} onChange={e => setForm(f => ({ ...f, classwork:e.target.value }))} rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="Classwork done, homework assigned, and any observations — combine as needed"/>
       </div>
     </div>
   )
@@ -852,18 +847,19 @@ function Step3Technique({ form, setForm }) {
       )}
 
       <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Technique Details <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/><SuggestionPicker field="technique_detail" value={form.technique_detail} onChange={v => setForm(f=>({...f,technique_detail:v}))} form={form}/></label>
-        <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={4} style={{ ...S.input, resize:'vertical' }} placeholder={`Describe in detail HOW you taught this topic.`}/>
-      </div>
-
-      <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Key Concepts to Emphasise (for HM) <span style={S.required}>*</span><WCBadge field="key_concepts" value={form.key_concepts}/><SuggestionPicker field="key_concepts" value={form.key_concepts} onChange={v => setForm(f=>({...f,key_concepts:v}))} form={form}/></label>
-        <textarea value={form.key_concepts} onChange={e => setForm(f => ({ ...f, key_concepts:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Always draw the diagram first. Common mistake: forgetting sign rules."/>
+        <label style={S.label}>Notes for HM — how you taught it, key points, what to avoid <span style={S.required}>*</span><WCBadge field="technique_detail" value={form.technique_detail}/><SuggestionPicker field="technique_detail" value={form.technique_detail} onChange={v => setForm(f=>({...f,technique_detail:v}))} form={form}/></label>
+        <textarea value={form.technique_detail} onChange={e => setForm(f => ({ ...f, technique_detail:e.target.value }))} required rows={3} style={{ ...S.input, resize:'vertical' }} placeholder="How you taught it, key concepts to emphasise, and anything a doubt-session teacher should avoid doing."/>
       </div>
 
       <div>
-        <label style={S.label}>Do NOT do this during doubt session <span style={S.required}>*</span><WCBadge field="technique_avoid" value={form.technique_avoid}/><SuggestionPicker field="technique_avoid" value={form.technique_avoid} onChange={v => setForm(f=>({...f,technique_avoid:v}))} form={form}/></label>
-        <textarea value={form.technique_avoid} onChange={e => setForm(f => ({ ...f, technique_avoid:e.target.value }))} required rows={2} style={{ ...S.input, resize:'vertical' }} placeholder="e.g. Do NOT jump to answers directly. Make students attempt first."/>
+        <label style={S.label}>Needs Doubt Session?</label>
+        <label style={{ display:'flex', alignItems:'center', gap:12, cursor:'pointer', padding:'12px 14px', borderRadius:8, background:form.needs_doubt_session?'#fef9c3':'#f8fafc', border:`1px solid ${form.needs_doubt_session?'#fde68a':'#e2e8f0'}`, minHeight:48 }}>
+          <input type="checkbox" checked={form.needs_doubt_session||false} onChange={e => setForm(f => ({ ...f, needs_doubt_session:e.target.checked }))} style={{ width:18, height:18, cursor:'pointer'}}/>
+          <span style={{ fontWeight:700, fontSize:14, color:form.needs_doubt_session?'#b45309':'#374151' }}>🔁 Yes — Assign HM for Doubt Session</span>
+        </label>
+        {!form.needs_doubt_session && (
+          <div style={{ fontSize:11.5, color:'#94a3b8', marginTop:6 }}>Leave unchecked to skip straight to Review — no need to fill practice questions or HM details.</div>
+        )}
       </div>
     </div>
   )
@@ -994,12 +990,10 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
         <div style={{ fontSize:12, color:'#3b82f6', lineHeight:1.6 }}>Assign a HM for the doubt session. They will receive instant notification with your teaching instructions.</div>
       </div>
 
-      <div style={{ marginBottom:16 }}>
-        <label style={S.label}>Needs Doubt Session? <span style={S.required}>*</span></label>
-        <label style={{ display:'flex', alignItems:'center', gap:12, cursor:'pointer', padding:'12px 14px', borderRadius:8, background:form.needs_doubt_session?'#fef9c3':'#f8fafc', border:`1px solid ${form.needs_doubt_session?'#fde68a':'#e2e8f0'}`, minHeight:48 }}>
-          <input type="checkbox" checked={form.needs_doubt_session||false} onChange={e => setForm(f => ({ ...f, needs_doubt_session:e.target.checked }))} style={{ width:18, height:18, cursor:'pointer'}}/>
-          <span style={{ fontWeight:700, fontSize:14, color:form.needs_doubt_session?'#b45309':'#374151' }}>🔁 Yes — Assign HM for Doubt Session</span>
-        </label>
+      <div style={{ marginBottom:16, padding:'10px 14px', borderRadius:8, background:form.needs_doubt_session?'#fef9c3':'#f8fafc', border:`1px solid ${form.needs_doubt_session?'#fde68a':'#e2e8f0'}` }}>
+        <span style={{ fontWeight:700, fontSize:13, color:form.needs_doubt_session?'#b45309':'#374151' }}>
+          {form.needs_doubt_session ? '🔁 Doubt session requested — fill in HM details below.' : 'No doubt session requested.'}
+        </span>
       </div>
 
       {form.needs_doubt_session && (
@@ -1672,10 +1666,18 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [step, setStep] = useState(0)
   const [form, setForm] = useState(() => {
   const draft = loadDraft()
-  if (!draft) return { ...emptyForm }
+  if (!draft) {
+    // No draft to recover — pre-fill identity fields from this teacher's
+    // last log so they only confirm/change what's different today.
+    const last = loadLastSelection(currentUser?.name)
+    if (last) return { ...emptyForm, ...last }
+    return { ...emptyForm }
+  }
   // Discard draft if it belongs to a different teacher
   if (currentUser?.name && draft.teacher_name && draft.teacher_name !== currentUser.name) {
     clearDraft()
+    const last = loadLastSelection(currentUser?.name)
+    if (last) return { ...emptyForm, ...last }
     return { ...emptyForm }
   }
   return { ...emptyForm, ...draft }
@@ -1735,18 +1737,19 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   // Pulls the real syllabus (seeded/maintained in the Syllabus tab) for this
   // course + subtype + subject, so the log form's Chapter/Sub-topic pickers
   // stay in sync with whatever staff/admin have entered there.
-  // teaching_syllabus (course, subtype, subject_name) -> syllabus_topics (topic_name, order_num)
+  // Schema (confirmed via information_schema, 2026-07-25):
+  //   teaching_syllabus(id, course, subtype, batch, class_name, subject_name, ...)
+  //   syllabus_topics(id, syllabus_id, chapter_name, subtopics jsonb, course, subject_name, order_num, ...)
   useEffect(() => {
     if (!form.subject_name || !form.course) { setChapters([]); return }
     setLoadingChapters(true)
     const fetchChapters = async () => {
       // A row may be batch-specific (subtype set) or apply to all batches in
       // the stream (subtype null) — prefer the batch-specific row if it exists.
-      let query = supabase.from('teaching_syllabus')
+      const { data: rows } = await supabase.from('teaching_syllabus')
         .select('id,subject_name,subtype')
         .eq('course', form.course)
         .eq('subject_name', form.subject_name)
-      const { data: rows } = await query
       if (!rows?.length) { setChapters([]); setLoadingChapters(false); return }
 
       const specific = rows.find(r => r.subtype === form.subtype)
@@ -1755,15 +1758,16 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       if (!row) { setChapters([]); setLoadingChapters(false); return }
 
       const { data: topicRows } = await supabase.from('syllabus_topics')
-        .select('id,topic_name')
+        .select('id,chapter_name,subtopics,subject_name')
         .eq('syllabus_id', row.id)
         .order('order_num')
 
-      // Shape into { id, chapter_name, subject_name, subtopics } expected below.
-      // Real syllabus data here is one level (topic = lesson), so subtopics
-      // stays empty and teachers free-type the specific sub-topic taught.
+      // subtopics is jsonb — normalise to a plain string array either way.
       const shaped = (topicRows || []).map(t => ({
-        id: t.id, chapter_name: t.topic_name, subject_name: form.subject_name, subtopics: [],
+        id: t.id,
+        chapter_name: t.chapter_name,
+        subject_name: t.subject_name || form.subject_name,
+        subtopics: Array.isArray(t.subtopics) ? t.subtopics : [],
       }))
       setChapters(shaped)
       setLoadingChapters(false)
@@ -1869,6 +1873,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     clearDraft()
     setHasDraft(false)
     showToast('Log saved successfully ✓', C.green)
+    saveLastSelection(currentUser?.name, { course:form.course, subtype:form.subtype, class_name:form.class_name, batch_id:form.batch_id, subject_name:form.subject_name })
     setForm({ ...emptyForm })
     setStep(0)
     gpsCheckedRef.current = false
@@ -1886,6 +1891,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     clearDraft()
     setHasDraft(false)
     showToast('⚠️ Spot-check skipped — log flagged for review.', C.amber)
+    saveLastSelection(currentUser?.name, { course:form.course, subtype:form.subtype, class_name:form.class_name, batch_id:form.batch_id, subject_name:form.subject_name })
     setForm({ ...emptyForm })
     setStep(0)
     gpsCheckedRef.current = false
@@ -1903,16 +1909,11 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     }
     if (step === 1) {
       return form.range_from && form.range_to &&
-             form.topic_taught?.trim() &&
-             form.classwork?.trim() &&
-             form.homework?.trim() &&
-             form.remarks?.trim()
+             form.topic_taught?.trim()
     }
     if (step === 2) {
       return (form.techniques || []).length > 0 &&
-             form.technique_detail?.trim() &&
-             form.key_concepts?.trim() &&
-             form.technique_avoid?.trim()
+             form.technique_detail?.trim()
     }
     if (step === 3) return true
     if (step === 4) {
@@ -1945,6 +1946,12 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       setAttWarn(false)
     }
     setDupWarn('')
+    // Skip Practice Questions + HM steps entirely when no doubt session is
+    // needed — most classes don't need one, so this jumps straight to Review.
+    if (step === 2 && !form.needs_doubt_session) {
+      setStep(STEPS.length - 1)
+      return
+    }
     if (step < STEPS.length - 1) setStep(s => s + 1)
   }
 
@@ -2214,6 +2221,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         // copy-paste flagged: skip spot-check, just clean up
         clearDraft()
         setHasDraft(false)
+        saveLastSelection(currentUser?.name, { course:form.course, subtype:form.subtype, class_name:form.class_name, batch_id:form.batch_id, subject_name:form.subject_name })
         setForm({ ...emptyForm })
         setStep(0)
         gpsCheckedRef.current = false
@@ -2321,7 +2329,17 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         {step === 5 && <StepReview form={form}/>}
 
         <div style={{ display:'flex', justifyContent:'space-between', marginTop:24, paddingTop:16, borderTop:'1px solid #f1f5f9', flexWrap:'wrap', gap:10 }}>
-          <button type="button" onClick={() => { setAttemptedNext(false); setStep(s => Math.max(0, s-1)) }} disabled={step === 0} style={{ ...S.btn('#94a3b8', step===0), background:'white', color: step===0?'#cbd5e1':'#374151', border:'1px solid #e2e8f0' }}>← Back</button>
+          <button type="button" onClick={() => {
+            setAttemptedNext(false)
+            // Symmetric with the forward skip: if we're on Review and no doubt
+            // session was requested, Back should return to Teaching Method,
+            // not land on the hidden Practice Questions / HM steps.
+            if (step === STEPS.length - 1 && !form.needs_doubt_session) {
+              setStep(2)
+            } else {
+              setStep(s => Math.max(0, s-1))
+            }
+          }} disabled={step === 0} style={{ ...S.btn('#94a3b8', step===0), background:'white', color: step===0?'#cbd5e1':'#374151', border:'1px solid #e2e8f0' }}>← Back</button>
           <div style={{ display:'flex', gap:8 }}>
             {step === 3 && (
               <button type="button" onClick={() => setStep(s => s+1)} style={{ ...S.btn('#64748b'), background:'white', color:'#64748b', border:'1px solid #e2e8f0' }}>Skip →</button>
