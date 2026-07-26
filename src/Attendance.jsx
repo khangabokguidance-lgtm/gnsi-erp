@@ -4,6 +4,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
+import {
+  LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell,
+} from 'recharts'
 
 // ─── COURSE STRUCTURE ────────────────────────────────────────
 
@@ -124,9 +128,165 @@ const Icon = {
   arrowLeft:(p) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>,
 }
 
-function ConsoleCard({ children, style = {}, padded = true }) {
+// ─── Advanced UI primitives — skeletons, motion, charts ───────
+
+function ConsoleAnimStyles() {
+  return (
+    <style>{`
+      @keyframes gnsi-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+      @keyframes gnsi-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+      .gnsi-fade-in { animation: gnsi-fade-in .25s ease-out; }
+      .gnsi-hover-lift { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+      .gnsi-hover-lift:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(15,23,42,.08); border-color: ${C.borderStrong}; }
+      .gnsi-row-hover { transition: background .12s ease; }
+      .gnsi-row-hover:hover { background: ${C.bg}; }
+      .gnsi-btn-press:active { transform: scale(.97); }
+    `}</style>
+  )
+}
+
+function Skeleton({ w = '100%', h = 14, radius = 6, style = {} }) {
   return (
     <div style={{
+      width: w, height: h, borderRadius: radius,
+      background: `linear-gradient(90deg, ${C.border} 25%, #F1F0EF 37%, ${C.border} 63%)`,
+      backgroundSize: '200% 100%', animation: 'gnsi-shimmer 1.4s ease-in-out infinite',
+      ...style,
+    }} />
+  )
+}
+
+function SkeletonStatCard() {
+  return (
+    <ConsoleCard style={{ padding: '16px 18px' }} padded={false}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Skeleton w={90} h={11} />
+        <Skeleton w={26} h={26} radius={7} />
+      </div>
+      <Skeleton w={60} h={26} />
+    </ConsoleCard>
+  )
+}
+
+function SkeletonRow() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: `1px solid ${C.border}` }}>
+      <Skeleton w={36} h={36} radius={10} />
+      <div style={{ flex: 1 }}>
+        <Skeleton w="40%" h={12} style={{ marginBottom: 6 }} />
+        <Skeleton w="25%" h={10} />
+      </div>
+      <Skeleton w={70} h={20} radius={999} />
+    </div>
+  )
+}
+
+const CHART_TONE = { good: '#10B981', warn: '#F59E0B', bad: '#EF4444', indigo: '#4F46E5' }
+
+function ConsoleTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{
+      background: C.ink, color: '#fff', borderRadius: 8, padding: '8px 12px',
+      fontSize: 12, fontFamily: font, boxShadow: C.shadowMd,
+    }}>
+      <div style={{ fontWeight: 700, marginBottom: 3 }}>{label}</div>
+      {payload.map((p, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: p.color || p.fill }} />
+          {p.name}: {p.value}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Trend line chart — attendance % over time
+function TrendChart({ data, dataKey = 'pct', color = CHART_TONE.indigo, height = 180 }) {
+  if (!data?.length) return <div style={{ height, display:'flex', alignItems:'center', justifyContent:'center', color: C.inkFaint, fontSize: 12.5 }}>No data yet</div>
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
+        <defs>
+          <linearGradient id="gnsi-trend-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={{ stroke: C.border }} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={false} tickLine={false} width={32} />
+        <Tooltip content={<ConsoleTooltip />} />
+        <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.2} fill="url(#gnsi-trend-fill)" dot={{ r: 2.5, fill: color, strokeWidth: 0 }} />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
+// Compact sparkline — no axes, for inline stat cards
+function Sparkline({ data, dataKey = 'v', color = CHART_TONE.indigo, height = 34, width = '100%' }) {
+  if (!data?.length) return null
+  return (
+    <ResponsiveContainer width={width} height={height}>
+      <LineChart data={data}>
+        <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.8} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+// Status breakdown bar chart — grouped bars per category
+function StatusBarChart({ data, height = 220 }) {
+  if (!data?.length) return <div style={{ height, display:'flex', alignItems:'center', justifyContent:'center', color: C.inkFaint, fontSize: 12.5 }}>No data yet</div>
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={{ stroke: C.border }} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={false} tickLine={false} width={32} />
+        <Tooltip content={<ConsoleTooltip />} cursor={{ fill: C.bg }} />
+        <Bar dataKey="Present" stackId="a" fill={CHART_TONE.good} radius={[0,0,0,0]} />
+        <Bar dataKey="Late"    stackId="a" fill={CHART_TONE.warn} radius={[0,0,0,0]} />
+        <Bar dataKey="Absent"  stackId="a" fill={CHART_TONE.bad}  radius={[4,4,0,0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+// Donut chart — single-moment distribution (e.g. today's status split)
+function StatusDonut({ counts, size = 140 }) {
+  const data = [
+    { name: 'Present', value: counts.Present || 0, color: CHART_TONE.good },
+    { name: 'Late',    value: counts.Late    || 0, color: CHART_TONE.warn },
+    { name: 'Absent',  value: counts.Absent  || 0, color: CHART_TONE.bad },
+    { name: 'Leave',   value: counts.Leave   || 0, color: '#8B5CF6' },
+  ].filter(d => d.value > 0)
+  const total = data.reduce((s,d) => s+d.value, 0)
+  if (!total) return <div style={{ height: size, display:'flex', alignItems:'center', justifyContent:'center', color: C.inkFaint, fontSize: 12.5 }}>No data</div>
+  return (
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie data={data} dataKey="value" innerRadius={size*0.32} outerRadius={size*0.48} paddingAngle={2} startAngle={90} endAngle={-270}>
+            {data.map((d,i) => <Cell key={i} fill={d.color} stroke="none" />)}
+          </Pie>
+          <Tooltip content={<ConsoleTooltip />} />
+        </PieChart>
+      </ResponsiveContainer>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+      }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: C.ink }}>{total}</div>
+        <div style={{ fontSize: 10, color: C.inkMuted, fontWeight: 600 }}>total</div>
+      </div>
+    </div>
+  )
+}
+
+function ConsoleCard({ children, style = {}, padded = true, className = '' }) {
+  return (
+    <div className={className} style={{
       background: C.surface, borderRadius: C.radius,
       border: `1px solid ${C.border}`, boxShadow: C.shadowSm,
       overflow: 'hidden', ...style,
@@ -159,7 +319,7 @@ function ConsoleCardHeader({ title, subtitle, right, icon }) {
   )
 }
 
-function ConsoleBtn({ children, onClick, variant = 'default', small, disabled, style = {} }) {
+function ConsoleBtn({ children, onClick, variant = 'default', small, disabled, style = {}, className = '' }) {
   const variants = {
     default: { background: C.surface, color: C.ink, border: `1px solid ${C.borderStrong}` },
     primary: { background: C.indigo, color: '#fff', border: 'none' },
@@ -167,7 +327,7 @@ function ConsoleBtn({ children, onClick, variant = 'default', small, disabled, s
     danger:  { background: C.redSoft, color: '#B91C1C', border: `1px solid #FECACA` },
   }
   return (
-    <button onClick={disabled ? undefined : onClick} disabled={disabled} style={{
+    <button className={className} onClick={disabled ? undefined : onClick} disabled={disabled} style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: font,
       fontWeight: 600, fontSize: small ? 12.5 : 13.5, borderRadius: 8,
       padding: small ? '6px 11px' : '8px 16px', cursor: disabled ? 'not-allowed' : 'pointer',
@@ -3413,38 +3573,116 @@ function AlertFeed({ rows }) {
   )
 }
 
+function useAttendanceTrend(monthsBack = 6) {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      const months = monthOptions(monthsBack).reverse()
+      const out = []
+      for (const m of months) {
+        const monthStart = `${m}-01`
+        const endDate = new Date(m.split('-')[0], Number(m.split('-')[1]), 0).toISOString().split('T')[0]
+        const sessions = await safeQuery(() => supabase.from('attendance_sessions').select('id').gte('session_date', monthStart).lte('session_date', endDate)) || []
+        const ids = sessions.map(s => s.id)
+        let pct = null
+        if (ids.length) {
+          const recs = await safeQuery(() => supabase.from('attendance_records').select('status').in('session_id', ids)) || []
+          if (recs.length) pct = Math.round((recs.filter(r=>r.status==='Present').length / recs.length) * 100)
+        }
+        out.push({ label: fmtMonth(m).split(' ')[0], pct: pct ?? 0 })
+      }
+      if (!cancelled) { setData(out); setLoading(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [monthsBack])
+  return { data, loading }
+}
+
+function useTodayStatusCounts() {
+  const [counts, setCounts] = useState({ Present:0, Absent:0, Late:0, Leave:0 })
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      const sessions = await safeQuery(() => supabase.from('attendance_sessions').select('id').eq('session_date', today())) || []
+      const ids = sessions.map(s => s.id)
+      const c = { Present:0, Absent:0, Late:0, Leave:0 }
+      if (ids.length) {
+        const recs = await safeQuery(() => supabase.from('attendance_records').select('status').in('session_id', ids)) || []
+        recs.forEach(r => { if (c[r.status] !== undefined) c[r.status]++ })
+      }
+      if (!cancelled) { setCounts(c); setLoading(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+  return { counts, loading }
+}
+
 function HomeV2({ onNavigate }) {
   const isMobile = useIsMobile()
   const month = monthOptions()[0]
   const { rows, loading } = useStudentSignals(month)
+  const { data: trendData, loading: trendLoading } = useAttendanceTrend(6)
+  const { counts: todayCounts, loading: todayLoading } = useTodayStatusCounts()
 
   const avgAttendance = rows.length ? Math.round(rows.reduce((s,r)=>s+(r.attendancePct||0),0)/rows.length) : 0
   const highRiskCount = rows.filter(r => r.risk === 'high').length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="gnsi-fade-in">
+      <ConsoleAnimStyles />
       <div>
         <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Overview</div>
         <div style={{ fontSize: 13, color: C.inkMuted, marginTop: 2 }}>{fmtDate(today())} · {todayDay()}</div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
-        {[
+        {loading ? [0,1,2,3].map(i => <SkeletonStatCard key={i} />) : [
           { label: 'Students tracked', value: rows.length, icon: Icon.users, color: C.indigo, bg: C.indigoSoft },
           { label: 'Avg. attendance', value: `${avgAttendance}%`, icon: Icon.check, color: avgAttendance>=75?C.green:C.amber, bg: avgAttendance>=75?C.greenSoft:C.amberSoft },
           { label: 'High risk', value: highRiskCount, icon: Icon.bell, color: C.red, bg: C.redSoft },
           { label: 'On track', value: rows.filter(r=>r.risk==='low').length, icon: Icon.award, color: C.green, bg: C.greenSoft },
         ].map((k,i) => (
           <ConsoleCard key={i} style={{ padding: '16px 18px' }} padded={false}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMuted }}>{k.label}</div>
-              <div style={{ width: 26, height: 26, borderRadius: 7, background: k.bg, color: k.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <k.icon size={13} />
+            <div className="gnsi-hover-lift" style={{ borderRadius: C.radius }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMuted }}>{k.label}</div>
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: k.bg, color: k.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <k.icon size={13} />
+                </div>
               </div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: C.ink, marginTop: 8 }}>{k.value}</div>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: C.ink, marginTop: 8 }}>{loading ? '—' : k.value}</div>
           </ConsoleCard>
         ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.6fr 1fr', gap: 16, alignItems: 'start' }}>
+        <ConsoleCard className="gnsi-hover-lift">
+          <ConsoleCardHeader icon={<Icon.chart size={16} />} title="Attendance trend" subtitle="Average % by month, last 6 months" />
+          <div style={{ padding: '14px 18px 6px' }}>
+            {trendLoading ? <Skeleton w="100%" h={180} radius={10} /> : <TrendChart data={trendData} />}
+          </div>
+        </ConsoleCard>
+        <ConsoleCard className="gnsi-hover-lift">
+          <ConsoleCardHeader icon={<Icon.pulse size={16} />} title="Today's status" subtitle={fmtDate(today())} />
+          <div style={{ padding: '18px', display: 'flex', justifyContent: 'center' }}>
+            {todayLoading ? <Skeleton w={140} h={140} radius={999} /> : <StatusDonut counts={todayCounts} />}
+          </div>
+          <div style={{ padding: '0 18px 16px', display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+            {Object.entries(STATUS_TONE).map(([k,v]) => (
+              <span key={k} style={{ fontSize: 10.5, fontWeight: 700, color: v.color, background: v.bg, padding: '3px 8px', borderRadius: 999 }}>
+                {k}: {todayCounts[k] || 0}
+              </span>
+            ))}
+          </div>
+        </ConsoleCard>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16, alignItems: 'start' }}>
@@ -3452,13 +3690,19 @@ function HomeV2({ onNavigate }) {
         <ConsoleCard>
           <ConsoleCardHeader icon={<Icon.users size={16} />} title="Highest risk students" subtitle="Top 5 this month" />
           <div>
-            {rows.filter(r=>r.risk!=='low').slice(0,5).map(s => <StudentRiskCard key={s.key} s={s} />)}
-            {rows.filter(r=>r.risk!=='low').length === 0 && !loading && (
-              <div style={{ padding: 28, textAlign:'center', color: C.inkFaint, fontSize: 13 }}>No flagged students this month.</div>
+            {loading ? [0,1,2].map(i => <SkeletonRow key={i} />) : (
+              <>
+                {rows.filter(r=>r.risk!=='low').slice(0,5).map(s => (
+                  <div key={s.key} className="gnsi-row-hover"><StudentRiskCard s={s} /></div>
+                ))}
+                {rows.filter(r=>r.risk!=='low').length === 0 && (
+                  <div style={{ padding: 28, textAlign:'center', color: C.inkFaint, fontSize: 13 }}>No flagged students this month.</div>
+                )}
+              </>
             )}
           </div>
           <div style={{ padding: '12px 20px' }}>
-            <ConsoleBtn variant="subtle" small onClick={() => onNavigate('student360')} style={{ width: '100%', justifyContent: 'center' }}>
+            <ConsoleBtn variant="subtle" small onClick={() => onNavigate('student360')} style={{ width: '100%', justifyContent: 'center' }} className="gnsi-btn-press">
               View all students <Icon.chevron size={12} />
             </ConsoleBtn>
           </div>
