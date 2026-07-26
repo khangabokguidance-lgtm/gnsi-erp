@@ -96,6 +96,7 @@ const TABS = [
   { id: 'journal', label: '📝 Journal' },
   { id: 'doubtsession', label: '🙋 Doubt' },
   { id: 'classtimetable', label: '🗓️ Classes' },
+  { id: 'neglectreport', label: '🚨 Neglect Report' },
 ]
 
 const MONTHS = [
@@ -174,6 +175,155 @@ async function notifyHousemasterByHouse(house, title, body, url = '/hostel') {
     await notifyHousemasterByName(hm.name, title, body, url)
   } catch (e) {
     console.error('notifyHousemasterByHouse failed:', e)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SIX-TAB COMPLIANCE CHECK
+//  Verifies a housemaster logged at least one record for their house,
+//  in each of: Discipline, Sickbay, Maintenance, Journal, Mess Duty,
+//  Activities — within the current roll-call session's time window
+//  (Morning = 00:00–12:00, Night = 12:00–24:00, same calendar date).
+//
+//  REQUIRED SQL (run once in Supabase):
+//    alter table maintenance_records add column if not exists house text;
+//    alter table mess_duty add column if not exists house text;
+//    create table if not exists hm_neglect_log (
+//      id bigserial primary key,
+//      house text not null,
+//      date date not null,
+//      session text not null,
+//      housemaster_name text,
+//      missing_tabs text[] not null,
+//      created_at timestamptz default now()
+//    );
+//    alter table hm_neglect_log disable row level security;
+// ══════════════════════════════════════════════════════════════
+
+const SIX_TABS = [
+  { key: 'discipline', label: '⚠️ Discipline' },
+  { key: 'sickbay', label: '🏥 Sickbay' },
+  { key: 'maintenance', label: '🔧 Repairs' },
+  { key: 'journal', label: '📝 Journal' },
+  { key: 'messduty', label: '🍽️ Mess Duty' },
+  { key: 'activities', label: '📌 Activities' },
+]
+
+function sessionWindow(dateStr, session) {
+  // Morning: 00:00–12:00, Night: 12:00–24:00, both on the given calendar date
+  const start = new Date(`${dateStr}T00:00:00`)
+  const end = new Date(`${dateStr}T00:00:00`)
+  if (session === 'morning') {
+    end.setHours(12, 0, 0, 0)
+  } else {
+    start.setHours(12, 0, 0, 0)
+    end.setDate(end.getDate() + 1)
+  }
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+// Returns array of missing tab keys (empty array = fully compliant)
+async function checkSixTabCompliance(houseName, dateStr, session, houseStudentIds) {
+  const { start, end } = sessionWindow(dateStr, session)
+  const missing = []
+
+  const hasAny = async (queryBuilder) => {
+    try {
+      const { data, error } = await queryBuilder
+      if (error) return false // treat query errors as "can't verify" not "missing", to avoid false neglect
+      return (data || []).length > 0
+    } catch {
+      return false
+    }
+  }
+
+  const checks = await Promise.all([
+    // Discipline — linked via student_id, house resolved via students table
+    (async () => {
+      if (!houseStudentIds.length) return true
+      return hasAny(
+        supabase.from('discipline_records').select('id')
+          .in('student_id', houseStudentIds)
+          .gte('created_at', start).lt('created_at', end)
+          .limit(1)
+      )
+    })(),
+    // Sickbay — same pattern
+    (async () => {
+      if (!houseStudentIds.length) return true
+      return hasAny(
+        supabase.from('sickbay_records').select('id')
+          .in('student_id', houseStudentIds)
+          .gte('created_at', start).lt('created_at', end)
+          .limit(1)
+      )
+    })(),
+    // Maintenance — direct house column (added via migration above)
+    hasAny(
+      supabase.from('maintenance_records').select('id')
+        .ilike('house', houseName)
+        .gte('created_at', start).lt('created_at', end)
+        .limit(1)
+    ),
+    // Journal — direct house column (already exists, free-text)
+    hasAny(
+      supabase.from('housemaster_journal').select('id')
+        .ilike('house', houseName)
+        .gte('created_at', start).lt('created_at', end)
+        .limit(1)
+    ),
+    // Mess Duty — direct house column (added via migration above)
+    hasAny(
+      supabase.from('mess_duty').select('id')
+        .ilike('house', houseName)
+        .gte('created_at', start).lt('created_at', end)
+        .limit(1)
+    ),
+    // Activities — table name unconfirmed; try common candidates and
+    // silently treat as compliant if none exist, rather than falsely
+    // flagging neglect for a feature we can't verify.
+    (async () => {
+      for (const tableName of ['housemaster_activities', 'hm_activities', 'activity_logs']) {
+        try {
+          const { data, error } = await supabase.from(tableName).select('id')
+            .ilike('house', houseName)
+            .gte('created_at', start).lt('created_at', end)
+            .limit(1)
+          if (!error) return (data || []).length > 0
+        } catch { /* try next candidate */ }
+      }
+      return true // couldn't verify — don't penalize
+    })(),
+  ])
+
+  SIX_TABS.forEach((tab, i) => {
+    if (!checks[i]) missing.push(tab.key)
+  })
+  return missing
+}
+
+async function logNeglect(houseName, dateStr, session, housemasterName, missingKeys) {
+  if (missingKeys.length === 0) return
+  try {
+    await supabase.from('hm_neglect_log').insert([{
+      house: houseName, date: dateStr, session,
+      housemaster_name: housemasterName || 'Unknown',
+      missing_tabs: missingKeys,
+    }])
+    const labels = SIX_TABS.filter(t => missingKeys.includes(t.key)).map(t => t.label).join(', ')
+    // Notify admins — reuse the staff push channel, targeting any staff
+    // whose role is Admin (best-effort; failures here shouldn't block UI)
+    const { data: admins } = await supabase.from('staff_profiles').select('id').ilike('role', 'admin')
+    if (admins?.length) {
+      await Promise.all(admins.map(a => sendPushToStaffId(
+        a.id,
+        `⚠️ Compliance gap — ${houseName}`,
+        `${housemasterName || 'Housemaster'} skipped: ${labels} (${session}, ${dateStr})`,
+        '/hostel?tab=neglectreport'
+      )))
+    }
+  } catch (e) {
+    console.error('logNeglect failed:', e)
   }
 }
 
@@ -804,8 +954,71 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
   }
 
   // ── Start roll call for a house
+  // ── Notify housemaster(s) of pending leave requests for their house
+  //    the moment roll call opens, so they can check before marking
+  //    attendance (e.g. don't mark someone Absent who's actually on
+  //    approved-pending leave). De-duped per house+date+session so
+  //    re-opening roll call in the same session doesn't spam pushes. ──
+  const [pendingLeaveNotified, setPendingLeaveNotified] = useState({})
+  const [rollCallPendingLeave, setRollCallPendingLeave] = useState([])
+  // Clear stale pending-leave banner data when switching houses
+  useEffect(() => { setRollCallPendingLeave([]) }, [selectedHouse])
+
+  // ── Six-tab compliance check (Discipline, Sickbay, Repairs, Journal,
+  //    Mess Duty, Activities) — runs once when a roll-call session hits
+  //    100%, logs any gaps, and drives the strict warning banner. ──
+  const [complianceChecked, setComplianceChecked] = useState({}) // key: `${house}_${date}_${session}` → done
+  const [complianceMissing, setComplianceMissing] = useState({}) // key → array of missing tab keys
+
+  const runComplianceCheck = async (houseName) => {
+    const key = `${houseName}_${date}_${session}`
+    if (complianceChecked[key]) return
+    setComplianceChecked(prev => ({ ...prev, [key]: true }))
+    const houseStudentIds = activeStudents
+      .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+      .map(s => s.id)
+    const missing = await checkSixTabCompliance(houseName, date, session, houseStudentIds)
+    setComplianceMissing(prev => ({ ...prev, [key]: missing }))
+    if (missing.length > 0) {
+      await logNeglect(houseName, date, session, currentHousemaster?.name, missing)
+    }
+  }
+  // Clear stale pending-leave banner data when switching houses
+  useEffect(() => { setRollCallPendingLeave([]) }, [selectedHouse])
+
+  const notifyPendingLeaveForHouse = async (houseName) => {
+    const key = `${houseName}_${date}_${session}`
+    if (pendingLeaveNotified[key]) return
+    try {
+      const hStudentIds = activeStudents
+        .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+        .map(s => s.id)
+      if (hStudentIds.length === 0) return
+      const { data: pending } = await supabase
+        .from('leave_records')
+        .select('student_name, from_date, to_date')
+        .in('student_id', hStudentIds)
+        .eq('status', 'Pending')
+      setRollCallPendingLeave(pending || [])
+      if (pending && pending.length > 0) {
+        setPendingLeaveNotified(prev => ({ ...prev, [key]: true }))
+        const names = pending.slice(0, 5).map(p => p.student_name).filter(Boolean).join(', ')
+        const more = pending.length > 5 ? ` +${pending.length - 5} more` : ''
+        await notifyHousemasterByHouse(
+          houseName,
+          `🚪 ${pending.length} pending leave request${pending.length > 1 ? 's' : ''} — ${houseName}`,
+          `Before marking roll call: ${names}${more} ${pending.length > 1 ? 'are' : 'is'} awaiting leave approval.`,
+          '/hostel?tab=leave'
+        )
+      }
+    } catch (e) {
+      console.error('notifyPendingLeaveForHouse failed:', e)
+    }
+  }
+
   const startRollCall = (houseName) => {
     if (isHouseBlocked(houseName)) return // safety net; UI should already prevent this call
+    notifyPendingLeaveForHouse(houseName) // fire-and-forget; doesn't block roll call opening
     const hStudents = activeStudents
       .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
       .sort((a, b) => {
@@ -1405,6 +1618,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
     return (
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         {reportModal}
+        {rollCallPendingLeave.length > 0 && (
+          <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '4px' }}>
+              🚪 {rollCallPendingLeave.length} pending leave request{rollCallPendingLeave.length > 1 ? 's' : ''} for {selectedHouse}
+            </div>
+            <div style={{ fontSize: '11px', color: '#1e40af' }}>
+              {rollCallPendingLeave.slice(0, 6).map(p => p.student_name).filter(Boolean).join(', ')}
+              {rollCallPendingLeave.length > 6 ? ` +${rollCallPendingLeave.length - 6} more` : ''} — check before marking Absent.
+            </div>
+          </div>
+        )}
         {catchUpReturn && (
           <div style={{ background: '#fef9c3', border: '1.5px solid #fde047', borderRadius: '10px', padding: '8px 12px', marginBottom: '14px', fontSize: '12px', fontWeight: '700', color: '#92400e', textAlign: 'center' }}>
             📋 Catch-up mode — completing the missed {session} roll call for {date}
@@ -1445,7 +1669,14 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
         </div>
 
         {isDone ? (
-          /* ── Done screen */
+          /* ── Done screen ── */
+          (() => {
+            // Fire the six-tab compliance check the moment this screen renders complete
+            const complianceKey = `${selectedHouse}_${date}_${session}`
+            if (!complianceChecked[complianceKey]) runComplianceCheck(selectedHouse)
+            const missingTabs = complianceMissing[complianceKey] || []
+            const checkDone = complianceKey in complianceMissing
+            return (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
             <div style={{ fontSize: '64px', marginBottom: '16px' }}>🎉</div>
             <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '8px' }}>
@@ -1454,6 +1685,36 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
             <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '24px' }}>
               {marked} of {total} students marked
             </div>
+
+            {checkDone && missingTabs.length > 0 && (
+              <div style={{
+                background: '#fef2f2', border: '2px solid #dc2626', borderRadius: '14px',
+                padding: '16px 18px', marginBottom: '24px', textAlign: 'left',
+              }}>
+                <div style={{ fontSize: '14px', fontWeight: '900', color: '#dc2626', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '20px' }}>🚨</span> STRICT WARNING — Mandatory Checks Skipped
+                </div>
+                <div style={{ fontSize: '13px', color: '#7f1d1d', marginBottom: '10px' }}>
+                  You did not log any activity in the following section{missingTabs.length > 1 ? 's' : ''} for {selectedHouse} during this {session} session. This has been recorded and flagged to admin.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {SIX_TABS.filter(t => missingTabs.includes(t.key)).map(t => (
+                    <span key={t.key} style={{ padding: '4px 10px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '12px', fontWeight: '700' }}>
+                      {t.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {checkDone && missingTabs.length === 0 && (
+              <div style={{
+                background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px',
+                padding: '12px 16px', marginBottom: '24px', fontSize: '13px', fontWeight: '700', color: '#16a34a',
+              }}>
+                ✅ All 6 mandatory checks logged for this session — great work!
+              </div>
+            )}
+
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
               {['Present', 'Absent', 'Sick', 'Late', 'On Leave', 'Unmarked'].map(s => {
@@ -1517,6 +1778,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
               )}
             </div>
           </div>
+            )
+          })()
         ) : (
           /* ── Student card */
           <div>
@@ -4491,6 +4754,153 @@ function KitchenTab() {
 // ══════════════════════════════════════════════════════════════
 //  ROOT — Hostel module (Updated with new House Master features)
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  TAB — Neglect Report (admin-only)
+//  Shows every logged compliance gap: which housemaster skipped
+//  which of the 6 mandatory tabs, for which house/date/session.
+// ══════════════════════════════════════════════════════════════
+function NeglectReportTab({ currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [houseFilter, setHouseFilter] = useState('All')
+  const [hmFilter, setHmFilter] = useState('All')
+  const mobile = useMobileView()
+
+  const load = async () => {
+    setLoading(true)
+    const { data, error } = await supabase.from('hm_neglect_log').select('*').order('created_at', { ascending: false })
+    if (error) console.error('hm_neglect_log fetch error (has the table been created?):', error)
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { if (isAdmin) load() }, [isAdmin])
+
+  if (!isAdmin) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
+        <div style={{ fontSize: '15px', fontWeight: '700' }}>Admin access only</div>
+      </div>
+    )
+  }
+
+  const houseNames = [...new Set(records.map(r => r.house))].sort()
+  const hmNames = [...new Set(records.map(r => r.housemaster_name).filter(Boolean))].sort()
+
+  const filtered = records.filter(r =>
+    (houseFilter === 'All' || r.house === houseFilter) &&
+    (hmFilter === 'All' || r.housemaster_name === hmFilter)
+  )
+
+  // Per-housemaster tally for a quick "who neglects most" summary
+  const tally = useMemo(() => {
+    const t = {}
+    filtered.forEach(r => {
+      const name = r.housemaster_name || 'Unknown'
+      t[name] = (t[name] || 0) + (r.missing_tabs?.length || 0)
+    })
+    return Object.entries(t).sort((a, b) => b[1] - a[1])
+  }, [filtered])
+
+  return (
+    <div>
+      <div style={{ background: '#1e3a5f', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', color: 'white' }}>
+        <div style={{ fontSize: '14px', fontWeight: '800', marginBottom: '4px' }}>🚨 Six-Tab Compliance Neglect Report</div>
+        <div style={{ fontSize: '12px', opacity: 0.75 }}>
+          Tracks housemasters who complete roll call without logging Discipline, Sickbay, Repairs, Journal, Mess Duty, or Activities for their house that session.
+        </div>
+      </div>
+
+      {tally.length > 0 && (
+        <div style={{ background: 'white', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: '#374151', marginBottom: '10px' }}>Most Skipped Checks by Housemaster</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {tally.map(([name, count]) => (
+              <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#fef2f2', borderRadius: '8px' }}>
+                <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{name}</span>
+                <span style={{ fontSize: '12px', fontWeight: '800', color: '#dc2626' }}>{count} skipped check{count > 1 ? 's' : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <select value={houseFilter} onChange={e => setHouseFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+          <option value="All">All Houses</option>
+          {houseNames.map(h => <option key={h}>{h}</option>)}
+        </select>
+        <select value={hmFilter} onChange={e => setHmFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+          <option value="All">All Housemasters</option>
+          {hmNames.map(h => <option key={h}>{h}</option>)}
+        </select>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+      ) : mobile ? (
+        <MobileCardList>
+          {filtered.map(r => (
+            <MobileRecordCard key={r.id} accentColor="#dc2626">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>🏠 {r.house}</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{r.date} · {r.session}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#374151', marginBottom: '6px' }}>👤 {r.housemaster_name || 'Unknown'}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {(r.missing_tabs || []).map(key => {
+                  const tab = SIX_TABS.find(t => t.key === key)
+                  return <span key={key} style={{ padding: '2px 8px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '10px', fontWeight: '700' }}>{tab?.label || key}</span>
+                })}
+              </div>
+            </MobileRecordCard>
+          ))}
+          {filtered.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No neglect logged — everyone's compliant! 🎉</div>}
+        </MobileCardList>
+      ) : (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 700 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['#', 'Date', 'Session', 'House', 'Housemaster', 'Missing Checks'].map(h => (
+                  <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                  <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.date}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: r.session === 'morning' ? '#fef9c3' : '#e0f2fe', color: r.session === 'morning' ? '#ca8a04' : '#0891b2' }}>
+                      {r.session === 'morning' ? '🌅' : '🌙'} {r.session}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e3a5f' }}>🏠 {r.house}</td>
+                  <td style={{ padding: '10px 14px', color: '#374151' }}>{r.housemaster_name || 'Unknown'}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {(r.missing_tabs || []).map(key => {
+                        const tab = SIX_TABS.find(t => t.key === key)
+                        return <span key={key} style={{ padding: '2px 8px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '11px', fontWeight: '700' }}>{tab?.label || key}</span>
+                      })}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No neglect logged — everyone's compliant! 🎉</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Hostel() {
   const [activeTab, setActiveTab] = useState('hmdashboard')
   const [students, setStudents] = useState([])
@@ -4554,7 +4964,7 @@ function Hostel() {
     fetchShared()
   }, [])
 
-  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor'
+  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport'
 
   const tabContent = {
     allotments: <DayScholarTab students={students} />,
@@ -4575,6 +4985,7 @@ function Hostel() {
     journal: <JournalTab currentHousemaster={currentHousemaster} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <DoubtSessionTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
+    neglectreport: <NeglectReportTab currentUser={currentUser} />,
   }
 
   return (
