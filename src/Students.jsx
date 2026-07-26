@@ -669,8 +669,13 @@ function AttendanceViewerModal({ student, onClose }) {
       ;(sessions||[]).forEach(s=>{sessMap[s.id]=s})
       const rows=recs.map(r=>{
         const sess=sessMap[r.session_id]
-        return{status:r.status,date:sess?.session_date,subject:sess?.subject_name,course:sess?.course}
-      }).filter(r=>r.date).sort((a,b)=>new Date(b.date)-new Date(a.date))
+        return{status:r.status,date:sess?.session_date||null,subject:sess?.subject_name,course:sess?.course,orphaned:!sess}
+      }).sort((a,b)=>{
+        if(!a.date&&!b.date)return 0
+        if(!a.date)return 1
+        if(!b.date)return -1
+        return new Date(b.date)-new Date(a.date)
+      })
       setRecords(rows);setLoading(false)
     }
     load()
@@ -679,6 +684,7 @@ function AttendanceViewerModal({ student, onClose }) {
 
   const present=records.filter(r=>r.status==='Present').length
   const pct=records.length?((present+records.filter(r=>r.status==='Late').length*.5)/records.length*100).toFixed(1):null
+  const orphanedCount=records.filter(r=>r.orphaned).length
 
   return (
     <Modal onClose={onClose} width={480} title={`Attendance — ${student.name}`} subtitle={pct!=null?`${pct}% overall · ${records.length} sessions on record`:'No records found'}>
@@ -688,12 +694,17 @@ function AttendanceViewerModal({ student, onClose }) {
         <div style={{textAlign:'center',padding:'30px 0',color:T.text4,fontSize:13}}>No attendance records found for this student.</div>
       ):(
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {orphanedCount>0&&(
+            <div style={{fontSize:11.5,color:T.amber,background:T.amberLight,border:`1px solid ${T.amberBorder}`,borderRadius:T.r8,padding:'8px 12px',marginBottom:4}}>
+              ⚠ {orphanedCount} record{orphanedCount===1?'':'s'} reference a session that no longer exists (likely deleted from Attendance → Sessions). Status is shown below without a date.
+            </div>
+          )}
           {records.slice(0,60).map((r,i)=>{
             const cfg=STATUS_CFG_ATT[r.status]||{color:T.text3,bg:T.surface2}
             return (
               <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:T.r8,background:T.surface2,border:`1px solid ${T.border}`}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12.5,fontWeight:600,color:T.text1}}>{fmtD(r.date)}</div>
+                  <div style={{fontSize:12.5,fontWeight:600,color:r.orphaned?T.text4:T.text1}}>{r.orphaned?'Session deleted':fmtD(r.date)}</div>
                   {r.subject&&<div style={{fontSize:11,color:T.text4}}>{r.subject}{r.course?` · ${r.course}`:''}</div>}
                 </div>
                 <span style={{fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:T.r24,background:cfg.bg,color:cfg.color}}>{r.status}</span>
@@ -823,21 +834,34 @@ function KpiCard({ label, value, color=T.text2, icon, onClick, active, warn, sub
 function AttendanceTab({ student, can, showToast }) {
   const [records,setRecords]=useState([])
   const [loading,setLoading]=useState(true)
-  const [marking,setMarking]=useState(false)
-  const today=useMemo(()=>new Date().toISOString().slice(0,10),[])
 
   const load=useCallback(async()=>{
     setLoading(true)
-    const {data}=await supabase.from('attendance').select('*').eq('student_id',student.id).order('date',{ascending:false}).limit(90)
-    setRecords(data||[])
+    // Wired to the real Attendance module (attendance_records + attendance_sessions).
+    // student_id may be missing on legacy rows — fall back to gcc_no/name match,
+    // same as the card's AttendanceViewerModal.
+    const gcc=student.gcc_no?String(student.gcc_no):null
+    const queries=[supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).limit(400)]
+    if(gcc)queries.push(supabase.from('attendance_records').select('status,session_id').eq('gcc_no',gcc).limit(400))
+    queries.push(supabase.from('attendance_records').select('status,session_id').eq('student_name',student.name).limit(400))
+    const results=await Promise.all(queries)
+    const seen=new Set(),recs=[]
+    results.forEach(({data})=>{(data||[]).forEach(r=>{const key=`${r.session_id}|${r.status}`;if(seen.has(key))return;seen.add(key);recs.push(r)})})
+    if(!recs.length){setRecords([]);setLoading(false);return}
+    const sessionIds=[...new Set(recs.map(r=>r.session_id))]
+    const{data:sessions}=await supabase.from('attendance_sessions').select('id,session_date').in('id',sessionIds)
+    const sessMap={};(sessions||[]).forEach(s=>{sessMap[s.id]=s})
+    const rows=recs.map(r=>{const sess=sessMap[r.session_id];return{id:`${r.session_id}-${r.status}`,status:r.status,date:sess?.session_date||null}})
+      .filter(r=>r.date).sort((a,b)=>new Date(b.date)-new Date(a.date))
+    setRecords(rows)
     setLoading(false)
-  },[student.id])
+  },[student.id,student.gcc_no,student.name])
   useEffect(()=>{load()},[load])
 
   const presentDays=records.filter(r=>r.status==='Present').length
   const lateDays=records.filter(r=>r.status==='Late').length
   const absentDays=records.filter(r=>r.status==='Absent').length
-  const medDays=records.filter(r=>r.status==='Medical').length
+  const leaveDays=records.filter(r=>r.status==='Leave').length
   const attPct=records.length?((presentDays+lateDays*.5)/records.length*100).toFixed(1):null
   let streak=0
   for(const r of records){if(r.status==='Absent')streak++;else break}
@@ -846,30 +870,18 @@ function AttendanceTab({ student, can, showToast }) {
     const months={}
     records.forEach(r=>{
       const d=new Date(r.date),k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
-      if(!months[k])months[k]={total:0,present:0,absent:0,late:0,medical:0}
-      months[k].total++;months[k][r.status.toLowerCase()]++
+      if(!months[k])months[k]={total:0,present:0,absent:0,late:0,leave:0}
+      months[k].total++;months[k][r.status.toLowerCase()]=(months[k][r.status.toLowerCase()]||0)+1
     })
     return Object.entries(months).map(([k,v])=>({month:new Date(k+'-01').toLocaleDateString('en-IN',{month:'short',year:'numeric'}),...v,pct:v.total?((v.present+v.late*.5)/v.total*100).toFixed(0):0})).sort((a,b)=>b.month.localeCompare(a.month))
   },[records])
 
-  const markToday=async status=>{
-    if(!can.attend){showToast('No permission',T.red);return}
-    setMarking(true)
-    const existing=records.find(r=>r.date===today)
-    if(existing)await supabase.from('attendance').update({status}).eq('id',existing.id)
-    else await supabase.from('attendance').insert({student_id:student.id,date:today,status})
-    await auditLog('attendance_mark',{student_id:student.id,date:today,status})
-    await load();setMarking(false)
-    showToast(`Marked ${status}`,T.green)
-  }
-
-  const todayRecord=records.find(r=>r.date===today)
-  const SC={Present:T.green,Absent:T.red,Late:T.amber,Medical:T.sky}
+  const SC={Present:T.green,Absent:T.red,Late:T.amber,Leave:T.violet}
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(80px,1fr))',gap:10}}>
-        {[{l:'Att %',v:attPct?`${attPct}%`:'—',c:attPct>=75?T.green:T.red},{l:'Present',v:presentDays,c:T.green},{l:'Absent',v:absentDays,c:T.red},{l:'Late',v:lateDays,c:T.amber},{l:'Medical',v:medDays,c:T.sky}].map(p=>(
+        {[{l:'Att %',v:attPct?`${attPct}%`:'—',c:attPct>=75?T.green:T.red},{l:'Present',v:presentDays,c:T.green},{l:'Absent',v:absentDays,c:T.red},{l:'Late',v:lateDays,c:T.amber},{l:'Leave',v:leaveDays,c:T.violet}].map(p=>(
           <div key={p.l} style={{background:T.surface2,borderRadius:T.r8,padding:'12px',textAlign:'center',border:`1px solid ${T.border}`}}>
             <div style={{fontSize:20,fontWeight:700,color:p.c}}>{p.v}</div>
             <div style={{fontSize:10,color:T.text4,marginTop:2,textTransform:'uppercase',letterSpacing:'.07em',fontWeight:600}}>{p.l}</div>
@@ -877,20 +889,6 @@ function AttendanceTab({ student, can, showToast }) {
         ))}
       </div>
       {streak>=3&&<div style={{background:T.redLight,border:`1px solid ${T.redBorder}`,borderRadius:T.r8,padding:'10px 14px',color:T.red,fontSize:12,fontWeight:600}}>⚠ {streak} consecutive absences</div>}
-      <IfCan can={can.attend}>
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em'}}>Mark Today — {today}</div>
-          {todayRecord&&<div style={{fontSize:12,color:T.text3,marginBottom:8}}>Currently: <strong style={{color:SC[todayRecord.status]}}>{todayRecord.status}</strong></div>}
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            {['Present','Absent','Late','Medical'].map(s=>(
-              <Btn key={s} onClick={()=>markToday(s)} disabled={marking}
-                style={{borderColor:todayRecord?.status===s?SC[s]:T.border2,background:todayRecord?.status===s?`${SC[s]}10`:'transparent',color:SC[s],fontWeight:600}}>
-                {s==='Present'?'✓':s==='Absent'?'✗':s==='Late'?'⏰':'🏥'} {s}
-              </Btn>
-            ))}
-          </div>
-        </div>
-      </IfCan>
       {monthlyAtt.length>0&&(
         <div style={{overflowX:'auto'}}>
           <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em'}}>Monthly Summary</div>
@@ -918,16 +916,17 @@ function AttendanceTab({ student, can, showToast }) {
         </div>
       )}
       <div>
-        <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em'}}>Last 30 Days</div>
-        {loading?<div style={{color:T.text4,fontSize:12}}>Loading…</div>:(
+        <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em'}}>Last 30 Sessions</div>
+        {loading?<div style={{color:T.text4,fontSize:12}}>Loading…</div>:records.length===0?<div style={{color:T.text4,fontSize:12}}>No attendance records found.</div>:(
           <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
             {records.slice(0,30).map(r=>{
-              const c={Present:T.green,Absent:T.red,Late:T.amber,Medical:T.sky}[r.status]||T.text4
+              const c=SC[r.status]||T.text4
               return <div key={r.id} title={`${r.date}: ${r.status}`} style={{width:18,height:18,borderRadius:3,background:`${c}20`,border:`1px solid ${c}40`}}/>
             })}
           </div>
         )}
       </div>
+      <div style={{fontSize:11,color:T.text4,fontStyle:'italic'}}>To mark attendance, use the Attendance module.</div>
     </div>
   )
 }
@@ -1015,52 +1014,115 @@ function DocumentsTab({ student, can, showToast }) {
 
 // ─── Exam Score Modal ─────────────────────────────────────────────────────────
 function ExamScoreModal({ student, can, onClose, onSaved, showToast }) {
-  const [examName,setExamName]=useState('')
-  const [scores,setScores]=useState(Object.fromEntries(SUBJECTS.map(s=>[s,''])))
-  const [target,setTarget]=useState('')
-  const [remarks,setRemarks]=useState('')
+  const [examTypes,setExamTypes]=useState([])
+  const [examType,setExamType]=useState('')
+  const [scheduleRows,setScheduleRows]=useState([]) // [{id, subject, total_marks, exam_date}]
+  const [examDate,setExamDate]=useState('')
+  const [marks,setMarks]=useState({}) // {subject: value}
+  const [remark,setRemark]=useState('')
+  const [loadingSchedule,setLoadingSchedule]=useState(false)
   const [saving,setSaving]=useState(false)
-  const total=SUBJECTS.reduce((a,s)=>a+Number(scores[s]||0),0)
+
+  useEffect(()=>{
+    supabase.from('exam_types').select('id,name').order('name').then(({data})=>setExamTypes(data||[]))
+  },[])
+
+  useEffect(()=>{
+    if(!examType){setScheduleRows([]);setExamDate('');return}
+    setLoadingSchedule(true)
+    supabase.from('exam_schedule').select('id,subject,total_marks,exam_date').eq('exam_type_id',examType).eq('course',student.course).order('exam_date')
+      .then(({data})=>{
+        setScheduleRows(data||[])
+        const dates=[...new Set((data||[]).map(r=>r.exam_date))]
+        setExamDate(dates[0]||'')
+        setMarks({})
+        setLoadingSchedule(false)
+      })
+  },[examType,student.course])
+
+  // Existing marks for this student/exam/date, so re-opening shows what's already saved
+  useEffect(()=>{
+    if(!examType||!examDate)return
+    supabase.from('exam_marks').select('subject,marks_obtained').eq('student_id',student.id).eq('exam_type_id',examType).eq('exam_date',examDate)
+      .then(({data})=>{
+        const m={}
+        ;(data||[]).forEach(r=>{m[r.subject]=String(r.marks_obtained)})
+        setMarks(m)
+      })
+  },[examType,examDate,student.id])
+
+  const subjectsForDate=scheduleRows.filter(r=>r.exam_date===examDate)
+  const total=subjectsForDate.reduce((a,r)=>a+(Number(marks[r.subject])||0),0)
+  const maxTotal=subjectsForDate.reduce((a,r)=>a+(Number(r.total_marks)||0),0)
 
   const handleSave=async()=>{
     if(!can.exams){showToast('No permission',T.red);return}
-    if(!examName.trim()){showToast('Exam name required',T.red);return}
+    if(!examType||!examDate){showToast('Select an exam type and date',T.red);return}
+    if(!subjectsForDate.length){showToast('No scheduled subjects found for this exam/date/course',T.red);return}
     setSaving(true)
-    const payload=Object.fromEntries(SUBJECTS.map(s=>[s,Number(scores[s])||null]))
-    const{error}=await supabase.from('exam_scores').insert({student_id:student.id,exam_name:examName,...payload,total,target_score:Number(target)||null,academic_remarks:remarks||null,session:student.session})
+    const rows=subjectsForDate.map(r=>({
+      student_id:student.id, exam_id:r.id, exam_type_id:examType, exam_date:examDate,
+      subject:r.subject, marks_obtained:Number(marks[r.subject])||0,
+    }))
+    const{error}=await supabase.from('exam_marks').upsert(rows,{onConflict:'student_id,exam_id'})
+    if(remark.trim()){
+      await supabase.from('exam_remarks').upsert(
+        {student_id:student.id,exam_type_id:examType,exam_date:examDate,remark:remark.trim()},
+        {onConflict:'student_id,exam_type_id,exam_date'}
+      )
+    }
     setSaving(false)
     if(error){showToast('Save failed: '+error.message,T.red);return}
-    await auditLog('exam_score_entry',{student_id:student.id,exam_name:examName,total})
-    showToast('Scores saved',T.green);onSaved()
+    await auditLog('exam_marks_entry',{student_id:student.id,exam_type_id:examType,exam_date:examDate,total})
+    showToast('Marks saved',T.green);onSaved()
   }
 
   return (
-    <Modal onClose={onClose} width={540} title="Add Exam Scores" subtitle={`${student.name} · ${student.batch}`}>
+    <Modal onClose={onClose} width={540} title="Enter exam marks" subtitle={`${student.name} · ${student.batch}`}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:12,marginBottom:16}}>
-        <FieldRow label="Exam Name *">
-          <input value={examName} onChange={e=>setExamName(e.target.value)} placeholder="e.g. Unit Test 1" style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}/>
+        <FieldRow label="Exam type *">
+          <select value={examType} onChange={e=>setExamType(e.target.value)} style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}>
+            <option value="">Select…</option>
+            {examTypes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
         </FieldRow>
-        <FieldRow label="Target Score">
-          <input type="number" value={target} onChange={e=>setTarget(e.target.value)} placeholder="e.g. 350" style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}/>
+        <FieldRow label="Exam date *">
+          <select value={examDate} onChange={e=>setExamDate(e.target.value)} disabled={!examType} style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}>
+            <option value="">Select…</option>
+            {[...new Set(scheduleRows.map(r=>r.exam_date))].map(d=><option key={d} value={d}>{fmtD(d)}</option>)}
+          </select>
         </FieldRow>
       </div>
-      <Divider label="Subject Marks"/>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginBottom:16}}>
-        {SUBJECTS.map(s=>(
-          <FieldRow key={s} label={s}>
-            <input type="number" value={scores[s]} onChange={e=>setScores(p=>({...p,[s]:e.target.value}))} placeholder="0–100" style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}/>
-          </FieldRow>
-        ))}
-      </div>
-      <div style={{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r8,padding:'14px 16px',marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <span style={{fontWeight:600,fontSize:13,color:T.text3}}>Total Score</span>
-        <span style={{fontWeight:700,fontSize:24,color:total>=200?T.green:T.red}}>{total}{target&&<span style={{fontSize:14,fontWeight:400,color:T.text3}}> / {target}</span>}</span>
-      </div>
+
+      {!examType?(
+        <div style={{textAlign:'center',padding:'20px 0',color:T.text4,fontSize:13}}>Select an exam type to see scheduled subjects.</div>
+      ):loadingSchedule?(
+        <div style={{textAlign:'center',padding:'20px 0',color:T.text4,fontSize:13}}>Loading schedule…</div>
+      ):subjectsForDate.length===0?(
+        <div style={{textAlign:'center',padding:'20px 0',color:T.amber,fontSize:13}}>No subjects scheduled for {student.course} on this date. Set up the schedule in the Exams module first.</div>
+      ):(
+        <>
+          <Divider label="Subject marks"/>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginBottom:16}}>
+            {subjectsForDate.map(r=>(
+              <FieldRow key={r.id} label={`${r.subject} (/${r.total_marks})`}>
+                <input type="number" value={marks[r.subject]||''} onChange={e=>setMarks(p=>({...p,[r.subject]:e.target.value}))}
+                  placeholder={`0–${r.total_marks}`} style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}/>
+              </FieldRow>
+            ))}
+          </div>
+          <div style={{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r8,padding:'14px 16px',marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontWeight:600,fontSize:13,color:T.text3}}>Total</span>
+            <span style={{fontWeight:700,fontSize:24,color:total>=maxTotal*0.4?T.green:T.red}}>{total}<span style={{fontSize:14,fontWeight:400,color:T.text3}}> / {maxTotal}</span></span>
+          </div>
+        </>
+      )}
+
       <FieldRow label="Remarks">
-        <textarea value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Optional remarks" rows={2} style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,fontFamily:'inherit',resize:'vertical',boxSizing:'border-box'}}/>
+        <textarea value={remark} onChange={e=>setRemark(e.target.value)} placeholder="Optional remarks" rows={2} style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,fontFamily:'inherit',resize:'vertical',boxSizing:'border-box'}}/>
       </FieldRow>
       <div style={{display:'flex',gap:10,marginTop:18}}>
-        <Btn onClick={handleSave} disabled={saving||!can.exams} variant='primary' style={{flex:1,justifyContent:'center'}}>{saving?'Saving…':'Save Scores'}</Btn>
+        <Btn onClick={handleSave} disabled={saving||!can.exams||!subjectsForDate.length} variant='primary' style={{flex:1,justifyContent:'center'}}>{saving?'Saving…':'Save marks'}</Btn>
         <Btn onClick={onClose}>Cancel</Btn>
       </div>
     </Modal>
