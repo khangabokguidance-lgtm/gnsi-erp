@@ -2723,28 +2723,52 @@ function TabLeave({ staff, currentUser, isAdmin }) {
 // ─── MAIN ─────────────────────────────────────────────────────
 
 const NAV_TABS = [
-  { key:'home',   label:'Home'     },
-  { key:'mark',   label:'Mark'     },
-  { key:'view',   label:'Sessions' },
-  { key:'report', label:'Reports'  },
-  { key:'leave',  label:'Leaves'   },
+  { key:'home',   label:'🏠 Home'      },
+  { key:'mark',   label:'📝 Mark'      },
+  { key:'view',   label:'📅 Sessions'  },
+  { key:'report', label:'📊 Reports'   },
+  { key:'leave',  label:'🌿 Leaves'    },
 ]
 
 export default function Attendance({ currentUser, isAdmin }) {
   const isMobile  = useIsMobile()
-  const [activeTab,   setActiveTab]   = useState('home')
   const [staff,       setStaff]       = useState([])
   const [markPrefill, setMarkPrefill] = useState(null)
+  const [activeSection, setActiveSection] = useState('home')
 
   useEffect(() => {
     supabase.from('staff_profiles').select('id,name,designation').order('name')
       .then(({ data }) => setStaff(data || []))
   }, [])
 
-  const navigateTo = (tab, prefill = null) => {
+  const navigateTo = (section, prefill = null) => {
     setMarkPrefill(prefill)
-    setActiveTab(tab)
+    scrollToSection(section)
   }
+
+  const scrollToSection = (key) => {
+    setActiveSection(key)
+    const el = document.getElementById(`gnsi-section-${key}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  // Track which section is in view to highlight the right nav pill
+  useEffect(() => {
+    const sections = NAV_TABS.map(t => document.getElementById(`gnsi-section-${t.key}`)).filter(Boolean)
+    if (!sections.length) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter(e => e.isIntersecting).sort((a,b) => b.intersectionRatio - a.intersectionRatio)
+        if (visible[0]) {
+          const key = visible[0].target.id.replace('gnsi-section-', '')
+          setActiveSection(key)
+        }
+      },
+      { threshold: [0.15, 0.3, 0.5], rootMargin: '-80px 0px -60% 0px' }
+    )
+    sections.forEach(s => observer.observe(s))
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <div style={{
@@ -2773,12 +2797,12 @@ export default function Attendance({ currentUser, isAdmin }) {
         </div>
         {!isMobile && (
           <div style={{ fontSize: 13.5, color: T.gray500, marginTop: 4, fontWeight: 400 }}>
-            Mark, view, analyse and manage attendance across all batches
+            Mark, view, analyse and manage attendance across all batches — all in one place
           </div>
         )}
       </div>
 
-      {/* Nav tabs — Instagram gradient active style */}
+      {/* Sticky jump-nav — scrolls to section instead of switching tabs */}
       <div style={{
         display: 'flex',
         marginBottom: 20,
@@ -2790,11 +2814,12 @@ export default function Attendance({ currentUser, isAdmin }) {
         scrollbarWidth: 'none', msOverflowStyle: 'none',
         boxShadow: T.shadowSm,
         border: `1.5px solid ${T.gray150}`,
+        position: 'sticky', top: 8, zIndex: 40,
       }}>
         {NAV_TABS.map(t => {
-          const isActive = activeTab === t.key
+          const isActive = activeSection === t.key
           return (
-            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
+            <button key={t.key} onClick={() => scrollToSection(t.key)} style={{
               flex: 1,
               padding: isMobile ? '8px 4px' : '9px 14px',
               fontWeight: 700, fontSize: isMobile ? 11 : 12.5,
@@ -2817,12 +2842,54 @@ export default function Attendance({ currentUser, isAdmin }) {
         })}
       </div>
 
-      {/* Content */}
-      {activeTab === 'home'   && <TabHome   onNavigate={navigateTo} />}
-      {activeTab === 'mark'   && <TabMark   staff={staff} prefill={markPrefill} />}
-      {activeTab === 'view'   && <TabView   />}
-      {activeTab === 'report' && <TabReport />}
-      {activeTab === 'leave'  && <TabLeave  staff={staff} currentUser={currentUser} isAdmin={isAdmin} />}
+      {/* All sections stacked vertically on one page */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+
+        <section id="gnsi-section-home">
+          <SectionLabel icon="🏠" title="Home" />
+          <TabHome onNavigate={navigateTo} />
+        </section>
+
+        <section id="gnsi-section-mark">
+          <SectionLabel icon="📝" title="Mark attendance" />
+          <TabMark staff={staff} prefill={markPrefill} />
+        </section>
+
+        <section id="gnsi-section-view">
+          <SectionLabel icon="📅" title="Sessions" />
+          <TabView />
+        </section>
+
+        <section id="gnsi-section-report">
+          <SectionLabel icon="📊" title="Reports" />
+          <TabReport />
+        </section>
+
+        <section id="gnsi-section-leave">
+          <SectionLabel icon="🌿" title="Leaves" />
+          <TabLeave staff={staff} currentUser={currentUser} isAdmin={isAdmin} />
+        </section>
+
+      </div>
+    </div>
+  )
+}
+
+function SectionLabel({ icon, title }) {
+  const isMobile = useIsMobile()
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 9,
+      marginBottom: 14, paddingBottom: 10,
+      borderBottom: `2px solid ${T.gray150}`,
+    }}>
+      <span style={{ fontSize: isMobile ? 17 : 19 }}>{icon}</span>
+      <span style={{
+        fontSize: isMobile ? 15 : 17, fontWeight: 800, color: T.ink,
+        letterSpacing: '-.01em',
+      }}>
+        {title}
+      </span>
     </div>
   )
 }
