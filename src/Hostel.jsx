@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
 import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
+import HouseReportModal from './HouseReportModal'
 
 // ══════════════════════════════════════════════════════════════
 //  MOBILE-FIRST RESPONSIVE STYLES
@@ -481,6 +482,10 @@ function AttendanceTab({ students, currentHousemaster }) {
   const [savingId, setSavingId] = useState(null)
   const mobile = useMobileView()
 
+  // ── House Report modal state (auto-fires when a house hits 100%) ──
+  const [reportHouse, setReportHouse] = useState(null)
+  const [autoFired, setAutoFired] = useState({}) // key: `${house}_${date}_${session}` → already auto-opened
+
   const activeStudents = useMemo(() =>
     students.filter(s => s.status !== 'Inactive'),
     [students]
@@ -521,6 +526,47 @@ function AttendanceTab({ students, currentHousemaster }) {
     [allRecords]
   )
   const getStatus = (studentId) => statusMap[studentId] || 'Unmarked'
+
+  // ── Per-house stats (defined before the auto-fire effect that uses it) ──
+  const getHouseStats = (houseName) => {
+    const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+    const hRecords = allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
+    const present = hRecords.filter(r => r.status === 'Present').length
+    const absent = hRecords.filter(r => r.status === 'Absent').length
+    const sick = hRecords.filter(r => r.status === 'Sick').length
+    const onLeave = hRecords.filter(r => r.status === 'On Leave').length
+    const late = hRecords.filter(r => r.status === 'Late').length
+    const marked = hRecords.length
+    const total = hStudents.length
+    const unmarked = total - marked
+    const pct = total ? Math.round(marked / total * 100) : 0
+    return { total, present, absent, sick, onLeave, late, marked, unmarked, pct }
+  }
+
+  // ── Auto-fire the House Report the moment a house reaches 100% for this date+session ──
+  useEffect(() => {
+    if (loading) return
+    houses.forEach(houseName => {
+      const stats = getHouseStats(houseName)
+      const key = `${houseName}_${date}_${session}`
+      if (stats.total > 0 && stats.unmarked === 0 && !autoFired[key]) {
+        setAutoFired(prev => ({ ...prev, [key]: true }))
+        setReportHouse(houseName)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRecords, houses, date, session, loading])
+
+  const reportModal = reportHouse && (
+    <HouseReportModal
+      house={reportHouse}
+      date={date}
+      session={session}
+      students={activeStudents}
+      allRecords={allRecords}
+      onClose={() => setReportHouse(null)}
+    />
+  )
 
   const handleMark = async (studentId, status) => {
     setSaving(true)
@@ -578,22 +624,6 @@ function AttendanceTab({ students, currentHousemaster }) {
     setSaving(false)
   }
 
-  // ── Per-house stats
-  const getHouseStats = (houseName) => {
-    const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
-    const hRecords = allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
-    const present = hRecords.filter(r => r.status === 'Present').length
-    const absent = hRecords.filter(r => r.status === 'Absent').length
-    const sick = hRecords.filter(r => r.status === 'Sick').length
-    const onLeave = hRecords.filter(r => r.status === 'On Leave').length
-    const late = hRecords.filter(r => r.status === 'Late').length
-    const marked = hRecords.length
-    const total = hStudents.length
-    const unmarked = total - marked
-    const pct = total ? Math.round(marked / total * 100) : 0
-    return { total, present, absent, sick, onLeave, late, marked, unmarked, pct }
-  }
-
   // ── Start roll call for a house
   const startRollCall = (houseName) => {
     const hStudents = activeStudents
@@ -623,6 +653,7 @@ function AttendanceTab({ students, currentHousemaster }) {
 
     return (
       <div>
+        {reportModal}
         {/* Date & Session selector */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <input
@@ -768,6 +799,14 @@ function AttendanceTab({ students, currentHousemaster }) {
                           ⚡ Roll Call
                         </button>
                       </div>
+                      {allDone && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setReportHouse(houseName) }}
+                          style={{ marginTop: '8px', width: '100%', padding: '9px', borderRadius: '9px', border: 'none', background: '#f5f3ff', color: '#7c3aed', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                        >
+                          📄 View Report
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
@@ -850,6 +889,7 @@ function AttendanceTab({ students, currentHousemaster }) {
 
     return (
       <div>
+        {reportModal}
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <button onClick={() => setView('houses')} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: '13px' }}>
@@ -863,6 +903,14 @@ function AttendanceTab({ students, currentHousemaster }) {
               {date} · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} Roll Call
             </div>
           </div>
+          {stats.unmarked === 0 && (
+            <button
+              onClick={() => setReportHouse(selectedHouse)}
+              style={{ ...btn('#7c3aed'), padding: '10px 16px', fontSize: '13px' }}
+            >
+              📄 View Report
+            </button>
+          )}
           <button
             onClick={() => startRollCall(selectedHouse)}
             style={{ ...btn(pal.color), padding: '10px 20px', fontSize: '14px' }}
@@ -1032,6 +1080,7 @@ function AttendanceTab({ students, currentHousemaster }) {
 
     return (
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+        {reportModal}
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
           <button onClick={() => { setView('dashboard') }} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 12px', fontSize: '13px' }}>
@@ -1100,6 +1149,9 @@ function AttendanceTab({ students, currentHousemaster }) {
                   ⏳ Mark Remaining
                 </button>
               )}
+              <button onClick={() => setReportHouse(selectedHouse)} style={{ ...btn('#7c3aed'), padding: '12px 24px' }}>
+                📄 View Report
+              </button>
               <button onClick={() => setView('dashboard')} style={{ ...btn(pal.color), padding: '12px 24px' }}>
                 View {selectedHouse} Dashboard
               </button>
