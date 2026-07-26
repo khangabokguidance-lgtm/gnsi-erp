@@ -2044,177 +2044,129 @@ function TabView() {
   }
 
   return (
-    <Card>
-      <CardHeader
-        icon="📁"
-        title="Sessions"
-        subtitle="All recorded attendance sessions"
-        accent={T.navy}
-        right={<span style={{ fontSize: 12, color: T.gray400, fontWeight: 600 }}>{sessions.length} records</span>}
-      />
-
-      {/* Filters */}
-      <div style={{
-        padding: isMobile ? '10px 16px' : '12px 22px',
-        borderBottom: `1.5px solid ${T.gray100}`,
-        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-        background: T.gray50,
-      }}>
-        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-          style={inputStyle({ width: 'auto', fontSize: 13, padding: '7px 10px' })} />
-        <Select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto' }}>
-          <option value="All">All courses</option>
-          {COURSES.map(c => <option key={c}>{c}</option>)}
-        </Select>
-        {(dateFilter || courseFilter !== 'All') && (
-          <Btn small variant="ghost" onClick={() => { setDateFilter(''); setCourseFilter('All') }}>
-            ✕ Clear filters
-          </Btn>
-        )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Sessions</div>
+        <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>All recorded attendance sessions</div>
       </div>
 
-      <div style={{ padding: isMobile ? '10px 16px' : '14px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: T.gray400, fontSize: 13 }}>Loading sessions…</div>
-        ) : sessions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: T.gray400, fontSize: 13 }}>No sessions found.</div>
-        ) : sessions.map(sess => {
-          const isOpen = expanded === sess.id
-          const recs   = records[sess.id] || []
-          const counts = { Present:0, Absent:0, Late:0, Leave:0 }
-          if (isOpen) recs.forEach(r => { if (counts[r.status]!==undefined) counts[r.status]++ })
-          const total = recs.length
-          const pct   = total > 0 ? Math.round((counts.Present / total)*100) : null
+      <ConsoleCard>
+        <ConsoleCardHeader
+          icon={<Icon.calendar size={16} />} title="Session log"
+          subtitle={`${sessions.length} record${sessions.length===1?'':'s'}`}
+        />
 
-          return (
-            <div key={sess.id} style={{
-              border: `1.5px solid ${isOpen ? T.gray200 : T.gray150}`,
-              borderRadius: 12, overflow: 'hidden',
-              transition: 'border-color .15s',
-            }}>
-              {/* Row header */}
-              <div onClick={() => expand(sess.id)} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: isMobile ? '11px 14px' : '12px 16px',
-                cursor: 'pointer',
-                background: isOpen ? T.gray50 : T.white,
-                transition: 'background .15s',
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
-                    <span style={{ fontWeight: 600, color: T.ink, fontSize: isMobile ? 13 : 13.5 }}>
-                      {fmtDate(sess.session_date)}
-                    </span>
-                    <CoursePill course={sess.course} />
-                    {sess.subject_name && (
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: T.violet }}>
-                        {sess.subject_name}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: T.gray500 }}>
-                    {sess.teacher_name && `${sess.teacher_name}`}
-                    {sess.subtype && ` · ${sess.subtype}`}
-                    {sess.period_number && ` · P${sess.period_number}`}
-                  </div>
-                </div>
-                <button
-                  onClick={e => { e.stopPropagation(); setConfirmDelete(sess.id) }}
-                  style={{
-                    fontSize: 12, padding: '5px 9px', borderRadius: 7,
-                    border: `1.5px solid #fecdd3`, background: '#fff1f2',
-                    color: '#e11d48', cursor: 'pointer', fontFamily: font, flexShrink: 0,
-                  }}
-                >
-                  Delete
-                </button>
-                <span style={{
-                  color: T.gray300, fontSize: 14,
-                  transform: isOpen ? 'rotate(180deg)' : 'none',
-                  transition: 'transform .2s', flexShrink: 0,
-                }}>▾</span>
-              </div>
+        <div style={{ padding: '12px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <ConsoleInput type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{ width: 'auto' }} />
+          <ConsoleSelect value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto' }}>
+            <option value="All">All courses</option>
+            {COURSES.map(c => <option key={c}>{c}</option>)}
+          </ConsoleSelect>
+          {(dateFilter || courseFilter !== 'All') && (
+            <ConsoleBtn small variant="subtle" onClick={() => { setDateFilter(''); setCourseFilter('All') }}>Clear filters</ConsoleBtn>
+          )}
+        </div>
 
-              {/* Confirm delete */}
-              {confirmDelete === sess.id && (
-                <div style={{ padding: '10px 14px', borderTop: `1.5px solid ${T.gray100}` }}>
-                  <InlineConfirm
-                    message="Delete this session and all its records permanently?"
-                    onConfirm={() => doDelete(sess.id)}
-                    onCancel={() => setConfirmDelete(null)}
-                  />
-                </div>
-              )}
+        <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: C.inkFaint, fontSize: 13 }}>Loading sessions…</div>
+          ) : sessions.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: C.inkFaint, fontSize: 13 }}>No sessions found.</div>
+          ) : sessions.map(sess => {
+            const isOpen = expanded === sess.id
+            const recs   = records[sess.id] || []
+            const counts = { Present:0, Absent:0, Late:0, Leave:0 }
+            if (isOpen) recs.forEach(r => { if (counts[r.status]!==undefined) counts[r.status]++ })
+            const total = recs.length
+            const pct   = total > 0 ? Math.round((counts.Present / total)*100) : null
 
-              {/* Expanded records */}
-              {isOpen && (
-                <div style={{
-                  borderTop: `1.5px solid ${T.gray100}`,
-                  padding: isMobile ? '12px 14px' : '14px 18px',
-                  background: T.gray50,
+            return (
+              <div key={sess.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+                <div onClick={() => expand(sess.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer',
+                  background: isOpen ? C.bg : C.surface,
                 }}>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {STATUSES.map(s => counts[s] > 0 && (
-                      <span key={s} style={{
-                        padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
-                        background: STATUS_META[s].bg, color: STATUS_META[s].color,
-                        border: `1.5px solid ${STATUS_META[s].border}`,
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                      }}>
-                        <StatusDot status={s} size={6} />
-                        {counts[s]} {s}
-                      </span>
-                    ))}
-                    {pct !== null && (
-                      <span style={{
-                        marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, fontFamily: fontMono,
-                        color: pct>=75?'#16a34a':pct>=50?'#d97706':'#e11d48',
-                      }}>
-                        {pct}%
-                      </span>
-                    )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
+                      <span style={{ fontWeight: 650, color: C.ink, fontSize: 13.5 }}>{fmtDate(sess.session_date)}</span>
+                      <CoursePill course={sess.course} />
+                      {sess.subject_name && <span style={{ fontSize: 11.5, fontWeight: 600, color: C.violet }}>{sess.subject_name}</span>}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.inkMuted }}>
+                      {sess.teacher_name && `${sess.teacher_name}`}
+                      {sess.subtype && ` · ${sess.subtype}`}
+                      {sess.period_number && ` · P${sess.period_number}`}
+                    </div>
                   </div>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(200px,1fr))',
-                    gap: 6,
+                  <button onClick={e => { e.stopPropagation(); setConfirmDelete(sess.id) }} style={{
+                    fontSize: 12, padding: '5px 10px', borderRadius: 7, border: 'none',
+                    background: C.redSoft, color: '#B91C1C', cursor: 'pointer', fontFamily: font, flexShrink: 0, fontWeight: 600,
                   }}>
-                    {recs.map(r => {
-                      const sm = STATUS_META[r.status] || STATUS_META.Present
-                      return (
-                        <div key={r.id} style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '8px 12px', borderRadius: 8,
-                          background: sm.bg, border: `1.5px solid ${sm.border}`,
-                        }}>
-                          <StatusDot status={r.status} size={7} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{
-                              fontSize: 12.5, fontWeight: 600, color: T.ink,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>
-                              {r.student_name}
-                            </div>
-                            {r.gcc_no && (
-                              <div style={{ fontSize: 10.5, color: T.gray400, fontFamily: fontMono }}>
-                                {r.gcc_no}
-                              </div>
-                            )}
-                          </div>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: sm.color, flexShrink: 0 }}>
-                            {r.status}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                    Delete
+                  </button>
+                  <Icon.chevron size={13} />
                 </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </Card>
+
+                {confirmDelete === sess.id && (
+                  <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}` }}>
+                    <div style={{
+                      background: C.redSoft, borderRadius: 8, padding: '10px 14px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+                    }}>
+                      <span style={{ fontSize: 13, color: '#B91C1C', fontWeight: 500 }}>Delete this session and all its records permanently?</span>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <ConsoleBtn small variant="default" onClick={() => setConfirmDelete(null)}>Cancel</ConsoleBtn>
+                        <ConsoleBtn small variant="danger" onClick={() => doDelete(sess.id)}>Delete</ConsoleBtn>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isOpen && (
+                  <div style={{ borderTop: `1px solid ${C.border}`, padding: '14px 18px', background: C.bg }}>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {STATUSES.map(s => counts[s] > 0 && (
+                        <span key={s} style={{
+                          padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+                          background: STATUS_TONE[s].bg, color: STATUS_TONE[s].color,
+                        }}>
+                          {counts[s]} {s}
+                        </span>
+                      ))}
+                      {pct !== null && (
+                        <span style={{
+                          marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, fontFamily: fontMono,
+                          color: pct>=75?C.green:pct>=50?C.amber:C.red,
+                        }}>
+                          {pct}%
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(200px,1fr))', gap: 6 }}>
+                      {recs.map(r => {
+                        const tone = STATUS_TONE[r.status] || STATUS_TONE.Present
+                        return (
+                          <div key={r.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8,
+                            background: C.surface, border: `1px solid ${C.border}`,
+                          }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.student_name}</div>
+                              {r.gcc_no && <div style={{ fontSize: 10.5, color: C.inkFaint, fontFamily: fontMono }}>{r.gcc_no}</div>}
+                            </div>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: tone.color, flexShrink: 0 }}>{r.status}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </ConsoleCard>
+    </div>
   )
 }
 
@@ -3543,12 +3495,19 @@ export default function Attendance({ currentUser, isAdmin }) {
   const [staff,       setStaff]       = useState([])
   const [markPrefill, setMarkPrefill] = useState(null)
   const [route, setRoute]             = useState('home')
-  const [navOpen, setNavOpen]         = useState(false) // mobile drawer
+  const [navOpen, setNavOpen]         = useState(false)
 
   useEffect(() => {
     supabase.from('staff_profiles').select('id,name,designation').order('name')
       .then(({ data }) => setStaff(data || []))
   }, [])
+
+  useEffect(() => {
+    if (!navOpen) return
+    const close = () => setNavOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [navOpen])
 
   const navigateTo = (page, prefill = null) => {
     setMarkPrefill(prefill)
@@ -3569,82 +3528,72 @@ export default function Attendance({ currentUser, isAdmin }) {
     }
   }
 
-  const SidebarContent = () => (
-    <>
-      <div style={{ padding: '20px 18px 16px' }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: '#64748B' }}>
-          GNSI Portal
-        </div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginTop: 2, letterSpacing: '-.01em' }}>
-          Attendance
-        </div>
-      </div>
-      <nav style={{ padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV_ITEMS.map(item => {
-          const active = route === item.key
-          return (
-            <button key={item.key} onClick={() => navigateTo(item.key)} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 12px', borderRadius: 8, border: 'none',
-              background: active ? C.indigo : 'transparent',
-              color: active ? '#fff' : C.sidebarText,
-              fontFamily: font, fontWeight: 600, fontSize: 13.5,
-              cursor: 'pointer', textAlign: 'left', transition: 'background .12s',
-            }}
-            onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.sidebarHover }}
-            onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
-            >
-              <item.icon size={16} />
-              {item.label}
-            </button>
-          )
-        })}
-      </nav>
-    </>
-  )
-
-  if (isMobile) {
-    return (
-      <div style={{ fontFamily: font, background: C.bg, minHeight: '100vh' }}>
-        {/* Mobile top bar */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 16px', background: C.sidebar, position: 'sticky', top: 0, zIndex: 50,
-        }}>
-          <div>
-            <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#64748B' }}>GNSI Portal</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{PAGE_META[route]?.title}</div>
-          </div>
-          <button onClick={() => setNavOpen(v => !v)} style={{
-            width: 34, height: 34, borderRadius: 8, background: C.sidebarHover, border: 'none',
-            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-          }}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-          </button>
-        </div>
-        {navOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,42,.5)' }} onClick={() => setNavOpen(false)}>
-            <div onClick={e => e.stopPropagation()} style={{ width: 240, height: '100%', background: C.sidebar }}>
-              <SidebarContent />
-            </div>
-          </div>
-        )}
-        <div style={{ padding: '16px 14px' }}>
-          {renderPage()}
-        </div>
-      </div>
-    )
-  }
+  const activeItem = NAV_ITEMS.find(i => i.key === route)
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: C.bg, fontFamily: font }}>
-      {/* Persistent sidebar */}
-      <div style={{ width: 220, flexShrink: 0, background: C.sidebar, position: 'sticky', top: 0, height: '100vh' }}>
-        <SidebarContent />
+    <div style={{ fontFamily: font, background: C.bg, minHeight: '100vh' }}>
+      {/* Top bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: isMobile ? '12px 14px' : '12px 24px', background: C.sidebar,
+        position: 'sticky', top: 0, zIndex: 50, gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#64748B' }}>
+              GNSI Portal
+            </div>
+            <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
+              Attendance
+            </div>
+          </div>
+        </div>
+
+        {/* Nav dropdown trigger */}
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => setNavOpen(v => !v)} style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 14px', borderRadius: 9, border: 'none',
+            background: C.sidebarHover, color: '#fff', fontFamily: font,
+            fontWeight: 600, fontSize: 13.5, cursor: 'pointer',
+          }}>
+            {activeItem && <activeItem.icon size={15} />}
+            {activeItem?.label || 'Menu'}
+            <Icon.chevron size={12} style={{ transform: navOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .15s' }} />
+          </button>
+
+          {navOpen && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 60,
+              background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+              boxShadow: C.shadowMd, minWidth: 200, padding: 6,
+            }}>
+              {NAV_ITEMS.map(item => {
+                const active = route === item.key
+                return (
+                  <button key={item.key} onClick={() => navigateTo(item.key)} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                    padding: '9px 12px', borderRadius: 7, border: 'none',
+                    background: active ? C.indigoSoft : 'transparent',
+                    color: active ? C.indigo : C.ink,
+                    fontFamily: font, fontWeight: 600, fontSize: 13.5,
+                    cursor: 'pointer', textAlign: 'left',
+                  }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.bg }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <item.icon size={16} />
+                    {item.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main content */}
-      <div style={{ flex: 1, minWidth: 0, padding: '28px 32px', maxWidth: 1200 }}>
+      <div style={{ padding: isMobile ? '16px 14px' : '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
         {renderPage()}
       </div>
     </div>
