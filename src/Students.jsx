@@ -642,9 +642,26 @@ function AttendanceViewerModal({ student, onClose }) {
   useEffect(()=>{
     let cancelled=false
     const load=async()=>{
-      const{data:recs,error}=await supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).limit(300)
+      // Attendance.jsx writes student_id when available, but falls back to
+      // gcc_no/student_name matching for older records saved before that
+      // field existed. Match on all three here too, or students with
+      // legacy rows show "no records" even though they have history.
+      const gcc=student.gcc_no?String(student.gcc_no):null
+      const queries=[supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).limit(300)]
+      if(gcc)queries.push(supabase.from('attendance_records').select('status,session_id').eq('gcc_no',gcc).limit(300))
+      queries.push(supabase.from('attendance_records').select('status,session_id').eq('student_name',student.name).limit(300))
+      const results=await Promise.all(queries)
       if(cancelled)return
-      if(error||!recs?.length){setLoading(false);return}
+      const seen=new Set()
+      const recs=[]
+      results.forEach(({data})=>{
+        (data||[]).forEach(r=>{
+          const key=`${r.session_id}|${r.status}`
+          if(seen.has(key))return
+          seen.add(key);recs.push(r)
+        })
+      })
+      if(!recs.length){setLoading(false);return}
       const sessionIds=[...new Set(recs.map(r=>r.session_id))]
       const{data:sessions}=await supabase.from('attendance_sessions').select('id,session_date,subject_name,course').in('id',sessionIds)
       if(cancelled)return
@@ -658,7 +675,7 @@ function AttendanceViewerModal({ student, onClose }) {
     }
     load()
     return()=>{cancelled=true}
-  },[student.id])
+  },[student.id,student.gcc_no,student.name])
 
   const present=records.filter(r=>r.status==='Present').length
   const pct=records.length?((present+records.filter(r=>r.status==='Late').length*.5)/records.length*100).toFixed(1):null
@@ -2891,7 +2908,7 @@ export default function Students() {
   const [showHouseReassign,setShowHouseReassign]=useState(false)
   const [showMergeDups,setShowMergeDups]=useState(false)
   const [showReportGen,setShowReportGen]=useState(false)
-  const [quickAttend,setQuickAttend]=useState(null)
+  // quickAttend state removed with the legacy modal above
   const [showColPicker,setShowColPicker]=useState(false)
   const [showHousePills,setShowHousePills]=useState(false)
   const [showPresets,setShowPresets]=useState(false)
@@ -2964,15 +2981,39 @@ const effectiveCols = visibleCols.filter(col => {
 
   const loadDeleted=useCallback(async()=>{const{data}=await supabase.from('students').select('*').not('deleted_at','is',null).order('deleted_at',{ascending:false});setDeleted(data||[])},[])
 
-  const loadAttData=useCallback(async ids=>{
+  const loadAttData=useCallback(async(ids,studentRows=[])=>{
     if(!ids?.length)return
     try{
       // Wired to the real Attendance module's table: attendance_records
       // (not a separate "attendance" table). Present=1, Late=0.5, Absent/Leave=0.
-      const{data}=await supabase.from('attendance_records').select('student_id,status').in('student_id',ids)
-      if(!data)return
+      // Attendance.jsx falls back to gcc_no/student_name matching for records
+      // saved before student_id existed on a row — match all three here too,
+      // or students with older records show an artificially low/blank %.
+      const gccByStudentId={},nameByStudentId={}
+      studentRows.forEach(s=>{if(s.gcc_no)gccByStudentId[s.id]=String(s.gcc_no);nameByStudentId[s.id]=s.name})
+      const gccList=Object.values(gccByStudentId)
+      const nameList=Object.values(nameByStudentId)
+      const[byId,byGcc,byName]=await Promise.all([
+        supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('student_id',ids),
+        gccList.length?supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('gcc_no',gccList):Promise.resolve({data:[]}),
+        supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('student_name',nameList),
+      ])
+      const allRecs=[...(byId.data||[]),...(byGcc.data||[]),...(byName.data||[])]
+      if(!allRecs.length){const map={};ids.forEach(id=>map[id]=null);setAttData(map);return}
       const map={}
-      ids.forEach(id=>{const recs=data.filter(r=>r.student_id===id);if(!recs.length){map[id]=null;return};map[id]=(recs.filter(r=>r.status==='Present').length+recs.filter(r=>r.status==='Late').length*.5)/recs.length*100})
+      ids.forEach(id=>{
+        const gcc=gccByStudentId[id],name=nameByStudentId[id]
+        const seen=new Set()
+        const recs=allRecs.filter(r=>{
+          const matches=r.student_id===id||(gcc&&r.gcc_no===gcc)||(name&&r.student_name===name)
+          if(!matches)return false
+          const key=`${r.student_id}|${r.gcc_no}|${r.student_name}|${r.status}`
+          if(seen.has(key))return false
+          seen.add(key);return true
+        })
+        if(!recs.length){map[id]=null;return}
+        map[id]=(recs.filter(r=>r.status==='Present').length+recs.filter(r=>r.status==='Late').length*.5)/recs.length*100
+      })
       setAttData(map)
     }catch{}
   },[])
@@ -3036,7 +3077,7 @@ const effectiveCols = visibleCols.filter(col => {
     }catch(e){console.error('loadFeeData error',e)}
   },[])
 
-  useEffect(()=>{if(students.length){const ids=students.map(s=>s.id);loadFeeData(ids,students);loadAttData(ids);loadExamData(ids)}},[students])
+  useEffect(()=>{if(students.length){const ids=students.map(s=>s.id);loadFeeData(ids,students);loadAttData(ids,students);loadExamData(ids)}},[students])
   useEffect(()=>{loadAll()},[loadAll])
   useEffect(()=>{if(showDeleted)loadDeleted()},[showDeleted])
   useEffect(()=>{const h=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();searchRef.current?.focus()}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[])
@@ -3241,28 +3282,10 @@ const effectiveCols = visibleCols.filter(col => {
       {showMergeDups&&<MergeDuplicatesModal students={students} can={can} onClose={()=>setShowMergeDups(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showReportGen&&<ReportGeneratorModal students={students} feeData={feeData} attData={attData} examData={examData} houseOptions={houseOptions} can={can} role={role} onClose={()=>setShowReportGen(false)} showToast={showToast}/>}
 
-      {quickAttend&&(
-        <Modal onClose={()=>setQuickAttend(null)} width={320} title="Quick Attendance" subtitle={`${quickAttend.name} · ${new Date().toLocaleDateString('en-IN')}`}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-            {['Present','Absent','Late','Medical'].map(status=>{
-              const c={Present:T.green,Absent:T.red,Late:T.amber,Medical:T.sky}[status]
-              const bg={Present:T.greenLight,Absent:T.redLight,Late:T.amberLight,Medical:T.skyLight}[status]
-              return(
-                <button key={status} onClick={async()=>{
-                  const today=new Date().toISOString().slice(0,10)
-                  const{data:ex}=await supabase.from('attendance').select('*').eq('student_id',quickAttend.id).eq('date',today).single()
-                  if(ex)await supabase.from('attendance').update({status}).eq('id',ex.id)
-                  else await supabase.from('attendance').insert({student_id:quickAttend.id,date:today,status})
-                  await auditLog('quick_attend',{student_id:quickAttend.id,date:today,status})
-                  showToast(`Marked ${status}`,c);loadAttData([quickAttend.id]);setQuickAttend(null)
-                }} style={{padding:'14px',borderRadius:T.r8,border:`1px solid ${c}30`,background:bg,fontSize:14,fontWeight:600,cursor:'pointer',color:c,minHeight:52,fontFamily:'inherit'}}>
-                  {status==='Present'?'✓':status==='Absent'?'✗':status==='Late'?'⏰':'🏥'} {status}
-                </button>
-              )
-            })}
-          </div>
-        </Modal>
-      )}
+      {/* NOTE: legacy "Quick Attendance" modal removed — it wrote to a
+          non-existent "attendance" table and was no longer reachable from
+          any button. Mark attendance from the Attendance module itself;
+          the card's Attendance button now opens a read-only viewer. */}
 
       {/* Mobile export bottom sheet */}
       {showExportMenu&&isMobile&&(
