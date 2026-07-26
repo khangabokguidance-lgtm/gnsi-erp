@@ -822,6 +822,7 @@ function TabMark({ staff, prefill }) {
   const [search,      setSearch]      = useState('')
   const [batchId,     setBatchId]     = useState(null)
   const [showNotify,  setShowNotify]  = useState(false)
+  const [showReceipt, setShowReceipt] = useState(false)
   const [copying,     setCopying]     = useState(false)
 
   const subtypes = form.course ? COURSE_STRUCTURE[form.course] || [] : []
@@ -944,6 +945,7 @@ function TabMark({ staff, prefill }) {
     setSaving(false)
     if (e2) { setToast({ type:'error', msg: e2.message }); return }
     setShowNotify(true)
+    setShowReceipt(true)
     setToast({ type:'success', msg: `Saved attendance for ${students.length} students.` })
     setForm(prev => ({ ...prev, subject_name:'', teacher_name:'', staff_id:'', period_number:'', remarks:'' }))
   }
@@ -968,6 +970,7 @@ function TabMark({ staff, prefill }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <AttendanceAnimStyles />
 
       {/* Session config */}
       <Card>
@@ -1219,6 +1222,15 @@ function TabMark({ staff, prefill }) {
         </Card>
       )}
 
+      {/* Bold success receipt modal */}
+      {showReceipt && (
+        <ReceiptSuccessModal
+          count={students.length}
+          absentCount={absentStudents.length}
+          onClose={() => setShowReceipt(false)}
+        />
+      )}
+
       {/* Group report for WhatsApp */}
       {showNotify && (
         <WhatsAppReportPanel
@@ -1271,6 +1283,354 @@ function buildAttendanceReportText({ students, absentStudents, records, sessionI
   return lines.join('\n')
 }
 
+function buildAttendanceReportRows({ students, absentStudents, records, sessionInfo, counts }) {
+  const classLine = [sessionInfo.course, sessionInfo.subtype, sessionInfo.class_name].filter(Boolean).join(' · ')
+  const rows = absentStudents.map((s, i) => {
+    const status = records[s.student_id || s.student_name]
+    return {
+      sl: i + 1, name: s.student_name, gcc: s.gcc_no || '—',
+      hostel: s.hostel_type || '—', status: status || 'Absent',
+    }
+  })
+  return { classLine, rows }
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const a = document.createElement('a')
+  a.href = dataUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
+function buildReportHTML({ students, absentStudents, records, sessionInfo, counts }) {
+  const { classLine, rows } = buildAttendanceReportRows({ students, absentStudents, records, sessionInfo, counts })
+  const statusColor = st => st === 'Late' ? '#b45309' : st === 'Leave' ? '#7c3aed' : '#dc2626'
+  const rowsHtml = rows.length
+    ? rows.map(r => `<tr>
+        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;">${r.sl}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;font-weight:600;">${r.name}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;">${r.gcc}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;">${r.hostel}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;color:${statusColor(r.status)};font-weight:700;">${r.status}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="5" style="padding:16px;text-align:center;color:#94a3b8;">🎉 Full attendance — no absentees.</td></tr>`
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Attendance Report</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;background:white;padding:16mm 18mm}
+    .inst{font-size:19px;font-weight:900;color:#1a3a5c;font-family:Georgia,serif}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1a3a5c;padding-bottom:10px;margin-bottom:12px}
+    .rtype{font-size:11px;font-weight:900;color:white;background:#1a3a5c;padding:3px 12px;border-radius:5px;display:inline-block}
+    .meta{display:flex;gap:22px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px}
+    .mi{display:flex;flex-direction:column}
+    .mk{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
+    .mv{font-size:12.5px;font-weight:700;color:#1a3a5c}
+    .counts{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+    .cbox{flex:1;min-width:90px;text-align:center;border-radius:8px;padding:10px;font-weight:800}
+    table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:14px}
+    thead tr{background:#1a3a5c;color:white}
+    th{padding:8px 10px;text-align:left;font-weight:700;font-size:11.5px}
+    .foot{text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}
+    @media print{body{padding:0}.np{display:none}}
+    @media screen{body{background:#e2e8f0;padding:20px}
+      .wrap{background:white;padding:16mm 18mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:210mm;margin:0 auto}
+      .pbtn{position:fixed;top:16px;right:16px;background:#1a3a5c;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
+      .cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}
+  </style></head><body>
+  <button class="pbtn np" onclick="window.print()">Print / Save PDF</button>
+  <button class="cbtn np" onclick="window.close()">Close</button>
+  <div class="wrap">
+    <div class="hdr">
+      <div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div></div>
+      <div><span class="rtype">ATTENDANCE REPORT</span></div>
+    </div>
+    <div class="meta">
+      <div class="mi"><span class="mk">Date</span><span class="mv">${fmtDate(sessionInfo.session_date)}</span></div>
+      ${classLine ? `<div class="mi"><span class="mk">Class</span><span class="mv">${classLine}</span></div>` : ''}
+      ${sessionInfo.subject_name ? `<div class="mi"><span class="mk">Subject</span><span class="mv">${sessionInfo.subject_name}</span></div>` : ''}
+      ${sessionInfo.teacher_name ? `<div class="mi"><span class="mk">Teacher</span><span class="mv">${sessionInfo.teacher_name}</span></div>` : ''}
+      ${sessionInfo.period_number ? `<div class="mi"><span class="mk">Period</span><span class="mv">${sessionInfo.period_number}</span></div>` : ''}
+    </div>
+    <div class="counts">
+      <div class="cbox" style="background:#dcfce7;color:#15803d;">✅ Present<br/>${counts.Present || 0}</div>
+      <div class="cbox" style="background:#fee2e2;color:#dc2626;">❌ Absent<br/>${counts.Absent || 0}</div>
+      <div class="cbox" style="background:#fef3c7;color:#b45309;">⏱ Late<br/>${counts.Late || 0}</div>
+      <div class="cbox" style="background:#ede9fe;color:#7c3aed;">📝 Leave<br/>${counts.Leave || 0}</div>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>Student Name</th><th>GCC No.</th><th>Hostel Type</th><th>Status</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div class="foot">GNSI Portal · Generated ${new Date().toLocaleString('en-IN')} · CONFIDENTIAL</div>
+  </div>
+  </body></html>`
+}
+
+function drawReportToCanvas({ students, absentStudents, records, sessionInfo, counts }) {
+  const { classLine, rows } = buildAttendanceReportRows({ students, absentStudents, records, sessionInfo, counts })
+  const W = 900
+  const rowH = 30
+  const topH = 190
+  const H = topH + Math.max(rows.length, 1) * rowH + 60
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')
+
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, W, H)
+
+  // Header
+  ctx.fillStyle = '#1a3a5c'
+  ctx.font = '700 24px Georgia, serif'
+  ctx.fillText('Guidance Navodaya & Sainik Institute', 30, 40)
+  ctx.font = '700 12px Segoe UI, Arial'
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(W - 190, 20, 160, 26)
+  ctx.fillStyle = '#1a3a5c'
+  ctx.fillRect(W - 190, 20, 160, 26)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillText('ATTENDANCE REPORT', W - 178, 37)
+
+  ctx.strokeStyle = '#1a3a5c'
+  ctx.lineWidth = 2
+  ctx.beginPath(); ctx.moveTo(30, 55); ctx.lineTo(W - 30, 55); ctx.stroke()
+
+  // Meta
+  ctx.fillStyle = '#334155'
+  ctx.font = '600 14px Segoe UI, Arial'
+  const metaParts = [
+    `Date: ${fmtDate(sessionInfo.session_date)}`,
+    classLine ? `Class: ${classLine}` : null,
+    sessionInfo.subject_name ? `Subject: ${sessionInfo.subject_name}` : null,
+    sessionInfo.teacher_name ? `Teacher: ${sessionInfo.teacher_name}` : null,
+  ].filter(Boolean)
+  ctx.fillText(metaParts.join('   ·   '), 30, 82)
+
+  // Counts
+  const boxes = [
+    { label: '✅ Present', val: counts.Present || 0, bg: '#dcfce7', fg: '#15803d' },
+    { label: '❌ Absent', val: counts.Absent || 0, bg: '#fee2e2', fg: '#dc2626' },
+    { label: '⏱ Late', val: counts.Late || 0, bg: '#fef3c7', fg: '#b45309' },
+    { label: '📝 Leave', val: counts.Leave || 0, bg: '#ede9fe', fg: '#7c3aed' },
+  ]
+  const boxW = (W - 60 - 30) / 4
+  boxes.forEach((b, i) => {
+    const x = 30 + i * (boxW + 10)
+    ctx.fillStyle = b.bg
+    ctx.fillRect(x, 96, boxW, 46)
+    ctx.fillStyle = b.fg
+    ctx.font = '700 13px Segoe UI, Arial'
+    ctx.fillText(b.label, x + 10, 116)
+    ctx.font = '800 16px Segoe UI, Arial'
+    ctx.fillText(String(b.val), x + 10, 136)
+  })
+
+  // Table header
+  let y = 160
+  ctx.fillStyle = '#1a3a5c'
+  ctx.fillRect(30, y, W - 60, 28)
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '700 12px Segoe UI, Arial'
+  const cols = [{ x: 40, w: 30, label: '#' }, { x: 80, w: 320, label: 'Student Name' },
+    { x: 400, w: 120, label: 'GCC No.' }, { x: 520, w: 200, label: 'Hostel' }, { x: 720, w: 140, label: 'Status' }]
+  cols.forEach(c => ctx.fillText(c.label, c.x, y + 19))
+  y += 28
+
+  if (rows.length) {
+    rows.forEach((r, i) => {
+      ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#f8fafc'
+      ctx.fillRect(30, y, W - 60, rowH)
+      ctx.fillStyle = '#0f172a'
+      ctx.font = '600 13px Segoe UI, Arial'
+      ctx.fillText(String(r.sl), 40, y + 20)
+      ctx.fillText(r.name, 80, y + 20)
+      ctx.font = '400 13px Segoe UI, Arial'
+      ctx.fillText(r.gcc, 400, y + 20)
+      ctx.fillText(r.hostel, 520, y + 20)
+      ctx.fillStyle = r.status === 'Late' ? '#b45309' : r.status === 'Leave' ? '#7c3aed' : '#dc2626'
+      ctx.font = '700 13px Segoe UI, Arial'
+      ctx.fillText(r.status, 720, y + 20)
+      y += rowH
+    })
+  } else {
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '600 14px Segoe UI, Arial'
+    ctx.fillText('🎉 Full attendance — no absentees.', 30, y + 20)
+    y += rowH
+  }
+
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.beginPath(); ctx.moveTo(30, y + 10); ctx.lineTo(W - 30, y + 10); ctx.stroke()
+  ctx.fillStyle = '#94a3b8'
+  ctx.font = '400 11px Segoe UI, Arial'
+  ctx.fillText(`GNSI Portal · Generated ${new Date().toLocaleString('en-IN')}`, 30, y + 28)
+
+  return canvas
+}
+
+// ─── ANIMATIONS ────────────────────────────────────────────────
+
+function AttendanceAnimStyles() {
+  return (
+    <style>{`
+      @keyframes gnsi-backdrop-in { from { opacity: 0 } to { opacity: 1 } }
+      @keyframes gnsi-modal-pop {
+        0%   { transform: scale(.3) rotate(-8deg); opacity: 0 }
+        55%  { transform: scale(1.08) rotate(2deg); opacity: 1 }
+        75%  { transform: scale(.96) rotate(-1deg) }
+        100% { transform: scale(1) rotate(0deg) }
+      }
+      @keyframes gnsi-stamp {
+        0%   { transform: scale(2.4) rotate(-18deg); opacity: 0 }
+        60%  { transform: scale(0.9) rotate(-10deg); opacity: 1 }
+        80%  { transform: scale(1.08) rotate(-13deg) }
+        100% { transform: scale(1) rotate(-12deg); opacity: 1 }
+      }
+      @keyframes gnsi-check-draw {
+        from { stroke-dashoffset: 60 } to { stroke-dashoffset: 0 }
+      }
+      @keyframes gnsi-confetti-fall {
+        0%   { transform: translateY(-40px) rotate(0deg); opacity: 1 }
+        100% { transform: translateY(340px) rotate(540deg); opacity: 0 }
+      }
+      @keyframes gnsi-pulse-ring {
+        0%   { transform: scale(.7); opacity: .55 }
+        100% { transform: scale(1.9); opacity: 0 }
+      }
+      @keyframes gnsi-slide-up-fade {
+        from { transform: translateY(22px); opacity: 0 }
+        to   { transform: translateY(0);     opacity: 1 }
+      }
+      @keyframes gnsi-shimmer {
+        0%   { background-position: -200% 0 }
+        100% { background-position:  200% 0 }
+      }
+      .gnsi-receipt-enter { animation: gnsi-slide-up-fade .5s cubic-bezier(.2,.8,.3,1.15) both }
+    `}</style>
+  )
+}
+
+function ConfettiBurst() {
+  const colors = ['#fd1d1d', '#fcb045', '#833ab4', '#16a34a', '#2563eb', '#f472b6']
+  const pieces = useMemo(() => Array.from({ length: 36 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.35,
+    duration: 1.1 + Math.random() * 0.9,
+    size: 6 + Math.random() * 7,
+    color: colors[i % colors.length],
+    round: Math.random() > 0.5,
+  })), [])
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', borderRadius: 'inherit' }}>
+      {pieces.map(p => (
+        <div key={p.id} style={{
+          position: 'absolute', top: 0, left: `${p.left}%`,
+          width: p.size, height: p.size, background: p.color,
+          borderRadius: p.round ? '50%' : 2,
+          animation: `gnsi-confetti-fall ${p.duration}s ease-in ${p.delay}s both`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
+function ReceiptSuccessModal({ count, absentCount, onClose }) {
+  const isMobile = useIsMobile()
+  const presentCount = count - absentCount
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(15,23,41,.55)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20, animation: 'gnsi-backdrop-in .25s ease both',
+      }}
+    >
+
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'relative', width: isMobile ? '100%' : 380,
+          maxWidth: 400, background: '#fff', borderRadius: 20,
+          boxShadow: '0 24px 60px rgba(0,0,0,.35)', overflow: 'hidden',
+          animation: 'gnsi-modal-pop .6s cubic-bezier(.34,1.56,.64,1) both',
+        }}
+      >
+        <ConfettiBurst />
+
+        <div style={{
+          background: 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
+          padding: '30px 24px 22px', textAlign: 'center', position: 'relative',
+        }}>
+          <div style={{ position: 'relative', width: 84, height: 84, margin: '0 auto 10px' }}>
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              border: '3px solid rgba(255,255,255,.85)',
+              animation: 'gnsi-pulse-ring 1.4s ease-out .3s infinite',
+            }} />
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              background: 'rgba(255,255,255,.18)', border: '3px solid #fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              animation: 'gnsi-stamp .7s cubic-bezier(.34,1.56,.64,1) .15s both',
+            }}>
+              <svg width="40" height="40" viewBox="0 0 40 40">
+                <path d="M9 21 L17 29 L31 12" fill="none" stroke="#fff" strokeWidth="4.5"
+                  strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray="60" strokeDashoffset="60"
+                  style={{ animation: 'gnsi-check-draw .5s ease-out .55s forwards' }} />
+              </svg>
+            </div>
+          </div>
+          <div style={{ color: '#fff', fontWeight: 900, fontSize: 20, letterSpacing: '.01em' }}>
+            Attendance Saved!
+          </div>
+          <div style={{ color: 'rgba(255,255,255,.9)', fontSize: 12.5, marginTop: 3, fontWeight: 600 }}>
+            {count} students recorded
+          </div>
+        </div>
+
+        <div style={{ padding: '20px 24px 24px' }}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+            <div style={{
+              flex: 1, background: '#dcfce7', borderRadius: 12, padding: '12px 8px',
+              textAlign: 'center', animation: 'gnsi-slide-up-fade .4s ease .5s both',
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#15803d' }}>{presentCount}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.03em' }}>Present</div>
+            </div>
+            <div style={{
+              flex: 1, background: absentCount ? '#fee2e2' : '#f1f5f9', borderRadius: 12, padding: '12px 8px',
+              textAlign: 'center', animation: 'gnsi-slide-up-fade .4s ease .6s both',
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: absentCount ? '#dc2626' : '#94a3b8' }}>{absentCount}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: absentCount ? '#dc2626' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '.03em' }}>Absent</div>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              width: '100%', minHeight: 46, borderRadius: 12, border: 'none',
+              background: 'linear-gradient(135deg, #1a3a5c, #24527a)', color: '#fff',
+              fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: '.02em',
+              animation: 'gnsi-slide-up-fade .4s ease .7s both',
+            }}
+          >
+            View Receipt &amp; Report ↓
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, counts }) {
   const isMobile = useIsMobile()
   const [copied, setCopied] = useState(false)
@@ -1294,31 +1654,88 @@ function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, c
     window.open(`https://wa.me/?text=${encodeURIComponent(reportText)}`, '_blank')
   }
 
+  const downloadPDF = () => {
+    const html = buildReportHTML({ students, absentStudents, records, sessionInfo, counts })
+    const win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes')
+    if (!win) { alert('Allow pop-ups to generate the PDF report'); return }
+    win.document.write(html)
+    win.document.close()
+  }
+
+  const downloadJPEG = () => {
+    const canvas = drawReportToCanvas({ students, absentStudents, records, sessionInfo, counts })
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+    const fname = `Attendance_${sessionInfo.session_date || today()}_${(sessionInfo.class_name || sessionInfo.course || 'report').replace(/\s+/g, '_')}.jpg`
+    downloadDataUrl(dataUrl, fname)
+  }
+
+  const scallops = 22
+  const scallopSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='100' height='10' viewBox='0 0 100 10'><path d='M0,10 Q4,0 8,10 T16,10 T24,10 T32,10 T40,10 T48,10 T56,10 T64,10 T72,10 T80,10 T88,10 T96,10 T104,10 Z' fill='%23ffffff'/></svg>`
+
   return (
-    <Card style={{ border: `1.5px solid #bbf7d0` }}>
-      <CardHeader
-        icon="🟢"
-        title="WhatsApp group report"
-        subtitle="Share this after every attendance session"
-        accent="#15803d"
-      />
-      <div style={{ padding: isMobile ? '12px 16px' : '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="gnsi-receipt-enter" style={{ animationDelay: '.05s', maxWidth: 480, margin: '0 auto', width: '100%' }}>
+      <div style={{
+        background: '#fffdf8',
+        borderRadius: '2px 2px 0 0',
+        boxShadow: '0 10px 30px rgba(15,23,41,.14), 0 2px 8px rgba(15,23,41,.08)',
+        position: 'relative', overflow: 'hidden',
+        border: '1px solid #eee6d5', borderBottom: 'none',
+      }}>
+        {/* Receipt header strip */}
         <div style={{
-          background: T.gray50, border: `1.5px solid ${T.gray150}`,
-          borderRadius: 9, padding: '12px 14px',
-          whiteSpace: 'pre-wrap', fontSize: 12.5, color: T.gray700, lineHeight: 1.7,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          maxHeight: 360, overflowY: 'auto',
+          background: 'linear-gradient(135deg, #1a3a5c 0%, #24527a 100%)',
+          padding: '18px 22px 16px', textAlign: 'center', color: '#fff', position: 'relative',
         }}>
-          {reportText}
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.15em', opacity: .8, marginBottom: 3 }}>GNSI · OFFICIAL</div>
+          <div style={{ fontSize: 17, fontWeight: 900, fontFamily: 'Georgia, serif', letterSpacing: '.01em' }}>Attendance Receipt</div>
+          <div style={{ fontSize: 11.5, opacity: .85, marginTop: 4, fontWeight: 600 }}>
+            {fmtDate(sessionInfo.session_date)}{sessionInfo.class_name ? ` · ${sessionInfo.class_name}` : ''}
+          </div>
+          <span style={{
+            position: 'absolute', top: 10, right: 14, fontSize: 22,
+            animation: 'gnsi-slide-up-fade .4s ease .3s both',
+          }}>🧾</span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+        {/* Ticker body */}
+        <div style={{ padding: '18px 22px 8px' }}>
+          <div style={{
+            background: '#fffefb', border: '1px dashed #d8cfb8',
+            borderRadius: 8, padding: '14px 16px',
+            whiteSpace: 'pre-wrap', fontSize: 12.5, color: '#3d3527', lineHeight: 1.75,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            maxHeight: 360, overflowY: 'auto',
+            animation: 'gnsi-slide-up-fade .45s ease .12s both',
+          }}>
+            {reportText}
+          </div>
+        </div>
+
+        {/* Perforation */}
+        <div style={{
+          margin: '4px 0', height: 0, borderTop: '2.5px dashed #d8cfb8', position: 'relative',
+        }}>
+          <div style={{ position: 'absolute', left: -13, top: -11, width: 22, height: 22, borderRadius: '50%', background: T.gray50 }} />
+          <div style={{ position: 'absolute', right: -13, top: -11, width: 22, height: 22, borderRadius: '50%', background: T.gray50 }} />
+        </div>
+
+        {/* Actions */}
+        <div style={{
+          padding: '14px 22px 20px', display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap',
+          animation: 'gnsi-slide-up-fade .45s ease .22s both',
+        }}>
           <Btn variant="ghost" onClick={copyReport}>{copied ? '✓ Copied' : '📋 Copy report'}</Btn>
+          <Btn variant="ghost" onClick={downloadJPEG}>🖼️ JPEG</Btn>
+          <Btn variant="ghost" onClick={downloadPDF}>📄 PDF</Btn>
           <Btn variant="whatsapp" onClick={shareWhatsApp}>🟢 Share to WhatsApp</Btn>
         </div>
       </div>
-    </Card>
+      {/* Serrated bottom edge */}
+      <div style={{
+        height: 12, background: `repeating-linear-gradient(-45deg, #fffdf8 0, #fffdf8 7px, transparent 7px, transparent 14px)`,
+        borderLeft: '1px solid #eee6d5', borderRight: '1px solid #eee6d5',
+      }} />
+    </div>
   )
 }
 
