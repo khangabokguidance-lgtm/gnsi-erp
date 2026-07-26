@@ -250,14 +250,40 @@ function isRecentlyAdded(createdAt) {
   if (!createdAt) return false
   return Date.now()-new Date(createdAt).getTime() < 7*24*60*60*1000
 }
+ // Comprehensive field completeness model — used by the card badge, the Data
+ // Quality tab, and the dashboard summary card. Fields are weighted so core
+ // identity/contact data counts more than optional notes; the total gives a
+ // 0–100% completeness score per student.
+ const COMPLETENESS_FIELDS = [
+   { key:'gcc_no',            label:'GCC No.',          weight:3, pii:false },
+   { key:'dob',                label:'DOB',              weight:3, pii:false },
+   { key:'gender',             label:'Gender',           weight:1, pii:false },
+   { key:'course',             label:'Course',           weight:3, pii:false },
+   { key:'batch',              label:'Batch',            weight:2, pii:false },
+   { key:'house',              label:'House',            weight:1, pii:false },
+   { key:'admission_date',     label:'Admission Date',   weight:2, pii:false },
+   { key:'phone',              label:'Phone',            weight:2, pii:true  },
+   { key:'father_name',        label:'Father\'s Name',   weight:2, pii:true  },
+   { key:'mother_name',        label:'Mother\'s Name',   weight:1, pii:true  },
+   { key:'emergency_contact',  label:'Emergency Contact',weight:2, pii:true  },
+   { key:'address',            label:'Address',          weight:1, pii:true  },
+   { key:'prev_school',        label:'Previous School',  weight:1, pii:false },
+ ]
  function getMissingFields(s, viewPII = false) {
-  const m = []
-  if (!s.gcc_no)           m.push('GCC')
-  if (!s.dob)              m.push('DOB')
-  if (viewPII && !s.phone) m.push('Phone')
-  if (!s.course)           m.push('Course')
-  return m
-}
+   return COMPLETENESS_FIELDS
+     .filter(f => (!f.pii || viewPII) && !s[f.key])
+     .map(f => f.label)
+ }
+ function getCompletenessScore(s, viewPII = true) {
+   const applicable = COMPLETENESS_FIELDS.filter(f => !f.pii || viewPII)
+   const totalWeight = applicable.reduce((a,f)=>a+f.weight,0)
+   const filledWeight = applicable.filter(f=>!!s[f.key]).reduce((a,f)=>a+f.weight,0)
+   return totalWeight ? Math.round((filledWeight/totalWeight)*100) : 100
+ }
+ function getMissingFieldKeys(s, viewPII = true) {
+   return COMPLETENESS_FIELDS.filter(f => (!f.pii || viewPII) && !s[f.key])
+ }
+
 function getAge(dob) {
   if (!dob) return null
   const today=new Date(), birth=new Date(dob)
@@ -2501,7 +2527,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
 }
 
 // ─── Student Dashboard Tab ────────────────────────────────────────────────────
-function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, onOpenFee }) {
+function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, onOpenFee, onNavigate }) {
   const isMobile = useIsMobile()
   const col2 = isMobile ? '1fr' : '1fr 1fr'
   const n = v => Number(v || 0).toLocaleString('en-IN')
@@ -2515,6 +2541,7 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
   const female      = students.filter(s => s.gender === 'Female')
   const repeaters   = students.filter(s => s.is_repeater)
   const missingInfo = students.filter(s => getMissingFields(s).length > 0)
+  const avgCompleteness = students.length ? Math.round(students.reduce((a,s)=>a+getCompletenessScore(s),0)/students.length) : 100
 
   // ── Attendance buckets ──────────────────────────────────────────────────────
   const withAtt = students.filter(s => attData[s.id] != null)
@@ -2869,7 +2896,10 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
         <div style={{ background: T.surface, borderRadius: T.r12, border: `1px solid ${T.violetBorder}`, overflow: 'hidden', boxShadow: T.shadow }}>
           <div style={{ background: T.violetLight, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${T.violetBorder}` }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: T.violet }}>⚠ Incomplete Profiles</div>
-            <span style={{ fontSize: 10, fontWeight: 800, background: T.violet, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{missingInfo.length}</span>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: T.violet }}>Avg {avgCompleteness}%</span>
+              <span style={{ fontSize: 10, fontWeight: 800, background: T.violet, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{missingInfo.length}</span>
+            </div>
           </div>
           <AlertList
             items={missingInfo.slice(0, 8)}
@@ -2877,10 +2907,17 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
             emptyMsg="✅ All profiles complete"
             keyFn={s => s.id}
             nameFn={s => s.name}
-            subFn={s => `Missing: ${getMissingFields(s).join(', ')}`}
+            subFn={s => `${getCompletenessScore(s)}% complete · Missing: ${getMissingFields(s).join(', ')}`}
             btnLabel="Edit"
             onBtn={onOpenDetail}
           />
+          {onNavigate&&missingInfo.length>0&&(
+            <div style={{padding:'10px 16px',borderTop:`1px solid ${T.violetBorder}`}}>
+              <Btn onClick={()=>onNavigate('dataQuality')} size='sm' style={{width:'100%',justifyContent:'center',color:T.violet,borderColor:T.violetBorder}}>
+                View all {missingInfo.length} in Data Quality →
+              </Btn>
+            </div>
+          )}
         </div>
 
         <div style={{ background: T.surface, borderRadius: T.r12, border: '1px solid #fcd34d', overflow: 'hidden', boxShadow: T.shadow }}>
@@ -2935,6 +2972,176 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
     </div>
   )
 }
+// ─── Data Quality Tab ─────────────────────────────────────────────────────────
+// Comprehensive, database-wide completeness worklist. Every student gets a
+// weighted completeness score (see COMPLETENESS_FIELDS above); this tab lists
+// them worst-first so staff can systematically fill in what's missing.
+
+function CompletenessBar({ pct }) {
+  const color = pct>=90?T.green:pct>=60?T.amber:T.red
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:8,minWidth:100}}>
+      <div style={{flex:1,height:6,background:T.border,borderRadius:3,overflow:'hidden'}}>
+        <div style={{height:'100%',width:`${pct}%`,background:color,borderRadius:3,transition:'width .3s'}}/>
+      </div>
+      <span style={{fontSize:12,fontWeight:700,color,minWidth:34,textAlign:'right'}}>{pct}%</span>
+    </div>
+  )
+}
+
+function DataQualityRow({ student, can, onQuickSave, viewPII }) {
+  const [expanded,setExpanded]=useState(false)
+  const [form,setForm]=useState({})
+  const [saving,setSaving]=useState(false)
+  const missing=getMissingFieldKeys(student,viewPII)
+  const pct=getCompletenessScore(student,viewPII)
+
+  const startEdit=()=>{
+    const init={}
+    missing.forEach(f=>init[f.key]=student[f.key]||(f.key==='gender'?'Male':''))
+    setForm(init);setExpanded(true)
+  }
+
+  const save=async()=>{
+    setSaving(true)
+    await onQuickSave(student.id,form)
+    setSaving(false);setExpanded(false)
+  }
+
+  const INP={width:'100%',padding:'7px 10px',borderRadius:T.r6,border:`1px solid ${T.border2}`,fontSize:13,background:T.surface,color:T.text1,height:32,fontFamily:'inherit',boxSizing:'border-box'}
+
+  return (
+    <div style={{border:`1px solid ${T.border}`,borderRadius:T.r10,overflow:'hidden',marginBottom:8}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',flexWrap:'wrap'}}>
+        <Avatar name={student.name} photoUrl={student.photo_url} size={30}/>
+        <div style={{flex:1,minWidth:140}}>
+          <div style={{fontSize:13,fontWeight:600,color:T.text1}}>{student.name}</div>
+          <div style={{fontSize:11,color:T.text4}}>{student.gcc_no?`GCC-${student.gcc_no}`:'No GCC'}{student.batch?` · ${student.batch}`:''}</div>
+        </div>
+        <div style={{width:120}}><CompletenessBar pct={pct}/></div>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+          {missing.slice(0,3).map(f=>(
+            <span key={f.key} style={{fontSize:9.5,fontWeight:700,padding:'2px 7px',borderRadius:T.r4,background:T.amberLight,color:T.amber}}>{f.label}</span>
+          ))}
+          {missing.length>3&&<span style={{fontSize:9.5,color:T.text4}}>+{missing.length-3} more</span>}
+        </div>
+        <IfCan can={can.write}>
+          <Btn size='sm' variant='primary' onClick={expanded?()=>setExpanded(false):startEdit}>{expanded?'Close':'Complete'}</Btn>
+        </IfCan>
+      </div>
+      {expanded&&(
+        <div style={{padding:'12px 14px',borderTop:`1px solid ${T.border}`,background:T.surface2}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10,marginBottom:12}}>
+            {missing.map(f=>(
+              <FieldRow key={f.key} label={f.label}>
+                {f.key==='gender'?(
+                  <select value={form[f.key]||''} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} style={INP}>
+                    <option>Male</option><option>Female</option>
+                  </select>
+                ):f.key==='dob'||f.key==='admission_date'?(
+                  <input type="date" value={form[f.key]||''} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} style={INP}/>
+                ):f.key==='course'?(
+                  <select value={form[f.key]||''} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} style={INP}>
+                    <option value="">Select…</option>
+                    {COURSES.map(c=><option key={c}>{c}</option>)}
+                  </select>
+                ):(
+                  <input value={form[f.key]||''} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} style={INP}/>
+                )}
+              </FieldRow>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <Btn variant='primary' size='sm' disabled={saving} onClick={save}>{saving?'Saving…':'Save'}</Btn>
+            <Btn size='sm' onClick={()=>setExpanded(false)}>Cancel</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DataQualityTab({ students, can, onQuickSave }) {
+  const isMobile=useIsMobile()
+  const [search,setSearch]=useState('')
+  const [filterField,setFilterField]=useState('All')
+  const viewPII=can.viewPII
+
+  const scored=students.map(s=>({s,pct:getCompletenessScore(s,viewPII),missing:getMissingFieldKeys(s,viewPII)}))
+    .filter(x=>x.missing.length>0)
+    .sort((a,b)=>a.pct-b.pct)
+
+  const filtered=scored.filter(({s,missing})=>{
+    if(search&&!s.name.toLowerCase().includes(search.toLowerCase())&&!(s.gcc_no||'').includes(search))return false
+    if(filterField!=='All'&&!missing.some(f=>f.label===filterField))return false
+    return true
+  })
+
+  const avgPct=students.length?Math.round(students.reduce((a,s)=>a+getCompletenessScore(s,viewPII),0)/students.length):100
+  const fullyComplete=students.length-scored.length
+  const fieldCounts={}
+  scored.forEach(({missing})=>missing.forEach(f=>{fieldCounts[f.label]=(fieldCounts[f.label]||0)+1}))
+  const topGaps=Object.entries(fieldCounts).sort((a,b)=>b[1]-a[1]).slice(0,6)
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:16}}>
+      <div>
+        <div style={{fontSize:isMobile?18:22,fontWeight:800,color:T.text1,letterSpacing:'-.02em'}}>Data Quality</div>
+        <div style={{fontSize:12.5,color:T.text3,marginTop:2}}>Complete student records systematically — worst first</div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:10}}>
+        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
+          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Avg Completeness</div>
+          <div style={{fontSize:24,fontWeight:800,color:avgPct>=90?T.green:avgPct>=60?T.amber:T.red,marginTop:4}}>{avgPct}%</div>
+        </div>
+        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
+          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Fully Complete</div>
+          <div style={{fontSize:24,fontWeight:800,color:T.green,marginTop:4}}>{fullyComplete}</div>
+        </div>
+        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
+          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Needs Attention</div>
+          <div style={{fontSize:24,fontWeight:800,color:T.red,marginTop:4}}>{scored.length}</div>
+        </div>
+        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
+          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Total Students</div>
+          <div style={{fontSize:24,fontWeight:800,color:T.text1,marginTop:4}}>{students.length}</div>
+        </div>
+      </div>
+
+      {topGaps.length>0&&(
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em'}}>Most common gaps</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {topGaps.map(([label,count])=>(
+              <button key={label} onClick={()=>setFilterField(f=>f===label?'All':label)} style={{
+                padding:'5px 12px',borderRadius:T.r24,border:`1.5px solid ${filterField===label?T.amber:T.border}`,
+                background:filterField===label?T.amberLight:T.surface,color:filterField===label?T.amber:T.text2,
+                fontSize:11.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+              }}>{label} ({count})</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or GCC…" style={{flex:1,minWidth:200,padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:13,background:T.surface,color:T.text1,fontFamily:'inherit'}}/>
+        {filterField!=='All'&&<Btn size='sm' onClick={()=>setFilterField('All')}>✕ {filterField}</Btn>}
+      </div>
+
+      <div>
+        {filtered.length===0?(
+          <div style={{textAlign:'center',padding:'40px 0',color:T.text4,fontSize:13}}>
+            {scored.length===0?'🎉 Every student record is complete.':'No students match this filter.'}
+          </div>
+        ):(
+          filtered.map(({s})=><DataQualityRow key={s.id} student={s} can={can} onQuickSave={onQuickSave} viewPII={viewPII}/>)
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Students() {
   const { role, can, user }=usePermissions()
@@ -3160,6 +3367,19 @@ const effectiveCols = visibleCols.filter(col => {
       await auditLog('student_create',{student_id:data.id,gcc_no:data.gcc_no});showToast(`${data.name} added`,T.green)
     }
     setFormOpen(false);setEditing(null)
+  }
+
+  // Partial update used by the Data Quality tab — patches only the specific
+  // fields being completed, unlike handleSave which expects a full form payload.
+  const handleQuickSave=async(studentId,fields)=>{
+    if(!can.write){showToast('No permission',T.red);return}
+    const payload={...fields}
+    if(payload.gcc_no!==undefined)payload.gcc_no=parseInt(payload.gcc_no)||null
+    const{error}=await supabase.from('students').update(payload).eq('id',studentId)
+    if(error){showToast('Update failed: '+error.message,T.red);return}
+    setStudents(prev=>prev.map(s=>s.id===studentId?{...s,...payload}:s))
+    await auditLog('student_quick_complete',{student_id:studentId,fields:Object.keys(fields)})
+    showToast('Details saved',T.green)
   }
 
   const handleClone=student=>{
@@ -3400,9 +3620,9 @@ const effectiveCols = visibleCols.filter(col => {
           </div>
         </div>
 
-        {/* Page-level tabs — Dashboard / Students */}
+        {/* Page-level tabs — Dashboard / Students / Data Quality */}
         <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`}}>
-          {[{key:'dashboard',label:'🏠 Dashboard'},{key:'students',label:'🎓 Students'}].map(t=>(
+          {[{key:'dashboard',label:'🏠 Dashboard'},{key:'students',label:'🎓 Students'},{key:'dataQuality',label:'✅ Data Quality'}].map(t=>(
             <button key={t.key} onClick={()=>setPageTab(t.key)} style={{
               padding:'10px 18px', border:'none', background:'none', cursor:'pointer',
               fontSize:14, fontWeight:700, fontFamily:'inherit',
@@ -3447,7 +3667,12 @@ const effectiveCols = visibleCols.filter(col => {
             feeData={feeData}
             onOpenDetail={setDetailPanel}
             onOpenFee={setFeePanel}
+            onNavigate={setPageTab}
           />
+        )}
+
+        {pageTab==='dataQuality'&&(
+          <DataQualityTab students={students} can={can} onQuickSave={handleQuickSave}/>
         )}
 
         {pageTab==='students'&&(<>
