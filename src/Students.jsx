@@ -2130,10 +2130,18 @@ function StudentForm({ onSave, onCancel, editing, allStudents }) {
 }
 
 // ─── Student Row (list view) ──────────────────────────────────────────────────
-function StudentRow({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuickAttend, onExamEntry, onClone, feeData, attData, examData, density, visibleCols, selected, onSelect }) {
-  const d=DENSITY[density]||DENSITY.comfortable
-  const show=col=>visibleCols.includes(col)
-  const isSel=selected.has(s.id)
+// ─── Facebook-style Student Card ────────────────────────────────────────────
+// Replaces the dense table row with a profile-card feed item: cover strip,
+// centered avatar overlapping it, name/meta below, and an action bar along
+// the bottom — mirrors a Facebook profile card's visual rhythm while keeping
+// every original action (Profile/Edit/Fee/Exam/Attendance/Clone/Delete).
+
+function courseAccent(course) {
+  const cs = COURSE_STRUCTURE[course]
+  return cs?.color || T.brand
+}
+
+function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuickAttend, onExamEntry, onClone, feeData, attData, examData, selected, onSelect }) {
   const isMobile=useIsMobile()
   const [overflow,setOverflow]=useState(false)
   const att=attData[s.id]
@@ -2141,102 +2149,123 @@ function StudentRow({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuick
   const missing=getMissingFields(s, can.viewPII)
   const birthday=isBirthdayToday(s.dob)
   const recent=isRecentlyAdded(s.created_at)
+  const isSel=selected.has(s.id)
+  const accent=courseAccent(s.course)
+
+  const ACTIONS=[
+    {l:'Profile',icon:'👤',fn:()=>onOpenDetail(s),show:true,primary:true},
+    {l:'Edit',icon:'✏️',fn:()=>onEdit(s),show:can.write},
+    {l:'Fee',icon:'💰',fn:()=>onOpenFee(s),show:can.fees},
+    {l:'Exam',icon:'📚',fn:()=>onExamEntry(s),show:can.exams},
+    {l:'Attend',icon:'📅',fn:()=>onQuickAttend(s),show:can.attend},
+    {l:'Clone',icon:'📋',fn:()=>onClone(s),show:can.write},
+    {l:'Delete',icon:'🗑️',fn:()=>onDelete(s),show:can.write,danger:true},
+  ].filter(a=>a.show)
 
   return (
     <div style={{
-      background:isSel?T.brandLight:T.surface,
-      border:`1px solid ${isSel?T.brandBorder:birthday?`${T.orange}30`:T.border}`,
-      borderRadius:T.r10,
-      padding:`${d.py} 14px`,
-      display:'flex',alignItems:'center',gap:10,
-      transition:'border-color .12s,background .12s',
-      position:'relative',
+      background:T.surface, borderRadius:T.r12,
+      border:`1px solid ${isSel?T.brandBorder:T.border}`,
+      boxShadow:isSel?`0 0 0 2px ${T.brandLight}`:T.shadow,
+      overflow:'hidden', position:'relative', transition:'box-shadow .15s',
     }}>
-      {/* Status stripe */}
-      <div style={{position:'absolute',left:0,top:6,bottom:6,width:3,borderRadius:'0 2px 2px 0',background:STATUS_CFG[s.status]?.dot||T.border,opacity:.8}}/>
-
-      <input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();onSelect(s.id)}} onClick={e=>e.stopPropagation()}
-        style={{width:15,height:15,cursor:'pointer',accentColor:T.brand,flexShrink:0,marginLeft:6}}/>
-
-      <Avatar name={s.name} photoUrl={s.photo_url} size={isMobile?30:d.avatarSize}/>
-
-      {/* Main info */}
-      <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>onOpenDetail(s)}>
-        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:2}}>
-          <span style={{fontWeight:600,fontSize:d.fontSize,color:T.text1,letterSpacing:'-.01em'}}>{s.name}</span>
-          {birthday&&<span style={{fontSize:11}}>🎂</span>}
-          {recent&&<span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:T.r4,background:T.tealLight,color:T.teal,border:`1px solid ${T.tealBorder}`}}>NEW</span>}
-          {missing.length>0&&<span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:T.r4,background:T.amberLight,color:T.amber,border:`1px solid ${T.amberBorder}`}}>⚠ Missing: {missing.join(', ')}</span>}
-        </div>
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-          {show('gcc_no')&&s.gcc_no&&<span style={{fontSize:11,color:T.text4}}>GCC-{s.gcc_no}</span>}
-          {show('batch')&&s.batch&&<span style={{fontSize:11,color:T.text2,fontWeight:600}}>{s.batch}</span>}
-          {!isMobile&&show('session')&&s.session&&<span style={{fontSize:11,color:T.brand,fontWeight:600}}>{s.session}</span>}
-          {!isMobile&&show('house')&&s.house&&<HousePill house={s.house}/>}
-          {!isMobile&&show('course')&&s.course&&<CoursePill course={s.course}/>}
-          {show('status')&&s.status&&<StatusPill status={s.status}/>}
+      {/* Cover strip — course-colored gradient, stands in for a "cover photo" */}
+      <div style={{
+        height:52, background:`linear-gradient(135deg,${accent}cc,${accent}55)`,
+        position:'relative',
+      }}>
+        <input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();onSelect(s.id)}} onClick={e=>e.stopPropagation()}
+          style={{position:'absolute',top:8,left:8,width:15,height:15,cursor:'pointer',accentColor:'#fff'}}/>
+        <div style={{position:'absolute',top:8,right:8}}>
+          <StatusPill status={s.status}/>
         </div>
       </div>
 
-      {/* Attendance bar */}
-      {!isMobile&&show('attendance')&&<div style={{width:100,flexShrink:0}}><AttBar pct={att}/></div>}
-
-      {/* Fee */}
-      {show('fee_dues')&&(
-        <div style={{flexShrink:0,minWidth:52,textAlign:'right'}}>
-          {dues>0?<span style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:T.r6,background:T.redLight,color:T.red,border:`1px solid ${T.redBorder}`,whiteSpace:'nowrap'}}>₹{fmt(dues)}</span>
-          :feeData[s.id]?<span style={{fontSize:11,fontWeight:600,color:T.green}}>✓ Clear</span>:null}
+      {/* Avatar overlapping the cover, centered like a profile header */}
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 14px',marginTop:-30}}>
+        <div style={{position:'relative'}}>
+          <div style={{padding:3,background:T.surface,borderRadius:'50%'}}>
+            <Avatar name={s.name} photoUrl={s.photo_url} size={64}/>
+          </div>
+          {birthday&&<span style={{position:'absolute',bottom:-2,right:-2,fontSize:16}}>🎂</span>}
         </div>
-      )}
 
-      {/* Actions */}
-      {isMobile?(
-        <div style={{position:'relative',flexShrink:0}}>
-          <Btn onClick={e=>{e.stopPropagation();setOverflow(v=>!v)}} size='sm' style={{fontSize:16,padding:'5px 10px'}}>⋯</Btn>
-          {overflow&&(
-            <>
-              <div style={{position:'fixed',inset:0,zIndex:99997,background:'rgba(15,23,42,.4)'}} onClick={()=>setOverflow(false)}/>
-              <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:99998,background:T.surface,borderTop:`1px solid ${T.border}`,borderRadius:`${T.r20} ${T.r20} 0 0`,padding:'16px 16px 32px',animation:'slideUp .2s ease'}} onClick={e=>e.stopPropagation()}>
-                <div style={{width:32,height:3,background:T.border2,borderRadius:2,margin:'0 auto 14px',opacity:.6}}/>
-                <div style={{fontWeight:700,fontSize:14,color:T.text1,marginBottom:14}}>{s.name}</div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                  {[
-                    {l:'View Profile',fn:()=>{onOpenDetail(s);setOverflow(false)},bg:T.brandLight,color:T.brand,border:T.brandBorder},
-                    can.write&&{l:'Edit',fn:()=>{onEdit(s);setOverflow(false)},bg:T.surface2,color:T.text1,border:T.border},
-                    can.fees&&{l:'Collect Fee',fn:()=>{onOpenFee(s);setOverflow(false)},bg:T.greenLight,color:T.green,border:T.greenBorder},
-                    can.exams&&{l:'Exam Score',fn:()=>{onExamEntry(s);setOverflow(false)},bg:T.violetLight,color:T.violet,border:T.violetBorder},
-                    can.attend&&{l:'Attendance',fn:()=>{onQuickAttend(s);setOverflow(false)},bg:T.skyLight,color:T.sky,border:T.skyBorder},
-                    can.write&&{l:'Clone',fn:()=>{onClone(s);setOverflow(false)},bg:T.amberLight,color:T.amber,border:T.amberBorder},
-                    can.write&&{l:'Delete',fn:()=>{onDelete(s);setOverflow(false)},bg:T.redLight,color:T.red,border:T.redBorder},
-                  ].filter(Boolean).map((item,i)=>(
-                    <button key={i} onClick={item.fn} style={{padding:'13px',borderRadius:T.r8,border:`1px solid ${item.border}`,background:item.bg,color:item.color,fontSize:13,fontWeight:600,cursor:'pointer',minHeight:48,fontFamily:'inherit'}}>
-                      {item.l}
-                    </button>
-                  ))}
-                </div>
-                <Btn onClick={()=>setOverflow(false)} style={{width:'100%',justifyContent:'center',marginTop:10}}>Close</Btn>
-              </div>
-            </>
+        <div style={{textAlign:'center',marginTop:8,cursor:'pointer'}} onClick={()=>onOpenDetail(s)}>
+          <div style={{display:'flex',alignItems:'center',gap:5,justifyContent:'center',flexWrap:'wrap'}}>
+            <span style={{fontWeight:700,fontSize:15,color:T.text1,letterSpacing:'-.01em'}}>{s.name}</span>
+            {recent&&<span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:T.r4,background:T.tealLight,color:T.teal,border:`1px solid ${T.tealBorder}`}}>NEW</span>}
+          </div>
+          <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>
+            {s.gcc_no&&`GCC-${s.gcc_no} · `}{s.batch}
+          </div>
+          <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginTop:6}}>
+            {s.course&&<CoursePill course={s.course}/>}
+            {s.house&&<HousePill house={s.house}/>}
+          </div>
+          {missing.length>0&&(
+            <div style={{marginTop:6,fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:T.r4,background:T.amberLight,color:T.amber,border:`1px solid ${T.amberBorder}`,display:'inline-block'}}>
+              ⚠ Missing: {missing.join(', ')}
+            </div>
           )}
         </div>
-      ):(
-        <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:4}}>
-          <Btn onClick={()=>onOpenDetail(s)} variant='primary' size='sm'>Profile</Btn>
-          <IfCan can={can.write}><Btn onClick={()=>onEdit(s)} size='sm'>Edit</Btn></IfCan>
-          <IfCan can={can.fees}>
-            <Btn onClick={e=>{e.stopPropagation();onOpenFee(s)}} variant='success' size='sm'>+₹</Btn>
-          </IfCan>
-          <IfCan can={can.exams}>
-            <Btn onClick={e=>{e.stopPropagation();onExamEntry(s)}} size='sm' style={{color:T.violet}}>📚</Btn>
-          </IfCan>
-          <IfCan can={can.attend}>
-            <Btn onClick={e=>{e.stopPropagation();onQuickAttend(s)}} size='sm' style={{color:T.sky}}>📅</Btn>
-          </IfCan>
-          <IfCan can={can.write}>
-            <Btn onClick={()=>onClone(s)} size='sm' style={{color:T.amber}}>📋</Btn>
-            <Btn onClick={()=>onDelete(s)} variant='danger' size='sm'>Delete</Btn>
-          </IfCan>
+
+        {/* Mini stat row — attendance + fee, like FB's friend-count/mutuals line */}
+        <div style={{display:'flex',gap:14,marginTop:10,alignItems:'center'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:9.5,color:T.text4,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>Attendance</div>
+            <div style={{marginTop:2}}>{att!=null?<span style={{fontSize:13,fontWeight:700,color:att>=75?T.green:T.red}}>{att.toFixed(0)}%</span>:<span style={{fontSize:12,color:T.text4}}>—</span>}</div>
+          </div>
+          <div style={{width:1,height:24,background:T.border}}/>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:9.5,color:T.text4,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>Fee</div>
+            <div style={{marginTop:2}}><FeeBadge dues={feeData[s.id]?dues:null}/></div>
+          </div>
         </div>
+      </div>
+
+      {/* Action bar — Facebook-style Like/Comment/Share row */}
+      <div style={{borderTop:`1px solid ${T.border}`, display:'flex'}}>
+        {isMobile ? (
+          <>
+            <button onClick={()=>onOpenDetail(s)} style={{flex:1,padding:'10px 6px',border:'none',borderRight:`1px solid ${T.border}`,background:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:T.brand,fontFamily:'inherit'}}>👤 Profile</button>
+            <button onClick={e=>{e.stopPropagation();setOverflow(v=>!v)}} style={{flex:1,padding:'10px 6px',border:'none',background:'none',cursor:'pointer',fontSize:16,color:T.text3,fontFamily:'inherit'}}>⋯ More</button>
+          </>
+        ) : (
+          ACTIONS.map((a,i)=>(
+            <button key={a.l} onClick={a.fn} title={a.l} style={{
+              flex:1, padding:'10px 4px', border:'none',
+              borderRight:i<ACTIONS.length-1?`1px solid ${T.border}`:'none',
+              background:'none', cursor:'pointer', fontSize:11.5, fontWeight:600,
+              color:a.danger?T.red:a.primary?T.brand:T.text2,
+              display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+              fontFamily:'inherit', transition:'background .12s',
+            }}
+            onMouseEnter={e=>e.currentTarget.style.background=T.surface2}
+            onMouseLeave={e=>e.currentTarget.style.background='none'}
+            >
+              <span style={{fontSize:14}}>{a.icon}</span>
+              {a.l}
+            </button>
+          ))
+        )}
+      </div>
+
+      {isMobile&&overflow&&(
+        <>
+          <div style={{position:'fixed',inset:0,zIndex:99997,background:'rgba(15,23,42,.4)'}} onClick={()=>setOverflow(false)}/>
+          <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:99998,background:T.surface,borderTop:`1px solid ${T.border}`,borderRadius:`${T.r20} ${T.r20} 0 0`,padding:'16px 16px 32px',animation:'slideUp .2s ease'}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:32,height:3,background:T.border2,borderRadius:2,margin:'0 auto 14px',opacity:.6}}/>
+            <div style={{fontWeight:700,fontSize:14,color:T.text1,marginBottom:14}}>{s.name}</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              {ACTIONS.filter(a=>!a.primary).map((item,i)=>(
+                <button key={i} onClick={()=>{item.fn();setOverflow(false)}} style={{padding:'13px',borderRadius:T.r8,border:`1px solid ${item.danger?T.redBorder:T.border}`,background:item.danger?T.redLight:T.surface2,color:item.danger?T.red:T.text1,fontSize:13,fontWeight:600,cursor:'pointer',minHeight:48,fontFamily:'inherit'}}>
+                  {item.icon} {item.l}
+                </button>
+              ))}
+            </div>
+            <Btn onClick={()=>setOverflow(false)} style={{width:'100%',justifyContent:'center',marginTop:10}}>Close</Btn>
+          </div>
+        </>
       )}
     </div>
   )
@@ -3109,23 +3138,6 @@ const effectiveCols = visibleCols.filter(col => {
             </div>
           </div>
           <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
-            {!isMobile&&(
-              <>
-                {/* Density toggle */}
-                <div style={{display:'flex',border:`1px solid ${T.border}`,borderRadius:T.r8,overflow:'hidden'}}>
-                  {[['compact','≡'],['comfortable','☰'],['spacious','☷']].map(([d,icon])=>(
-                    <button key={d} title={d} onClick={()=>changeDensity(d)} style={{padding:'7px 10px',border:'none',fontSize:13,cursor:'pointer',background:density===d?T.brand:'transparent',color:density===d?'#fff':T.text3,transition:'all .12s',minHeight:36,fontFamily:'inherit'}}>{icon}</button>
-                  ))}
-                </div>
-                {/* View mode */}
-                <div style={{display:'flex',border:`1px solid ${T.border}`,borderRadius:T.r8,overflow:'hidden'}}>
-                  {[['list','☰'],['card','⊞']].map(([v,l])=>(
-                    <button key={v} onClick={()=>setViewMode(v)} style={{padding:'7px 12px',border:'none',fontSize:14,fontWeight:600,cursor:'pointer',background:viewMode===v?T.brand:'transparent',color:viewMode===v?'#fff':T.text3,fontFamily:'inherit'}}>{l}</button>
-                  ))}
-                </div>
-                <Btn onClick={()=>setShowColPicker(true)} size='sm'>⚙ Columns</Btn>
-              </>
-            )}
             <Btn onClick={loadAll} size='sm'>↺ Refresh</Btn>
             <IfCan can={can.write}>
               <Btn onClick={()=>{setEditing(null);setFormOpen(true)}} variant='primary'>+ {isMobile?'Add':'New Student'}</Btn>
@@ -3322,48 +3334,15 @@ const effectiveCols = visibleCols.filter(col => {
             <p style={{fontSize:13,color:T.text3,maxWidth:'30ch',lineHeight:1.7,margin:'0 0 20px'}}>{students.length===0?'Click "+ New Student" to add the first student.':'Try adjusting your search or filters.'}</p>
             {can.write&&students.length===0&&<Btn onClick={()=>{setEditing(null);setFormOpen(true)}} variant='primary'>+ New Student</Btn>}
           </div>
-        ):viewMode==='card'&&!isMobile?(
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:10}}>
-            {paginated.map(s=>{
-              const isSel=selected.has(s.id),dues=feeData[s.id]?.dues||0,att=attData[s.id],cs=COURSE_STRUCTURE[s.course]
-              return(
-                <Card key={s.id} style={{border:`1px solid ${isSel?T.brandBorder:T.border}`,background:isSel?T.brandLight:T.surface}} onClick={()=>setDetailPanel(s)}>
-                  <div style={{padding:'14px'}}>
-                    <div style={{display:'flex',gap:10,alignItems:'flex-start',marginBottom:10}}>
-                      <input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();toggleSelect(s.id)}} onClick={e=>e.stopPropagation()} style={{width:15,height:15,accentColor:T.brand,marginTop:2,flexShrink:0}}/>
-                      <Avatar name={s.name} photoUrl={s.photo_url} size={34}/>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:700,fontSize:14,color:T.text1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.name}</div>
-                        <div style={{fontSize:11,color:T.text4,marginTop:2}}>{s.gcc_no&&`GCC-${s.gcc_no}`}{s.batch&&` · ${s.batch}`}</div>
-                      </div>
-                      {s.status&&<StatusPill status={s.status}/>}
-                    </div>
-                    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>
-                      {s.course&&<CoursePill course={s.course}/>}
-                      {s.house&&<HousePill house={s.house} colorMap={houseColorMap}/>}
-                    </div>
-                    {att!=null&&<AttBar pct={att}/>}
-                    {dues>0&&<div style={{fontSize:12,fontWeight:700,color:T.red,marginTop:8}}>⚠ ₹{fmt(dues)} due</div>}
-                    <div style={{display:'flex',gap:6,marginTop:12}} onClick={e=>e.stopPropagation()}>
-                      <Btn onClick={()=>setDetailPanel(s)} variant='primary' size='sm' style={{flex:1,justifyContent:'center'}}>Profile</Btn>
-                      <IfCan can={can.write}><Btn onClick={()=>{setEditing(s);setFormOpen(true)}} size='sm'>✏</Btn></IfCan>
-                      <Btn onClick={()=>printIDCard(s)} size='sm' title="Print ID Card">🪪</Btn>
-                    </div>
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
         ):(
-          <div style={{display:'flex',flexDirection:'column',gap:density==='compact'?4:density==='spacious'?10:6}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
             {paginated.map(s=>(
-              <StudentRow key={s.id} s={s} can={can}
+              <StudentCard key={s.id} s={s} can={can}
                 onEdit={st=>{setEditing(st);setFormOpen(true)}}
                 onDelete={handleDelete} onOpenFee={setFeePanel}
                 onOpenDetail={setDetailPanel} onQuickAttend={handleQuickAttend}
                 onExamEntry={setExamEntry} onClone={handleClone}
                 feeData={feeData} attData={attData} examData={examData}
-                density={density} visibleCols={effectiveCols}
                 selected={selected} onSelect={toggleSelect}
               />
             ))}
