@@ -630,6 +630,156 @@ function IfCan({ can, fallback=null, children }) {
   return can ? children : fallback
 }
 
+// ─── Read-only Report Viewers ────────────────────────────────────────────────
+// These replace the old data-entry shortcuts on the student card (which used
+// to insert attendance/marks/payments directly). They only READ from the real
+// module tables — no writes happen here. Use the Attendance/Exams/Fees modules
+// themselves to record new data.
+
+function AttendanceViewerModal({ student, onClose }) {
+  const [loading,setLoading]=useState(true)
+  const [records,setRecords]=useState([])
+  useEffect(()=>{
+    let cancelled=false
+    const load=async()=>{
+      const{data:recs,error}=await supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).limit(300)
+      if(cancelled)return
+      if(error||!recs?.length){setLoading(false);return}
+      const sessionIds=[...new Set(recs.map(r=>r.session_id))]
+      const{data:sessions}=await supabase.from('attendance_sessions').select('id,session_date,subject_name,course').in('id',sessionIds)
+      if(cancelled)return
+      const sessMap={}
+      ;(sessions||[]).forEach(s=>{sessMap[s.id]=s})
+      const rows=recs.map(r=>{
+        const sess=sessMap[r.session_id]
+        return{status:r.status,date:sess?.session_date,subject:sess?.subject_name,course:sess?.course}
+      }).filter(r=>r.date).sort((a,b)=>new Date(b.date)-new Date(a.date))
+      setRecords(rows);setLoading(false)
+    }
+    load()
+    return()=>{cancelled=true}
+  },[student.id])
+
+  const present=records.filter(r=>r.status==='Present').length
+  const pct=records.length?((present+records.filter(r=>r.status==='Late').length*.5)/records.length*100).toFixed(1):null
+
+  return (
+    <Modal onClose={onClose} width={480} title={`Attendance — ${student.name}`} subtitle={pct!=null?`${pct}% overall · ${records.length} sessions on record`:'No records found'}>
+      {loading?(
+        <div style={{textAlign:'center',padding:'30px 0',color:T.text4,fontSize:13}}>Loading…</div>
+      ):records.length===0?(
+        <div style={{textAlign:'center',padding:'30px 0',color:T.text4,fontSize:13}}>No attendance records found for this student.</div>
+      ):(
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {records.slice(0,60).map((r,i)=>{
+            const cfg=STATUS_CFG_ATT[r.status]||{color:T.text3,bg:T.surface2}
+            return (
+              <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:T.r8,background:T.surface2,border:`1px solid ${T.border}`}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12.5,fontWeight:600,color:T.text1}}>{fmtD(r.date)}</div>
+                  {r.subject&&<div style={{fontSize:11,color:T.text4}}>{r.subject}{r.course?` · ${r.course}`:''}</div>}
+                </div>
+                <span style={{fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:T.r24,background:cfg.bg,color:cfg.color}}>{r.status}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Modal>
+  )
+}
+const STATUS_CFG_ATT={Present:{color:T.green,bg:T.greenLight},Absent:{color:T.red,bg:T.redLight},Late:{color:T.amber,bg:T.amberLight},Leave:{color:T.violet,bg:T.violetLight}}
+
+function ExamViewerModal({ student, onClose }) {
+  const [loading,setLoading]=useState(true)
+  const [sittings,setSittings]=useState([])
+  useEffect(()=>{
+    let cancelled=false
+    supabase.from('exam_marks').select('exam_type_id,exam_date,subject,marks_obtained').eq('student_id',student.id).order('exam_date',{ascending:false})
+      .then(({data,error})=>{
+        if(cancelled)return
+        if(error||!data){setLoading(false);return}
+        const bySitting={}
+        data.forEach(r=>{
+          const key=`${r.exam_type_id}|${r.exam_date}`
+          if(!bySitting[key])bySitting[key]={exam_date:r.exam_date,exam_type_id:r.exam_type_id,subjects:[],total:0}
+          bySitting[key].subjects.push({subject:r.subject,marks:Number(r.marks_obtained)||0})
+          bySitting[key].total+=Number(r.marks_obtained)||0
+        })
+        setSittings(Object.values(bySitting).sort((a,b)=>new Date(b.exam_date)-new Date(a.exam_date)));setLoading(false)
+      })
+    return()=>{cancelled=true}
+  },[student.id])
+
+  return (
+    <Modal onClose={onClose} width={520} title={`Exam record — ${student.name}`} subtitle={sittings.length?`${sittings.length} exam sitting${sittings.length===1?'':'s'} on record`:'No records found'}>
+      {loading?(
+        <div style={{textAlign:'center',padding:'30px 0',color:T.text4,fontSize:13}}>Loading…</div>
+      ):sittings.length===0?(
+        <div style={{textAlign:'center',padding:'30px 0',color:T.text4,fontSize:13}}>No exam marks found for this student.</div>
+      ):(
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          {sittings.map((s,i)=>(
+            <div key={i} style={{border:`1px solid ${T.border}`,borderRadius:T.r10,overflow:'hidden'}}>
+              <div style={{padding:'8px 12px',background:T.surface2,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:12.5,fontWeight:700,color:T.text1}}>{fmtD(s.exam_date)}</span>
+                <span style={{fontSize:13,fontWeight:800,color:s.total>=200?T.green:T.red}}>{s.total} total</span>
+              </div>
+              <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:4}}>
+                {s.subjects.map((sub,j)=>(
+                  <div key={j} style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                    <span style={{color:T.text3}}>{sub.subject}</span>
+                    <span style={{fontWeight:600,color:T.text1}}>{sub.marks}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function FeeViewerModal({ student, feeData, feeHistory, onClose }) {
+  const dues=feeData[student.id]?.dues||0
+  const lastPaid=feeData[student.id]?.lastPaid
+  const history=feeHistory[student.id]||[]
+  const totalPaid=history.reduce((s,h)=>s+(h.amount||0),0)
+
+  return (
+    <Modal onClose={onClose} width={480} title={`Fee record — ${student.name}`} subtitle={`GCC-${student.gcc_no}`}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
+        <div style={{background:T.surface2,borderRadius:T.r8,padding:'10px 12px',border:`1px solid ${T.border}`}}>
+          <div style={{fontSize:9,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Total Paid</div>
+          <div style={{fontSize:15,fontWeight:800,color:T.green,marginTop:3}}>₹{fmt(totalPaid)}</div>
+        </div>
+        <div style={{background:T.surface2,borderRadius:T.r8,padding:'10px 12px',border:`1px solid ${T.border}`}}>
+          <div style={{fontSize:9,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Arrears</div>
+          <div style={{fontSize:15,fontWeight:800,color:dues>0?T.red:T.green,marginTop:3}}>{dues>0?`₹${fmt(dues)}`:'Clear'}</div>
+        </div>
+      </div>
+      {lastPaid&&<div style={{fontSize:11.5,color:T.text3,marginBottom:12}}>Last payment: {lastPaid}</div>}
+      {history.length===0?(
+        <div style={{textAlign:'center',padding:'20px 0',color:T.text4,fontSize:13}}>No payment history found for this student.</div>
+      ):(
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {history.map((h,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:T.r8,background:T.surface2,border:`1px solid ${T.border}`}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12.5,fontWeight:600,color:T.text1}}>{h.type}{h.desc?` · ${h.desc}`:''}</div>
+                <div style={{fontSize:11,color:T.text4}}>{fmtD(h.payment_date)}{h.mode?` · ${h.mode}`:''}</div>
+              </div>
+              <span style={{fontSize:13,fontWeight:800,color:T.green}}>₹{fmt(h.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, color=T.text2, icon, onClick, active, warn, sub }) {
   return (
@@ -2156,8 +2306,8 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
     {l:'Profile',icon:'👤',fn:()=>onOpenDetail(s),show:true,primary:true},
     {l:'Edit',icon:'✏️',fn:()=>onEdit(s),show:can.write},
     {l:'Fee',icon:'💰',fn:()=>onOpenFee(s),show:can.fees},
-    {l:'Exam',icon:'📚',fn:()=>onExamEntry(s),show:can.exams},
-    {l:'Attend',icon:'📅',fn:()=>onQuickAttend(s),show:can.attend},
+    {l:'Exams',icon:'📚',fn:()=>onExamEntry(s),show:can.exams},
+    {l:'Attendance',icon:'📅',fn:()=>onQuickAttend(s),show:can.attend},
     {l:'Clone',icon:'📋',fn:()=>onClone(s),show:can.write},
     {l:'Delete',icon:'🗑️',fn:()=>onDelete(s),show:can.write,danger:true},
   ].filter(a=>a.show)
@@ -2728,6 +2878,9 @@ export default function Students() {
   const [feePanel,setFeePanel]=useState(null)
   const [detailPanel,setDetailPanel]=useState(null)
   const [examEntry,setExamEntry]=useState(null)
+  const [attViewer,setAttViewer]=useState(null)
+  const [examViewer,setExamViewer]=useState(null)
+  const [feeViewer,setFeeViewer]=useState(null)
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
@@ -2856,15 +3009,16 @@ const effectiveCols = visibleCols.filter(col => {
       // Build gcc list from student rows (adm_ tables key on gcc, not student UUID)
       const gccList=studentRows.map(s=>gccStrFee(s.gcc_no)).filter(Boolean)
       const [admRes,flatRes,crsfRes]=await Promise.all([
-        supabase.from('adm_fee_collections').select('adm_app_id,amount_paid,pay_date').in('adm_app_id',gccList).eq('reverted',false),
-        supabase.from('adm_flat_fees').select('adm_app_id,amount,pay_date').in('adm_app_id',gccList).eq('paid',true).eq('reverted',false),
-        supabase.from('adm_course_fees').select('adm_app_id,amount_paid,pay_date').in('adm_app_id',gccList).eq('reverted',false),
+        supabase.from('adm_fee_collections').select('adm_app_id,amount_paid,pay_date,fee_type,description,pay_mode').in('adm_app_id',gccList).eq('reverted',false),
+        supabase.from('adm_flat_fees').select('adm_app_id,amount,pay_date,month,year,pay_mode').in('adm_app_id',gccList).eq('paid',true).eq('reverted',false),
+        supabase.from('adm_course_fees').select('adm_app_id,amount_paid,pay_date,course,for_month,year,pay_mode').in('adm_app_id',gccList).eq('reverted',false),
       ])
-      // Build per-gcc totals and last-paid date
-      const totals={},lastPaid={}
-      ;(admRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date})
-      ;(flatRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date})
-      ;(crsfRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date})
+      // Build per-gcc totals, last-paid date, AND full itemized history for the viewer
+      const totals={},lastPaid={},history={}
+      const pushHist=(gcc,row)=>{if(!history[gcc])history[gcc]=[];history[gcc].push(row)}
+      ;(admRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:r.fee_type||'Admission Fee',desc:r.description||'',mode:r.pay_mode||''})})
+      ;(flatRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount||0),payment_date:r.pay_date,type:'Flat Fee',desc:`${r.month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
+      ;(crsfRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:'Course Fee',desc:`${r.course||''} ${r.for_month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
       const result={},histResult={}
       for(const s of studentRows){
         const gcc=gccStrFee(s.gcc_no)
@@ -2876,7 +3030,7 @@ const effectiveCols = visibleCols.filter(col => {
         const arrears=Math.max(0,monthsEnrolled*effectiveDue-totalPaid)
         const lp=lastPaid[gcc]
         result[s.id]={dues:arrears,lastPaid:lp?new Date(lp).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}):null}
-        histResult[s.id]=[]
+        histResult[s.id]=(history[gcc]||[]).sort((a,b)=>new Date(b.payment_date)-new Date(a.payment_date))
       }
       setFeeData(result);setFeeHistory(histResult)
     }catch(e){console.error('loadFeeData error',e)}
@@ -2938,14 +3092,10 @@ const effectiveCols = visibleCols.filter(col => {
     setDeleted(prev=>prev.filter(x=>x.id!==s.id));await loadAll();showToast('Restored: '+s.name,T.green)
   }
 
-  const handleQuickAttend=async student=>{
-    if(!can.attend){showToast('No permission',T.red);return}
-    const today=new Date().toISOString().slice(0,10)
-    const{data:existing}=await supabase.from('attendance').select('*').eq('student_id',student.id).eq('date',today).single()
-    if(existing){showToast(`${student.name} already marked ${existing.status} today`,T.amber);return}
-    await supabase.from('attendance').insert({student_id:student.id,date:today,status:'Present'})
-    await auditLog('quick_attend',{student_id:student.id,date:today});showToast(`Present — ${student.name}`,T.green);loadAttData([student.id])
-  }
+  // NOTE: handleQuickAttend (inserted into a non-existent "attendance" table)
+  // was removed — the card's Attendance button now opens a read-only viewer
+  // (AttendanceViewerModal) against the real attendance_records table.
+  // Mark actual attendance from the Attendance module itself.
 
   const toggleSelect=id=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
   const selectAll=()=>setSelected(new Set(paginated.map(s=>s.id)))
@@ -3081,6 +3231,9 @@ const effectiveCols = visibleCols.filter(col => {
       {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null)}} showToast={showToast}/>}
       {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
+      {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}
+      {examViewer&&<ExamViewerModal student={examViewer} onClose={()=>setExamViewer(null)}/>}
+      {feeViewer&&<FeeViewerModal student={feeViewer} feeData={feeData} feeHistory={feeHistory} onClose={()=>setFeeViewer(null)}/>}
       {showBulkOps&&<BulkOperationsModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkOps(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showRollover&&<SessionRolloverWizard students={students} can={can} onClose={()=>setShowRollover(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showBulkFee&&<BulkFeeModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkFee(false)} onSaved={loadAll} showToast={showToast}/>}
@@ -3371,9 +3524,9 @@ const effectiveCols = visibleCols.filter(col => {
             {paginated.map(s=>(
               <StudentCard key={s.id} s={s} can={can}
                 onEdit={st=>{setEditing(st);setFormOpen(true)}}
-                onDelete={handleDelete} onOpenFee={setFeePanel}
-                onOpenDetail={setDetailPanel} onQuickAttend={handleQuickAttend}
-                onExamEntry={setExamEntry} onClone={handleClone}
+                onDelete={handleDelete} onOpenFee={setFeeViewer}
+                onOpenDetail={setDetailPanel} onQuickAttend={setAttViewer}
+                onExamEntry={setExamViewer} onClone={handleClone}
                 feeData={feeData} attData={attData} examData={examData}
                 selected={selected} onSelect={toggleSelect}
               />
