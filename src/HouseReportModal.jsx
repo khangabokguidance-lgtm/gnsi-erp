@@ -24,6 +24,21 @@ export default function HouseReportModal({ house, date, session, students, allRe
   const [sickbayRecords, setSickbayRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const printAreaRef = useRef(null)
+  const [whatsappStatus, setWhatsappStatus] = useState('idle') // idle | generating | ready | error
+
+  // Lazily load html2canvas from CDN once, cache on window so repeat opens are instant
+  const loadHtml2Canvas = () => {
+    if (window.html2canvas) return Promise.resolve(window.html2canvas)
+    if (window.__html2canvasLoading) return window.__html2canvasLoading
+    window.__html2canvasLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+      script.onload = () => resolve(window.html2canvas)
+      script.onerror = reject
+      document.head.appendChild(script)
+    })
+    return window.__html2canvasLoading
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -90,6 +105,53 @@ export default function HouseReportModal({ house, date, session, students, allRe
     document.body.removeChild(clone)
   }
 
+  const handleSendWhatsapp = async () => {
+    if (!printAreaRef.current || whatsappStatus === 'generating') return
+    setWhatsappStatus('generating')
+    try {
+      const html2canvas = await loadHtml2Canvas()
+      const canvas = await html2canvas(printAreaRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+      })
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+      if (!blob) throw new Error('Could not generate image')
+
+      const fileName = `${house}_report_${date}_${session}.jpg`
+      const file = new File([blob], fileName, { type: 'image/jpeg' })
+      const caption = `🏠 ${house} House — Daily Report\n${date} · ${session === 'morning' ? 'Morning' : 'Night'} Roll Call`
+
+      // Mobile browsers that support the Web Share API with files can hand
+      // the image straight to the WhatsApp share sheet (attached, not just text).
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fileName, text: caption })
+        setWhatsappStatus('ready')
+        setTimeout(() => setWhatsappStatus('idle'), 2000)
+        return
+      }
+
+      // Desktop fallback: download the JPG, then open WhatsApp Web with the
+      // caption pre-filled so the user only needs to attach the file that
+      // just downloaded — browsers cannot inject a file into wa.me links.
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      window.open(`https://wa.me/?text=${encodeURIComponent(caption + '\n\n(Attach the downloaded image: ' + fileName + ')')}`, '_blank')
+      setWhatsappStatus('ready')
+      setTimeout(() => setWhatsappStatus('idle'), 2000)
+    } catch (err) {
+      console.error('WhatsApp share failed:', err)
+      setWhatsappStatus('error')
+      setTimeout(() => setWhatsappStatus('idle'), 2500)
+    }
+  }
+
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 1000,
@@ -115,6 +177,18 @@ export default function HouseReportModal({ house, date, session, students, allRe
           .hr-print-clone .hr-print-section { break-inside: avoid; margin-bottom: 8px !important; }
           .hr-print-clone .hr-print-row { padding: 4px 8px !important; }
         }
+        @keyframes hr-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes hr-pop {
+          0% { transform: scale(0.6); opacity: 0; }
+          60% { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        .hr-spinner {
+          display: inline-block; width: 14px; height: 14px;
+          border: 2px solid rgba(255,255,255,0.4); border-top-color: white;
+          border-radius: 50%; animation: hr-spin 0.7s linear infinite;
+        }
+        .hr-pop-in { animation: hr-pop 0.35s ease-out; display: inline-block; }
       `}</style>
       <div style={{
         background: 'white', borderRadius: '16px', maxWidth: '720px', width: '100%',
@@ -216,8 +290,27 @@ export default function HouseReportModal({ house, date, session, students, allRe
         </div>
 
         {/* Actions */}
-        <div className="hr-no-print" style={{ display: 'flex', gap: '10px', padding: '16px 28px', borderTop: '1px solid #f1f5f9' }}>
+        <div className="hr-no-print" style={{ display: 'flex', gap: '10px', padding: '16px 28px', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
           <button onClick={handlePrint} style={{ ...btn('#1e3a5f'), flex: 1 }}>🖨️ Print Report</button>
+          <button
+            onClick={handleSendWhatsapp}
+            disabled={whatsappStatus === 'generating'}
+            style={{
+              ...btn(
+                whatsappStatus === 'error' ? '#dc2626'
+                  : whatsappStatus === 'ready' ? '#16a34a'
+                  : '#25D366'
+              ),
+              flex: 1,
+              opacity: whatsappStatus === 'generating' ? 0.85 : 1,
+              transition: 'background-color 0.25s ease',
+            }}
+          >
+            {whatsappStatus === 'generating' && <><span className="hr-spinner" style={{ marginRight: '8px', verticalAlign: 'middle' }} />Preparing image...</>}
+            {whatsappStatus === 'ready' && <span className="hr-pop-in">✅ Ready to send!</span>}
+            {whatsappStatus === 'error' && <span className="hr-pop-in">⚠️ Failed — try again</span>}
+            {whatsappStatus === 'idle' && <>📲 Send via WhatsApp (JPG)</>}
+          </button>
           <button onClick={onClose} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Close</button>
         </div>
       </div>
