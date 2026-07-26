@@ -2731,7 +2731,7 @@ export default function Students() {
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
-  const [showDashboard,setShowDashboard]=useState(true)
+  const [pageTab,setPageTab]=useState('students')
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
@@ -2814,7 +2814,9 @@ const effectiveCols = visibleCols.filter(col => {
   const loadAttData=useCallback(async ids=>{
     if(!ids?.length)return
     try{
-      const{data}=await supabase.from('attendance').select('student_id,status').in('student_id',ids)
+      // Wired to the real Attendance module's table: attendance_records
+      // (not a separate "attendance" table). Present=1, Late=0.5, Absent/Leave=0.
+      const{data}=await supabase.from('attendance_records').select('student_id,status').in('student_id',ids)
       if(!data)return
       const map={}
       ids.forEach(id=>{const recs=data.filter(r=>r.student_id===id);if(!recs.length){map[id]=null;return};map[id]=(recs.filter(r=>r.status==='Present').length+recs.filter(r=>r.status==='Late').length*.5)/recs.length*100})
@@ -2825,13 +2827,28 @@ const effectiveCols = visibleCols.filter(col => {
   const loadExamData=useCallback(async ids=>{
     if(!ids?.length)return
     try{
-      const{data}=await supabase.from('exam_scores').select('*').in('student_id',ids).order('created_at',{ascending:false})
+      // Wired to the real Exams module's table: exam_marks (per-subject rows,
+      // not a pre-computed total) — not "exam_scores", which doesn't exist.
+      // Sum marks_obtained per student per (exam_type_id, exam_date) sitting to
+      // get a per-exam total, matching how Exams.jsx computes totals itself.
+      const{data}=await supabase.from('exam_marks').select('student_id,exam_type_id,exam_date,marks_obtained,created_at').in('student_id',ids).order('exam_date',{ascending:false})
       if(!data)return
+      const bySitting={}
+      data.forEach(r=>{
+        const key=`${r.student_id}|${r.exam_type_id}|${r.exam_date}`
+        if(!bySitting[key])bySitting[key]={student_id:r.student_id,exam_type_id:r.exam_type_id,exam_date:r.exam_date,total:0,created_at:r.created_at}
+        bySitting[key].total+=Number(r.marks_obtained)||0
+      })
       const map={}
-      data.forEach(e=>{if(!map[e.student_id])map[e.student_id]=[];map[e.student_id].push(e)})
+      Object.values(bySitting).forEach(s=>{
+        if(!map[s.student_id])map[s.student_id]=[]
+        map[s.student_id].push({total:s.total,exam_date:s.exam_date,exam_type_id:s.exam_type_id,created_at:s.created_at})
+      })
+      Object.keys(map).forEach(id=>map[id].sort((a,b)=>new Date(b.exam_date)-new Date(a.exam_date)))
       setExamData(map)
     }catch{}
   },[])
+
 
   const loadFeeData=useCallback(async(ids,studentRows)=>{
     if(!ids?.length||!studentRows?.length)return
@@ -3145,7 +3162,21 @@ const effectiveCols = visibleCols.filter(col => {
           </div>
         </div>
 
+        {/* Page-level tabs — Dashboard / Students */}
+        <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`}}>
+          {[{key:'dashboard',label:'🏠 Dashboard'},{key:'students',label:'🎓 Students'}].map(t=>(
+            <button key={t.key} onClick={()=>setPageTab(t.key)} style={{
+              padding:'10px 18px', border:'none', background:'none', cursor:'pointer',
+              fontSize:14, fontWeight:700, fontFamily:'inherit',
+              color:pageTab===t.key?T.brand:T.text3,
+              borderBottom:`2.5px solid ${pageTab===t.key?T.brand:'transparent'}`,
+              marginBottom:-1, transition:'color .12s',
+            }}>{t.label}</button>
+          ))}
+        </div>
+
         {/* Action Toolbar */}
+        {pageTab==='students'&&(
         <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:16,overflowX:'auto',WebkitOverflowScrolling:'touch',paddingBottom:isMobile?4:0}}>
           <IfCan can={can.export}>
             <div style={{position:'relative'}} ref={exportMenuRef}>
@@ -3159,7 +3190,6 @@ const effectiveCols = visibleCols.filter(col => {
               )}
             </div>
           </IfCan>
-          <Btn onClick={()=>setShowDashboard(v=>!v)} size='sm' style={{color:showDashboard?T.brand:T.text2,background:showDashboard?T.brandLight:'transparent',borderColor:showDashboard?T.brandBorder:T.border}}>🏠 Dashboard</Btn>
           <IfCan can={can.export}>
             <Btn onClick={()=>setShowReportGen(true)} size='sm' style={{color:T.violet,borderColor:T.violetBorder}}>📄 Reports</Btn>
           </IfCan>
@@ -3169,8 +3199,9 @@ const effectiveCols = visibleCols.filter(col => {
             <Btn onClick={()=>setShowRollover(true)} size='sm' style={{color:T.brand,borderColor:T.brandBorder}}>🔄 Rollover</Btn>
           </IfCan>
         </div>
+        )}
 
-        {showDashboard&&(
+        {pageTab==='dashboard'&&(
           <StudentDashboard
             students={students}
             attData={attData}
@@ -3181,6 +3212,7 @@ const effectiveCols = visibleCols.filter(col => {
           />
         )}
 
+        {pageTab==='students'&&(<>
         {/* Archive panel */}
         {showDeleted&&(
           <Card style={{marginBottom:16,border:`1px solid ${T.redBorder}`}}>
@@ -3363,6 +3395,7 @@ const effectiveCols = visibleCols.filter(col => {
             </div>
           </div>
         )}
+        </>)}
       </div>
     </>
   )
