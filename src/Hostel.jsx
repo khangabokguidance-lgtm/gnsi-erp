@@ -465,6 +465,57 @@ const statusConfig = {
   Unmarked: { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
 }
 
+// ── Expandable student list shown under a clicked alert banner, with
+//    quick per-student action buttons (mark status directly). ──
+function AlertStudentPanel({ students, accentColor, actions, onMark, savingId }) {
+  if (students.length === 0) {
+    return (
+      <div style={{ marginTop: '8px', padding: '14px', background: 'white', borderRadius: '10px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+        No students to show.
+      </div>
+    )
+  }
+  return (
+    <div style={{
+      marginTop: '8px', background: 'white', borderRadius: '10px', padding: '10px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '6px',
+      maxHeight: '360px', overflowY: 'auto',
+    }}>
+      {students.map(s => (
+        <div key={s.id} style={{
+          display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px',
+          background: '#f8fafc', borderRadius: '8px', borderLeft: `3px solid ${accentColor}`,
+          flexWrap: 'wrap',
+        }}>
+          <div style={{ flex: 1, minWidth: '140px' }}>
+            <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{s.name}</div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>
+              GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}{s.house ? ` · 🏠 ${s.house}` : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {actions.map(a => (
+              <button
+                key={a.status}
+                onClick={() => onMark(s.id, a.status)}
+                disabled={savingId === s.id}
+                style={{
+                  padding: '6px 10px', borderRadius: '7px', border: 'none',
+                  background: a.bg, color: a.color, fontSize: '11px', fontWeight: '700',
+                  cursor: savingId === s.id ? 'wait' : 'pointer',
+                  opacity: savingId === s.id ? 0.5 : 1,
+                }}
+              >
+                {savingId === s.id ? '⏳' : a.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function AttendanceTab({ students, currentHousemaster, currentUser }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   // ── View state: 'houses' | 'dashboard' | 'rollcall'
@@ -650,6 +701,25 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
     setDate(catchUpReturn.date)
     setSession(catchUpReturn.session)
     setCatchUpReturn(null)
+  }
+
+  // ── Which alert-panel is expanded (shows student list + quick actions) ──
+  const [activeAlertPanel, setActiveAlertPanel] = useState(null) // 'absent' | 'unmarked' | 'unassigned' | null
+
+  // Load house list for the unassigned-student house picker
+  const [allHouseNames, setAllHouseNames] = useState([])
+  useEffect(() => {
+    supabase.from('houses').select('name').order('name').then(({ data }) => {
+      setAllHouseNames((data || []).map(h => h.name))
+    })
+  }, [])
+
+  const handleAssignHouse = async (studentId, houseName) => {
+    await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
+    // students prop is owned by the parent (Hostel root); it will refetch
+    // on its own polling/refresh cycle, but reflect the change locally too
+    // by forcing a reload of attendance records so counts stay accurate.
+    await loadAll()
   }
 
   // ── Auto-fire the House Report the moment a house reaches 100% for this date+session ──
@@ -966,38 +1036,83 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
               const absentCount = allRecords.filter(r => r.status === 'Absent').length
               const unmarkedCount = totalStudents - totalMarked
               if (absentCount === 0 && unmarkedCount === 0) return null
+
+              const absentStudents = activeStudents.filter(s => statusMap[s.id] === 'Absent')
+              const unmarkedStudentsAll = activeStudents.filter(s => !statusMap[s.id])
+
               return (
                 <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {absentCount > 0 && (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: '12px',
-                      padding: '13px 16px', background: '#fff1f2',
-                      border: '1.5px solid #fca5a5', borderRadius: '12px',
-                      fontSize: '13px', color: '#dc2626', fontWeight: '700',
-                    }}>
-                      <span style={{ fontSize: '20px' }}>🔴</span>
-                      <div>
-                        <div>{absentCount} student{absentCount > 1 ? 's' : ''} marked <strong>Absent</strong> today</div>
-                        <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
-                          Verify with housemaster · Check if on approved leave
+                    <div>
+                      <div
+                        onClick={() => setActiveAlertPanel(activeAlertPanel === 'absent' ? null : 'absent')}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '12px',
+                          padding: '13px 16px', background: '#fff1f2',
+                          border: '1.5px solid #fca5a5', borderRadius: '12px',
+                          fontSize: '13px', color: '#dc2626', fontWeight: '700',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontSize: '20px' }}>🔴</span>
+                        <div style={{ flex: 1 }}>
+                          <div>{absentCount} student{absentCount > 1 ? 's' : ''} marked <strong>Absent</strong> today</div>
+                          <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
+                            Verify with housemaster · Check if on approved leave
+                          </div>
                         </div>
+                        <span style={{ fontSize: '16px', transition: 'transform 0.2s', transform: activeAlertPanel === 'absent' ? 'rotate(180deg)' : 'none' }}>▾</span>
                       </div>
+                      {activeAlertPanel === 'absent' && (
+                        <AlertStudentPanel
+                          students={absentStudents}
+                          accentColor="#dc2626"
+                          actions={[
+                            { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
+                            { label: '🚪 On Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
+                            { label: '🏥 Sick', status: 'Sick', bg: '#f5f3ff', color: '#7c3aed' },
+                          ]}
+                          onMark={handleMark}
+                          savingId={savingId}
+                        />
+                      )}
                     </div>
                   )}
                   {unmarkedCount > 0 && (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: '12px',
-                      padding: '13px 16px', background: '#fffbeb',
-                      border: '1.5px solid #fcd34d', borderRadius: '12px',
-                      fontSize: '13px', color: '#92400e', fontWeight: '700',
-                    }}>
-                      <span style={{ fontSize: '20px' }}>⏳</span>
-                      <div>
-                        <div>{unmarkedCount} student{unmarkedCount > 1 ? 's' : ''} still <strong>unmarked</strong></div>
-                        <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
-                          Tap a house below to open roll call
+                    <div>
+                      <div
+                        onClick={() => setActiveAlertPanel(activeAlertPanel === 'unmarked' ? null : 'unmarked')}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '12px',
+                          padding: '13px 16px', background: '#fffbeb',
+                          border: '1.5px solid #fcd34d', borderRadius: '12px',
+                          fontSize: '13px', color: '#92400e', fontWeight: '700',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontSize: '20px' }}>⏳</span>
+                        <div style={{ flex: 1 }}>
+                          <div>{unmarkedCount} student{unmarkedCount > 1 ? 's' : ''} still <strong>unmarked</strong></div>
+                          <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
+                            Tap to mark directly, or open a house's roll call below
+                          </div>
                         </div>
+                        <span style={{ fontSize: '16px', transition: 'transform 0.2s', transform: activeAlertPanel === 'unmarked' ? 'rotate(180deg)' : 'none' }}>▾</span>
                       </div>
+                      {activeAlertPanel === 'unmarked' && (
+                        <AlertStudentPanel
+                          students={unmarkedStudentsAll}
+                          accentColor="#ca8a04"
+                          actions={[
+                            { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
+                            { label: '✕ Absent', status: 'Absent', bg: '#fee2e2', color: '#dc2626' },
+                            { label: '⏰ Late', status: 'Late', bg: '#fef9c3', color: '#ca8a04' },
+                            { label: '🚪 Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
+                          ]}
+                          onMark={handleMark}
+                          savingId={savingId}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -1009,8 +1124,34 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
               const unassigned = activeStudents.filter(s => !isAssigned(s))
               if (unassigned.length === 0) return null
               return (
-                <div style={{ marginTop: '8px', padding: '12px 16px', background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: '12px', fontSize: '13px', color: '#9a3412', fontWeight: '600' }}>
-                  ⚠️ {unassigned.length} students have no house assigned and won't appear in roll call.
+                <div style={{ marginTop: '8px' }}>
+                  <div
+                    onClick={() => setActiveAlertPanel(activeAlertPanel === 'unassigned' ? null : 'unassigned')}
+                    style={{ padding: '12px 16px', background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: '12px', fontSize: '13px', color: '#9a3412', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    <span style={{ flex: 1 }}>⚠️ {unassigned.length} students have no house assigned and won't appear in roll call.</span>
+                    <span style={{ fontSize: '16px', transition: 'transform 0.2s', transform: activeAlertPanel === 'unassigned' ? 'rotate(180deg)' : 'none' }}>▾</span>
+                  </div>
+                  {activeAlertPanel === 'unassigned' && (
+                    <div style={{ marginTop: '8px', background: 'white', borderRadius: '10px', padding: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '340px', overflowY: 'auto' }}>
+                      {unassigned.map(s => (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', background: '#fff7ed', borderRadius: '8px', flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1, minWidth: '140px' }}>
+                            <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{s.name}</div>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}</div>
+                          </div>
+                          <select
+                            defaultValue=""
+                            onChange={e => { if (e.target.value) handleAssignHouse(s.id, e.target.value) }}
+                            style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: '12px' }}
+                          >
+                            <option value="" disabled>Assign to house...</option>
+                            {allHouseNames.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })()}
