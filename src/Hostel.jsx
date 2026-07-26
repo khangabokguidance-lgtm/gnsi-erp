@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
@@ -465,7 +465,8 @@ const statusConfig = {
   Unmarked: { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
 }
 
-function AttendanceTab({ students, currentHousemaster }) {
+function AttendanceTab({ students, currentHousemaster, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   // ── View state: 'houses' | 'dashboard' | 'rollcall'
   const [view, setView] = useState('houses')
   const [selectedHouse, setSelectedHouse] = useState(null)
@@ -481,6 +482,28 @@ function AttendanceTab({ students, currentHousemaster }) {
   const [justMarked, setJustMarked] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const mobile = useMobileView()
+
+  // ── Previous-day completeness check (blocks roll call if either
+  //    session from the prior calendar day wasn't fully marked) ──
+  const [prevDayRecords, setPrevDayRecords] = useState([])
+  const [prevDayLoaded, setPrevDayLoaded] = useState(false)
+  const [overrideHouses, setOverrideHouses] = useState({}) // key: `${house}_${date}` → admin bypassed block
+  // When a housemaster runs a missed prior-day session, date/session are
+  // temporarily swapped to that target; catchUpReturn remembers today's
+  // real date+session so we can restore it once the catch-up is done.
+  const [catchUpReturn, setCatchUpReturn] = useState(null) // { date, session } | null
+
+  // The "home" date is today's real selected date — but while mid-catch-up,
+  // `date` state has been temporarily swapped to the missed prior day, so
+  // we anchor off catchUpReturn.date instead to avoid prevDate drifting
+  // an extra day back on every catch-up.
+  const homeDate = catchUpReturn ? catchUpReturn.date : date
+
+  const prevDate = useMemo(() => {
+    const d = new Date(homeDate)
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }, [homeDate])
 
   // ── House Report modal state (auto-fires when a house hits 100%) ──
   const [reportHouse, setReportHouse] = useState(null)
@@ -514,6 +537,23 @@ function AttendanceTab({ students, currentHousemaster }) {
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  // Load previous calendar day's records (both sessions) to check completeness
+  useEffect(() => {
+    let cancelled = false
+    setPrevDayLoaded(false)
+    supabase
+      .from('attendance_records')
+      .select('*')
+      .eq('date', prevDate)
+      .then(({ data }) => {
+        if (!cancelled) {
+          setPrevDayRecords(data || [])
+          setPrevDayLoaded(true)
+        }
+      })
+    return () => { cancelled = true }
+  }, [prevDate])
+
   // Filter records for selected house
   useEffect(() => {
     if (selectedHouse) {
@@ -541,6 +581,75 @@ function AttendanceTab({ students, currentHousemaster }) {
     const unmarked = total - marked
     const pct = total ? Math.round(marked / total * 100) : 0
     return { total, present, absent, sick, onLeave, late, marked, unmarked, pct }
+  }
+
+  // ── Was the previous calendar day fully covered for this house?
+  //    Both morning AND night sessions must have hit 100% marked. ──
+  const getPrevDayStatus = (houseName) => {
+    const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+    const total = hStudents.length
+    if (total === 0) return { complete: true, morningMarked: 0, nightMarked: 0, total: 0 }
+    const morningMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'morning').length
+    const nightMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'night').length
+    return {
+      complete: morningMarked >= total && nightMarked >= total,
+      morningMarked, nightMarked, total,
+    }
+  }
+
+  const isHouseBlocked = (houseName) => {
+    if (!prevDayLoaded) return false // don't block on a flash-of-unloaded-state
+    const overrideKey = `${houseName}_${homeDate}`
+    if (overrideHouses[overrideKey]) return false
+    return !getPrevDayStatus(houseName).complete
+  }
+
+  const handleOverride = (houseName) => {
+    setOverrideHouses(prev => ({ ...prev, [`${houseName}_${homeDate}`]: true }))
+  }
+
+  // ── Let the housemaster actually complete the missed prior-day
+  //    session, rather than just bypass the check. Whichever session
+  //    (morning/night) is incomplete gets opened first; once BOTH hit
+  //    100%, isHouseBlocked clears naturally and today's roll call
+  //    unlocks on its own — no override needed. ──
+  const [pendingCatchUpHouse, setPendingCatchUpHouse] = useState(null)
+
+  const catchUpTargetRef = useRef(null)
+
+  const handleCatchUpRollCall = (houseName) => {
+    const p = getPrevDayStatus(houseName)
+    const targetSession = p.morningMarked < p.total ? 'morning' : 'night'
+    const targetDate = prevDate
+    setCatchUpReturn({ date, session }) // remember where we came from
+    catchUpTargetRef.current = { date: targetDate, session: targetSession }
+    setSelectedHouse(houseName)
+    setPendingCatchUpHouse(houseName)
+    setDate(targetDate)
+    setSession(targetSession)
+    // startRollCall itself fires from an effect below, once allRecords
+    // has actually reloaded for (targetDate, targetSession) — calling it
+    // synchronously here would still be reading the old session's data.
+  }
+
+  // Once date/session switch to the catch-up target and records for
+  // that target have loaded, actually open the roll-call view.
+  useEffect(() => {
+    if (!pendingCatchUpHouse || loading) return
+    const target = catchUpTargetRef.current
+    if (!target || date !== target.date || session !== target.session) return
+    startRollCall(pendingCatchUpHouse)
+    setView('rollcall')
+    setPendingCatchUpHouse(null)
+    catchUpTargetRef.current = null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCatchUpHouse, loading, allRecords, date, session])
+
+  const returnFromCatchUp = () => {
+    if (!catchUpReturn) return
+    setDate(catchUpReturn.date)
+    setSession(catchUpReturn.session)
+    setCatchUpReturn(null)
   }
 
   // ── Auto-fire the House Report the moment a house reaches 100% for this date+session ──
@@ -626,6 +735,7 @@ function AttendanceTab({ students, currentHousemaster }) {
 
   // ── Start roll call for a house
   const startRollCall = (houseName) => {
+    if (isHouseBlocked(houseName)) return // safety net; UI should already prevent this call
     const hStudents = activeStudents
       .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
       .sort((a, b) => {
@@ -785,20 +895,58 @@ function AttendanceTab({ students, currentHousemaster }) {
                       </div>
 
                       {/* Action buttons */}
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
-                          style={{ flex: 1, padding: '9px', borderRadius: '9px', border: 'none', background: pal.bg, color: pal.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                        >
-                          📊 Dashboard
-                        </button>
-                        <button
-                          onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); startRollCall(houseName) }}
-                          style={{ flex: 1, padding: '9px', borderRadius: '9px', border: 'none', background: pal.color, color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                        >
-                          ⚡ Roll Call
-                        </button>
-                      </div>
+                      {(() => {
+                        const blocked = isHouseBlocked(houseName)
+                        return (
+                          <>
+                            {blocked && (
+                              <div
+                                onClick={e => e.stopPropagation()}
+                                style={{ marginBottom: '10px', padding: '10px 12px', background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: '10px' }}
+                              >
+                                <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#dc2626', marginBottom: '6px' }}>
+                                  🚫 Yesterday's roll call incomplete — {(() => { const p = getPrevDayStatus(houseName); return `${p.morningMarked}/${p.total} morning · ${p.nightMarked}/${p.total} night` })()}
+                                </div>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
+                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
+                                >
+                                  📋 Complete Missed Roll Call
+                                </button>
+                                {isAdmin && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); handleOverride(houseName) }}
+                                    style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#dc2626', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                                  >
+                                    🔓 Override (Admin)
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
+                                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: 'none', background: pal.bg, color: pal.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                              >
+                                📊 Dashboard
+                              </button>
+                              <button
+                                onClick={e => { e.stopPropagation(); if (blocked) return; setSelectedHouse(houseName); startRollCall(houseName) }}
+                                disabled={blocked}
+                                style={{
+                                  flex: 1, padding: '9px', borderRadius: '9px', border: 'none',
+                                  background: blocked ? '#e2e8f0' : pal.color,
+                                  color: blocked ? '#94a3b8' : 'white',
+                                  fontSize: '12px', fontWeight: '700',
+                                  cursor: blocked ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                {blocked ? '🔒 Blocked' : '⚡ Roll Call'}
+                              </button>
+                            </div>
+                          </>
+                        )
+                      })()}
                       {allDone && (
                         <button
                           onClick={e => { e.stopPropagation(); setReportHouse(houseName) }}
@@ -912,12 +1060,47 @@ function AttendanceTab({ students, currentHousemaster }) {
             </button>
           )}
           <button
-            onClick={() => startRollCall(selectedHouse)}
-            style={{ ...btn(pal.color), padding: '10px 20px', fontSize: '14px' }}
+            onClick={() => { if (!isHouseBlocked(selectedHouse)) startRollCall(selectedHouse) }}
+            disabled={isHouseBlocked(selectedHouse)}
+            style={{
+              ...btn(isHouseBlocked(selectedHouse) ? '#e2e8f0' : pal.color, isHouseBlocked(selectedHouse) ? '#94a3b8' : 'white'),
+              padding: '10px 20px', fontSize: '14px',
+              cursor: isHouseBlocked(selectedHouse) ? 'not-allowed' : 'pointer',
+            }}
           >
-            ⚡ Quick Roll Call {stats.unmarked > 0 ? `(${stats.unmarked} left)` : '✓'}
+            {isHouseBlocked(selectedHouse) ? '🔒 Blocked' : `⚡ Quick Roll Call ${stats.unmarked > 0 ? `(${stats.unmarked} left)` : '✓'}`}
           </button>
         </div>
+
+        {isHouseBlocked(selectedHouse) && (
+          <div style={{ background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626', marginBottom: '6px' }}>
+              🚫 Roll call is blocked for {selectedHouse}
+            </div>
+            <div style={{ fontSize: '12px', color: '#9a3412', marginBottom: '10px' }}>
+              {(() => {
+                const p = getPrevDayStatus(selectedHouse)
+                return `Yesterday (${prevDate}) wasn't fully marked — ${p.morningMarked}/${p.total} morning, ${p.nightMarked}/${p.total} night. Both sessions must reach 100% before today's roll call can start.`
+              })()}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => handleCatchUpRollCall(selectedHouse)}
+                style={{ ...btn('#1e3a5f'), fontSize: '12px', padding: '8px 16px' }}
+              >
+                📋 Complete Missed Roll Call
+              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => handleOverride(selectedHouse)}
+                  style={{ ...btn('#dc2626'), fontSize: '12px', padding: '8px 16px' }}
+                >
+                  🔓 Override & Allow Roll Call (Admin)
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Stat cards */}
         <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginBottom: '20px' }}>
@@ -1081,9 +1264,17 @@ function AttendanceTab({ students, currentHousemaster }) {
     return (
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         {reportModal}
+        {catchUpReturn && (
+          <div style={{ background: '#fef9c3', border: '1.5px solid #fde047', borderRadius: '10px', padding: '8px 12px', marginBottom: '14px', fontSize: '12px', fontWeight: '700', color: '#92400e', textAlign: 'center' }}>
+            📋 Catch-up mode — completing the missed {session} roll call for {date}
+          </div>
+        )}
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-          <button onClick={() => { setView('dashboard') }} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 12px', fontSize: '13px' }}>
+          <button
+            onClick={() => { if (catchUpReturn) returnFromCatchUp(); setView('dashboard') }}
+            style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 12px', fontSize: '13px' }}
+          >
             ← Back
           </button>
           <div style={{ flex: 1 }}>
@@ -1094,6 +1285,7 @@ function AttendanceTab({ students, currentHousemaster }) {
             {Math.min(rollCallIndex + 1, total)}/{total}
           </div>
         </div>
+
 
         {/* Progress bar */}
         <div style={{ marginBottom: '24px' }}>
@@ -1149,15 +1341,39 @@ function AttendanceTab({ students, currentHousemaster }) {
                   ⏳ Mark Remaining
                 </button>
               )}
-              <button onClick={() => setReportHouse(selectedHouse)} style={{ ...btn('#7c3aed'), padding: '12px 24px' }}>
-                📄 View Report
-              </button>
-              <button onClick={() => setView('dashboard')} style={{ ...btn(pal.color), padding: '12px 24px' }}>
-                View {selectedHouse} Dashboard
-              </button>
-              <button onClick={() => setView('houses')} style={{ ...btn('#f1f5f9', '#374151'), padding: '12px 24px' }}>
-                All Houses
-              </button>
+              {catchUpReturn ? (
+                (() => {
+                  const p = getPrevDayStatus(selectedHouse)
+                  const stillMissing = session === 'morning' ? p.nightMarked < p.total : p.morningMarked < p.total
+                  return stillMissing ? (
+                    <button
+                      onClick={() => handleCatchUpRollCall(selectedHouse)}
+                      style={{ ...btn('#dc2626'), padding: '12px 24px' }}
+                    >
+                      ⏳ Catch Up {session === 'morning' ? 'Night' : 'Morning'} Session Too
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { returnFromCatchUp(); setView('houses') }}
+                      style={{ ...btn('#16a34a'), padding: '12px 24px' }}
+                    >
+                      ✅ Missed Roll Call Caught Up — Return to Today
+                    </button>
+                  )
+                })()
+              ) : (
+                <>
+                  <button onClick={() => setReportHouse(selectedHouse)} style={{ ...btn('#7c3aed'), padding: '12px 24px' }}>
+                    📄 View Report
+                  </button>
+                  <button onClick={() => setView('dashboard')} style={{ ...btn(pal.color), padding: '12px 24px' }}>
+                    View {selectedHouse} Dashboard
+                  </button>
+                  <button onClick={() => setView('houses')} style={{ ...btn('#f1f5f9', '#374151'), padding: '12px 24px' }}>
+                    All Houses
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ) : (
@@ -4211,7 +4427,7 @@ function Hostel() {
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
-    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} />,
+    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} currentUser={currentUser} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
