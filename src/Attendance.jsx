@@ -63,6 +63,180 @@ const T = {
 const font    = "'Inter', system-ui, -apple-system, sans-serif"
 const fontMono= "'JetBrains Mono', 'Fira Code', monospace"
 
+// ─── "Ledger Console" Design System (v5 — Modern SaaS shell) ──
+// New token set used by the sidebar shell, Home v2, and Student 360.
+// Existing tabs (Mark/Sessions/Reports/Leaves/Awards) still use the
+// legacy `T` tokens above until they're restyled in stage 2.
+
+const C = {
+  bg:        '#FAFAF9',   // warm-white app background
+  surface:   '#FFFFFF',   // card background
+  border:    '#E7E5E4',
+  borderStrong: '#D6D3D1',
+  ink:       '#0F172A',   // primary text
+  inkMuted:  '#64748B',
+  inkFaint:  '#94A3B8',
+  sidebar:   '#0F172A',   // sidebar background (dark, contrasts with light content)
+  sidebarText: '#CBD5E1',
+  sidebarTextActive: '#FFFFFF',
+  sidebarHover: '#1E293B',
+  indigo:    '#4F46E5',   // primary accent — active states, primary actions
+  indigoSoft:'#EEF2FF',
+  green:     '#10B981',   // present / good / paid
+  greenSoft: '#ECFDF5',
+  amber:     '#F59E0B',   // late / warning / due-soon
+  amberSoft: '#FFFBEB',
+  red:       '#EF4444',   // absent / risk / overdue
+  redSoft:   '#FEF2F2',
+  violet:    '#8B5CF6',   // leave / misc category
+  violetSoft:'#F5F3FF',
+  shadowSm:  '0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06)',
+  shadowMd:  '0 2px 8px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.06)',
+  radius:    12,
+}
+
+// Placeholder schema config — student/fees/hostel table & column
+// names are BEST GUESSES. Update these three lines once you confirm
+// your actual Supabase schema; nothing else needs to change.
+const SCHEMA = {
+  students:   { table: 'students',        id: 'gcc_no', name: 'student_name', course: 'course', className: 'class_name' },
+  fees:       { table: 'fee_records',      studentKey: 'gcc_no', dueAmount: 'due_amount', dueDate: 'due_date', status: 'status' },
+  discipline: { table: 'discipline_logs',  studentKey: 'gcc_no', date: 'incident_date', category: 'category', status: 'status', remark: 'remark' },
+  hostel:     { table: 'sickbay_records',  studentKey: 'gcc_no', admittedDate: 'admitted_on', status: 'status', note: 'note' },
+}
+
+function useIsMobileC() { return useIsMobile() } // alias for clarity in new components
+
+// Small inline icon set (no emoji) — 20x20 stroke icons, currentColor
+const Icon = {
+  home:   (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>,
+  users:  (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15 14.3c2.7.4 4.6 2.3 5 5.7"/></svg>,
+  check:  (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="5" width="16" height="16" rx="2.5"/><path d="M8 11.5l2.4 2.5L16 8.5"/></svg>,
+  calendar:(p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8 3.5v3M16 3.5v3"/></svg>,
+  chart:  (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 20V10M11 20V4M18 20v-7"/><path d="M2.5 20h19"/></svg>,
+  leaf:   (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14Z"/><path d="M5 19c0-4 2-7 6-9"/></svg>,
+  award:  (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8.5" r="5"/><path d="M8.5 12.8 7 21l5-2.4L17 21l-1.5-8.2"/></svg>,
+  shield: (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3.5 5 6v6c0 4.5 3 7.8 7 8.5 4-.7 7-4 7-8.5V6l-7-2.5Z"/></svg>,
+  wallet: (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="6.5" width="18" height="12.5" rx="2.2"/><path d="M3 10.5h18M16 14.5h2.2"/></svg>,
+  pulse:  (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12h4l2 7 4-14 2 7h6"/></svg>,
+  bell:   (p) => <svg viewBox="0 0 24 24" width={p.size||18} height={p.size||18} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5Z"/><path d="M9.5 19a2.6 2.6 0 0 0 5 0"/></svg>,
+  chevron:(p) => <svg viewBox="0 0 24 24" width={p.size||14} height={p.size||14} fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6"/></svg>,
+  arrowLeft:(p) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>,
+}
+
+function ConsoleCard({ children, style = {}, padded = true }) {
+  return (
+    <div style={{
+      background: C.surface, borderRadius: C.radius,
+      border: `1px solid ${C.border}`, boxShadow: C.shadowSm,
+      overflow: 'hidden', ...style,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function ConsoleCardHeader({ title, subtitle, right, icon }) {
+  return (
+    <div style={{
+      padding: '16px 20px', borderBottom: `1px solid ${C.border}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        {icon && (
+          <div style={{
+            width: 30, height: 30, borderRadius: 8, background: C.indigoSoft,
+            color: C.indigo, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>{icon}</div>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 650, color: C.ink, letterSpacing: '-.01em' }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 12, color: C.inkMuted, marginTop: 1 }}>{subtitle}</div>}
+        </div>
+      </div>
+      {right && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>{right}</div>}
+    </div>
+  )
+}
+
+function ConsoleBtn({ children, onClick, variant = 'default', small, disabled, style = {} }) {
+  const variants = {
+    default: { background: C.surface, color: C.ink, border: `1px solid ${C.borderStrong}` },
+    primary: { background: C.indigo, color: '#fff', border: 'none' },
+    subtle:  { background: C.bg, color: C.inkMuted, border: `1px solid ${C.border}` },
+    danger:  { background: C.redSoft, color: '#B91C1C', border: `1px solid #FECACA` },
+  }
+  return (
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: font,
+      fontWeight: 600, fontSize: small ? 12.5 : 13.5, borderRadius: 8,
+      padding: small ? '6px 11px' : '8px 16px', cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? .5 : 1, transition: 'all .12s', ...variants[variant], ...style,
+    }}>
+      {children}
+    </button>
+  )
+}
+
+// Compact 4-signal chip row — the module's signature repeated element.
+// Shows Attendance / Discipline / Fees / Hostel at a glance for one student.
+function SignalRow({ attendancePct, disciplineOpen, feeOverdueDays, hostelStatus, size = 'md' }) {
+  const chips = [
+    {
+      key: 'attendance', label: 'Attendance', icon: Icon.check,
+      value: attendancePct != null ? `${attendancePct}%` : '—',
+      tone: attendancePct == null ? 'neutral' : attendancePct >= 75 ? 'good' : attendancePct >= 60 ? 'warn' : 'bad',
+    },
+    {
+      key: 'discipline', label: 'Discipline', icon: Icon.shield,
+      value: disciplineOpen != null ? (disciplineOpen === 0 ? 'Clear' : `${disciplineOpen} open`) : '—',
+      tone: disciplineOpen == null ? 'neutral' : disciplineOpen === 0 ? 'good' : disciplineOpen <= 2 ? 'warn' : 'bad',
+    },
+    {
+      key: 'fees', label: 'Fees', icon: Icon.wallet,
+      value: feeOverdueDays != null ? (feeOverdueDays <= 0 ? 'Paid' : `${feeOverdueDays}d overdue`) : '—',
+      tone: feeOverdueDays == null ? 'neutral' : feeOverdueDays <= 0 ? 'good' : feeOverdueDays <= 15 ? 'warn' : 'bad',
+    },
+    {
+      key: 'hostel', label: 'Hostel', icon: Icon.pulse,
+      value: hostelStatus || '—',
+      tone: !hostelStatus || hostelStatus === 'Normal' ? 'good' : hostelStatus === 'Sickbay' ? 'warn' : 'neutral',
+    },
+  ]
+  const toneColor = { good: C.green, warn: C.amber, bad: C.red, neutral: C.inkFaint }
+  const toneBg    = { good: C.greenSoft, warn: C.amberSoft, bad: C.redSoft, neutral: C.bg }
+  const compact = size === 'sm'
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {chips.map(c => (
+        <div key={c.key} title={c.label} style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          padding: compact ? '3px 8px' : '5px 10px', borderRadius: 999,
+          background: toneBg[c.tone], color: toneColor[c.tone],
+          fontSize: compact ? 10.5 : 11.5, fontWeight: 700, lineHeight: 1,
+        }}>
+          <c.icon size={compact ? 11 : 12.5} />
+          {c.value}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function riskLevel({ attendancePct, disciplineOpen, feeOverdueDays, hostelStatus }) {
+  let score = 0
+  if (attendancePct != null && attendancePct < 60) score += 2
+  else if (attendancePct != null && attendancePct < 75) score += 1
+  if (disciplineOpen != null && disciplineOpen > 2) score += 2
+  else if (disciplineOpen != null && disciplineOpen > 0) score += 1
+  if (feeOverdueDays != null && feeOverdueDays > 15) score += 2
+  else if (feeOverdueDays != null && feeOverdueDays > 0) score += 1
+  if (hostelStatus === 'Sickbay') score += 1
+  if (score >= 4) return 'high'
+  if (score >= 2) return 'medium'
+  return 'low'
+}
+
 // Course accent palette — more refined
 const COURSE_ACCENT = {
   Sainik:            { color: '#1d4ed8', bg: '#eff6ff', pill: '#dbeafe', text: '#1e40af' },
@@ -806,6 +980,97 @@ function TabHome({ onNavigate }) {
 
 // ─── Tab: MARK ATTENDANCE ─────────────────────────────────────
 
+function ConsoleSelect({ value, onChange, disabled, children, style = {} }) {
+  return (
+    <select value={value} onChange={onChange} disabled={disabled} style={{
+      padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.borderStrong}`,
+      fontSize: 13.5, fontFamily: font, outline: 'none', background: C.surface, color: C.ink,
+      width: '100%', boxSizing: 'border-box', cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? .5 : 1, appearance: 'none',
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+      backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 30,
+      ...style,
+    }}>
+      {children}
+    </select>
+  )
+}
+
+function ConsoleInput(props) {
+  return <input {...props} style={{
+    padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.borderStrong}`,
+    fontSize: 13.5, fontFamily: font, outline: 'none', background: C.surface, color: C.ink,
+    width: '100%', boxSizing: 'border-box', ...(props.style||{}),
+  }} />
+}
+
+function ConsoleLabel({ children, required, hint }) {
+  return (
+    <div style={{ marginBottom: 5, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: C.inkMuted, letterSpacing: '.01em' }}>
+        {children}{required && <span style={{ color: C.red, marginLeft: 2 }}>*</span>}
+      </span>
+      {hint && <span style={{ fontSize: 10.5, color: C.indigo, fontWeight: 600 }}>{hint}</span>}
+    </div>
+  )
+}
+
+function ConsoleAlert({ type = 'info', children, onClose }) {
+  const map = {
+    info:    { bg: C.indigoSoft, color: '#3730A3' },
+    success: { bg: C.greenSoft, color: '#047857' },
+    warn:    { bg: C.amberSoft, color: '#92400E' },
+    error:   { bg: C.redSoft, color: '#B91C1C' },
+  }
+  const m = map[type]
+  return (
+    <div style={{
+      background: m.bg, color: m.color, borderRadius: 8, padding: '10px 14px',
+      fontSize: 13, fontWeight: 500, marginBottom: 14, display: 'flex',
+      alignItems: 'center', justifyContent: 'space-between', gap: 10,
+    }}>
+      <span>{children}</span>
+      {onClose && <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color: m.color, fontSize: 15, opacity: .6 }}>×</button>}
+    </div>
+  )
+}
+
+const STATUS_TONE = {
+  Present: { color: C.green, bg: C.greenSoft },
+  Absent:  { color: C.red,   bg: C.redSoft },
+  Late:    { color: C.amber, bg: C.amberSoft },
+  Leave:   { color: C.violet,bg: C.violetSoft },
+}
+
+function StudentRowMark({ student, status, onChange }) {
+  const initials = student.student_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
+  const cycle = () => {
+    const idx = STATUSES.indexOf(status)
+    onChange(STATUSES[(idx + 1) % STATUSES.length])
+  }
+  const tone = STATUS_TONE[status] || STATUS_TONE.Present
+  return (
+    <button onClick={cycle} style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+      border: `1px solid ${C.border}`, borderRadius: 10, background: C.surface,
+      cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: font,
+    }}>
+      <div style={{
+        width: 30, height: 30, borderRadius: 8, background: C.indigoSoft, color: C.indigo,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0,
+      }}>{initials}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{student.student_name}</div>
+        {student.gcc_no && <div style={{ fontSize: 10.5, color: C.inkFaint }}>GCC {student.gcc_no}</div>}
+      </div>
+      <span style={{
+        fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999,
+        background: tone.bg, color: tone.color, flexShrink: 0,
+      }}>{status}</span>
+    </button>
+  )
+}
+
 function TabMark({ staff, prefill }) {
   const isMobile = useIsMobile()
   const [form, setForm] = useState({
@@ -966,285 +1231,170 @@ function TabMark({ staff, prefill }) {
     students.filter(s => { const k = s.student_id || s.student_name; return records[k] === 'Absent' || records[k] === 'Late' })
   , [students, records])
 
-  const pad = isMobile ? '14px 16px' : '18px 22px'
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <AttendanceAnimStyles />
 
-      {/* Session config */}
-      <Card>
-        <CardHeader icon="📋" title="Session details" subtitle="Configure course and period" accent={T.navy} />
-        <div style={{ padding: pad }}>
-          {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Mark attendance</div>
+        <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>Configure the session, then mark each student</div>
+      </div>
 
-          <SectionDivider label="Course" />
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
+      <ConsoleCard>
+        <ConsoleCardHeader icon={<Icon.check size={16} />} title="Session details" subtitle="Course, batch, and period" />
+        <div style={{ padding: '18px 20px' }}>
+          {toast && <ConsoleAlert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</ConsoleAlert>}
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 12, marginBottom: 14 }}>
             <div>
-              <Label required>Course</Label>
-              <Select value={form.course} onChange={e => setForm(prev => ({ ...prev, course: e.target.value, subtype:'', class_name:'' }))}>
+              <ConsoleLabel required>Course</ConsoleLabel>
+              <ConsoleSelect value={form.course} onChange={e => setForm(prev => ({ ...prev, course: e.target.value, subtype:'', class_name:'' }))}>
                 <option value="">Select course…</option>
                 {COURSES.map(c => <option key={c}>{c}</option>)}
-              </Select>
+              </ConsoleSelect>
             </div>
             <div>
-              <Label>Batch</Label>
-              <Select value={form.subtype} disabled={!form.course}
+              <ConsoleLabel>Batch</ConsoleLabel>
+              <ConsoleSelect value={form.subtype} disabled={!form.course}
                 onChange={e => setForm(prev => ({ ...prev, subtype: e.target.value, class_name:'' }))}>
                 <option value="">Select batch…</option>
                 {subtypes.map(s => <option key={s}>{s}</option>)}
-              </Select>
+              </ConsoleSelect>
             </div>
             <div>
-              <Label hint={batchId ? '✓ linked' : ''}>Class</Label>
-              <input value={form.class_name} onChange={e => setForm(prev => ({ ...prev, class_name: e.target.value }))}
-                placeholder="e.g. 9A (optional)" style={inputStyle()} />
+              <ConsoleLabel hint={batchId ? 'linked' : ''}>Class</ConsoleLabel>
+              <ConsoleInput value={form.class_name} onChange={e => setForm(prev => ({ ...prev, class_name: e.target.value }))}
+                placeholder="e.g. 9A (optional)" />
             </div>
           </div>
 
           {form.course && (
             <div style={{
-              marginBottom: 16, padding: '10px 14px', borderRadius: 9,
-              background: students.length ? '#f0fdf4' : '#fffbeb',
-              border: `1.5px solid ${students.length ? '#bbf7d0' : '#fde68a'}`,
+              marginBottom: 14, padding: '10px 14px', borderRadius: 8,
+              background: students.length ? C.greenSoft : C.amberSoft,
               display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
             }}>
-              <span style={{
-                fontSize: 13, fontWeight: 600,
-                color: students.length ? '#15803d' : '#b45309',
-              }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: students.length ? '#047857' : '#92400E' }}>
                 {students.length ? `${students.length} students enrolled` : 'No students found'}
               </span>
               {timetable.length > 0 && (
-                <span style={{ fontSize: 11.5, color: T.blue, fontWeight: 600 }}>
-                  {timetable.length} timetable slots
-                </span>
+                <span style={{ fontSize: 11.5, color: C.indigo, fontWeight: 600 }}>{timetable.length} timetable slots</span>
               )}
-              {form.course && <CoursePill course={form.course} />}
             </div>
           )}
 
-          <SectionDivider label="Session" />
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3,1fr)', gap: 12, marginBottom: 14 }}>
             <div style={isMobile ? { gridColumn: '1 / -1' } : {}}>
-              <Label>Date</Label>
-              <input type="date" value={form.session_date}
-                onChange={e => setForm(prev => ({ ...prev, session_date: e.target.value }))}
-                style={inputStyle()} />
+              <ConsoleLabel>Date</ConsoleLabel>
+              <ConsoleInput type="date" value={form.session_date}
+                onChange={e => setForm(prev => ({ ...prev, session_date: e.target.value }))} />
             </div>
             <div>
-              <Label hint={form.period_number && timetable.length ? 'auto-fill' : ''}>Period</Label>
-              <Select value={form.period_number} onChange={e => handlePeriod(e.target.value)}>
+              <ConsoleLabel hint={form.period_number && timetable.length ? 'auto-fill' : ''}>Period</ConsoleLabel>
+              <ConsoleSelect value={form.period_number} onChange={e => handlePeriod(e.target.value)}>
                 <option value="">— None —</option>
                 {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
-              </Select>
+              </ConsoleSelect>
             </div>
             <div>
-              <Label hint={form.period_number && form.subject_name && timetable.length ? 'from timetable' : ''}>Subject</Label>
-              <Select value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
+              <ConsoleLabel hint={form.period_number && form.subject_name && timetable.length ? 'from timetable' : ''}>Subject</ConsoleLabel>
+              <ConsoleSelect value={form.subject_name} onChange={e => setForm(prev => ({ ...prev, subject_name: e.target.value }))}>
                 <option value="">Select subject…</option>
                 {batchSubjects.map(s => <option key={s}>{s}</option>)}
-              </Select>
+              </ConsoleSelect>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 12 }}>
             <div>
-              <Label hint={form.period_number && form.teacher_name && timetable.length ? 'from timetable' : ''}>Teacher</Label>
-              <Select value={form.teacher_name} onChange={e => handleTeacher(e.target.value)}>
+              <ConsoleLabel hint={form.period_number && form.teacher_name && timetable.length ? 'from timetable' : ''}>Teacher</ConsoleLabel>
+              <ConsoleSelect value={form.teacher_name} onChange={e => handleTeacher(e.target.value)}>
                 <option value="">Select teacher…</option>
-                {batchStaff.map(s => <option key={s.id} value={s.name}>
-                  {s.name}{s.designation ? ` — ${s.designation}` : ''}
-                </option>)}
-              </Select>
+                {batchStaff.map(s => <option key={s.id} value={s.name}>{s.name}{s.designation ? ` — ${s.designation}` : ''}</option>)}
+              </ConsoleSelect>
             </div>
             <div>
-              <Label>Session type</Label>
-              <Select value={form.session_type} onChange={e => setForm(prev => ({ ...prev, session_type: e.target.value }))}>
+              <ConsoleLabel>Session type</ConsoleLabel>
+              <ConsoleSelect value={form.session_type} onChange={e => setForm(prev => ({ ...prev, session_type: e.target.value }))}>
                 {SESSION_TYPES.map(t => <option key={t}>{t}</option>)}
-              </Select>
+              </ConsoleSelect>
             </div>
             <div>
-              <Label>Remarks</Label>
-              <input value={form.remarks} onChange={e => setForm(prev => ({ ...prev, remarks: e.target.value }))}
-                placeholder="Optional notes…" style={inputStyle()} />
+              <ConsoleLabel>Remarks</ConsoleLabel>
+              <ConsoleInput value={form.remarks} onChange={e => setForm(prev => ({ ...prev, remarks: e.target.value }))}
+                placeholder="Optional notes…" />
             </div>
           </div>
         </div>
-      </Card>
+      </ConsoleCard>
 
-      {/* Swift grid */}
       {students.length > 0 && (
-        <Card style={{ overflow: 'visible' }}>
-          {/* Instagram-style gradient banner header */}
-          <div style={{
-            background: 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
-            padding: isMobile ? '16px 16px 14px' : '18px 22px 16px',
-            borderRadius: '14px 14px 0 0',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-          }}>
-            <div>
-              <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, color: 'white', lineHeight: 1.3 }}>
-                📸 Roll Call
-              </div>
-              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.75)', marginTop: 2 }}>
-                {form.course}{form.subtype ? ' · ' + form.subtype : ''} — tap to cycle status
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={copyLastSession} disabled={copying} style={{
-                padding: '6px 13px', borderRadius: 999, border: '1.5px solid rgba(255,255,255,.4)',
-                background: 'rgba(255,255,255,.15)', color: 'white',
-                fontWeight: 700, fontSize: 12, cursor: copying ? 'not-allowed' : 'pointer',
-                fontFamily: font, backdropFilter: 'blur(4px)',
-                WebkitTapHighlightColor: 'transparent',
-              }}>
-                {copying ? '…' : '📋'} {isMobile ? 'Copy' : 'Copy last'}
-              </button>
-              {!isMobile && (
-                <button onClick={invertSelection} style={{
-                  padding: '6px 13px', borderRadius: 999, border: '1.5px solid rgba(255,255,255,.4)',
-                  background: 'rgba(255,255,255,.15)', color: 'white',
-                  fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: font,
-                  backdropFilter: 'blur(4px)', WebkitTapHighlightColor: 'transparent',
-                }}>
-                  ⇄ Invert
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Quick-mark pills — Instagram gradient style */}
-          <div style={{
-            padding: isMobile ? '12px 16px' : '14px 22px',
-            borderBottom: `1.5px solid ${T.gray100}`,
-            display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center',
-            background: 'linear-gradient(to right, #f8fafc, #f1f5f9)',
-          }}>
+        <ConsoleCard>
+          <ConsoleCardHeader
+            icon={<Icon.users size={16} />} title="Roll call"
+            subtitle={`${form.course}${form.subtype ? ' · ' + form.subtype : ''} · tap a row to cycle status`}
+            right={
+              <>
+                <ConsoleBtn small variant="subtle" disabled={copying} onClick={copyLastSession}>{copying ? '…' : 'Copy last'}</ConsoleBtn>
+                {!isMobile && <ConsoleBtn small variant="subtle" onClick={invertSelection}>Invert</ConsoleBtn>}
+              </>
+            }
+          />
+          <div style={{ padding: '12px 20px', display: 'flex', gap: 8, flexWrap: 'wrap', borderBottom: `1px solid ${C.border}` }}>
             {STATUSES.map(s => {
-              const sm = STATUS_META[s]
-              const grad = STATUS_GRADIENT[s]
+              const tone = STATUS_TONE[s]
               return (
                 <button key={s} onClick={() => markAll(s)} style={{
-                  display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '7px 15px', borderRadius: 999,
-                  border: 'none',
-                  background: grad,
-                  color: 'white',
-                  fontWeight: 700, fontSize: 12, cursor: 'pointer',
-                  fontFamily: font, WebkitTapHighlightColor: 'transparent',
-                  transition: 'all .15s',
-                  boxShadow: `0 2px 8px ${sm.dot}55`,
-                  letterSpacing: '.01em',
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999,
+                  border: 'none', background: tone.bg, color: tone.color, fontWeight: 700, fontSize: 12,
+                  cursor: 'pointer', fontFamily: font,
                 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800 }}>{sm.icon}</span>
-                  <span style={{ fontFamily: fontMono, fontSize: 13, fontWeight: 800 }}>{counts[s]}</span>
-                  <span>{sm.label}</span>
+                  <span style={{ fontFamily: fontMono }}>{counts[s]}</span> {s}
                 </button>
               )
             })}
-            {!isMobile && (
-              <button onClick={invertSelection} style={{
-                padding: '7px 14px', borderRadius: 999,
-                border: `1.5px solid ${T.gray200}`,
-                background: T.white, color: T.gray500,
-                fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: font,
-                marginLeft: 'auto',
-              }}>
-                ⇄ Invert
-              </button>
-            )}
           </div>
-
-          {/* Progress bar */}
-          <div style={{ padding: '10px 22px 0' }}>
+          <div style={{ padding: '12px 20px 0' }}>
             <AttendBar records={records} />
           </div>
-
-          {/* Search */}
-          <div style={{ padding: isMobile ? '10px 16px' : '12px 22px' }}>
-            <input
-              value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search name or GCC number…"
-              style={inputStyle({ background: T.gray50 })}
-            />
+          <div style={{ padding: '12px 20px' }}>
+            <ConsoleInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or GCC number…" />
           </div>
-
-          {/* Grid — Stories shelf */}
           <div style={{
-            padding: isMobile ? '8px 12px 18px' : '10px 18px 22px',
-            display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(5,1fr)',
-            gap: isMobile ? 8 : 10,
-            background: 'linear-gradient(180deg, #fafafa 0%, #fff 60%)',
+            padding: '0 20px 16px', display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 8,
           }}>
             {filteredStudents.map(s => {
               const key = s.student_id || s.student_name
               return (
-                <StatusCycleCell
-                  key={key} student={s} status={records[key] || 'Present'}
-                  isMobile={isMobile}
-                  onChange={next => setRecords(prev => ({ ...prev, [key]: next }))}
-                />
+                <StudentRowMark key={key} student={s} status={records[key] || 'Present'}
+                  onChange={next => setRecords(prev => ({ ...prev, [key]: next }))} />
               )
             })}
             {filteredStudents.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '32px 0', color: T.gray400, fontSize: 13 }}>
+              <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '28px 0', color: C.inkFaint, fontSize: 13 }}>
                 No students match your search.
               </div>
             )}
           </div>
-
-          {/* Save */}
-          <div style={{
-            padding: isMobile ? '12px 16px' : '14px 22px',
-            borderTop: `1.5px solid ${T.gray100}`,
-            background: T.gray50,
-          }}>
-            <button
-              disabled={saving} onClick={handleSave}
-              style={{
-                width: '100%', minHeight: 46, fontSize: 14,
-                fontWeight: 700, fontFamily: font, cursor: saving ? 'not-allowed' : 'pointer',
-                border: 'none', borderRadius: 11,
-                background: saving
-                  ? T.gray200
-                  : 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
-                color: saving ? T.gray400 : 'white',
-                boxShadow: saving ? 'none' : '0 4px 14px rgba(131,58,180,.4)',
-                transition: 'all .15s',
-                letterSpacing: '.02em',
-              }}
-            >
+          <div style={{ padding: '14px 20px', borderTop: `1px solid ${C.border}`, background: C.bg }}>
+            <ConsoleBtn variant="primary" disabled={saving} onClick={handleSave} style={{ width: '100%', justifyContent: 'center', minHeight: 42 }}>
               {saving ? 'Saving…' : `Save attendance · ${students.length} students`}
-            </button>
+            </ConsoleBtn>
           </div>
-        </Card>
+        </ConsoleCard>
       )}
 
-      {/* Bold success receipt modal */}
       {showReceipt && (
-        <ReceiptSuccessModal
-          count={students.length}
-          absentCount={absentStudents.length}
-          onClose={() => setShowReceipt(false)}
-        />
+        <ReceiptSuccessModal count={students.length} absentCount={absentStudents.length} onClose={() => setShowReceipt(false)} />
       )}
 
-      {/* Group report for WhatsApp */}
       {showNotify && (
-        <WhatsAppReportPanel
-          students={students} absentStudents={absentStudents} records={records}
-          sessionInfo={form} counts={counts}
-        />
+        <WhatsAppReportPanel students={students} absentStudents={absentStudents} records={records} sessionInfo={form} counts={counts} />
       )}
 
-      {/* Notify */}
       {showNotify && absentStudents.length > 0 && (
-        <NotifyPanel
-          students={absentStudents} records={records} sessionInfo={form}
-          onClose={() => setShowNotify(false)}
-        />
+        <NotifyPanel students={absentStudents} records={records} sessionInfo={form} onClose={() => setShowNotify(false)} />
       )}
     </div>
   )
@@ -3062,179 +3212,441 @@ function TabAwards({ isAdmin }) {
   )
 }
 
-// ─── MAIN ─────────────────────────────────────────────────────
+// ─── Student 360 — cross-module monitoring page ───────────────
+//
+// Pulls attendance from tables already in use, and fee/discipline/
+// hostel signals from placeholder tables in SCHEMA above. Every
+// placeholder query is wrapped so a missing table just shows "—"
+// instead of crashing the page — safe to ship before you've wired
+// the real fee/discipline/hostel schema.
 
-const NAV_TABS = [
-  { key:'home',   label:'🏠 Home'      },
-  { key:'mark',   label:'📝 Mark'      },
-  { key:'view',   label:'📅 Sessions'  },
-  { key:'report', label:'📊 Reports'   },
-  { key:'leave',  label:'🌿 Leaves'    },
+async function safeQuery(fn) {
+  try {
+    const { data, error } = await fn()
+    if (error) return null
+    return data
+  } catch { return null }
+}
+
+function useStudentSignals(monthStr) {
+  const [rows, setRows]       = useState([])
+  const [loading, setLoading] = useState(true)
+  const [degraded, setDegraded] = useState({ fees: false, discipline: false, hostel: false })
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      const monthStart = `${monthStr}-01`
+      const endDate = new Date(monthStr.split('-')[0], Number(monthStr.split('-')[1]), 0).toISOString().split('T')[0]
+
+      const sessions = await safeQuery(() => supabase.from('attendance_sessions').select('id,course').gte('session_date', monthStart).lte('session_date', endDate)) || []
+      const sessionCourse = {}
+      sessions.forEach(s => { sessionCourse[s.id] = s.course })
+      const ids = sessions.map(s => s.id)
+
+      const recs = ids.length ? (await safeQuery(() => supabase.from('attendance_records').select('student_name,gcc_no,class_name,status,session_id').in('session_id', ids)) || []) : []
+
+      const map = {}
+      recs.forEach(r => {
+        const key = r.gcc_no || r.student_name
+        if (!map[key]) map[key] = {
+          name: r.student_name, gcc: r.gcc_no, className: r.class_name,
+          course: sessionCourse[r.session_id] || '—', present: 0, total: 0,
+        }
+        if (r.status === 'Present') map[key].present++
+        map[key].total++
+      })
+
+      // Placeholder cross-module signals — degrade silently if tables don't exist yet
+      const feeRows = await safeQuery(() => supabase.from(SCHEMA.fees.table).select('*'))
+      const discRows = await safeQuery(() => supabase.from(SCHEMA.discipline.table).select('*'))
+      const hostelRows = await safeQuery(() => supabase.from(SCHEMA.hostel.table).select('*'))
+
+      if (cancelled) return
+      setDegraded({ fees: feeRows === null, discipline: discRows === null, hostel: hostelRows === null })
+
+      const feeByStudent = {}
+      ;(feeRows || []).forEach(f => {
+        const k = f[SCHEMA.fees.studentKey]
+        const due = new Date(f[SCHEMA.fees.dueDate] || Date.now())
+        const overdueDays = f[SCHEMA.fees.status] === 'paid' ? 0 : Math.max(0, Math.round((Date.now() - due) / 86400000))
+        if (!feeByStudent[k] || overdueDays > feeByStudent[k]) feeByStudent[k] = overdueDays
+      })
+      const discByStudent = {}
+      ;(discRows || []).forEach(d => {
+        const k = d[SCHEMA.discipline.studentKey]
+        if (d[SCHEMA.discipline.status] !== 'resolved') discByStudent[k] = (discByStudent[k] || 0) + 1
+      })
+      const hostelByStudent = {}
+      ;(hostelRows || []).forEach(h => {
+        const k = h[SCHEMA.hostel.studentKey]
+        if (h[SCHEMA.hostel.status] === 'active') hostelByStudent[k] = 'Sickbay'
+      })
+
+      const out = Object.entries(map).map(([key, r]) => {
+        const pct = r.total > 0 ? Math.round((r.present / r.total) * 100) : null
+        const signals = {
+          attendancePct: pct,
+          disciplineOpen: discRows === null ? null : (discByStudent[key] || 0),
+          feeOverdueDays: feeRows === null ? null : (feeByStudent[key] || 0),
+          hostelStatus: hostelRows === null ? null : (hostelByStudent[key] || 'Normal'),
+        }
+        return { key, ...r, ...signals, risk: riskLevel(signals) }
+      })
+
+      out.sort((a, b) => {
+        const order = { high: 0, medium: 1, low: 2 }
+        return order[a.risk] - order[b.risk]
+      })
+
+      if (!cancelled) { setRows(out); setLoading(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [monthStr])
+
+  return { rows, loading, degraded }
+}
+
+function RiskBadge({ level }) {
+  const map = {
+    high:   { bg: C.redSoft,   color: '#B91C1C', label: 'High risk' },
+    medium: { bg: C.amberSoft, color: '#B45309', label: 'Watch' },
+    low:    { bg: C.greenSoft, color: '#047857', label: 'On track' },
+  }
+  const m = map[level]
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+      background: m.bg, color: m.color, whiteSpace: 'nowrap',
+    }}>
+      {m.label}
+    </span>
+  )
+}
+
+function StudentRiskCard({ s }) {
+  const isMobile = useIsMobile()
+  const initials = s.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+      borderBottom: `1px solid ${C.border}`, flexWrap: isMobile ? 'wrap' : 'nowrap',
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: 10, background: C.indigoSoft, color: C.indigo,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 12.5, fontWeight: 700, flexShrink: 0,
+      }}>{initials}</div>
+      <div style={{ minWidth: 0, width: isMobile ? '100%' : 160, flexShrink: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 650, color: C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
+        <div style={{ fontSize: 11.5, color: C.inkMuted }}>{s.course}{s.className ? ` · ${s.className}` : ''}</div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <SignalRow attendancePct={s.attendancePct} disciplineOpen={s.disciplineOpen} feeOverdueDays={s.feeOverdueDays} hostelStatus={s.hostelStatus} size="sm" />
+      </div>
+      <RiskBadge level={s.risk} />
+    </div>
+  )
+}
+
+function Student360Page() {
+  const isMobile = useIsMobile()
+  const [month, setMonth] = useState(monthOptions()[0])
+  const [filter, setFilter] = useState('all')
+  const [query, setQuery] = useState('')
+  const { rows, loading, degraded } = useStudentSignals(month)
+
+  const filtered = rows.filter(r => {
+    if (filter !== 'all' && r.risk !== filter) return false
+    if (query && !r.name.toLowerCase().includes(query.toLowerCase())) return false
+    return true
+  })
+
+  const counts = { high: rows.filter(r=>r.risk==='high').length, medium: rows.filter(r=>r.risk==='medium').length, low: rows.filter(r=>r.risk==='low').length }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Student 360</div>
+          <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>Attendance, discipline, fees, and hostel status in one view</div>
+        </div>
+        <Select value={month} onChange={e => setMonth(e.target.value)} style={{ width: 160 }}>
+          {monthOptions().map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+        </Select>
+      </div>
+
+      {(degraded.fees || degraded.discipline || degraded.hostel) && (
+        <div style={{
+          padding: '10px 14px', borderRadius: 10, background: C.amberSoft,
+          border: `1px solid #FDE68A`, color: '#92400E', fontSize: 12.5,
+        }}>
+          {['fees','discipline','hostel'].filter(k => degraded[k]).join(', ')} data isn't connected yet — showing attendance only for those signals. Update the SCHEMA config once those tables are confirmed.
+        </div>
+      )}
+
+      {/* Summary strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(3,1fr)', gap: 10 }}>
+        {[
+          { key: 'high',   label: 'High risk',  count: counts.high,   color: C.red,   bg: C.redSoft },
+          { key: 'medium', label: 'Watch',      count: counts.medium, color: C.amber, bg: C.amberSoft },
+          { key: 'low',    label: 'On track',   count: counts.low,    color: C.green, bg: C.greenSoft },
+        ].map(s => (
+          <button key={s.key} onClick={() => setFilter(filter === s.key ? 'all' : s.key)} style={{
+            textAlign: 'left', border: `1px solid ${filter === s.key ? s.color : C.border}`,
+            borderRadius: C.radius, padding: '14px 16px', background: filter === s.key ? s.bg : C.surface,
+            cursor: 'pointer', fontFamily: font,
+          }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.count}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMuted }}>{s.label}</div>
+          </button>
+        ))}
+      </div>
+
+      <ConsoleCard>
+        <ConsoleCardHeader
+          icon={<Icon.users size={16} />} title="Students" subtitle={`${filtered.length} shown${filter !== 'all' ? ` · filtered: ${filter}` : ''}`}
+          right={<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name…" style={{ ...inputStyle(), width: 180 }} />}
+        />
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: C.inkFaint, fontSize: 13 }}>Loading student signals…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: C.inkFaint, fontSize: 13 }}>No students match this view.</div>
+        ) : (
+          <div>{filtered.map(s => <StudentRiskCard key={s.key} s={s} />)}</div>
+        )}
+      </ConsoleCard>
+    </div>
+  )
+}
+
+// ─── Home v2 — SaaS dashboard shell wrapping existing TabHome data ─
+
+function AlertFeed({ rows }) {
+  const items = []
+  const highRisk = rows.filter(r => r.risk === 'high')
+  const feeOverdue = rows.filter(r => (r.feeOverdueDays||0) > 15)
+  const discipline = rows.filter(r => (r.disciplineOpen||0) > 0)
+  const sickbay = rows.filter(r => r.hostelStatus === 'Sickbay')
+  const lowAttendance = rows.filter(r => r.attendancePct != null && r.attendancePct < 75)
+
+  if (highRisk.length) items.push({ icon: Icon.bell, tone: 'bad', text: `${highRisk.length} student${highRisk.length>1?'s':''} flagged high risk this month` })
+  if (lowAttendance.length) items.push({ icon: Icon.check, tone: 'warn', text: `${lowAttendance.length} student${lowAttendance.length>1?'s':''} below 75% attendance` })
+  if (discipline.length) items.push({ icon: Icon.shield, tone: 'warn', text: `${discipline.length} student${discipline.length>1?'s':''} with open discipline entries` })
+  if (feeOverdue.length) items.push({ icon: Icon.wallet, tone: 'bad', text: `${feeOverdue.length} student${feeOverdue.length>1?'s':''} fee-overdue more than 15 days` })
+  if (sickbay.length) items.push({ icon: Icon.pulse, tone: 'warn', text: `${sickbay.length} student${sickbay.length>1?'s':''} currently in sickbay` })
+
+  const toneColor = { bad: C.red, warn: C.amber, good: C.green }
+  const toneBg    = { bad: C.redSoft, warn: C.amberSoft, good: C.greenSoft }
+
+  return (
+    <ConsoleCard>
+      <ConsoleCardHeader icon={<Icon.bell size={16} />} title="Needs attention" subtitle="Cross-module alerts, updated live" />
+      <div style={{ padding: items.length ? '4px 0' : '32px 20px' }}>
+        {items.length === 0 && (
+          <div style={{ textAlign: 'center', color: C.inkFaint, fontSize: 13 }}>Nothing needs attention right now.</div>
+        )}
+        {items.map((it, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', borderBottom: i < items.length-1 ? `1px solid ${C.border}` : 'none' }}>
+            <div style={{ width: 26, height: 26, borderRadius: 7, background: toneBg[it.tone], color: toneColor[it.tone], display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <it.icon size={13} />
+            </div>
+            <div style={{ fontSize: 13, color: C.ink, fontWeight: 500 }}>{it.text}</div>
+          </div>
+        ))}
+      </div>
+    </ConsoleCard>
+  )
+}
+
+function HomeV2({ onNavigate }) {
+  const isMobile = useIsMobile()
+  const month = monthOptions()[0]
+  const { rows, loading } = useStudentSignals(month)
+
+  const avgAttendance = rows.length ? Math.round(rows.reduce((s,r)=>s+(r.attendancePct||0),0)/rows.length) : 0
+  const highRiskCount = rows.filter(r => r.risk === 'high').length
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Overview</div>
+        <div style={{ fontSize: 13, color: C.inkMuted, marginTop: 2 }}>{fmtDate(today())} · {todayDay()}</div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
+        {[
+          { label: 'Students tracked', value: rows.length, icon: Icon.users, color: C.indigo, bg: C.indigoSoft },
+          { label: 'Avg. attendance', value: `${avgAttendance}%`, icon: Icon.check, color: avgAttendance>=75?C.green:C.amber, bg: avgAttendance>=75?C.greenSoft:C.amberSoft },
+          { label: 'High risk', value: highRiskCount, icon: Icon.bell, color: C.red, bg: C.redSoft },
+          { label: 'On track', value: rows.filter(r=>r.risk==='low').length, icon: Icon.award, color: C.green, bg: C.greenSoft },
+        ].map((k,i) => (
+          <ConsoleCard key={i} style={{ padding: '16px 18px' }} padded={false}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMuted }}>{k.label}</div>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: k.bg, color: k.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <k.icon size={13} />
+              </div>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: C.ink, marginTop: 8 }}>{loading ? '—' : k.value}</div>
+          </ConsoleCard>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16, alignItems: 'start' }}>
+        <AlertFeed rows={rows} />
+        <ConsoleCard>
+          <ConsoleCardHeader icon={<Icon.users size={16} />} title="Highest risk students" subtitle="Top 5 this month" />
+          <div>
+            {rows.filter(r=>r.risk!=='low').slice(0,5).map(s => <StudentRiskCard key={s.key} s={s} />)}
+            {rows.filter(r=>r.risk!=='low').length === 0 && !loading && (
+              <div style={{ padding: 28, textAlign:'center', color: C.inkFaint, fontSize: 13 }}>No flagged students this month.</div>
+            )}
+          </div>
+          <div style={{ padding: '12px 20px' }}>
+            <ConsoleBtn variant="subtle" small onClick={() => onNavigate('student360')} style={{ width: '100%', justifyContent: 'center' }}>
+              View all students <Icon.chevron size={12} />
+            </ConsoleBtn>
+          </div>
+        </ConsoleCard>
+      </div>
+    </div>
+  )
+}
+
+
+
+const NAV_ITEMS = [
+  { key:'home',      label:'Overview',    icon: Icon.home },
+  { key:'student360',label:'Student 360', icon: Icon.users },
+  { key:'mark',      label:'Mark',        icon: Icon.check },
+  { key:'view',      label:'Sessions',    icon: Icon.calendar },
+  { key:'report',    label:'Reports',     icon: Icon.chart },
+  { key:'leave',     label:'Leaves',      icon: Icon.leaf },
+  { key:'awards',    label:'Awards',      icon: Icon.award },
 ]
+
+const PAGE_META = {
+  home:       { title: 'Overview' },
+  student360: { title: 'Student 360' },
+  mark:       { title: 'Mark attendance' },
+  view:       { title: 'Sessions' },
+  report:     { title: 'Reports' },
+  leave:      { title: 'Leaves' },
+  awards:     { title: 'Awards' },
+}
 
 export default function Attendance({ currentUser, isAdmin }) {
   const isMobile  = useIsMobile()
   const [staff,       setStaff]       = useState([])
   const [markPrefill, setMarkPrefill] = useState(null)
-  const [activeSection, setActiveSection] = useState('home')
+  const [route, setRoute]             = useState('home')
+  const [navOpen, setNavOpen]         = useState(false) // mobile drawer
 
   useEffect(() => {
     supabase.from('staff_profiles').select('id,name,designation').order('name')
       .then(({ data }) => setStaff(data || []))
   }, [])
 
-  const navigateTo = (section, prefill = null) => {
+  const navigateTo = (page, prefill = null) => {
     setMarkPrefill(prefill)
-    scrollToSection(section)
+    setRoute(page)
+    setNavOpen(false)
   }
 
-  const scrollToSection = (key) => {
-    setActiveSection(key)
-    const el = document.getElementById(`gnsi-section-${key}`)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const renderPage = () => {
+    switch (route) {
+      case 'home':       return <HomeV2 onNavigate={navigateTo} />
+      case 'student360': return <Student360Page />
+      case 'mark':       return <TabMark staff={staff} prefill={markPrefill} />
+      case 'view':       return <TabView />
+      case 'report':     return <TabReport />
+      case 'leave':      return <TabLeave staff={staff} currentUser={currentUser} isAdmin={isAdmin} />
+      case 'awards':     return <TabAwards isAdmin={isAdmin} />
+      default:           return null
+    }
   }
 
-  // Track which section is in view to highlight the right nav pill
-  useEffect(() => {
-    const sections = NAV_TABS.map(t => document.getElementById(`gnsi-section-${t.key}`)).filter(Boolean)
-    if (!sections.length) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter(e => e.isIntersecting).sort((a,b) => b.intersectionRatio - a.intersectionRatio)
-        if (visible[0]) {
-          const key = visible[0].target.id.replace('gnsi-section-', '')
-          setActiveSection(key)
-        }
-      },
-      { threshold: [0.15, 0.3, 0.5], rootMargin: '-80px 0px -60% 0px' }
-    )
-    sections.forEach(s => observer.observe(s))
-    return () => observer.disconnect()
-  }, [])
-
-  return (
-    <div style={{
-      maxWidth: 1000, margin: '0 auto',
-      padding: isMobile ? '16px 12px' : '28px 24px',
-      fontFamily: font,
-    }}>
-
-      {/* Page header */}
-      <div style={{ marginBottom: isMobile ? 18 : 24 }}>
-        <div style={{
-          fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-          letterSpacing: '.12em', color: T.gray400, marginBottom: 4,
-        }}>
+  const SidebarContent = () => (
+    <>
+      <div style={{ padding: '20px 18px 16px' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: '#64748B' }}>
           GNSI Portal
         </div>
-        <div style={{
-          fontSize: isMobile ? 22 : 28, fontWeight: 700,
-          letterSpacing: '-.02em', lineHeight: 1.2,
-          background: 'linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-        }}>
+        <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginTop: 2, letterSpacing: '-.01em' }}>
           Attendance
         </div>
-        {!isMobile && (
-          <div style={{ fontSize: 13.5, color: T.gray500, marginTop: 4, fontWeight: 400 }}>
-            Mark, view, analyse and manage attendance across all batches — all in one place
-          </div>
-        )}
       </div>
-
-      {/* Sticky jump-nav — scrolls to section instead of switching tabs */}
-      <div style={{
-        display: 'flex',
-        marginBottom: 20,
-        background: T.white,
-        borderRadius: 14,
-        padding: 4,
-        gap: 3,
-        overflowX: 'auto', WebkitOverflowScrolling: 'touch',
-        scrollbarWidth: 'none', msOverflowStyle: 'none',
-        boxShadow: T.shadowSm,
-        border: `1.5px solid ${T.gray150}`,
-        position: 'sticky', top: 8, zIndex: 40,
-      }}>
-        {NAV_TABS.map(t => {
-          const isActive = activeSection === t.key
+      <nav style={{ padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {NAV_ITEMS.map(item => {
+          const active = route === item.key
           return (
-            <button key={t.key} onClick={() => scrollToSection(t.key)} style={{
-              flex: 1,
-              padding: isMobile ? '8px 4px' : '9px 14px',
-              fontWeight: 700, fontSize: isMobile ? 11 : 12.5,
-              cursor: 'pointer',
-              background: isActive
-                ? 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)'
-                : 'none',
-              border: 'none', borderRadius: 10, fontFamily: font,
-              color: isActive ? 'white' : T.gray400,
-              transition: 'all .18s', flexShrink: 0,
-              WebkitTapHighlightColor: 'transparent',
-              minHeight: 38,
-              boxShadow: isActive ? '0 2px 10px rgba(131,58,180,.35)' : 'none',
-              letterSpacing: '.01em',
-              whiteSpace: 'nowrap',
-            }}>
-              {t.label}
+            <button key={item.key} onClick={() => navigateTo(item.key)} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 12px', borderRadius: 8, border: 'none',
+              background: active ? C.indigo : 'transparent',
+              color: active ? '#fff' : C.sidebarText,
+              fontFamily: font, fontWeight: 600, fontSize: 13.5,
+              cursor: 'pointer', textAlign: 'left', transition: 'background .12s',
+            }}
+            onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.sidebarHover }}
+            onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+            >
+              <item.icon size={16} />
+              {item.label}
             </button>
           )
         })}
-      </div>
-
-      {/* All sections stacked vertically on one page */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
-
-        <section id="gnsi-section-home">
-          <SectionLabel icon="🏠" title="Home" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <TabHome onNavigate={navigateTo} />
-            <TabAwards isAdmin={isAdmin} />
-          </div>
-        </section>
-
-        <section id="gnsi-section-mark">
-          <SectionLabel icon="📝" title="Mark attendance" />
-          <TabMark staff={staff} prefill={markPrefill} />
-        </section>
-
-        <section id="gnsi-section-view">
-          <SectionLabel icon="📅" title="Sessions" />
-          <TabView />
-        </section>
-
-        <section id="gnsi-section-report">
-          <SectionLabel icon="📊" title="Reports" />
-          <TabReport />
-        </section>
-
-        <section id="gnsi-section-leave">
-          <SectionLabel icon="🌿" title="Leaves" />
-          <TabLeave staff={staff} currentUser={currentUser} isAdmin={isAdmin} />
-        </section>
-
-      </div>
-    </div>
+      </nav>
+    </>
   )
-}
 
-function SectionLabel({ icon, title }) {
-  const isMobile = useIsMobile()
+  if (isMobile) {
+    return (
+      <div style={{ fontFamily: font, background: C.bg, minHeight: '100vh' }}>
+        {/* Mobile top bar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px', background: C.sidebar, position: 'sticky', top: 0, zIndex: 50,
+        }}>
+          <div>
+            <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#64748B' }}>GNSI Portal</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{PAGE_META[route]?.title}</div>
+          </div>
+          <button onClick={() => setNavOpen(v => !v)} style={{
+            width: 34, height: 34, borderRadius: 8, background: C.sidebarHover, border: 'none',
+            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          }}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+        </div>
+        {navOpen && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,42,.5)' }} onClick={() => setNavOpen(false)}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 240, height: '100%', background: C.sidebar }}>
+              <SidebarContent />
+            </div>
+          </div>
+        )}
+        <div style={{ padding: '16px 14px' }}>
+          {renderPage()}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 9,
-      marginBottom: 14, paddingBottom: 10,
-      borderBottom: `2px solid ${T.gray150}`,
-    }}>
-      <span style={{ fontSize: isMobile ? 17 : 19 }}>{icon}</span>
-      <span style={{
-        fontSize: isMobile ? 15 : 17, fontWeight: 800, color: T.ink,
-        letterSpacing: '-.01em',
-      }}>
-        {title}
-      </span>
+    <div style={{ display: 'flex', minHeight: '100vh', background: C.bg, fontFamily: font }}>
+      {/* Persistent sidebar */}
+      <div style={{ width: 220, flexShrink: 0, background: C.sidebar, position: 'sticky', top: 0, height: '100vh' }}>
+        <SidebarContent />
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex: 1, minWidth: 0, padding: '28px 32px', maxWidth: 1200 }}>
+        {renderPage()}
+      </div>
     </div>
   )
 }
