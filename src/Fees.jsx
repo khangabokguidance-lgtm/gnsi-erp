@@ -575,6 +575,23 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const thisYear = now.getFullYear()
   const prevMonth= new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleString('default', { month: 'long' })
 
+  // Today's TOTAL income across the whole institute (all categories, not just
+  // fee payments) — sourced from the same `accounts` ledger Accounts.jsx reads,
+  // so this always matches Accounts' "Today's Income" card exactly.
+  const [todayAccountsIncome, setTodayAccountsIncome] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    const todayLocal = new Date().toLocaleDateString('en-CA')
+    supabase.from('accounts').select('amount,type,entry_date')
+      .eq('is_soft_deleted', false).eq('type', 'Income').eq('entry_date', todayLocal)
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { console.error('todayAccountsIncome fetch error:', error.message); setTodayAccountsIncome(0); return }
+        setTodayAccountsIncome((data || []).reduce((s, r) => s + (Number(r.amount) || 0), 0))
+      })
+    return () => { cancelled = true }
+  }, [])
+
   // ── Totals ──────────────────────────────────────────────────────────────────
   const totalCollected  = liveRows.reduce((s, r) => s + r.grandTotal, 0)
   const admTotal        = adm_fee_collections.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0)
@@ -636,7 +653,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     const flat   = adm_flat_fees.filter(r => r.paid && r.month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (r.amount || 0), 0)
     const crsf   = adm_course_fees.filter(r => r.for_month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
     const adm    = adm_fee_collections.filter(r => r.pay_date >= mStart && r.pay_date <= mEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-    return { label: mon, flat, crsf, adm, total: flat + crsf + adm }
+    // Flag the current calendar month — it's still in progress, so its total
+    // isn't comparable to fully-elapsed past months (see: July showing a
+    // "drop" that was actually just 26/31 days of collection so far).
+    const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    return { label: mon, flat, crsf, adm, total: flat + crsf + adm, isCurrent, dayOfMonth: now.getDate() }
   })
   const maxBar = Math.max(...last6.map(m => m.total), 1)
 
@@ -663,11 +684,12 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* ── Top stat cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: 14 }}>
         {[{ icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` },
           { icon: '📅', label: 'This Month', value: `₹${n(thisMonthTotal)}`, color: '#059669', bg: '#f0fdf4',
             sub: monthChange !== null ? `${monthChange >= 0 ? '▲' : '▼'} ${Math.abs(monthChange)}% vs last month` : 'First month data' },
-          { icon: '🌅', label: "Today's Collection", value: `₹${n(todayTotal)}`, color: '#7c3aed', bg: '#f5f3ff', sub: todayStr },
+          { icon: '🌅', label: "Today's Fee Collection", value: `₹${n(todayTotal)}`, color: '#7c3aed', bg: '#f5f3ff', sub: todayStr + ' · fee payments only' },
+          { icon: '📊', label: "Today's Total Income", value: todayAccountsIncome === null ? '…' : `₹${n(todayAccountsIncome)}`, color: '#0e7490', bg: '#ecfeff', sub: todayStr + ' · all income (Accounts)' },
           { icon: '⚠️', label: 'No Payment Yet', value: zeroPayment.length, color: '#dc2626', bg: '#fef2f2', sub: 'students with ₹0 paid' },
         ].map(c => (
           <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '16px 18px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
@@ -707,12 +729,24 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#1e3a5f' }}>
                   {m.total > 0 ? `₹${Math.round(m.total / 1000)}k` : '—'}
                 </div>
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <div style={{
+                  width: '100%', display: 'flex', flexDirection: 'column', gap: 1,
+                  outline: m.isCurrent ? '2px dashed #94a3b8' : 'none',
+                  outlineOffset: m.isCurrent ? 2 : 0,
+                  borderRadius: m.isCurrent ? 4 : 0,
+                }}>
                   <div style={{ width: '100%', height: Math.max(2, Math.round((m.adm  / maxBar) * 100)), background: '#4f46e5', borderRadius: '3px 3px 0 0' }} />
                   <div style={{ width: '100%', height: Math.max(2, Math.round((m.crsf / maxBar) * 100)), background: '#7c3aed' }} />
                   <div style={{ width: '100%', height: Math.max(2, Math.round((m.flat / maxBar) * 100)), background: '#059669', borderRadius: '0 0 3px 3px' }} />
                 </div>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b' }}>{m.label}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: m.isCurrent ? '#7c3aed' : '#64748b' }}>
+                  {m.label}{m.isCurrent ? ' •' : ''}
+                </div>
+                {m.isCurrent && (
+                  <div style={{ fontSize: 8.5, fontWeight: 700, color: '#7c3aed', background: '#f5f3ff', padding: '1px 6px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+                    in progress · day {m.dayOfMonth}
+                  </div>
+                )}
               </div>
             ))}
           </div>

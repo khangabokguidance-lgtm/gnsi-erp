@@ -94,7 +94,14 @@ export const fmtMonth = m => {
   return new Date(y, parseInt(mo) - 1).toLocaleString('default', { month: 'long', year: 'numeric' })
 }
 
-export const today = () => new Date().toISOString().slice(0, 10)
+// LOCAL-DATE FIX: toISOString() returns the UTC date, which lags a day behind
+// IST between 12:00 AM and 5:30 AM. This caused payDate (used when SAVING a
+// payment) to disagree with todayStr in Fees.jsx's dashboard (used when
+// FILTERING "today's collection"), so a payment saved as "today" could be
+// invisible on the dashboard until the next day. en-CA locale formats as
+// YYYY-MM-DD in the browser's local timezone — same method used everywhere
+// else in the app (Fees.jsx dashboard, Accounts.jsx) — so this must match.
+export const today = () => new Date().toLocaleDateString('en-CA')
 
 export const gccStr = v => String(parseInt(v) || 0)
 
@@ -326,7 +333,7 @@ export const upsertAccount = async ({
   payment_mode, note, source_ref: sRef, source_type,
   is_recurring = false, receipt_url = null,
 }) => {
-  const resolvedEntryDate = entry_date || new Date().toISOString().slice(0, 10)
+  const resolvedEntryDate = entry_date || today() // local date, matches `today` fixed above
   const { error } = await supabase
     .from(TABLES.accounts)
     .upsert(
