@@ -1219,6 +1219,14 @@ function TabMark({ staff, prefill }) {
         </Card>
       )}
 
+      {/* Group report for WhatsApp */}
+      {showNotify && (
+        <WhatsAppReportPanel
+          students={students} absentStudents={absentStudents} records={records}
+          sessionInfo={form} counts={counts}
+        />
+      )}
+
       {/* Notify */}
       {showNotify && absentStudents.length > 0 && (
         <NotifyPanel
@@ -1227,6 +1235,90 @@ function TabMark({ staff, prefill }) {
         />
       )}
     </div>
+  )
+}
+
+// ─── WHATSAPP GROUP REPORT ─────────────────────────────────────
+
+function buildAttendanceReportText({ students, absentStudents, records, sessionInfo, counts }) {
+  const lines = []
+  lines.push(`*GNSI — Attendance Report*`)
+  lines.push(`📅 ${fmtDate(sessionInfo.session_date)}${sessionInfo.subject_name ? ' · ' + sessionInfo.subject_name : ''}`)
+  const classLine = [sessionInfo.course, sessionInfo.subtype, sessionInfo.class_name].filter(Boolean).join(' · ')
+  if (classLine) lines.push(`🏫 ${classLine}`)
+  if (sessionInfo.teacher_name) lines.push(`👤 Teacher: ${sessionInfo.teacher_name}`)
+  if (sessionInfo.period_number) lines.push(`⏰ Period: ${sessionInfo.period_number}`)
+  lines.push('')
+  lines.push(`Total: ${students.length}  ✅ Present: ${counts.Present || 0}  ❌ Absent: ${counts.Absent || 0}  ⏱ Late: ${counts.Late || 0}  📝 Leave: ${counts.Leave || 0}`)
+
+  if (absentStudents.length) {
+    lines.push('')
+    lines.push(`*Absent / Late Details (${absentStudents.length}):*`)
+    absentStudents.forEach((s, i) => {
+      const status = records[s.student_id || s.student_name]
+      const tag = status === 'Late' ? '⏱ Late' : status === 'Leave' ? '📝 Leave' : '❌ Absent'
+      const gcc = s.gcc_no ? ` (GCC ${s.gcc_no})` : ''
+      const hostel = s.hostel_type ? ` — ${s.hostel_type}` : ''
+      lines.push(`${i + 1}. ${s.student_name}${gcc}${hostel} — ${tag}`)
+    })
+  } else {
+    lines.push('')
+    lines.push('🎉 Full attendance — no absentees.')
+  }
+
+  lines.push('')
+  lines.push('— GNSI Portal')
+  return lines.join('\n')
+}
+
+function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, counts }) {
+  const isMobile = useIsMobile()
+  const [copied, setCopied] = useState(false)
+
+  const reportText = useMemo(
+    () => buildAttendanceReportText({ students, absentStudents, records, sessionInfo, counts }),
+    [students, absentStudents, records, sessionInfo, counts]
+  )
+
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(reportText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    } catch {
+      // Clipboard API unavailable — fall back to manual select
+    }
+  }
+
+  const shareWhatsApp = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(reportText)}`, '_blank')
+  }
+
+  return (
+    <Card style={{ border: `1.5px solid #bbf7d0` }}>
+      <CardHeader
+        icon="🟢"
+        title="WhatsApp group report"
+        subtitle="Share this after every attendance session"
+        accent="#15803d"
+      />
+      <div style={{ padding: isMobile ? '12px 16px' : '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{
+          background: T.gray50, border: `1.5px solid ${T.gray150}`,
+          borderRadius: 9, padding: '12px 14px',
+          whiteSpace: 'pre-wrap', fontSize: 12.5, color: T.gray700, lineHeight: 1.7,
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          maxHeight: 360, overflowY: 'auto',
+        }}>
+          {reportText}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+          <Btn variant="ghost" onClick={copyReport}>{copied ? '✓ Copied' : '📋 Copy report'}</Btn>
+          <Btn variant="whatsapp" onClick={shareWhatsApp}>🟢 Share to WhatsApp</Btn>
+        </div>
+      </div>
+    </Card>
   )
 }
 
