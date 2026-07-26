@@ -185,6 +185,10 @@ async function notifyHousemasterByHouse(house, title, body, url = '/hostel') {
 //  Activities — within the current roll-call session's time window
 //  (Morning = 00:00–12:00, Night = 12:00–24:00, same calendar date).
 //
+//  Also powers a STANDALONE 3x-daily check (Morning/Afternoon/Night,
+//  8hr split: 00–08, 08–16, 16–24) independent of roll call — see
+//  DAILY_SLOTS / checkSixTabComplianceForSlot below.
+//
 //  REQUIRED SQL (run once in Supabase):
 //    alter table maintenance_records add column if not exists house text;
 //    alter table mess_duty add column if not exists house text;
@@ -195,22 +199,28 @@ async function notifyHousemasterByHouse(house, title, body, url = '/hostel') {
 //      session text not null,
 //      housemaster_name text,
 //      missing_tabs text[] not null,
+//      skip_reasons jsonb default '{}',
+//      check_type text default 'rollcall', -- 'rollcall' or 'standalone'
 //      created_at timestamptz default now()
 //    );
 //    alter table hm_neglect_log disable row level security;
+//    -- If hm_neglect_log already exists from a prior version, add columns:
+//    alter table hm_neglect_log add column if not exists skip_reasons jsonb default '{}';
+//    alter table hm_neglect_log add column if not exists check_type text default 'rollcall';
 // ══════════════════════════════════════════════════════════════
 
 const SIX_TABS = [
-  { key: 'discipline', label: '⚠️ Discipline' },
-  { key: 'sickbay', label: '🏥 Sickbay' },
-  { key: 'maintenance', label: '🔧 Repairs' },
-  { key: 'journal', label: '📝 Journal' },
-  { key: 'messduty', label: '🍽️ Mess Duty' },
-  { key: 'activities', label: '📌 Activities' },
+  { key: 'discipline', label: '⚠️ Discipline', rootTabId: 'discipline' },
+  { key: 'sickbay', label: '🏥 Sickbay', rootTabId: 'sickbay' },
+  { key: 'maintenance', label: '🔧 Repairs', rootTabId: 'maintenance' },
+  { key: 'journal', label: '📝 Journal', rootTabId: 'journal' },
+  { key: 'messduty', label: '🍽️ Mess Duty', rootTabId: 'nightduty' },
+  { key: 'activities', label: '📌 Activities', rootTabId: 'hmactivities' },
 ]
 
 function sessionWindow(dateStr, session) {
   // Morning: 00:00–12:00, Night: 12:00–24:00, both on the given calendar date
+  // (used by the roll-call-linked compliance check only)
   const start = new Date(`${dateStr}T00:00:00`)
   const end = new Date(`${dateStr}T00:00:00`)
   if (session === 'morning') {
@@ -222,9 +232,37 @@ function sessionWindow(dateStr, session) {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
-// Returns array of missing tab keys (empty array = fully compliant)
-async function checkSixTabCompliance(houseName, dateStr, session, houseStudentIds) {
-  const { start, end } = sessionWindow(dateStr, session)
+// ── Standalone 3x-daily compliance check ──
+// Independent of roll call's morning/night sessions. Splits the day into
+// three even 8-hour slots that the housemaster must clear separately.
+const DAILY_SLOTS = [
+  { key: 'morning', label: '🌅 Morning', startHour: 0, endHour: 8, rollCallGate: 'morning' },
+  { key: 'afternoon', label: '☀️ Afternoon', startHour: 8, endHour: 16, rollCallGate: 'morning' },
+  { key: 'night', label: '🌙 Night', startHour: 16, endHour: 24, rollCallGate: 'night' },
+]
+
+function dailySlotWindow(dateStr, slotKey) {
+  const slot = DAILY_SLOTS.find(s => s.key === slotKey)
+  const start = new Date(`${dateStr}T00:00:00`)
+  start.setHours(slot.startHour, 0, 0, 0)
+  const end = new Date(`${dateStr}T00:00:00`)
+  if (slot.endHour === 24) {
+    end.setDate(end.getDate() + 1)
+  } else {
+    end.setHours(slot.endHour, 0, 0, 0)
+  }
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+function currentDailySlot() {
+  const hour = new Date().getHours()
+  return DAILY_SLOTS.find(s => hour >= s.startHour && hour < s.endHour)?.key || 'morning'
+}
+
+// Core checker — takes an explicit {start, end} ISO window so it can be
+// reused by both the roll-call-linked check (12hr split) and the
+// standalone 3x-daily check (8hr split). Returns array of missing tab keys.
+async function checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds) {
   const missing = []
 
   const hasAny = async (queryBuilder) => {
@@ -302,14 +340,30 @@ async function checkSixTabCompliance(houseName, dateStr, session, houseStudentId
   return missing
 }
 
-async function logNeglect(houseName, dateStr, session, housemasterName, missingKeys) {
-  if (missingKeys.length === 0) return
+// Roll-call-linked wrapper (Morning/Night, 12hr split) — kept for the
+// existing roll-call completion warning banner.
+async function checkSixTabCompliance(houseName, dateStr, session, houseStudentIds) {
+  const { start, end } = sessionWindow(dateStr, session)
+  return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+}
+
+// Standalone 3x-daily wrapper (Morning/Afternoon/Night, 8hr split).
+async function checkSixTabComplianceForSlot(houseName, dateStr, slotKey, houseStudentIds) {
+  const { start, end } = dailySlotWindow(dateStr, slotKey)
+  return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+}
+
+async function logNeglect(houseName, dateStr, session, housemasterName, missingKeys, checkType = 'rollcall') {
+  if (missingKeys.length === 0) return null
   try {
-    await supabase.from('hm_neglect_log').insert([{
+    const { data, error } = await supabase.from('hm_neglect_log').insert([{
       house: houseName, date: dateStr, session,
       housemaster_name: housemasterName || 'Unknown',
       missing_tabs: missingKeys,
-    }])
+      skip_reasons: {},
+      check_type: checkType,
+    }]).select('id').single()
+    if (error) throw error
     const labels = SIX_TABS.filter(t => missingKeys.includes(t.key)).map(t => t.label).join(', ')
     // Notify admins — reuse the staff push channel, targeting any staff
     // whose role is Admin (best-effort; failures here shouldn't block UI)
@@ -322,8 +376,25 @@ async function logNeglect(houseName, dateStr, session, housemasterName, missingK
         '/hostel?tab=neglectreport'
       )))
     }
+    return data?.id || null
   } catch (e) {
     console.error('logNeglect failed:', e)
+    return null
+  }
+}
+
+// Attach a housemaster-supplied reason to a specific skipped tab on an
+// existing neglect log row. The gap still counts as neglect (per design —
+// reasons add admin context, they don't erase the record), merged into
+// the row's skip_reasons JSON column keyed by tab.
+async function attachSkipReason(logId, tabKey, reason, housemasterName) {
+  if (!logId) return
+  try {
+    const { data: row } = await supabase.from('hm_neglect_log').select('skip_reasons').eq('id', logId).maybeSingle()
+    const reasons = { ...(row?.skip_reasons || {}), [tabKey]: reason }
+    await supabase.from('hm_neglect_log').update({ skip_reasons: reasons }).eq('id', logId)
+  } catch (e) {
+    console.error('attachSkipReason failed:', e)
   }
 }
 
@@ -666,7 +737,7 @@ function AlertStudentPanel({ students, accentColor, actions, onMark, savingId })
   )
 }
 
-function AttendanceTab({ students, currentHousemaster, currentUser }) {
+function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   // ── View state: 'houses' | 'dashboard' | 'rollcall'
   const [view, setView] = useState('houses')
@@ -767,6 +838,27 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
     [allRecords]
   )
   const getStatus = (studentId) => statusMap[studentId] || 'Unmarked'
+
+  // ── Today's records across BOTH roll-call sessions, independent of
+  //    whichever session the top date/session selector is currently
+  //    showing. Used to gate the standalone daily-check slots on actual
+  //    roll-call completion for the matching session. ──
+  const [todayBothSessionRecords, setTodayBothSessionRecords] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('attendance_records').select('student_id, house, session, status').eq('date', date)
+      .then(({ data }) => { if (!cancelled) setTodayBothSessionRecords(data || []) })
+    return () => { cancelled = true }
+  }, [date, allRecords]) // re-check whenever allRecords changes too, so a just-completed roll call unlocks immediately
+
+  const isRollCallSessionComplete = (houseName, rollCallSession) => {
+    const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+    if (hStudents.length === 0) return true
+    const marked = todayBothSessionRecords.filter(r =>
+      normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === rollCallSession
+    ).length
+    return marked >= hStudents.length
+  }
 
   // ── Per-house stats (defined before the auto-fire effect that uses it) ──
   const getHouseStats = (houseName) => {
@@ -961,14 +1053,23 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
   //    re-opening roll call in the same session doesn't spam pushes. ──
   const [pendingLeaveNotified, setPendingLeaveNotified] = useState({})
   const [rollCallPendingLeave, setRollCallPendingLeave] = useState([])
-  // Clear stale pending-leave banner data when switching houses
-  useEffect(() => { setRollCallPendingLeave([]) }, [selectedHouse])
 
   // ── Six-tab compliance check (Discipline, Sickbay, Repairs, Journal,
   //    Mess Duty, Activities) — runs once when a roll-call session hits
   //    100%, logs any gaps, and drives the strict warning banner. ──
   const [complianceChecked, setComplianceChecked] = useState({}) // key: `${house}_${date}_${session}` → done
   const [complianceMissing, setComplianceMissing] = useState({}) // key → array of missing tab keys
+  const [complianceLogId, setComplianceLogId] = useState({}) // key → hm_neglect_log row id (for attaching skip reasons)
+  const [skipReasonPromptTab, setSkipReasonPromptTab] = useState(null) // tab key currently showing the reason input
+  const [skipReasonDraft, setSkipReasonDraft] = useState('')
+  const [skippedWithReason, setSkippedWithReason] = useState({}) // key → { [tabKey]: reason } — local UI reflection
+
+  // Clear stale pending-leave and skip-reason UI state when switching houses
+  useEffect(() => {
+    setRollCallPendingLeave([])
+    setSkipReasonPromptTab(null)
+    setSkipReasonDraft('')
+  }, [selectedHouse])
 
   const runComplianceCheck = async (houseName) => {
     const key = `${houseName}_${date}_${session}`
@@ -980,11 +1081,67 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
     const missing = await checkSixTabCompliance(houseName, date, session, houseStudentIds)
     setComplianceMissing(prev => ({ ...prev, [key]: missing }))
     if (missing.length > 0) {
-      await logNeglect(houseName, date, session, currentHousemaster?.name, missing)
+      const logId = await logNeglect(houseName, date, session, currentHousemaster?.name, missing, 'rollcall')
+      if (logId) setComplianceLogId(prev => ({ ...prev, [key]: logId }))
     }
   }
-  // Clear stale pending-leave banner data when switching houses
-  useEffect(() => { setRollCallPendingLeave([]) }, [selectedHouse])
+
+  const handleSkipWithReason = async (complianceKey, tabKey) => {
+    const reason = skipReasonDraft.trim()
+    if (!reason) return
+    const logId = complianceLogId[complianceKey]
+    await attachSkipReason(logId, tabKey, reason, currentHousemaster?.name)
+    setSkippedWithReason(prev => ({
+      ...prev,
+      [complianceKey]: { ...(prev[complianceKey] || {}), [tabKey]: reason },
+    }))
+    setSkipReasonPromptTab(null)
+    setSkipReasonDraft('')
+  }
+
+  // ── Standalone 3x-daily compliance check (independent of roll call) ──
+  // Tracks per house+date+slot: done / missing tabs / whether the "all
+  // clear" confirmation animation has already played for this slot.
+  const [dailyCheckHouse, setDailyCheckHouse] = useState(null) // house currently expanded for slot detail
+  const [dailyCheckResults, setDailyCheckResults] = useState({}) // key: `${house}_${date}_${slot}` → { missing, checked }
+  const [dailyCheckLogId, setDailyCheckLogId] = useState({})
+  const [dailySkipPromptTab, setDailySkipPromptTab] = useState(null)
+  const [dailySkipDraft, setDailySkipDraft] = useState('')
+  const [dailySkippedWithReason, setDailySkippedWithReason] = useState({})
+  const [celebratingSlot, setCelebratingSlot] = useState(null) // key that should show the checkmark pop animation
+
+  const runDailySlotCheck = async (houseName, slotKey) => {
+    const key = `${houseName}_${date}_${slotKey}`
+    if (dailyCheckResults[key]?.checked) return
+    const gate = DAILY_SLOTS.find(s => s.key === slotKey)?.rollCallGate
+    if (gate && !isRollCallSessionComplete(houseName, gate)) return // safety net; UI should already prevent this call
+    const houseStudentIds = activeStudents
+      .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+      .map(s => s.id)
+    const missing = await checkSixTabComplianceForSlot(houseName, date, slotKey, houseStudentIds)
+    setDailyCheckResults(prev => ({ ...prev, [key]: { checked: true, missing } }))
+    if (missing.length > 0) {
+      const logId = await logNeglect(houseName, date, slotKey, currentHousemaster?.name, missing, 'standalone')
+      if (logId) setDailyCheckLogId(prev => ({ ...prev, [key]: logId }))
+    } else {
+      // Fully compliant — trigger the short animated confirmation
+      setCelebratingSlot(key)
+      setTimeout(() => setCelebratingSlot(prev => (prev === key ? null : prev)), 1800)
+    }
+  }
+
+  const handleDailySkipWithReason = async (dailyKey, tabKey) => {
+    const reason = dailySkipDraft.trim()
+    if (!reason) return
+    const logId = dailyCheckLogId[dailyKey]
+    await attachSkipReason(logId, tabKey, reason, currentHousemaster?.name)
+    setDailySkippedWithReason(prev => ({
+      ...prev,
+      [dailyKey]: { ...(prev[dailyKey] || {}), [tabKey]: reason },
+    }))
+    setDailySkipPromptTab(null)
+    setDailySkipDraft('')
+  }
 
   const notifyPendingLeaveForHouse = async (houseName) => {
     const key = `${houseName}_${date}_${session}`
@@ -1047,6 +1204,14 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
     return (
       <div>
         {reportModal}
+        <style>{`
+          @keyframes hr-daily-pop {
+            0% { transform: scale(0.4) rotate(-10deg); opacity: 0; }
+            60% { transform: scale(1.3) rotate(5deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+          }
+          .hr-pop-in-anim { display: inline-block; animation: hr-daily-pop 0.5s ease-out; }
+        `}</style>
         {/* Date & Session selector */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <input
@@ -1102,6 +1267,152 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
           <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
         ) : (
           <>
+            {/* ── Standalone 3x-Daily Compliance Check ── */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                📋 Mandatory 3x-Daily Compliance Check
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {houses.map(houseName => {
+                  const isExpanded = dailyCheckHouse === houseName
+                  const nowSlot = currentDailySlot()
+                  return (
+                    <div key={houseName} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                      <div
+                        onClick={() => setDailyCheckHouse(isExpanded ? null : houseName)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', cursor: 'pointer' }}
+                      >
+                        <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', flex: 1 }}>🏠 {houseName}</span>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {DAILY_SLOTS.map(slot => {
+                            const key = `${houseName}_${date}_${slot.key}`
+                            const result = dailyCheckResults[key]
+                            const done = result?.checked && result.missing.length === 0
+                            const gaps = result?.checked && result.missing.length > 0
+                            const isCurrent = slot.key === nowSlot
+                            const locked = !result?.checked && !isRollCallSessionComplete(houseName, slot.rollCallGate)
+                            return (
+                              <span
+                                key={slot.key}
+                                style={{
+                                  width: '10px', height: '10px', borderRadius: '50%',
+                                  background: done ? '#16a34a' : gaps ? '#dc2626' : locked ? '#94a3b8' : isCurrent ? '#ca8a04' : '#e2e8f0',
+                                  boxShadow: isCurrent && !result?.checked && !locked ? '0 0 0 3px rgba(202,138,4,0.2)' : 'none',
+                                }}
+                                title={`${slot.label}: ${done ? 'Complete' : gaps ? 'Gaps found' : locked ? 'Locked — matching roll call not done yet' : isCurrent ? 'Current slot — not checked yet' : 'Not checked'}`}
+                              />
+                            )
+                          })}
+                        </div>
+                        <span style={{ fontSize: '14px', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                      </div>
+                      {isExpanded && (
+                        <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {DAILY_SLOTS.map(slot => {
+                            const key = `${houseName}_${date}_${slot.key}`
+                            const result = dailyCheckResults[key]
+                            const isCurrent = slot.key === nowSlot
+                            const isCelebrating = celebratingSlot === key
+                            const gateComplete = isRollCallSessionComplete(houseName, slot.rollCallGate)
+                            const gateLabel = slot.rollCallGate === 'morning' ? '🌅 Morning' : '🌙 Night'
+                            return (
+                              <div key={slot.key} style={{ background: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: (result?.checked && result.missing.length > 0) || !gateComplete ? '8px' : 0 }}>
+                                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#374151', flex: 1 }}>
+                                    {slot.label} {isCurrent && <span style={{ color: '#ca8a04' }}>(current)</span>}
+                                  </span>
+                                  {isCelebrating && (
+                                    <span className="hr-pop-in-anim" style={{ fontSize: '16px' }}>✅🎉</span>
+                                  )}
+                                  {!result?.checked && gateComplete && (
+                                    <button
+                                      onClick={() => runDailySlotCheck(houseName, slot.key)}
+                                      style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                                    >
+                                      Run Check
+                                    </button>
+                                  )}
+                                  {!result?.checked && !gateComplete && (
+                                    <span style={{ padding: '5px 12px', borderRadius: '7px', background: '#e2e8f0', color: '#94a3b8', fontSize: '11px', fontWeight: '700' }}>
+                                      🔒 Locked
+                                    </span>
+                                  )}
+                                  {result?.checked && result.missing.length === 0 && !isCelebrating && (
+                                    <span style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a' }}>✓ All clear</span>
+                                  )}
+                                </div>
+                                {!result?.checked && !gateComplete && (
+                                  <div style={{ fontSize: '11px', color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '6px 10px' }}>
+                                    ⏳ Complete {gateLabel} roll call for {houseName} first — this slot unlocks automatically once that session is 100% marked.
+                                  </div>
+                                )}
+                                {result?.checked && result.missing.length > 0 && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '700' }}>🚨 Missing for this slot:</div>
+                                    {SIX_TABS.filter(t => result.missing.includes(t.key)).map(t => {
+                                      const reasonGiven = dailySkippedWithReason[key]?.[t.key]
+                                      const showingPrompt = dailySkipPromptTab === `${key}_${t.key}`
+                                      return (
+                                        <div key={t.key} style={{ background: 'white', border: '1px solid #fecaca', borderRadius: '8px', padding: '8px 10px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <span style={{ padding: '3px 8px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '11px', fontWeight: '700' }}>{t.label}</span>
+                                            {reasonGiven ? (
+                                              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', flex: 1 }}>✅ "{reasonGiven}"</span>
+                                            ) : (
+                                              <div style={{ display: 'flex', gap: '5px', marginLeft: 'auto' }}>
+                                                <button
+                                                  onClick={() => onTabChange?.(t.rootTabId)}
+                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
+                                                >
+                                                  ✓ Complete
+                                                </button>
+                                                <button
+                                                  onClick={() => { setDailySkipPromptTab(showingPrompt ? null : `${key}_${t.key}`); setDailySkipDraft('') }}
+                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
+                                                >
+                                                  ⏭ Skip
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                          {showingPrompt && !reasonGiven && (
+                                            <div style={{ marginTop: '6px', display: 'flex', gap: '5px' }}>
+                                              <input
+                                                autoFocus
+                                                value={dailySkipDraft}
+                                                onChange={e => setDailySkipDraft(e.target.value)}
+                                                placeholder="Reason..."
+                                                style={{ ...inp, fontSize: '11px', padding: '5px 8px' }}
+                                                onKeyDown={e => { if (e.key === 'Enter') handleDailySkipWithReason(key, t.key) }}
+                                              />
+                                              <button
+                                                onClick={() => handleDailySkipWithReason(key, t.key)}
+                                                disabled={!dailySkipDraft.trim()}
+                                                style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: dailySkipDraft.trim() ? '#dc2626' : '#e2e8f0', color: dailySkipDraft.trim() ? 'white' : '#94a3b8', fontSize: '10px', fontWeight: '700', cursor: dailySkipDraft.trim() ? 'pointer' : 'not-allowed' }}
+                                              >
+                                                OK
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {houses.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '13px' }}>No houses to check.</div>
+                )}
+              </div>
+            </div>
+
             <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Select a House
             </div>
@@ -1694,15 +2005,62 @@ function AttendanceTab({ students, currentHousemaster, currentUser }) {
                 <div style={{ fontSize: '14px', fontWeight: '900', color: '#dc2626', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '20px' }}>🚨</span> STRICT WARNING — Mandatory Checks Skipped
                 </div>
-                <div style={{ fontSize: '13px', color: '#7f1d1d', marginBottom: '10px' }}>
+                <div style={{ fontSize: '13px', color: '#7f1d1d', marginBottom: '12px' }}>
                   You did not log any activity in the following section{missingTabs.length > 1 ? 's' : ''} for {selectedHouse} during this {session} session. This has been recorded and flagged to admin.
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {SIX_TABS.filter(t => missingTabs.includes(t.key)).map(t => (
-                    <span key={t.key} style={{ padding: '4px 10px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '12px', fontWeight: '700' }}>
-                      {t.label}
-                    </span>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {SIX_TABS.filter(t => missingTabs.includes(t.key)).map(t => {
+                    const reasonGiven = skippedWithReason[complianceKey]?.[t.key]
+                    const showingPrompt = skipReasonPromptTab === t.key
+                    return (
+                      <div key={t.key} style={{ background: 'white', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ padding: '4px 10px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '12px', fontWeight: '700' }}>
+                            {t.label}
+                          </span>
+                          {reasonGiven ? (
+                            <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', flex: 1 }}>
+                              ✅ Skipped — reason: "{reasonGiven}"
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+                              <button
+                                onClick={() => { onTabChange?.(t.rootTabId) }}
+                                style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                              >
+                                ✓ Complete Now
+                              </button>
+                              <button
+                                onClick={() => { setSkipReasonPromptTab(showingPrompt ? null : t.key); setSkipReasonDraft('') }}
+                                style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                              >
+                                ⏭ Skip (reason)
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {showingPrompt && !reasonGiven && (
+                          <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
+                            <input
+                              autoFocus
+                              value={skipReasonDraft}
+                              onChange={e => setSkipReasonDraft(e.target.value)}
+                              placeholder={`Why was ${t.label.replace(/^\S+\s/, '')} skipped?`}
+                              style={{ ...inp, fontSize: '12px', padding: '7px 10px' }}
+                              onKeyDown={e => { if (e.key === 'Enter') handleSkipWithReason(complianceKey, t.key) }}
+                            />
+                            <button
+                              onClick={() => handleSkipWithReason(complianceKey, t.key)}
+                              disabled={!skipReasonDraft.trim()}
+                              style={{ padding: '7px 12px', borderRadius: '7px', border: 'none', background: skipReasonDraft.trim() ? '#dc2626' : '#e2e8f0', color: skipReasonDraft.trim() ? 'white' : '#94a3b8', fontSize: '11px', fontWeight: '700', cursor: skipReasonDraft.trim() ? 'pointer' : 'not-allowed' }}
+                            >
+                              Confirm
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -4848,12 +5206,24 @@ function NeglectReportTab({ currentUser }) {
                 <span style={{ fontSize: '11px', color: '#64748b' }}>{r.date} · {r.session}</span>
               </div>
               <div style={{ fontSize: '12px', color: '#374151', marginBottom: '6px' }}>👤 {r.housemaster_name || 'Unknown'}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
                 {(r.missing_tabs || []).map(key => {
                   const tab = SIX_TABS.find(t => t.key === key)
                   return <span key={key} style={{ padding: '2px 8px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '10px', fontWeight: '700' }}>{tab?.label || key}</span>
                 })}
               </div>
+              {r.skip_reasons && Object.keys(r.skip_reasons).length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  {Object.entries(r.skip_reasons).map(([key, reason]) => {
+                    const tab = SIX_TABS.find(t => t.key === key)
+                    return (
+                      <div key={key} style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+                        {tab?.label || key}: "{reason}"
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </MobileRecordCard>
           ))}
           {filtered.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No neglect logged — everyone's compliant! 🎉</div>}
@@ -4863,7 +5233,7 @@ function NeglectReportTab({ currentUser }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 700 }}>
             <thead>
               <tr style={{ background: '#1e3a5f' }}>
-                {['#', 'Date', 'Session', 'House', 'Housemaster', 'Missing Checks'].map(h => (
+                {['#', 'Date', 'Type', 'Session', 'House', 'Housemaster', 'Missing Checks'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                 ))}
               </tr>
@@ -4874,8 +5244,17 @@ function NeglectReportTab({ currentUser }) {
                   <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                   <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.date}</td>
                   <td style={{ padding: '10px 14px' }}>
-                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: r.session === 'morning' ? '#fef9c3' : '#e0f2fe', color: r.session === 'morning' ? '#ca8a04' : '#0891b2' }}>
-                      {r.session === 'morning' ? '🌅' : '🌙'} {r.session}
+                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: r.check_type === 'standalone' ? '#f5f3ff' : '#eff6ff', color: r.check_type === 'standalone' ? '#7c3aed' : '#1e3a5f' }}>
+                      {r.check_type === 'standalone' ? '📋 3x-Daily' : '✅ Roll Call'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+                      background: r.session === 'morning' ? '#fef9c3' : r.session === 'afternoon' ? '#fef3c7' : '#e0f2fe',
+                      color: r.session === 'morning' ? '#ca8a04' : r.session === 'afternoon' ? '#d97706' : '#0891b2',
+                    }}>
+                      {r.session === 'morning' ? '🌅' : r.session === 'afternoon' ? '☀️' : '🌙'} {r.session}
                     </span>
                   </td>
                   <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e3a5f' }}>🏠 {r.house}</td>
@@ -4884,14 +5263,28 @@ function NeglectReportTab({ currentUser }) {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {(r.missing_tabs || []).map(key => {
                         const tab = SIX_TABS.find(t => t.key === key)
-                        return <span key={key} style={{ padding: '2px 8px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '11px', fontWeight: '700' }}>{tab?.label || key}</span>
+                        const reason = r.skip_reasons?.[key]
+                        return (
+                          <span
+                            key={key}
+                            title={reason ? `Reason: ${reason}` : 'No reason given'}
+                            style={{
+                              padding: '2px 8px', borderRadius: '99px', fontSize: '11px', fontWeight: '700',
+                              background: reason ? '#dcfce7' : '#fee2e2',
+                              color: reason ? '#16a34a' : '#dc2626',
+                              cursor: reason ? 'help' : 'default',
+                            }}
+                          >
+                            {tab?.label || key}{reason ? ' ✓' : ''}
+                          </span>
+                        )
                       })}
                     </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No neglect logged — everyone's compliant! 🎉</td></tr>
+                <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No neglect logged — everyone's compliant! 🎉</td></tr>
               )}
             </tbody>
           </table>
@@ -4978,7 +5371,7 @@ function Hostel() {
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
-    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
+    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={setActiveTab} />,
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} currentUser={currentUser} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
