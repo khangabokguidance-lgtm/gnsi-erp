@@ -2720,6 +2720,348 @@ function TabLeave({ staff, currentUser, isAdmin }) {
   )
 }
 
+// ─── Tab: AWARDS (Best Student of the Month) ──────────────────
+//
+// Requires a one-time SQL migration (run once in Supabase):
+//
+//   create table if not exists monthly_awards (
+//     id bigint generated always as identity primary key,
+//     month text not null,                    -- 'YYYY-MM'
+//     scope text not null,                     -- 'overall' or the course name
+//     student_name text not null,
+//     gcc_no text,
+//     course text,
+//     class_name text,
+//     attendance_pct numeric not null,
+//     finalized_by text,
+//     created_at timestamptz default now(),
+//     unique (month, scope)
+//   );
+//
+// No other schema changes needed — winners are computed from the
+// same attendance_sessions / attendance_records tables TabHome uses.
+
+const CERT_BORDER = '#C9A24B' // brass gold, matches portal design language
+const CERT_NAVY    = '#0B1E3D'
+
+function monthOptions(count = 6) {
+  const out = []
+  const d = new Date()
+  d.setDate(1)
+  for (let i = 0; i < count; i++) {
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0')
+    out.push(`${y}-${m}`)
+    d.setMonth(d.getMonth() - 1)
+  }
+  return out
+}
+
+function drawAwardCertificateToCanvas({ studentName, gcc, course, className, monthLabel, pct, scopeLabel }) {
+  const W = 1200, H = 850
+  const canvas = document.createElement('canvas')
+  canvas.width = W; canvas.height = H
+  const ctx = canvas.getContext('2d')
+
+  ctx.fillStyle = '#fffdf8'
+  ctx.fillRect(0, 0, W, H)
+
+  ctx.strokeStyle = CERT_BORDER
+  ctx.lineWidth = 10
+  ctx.strokeRect(24, 24, W - 48, H - 48)
+  ctx.lineWidth = 2
+  ctx.strokeRect(42, 42, W - 84, H - 84)
+
+  const corners = [[42,42],[W-42,42],[42,H-42],[W-42,H-42]]
+  corners.forEach(([x,y]) => {
+    ctx.fillStyle = CERT_BORDER
+    ctx.beginPath()
+    ctx.moveTo(x, y-14); ctx.lineTo(x+14, y); ctx.lineTo(x, y+14); ctx.lineTo(x-14, y)
+    ctx.closePath(); ctx.fill()
+  })
+
+  ctx.textAlign = 'center'
+  ctx.fillStyle = CERT_NAVY
+  ctx.font = '700 20px Georgia, serif'
+  ctx.fillText('GUIDANCE NAVODAYA & SAINIK INSTITUTE', W/2, 118)
+  ctx.font = '400 13px Georgia, serif'
+  ctx.fillStyle = '#64748b'
+  ctx.fillText('Khangabok · Thoubal · Manipur', W/2, 140)
+
+  ctx.strokeStyle = CERT_BORDER
+  ctx.lineWidth = 1.5
+  ctx.beginPath(); ctx.moveTo(W/2 - 90, 158); ctx.lineTo(W/2 + 90, 158); ctx.stroke()
+
+  ctx.font = '700 46px Georgia, serif'
+  ctx.fillStyle = CERT_NAVY
+  ctx.fillText('Certificate of Excellence', W/2, 230)
+
+  ctx.font = '400 17px Georgia, serif'
+  ctx.fillStyle = '#475569'
+  ctx.fillText('Best Student of the Month — Attendance', W/2, 262)
+
+  ctx.font = '400 16px Georgia, serif'
+  ctx.fillStyle = '#334155'
+  ctx.fillText('This is to certify that', W/2, 330)
+
+  ctx.font = '700 44px Georgia, serif'
+  ctx.fillStyle = CERT_NAVY
+  ctx.fillText(studentName, W/2, 390)
+  ctx.strokeStyle = CERT_BORDER
+  ctx.lineWidth = 1.5
+  const nameW = ctx.measureText(studentName).width
+  ctx.beginPath(); ctx.moveTo(W/2 - nameW/2 - 10, 402); ctx.lineTo(W/2 + nameW/2 + 10, 402); ctx.stroke()
+
+  ctx.font = '400 16px Georgia, serif'
+  ctx.fillStyle = '#334155'
+  const bodyLines = [
+    `${gcc ? `GCC No. ${gcc} · ` : ''}${[course, className].filter(Boolean).join(' · ') || scopeLabel}`,
+    `has achieved an outstanding attendance record of ${pct}% for ${monthLabel},`,
+    `recognised as the ${scopeLabel} for the month.`,
+  ]
+  bodyLines.forEach((line, i) => ctx.fillText(line, W/2, 440 + i * 28))
+
+  ctx.beginPath()
+  ctx.fillStyle = '#f0fdf4'
+  ctx.arc(W/2, 580, 56, 0, Math.PI*2)
+  ctx.fill()
+  ctx.strokeStyle = '#16a34a'
+  ctx.lineWidth = 3
+  ctx.stroke()
+  ctx.fillStyle = '#15803d'
+  ctx.font = '700 30px Georgia, serif'
+  ctx.fillText(`${pct}%`, W/2, 592)
+
+  ctx.textAlign = 'left'
+  ctx.font = '400 13px Georgia, serif'
+  ctx.fillStyle = '#64748b'
+  ctx.fillText(`Issued: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}`, 90, H - 100)
+
+  ctx.strokeStyle = '#94a3b8'
+  ctx.lineWidth = 1
+  ctx.beginPath(); ctx.moveTo(W - 340, H - 110); ctx.lineTo(W - 90, H - 110); ctx.stroke()
+  ctx.textAlign = 'center'
+  ctx.font = '600 13px Georgia, serif'
+  ctx.fillStyle = '#334155'
+  ctx.fillText('Principal, GNSI', W - 215, H - 90)
+
+  return canvas
+}
+
+function AwardCertificateModal({ award, onClose }) {
+  const isMobile = useIsMobile()
+  const canvasEl = useMemo(() => drawAwardCertificateToCanvas({
+    studentName: award.student_name,
+    gcc: award.gcc_no,
+    course: award.course,
+    className: award.class_name,
+    monthLabel: fmtMonth(award.month),
+    pct: award.attendance_pct,
+    scopeLabel: award.scope === 'overall' ? 'Overall Best Student' : `Best Student · ${award.scope}`,
+  }), [award])
+
+  const download = () => {
+    const dataUrl = canvasEl.toDataURL('image/jpeg', 0.95)
+    downloadDataUrl(dataUrl, `Certificate_${award.student_name.replace(/\s+/g,'_')}_${award.month}.jpg`)
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(15,23,41,.6)', backdropFilter: 'blur(3px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 14, overflow: 'hidden',
+        maxWidth: isMobile ? '100%' : 720, width: '100%',
+        boxShadow: '0 24px 60px rgba(0,0,0,.35)',
+      }}>
+        <img src={canvasEl.toDataURL('image/jpeg', 0.92)} alt="Certificate" style={{ width: '100%', display: 'block' }} />
+        <div style={{ padding: 16, display: 'flex', gap: 10, borderTop: `1.5px solid ${T.gray150}` }}>
+          <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Close</Btn>
+          <Btn variant="primary" onClick={download} style={{ flex: 1, justifyContent: 'center' }}>⬇ Download</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TabAwards({ isAdmin }) {
+  const isMobile = useIsMobile()
+  const [month, setMonth]           = useState(monthOptions()[0])
+  const [computing, setComputing]   = useState(true)
+  const [candidates, setCandidates] = useState({ overall: null, byBatch: [] })
+  const [saved, setSaved]           = useState([])
+  const [finalizing, setFinalizing] = useState(false)
+  const [viewCert, setViewCert]     = useState(null)
+  const [msg, setMsg]               = useState(null)
+
+  const loadSaved = useCallback(async () => {
+    const { data } = await supabase.from('monthly_awards').select('*').eq('month', month)
+    setSaved(data || [])
+  }, [month])
+
+  useEffect(() => {
+    const compute = async () => {
+      setComputing(true)
+      const monthStart = `${month}-01`
+      const endDate = new Date(month.split('-')[0], Number(month.split('-')[1]), 0).toISOString().split('T')[0]
+
+      const { data: sessions } = await supabase
+        .from('attendance_sessions').select('id,course').gte('session_date', monthStart).lte('session_date', endDate)
+
+      if (!sessions?.length) { setCandidates({ overall: null, byBatch: [] }); setComputing(false); return }
+
+      const sessionCourse = {}
+      sessions.forEach(s => { sessionCourse[s.id] = s.course })
+      const ids = sessions.map(s => s.id)
+
+      const { data: recs } = await supabase
+        .from('attendance_records').select('student_name,gcc_no,class_name,status,session_id').in('session_id', ids)
+
+      const map = {}
+      recs?.forEach(r => {
+        const key = r.student_name
+        if (!map[key]) map[key] = {
+          name: r.student_name, gcc: r.gcc_no, class_name: r.class_name,
+          course: sessionCourse[r.session_id] || '—', Present: 0, total: 0,
+        }
+        if (r.status === 'Present') map[key].Present++
+        map[key].total++
+      })
+
+      const rows = Object.values(map)
+        .filter(r => r.total >= 3) // ignore students with too few marked sessions to be meaningful
+        .map(r => ({ ...r, pct: Math.round((r.Present / r.total) * 100) }))
+
+      const overall = rows.length ? rows.reduce((best, r) => r.pct > best.pct ? r : best, rows[0]) : null
+
+      const byCourse = {}
+      rows.forEach(r => {
+        if (!byCourse[r.course]) byCourse[r.course] = r
+        else if (r.pct > byCourse[r.course].pct) byCourse[r.course] = r
+      })
+      const byBatch = Object.entries(byCourse).map(([course, r]) => ({ course, ...r }))
+
+      setCandidates({ overall, byBatch })
+      setComputing(false)
+    }
+    compute()
+    loadSaved()
+  }, [month, loadSaved])
+
+  const finalize = async (scope, candidate) => {
+    if (!candidate) return
+    setFinalizing(true)
+    const { error } = await supabase.from('monthly_awards').upsert({
+      month, scope,
+      student_name: candidate.name, gcc_no: candidate.gcc,
+      course: candidate.course, class_name: candidate.class_name,
+      attendance_pct: candidate.pct,
+    }, { onConflict: 'month,scope' })
+    setFinalizing(false)
+    if (error) { setMsg({ type: 'error', text: 'Could not save — ' + error.message }); return }
+    setMsg({ type: 'success', text: `${scope === 'overall' ? 'Overall winner' : scope + ' winner'} finalized.` })
+    loadSaved()
+  }
+
+  const savedFor = (scope) => saved.find(s => s.scope === scope)
+
+  return (
+    <Card>
+      <CardHeader
+        icon="🏆" title="Best Student of the Month" subtitle="Ranked by attendance percentage"
+        accent={CERT_BORDER}
+        right={
+          <Select value={month} onChange={e => setMonth(e.target.value)} style={{ width: 160 }}>
+            {monthOptions().map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+          </Select>
+        }
+      />
+      <div style={{ padding: isMobile ? '14px 16px' : '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {msg && <Alert type={msg.type} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+
+        {computing ? (
+          <div style={{ textAlign: 'center', padding: 40, color: T.gray400, fontSize: 13 }}>Calculating rankings…</div>
+        ) : (
+          <>
+            <div style={{
+              borderRadius: 12, padding: 16, border: `1.5px solid ${CERT_BORDER}55`,
+              background: 'linear-gradient(135deg, #fffdf5, #fef9ec)',
+              display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            }}>
+              <div style={{ fontSize: 28 }}>🥇</div>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  Overall winner
+                </div>
+                {candidates.overall ? (
+                  <>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: T.ink, marginTop: 2 }}>{candidates.overall.name}</div>
+                    <div style={{ fontSize: 12, color: T.gray500 }}>
+                      {candidates.overall.course} · {candidates.overall.pct}% attendance
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 13, color: T.gray400, marginTop: 2 }}>No eligible students yet this month.</div>
+                )}
+              </div>
+              {candidates.overall && isAdmin && !savedFor('overall') && (
+                <Btn small variant="amber" disabled={finalizing} onClick={() => finalize('overall', candidates.overall)}>
+                  Finalize award
+                </Btn>
+              )}
+              {savedFor('overall') && (
+                <Btn small variant="primary" onClick={() => setViewCert(savedFor('overall'))}>
+                  🎓 View certificate
+                </Btn>
+              )}
+            </div>
+
+            <SectionDivider label="Batch winners" />
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 10 }}>
+              {candidates.byBatch.length === 0 && (
+                <div style={{ fontSize: 13, color: T.gray400, gridColumn: '1/-1', textAlign: 'center', padding: 20 }}>
+                  No batch data for this month yet.
+                </div>
+              )}
+              {candidates.byBatch.map(c => {
+                const won = savedFor(c.course)
+                return (
+                  <div key={c.course} style={{
+                    borderRadius: 10, border: `1.5px solid ${T.gray150}`, padding: 12,
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <CoursePill course={c.course} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {c.name}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: T.gray500 }}>{c.pct}% attendance</div>
+                    </div>
+                    {isAdmin && !won && (
+                      <Btn small variant="ghost" disabled={finalizing} onClick={() => finalize(c.course, c)}>Finalize</Btn>
+                    )}
+                    {won && (
+                      <Btn small variant="primary" onClick={() => setViewCert(won)}>🎓</Btn>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {!isAdmin && (
+              <div style={{ fontSize: 12, color: T.gray400, textAlign: 'center', marginTop: 4 }}>
+                Only finalized certificates are shown to parents and students.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {viewCert && <AwardCertificateModal award={viewCert} onClose={() => setViewCert(null)} />}
+    </Card>
+  )
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────
 
 const NAV_TABS = [
@@ -2847,7 +3189,10 @@ export default function Attendance({ currentUser, isAdmin }) {
 
         <section id="gnsi-section-home">
           <SectionLabel icon="🏠" title="Home" />
-          <TabHome onNavigate={navigateTo} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <TabHome onNavigate={navigateTo} />
+            <TabAwards isAdmin={isAdmin} />
+          </div>
         </section>
 
         <section id="gnsi-section-mark">
