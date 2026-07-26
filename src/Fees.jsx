@@ -1104,6 +1104,68 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     handleFixDate({ table: 'adm_course_fees', id: r.id, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee', currentDate: r.pay_date, label: `${r.course} ${r.for_month} course fee` })
   }
 
+  const handleSave = async () => {
+    if (!student || !admRec || grandThis === 0 || saving) return
+    setSaving(true)
+    try {
+      const items = []
+
+      if (admPkgThis > 0 && !admPaid) {
+        items.push({ kind: 'admission', amount: admFeeAmt })
+        DRESS_ITEMS.forEach((d, idx) => {
+          if (dressChecked[idx]) items.push({ kind: 'item', label: `Dress Kit — ${d.name}`, amount: d.price })
+        })
+        if (prospChecked) items.push({ kind: 'item', label: 'Prospectus', amount: PROSPECTUS_FEE })
+      }
+
+      selFlat.forEach(f => {
+        items.push({ kind: 'flat', month: f.month, year: f.year, amount: f.amount })
+      })
+
+      crsfRows.forEach(r => {
+        const amt = Number(r.amount) || 0
+        if (amt > 0 && r.for_month) {
+          items.push({
+            kind: 'course', month: r.for_month, year: CURRENT_YEAR,
+            course: r.course, subtype: r.subtype, amount: amt,
+          })
+        }
+      })
+
+      if (advThis > 0) {
+        items.push({ kind: 'advance', label: advFor, amount: advThis })
+      }
+
+      const receiptNo = rcptNo('FEE')
+
+      const { sections, total } = await collectFee({
+        gcc, studentName: student.name, admNo: admRec?.adm_no || '--',
+        className: student.batch || '', course: student.course || '',
+        hostelType, payDate, payMode, txnRef, collectedBy,
+        studentId: student.id, receiptNo, items,
+      })
+
+      printReceipt({
+        receipt_no: receiptNo, pay_date: payDate, pay_mode: payMode,
+        txn_ref: txnRef, collected_by: collectedBy,
+        student_name: student.name, adm_no: admRec?.adm_no || '--',
+        gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
+        hostel_type: hostelType, sections, total,
+      })
+
+      showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}`, '#16a34a')
+      setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
+      setAdvAmt('')
+      setAdvFor('')
+      setFlatChecked(flatFees.map(() => false))
+      setTxnRef('')
+      onRefresh()
+    } catch (err) {
+      showToast('Save failed: ' + err.message, '#dc2626')
+    }
+    setSaving(false)
+  }
+
   const gcc = student ? gccStr(student.gcc_no) : null
 
   const myAdmCols  = gcc ? adm_fee_collections.filter(c => gccStr(c.adm_app_id) === gcc && !c.reverted) : []
