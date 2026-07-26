@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 
 // ══════════════════════════════════════════════════════════════
@@ -23,6 +23,7 @@ export default function HouseReportModal({ house, date, session, students, allRe
   const [leaveRecords, setLeaveRecords] = useState([])
   const [sickbayRecords, setSickbayRecords] = useState([])
   const [loading, setLoading] = useState(true)
+  const printAreaRef = useRef(null)
 
   useEffect(() => {
     let cancelled = false
@@ -80,7 +81,14 @@ export default function HouseReportModal({ house, date, session, students, allRe
   const total = houseStudents.length
   const marked = present.length + absent.length + late.length + onLeaveMarked.length + sickMarked.length
 
-  const handlePrint = () => window.print()
+  const handlePrint = () => {
+    if (!printAreaRef.current) { window.print(); return }
+    const clone = printAreaRef.current.cloneNode(true)
+    clone.classList.add('hr-print-clone')
+    document.body.appendChild(clone)
+    window.print()
+    document.body.removeChild(clone)
+  }
 
   return (
     <div style={{
@@ -90,43 +98,29 @@ export default function HouseReportModal({ house, date, session, students, allRe
       <style>{`
         @media print {
           @page { size: A4; margin: 10mm; }
-          html, body { height: auto !important; }
-          body * { visibility: hidden; }
-          .hr-print-area, .hr-print-area * { visibility: visible; }
-          .hr-print-area {
-            position: absolute !important;
-            top: 0; left: 0; width: 100%;
-            max-height: none !important;
-            overflow: visible !important;
-            padding: 0 !important;
+          html, body { height: auto !important; overflow: visible !important; }
+          /* Only .hr-print-clone (appended directly to <body> at print
+             time) is shown; everything else in the document — including
+             this modal and the rest of the app — is hidden outright. */
+          body > *:not(.hr-print-clone) { display: none !important; }
+          .hr-print-clone {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
             font-size: 11px;
             line-height: 1.3;
+            padding: 0;
           }
-          .hr-modal-overlay {
-            position: static !important;
-            background: none !important;
-            padding: 0 !important;
-            display: block !important;
-          }
-          .hr-modal-overlay > div {
-            max-width: none !important;
-            max-height: none !important;
-            overflow: visible !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-          }
-          .hr-no-print { display: none !important; }
-          /* Compact everything for print so it fits one page */
-          .hr-print-area h1, .hr-print-area h2, .hr-print-area h3 { margin: 0; }
-          .hr-print-section { break-inside: avoid; margin-bottom: 8px !important; }
-          .hr-print-row { padding: 4px 8px !important; }
+          .hr-print-clone h1, .hr-print-clone h2, .hr-print-clone h3 { margin: 0; }
+          .hr-print-clone .hr-print-section { break-inside: avoid; margin-bottom: 8px !important; }
+          .hr-print-clone .hr-print-row { padding: 4px 8px !important; }
         }
       `}</style>
       <div style={{
         background: 'white', borderRadius: '16px', maxWidth: '720px', width: '100%',
         maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
       }}>
-        <div className="hr-print-area" style={{ padding: '28px 28px 20px' }}>
+        <div className="hr-print-area" ref={printAreaRef} style={{ padding: '28px 28px 20px' }}>
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', borderBottom: '2px solid #1e3a5f', paddingBottom: '14px' }}>
             <div>
