@@ -52,6 +52,23 @@ const T = {
   r4:'4px', r6:'6px', r8:'8px', r10:'10px', r12:'12px', r16:'16px', r20:'20px', r24:'24px',
 }
 
+// Minimal inline icon set — used in page chrome (header, tabs, toolbar) to
+// replace emoji with a consistent, professional stroke-icon look. Emoji stay
+// inside student-facing cards/badges where they read as friendly, not chrome.
+const SIcon = {
+  home:     (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>,
+  users:    (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15 14.3c2.7.4 4.6 2.3 5 5.7"/></svg>,
+  check:    (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 11.5l2.4 2.5L16 8.5"/></svg>,
+  refresh:  (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v5h5M20 20v-5h-5"/><path d="M5.5 15A8 8 0 0 0 20 12M18.5 9A8 8 0 0 0 4 12"/></svg>,
+  plus:     (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>,
+  download: (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 4v11m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>,
+  fileText: (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3.5h7L18 8v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4M9 12h6M9 15.5h6"/></svg>,
+  archive:  (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3.5" y="4" width="17" height="4.2" rx="1"/><path d="M5 8.2V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.2"/><path d="M10 12.5h4"/></svg>,
+  merge:    (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M8 4v6a4 4 0 0 0 4 4h4"/><path d="M8 20v-6"/><path d="m13 6 3-2 3 2M13 16l3 2 3-2"/></svg>,
+  rotate:   (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v5h5"/><path d="M4.6 15A8 8 0 1 0 6 6.3L4 9"/></svg>,
+  x:        (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 6l12 12M18 6 6 18"/></svg>,
+}
+
 // CSS Variables injected once
 const CSS_VARS = `
   :root {
@@ -185,6 +202,9 @@ const REPORT_FIELDS = [
   { key:'hostel_type',    label:'Hostel Type',       group:'Residence',   pii:false },
   { key:'attendance',     label:'Attendance %',      group:'Performance', pii:false },
   { key:'latest_score',   label:'Latest Exam Score', group:'Performance', pii:false },
+  { key:'avg_score',      label:'Average Exam Score',group:'Performance', pii:false },
+  { key:'best_score',     label:'Best Exam Score',   group:'Performance', pii:false },
+  { key:'exam_count',     label:'Exams Recorded',    group:'Performance', pii:false },
   { key:'fee_dues',       label:'Fee Dues (₹)',      group:'Finance',     pii:false },
   { key:'last_paid',      label:'Last Paid',         group:'Finance',     pii:true  },
   { key:'phone',          label:'Phone',             group:'Contact',     pii:true  },
@@ -201,8 +221,8 @@ const REPORT_TYPES = [
     cols:['gcc_no','name','batch','course','fee_dues','last_paid'],          groupBy:'course', duesOnly:true  },
   { key:'attendance', icon:'📊', label:'Attendance Report',    desc:'Attendance percentage by student',
     cols:['gcc_no','name','batch','attendance','status'],                    groupBy:'batch',  duesOnly:false },
-  { key:'academic',   icon:'🎯', label:'Academic Performance', desc:'Latest exam scores by student',
-    cols:['gcc_no','name','batch','course','latest_score'],                  groupBy:'course', duesOnly:false },
+  { key:'academic',   icon:'🎯', label:'Academic Performance', desc:'Latest, average & best exam scores by student',
+    cols:['gcc_no','name','batch','course','latest_score','avg_score','best_score'],  groupBy:'course', duesOnly:false },
   { key:'house',      icon:'🏠', label:'House / Hostel Census',desc:'Distribution across houses & hostel types',
     cols:['gcc_no','name','house','hostel_type','course'],                   groupBy:'house',  duesOnly:false },
   { key:'custom',     icon:'⚙️', label:'Custom Report',        desc:'Build your own column & filter combination',
@@ -709,11 +729,24 @@ function AttendanceViewerModal({ student, onClose }) {
   },[student.id,student.gcc_no,student.name])
 
   const present=records.filter(r=>r.status==='Present').length
-  const pct=records.length?((present+records.filter(r=>r.status==='Late').length*.5)/records.length*100).toFixed(1):null
+  const absent=records.filter(r=>r.status==='Absent').length
+  const late=records.filter(r=>r.status==='Late').length
+  const leave=records.filter(r=>r.status==='Leave').length
+  const pct=records.length?((present+late*.5)/records.length*100).toFixed(1):null
   const orphanedCount=records.filter(r=>r.orphaned).length
 
   return (
     <Modal onClose={onClose} width={480} title={`Attendance — ${student.name}`} subtitle={pct!=null?`${pct}% overall · ${records.length} sessions on record`:'No records found'}>
+      {!loading&&records.length>0&&(
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:14}}>
+          {[{l:'Present',v:present,c:T.green},{l:'Absent',v:absent,c:T.red},{l:'Late',v:late,c:T.amber},{l:'Leave',v:leave,c:T.violet}].map(s=>(
+            <div key={s.l} style={{background:T.surface2,borderRadius:T.r8,padding:'8px 10px',textAlign:'center',border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:16,fontWeight:800,color:s.c}}>{s.v}</div>
+              <div style={{fontSize:9,color:T.text4,textTransform:'uppercase',letterSpacing:'.05em',fontWeight:600}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+      )}
       {loading?(
         <div style={{textAlign:'center',padding:'30px 0',color:T.text4,fontSize:13}}>Loading…</div>
       ):records.length===0?(
@@ -721,8 +754,9 @@ function AttendanceViewerModal({ student, onClose }) {
       ):(
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
           {orphanedCount>0&&(
-            <div style={{fontSize:11.5,color:T.amber,background:T.amberLight,border:`1px solid ${T.amberBorder}`,borderRadius:T.r8,padding:'8px 12px',marginBottom:4}}>
-              ⚠ {orphanedCount} record{orphanedCount===1?'':'s'} reference a session that no longer exists (likely deleted from Attendance → Sessions). Status is shown below without a date.
+            <div style={{display:'flex',alignItems:'flex-start',gap:8,fontSize:11.5,color:T.amber,background:T.amberLight,border:`1px solid ${T.amberBorder}`,borderRadius:T.r8,padding:'8px 12px',marginBottom:4}}>
+              <span style={{flexShrink:0,marginTop:1}}>⚠</span>
+              <span>{orphanedCount} record{orphanedCount===1?'':'s'} reference a session that no longer exists (likely deleted from Attendance → Sessions). Status is shown below without a date.</span>
             </div>
           )}
           {records.slice(0,60).map((r,i)=>{
@@ -1607,6 +1641,17 @@ function getReportFieldValue(s, key, feeData, attData, examData) {
     case 'last_paid':      return feeData[s.id]?.lastPaid || '—'
     case 'attendance':     return attData[s.id] != null ? `${attData[s.id].toFixed(1)}%` : '—'
     case 'latest_score':   return examData[s.id]?.[0]?.total ?? '—'
+    case 'avg_score': {
+      const exams = examData[s.id]
+      if (!exams?.length) return '—'
+      return Math.round(exams.reduce((a,e)=>a+(e.total||0),0)/exams.length)
+    }
+    case 'best_score': {
+      const exams = examData[s.id]
+      if (!exams?.length) return '—'
+      return Math.max(...exams.map(e=>e.total||0))
+    }
+    case 'exam_count':     return examData[s.id]?.length || 0
     default:                return s[key] ?? '—'
   }
 }
@@ -1618,7 +1663,8 @@ function printProfessionalReport(cfg) {
     ? rows.reduce((acc, r) => { const k = r.__group || 'Unassigned'; (acc[k] = acc[k] || []).push(r); return acc }, {})
     : { '': rows }
 
-  const isNumericCol = key => ['fee_dues', 'latest_score'].includes(key)
+  const sumCols = ['fee_dues']
+  const avgCols = ['latest_score','avg_score','best_score']
   const theadHTML = `<tr>${fields.map(f => `<th>${f.label}</th>`).join('')}</tr>`
 
   const sectionHTML = Object.entries(groups).map(([gName, gRows]) => {
@@ -1627,9 +1673,16 @@ function printProfessionalReport(cfg) {
         ${fields.map(f => `<td>${r[f.key] ?? '—'}</td>`).join('')}
       </tr>`).join('')
     const subtotalCells = fields.map((f, i) => {
-      if (!isNumericCol(f.key)) return i === 0 ? `<td><strong>Subtotal (${gRows.length})</strong></td>` : `<td></td>`
-      const sum = gRows.reduce((a, r) => a + (Number(r[f.key]) || 0), 0)
-      return `<td><strong>${fmt(sum)}</strong></td>`
+      if (sumCols.includes(f.key)) {
+        const sum = gRows.reduce((a, r) => a + (Number(r[f.key]) || 0), 0)
+        return `<td><strong>${fmt(sum)}</strong></td>`
+      }
+      if (avgCols.includes(f.key)) {
+        const vals = gRows.map(r => Number(r[f.key])).filter(v => !isNaN(v))
+        const avg = vals.length ? vals.reduce((a,v)=>a+v,0)/vals.length : null
+        return `<td><strong>${avg!=null ? `avg ${avg.toFixed(0)}` : '—'}</strong></td>`
+      }
+      return i === 0 ? `<td><strong>Subtotal (${gRows.length})</strong></td>` : `<td></td>`
     }).join('')
     return `
       ${gName ? `<tr class="grouphead"><td colspan="${fields.length}">${gName} <span>(${gRows.length})</span></td></tr>` : ''}
@@ -1834,6 +1887,9 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
       const withScore = sorted.filter(s=>examData[s.id]?.[0]?.total!=null)
       const avg = withScore.length ? withScore.reduce((a,s)=>a+(examData[s.id][0].total||0),0)/withScore.length : 0
       stats.push({ label:'Average Score', value: avg.toFixed(0) })
+      const withExams = sorted.filter(s=>examData[s.id]?.length>0)
+      const highest = withExams.length ? Math.max(...withExams.map(s=>Math.max(...examData[s.id].map(e=>e.total||0)))) : 0
+      stats.push({ label:'Highest Score', value: highest })
     } else {
       stats.push({ label:'Active', value: sorted.filter(s=>s.status==='Active').length })
       stats.push({ label:'Boarders', value: sorted.filter(s=>s.hostel_type==='Boarder').length })
@@ -1889,7 +1945,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
   }
 
   return (
-    <Modal onClose={onClose} width={820} title="📄 Report Generator" subtitle="Build a filtered, professional report — print to PDF or export to CSV">
+    <Modal onClose={onClose} width={820} title="Report Generator" subtitle="Build a filtered, professional report — print to PDF or export to CSV">
       <Label>Report Type</Label>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:8,marginBottom:18}}>
         {REPORT_TYPES.map(rt => (
@@ -1907,7 +1963,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
       <Divider label="Advanced Filters"/>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:8}}>
         <span style={{fontSize:12,color:T.text3}}><strong style={{color:T.text1}}>{sorted.length}</strong> of {students.length} students match</span>
-        {hasAdvancedFilters && <Btn onClick={clearFilters} size='sm' style={{color:T.red,borderColor:T.redBorder}}>✕ Clear Filters</Btn>}
+        {hasAdvancedFilters && <Btn onClick={clearFilters} size='sm' style={{color:T.red,borderColor:T.redBorder}}><SIcon.x size={12}/> Clear Filters</Btn>}
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:16,marginBottom:6}}>
@@ -2097,7 +2153,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
               <IfCan can={can.write}>
                 <Btn onClick={()=>onEdit(student)} size='sm'>✏ Edit</Btn>
               </IfCan>
-              <button onClick={onClose} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${T.border}`,background:T.surface2,cursor:'pointer',fontSize:16,color:T.text3,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>×</button>
+              <button onClick={onClose} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${T.border}`,background:T.surface2,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><SIcon.x size={14}/></button>
             </div>
           </div>
 
@@ -2311,7 +2367,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents }) {
         </div>
         <div style={{display:'flex',gap:8}}>
           {!editing&&<Btn onClick={()=>{localStorage.removeItem(DRAFT_KEY);setForm(blank)}} size='sm'>Clear</Btn>}
-          <button onClick={onCancel} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${T.border}`,background:T.surface2,cursor:'pointer',fontSize:16,color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+          <button onClick={onCancel} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${T.border}`,background:T.surface2,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={14}/></button>
         </div>
       </div>
 
@@ -2617,13 +2673,14 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
       border: `1px solid ${T.border}`, boxShadow: T.shadow, overflow: 'hidden',
     }}>
       <div style={{
-        padding: '13px 16px', borderBottom: `1px solid ${T.border}`,
+        padding: '14px 18px', borderBottom: `1px solid ${T.border}`,
         borderLeft: accent ? `3px solid ${accent}` : 'none',
+        background: T.surface2,
       }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: T.text1 }}>{title}</div>
-        {sub && <div style={{ fontSize: 11, color: T.text4, marginTop: 2 }}>{sub}</div>}
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.text1, letterSpacing:'-.005em' }}>{title}</div>
+        {sub && <div style={{ fontSize: 11, color: T.text4, marginTop: 3 }}>{sub}</div>}
       </div>
-      <div style={{ padding: '14px 16px' }}>{children}</div>
+      <div style={{ padding: '16px 18px' }}>{children}</div>
     </div>
   )
 
@@ -2674,20 +2731,23 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
       {/* ── KPI Row 1 ── */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10 }}>
         {[
-          { icon: '👥', label: 'Total Students', value: students.length,  color: T.brand,   sub: `${active.length} active` },
-          { icon: '🏠', label: 'Boarders',        value: boarders.length,  color: T.green,   sub: `${dayBoard.length} day boarders · ${dayScholar.length} day scholars` },
-          { icon: '💰', label: 'Fee Dues',         value: feeDue.length,    color: T.red,     sub: `₹${n(totalDues)} outstanding`, warn: feeDue.length > 0 },
-          { icon: '📉', label: 'Low Attendance',   value: attLow.length,    color: T.red,     sub: '< 50% attendance', warn: attLow.length > 0 },
+          { icon: SIcon.users, label: 'Total Students', value: students.length,  color: T.brand,   sub: `${active.length} active` },
+          { icon: SIcon.home,  label: 'Boarders',        value: boarders.length,  color: T.green,   sub: `${dayBoard.length} day boarders · ${dayScholar.length} day scholars` },
+          { icon: SIcon.fileText, label: 'Fee Dues',     value: feeDue.length,    color: T.red,     sub: `₹${n(totalDues)} outstanding`, warn: feeDue.length > 0 },
+          { icon: SIcon.check, label: 'Low Attendance',  value: attLow.length,    color: T.red,     sub: '< 50% attendance', warn: attLow.length > 0 },
         ].map(c => (
           <div key={c.label} style={{
-            background: c.warn ? T.redLight : `${c.color}08`,
-            borderRadius: T.r12, padding: '14px 16px',
-            borderLeft: `4px solid ${c.color}`, boxShadow: T.shadow,
+            background: c.warn ? T.redLight : T.surface,
+            borderRadius: T.r12, padding: '16px 18px',
+            border: `1px solid ${c.warn ? T.redBorder : T.border}`,
+            borderLeft: `3px solid ${c.color}`, boxShadow: T.shadow,
           }}>
-            <div style={{ fontSize: 22, marginBottom: 4 }}>{c.icon}</div>
+            <div style={{ width:28, height:28, borderRadius:T.r8, background:`${c.color}14`, color:c.color, display:'flex', alignItems:'center', justifyContent:'center', marginBottom: 10 }}>
+              <c.icon size={15}/>
+            </div>
             <div style={{ fontSize: 10, fontWeight: 600, color: c.color, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: c.color }}>{c.value}</div>
-            <div style={{ fontSize: 10, color: c.color, opacity: .7, marginTop: 3 }}>{c.sub}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: T.text1 }}>{c.value}</div>
+            <div style={{ fontSize: 10.5, color: T.text4, marginTop: 3 }}>{c.sub}</div>
           </div>
         ))}
       </div>
@@ -2695,18 +2755,23 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
       {/* ── KPI Row 2 ── */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10 }}>
         {[
-          { icon: '♂♀',  label: 'Gender Split',   value: `${male.length}M / ${female.length}F`,   color: '#3B82F6' },
-          { icon: '📝',  label: 'Avg Exam Score', value: avgScore ? `${avgScore}/700` : '—',        color: T.violet },
-          { icon: '📅',  label: 'Avg Attendance', value: avgAtt ? `${avgAtt}%` : '—',               color: Number(avgAtt) >= 75 ? T.green : T.red },
-          { icon: '🔁',  label: 'Repeaters',       value: repeaters.length,                          color: '#92400e' },
+          { icon: SIcon.users,    label: 'Gender Split',   value: `${male.length}M / ${female.length}F`,   color: '#3B82F6' },
+          { icon: SIcon.fileText, label: 'Avg Exam Score', value: avgScore ? `${avgScore}/700` : '—',        color: T.violet },
+          { icon: SIcon.check,    label: 'Avg Attendance', value: avgAtt ? `${avgAtt}%` : '—',               color: Number(avgAtt) >= 75 ? T.green : T.red },
+          { icon: SIcon.refresh,  label: 'Repeaters',       value: repeaters.length,                          color: '#92400e' },
         ].map(c => (
           <div key={c.label} style={{
-            background: T.surface, borderRadius: T.r12, padding: '12px 14px',
+            background: T.surface, borderRadius: T.r12, padding: '14px 16px',
             border: `1px solid ${T.border}`, boxShadow: T.shadow,
+            display:'flex', alignItems:'center', gap:12,
           }}>
-            <div style={{ fontSize: 18, marginBottom: 3 }}>{c.icon}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: T.text4, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: c.color }}>{c.value}</div>
+            <div style={{ width:32, height:32, borderRadius:T.r8, background:`${c.color}14`, color:c.color, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <c.icon size={16}/>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: T.text4, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</div>
+            </div>
           </div>
         ))}
       </div>
@@ -3126,7 +3191,7 @@ function DataQualityTab({ students, can, onQuickSave }) {
 
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or GCC…" style={{flex:1,minWidth:200,padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:13,background:T.surface,color:T.text1,fontFamily:'inherit'}}/>
-        {filterField!=='All'&&<Btn size='sm' onClick={()=>setFilterField('All')}>✕ {filterField}</Btn>}
+        {filterField!=='All'&&<Btn size='sm' onClick={()=>setFilterField('All')}><SIcon.x size={12}/> {filterField}</Btn>}
       </div>
 
       <div>
@@ -3603,42 +3668,49 @@ const effectiveCols = visibleCols.filter(col => {
           <div>
             <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.16em',color:T.text4,marginBottom:6}}>GNSI · Student Registry</div>
             <h1 style={{fontSize:isMobile?22:28,fontWeight:800,color:T.text1,letterSpacing:'-.04em',lineHeight:1,margin:0}}>Students</h1>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6,flexWrap:'wrap'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:8,flexWrap:'wrap'}}>
               <span style={{fontSize:13,color:T.text3}}>
                 {loading?'Loading…':<><strong style={{color:T.text1}}>{filtered.length}</strong> / {students.length} students</>}
               </span>
               <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:T.r24,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:rc.color,background:rc.bg,border:`1px solid ${rc.border}`}}>
-                🔐 {role}
+                {role}
               </span>
             </div>
           </div>
-          <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
-            <Btn onClick={loadAll} size='sm'>↺ Refresh</Btn>
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <Btn onClick={loadAll} size='sm'><SIcon.refresh size={14}/> Refresh</Btn>
             <IfCan can={can.write}>
-              <Btn onClick={()=>{setEditing(null);setFormOpen(true)}} variant='primary'>+ {isMobile?'Add':'New Student'}</Btn>
+              <Btn onClick={()=>{setEditing(null);setFormOpen(true)}} variant='primary'><SIcon.plus size={14}/> {isMobile?'Add':'New Student'}</Btn>
             </IfCan>
           </div>
         </div>
 
         {/* Page-level tabs — Dashboard / Students / Data Quality */}
-        <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`}}>
-          {[{key:'dashboard',label:'🏠 Dashboard'},{key:'students',label:'🎓 Students'},{key:'dataQuality',label:'✅ Data Quality'}].map(t=>(
-            <button key={t.key} onClick={()=>setPageTab(t.key)} style={{
-              padding:'10px 18px', border:'none', background:'none', cursor:'pointer',
-              fontSize:14, fontWeight:700, fontFamily:'inherit',
-              color:pageTab===t.key?T.brand:T.text3,
-              borderBottom:`2.5px solid ${pageTab===t.key?T.brand:'transparent'}`,
-              marginBottom:-1, transition:'color .12s',
-            }}>{t.label}</button>
-          ))}
+        <div style={{display:'flex',gap:2,marginBottom:22,borderBottom:`1px solid ${T.border}`}}>
+          {[{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'Students',icon:SIcon.users},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
+            const active=pageTab===t.key
+            return (
+              <button key={t.key} onClick={()=>setPageTab(t.key)} style={{
+                display:'flex', alignItems:'center', gap:7,
+                padding:'11px 16px', border:'none', background:'none', cursor:'pointer',
+                fontSize:13.5, fontWeight:600, fontFamily:'inherit',
+                color:active?T.brand:T.text3,
+                borderBottom:`2px solid ${active?T.brand:'transparent'}`,
+                marginBottom:-1, transition:'color .12s, border-color .12s',
+              }}>
+                <t.icon size={15}/>
+                {t.label}
+              </button>
+            )
+          })}
         </div>
 
         {/* Action Toolbar */}
         {pageTab==='students'&&(
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:16,overflowX:'auto',WebkitOverflowScrolling:'touch',paddingBottom:isMobile?4:0}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:16,overflowX:'auto',WebkitOverflowScrolling:'touch',paddingBottom:isMobile?4:0}}>
           <IfCan can={can.export}>
             <div style={{position:'relative'}} ref={exportMenuRef}>
-              <Btn onClick={()=>setShowExportMenu(v=>!v)} size='sm'>↓ Export</Btn>
+              <Btn onClick={()=>setShowExportMenu(v=>!v)} size='sm'><SIcon.download size={14}/> Export</Btn>
               {showExportMenu&&!isMobile&&(
                 <div style={{position:'absolute',left:0,top:'110%',background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r10,boxShadow:T.shadow2,zIndex:9999,minWidth:210,overflow:'hidden'}}>
                   {EXPORT_ITEMS.map(item=>(
@@ -3649,12 +3721,12 @@ const effectiveCols = visibleCols.filter(col => {
             </div>
           </IfCan>
           <IfCan can={can.export}>
-            <Btn onClick={()=>setShowReportGen(true)} size='sm' style={{color:T.violet,borderColor:T.violetBorder}}>📄 Reports</Btn>
+            <Btn onClick={()=>setShowReportGen(true)} size='sm' style={{color:T.violet,borderColor:T.violetBorder}}><SIcon.fileText size={14}/> Reports</Btn>
           </IfCan>
-          <Btn onClick={()=>setShowDeleted(v=>!v)} size='sm' style={{color:showDeleted?T.red:T.text2,background:showDeleted?T.redLight:'transparent',borderColor:showDeleted?T.redBorder:T.border}}>Archive{deleted.length>0?` (${deleted.length})`:''}</Btn>
+          <Btn onClick={()=>setShowDeleted(v=>!v)} size='sm' style={{color:showDeleted?T.red:T.text2,background:showDeleted?T.redLight:'transparent',borderColor:showDeleted?T.redBorder:T.border}}><SIcon.archive size={14}/> Archive{deleted.length>0?` (${deleted.length})`:''}</Btn>
           <IfCan can={can.write}>
-            <Btn onClick={()=>setShowMergeDups(true)} size='sm' style={{color:T.red,borderColor:T.redBorder}}>Merge</Btn>
-            <Btn onClick={()=>setShowRollover(true)} size='sm' style={{color:T.brand,borderColor:T.brandBorder}}>🔄 Rollover</Btn>
+            <Btn onClick={()=>setShowMergeDups(true)} size='sm' style={{color:T.red,borderColor:T.redBorder}}><SIcon.merge size={14}/> Merge</Btn>
+            <Btn onClick={()=>setShowRollover(true)} size='sm' style={{color:T.brand,borderColor:T.brandBorder}}><SIcon.rotate size={14}/> Rollover</Btn>
           </IfCan>
         </div>
         )}
