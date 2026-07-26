@@ -89,10 +89,37 @@ export default function HouseReportModal({ house, date, session, students, allRe
     }} className="hr-modal-overlay">
       <style>{`
         @media print {
+          @page { size: A4; margin: 10mm; }
+          html, body { height: auto !important; }
           body * { visibility: hidden; }
           .hr-print-area, .hr-print-area * { visibility: visible; }
-          .hr-print-area { position: absolute; top: 0; left: 0; width: 100%; }
+          .hr-print-area {
+            position: absolute !important;
+            top: 0; left: 0; width: 100%;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            font-size: 11px;
+            line-height: 1.3;
+          }
+          .hr-modal-overlay {
+            position: static !important;
+            background: none !important;
+            padding: 0 !important;
+            display: block !important;
+          }
+          .hr-modal-overlay > div {
+            max-width: none !important;
+            max-height: none !important;
+            overflow: visible !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
           .hr-no-print { display: none !important; }
+          /* Compact everything for print so it fits one page */
+          .hr-print-area h1, .hr-print-area h2, .hr-print-area h3 { margin: 0; }
+          .hr-print-section { break-inside: avoid; margin-bottom: 8px !important; }
+          .hr-print-row { padding: 4px 8px !important; }
         }
       `}</style>
       <div style={{
@@ -206,7 +233,7 @@ export default function HouseReportModal({ house, date, session, students, allRe
 
 function Section({ title, color, bg, children }) {
   return (
-    <div style={{ marginBottom: '16px' }}>
+    <div className="hr-print-section" style={{ marginBottom: '16px' }}>
       <div style={{ fontSize: '13px', fontWeight: 800, color, marginBottom: '8px' }}>{title}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         {children}
@@ -217,7 +244,7 @@ function Section({ title, color, bg, children }) {
 
 function NameRow({ student, sub }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+    <div className="hr-print-row" style={{ display: 'flex', flexDirection: 'column', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span style={{ fontWeight: 700, color: '#1e293b' }}>{student.name}</span>
         <span style={{ color: '#94a3b8', fontSize: '12px' }}>
