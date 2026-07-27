@@ -34,7 +34,20 @@ export default function HMDoubtSessionsTab({ currentHousemaster, currentUser }) 
   const [statusFilter, setStatusFilter] = useState('open')
   const [search, setSearch] = useState('')
 
-  const hmName = (currentHousemaster?.name || '').trim()
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+
+  // Cross-app deep link support: Teaching.jsx's HM Dashboard links here as
+  // /hostel?tab=doubtsession&hm=<name> so an admin clicking a specific HM's
+  // card/row lands on that HM's queue instead of their own. Only admins get
+  // this override — a non-admin's own name always wins, so one housemaster
+  // can't view another's doubt sessions just by editing the URL.
+  const hmParam = (() => {
+    try { return new URLSearchParams(window.location.search).get('hm') || '' } catch { return '' }
+  })()
+
+  const ownName = (currentHousemaster?.name || '').trim()
+  const hmName = (isAdmin && hmParam.trim()) ? hmParam.trim() : ownName
+  const viewingOther = isAdmin && hmParam.trim() && hmParam.trim() !== ownName
 
   const load = async () => {
     setLoading(true)
@@ -76,6 +89,12 @@ export default function HMDoubtSessionsTab({ currentHousemaster, currentUser }) 
   if (selected) {
     return (
       <div>
+        {viewingOther && (
+          <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '12px', fontWeight: '700', color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+            <span>👁️ Viewing {hmName}'s doubt sessions (admin view)</span>
+            <a href="/hostel?tab=doubtsession" style={{ color: '#92400e', textDecoration: 'underline' }}>← Back to my own</a>
+          </div>
+        )}
         <button
           onClick={() => setSelectedId(null)}
           style={{ background: '#f1f5f9', color: '#374151', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', marginBottom: '16px' }}
@@ -93,6 +112,12 @@ export default function HMDoubtSessionsTab({ currentHousemaster, currentUser }) 
 
   return (
     <div>
+      {viewingOther && (
+        <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '12px', fontWeight: '700', color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+          <span>👁️ Viewing {hmName}'s doubt sessions (admin view)</span>
+          <a href="/hostel?tab=doubtsession" style={{ color: '#92400e', textDecoration: 'underline' }}>← Back to my own</a>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
         {STATUS_FILTERS.map(f => (
           <button

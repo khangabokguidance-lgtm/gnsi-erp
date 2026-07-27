@@ -2135,8 +2135,12 @@ function TabHMDashboard({ currentUser }) {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:10, marginBottom:20 }}>
           {Object.entries(hmSummary).sort((a,b) => b[1].open - a[1].open).map(([hmName, data]) => (
             <div key={hmName}
-              style={{ ...S.card, padding:14, border: '1px solid #e2e8f0', marginBottom:0 }}>
-              <div style={{ fontSize:14, fontWeight:800, color:'#1e3a5f', marginBottom:4 }}>👤 {hmName}</div>
+              onClick={() => setSelectedHouse(hmName)}
+              style={{ ...S.card, padding:14, border: selectedHouse===hmName ? '1.5px solid #1e3a5f' : '1px solid #e2e8f0', marginBottom:0, cursor:'pointer' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
+                <div style={{ fontSize:14, fontWeight:800, color:'#1e3a5f', marginBottom:4 }}>👤 {hmName}</div>
+                <a href={`/hostel?tab=doubtsession&hm=${encodeURIComponent(hmName)}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize:10, color:'#94a3b8', textDecoration:'none' }} title={`Open ${hmName}'s queue in Hostel Portal`}>🏠↗</a>
+              </div>
               {data.houses.size > 0 && (
                 <div style={{ fontSize:11, color:'#64748b', marginBottom:6 }}>
                   🏠 {[...data.houses].join(', ')}
@@ -2201,10 +2205,15 @@ function TabHMDashboard({ currentUser }) {
         }} style={{ ...S.btnSm('#7c3aed'), marginLeft:'auto' }}>🖨️ Print Summary</button>
       </div>
       <div style={S.card}>
-        <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', marginTop:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#b45309', margin:0 }}>⏳ Open Doubt Sessions ({openSessions.length})</h3>
+          <a href={`/hostel?tab=doubtsession${selectedHouse !== 'All' ? `&hm=${encodeURIComponent(selectedHouse)}` : ''}`} target="_blank" rel="noopener noreferrer" style={{ fontSize:11, fontWeight:700, color:'#1e3a5f', textDecoration:'none', padding:'5px 10px', borderRadius:8, background:'#eff6ff', whiteSpace:'nowrap' }}>
+            🏠 Open{selectedHouse !== 'All' ? ` ${selectedHouse}'s` : ''} in Hostel Portal ↗
+          </a>
+        </div>
         {openSessions.length===0
           ? <div style={{ textAlign:'center', padding:24, color:'#16a34a', fontWeight:600 }}>✅ No open sessions!</div>
-          : <div className="doubt-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14 }}>
+          : <div className="doubt-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginTop:12 }}>
               {openSessions.map(s => (
                 <HMDoubtSessionPanel
                   key={s.id}
@@ -2441,7 +2450,11 @@ function TabHMDashboard({ currentUser }) {
                     <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(d.teaching_date)}</td>
                     <td style={{ padding:'9px 12px', fontWeight:600 }}>{d.house_name||'—'}</td>
                     <td style={{ padding:'9px 12px' }}>{d.subject_name}</td>
-                    <td style={{ padding:'9px 12px', color:'#64748b' }}>{d.hm_name||'—'}</td>
+                    <td style={{ padding:'9px 12px', color:'#64748b' }}>
+                      {d.hm_name
+                        ? <a href={`/hostel?tab=doubtsession&hm=${encodeURIComponent(d.hm_name)}`} target="_blank" rel="noopener noreferrer" style={{ color:'#1e3a5f', fontWeight:600, textDecoration:'underline' }} title={`Open ${d.hm_name}'s queue in Hostel Portal`}>{d.hm_name}</a>
+                        : '—'}
+                    </td>
                     <td style={{ padding:'9px 12px' }}>
                       {d.status==='resolved'
                         ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Resolved</span>
