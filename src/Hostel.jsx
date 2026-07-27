@@ -4,6 +4,7 @@ import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActiviti
 import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
 import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
+import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 
 // ══════════════════════════════════════════════════════════════
 //  MOBILE-FIRST RESPONSIVE STYLES
@@ -121,62 +122,10 @@ function getStudentClass(s) {
 
 // ══════════════════════════════════════════════════════════════
 //  HOUSEMASTER PUSH ALERTS
-//  Sends a real push notification (via existing VAPID / /api/send-push
-//  backend) to the housemaster of a given house, or by exact staff name.
-//  Resolution path: housemasters.house → housemasters.name → staff_profiles
-//  (matched by name) → staff_profiles.id → push_subscriptions.staff_id.
+//  sendPushToStaffId / notifyHousemasterByName / notifyHousemasterByHouse
+//  now live in ./notifications.js (shared with LeaveTab.jsx) to avoid a
+//  circular import — see that file for implementation details.
 // ══════════════════════════════════════════════════════════════
-async function sendPushToStaffId(staffId, title, body, url = '/hostel') {
-  if (!staffId) return
-  try {
-    await fetch('/api/send-push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, body, url, staffId }),
-    })
-  } catch (e) {
-    console.error('sendPushToStaffId failed:', e)
-  }
-}
-
-async function notifyHousemasterByName(housemasterName, title, body, url = '/hostel') {
-  const name = (housemasterName || '').trim()
-  if (!name) return
-  try {
-    const { data: staff } = await supabase
-      .from('staff_profiles')
-      .select('id')
-      .ilike('name', name)
-      .maybeSingle()
-    if (!staff?.id) {
-      console.warn(`notifyHousemasterByName: no staff_profiles match for "${name}"`)
-      return
-    }
-    await sendPushToStaffId(staff.id, title, body, url)
-  } catch (e) {
-    console.error('notifyHousemasterByName failed:', e)
-  }
-}
-
-async function notifyHousemasterByHouse(house, title, body, url = '/hostel') {
-  const h = (house || '').trim()
-  if (!h) return
-  try {
-    const { data: hm } = await supabase
-      .from('housemasters')
-      .select('name')
-      .ilike('house', h)
-      .eq('status', 'Active')
-      .maybeSingle()
-    if (!hm?.name) {
-      console.warn(`notifyHousemasterByHouse: no active housemaster for house "${h}"`)
-      return
-    }
-    await notifyHousemasterByName(hm.name, title, body, url)
-  } catch (e) {
-    console.error('notifyHousemasterByHouse failed:', e)
-  }
-}
 
 // ══════════════════════════════════════════════════════════════
 //  SIX-TAB COMPLIANCE CHECK

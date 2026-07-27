@@ -12,6 +12,7 @@ import { supabase } from './supabase'
 import jsPDF from 'jspdf'
 import QRCode from 'qrcode'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts'
+import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 
 // ── Shared styles (copy from Hostel.jsx or import from a shared file)
 const inp = {
@@ -474,7 +475,119 @@ async function dispatchNotification(trigger, record, hmName = '', hmPhone = '') 
   return result
 }
 
-// ── Filter chip styles
+// ══════════════════════════════════════════════════════════════
+//  STAFF ALERTS — Overdue Return & Stuck Pending Approval
+//  Notifies the Housemaster or Superintendent (not the parent) via
+//  push (reusing Hostel.jsx's VAPID infrastructure) and WhatsApp
+//  (wa.me text link — instant, no image needed for a short alert).
+// ══════════════════════════════════════════════════════════════
+
+// Superintendent is a single shared staff_profiles account with role
+// = 'Superintendent'. Falls back gracefully (no throw) if none exists.
+async function getSuperintendentStaff() {
+  try {
+    const { data } = await supabase
+      .from('staff_profiles')
+      .select('id, name, phone')
+      .ilike('role', 'superintendent')
+      .maybeSingle()
+    return data || null
+  } catch (e) {
+    console.error('getSuperintendentStaff failed:', e)
+    return null
+  }
+}
+
+async function notifySuperintendent(title, body, url = '/hostel?tab=leave') {
+  const supt = await getSuperintendentStaff()
+  if (!supt?.id) {
+    console.warn('notifySuperintendent: no staff_profiles row with role=Superintendent')
+    return null
+  }
+  await sendPushToStaffId(supt.id, title, body, url)
+  return supt
+}
+
+// Opens a WhatsApp chat pre-filled with the alert text. wa.me can't be
+// triggered silently in the background (it's a user-facing navigation),
+// so this returns the URL for the caller to open via window.open —
+// callers should only do this in response to a direct user action, or
+// accept that automatic background triggers will just log the message
+// rather than force-open a WhatsApp tab without the user asking for it.
+function buildWhatsAppLink(phone, message) {
+  const cleanPhone = String(phone || '').replace(/\D/g, '')
+  const target = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone
+  return `https://wa.me/${target}?text=${encodeURIComponent(message)}`
+}
+
+// ── Overdue Return alert → Housemaster of the student's house.
+// Push fires automatically (background-safe). WhatsApp link is returned
+// so the UI can offer a "📲 Notify via WhatsApp" button rather than
+// force-opening a tab with no user gesture behind it.
+async function alertHousemasterOverdue(record) {
+  const house = record.house
+  if (!house) return null
+  const title = `🚨 Overdue Return — ${record.student_name}`
+  const body = `${record.student_name} (${house}) was due back ${
+    record.expected_return ? new Date(record.expected_return).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'earlier'
+  } and has not checked in.`
+  await notifyHousemasterByHouse(house, title, body, '/hostel?tab=leave')
+
+  // Resolve the house's HM phone for the WhatsApp link
+  try {
+    const { data: hm } = await supabase
+      .from('housemasters')
+      .select('name, phone')
+      .ilike('house', house)
+      .eq('status', 'Active')
+      .maybeSingle()
+    if (hm?.phone) {
+      return { hmName: hm.name, hmPhone: hm.phone, whatsappUrl: buildWhatsAppLink(hm.phone, `${title}\n\n${body}`) }
+    }
+  } catch (e) {
+    console.error('alertHousemasterOverdue phone lookup failed:', e)
+  }
+  return null
+}
+
+// ── Stuck Pending Approval alert → whichever role is currently
+// blocking it (HM if approval_level 0, Superintendent if level 1).
+async function alertStuckApproval(record) {
+  const level = record.approval_level ?? 0
+  const hoursStuck = record.created_at
+    ? Math.round((Date.now() - new Date(record.created_at).getTime()) / (1000 * 60 * 60))
+    : null
+  const title = `⏳ Leave Stuck Pending — ${record.student_name}`
+  const body = `${record.student_name}'s ${record.leave_type} request has been waiting ${hoursStuck != null ? `${hoursStuck}h` : 'too long'} for ${level === 0 ? 'HM' : 'Superintendent'} approval.`
+
+  if (level === 0) {
+    const house = record.house
+    if (!house) return null
+    await notifyHousemasterByHouse(house, title, body, '/hostel?tab=leave')
+    try {
+      const { data: hm } = await supabase
+        .from('housemasters')
+        .select('name, phone')
+        .ilike('house', house)
+        .eq('status', 'Active')
+        .maybeSingle()
+      if (hm?.phone) {
+        return { role: 'HM', name: hm.name, phone: hm.phone, whatsappUrl: buildWhatsAppLink(hm.phone, `${title}\n\n${body}`) }
+      }
+    } catch (e) {
+      console.error('alertStuckApproval HM phone lookup failed:', e)
+    }
+    return null
+  } else {
+    const supt = await notifySuperintendent(title, body, '/hostel?tab=leave')
+    if (supt?.phone) {
+      return { role: 'Superintendent', name: supt.name, phone: supt.phone, whatsappUrl: buildWhatsAppLink(supt.phone, `${title}\n\n${body}`) }
+    }
+    return null
+  }
+}
+
+
 const chipStyle = {
   display: 'inline-flex', alignItems: 'center', gap: '4px',
   padding: '3px 8px 3px 10px', borderRadius: '99px',
@@ -3670,6 +3783,52 @@ function DeleteModal({ record, onConfirm, onCancel }) {
   )
 }
 
+// ── Staff Alert Banner — shows overdue/stuck alerts with a click-to-open
+//    WhatsApp button per alert (can't auto-open wa.me without a user
+//    gesture) and lets the user dismiss ones already handled.
+function StaffAlertBanner({ links, onDismiss }) {
+  if (!links || links.length === 0) return null
+  return (
+    <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {links.map((link, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+            padding: '12px 16px', borderRadius: '12px',
+            background: link.kind === 'overdue' ? '#fff1f2' : '#fffbeb',
+            border: `1.5px solid ${link.kind === 'overdue' ? '#fca5a5' : '#fcd34d'}`,
+          }}
+        >
+          <span style={{ fontSize: '20px' }}>{link.kind === 'overdue' ? '🚨' : '⏳'}</span>
+          <div style={{ flex: 1, minWidth: '180px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: link.kind === 'overdue' ? '#dc2626' : '#92400e' }}>
+              {link.kind === 'overdue' ? 'Overdue Return' : 'Stuck Pending Approval'} — {link.studentName}
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>
+              Push notification sent to {link.role || link.hmName || 'staff'}{link.name ? ` (${link.name})` : ''}
+            </div>
+          </div>
+          {link.whatsappUrl && (
+            <button
+              onClick={() => window.open(link.whatsappUrl, '_blank')}
+              style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', background: '#25D366', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+            >
+              📲 Send WhatsApp
+            </button>
+          )}
+          <button
+            onClick={() => onDismiss(i)}
+            style={{ padding: '7px 10px', borderRadius: '8px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════
 //  MAIN LEAVE TAB
 // ══════════════════════════════════════════════════════════════
@@ -3719,6 +3878,13 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
   const [showFilters,   setShowFilters]   = useState(false) // advanced filter panel toggle
   const [activeTab,     setActiveTab]     = useState('requests') // 'requests' | 'history'
 
+  // ── Staff alerts (Overdue Return / Stuck Pending Approval) generated
+  //    on this load — push sends automatically in the background, but
+  //    WhatsApp needs a user click (browsers block auto-opening wa.me
+  //    without a gesture), so these are surfaced as dismissible buttons.
+  const [staffAlertLinks, setStaffAlertLinks] = useState([]) // [{ kind, studentName, role, whatsappUrl }]
+  const dismissStaffAlert = (index) => setStaffAlertLinks(prev => prev.filter((_, i) => i !== index))
+
   const mobile = useMobileView()
 
   // ── Load records
@@ -3758,10 +3924,66 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
       if (toAlert.length > 0) {
         sendOverdueAlerts(toAlert.map(r => ({ ...r, status: 'Overdue' })))
       }
+      // ── Also alert the housemaster of each student's house (push
+      //    fires immediately; WhatsApp needs a click, so collect links)
+      const hmAlertResults = await Promise.all(
+        data.map(r => alertHousemasterOverdue(r).catch(e => { console.error('alertHousemasterOverdue failed:', e); return null }))
+      )
+      const newLinks = hmAlertResults
+        .map((res, i) => res ? { kind: 'overdue', studentName: data[i].student_name, role: 'HM', ...res } : null)
+        .filter(Boolean)
+      if (newLinks.length > 0) setStaffAlertLinks(prev => [...prev, ...newLinks])
       load()
     }
     markOverdue()
   }, []) // ← empty deps: runs once on mount only
+
+  // ── Stuck Pending Approval — records sitting in Pending HM or Pending
+  //    Superintendent for 12+ hours get flagged to whichever role is
+  //    currently blocking them. De-duped via notification_logs so the
+  //    same record doesn't re-alert every time this tab is opened —
+  //    only once per calendar day per record.
+  useEffect(() => {
+    const STUCK_THRESHOLD_HOURS = 12
+    const checkStuckApprovals = async () => {
+      const cutoff = new Date(Date.now() - STUCK_THRESHOLD_HOURS * 60 * 60 * 1000)
+      const { data: stuck } = await supabase
+        .from('leave_records')
+        .select('*')
+        .eq('status', 'Pending')
+        .lt('created_at', cutoff.toISOString())
+      if (!stuck || stuck.length === 0) return
+
+      // Skip records already alerted today (avoid re-notifying on every load)
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+      const { data: alreadyLogged } = await supabase
+        .from('notification_logs')
+        .select('leave_id')
+        .eq('trigger', 'stuck_approval')
+        .gte('sent_at', todayStart.toISOString())
+      const alreadyLoggedIds = new Set((alreadyLogged || []).map(l => l.leave_id))
+      const toAlert = stuck.filter(r => !alreadyLoggedIds.has(r.id))
+      if (toAlert.length === 0) return
+
+      const results = await Promise.all(
+        toAlert.map(r => alertStuckApproval(r).catch(e => { console.error('alertStuckApproval failed:', e); return null }))
+      )
+      // Log each attempt (even if the WhatsApp link couldn't be built) so
+      // the de-dupe check above skips it on the next load regardless
+      await Promise.all(toAlert.map(r =>
+        supabase.from('notification_logs').insert([{
+          leave_id: r.id, student_name: r.student_name, phone: null,
+          trigger: 'stuck_approval', message: `Stuck pending approval (${(r.approval_level ?? 0) === 0 ? 'HM' : 'Superintendent'})`,
+          status: 'sent', sent_at: new Date().toISOString(),
+        }])
+      ))
+      const newLinks = results
+        .map((res, i) => res ? { kind: 'stuck', studentName: toAlert[i].student_name, ...res } : null)
+        .filter(Boolean)
+      if (newLinks.length > 0) setStaffAlertLinks(prev => [...prev, ...newLinks])
+    }
+    checkStuckApprovals()
+  }, []) // ← empty deps: runs once on mount only, same pattern as markOverdue
 
   // ── Open create form
   const openCreate = () => {
@@ -4363,6 +4585,9 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
           onCancel={() => setMarkReturnedTarget(null)}
         />
 
+        {/* Staff alerts — overdue return / stuck pending approval */}
+        <StaffAlertBanner links={staffAlertLinks} onDismiss={dismissStaffAlert} />
+
         {/* Stat cards */}
         <div style={mobileStatGrid}>
           <StatCard icon="⏳" label="Pending HM"    value={stats.pendingHM}    color="#ca8a04" bg="#fef9c3" compact />
@@ -4714,6 +4939,9 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
         onConfirm={handleReturnConfirm}
         onCancel={() => setMarkReturnedTarget(null)}
       />
+
+      {/* Staff alerts — overdue return / stuck pending approval */}
+      <StaffAlertBanner links={staffAlertLinks} onDismiss={dismissStaffAlert} />
 
       {/* Stat cards */}
       <div style={{
