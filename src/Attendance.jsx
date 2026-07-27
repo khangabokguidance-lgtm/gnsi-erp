@@ -3913,8 +3913,10 @@ function TabStudentDB({ isAdmin }) {
   const [form, setForm] = useState(emptyStudentForm)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
-  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null) // { id, mode: 'soft' | 'permanent' }
+  const [showDeleted, setShowDeleted] = useState(false) // admin-only view of soft-deleted students
 
+  // REQUIRED SQL (run once): alter table students add column if not exists deleted_at timestamptz;
   const load = async () => {
     setLoading(true)
     const { data, error } = await supabase.from('students').select('*').order('name')
@@ -3924,11 +3926,17 @@ function TabStudentDB({ isAdmin }) {
   }
   useEffect(() => { load() }, [])
 
-  const filtered = students.filter(s => {
+  const visibleStudents = students.filter(s => showDeleted ? !!s.deleted_at : !s.deleted_at)
+
+  const filtered = visibleStudents.filter(s => {
     if (courseFilter !== 'all' && s.course !== courseFilter) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
-    return [s.name, s.gcc_no, s.class_name, s.phone].some(v => (v || '').toString().toLowerCase().includes(q))
+    // Phone is masked for non-admins (see render below), so it also
+    // shouldn't be searchable by non-admins — otherwise search results
+    // would leak numbers indirectly via matching.
+    const searchable = isAdmin ? [s.name, s.gcc_no, s.class_name, s.phone] : [s.name, s.gcc_no, s.class_name]
+    return searchable.some(v => (v || '').toString().toLowerCase().includes(q))
   })
 
   const openAdd = () => { setEditingId(null); setForm(emptyStudentForm); setShowForm(true) }
@@ -3961,22 +3969,36 @@ function TabStudentDB({ isAdmin }) {
     load()
   }
 
-  const handleDelete = async (id) => {
-    const { error } = await supabase.from('students').delete().eq('id', id)
+  // Soft delete — available to all staff. Marks deleted_at instead of
+  // removing the row, so an admin can review/restore before anything
+  // is actually destroyed.
+  const handleSoftDelete = async (id) => {
+    const { error } = await supabase.from('students').update({ deleted_at: new Date().toISOString() }).eq('id', id)
     if (error) { setToast({ type: 'error', msg: error.message }); return }
-    setToast({ type: 'success', msg: 'Student removed.' })
+    setToast({ type: 'success', msg: 'Student moved to deleted (recoverable by admin).' })
     setConfirmDelete(null)
     load()
   }
 
-  if (!isAdmin) {
-    return (
-      <Card>
-        <div style={{ textAlign: 'center', padding: '48px 20px', color: T.gray400 }}>
-          🔒 Admin access only.
-        </div>
-      </Card>
-    )
+  // Restore — undoes a soft delete. Available to all staff, same as
+  // soft delete itself, since it's the natural undo for that action.
+  const handleRestore = async (id) => {
+    const { error } = await supabase.from('students').update({ deleted_at: null }).eq('id', id)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: 'Student restored.' })
+    load()
+  }
+
+  // Permanent delete — admin only, actually removes the row. Guarded
+  // again here (not just hidden in the UI) so it can't be triggered
+  // by a non-admin even if they somehow reach this handler.
+  const handlePermanentDelete = async (id) => {
+    if (!isAdmin) { setToast({ type: 'error', msg: 'Only admins can permanently delete.' }); return }
+    const { error } = await supabase.from('students').delete().eq('id', id)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: 'Student permanently deleted.' })
+    setConfirmDelete(null)
+    load()
   }
 
   return (
@@ -3984,14 +4006,29 @@ function TabStudentDB({ isAdmin }) {
       <CardHeader
         icon="🎓"
         title="Student Database"
-        subtitle={`${students.length} students on record`}
+        subtitle={`${visibleStudents.length} ${showDeleted ? 'deleted' : 'active'} student${visibleStudents.length===1?'':'s'}${isAdmin ? ` · ${students.filter(s=>s.deleted_at).length} in trash` : ''}`}
         accent={T.blue}
-        right={<Btn small onClick={openAdd}>{showForm && !editingId ? '✕ Cancel' : '+ Add Student'}</Btn>}
+        right={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {isAdmin && (
+              <Btn small variant={showDeleted ? 'amber' : 'ghost'} onClick={() => setShowDeleted(v => !v)}>
+                {showDeleted ? '👥 Active Students' : '🗑 View Trash'}
+              </Btn>
+            )}
+            {!showDeleted && <Btn small onClick={openAdd}>{showForm && !editingId ? '✕ Cancel' : '+ Add Student'}</Btn>}
+          </div>
+        }
       />
       <div style={{ padding: isMobile ? '12px 16px' : '16px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
-        {showForm && (
+        {!isAdmin && (
+          <div style={{ background: T.blueSoft, border: `1px solid #bfdbfe`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#1e40af' }}>
+            🔒 Parent contact numbers are hidden for non-admin accounts. Deleting a student here moves them to trash — only an admin can permanently remove a record.
+          </div>
+        )}
+
+        {showForm && !showDeleted && (
           <div style={{ background: T.gray50, border: `1.5px solid ${T.gray150}`, borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, marginBottom: 12 }}>
               {editingId ? '✏️ Edit Student' : '+ Add New Student'}
@@ -4022,6 +4059,7 @@ function TabStudentDB({ isAdmin }) {
               <div>
                 <Label required>Parent Contact No.</Label>
                 <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="10-digit mobile number" style={inputStyle()} />
+                {!isAdmin && <div style={{ fontSize: 11, color: T.gray400, marginTop: 4 }}>You can set this number, but it will display masked to you and other non-admin staff afterward.</div>}
               </div>
               <div>
                 <Label>Hostel Type</Label>
@@ -4041,7 +4079,7 @@ function TabStudentDB({ isAdmin }) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="🔍 Search name, GCC no, class, phone…"
+            placeholder={isAdmin ? "🔍 Search name, GCC no, class, phone…" : "🔍 Search name, GCC no, class…"}
             style={{ ...inputStyle(), flex: 2, minWidth: 200 }}
           />
           <Select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
@@ -4053,33 +4091,58 @@ function TabStudentDB({ isAdmin }) {
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: T.gray400 }}>Loading…</div>
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: T.gray400, fontSize: 13 }}>No students found.</div>
+          <div style={{ textAlign: 'center', padding: '40px 0', color: T.gray400, fontSize: 13 }}>
+            {showDeleted ? 'Trash is empty.' : 'No students found.'}
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filtered.map(s => (
               <div key={s.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-                padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${T.gray150}`, background: T.white,
+                padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${s.deleted_at ? '#fecaca' : T.gray150}`,
+                background: s.deleted_at ? '#fff8f8' : T.white,
               }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>{s.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>
+                    {s.name}{s.deleted_at && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: T.red }}>DELETED {fmtDate(s.deleted_at.split('T')[0])}</span>}
+                  </div>
                   <div style={{ fontSize: 11.5, color: T.gray400, marginTop: 2 }}>
                     {s.gcc_no ? `GCC-${s.gcc_no}` : '—'} · {s.course || '—'}{s.class_name ? ` · ${s.class_name}` : ''}
                   </div>
                   <div style={{ fontSize: 11.5, color: s.phone ? T.gray500 : T.red, marginTop: 2 }}>
-                    {s.phone ? `📞 ${s.phone}` : '⚠️ No parent contact on record'}
+                    {isAdmin
+                      ? (s.phone ? `📞 ${s.phone}` : '⚠️ No parent contact on record')
+                      : (s.phone ? '📞 •••• •••••• (hidden)' : '⚠️ No parent contact on record')
+                    }
                   </div>
                 </div>
-                {confirmDelete === s.id ? (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <Btn small variant="danger" onClick={() => handleDelete(s.id)}>Confirm Delete</Btn>
-                    <Btn small variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Btn>
-                  </div>
+
+                {showDeleted ? (
+                  // Trash view: restore (any staff) or permanently delete (admin only)
+                  confirmDelete?.id === s.id && confirmDelete.mode === 'permanent' ? (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="danger" onClick={() => handlePermanentDelete(s.id)}>⚠️ Confirm Permanent Delete</Btn>
+                      <Btn small variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="success" onClick={() => handleRestore(s.id)}>♻️ Restore</Btn>
+                      {isAdmin && <Btn small variant="danger" onClick={() => setConfirmDelete({ id: s.id, mode: 'permanent' })}>🗑 Delete Forever</Btn>}
+                    </div>
+                  )
                 ) : (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <Btn small variant="ghost" onClick={() => openEdit(s)}>✏️ Edit</Btn>
-                    <Btn small variant="danger" onClick={() => setConfirmDelete(s.id)}>🗑 Delete</Btn>
-                  </div>
+                  // Active view: edit + soft delete (any staff)
+                  confirmDelete?.id === s.id && confirmDelete.mode === 'soft' ? (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="danger" onClick={() => handleSoftDelete(s.id)}>Confirm Delete</Btn>
+                      <Btn small variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="ghost" onClick={() => openEdit(s)}>✏️ Edit</Btn>
+                      <Btn small variant="danger" onClick={() => setConfirmDelete({ id: s.id, mode: 'soft' })}>🗑 Delete</Btn>
+                    </div>
+                  )
                 )}
               </div>
             ))}
