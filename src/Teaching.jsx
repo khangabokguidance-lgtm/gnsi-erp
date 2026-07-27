@@ -1380,6 +1380,7 @@ function TabReports({ logs, missed, staff, courseData }) {
   const [month, setMonth]     = useState(currentYearMonth())
   const [teacher, setTeacher] = useState('All')
   const [course, setCourse]   = useState('All')
+  const [expanded, setExpanded] = useState({}) // teacher name → true when showing all logs
   const { courses } = courseData
   const teachers    = [...new Set(logs.map(l => l.teacher_name).filter(Boolean))]
   const monthLogs   = logs.filter(l => l.teaching_date?.startsWith(month) && (teacher==='All'||l.teacher_name===teacher) && (course==='All'||l.course===course))
@@ -1439,12 +1440,24 @@ function TabReports({ logs, missed, staff, courseData }) {
               </div>
               {data.classes.size>0 && <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:8 }}>{[...data.classes].map(cl=><span key={cl} style={S.pill('#16a34a','#f0fdf4')}>{cl}</span>)}</div>}
               <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:8 }}>{[...data.subjects].map(s=><span key={s} style={S.pill('#1e3a5f','#eff6ff')}>{s}</span>)}</div>
-              {[...data.logs].slice(0,5).map(l => (
+              {[...data.logs].slice(0, expanded[name] ? data.logs.length : 5).map(l => (
                 <div key={l.id} style={{ borderBottom:'1px solid #f1f5f9', padding:'4px 0', fontSize:13, color:'#64748b' }}>
                   {fmtDate(l.teaching_date)} — {l.subject_name} [{l.course}/{l.subtype}]: <em>{l.topic_taught}</em>
                 </div>
               ))}
-              {data.logs.length>5 && <div style={{ color:'#94a3b8', fontSize:12, marginTop:4 }}>+{data.logs.length-5} more</div>}
+              {data.logs.length>5 && (
+                <button
+                  onClick={() => setExpanded(prev => ({ ...prev, [name]: !prev[name] }))}
+                  className="no-print"
+                  style={{
+                    color:'#1e3a5f', fontSize:12, marginTop:6, fontWeight:700,
+                    background:'#eff6ff', border:'none', borderRadius:7,
+                    padding:'6px 12px', cursor:'pointer',
+                  }}
+                >
+                  {expanded[name] ? '▲ Show less' : `▼ +${data.logs.length-5} more`}
+                </button>
+              )}
             </div>
           )
         })}
@@ -1974,6 +1987,7 @@ function TabHMDashboard({ currentUser }) {
   const [houses, setHouses]           = useState([])
   const [teachingLogs, setTeachingLogs] = useState([])
   const [warnings, setWarnings]         = useState([])
+  const [expandedWarningTeacher, setExpandedWarningTeacher] = useState(null) // teacher name currently showing full history
   const [excellentLogs, setExcellentLogs] = useState([])
   const [confirmDel, setConfirmDel]   = useState(null)
   const [photoView, setPhotoView]     = useState(null)
@@ -2234,31 +2248,63 @@ function TabHMDashboard({ currentUser }) {
           {(() => {
             const byTeacher = {}
             warnings.forEach(w => {
-              if (!byTeacher[w.teacher_name]) byTeacher[w.teacher_name] = { warnings:0, finalWarnings:0, blocked:0, latest:w }
+              if (!byTeacher[w.teacher_name]) byTeacher[w.teacher_name] = { warnings:0, finalWarnings:0, blocked:0, latest:w, all:[] }
               if (w.warning_type==='blocked')       byTeacher[w.teacher_name].blocked++
               else if (w.warning_type==='final_warning') byTeacher[w.teacher_name].finalWarnings++
               else byTeacher[w.teacher_name].warnings++
+              byTeacher[w.teacher_name].all.push(w)
             })
-            return Object.entries(byTeacher).sort((a,b) => (b[1].blocked - a[1].blocked) || (b[1].finalWarnings - a[1].finalWarnings)).map(([name, data]) => (
+            return Object.entries(byTeacher).sort((a,b) => (b[1].blocked - a[1].blocked) || (b[1].finalWarnings - a[1].finalWarnings)).map(([name, data]) => {
+              const isExpanded = expandedWarningTeacher === name
+              const totalWarnings = data.blocked + data.finalWarnings + data.warnings
+              return (
               <div key={name} style={{
                 padding:'12px 14px', borderRadius:10, marginBottom:8,
                 border: data.blocked>0 ? '2px solid #dc2626' : data.finalWarnings>0 ? '2px solid #d97706' : '1px solid #fecaca',
                 background: data.blocked>0 ? '#fff1f2' : data.finalWarnings>0 ? '#fffbeb' : '#fff8f8',
               }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+                <div
+                  onClick={() => setExpandedWarningTeacher(isExpanded ? null : name)}
+                  style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8, cursor:'pointer' }}
+                >
                   <div>
                     <span style={{ fontWeight:800, fontSize:14, color:'#1e293b' }}>👨‍🏫 {name}</span>
                     <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{data.latest.message}</div>
                   </div>
-                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
                     {data.blocked>0      && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:12, fontWeight:800, background:'#dc2626', color:'white' }}>🚫 BLOCKED ×{data.blocked}</span>}
                     {data.finalWarnings>0 && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:12, fontWeight:800, background:'#d97706', color:'white' }}>⛔ Final ×{data.finalWarnings}</span>}
                     {data.warnings>0      && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:12, fontWeight:700, background:'#fef9c3', color:'#b45309' }}>⚠️ Warned ×{data.warnings}</span>}
                     {data.latest.similarity_score && <span style={{ padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:600, background:'#f1f5f9', color:'#64748b' }}>Similarity: {data.latest.similarity_score}%</span>}
+                    <span style={{ fontSize:14, color:'#94a3b8', transition:'transform .15s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                   </div>
                 </div>
+                {isExpanded && (
+                  <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(0,0,0,.06)', display:'flex', flexDirection:'column', gap:6 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.05em' }}>
+                      All {totalWarnings} warning reason{totalWarnings>1?'s':''} (most recent first)
+                    </div>
+                    {[...data.all].sort((a,b) => (b.created_at||'').localeCompare(a.created_at||'')).map(w => (
+                      <div key={w.id} style={{
+                        background:'white', border:'1px solid #f1f5f9', borderRadius:8, padding:'8px 10px',
+                        display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap',
+                      }}>
+                        <div style={{ flex:1, minWidth:200 }}>
+                          <div style={{ fontSize:12.5, color:'#374151' }}>{w.message}</div>
+                          <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{fmtDate(w.created_at?.split('T')[0])}</div>
+                        </div>
+                        <div style={{ display:'flex', gap:6, alignItems:'flex-start' }}>
+                          {w.warning_type==='blocked'       && <span style={{ padding:'2px 8px', borderRadius:999, fontSize:10, fontWeight:800, background:'#dc2626', color:'white' }}>🚫 Blocked</span>}
+                          {w.warning_type==='final_warning'  && <span style={{ padding:'2px 8px', borderRadius:999, fontSize:10, fontWeight:800, background:'#d97706', color:'white' }}>⛔ Final</span>}
+                          {w.warning_type==='warning'        && <span style={{ padding:'2px 8px', borderRadius:999, fontSize:10, fontWeight:700, background:'#fef9c3', color:'#b45309' }}>⚠️ Warning</span>}
+                          {w.similarity_score && <span style={{ padding:'2px 8px', borderRadius:999, fontSize:10, fontWeight:600, background:'#f1f5f9', color:'#64748b' }}>{w.similarity_score}%</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))
+            )})
           })()}
 
           {/* Detail table */}
