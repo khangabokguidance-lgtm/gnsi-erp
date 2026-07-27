@@ -427,6 +427,44 @@ const fmtDate  = d  => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN',
 const fmtMonth = m  => { const [y,mo] = m.split('-'); return new Date(y, mo-1).toLocaleDateString('en-IN',{month:'long',year:'numeric'}) }
 const todayDay = () => new Date().toLocaleDateString('en-US', { weekday:'long' })
 
+// ─── WhatsApp direct-send + push notification helpers ─────────
+// Browsers can't silently attach/send a WhatsApp message with zero
+// clicks — wa.me always opens a chat window pre-filled with text that
+// the user (staff member) sends themselves. This mirrors the same
+// constraint already handled the same way in the Hostel module.
+function normalizePhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '')
+  if (!digits) return ''
+  return digits.length === 10 ? `91${digits}` : digits
+}
+function buildWhatsAppLink(phone, message) {
+  const target = normalizePhone(phone)
+  if (!target) return null
+  return `https://wa.me/${target}?text=${encodeURIComponent(message)}`
+}
+function openWhatsApp(phone, message) {
+  const url = buildWhatsAppLink(phone, message)
+  if (!url) return false
+  window.open(url, '_blank')
+  return true
+}
+
+// Push notification — same /api/send-push backend already used by the
+// Hostel module's notifications.js, reused here as a self-contained
+// copy since this file has no import relationship to that module.
+async function sendPushToStaffId(staffId, title, body, url = '/attendance') {
+  if (!staffId) return
+  try {
+    await fetch('/api/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, body, url, staffId }),
+    })
+  } catch (e) {
+    console.error('sendPushToStaffId failed:', e)
+  }
+}
+
 // ─── Mobile Hook ─────────────────────────────────────────────
 
 function useIsMobile() {
@@ -2070,6 +2108,16 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
       status: 'sent', sent_at: new Date().toISOString(),
     }))
     await supabase.from('parent_notifications').insert(rows)
+
+    // Real WhatsApp send: wa.me requires a user gesture per tab it opens,
+    // so browsers will block auto-opening one per student in a loop.
+    // We open the first student's chat now (this click counts as the
+    // gesture); each remaining student gets a manual "📲" button below.
+    if (channel === 'whatsapp' || channel === 'both') {
+      const first = students.find(s => s.students?.phone)
+      if (first) openWhatsApp(first.students.phone, msgFor(first))
+    }
+
     const sentMap = {}
     students.forEach(s => { sentMap[s.student_id || s.student_name] = true })
     setSent(sentMap)
@@ -2133,6 +2181,18 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
                     {s.students?.phone ? `📞 ${s.students.phone}` : 'No phone on record'}
                   </div>
                 </div>
+                {s.students?.phone && (channel === 'whatsapp' || channel === 'both') && (
+                  <button
+                    onClick={() => openWhatsApp(s.students.phone, msgFor(s))}
+                    style={{
+                      padding: '5px 10px', borderRadius: 7, border: 'none',
+                      background: '#25D366', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    📲
+                  </button>
+                )}
                 {isSent && (
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: '#16a34a' }}>
                     Sent
@@ -2802,7 +2862,18 @@ function TabLeave({ staff, currentUser, isAdmin }) {
     if (leaveTab === 'approved') q = q.eq('status', 'Approved')
     if (leaveTab === 'rejected') q = q.eq('status', 'Rejected')
     const { data } = await q.limit(50)
-    setLeaves(data || [])
+    const rows = data || []
+    // Best-effort phone lookup by name — leave_requests only stores
+    // student_name as plain text (no student_id link), so this matches
+    // against the central students table's name field to find a parent
+    // contact number for the WhatsApp button below.
+    const names = [...new Set(rows.map(r => r.student_name).filter(Boolean))]
+    if (names.length) {
+      const { data: matches } = await supabase.from('students').select('name, phone').in('name', names)
+      const phoneByName = Object.fromEntries((matches || []).map(m => [m.name, m.phone]))
+      rows.forEach(r => { r.parent_phone = phoneByName[r.student_name] || null })
+    }
+    setLeaves(rows)
     setLoading(false)
   }, [leaveTab])
 
@@ -2916,13 +2987,31 @@ function TabLeave({ staff, currentUser, isAdmin }) {
                       "{lv.reason}"
                     </div>
                     {lv.status === 'Pending' && isAdmin && (
-                      <div style={{ display:'flex', gap:8 }}>
+                      <div style={{ display:'flex', gap:8, flexWrap: 'wrap' }}>
                         <Btn small variant="success" onClick={() => updateLeave(lv.id, 'Approved')}>
                           ✓ Approve
                         </Btn>
                         <Btn small variant="danger" onClick={() => updateLeave(lv.id, 'Rejected')}>
                           ✕ Reject
                         </Btn>
+                      </div>
+                    )}
+                    {lv.parent_phone && lv.status !== 'Pending' && (
+                      <div style={{ display:'flex', gap:8, flexWrap: 'wrap', marginTop: lv.status !== 'Pending' ? 4 : 0 }}>
+                        <Btn small variant="whatsapp" onClick={() => openWhatsApp(
+                          lv.parent_phone,
+                          `Dear Parent, the leave request for ${lv.student_name} (${fmtDate(lv.from_date)} → ${fmtDate(lv.to_date)}) has been ${lv.status.toLowerCase()}. — GNSI`
+                        )}>
+                          📲 Notify {lv.status}
+                        </Btn>
+                        {lv.status === 'Approved' && new Date(lv.to_date) < new Date() && (
+                          <Btn small variant="whatsapp" onClick={() => openWhatsApp(
+                            lv.parent_phone,
+                            `Dear Parent, ${lv.student_name}'s leave ended on ${fmtDate(lv.to_date)}. Please ensure your ward attends class from today. — GNSI`
+                          )}>
+                            📲 Remind to Attend Class
+                          </Btn>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3624,12 +3713,78 @@ function useTodayStatusCounts() {
   return { counts, loading }
 }
 
+// ── Period 1 no-roll-call check ──────────────────────────────
+// After 10:00 AM, any class/course whose timetable has a Period 1
+// entry today but no matching attendance_sessions row yet is flagged.
+// Notifies both admins (role='admin' in staff_profiles) and the
+// specific teacher assigned to that Period 1 slot, de-duped per
+// class+date via a local sessionStorage flag so it doesn't re-push
+// on every render/refresh within the same day.
+function usePeriod1Check() {
+  const [missing, setMissing] = useState([])
+  const [checked, setChecked] = useState(false)
+
+  useEffect(() => {
+    const CUTOFF_HOUR = 10
+    const check = async () => {
+      if (new Date().getHours() < CUTOFF_HOUR) { setChecked(true); return }
+      const todayStr = today()
+      const dedupeKey = `p1check_${todayStr}`
+      const [{ data: ttEntries }, { data: todaySess }] = await Promise.all([
+        supabase.from('timetable_entries').select('*').eq('day_name', todayDay()).eq('period_name', '1'),
+        supabase.from('attendance_sessions').select('course, period_number').eq('session_date', todayStr),
+      ])
+      const markedCourses = new Set((todaySess || []).filter(s => String(s.period_number) === '1').map(s => s.course))
+      const gaps = (ttEntries || []).filter(tt => !markedCourses.has(tt.course))
+      setMissing(gaps)
+      setChecked(true)
+
+      if (gaps.length === 0) return
+      let alreadyNotified = []
+      try { alreadyNotified = JSON.parse(sessionStorage.getItem(dedupeKey) || '[]') } catch {}
+      const newGaps = gaps.filter(g => !alreadyNotified.includes(`${g.course}|${g.class_name || ''}`))
+      if (newGaps.length === 0) return
+
+      try {
+        const { data: admins } = await supabase.from('staff_profiles').select('id').ilike('role', 'admin')
+        const teacherNames = [...new Set(newGaps.map(g => g.teacher_name).filter(Boolean))]
+        const { data: teachers } = teacherNames.length
+          ? await supabase.from('staff_profiles').select('id, name').in('name', teacherNames)
+          : { data: [] }
+
+        const summary = newGaps.map(g => `${g.course}${g.class_name ? ' ' + g.class_name : ''}`).join(', ')
+        const title = `⏰ Period 1 not marked — ${newGaps.length} class${newGaps.length > 1 ? 'es' : ''}`
+        const body = `No roll call logged for Period 1: ${summary}`
+
+        await Promise.all([
+          ...(admins || []).map(a => sendPushToStaffId(a.id, title, body, '/attendance')),
+          ...newGaps.map(g => {
+            const t = (teachers || []).find(t => t.name === g.teacher_name)
+            return t ? sendPushToStaffId(t.id, title, `Your Period 1 class (${g.course}${g.class_name ? ' ' + g.class_name : ''}) hasn't been marked yet.`, '/attendance') : null
+          }),
+        ])
+
+        sessionStorage.setItem(dedupeKey, JSON.stringify([
+          ...alreadyNotified,
+          ...newGaps.map(g => `${g.course}|${g.class_name || ''}`),
+        ]))
+      } catch (e) {
+        console.error('usePeriod1Check notify failed:', e)
+      }
+    }
+    check()
+  }, [])
+
+  return { missing, checked }
+}
+
 function HomeV2({ onNavigate }) {
   const isMobile = useIsMobile()
   const month = monthOptions()[0]
   const { rows, loading } = useStudentSignals(month)
   const { data: trendData, loading: trendLoading } = useAttendanceTrend(6)
   const { counts: todayCounts, loading: todayLoading } = useTodayStatusCounts()
+  const { missing: period1Missing } = usePeriod1Check()
 
   const avgAttendance = rows.length ? Math.round(rows.reduce((s,r)=>s+(r.attendancePct||0),0)/rows.length) : 0
   const highRiskCount = rows.filter(r => r.risk === 'high').length
@@ -3641,6 +3796,24 @@ function HomeV2({ onNavigate }) {
         <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Overview</div>
         <div style={{ fontSize: 13, color: C.inkMuted, marginTop: 2 }}>{fmtDate(today())} · {todayDay()}</div>
       </div>
+
+      {period1Missing.length > 0 && (
+        <div style={{
+          background: C.redSoft, border: `1.5px solid #fecaca`, borderRadius: C.radius,
+          padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 22 }}>⏰</span>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#991b1b' }}>
+              {period1Missing.length} class{period1Missing.length > 1 ? 'es' : ''} missing Period 1 roll call
+            </div>
+            <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 2 }}>
+              {period1Missing.map(g => `${g.course}${g.class_name ? ' ' + g.class_name : ''}`).join(', ')} — no attendance logged past 10:00 AM.
+            </div>
+          </div>
+          <Btn small variant="danger" onClick={() => onNavigate('mark')}>Mark Now</Btn>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
         {loading ? [0,1,2,3].map(i => <SkeletonStatCard key={i} />) : [
@@ -3714,8 +3887,212 @@ function HomeV2({ onNavigate }) {
 
 
 
-const NAV_ITEMS = [
+// ─── STUDENT DATABASE TAB ──────────────────────────────────────
+// Manages the central `students` table directly — the same table
+// NotifyPanel already joins against for parent phone (s.students?.phone)
+// and TabLeave now looks up by name for WhatsApp. course_enrollments
+// (used by TabMark to build class rosters) should reference students
+// by student_id going forward rather than storing name/gcc_no directly,
+// though that migration is outside this tab's scope.
+//
+// Column names (name, gcc_no, course, class_name, phone) are inferred
+// from existing usage elsewhere in this file (NotifyPanel's
+// s.students?.phone, course/class_name used throughout) — confirm
+// against your actual Supabase schema and adjust the field list below
+// if any column is actually named differently.
+const emptyStudentForm = { name: '', gcc_no: '', course: '', class_name: '', phone: '', hostel_type: '' }
+
+function TabStudentDB({ isAdmin }) {
+  const isMobile = useIsMobile()
+  const [students, setStudents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [courseFilter, setCourseFilter] = useState('all')
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState(emptyStudentForm)
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    const { data, error } = await supabase.from('students').select('*').order('name')
+    if (error) { setToast({ type: 'error', msg: error.message }); setLoading(false); return }
+    setStudents(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const filtered = students.filter(s => {
+    if (courseFilter !== 'all' && s.course !== courseFilter) return false
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return [s.name, s.gcc_no, s.class_name, s.phone].some(v => (v || '').toString().toLowerCase().includes(q))
+  })
+
+  const openAdd = () => { setEditingId(null); setForm(emptyStudentForm); setShowForm(true) }
+  const openEdit = (s) => {
+    setEditingId(s.id)
+    setForm({ name: s.name || '', gcc_no: s.gcc_no || '', course: s.course || '', class_name: s.class_name || '', phone: s.phone || '', hostel_type: s.hostel_type || '' })
+    setShowForm(true)
+  }
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { setToast({ type: 'warn', msg: 'Student name is required.' }); return }
+    setSaving(true)
+    const payload = {
+      name: form.name.trim(),
+      gcc_no: form.gcc_no.trim() || null,
+      course: form.course || null,
+      class_name: form.class_name || null,
+      phone: form.phone.trim() || null,
+      hostel_type: form.hostel_type || null,
+    }
+    const { error } = editingId
+      ? await supabase.from('students').update(payload).eq('id', editingId)
+      : await supabase.from('students').insert([payload])
+    setSaving(false)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: editingId ? 'Student updated.' : 'Student added.' })
+    setShowForm(false)
+    setForm(emptyStudentForm)
+    setEditingId(null)
+    load()
+  }
+
+  const handleDelete = async (id) => {
+    const { error } = await supabase.from('students').delete().eq('id', id)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: 'Student removed.' })
+    setConfirmDelete(null)
+    load()
+  }
+
+  if (!isAdmin) {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: T.gray400 }}>
+          🔒 Admin access only.
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        icon="🎓"
+        title="Student Database"
+        subtitle={`${students.length} students on record`}
+        accent={T.blue}
+        right={<Btn small onClick={openAdd}>{showForm && !editingId ? '✕ Cancel' : '+ Add Student'}</Btn>}
+      />
+      <div style={{ padding: isMobile ? '12px 16px' : '16px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
+
+        {showForm && (
+          <div style={{ background: T.gray50, border: `1.5px solid ${T.gray150}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, marginBottom: 12 }}>
+              {editingId ? '✏️ Edit Student' : '+ Add New Student'}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 10 }}>
+              <div>
+                <Label required>Full Name</Label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Student's full name" style={inputStyle()} />
+              </div>
+              <div>
+                <Label>GCC No.</Label>
+                <input value={form.gcc_no} onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))} placeholder="e.g. 729" style={inputStyle()} />
+              </div>
+              <div>
+                <Label>Course</Label>
+                <Select value={form.course} onChange={e => setForm(f => ({ ...f, course: e.target.value }))}>
+                  <option value="">Select course…</option>
+                  {COURSES.map(c => <option key={c}>{c}</option>)}
+                </Select>
+              </div>
+              <div>
+                <Label>Batch / Class</Label>
+                <Select value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} disabled={!form.course}>
+                  <option value="">Select batch…</option>
+                  {(form.course ? COURSE_STRUCTURE[form.course] || [] : []).map(s => <option key={s}>{s}</option>)}
+                </Select>
+              </div>
+              <div>
+                <Label required>Parent Contact No.</Label>
+                <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="10-digit mobile number" style={inputStyle()} />
+              </div>
+              <div>
+                <Label>Hostel Type</Label>
+                <Select value={form.hostel_type} onChange={e => setForm(f => ({ ...f, hostel_type: e.target.value }))}>
+                  <option value="">Select…</option>
+                  {HOSTEL_TYPES.map(h => <option key={h}>{h}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <Btn variant="primary" disabled={saving} onClick={handleSave}>{saving ? 'Saving…' : editingId ? '✓ Save Changes' : '✓ Add Student'}</Btn>
+              <Btn variant="ghost" onClick={() => { setShowForm(false); setEditingId(null) }}>Cancel</Btn>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="🔍 Search name, GCC no, class, phone…"
+            style={{ ...inputStyle(), flex: 2, minWidth: 200 }}
+          />
+          <Select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
+            <option value="all">All Courses</option>
+            {COURSES.map(c => <option key={c}>{c}</option>)}
+          </Select>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: T.gray400 }}>Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: T.gray400, fontSize: 13 }}>No students found.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {filtered.map(s => (
+              <div key={s.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${T.gray150}`, background: T.white,
+              }}>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>{s.name}</div>
+                  <div style={{ fontSize: 11.5, color: T.gray400, marginTop: 2 }}>
+                    {s.gcc_no ? `GCC-${s.gcc_no}` : '—'} · {s.course || '—'}{s.class_name ? ` · ${s.class_name}` : ''}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: s.phone ? T.gray500 : T.red, marginTop: 2 }}>
+                    {s.phone ? `📞 ${s.phone}` : '⚠️ No parent contact on record'}
+                  </div>
+                </div>
+                {confirmDelete === s.id ? (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Btn small variant="danger" onClick={() => handleDelete(s.id)}>Confirm Delete</Btn>
+                    <Btn small variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Btn small variant="ghost" onClick={() => openEdit(s)}>✏️ Edit</Btn>
+                    <Btn small variant="danger" onClick={() => setConfirmDelete(s.id)}>🗑 Delete</Btn>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+
   { key:'home',      label:'Overview',    icon: Icon.home },
+  { key:'studentdb', label:'Student DB',  icon: Icon.users },
   { key:'student360',label:'Student 360', icon: Icon.users },
   { key:'mark',      label:'Mark',        icon: Icon.check },
   { key:'view',      label:'Sessions',    icon: Icon.calendar },
@@ -3726,6 +4103,7 @@ const NAV_ITEMS = [
 
 const PAGE_META = {
   home:       { title: 'Overview' },
+  studentdb:  { title: 'Student Database' },
   student360: { title: 'Student 360' },
   mark:       { title: 'Mark attendance' },
   view:       { title: 'Sessions' },
@@ -3762,6 +4140,7 @@ export default function Attendance({ currentUser, isAdmin }) {
   const renderPage = () => {
     switch (route) {
       case 'home':       return <HomeV2 onNavigate={navigateTo} />
+      case 'studentdb':  return <TabStudentDB isAdmin={isAdmin} />
       case 'student360': return <Student360Page />
       case 'mark':       return <TabMark staff={staff} prefill={markPrefill} />
       case 'view':       return <TabView />
