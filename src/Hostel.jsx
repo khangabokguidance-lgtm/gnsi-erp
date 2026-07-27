@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import jsPDF from 'jspdf'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
-import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
+import { ClassTimetableTab } from './ClassTimetableTab'
+import HMDoubtSessionsTab from './HMDoubtSessionsTab'
 import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
@@ -6250,7 +6251,7 @@ function Hostel() {
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
     journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} />,
     classtimetable: <ClassTimetableTab />,
-    doubtsession: <DoubtSessionTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
+    doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} />,
   }
 
