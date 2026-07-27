@@ -657,6 +657,185 @@ const isAssigned = (s) => {
   return h !== null && h !== undefined && String(h).trim() !== ''
 }
 
+// ══════════════════════════════════════════════════════════════
+//  SHARED REPORT ENGINE — used by every tab's "Generate Report"
+//  button. Takes a title, subtitle, column definitions, and row data;
+//  produces a landscape A4 PDF (jsPDF, matching the Gate Pass/
+//  Certificate styling elsewhere) or a print-ready HTML view.
+//  Deliberately generic — each tab supplies its own columns/rows,
+//  this file never needs to know about any tab's internal shape.
+// ══════════════════════════════════════════════════════════════
+const REPORT_NAVY = [30, 58, 95]
+const REPORT_GOLD = [202, 138, 4]
+const REPORT_GREY = [100, 116, 139]
+
+function generateTableReportPDF({ title, subtitle, columns, rows, schoolName = 'Guidance Navodaya & Sainik Institute' }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const W = 297, H = 210
+  const marginX = 12
+  let y = 16
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.setTextColor(...REPORT_NAVY)
+  doc.text(schoolName, W / 2, y, { align: 'center' })
+  y += 6
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(...REPORT_GREY)
+  doc.text(title, W / 2, y, { align: 'center' })
+  y += 5
+  if (subtitle) {
+    doc.setFontSize(8.5)
+    doc.text(subtitle, W / 2, y, { align: 'center' })
+    y += 5
+  }
+  doc.setDrawColor(...REPORT_GOLD)
+  doc.setLineWidth(0.6)
+  doc.line(marginX, y, W - marginX, y)
+  y += 6
+
+  // Column widths — distribute available width by each column's `width`
+  // weight (defaults to 1), so callers can bias wider text columns.
+  const usableWidth = W - marginX * 2
+  const totalWeight = columns.reduce((s, c) => s + (c.width || 1), 0)
+  const colWidths = columns.map(c => (usableWidth * (c.width || 1)) / totalWeight)
+
+  const rowHeight = 7
+  const headerHeight = 8
+
+  const drawHeader = () => {
+    doc.setFillColor(...REPORT_NAVY)
+    doc.rect(marginX, y, usableWidth, headerHeight, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(255, 255, 255)
+    let x = marginX
+    columns.forEach((c, i) => {
+      doc.text(String(c.label), x + 2, y + 5.5)
+      x += colWidths[i]
+    })
+    y += headerHeight
+  }
+
+  drawHeader()
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+
+  rows.forEach((row, rIdx) => {
+    if (y + rowHeight > H - 14) {
+      doc.addPage()
+      y = 16
+      drawHeader()
+    }
+    if (rIdx % 2 === 1) {
+      doc.setFillColor(244, 246, 249)
+      doc.rect(marginX, y, usableWidth, rowHeight, 'F')
+    }
+    doc.setTextColor(30, 41, 59)
+    let x = marginX
+    columns.forEach((c, i) => {
+      const raw = typeof c.value === 'function' ? c.value(row) : row[c.key]
+      const text = raw === null || raw === undefined || raw === '' ? '—' : String(raw)
+      const maxChars = Math.floor(colWidths[i] / 1.6)
+      const truncated = text.length > maxChars ? text.slice(0, maxChars - 1) + '…' : text
+      doc.text(truncated, x + 2, y + 5)
+      x += colWidths[i]
+    })
+    y += rowHeight
+  })
+
+  if (rows.length === 0) {
+    doc.setTextColor(...REPORT_GREY)
+    doc.text('No records for the selected range.', W / 2, y + 10, { align: 'center' })
+  }
+
+  const pageCount = doc.internal.getNumberOfPages()
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p)
+    doc.setFontSize(7)
+    doc.setTextColor(...REPORT_GREY)
+    doc.text(`Generated ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`, marginX, H - 8)
+    doc.text(`Page ${p} of ${pageCount}`, W - marginX, H - 8, { align: 'right' })
+  }
+
+  doc.save(`${title.replace(/[^\w]+/g, '_')}_${today()}.pdf`)
+}
+
+function printTableReport({ title, subtitle, columns, rows, schoolName = 'Guidance Navodaya & Sainik Institute' }) {
+  const w = window.open('', '_blank')
+  if (!w) return
+  const headerCells = columns.map(c => `<th>${c.label}</th>`).join('')
+  const bodyRows = rows.map((row, i) => {
+    const cells = columns.map(c => {
+      const raw = typeof c.value === 'function' ? c.value(row) : row[c.key]
+      return `<td>${raw === null || raw === undefined || raw === '' ? '—' : raw}</td>`
+    }).join('')
+    return `<tr style="background:${i % 2 === 1 ? '#f4f6f9' : 'white'}">${cells}</tr>`
+  }).join('')
+  w.document.write(`
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: sans-serif; padding: 24px; color: #1e293b; }
+          h1 { font-size: 18px; color: #1e3a5f; margin-bottom: 2px; }
+          h2 { font-size: 13px; color: #64748b; font-weight: 500; margin: 0 0 4px; }
+          .sub { font-size: 11px; color: #94a3b8; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { background: #1e3a5f; color: white; padding: 6px 8px; text-align: left; }
+          td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+          .empty { text-align: center; padding: 30px; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <h1>${schoolName}</h1>
+        <h2>${title}</h2>
+        ${subtitle ? `<div class="sub">${subtitle}</div>` : ''}
+        ${rows.length === 0
+          ? `<div class="empty">No records for the selected range.</div>`
+          : `<table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`
+        }
+      </body>
+    </html>
+  `)
+  w.document.close()
+  w.print()
+}
+
+// Drop-in export buttons for any tab. `getRows` may return either an
+// array (uses `rows` as-is) or an object { rows, allRows } so a tab
+// can offer "export filtered view" vs "export everything" — the
+// includeAll toggle only appears when allRows is provided and differs.
+function ReportExportButtons({ title, subtitle, columns, rows, allRows }) {
+  const [includeAll, setIncludeAll] = useState(false)
+  const hasAllOption = Array.isArray(allRows) && allRows.length !== rows.length
+  const activeRows = includeAll && hasAllOption ? allRows : rows
+
+  return (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+      {hasAllOption && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748b', fontWeight: '600', cursor: 'pointer' }}>
+          <input type="checkbox" checked={includeAll} onChange={e => setIncludeAll(e.target.checked)} style={{ width: '14px', height: '14px' }} />
+          Include all ({allRows.length})
+        </label>
+      )}
+      <button
+        onClick={() => generateTableReportPDF({ title, subtitle, columns, rows: activeRows })}
+        style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+      >
+        ⬇️ PDF
+      </button>
+      <button
+        onClick={() => printTableReport({ title, subtitle, columns, rows: activeRows })}
+        style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+      >
+        🖨️ Print
+      </button>
+    </div>
+  )
+}
+
 function useMobileView() {
   const [mobile, setMobile] = useState(isMobile())
   useEffect(() => {
@@ -1572,8 +1751,26 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
             </div>
 
-            <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Select a House
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Select a House
+              </div>
+              <ReportExportButtons
+                title="Roll Call Summary"
+                subtitle={`${date} · ${session === 'morning' ? 'Morning' : 'Night'} session`}
+                columns={[
+                  { key: 'house', label: 'House', width: 1.2 },
+                  { key: 'total', label: 'Total', width: 0.7 },
+                  { key: 'marked', label: 'Marked', width: 0.7 },
+                  { key: 'present', label: 'Present', width: 0.7 },
+                  { key: 'absent', label: 'Absent', width: 0.7 },
+                  { key: 'late', label: 'Late', width: 0.6 },
+                  { key: 'onLeave', label: 'On Leave', width: 0.8 },
+                  { key: 'sick', label: 'Sick', width: 0.6 },
+                  { key: 'pct', label: '% Complete', width: 0.9 },
+                ]}
+                rows={houses.map(h => { const s = getHouseStats(h); return { house: h, ...s } })}
+              />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
               {houses.length === 0 && (
@@ -2656,6 +2853,24 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
           <input placeholder="🔍 Search..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1 }} type="search" />
           <button onClick={() => setShowForm(!showForm)} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '➕'}</button>
         </div>
+        <div style={{ marginBottom: '12px' }}>
+          <ReportExportButtons
+            title="Maintenance / Repairs Records"
+            subtitle={`${filtered.length} of ${records.length} records`}
+            columns={[
+              { key: 'category', label: 'Category', width: 1 },
+              { key: 'priority', label: 'Priority', width: 0.8 },
+              { key: 'house', label: 'House', width: 1 },
+              { key: 'location', label: 'Location', width: 1.4 },
+              { key: 'room_number', label: 'Room', width: 0.6 },
+              { key: 'description', label: 'Description', width: 2.4 },
+              { key: 'status', label: 'Status', width: 1 },
+              { key: 'raised_at', label: 'Raised', width: 1, value: r => r.raised_at ? new Date(r.raised_at).toLocaleDateString() : '' },
+            ]}
+            rows={filtered}
+            allRows={records}
+          />
+        </div>
         {showForm && (
           <div style={{ ...mobileCard, marginBottom: '12px' }}>
             <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>🔧 New Complaint</h3>
@@ -2718,6 +2933,22 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, width: 'auto' }}><option value="All">All Status</option>{MAINTENANCE_STATUSES.map(s => <option key={s}>{s}</option>)}</select>
           <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ ...inp, width: 'auto' }}><option value="All">All Priority</option>{MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}</select>
         </div>
+        <ReportExportButtons
+          title="Maintenance / Repairs Records"
+          subtitle={`${filtered.length} of ${records.length} records${filterStatus !== 'All' ? ` · Status: ${filterStatus}` : ''}${filterPriority !== 'All' ? ` · Priority: ${filterPriority}` : ''}`}
+          columns={[
+            { key: 'category', label: 'Category', width: 1 },
+            { key: 'priority', label: 'Priority', width: 0.8 },
+            { key: 'house', label: 'House', width: 1 },
+            { key: 'location', label: 'Location', width: 1.4 },
+            { key: 'room_number', label: 'Room', width: 0.6 },
+            { key: 'description', label: 'Description', width: 2.4 },
+            { key: 'status', label: 'Status', width: 1 },
+            { key: 'raised_at', label: 'Raised', width: 1, value: r => r.raised_at ? new Date(r.raised_at).toLocaleDateString() : '' },
+          ]}
+          rows={filtered}
+          allRows={records}
+        />
         <button onClick={() => setShowForm(!showForm)} style={btn()}>{showForm ? '✖ Cancel' : '➕ Raise Complaint'}</button>
       </div>
       {showForm && (
@@ -3209,6 +3440,27 @@ function HMRollCallReportTab() {
   const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#ca8a04' : '#dc2626'
   const scoreBg = (pct) => pct === null ? '#f1f5f9' : pct >= 90 ? '#dcfce7' : pct >= 70 ? '#fef9c3' : '#fee2e2'
 
+  // Flattened one-row-per-house-per-day-per-session view, for export only.
+  const exportRows = useMemo(() => {
+    const rows = []
+    houses.forEach(houseName => {
+      dayList.forEach(d => {
+        ;['morning', 'night'].forEach(session => {
+          const s = getDayStats(houseName, d, session)
+          if (s.total === 0) return
+          rows.push({
+            house: houseName, date: d, session,
+            marked: s.marked, total: s.total,
+            pct: s.pct === null ? '' : `${s.pct}%`,
+            onTime: s.onTime === null ? '' : (s.onTime ? 'Yes' : 'Late'),
+            absent: s.absent,
+          })
+        })
+      })
+    })
+    return rows
+  }, [houses, dayList, records, studentsByHouse])
+
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading roll call report...</div>
   }
@@ -3235,6 +3487,20 @@ function HMRollCallReportTab() {
             </button>
           ))}
         </div>
+        <ReportExportButtons
+          title="Monthly Roll Call Report"
+          subtitle={`${startStr} → ${endStr} · ${exportRows.length} house-session rows`}
+          columns={[
+            { key: 'date', label: 'Date', width: 1 },
+            { key: 'house', label: 'House', width: 1 },
+            { key: 'session', label: 'Session', width: 1 },
+            { key: 'marked', label: 'Marked', width: 0.8, value: r => `${r.marked}/${r.total}` },
+            { key: 'pct', label: '% Complete', width: 0.9 },
+            { key: 'onTime', label: 'On Time', width: 0.8 },
+            { key: 'absent', label: 'Absent', width: 0.7 },
+          ]}
+          rows={exportRows}
+        />
       </div>
 
       {houses.length === 0 ? (
@@ -3536,6 +3802,18 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
   const unmarkedCount = students.filter(s => s.status !== 'Inactive').length - attendanceToday.length
 
+  // One-row-per-metric summary, for the dashboard's Generate Report button.
+  const snapshotRows = [
+    { metric: 'Present (Morning)', value: presentCount },
+    { metric: 'Absent (Morning)', value: absentCount },
+    { metric: 'Unmarked', value: unmarkedCount },
+    { metric: 'Pending Leave Requests', value: leaveToday.length },
+    { metric: 'Currently in Sickbay', value: sickbayToday.length },
+    { metric: 'Open Discipline Cases', value: disciplineOpen.length },
+    { metric: 'Urgent Maintenance', value: maintenanceOpen.length },
+    { metric: 'Pending Doubt Sessions', value: myDoubtTasks.length },
+  ]
+
   const quickActions = [
     { id: 'attendance', label: '✓ Roll Call', icon: '✓', color: '#16a34a', bg: '#dcfce7', desc: `${presentCount}/${students.length} marked` },
     { id: 'leave', label: '🚪 Leave', icon: '🚪', color: '#1d4ed8', bg: '#dbeafe', desc: `${leaveToday.length} requests` },
@@ -3553,6 +3831,17 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
         <div style={{ marginBottom: '20px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}</h2>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{currentHousemaster?.name || currentUser?.name || 'House Master'} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <div style={{ marginTop: '10px' }}>
+            <ReportExportButtons
+              title="HM Dashboard — Daily Snapshot"
+              subtitle={`${currentHousemaster?.name || currentUser?.name || 'House Master'} · ${today()}`}
+              columns={[
+                { key: 'metric', label: 'Metric', width: 2 },
+                { key: 'value', label: 'Value', width: 1 },
+              ]}
+              rows={snapshotRows}
+            />
+          </div>
         </div>
         {myDoubtTasks.length > 0 && (
           <div
@@ -3621,6 +3910,17 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
         <div>
           <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {currentHousemaster?.name || currentUser?.name || 'House Master'}</h2>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <div style={{ marginTop: '10px' }}>
+            <ReportExportButtons
+              title="HM Dashboard — Daily Snapshot"
+              subtitle={`${currentHousemaster?.name || currentUser?.name || 'House Master'} · ${today()}`}
+              columns={[
+                { key: 'metric', label: 'Metric', width: 2 },
+                { key: 'value', label: 'Value', width: 1 },
+              ]}
+              rows={snapshotRows}
+            />
+          </div>
         </div>
         {nightDutyTonight && (
           <div style={{ background: '#1e3a5f', color: 'white', padding: '12px 20px', borderRadius: '12px' }}>
@@ -3757,6 +4057,23 @@ function JournalTab({ currentHousemaster, autoOpenForm }) {
           <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, flex: 1 }} />
           <button onClick={() => setShowForm(!showForm)} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '📝'}</button>
         </div>
+        <div style={{ marginBottom: '12px' }}>
+          <ReportExportButtons
+            title="Housemaster Journal"
+            subtitle={`${date} · ${filtered.length} of ${entries.length} entries`}
+            columns={[
+              { key: 'entry_date', label: 'Date', width: 1 },
+              { key: 'entry_time', label: 'Time', width: 0.7 },
+              { key: 'category', label: 'Category', width: 1 },
+              { key: 'house', label: 'House', width: 1 },
+              { key: 'title', label: 'Title', width: 1.6 },
+              { key: 'content', label: 'Content', width: 2.4 },
+              { key: 'housemaster_name', label: 'Logged By', width: 1.2 },
+            ]}
+            rows={filtered}
+            allRows={entries}
+          />
+        </div>
         {showForm && (
           <div style={{ ...mobileCard, marginBottom: '12px' }}>
             <form onSubmit={handleSave}>
@@ -3809,6 +4126,21 @@ function JournalTab({ currentHousemaster, autoOpenForm }) {
           <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, width: 'auto' }} />
           <input placeholder="🔍 Search entries..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 160 }} />
         </div>
+        <ReportExportButtons
+          title="Housemaster Journal"
+          subtitle={`${date} · ${filtered.length} of ${entries.length} entries`}
+          columns={[
+            { key: 'entry_date', label: 'Date', width: 1 },
+            { key: 'entry_time', label: 'Time', width: 0.7 },
+            { key: 'category', label: 'Category', width: 1 },
+            { key: 'house', label: 'House', width: 1 },
+            { key: 'title', label: 'Title', width: 1.6 },
+            { key: 'content', label: 'Content', width: 2.4 },
+            { key: 'housemaster_name', label: 'Logged By', width: 1.2 },
+          ]}
+          rows={filtered}
+          allRows={entries}
+        />
         <button onClick={() => setShowForm(!showForm)} style={btn()}>{showForm ? '✖ Cancel' : '📝 New Entry'}</button>
       </div>
       {showForm && (
@@ -3984,6 +4316,24 @@ create table if not exists day_scholar_records (
           <input placeholder="🔍 Search name, route..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1 }} type="search" />
           <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyDayScholar) }} style={{ ...btn(), padding: '10px 14px' }}>{showForm ? '✕' : '➕'}</button>
         </div>
+        <div style={{ marginBottom: '12px' }}>
+          <ReportExportButtons
+            title="Day Scholar Records"
+            subtitle={`${filtered.length} of ${records.length} records`}
+            columns={[
+              { key: 'gcc_no', label: 'GCC', width: 0.8 },
+              { key: 'student_name', label: 'Student', width: 1.4 },
+              { key: 'class_name', label: 'Class', width: 1 },
+              { key: 'parent_name', label: 'Parent', width: 1.2 },
+              { key: 'parent_phone', label: 'Phone', width: 1 },
+              { key: 'transport_route', label: 'Route', width: 1 },
+              { key: 'pickup_point', label: 'Pickup', width: 1 },
+              { key: 'status', label: 'Status', width: 0.8 },
+            ]}
+            rows={filtered}
+            allRows={records}
+          />
+        </div>
         {showForm && (
           <div style={{ ...mobileCard, marginBottom: '12px' }}>
             <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>{editRec ? '✏️ Edit Record' : '➕ New Day Scholar'}</h3>
@@ -4072,6 +4422,22 @@ create table if not exists day_scholar_records (
             {uniqueRoutes.map(r => <option key={r}>{r}</option>)}
           </select>
         </div>
+        <ReportExportButtons
+          title="Day Scholar Records"
+          subtitle={`${filtered.length} of ${records.length} records${statusFilter !== 'All' ? ` · Status: ${statusFilter}` : ''}${routeFilter !== 'All' ? ` · Route: ${routeFilter}` : ''}`}
+          columns={[
+            { key: 'gcc_no', label: 'GCC', width: 0.8 },
+            { key: 'student_name', label: 'Student', width: 1.4 },
+            { key: 'class_name', label: 'Class', width: 1 },
+            { key: 'parent_name', label: 'Parent', width: 1.2 },
+            { key: 'parent_phone', label: 'Phone', width: 1 },
+            { key: 'transport_route', label: 'Route', width: 1 },
+            { key: 'pickup_point', label: 'Pickup', width: 1 },
+            { key: 'status', label: 'Status', width: 0.8 },
+          ]}
+          rows={filtered}
+          allRows={records}
+        />
         <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyDayScholar) }} style={btn()}>
           {showForm ? '✖ Cancel' : '➕ Add Day Scholar'}
         </button>
@@ -4334,9 +4700,25 @@ function ScheduleTab() {
             </strong> · {rows.length} activities
           </p>
         </div>
-        <button onClick={() => setAdminMode(m => !m)} style={{ ...btn(adminMode ? '#dc2626' : '#f1f5f9', adminMode ? 'white' : '#374151'), fontSize: '12px', padding: '8px 14px' }}>
-          {adminMode ? '🔓 Admin Mode ON' : '🔒 Admin Mode'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <ReportExportButtons
+            title="Hostel Daily Schedule"
+            subtitle={`${type === 'weekday' ? 'Mon–Sat' : type === 'sunday' ? 'Sunday' : 'Holiday'} schedule · ${done}/${rows.length} completed today${catFilter !== 'All' ? ` · Category: ${catFilter}` : ''}`}
+            columns={[
+              { key: 'no', label: '#', width: 0.4 },
+              { key: 'from_time', label: 'From', width: 0.8 },
+              { key: 'to_time', label: 'To', width: 0.8 },
+              { key: 'activity', label: 'Activity', width: 2 },
+              { key: 'category', label: 'Category', width: 1 },
+              { key: 'done', label: 'Done Today', width: 0.8, value: r => (checked[`${type}_${r.no}`] ? 'Yes' : 'No') },
+            ]}
+            rows={visible}
+            allRows={rows}
+          />
+          <button onClick={() => setAdminMode(m => !m)} style={{ ...btn(adminMode ? '#dc2626' : '#f1f5f9', adminMode ? 'white' : '#374151'), fontSize: '12px', padding: '8px 14px' }}>
+            {adminMode ? '🔓 Admin Mode ON' : '🔒 Admin Mode'}
+          </button>
+        </div>
       </div>
 
       {/* Type tabs */}
@@ -4771,6 +5153,21 @@ function NightDutyTab({ staffProfiles, autoOpenForm }) {
             }}>{s === 'All' ? '📋 All' : `${SHIFT_STYLE[s]?.icon || ''} ${s}`}</button>
           ))}
         </div>
+        <ReportExportButtons
+          title="Mess Duty Roster"
+          subtitle={`${MONTHS[month]} ${year} · ${monthRoster.length} of ${enriched.length} duties${shiftFilter !== 'All' ? ` · Shift: ${shiftFilter}` : ''}`}
+          columns={[
+            { key: 'date', label: 'Date', width: 1 },
+            { key: 'shift', label: 'Shift', width: 1 },
+            { key: 'staff1', label: 'Staff 1', width: 1.4 },
+            { key: 'staff2', label: 'Staff 2', width: 1.4 },
+            { key: 'staff3', label: 'Staff 3', width: 1.4 },
+            { key: 'status', label: 'Status', width: 1 },
+            { key: 'notes', label: 'Notes', width: 1.6 },
+          ]}
+          rows={monthRoster}
+          allRows={enriched}
+        />
         <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyMD) }} style={btn()}>
           {showForm ? '✖ Cancel' : '➕ Assign Duty'}
         </button>
@@ -5106,6 +5503,23 @@ function DisciplineTab({ students, autoOpenForm }) {
             {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
+        <ReportExportButtons
+          title="Discipline Records"
+          subtitle={`${filtered.length} of ${records.length} records${filter !== 'All' ? ` · Status: ${filter}` : ''}`}
+          columns={[
+            { key: 'date', label: 'Date', width: 1 },
+            { key: 'gcc_no', label: 'GCC', width: 0.8 },
+            { key: 'student_name', label: 'Student', width: 1.4 },
+            { key: 'class_name', label: 'Class', width: 1 },
+            { key: '_house', label: 'House', width: 1 },
+            { key: 'incident', label: 'Incident', width: 2.2 },
+            { key: 'action_taken', label: 'Action Taken', width: 2 },
+            { key: 'reported_by', label: 'Reported By', width: 1.2 },
+            { key: 'status', label: 'Status', width: 1 },
+          ]}
+          rows={filtered}
+          allRows={enriched}
+        />
         <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyDisc) }} style={btn()}>
           {showForm ? '✖ Cancel' : '➕ Add Record'}
         </button>
@@ -5314,6 +5728,23 @@ function SickbayTab({ students, autoOpenForm }) {
             <option>Discharged</option>
           </select>
         </div>
+        <ReportExportButtons
+          title="Sickbay Records"
+          subtitle={`${filtered.length} of ${records.length} records${filter !== 'All' ? ` · Status: ${filter}` : ''}`}
+          columns={[
+            { key: 'date', label: 'Date', width: 1 },
+            { key: 'gcc_no', label: 'GCC', width: 0.8 },
+            { key: 'student_name', label: 'Student', width: 1.4 },
+            { key: 'class_name', label: 'Class', width: 1 },
+            { key: '_house', label: 'House', width: 1 },
+            { key: 'complaint', label: 'Complaint', width: 2 },
+            { key: 'treatment', label: 'Treatment', width: 2 },
+            { key: 'attended_by', label: 'Attended By', width: 1.2 },
+            { key: 'status', label: 'Status', width: 1 },
+          ]}
+          rows={filtered}
+          allRows={enriched}
+        />
         <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptySick) }} style={btn()}>
           {showForm ? '✖ Cancel' : '➕ Add Record'}
         </button>
@@ -5746,6 +6177,20 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
               </select>
             </div>
+            <ReportExportButtons
+              title="House Assignment Report"
+              subtitle={`${filteredStudents.length} of ${students.length} students${assignFilter !== 'All' ? ` · Filter: ${assignFilter}` : ''}`}
+              columns={[
+                { key: 'gcc_no', label: 'GCC', width: 0.8 },
+                { key: 'name', label: 'Student', width: 1.4 },
+                { key: 'batch', label: 'Batch', width: 1 },
+                { key: 'course', label: 'Course', width: 1 },
+                { key: 'house', label: 'House', width: 1 },
+                { key: 'hostel_type', label: 'Hostel Type', width: 1 },
+              ]}
+              rows={filteredStudents}
+              allRows={students}
+            />
             <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHouse) }} style={btn()}>
               {showForm ? '✖ Cancel' : '🏠 Create House'}
             </button>
@@ -5940,6 +6385,21 @@ function HousemasterTab() {
             {houseNames.map(h => <option key={h}>{h}</option>)}
           </select>
         </div>
+        <ReportExportButtons
+          title="Housemasters"
+          subtitle={`${filtered.length} of ${records.length} housemasters${filter !== 'All' ? ` · House: ${filter}` : ''}`}
+          columns={[
+            { key: 'name', label: 'Name', width: 1.4 },
+            { key: 'house', label: 'House', width: 1 },
+            { key: 'designation', label: 'Designation', width: 1.2 },
+            { key: 'phone', label: 'Phone', width: 1 },
+            { key: 'email', label: 'Email', width: 1.4 },
+            { key: 'assigned_date', label: 'Assigned', width: 1 },
+            { key: 'status', label: 'Status', width: 0.8 },
+          ]}
+          rows={filtered}
+          allRows={records}
+        />
         <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHM) }} style={btn()}>
           {showForm ? '✖ Cancel' : '➕ Add Housemaster'}
         </button>
@@ -6105,6 +6565,20 @@ function KitchenTab() {
           </select>
           <input placeholder="🔍 Search menu, staff..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 120 }} />
         </div>
+        <ReportExportButtons
+          title="Kitchen Records"
+          subtitle={`${filtered.length} of ${records.length} records${mealFilter !== 'All' ? ` · Meal: ${mealFilter}` : ''}${dateFilter ? ` · Date: ${dateFilter}` : ''}`}
+          columns={[
+            { key: 'date', label: 'Date', width: 1 },
+            { key: 'meal_type', label: 'Meal', width: 1 },
+            { key: 'menu', label: 'Menu', width: 2.4 },
+            { key: 'prepared_by', label: 'Prepared By', width: 1.2 },
+            { key: 'served_count', label: 'Served', width: 0.8 },
+            { key: 'remarks', label: 'Remarks', width: 1.4 },
+          ]}
+          rows={filtered}
+          allRows={records}
+        />
         <button onClick={() => setShowForm(!showForm)} style={btn()}>{showForm ? '✖ Cancel' : '➕ Log Meal'}</button>
       </div>
 
@@ -6271,7 +6745,7 @@ function NeglectReportTab({ currentUser }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={houseFilter} onChange={e => setHouseFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="All">All Houses</option>
           {houseNames.map(h => <option key={h}>{h}</option>)}
@@ -6280,6 +6754,20 @@ function NeglectReportTab({ currentUser }) {
           <option value="All">All Housemasters</option>
           {hmNames.map(h => <option key={h}>{h}</option>)}
         </select>
+        <ReportExportButtons
+          title="Six-Tab Compliance Neglect Report"
+          subtitle={`${filtered.length} of ${records.length} logged gaps${houseFilter !== 'All' ? ` · House: ${houseFilter}` : ''}${hmFilter !== 'All' ? ` · HM: ${hmFilter}` : ''}`}
+          columns={[
+            { key: 'date', label: 'Date', width: 1 },
+            { key: 'session', label: 'Session', width: 1 },
+            { key: 'check_type', label: 'Type', width: 1 },
+            { key: 'house', label: 'House', width: 1 },
+            { key: 'housemaster_name', label: 'Housemaster', width: 1.4 },
+            { key: 'missing_tabs', label: 'Missing Checks', width: 2, value: r => (r.missing_tabs || []).join(', ') },
+          ]}
+          rows={filtered}
+          allRows={records}
+        />
       </div>
 
       {loading ? (
