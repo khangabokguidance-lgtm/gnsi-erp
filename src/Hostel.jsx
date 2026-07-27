@@ -2793,6 +2793,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
       ...form,
       reported_by: currentHousemaster?.name || form.reported_by,
       raised_at: new Date().toISOString(),
+      resolved_at: form.resolved_at || null, // '' is not a valid timestamptz — must be null
       cost: form.cost !== '' && form.cost !== null ? Number(form.cost) : null,
     }
     const { error } = await supabase.from('maintenance_records').insert([payload])
