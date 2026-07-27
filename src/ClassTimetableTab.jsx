@@ -238,7 +238,7 @@ function RowModal({ row, isNew, onSave, onDelete, onClose }) {
 }
 
 // ── Version history panel ─────────────────────────────────────
-function HistoryPanel({ type, onClose, onRestore }) {
+function HistoryPanel({ type, onClose, onRestore, isAdmin }) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
@@ -277,7 +277,7 @@ function HistoryPanel({ type, onClose, onRestore }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  {onRestore && (
+                  {onRestore && isAdmin && (
                     <button onClick={e => { e.stopPropagation(); onRestore(h.snapshot) }}
                       style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${C.navy}`, background: 'white', color: C.navy, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                       Restore
@@ -302,7 +302,7 @@ function HistoryPanel({ type, onClose, onRestore }) {
 }
 
 // ── Main editable timetable grid ──────────────────────────────
-function EditableGrid({ type, batches, editable, currentUser }) {
+function EditableGrid({ type, batches, editable, currentUser, isAdmin }) {
   const [rows,      setRows]      = useState([])
   const [loading,   setLoading]   = useState(true)
   const [saving,    setSaving]    = useState(false)
@@ -361,6 +361,7 @@ function EditableGrid({ type, batches, editable, currentUser }) {
 
   // ── Update a slot ───────────────────────────────────────────
   const handleSlotSave = async ({ subject, teacher }) => {
+    if (!isAdmin) { showToast('Only admins can edit the timetable', '#dc2626', '#fee2e2'); return }
     if (!editSlot) return
     setSaving(true)
     const { rowId, batchName, slotId, from, to } = editSlot
@@ -396,6 +397,7 @@ function EditableGrid({ type, batches, editable, currentUser }) {
 
   // ── Add/edit time row ───────────────────────────────────────
   const handleRowSave = async (data) => {
+    if (!isAdmin) { showToast('Only admins can edit the timetable', '#dc2626', '#fee2e2'); return }
     setSaving(true)
     if (editRow?.isNew) {
       // Insert break row or empty row — one slot per batch
@@ -434,6 +436,7 @@ function EditableGrid({ type, batches, editable, currentUser }) {
   }
 
   const handleRowDelete = async () => {
+    if (!isAdmin) { showToast('Only admins can delete timetable rows', '#dc2626', '#fee2e2'); return }
     if (!editRow?.row) return
     setSaving(true)
     const row = editRow.row
@@ -451,6 +454,7 @@ function EditableGrid({ type, batches, editable, currentUser }) {
 
   // ── Restore snapshot ────────────────────────────────────────
   const handleRestore = async (snapshot) => {
+    if (!isAdmin) { showToast('Only admins can restore timetable history', '#dc2626', '#fee2e2'); return }
     if (!window.confirm('Restore this version? Current timetable will be overwritten.')) return
     setSaving(true)
     await supabase.from('timetable_slots').delete().eq('timetable_type', type)
@@ -736,7 +740,7 @@ function EditableGrid({ type, batches, editable, currentUser }) {
       {/* Modals */}
       {editSlot && <SlotModal slot={editSlot} batches={batches} onSave={handleSlotSave} onDelete={() => handleSlotSave({ subject: '', teacher: '' })} onClose={() => setEditSlot(null)} />}
       {editRow  && <RowModal  row={editRow.row} isNew={!!editRow.isNew} onSave={handleRowSave} onDelete={handleRowDelete} onClose={() => setEditRow(null)} />}
-      {showHist && <HistoryPanel type={type} onClose={() => setShowHist(false)} onRestore={handleRestore} />}
+      {showHist && <HistoryPanel type={type} onClose={() => setShowHist(false)} onRestore={handleRestore} isAdmin={isAdmin} />}
     </div>
   )
 }
@@ -744,7 +748,9 @@ function EditableGrid({ type, batches, editable, currentUser }) {
 // ══════════════════════════════════════════════════════════════
 //  EXPORTED TABS
 // ══════════════════════════════════════════════════════════════
-export function ClassTimetableTab({ editable = true, currentUser = 'Admin' }) {
+export function ClassTimetableTab({ currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const editable = isAdmin
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
@@ -758,12 +764,14 @@ export function ClassTimetableTab({ editable = true, currentUser = 'Admin' }) {
           </div>
         )}
       </div>
-      <EditableGrid type="class" batches={CLASS_BATCHES} editable={editable} currentUser={currentUser} />
+      <EditableGrid type="class" batches={CLASS_BATCHES} editable={editable} currentUser={currentUser?.name || 'Admin'} isAdmin={isAdmin} />
     </div>
   )
 }
 
-export function DoubtSessionTab({ editable = true, currentUser = 'Admin', students = [], currentHousemaster = null }) {
+export function DoubtSessionTab({ currentUser, students = [], currentHousemaster = null }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const editable = isAdmin
   const [selectedHouse, setSelectedHouse] = useState(null)
   const [view, setView] = useState('schedule')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
@@ -844,7 +852,7 @@ export function DoubtSessionTab({ editable = true, currentUser = 'Admin', studen
             student_name: student?.name || '',
             gcc_no: student?.gcc_no || null,
             house: selectedHouse,
-            marked_by: currentHousemaster?.name || currentUser || 'System',
+            marked_by: currentHousemaster?.name || currentUser?.name || 'System',
             marked_at: new Date().toISOString(),
           })
         }
@@ -931,7 +939,7 @@ export function DoubtSessionTab({ editable = true, currentUser = 'Admin', studen
 
           {/* Schedule view */}
           {view === 'schedule' && (
-            <EditableGrid type="doubt" batches={DOUBT_BATCHES} editable={editable} currentUser={currentUser} />
+            <EditableGrid type="doubt" batches={DOUBT_BATCHES} editable={editable} currentUser={currentUser?.name || 'Admin'} isAdmin={isAdmin} />
           )}
 
           {/* Attendance view */}

@@ -886,10 +886,15 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
 
   const handleSave = async e => {
     e.preventDefault()
+    if (editRec && !isAdmin && editRec.housemaster_name !== currentUser?.name) {
+      alert('You can only edit your own activity logs.'); return
+    }
     setSaving(true)
     const payload = {
-      date: form.date, housemaster_id: form.housemaster_id || null,
-      housemaster_name: form.housemaster_name, house: form.house,
+      date: form.date,
+      housemaster_id: isAdmin ? (form.housemaster_id || null) : (currentUser?.id || null),
+      house: form.house,
+      housemaster_name: isAdmin ? form.housemaster_name : (currentUser?.name || form.housemaster_name),
       activity_type: form.activity_type, category: form.category, freq: form.freq,
       description: form.description, outcome: form.outcome, status: form.status,
     }
@@ -902,6 +907,7 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { alert('Only admins can delete activity logs.'); return }
     if (!window.confirm('Delete this activity log?')) return
     await supabase.from('housemaster_activities').delete().eq('id', id)
     load()
@@ -992,13 +998,19 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
                     </select>
                   </div>
                   <div style={{ gridColumn: '1/-1' }}>
-                    <label style={lbl}>Housemaster</label>
-                    <StaffSearchInput staff={staffProfiles} onSelect={s => setForm(f => ({ ...f, housemaster_id: s.id, housemaster_name: s.name }))} placeholder="Search housemaster..." />
-                    {form.housemaster_name && (
-                      <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
-                        ✅ {form.housemaster_name}
-                        <button type="button" onClick={() => setForm(f => ({ ...f, housemaster_name: '', housemaster_id: null }))} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕</button>
-                      </div>
+                    <label style={lbl}>Housemaster{!isAdmin ? ' (yourself)' : ''}</label>
+                    {isAdmin ? (
+                      <>
+                        <StaffSearchInput staff={staffProfiles} onSelect={s => setForm(f => ({ ...f, housemaster_id: s.id, housemaster_name: s.name }))} placeholder="Search housemaster..." />
+                        {form.housemaster_name && (
+                          <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
+                            ✅ {form.housemaster_name}
+                            <button type="button" onClick={() => setForm(f => ({ ...f, housemaster_name: '', housemaster_id: null }))} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕</button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <input value={form.housemaster_name || currentUser?.name || ''} disabled readOnly style={{ ...inp, backgroundColor: '#f1f5f9', cursor: 'not-allowed' }} />
                     )}
                   </div>
                   <div style={{ gridColumn: '1/-1' }}>
@@ -1078,7 +1090,9 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
                           </td>
                           <td style={{ padding: '10px 14px' }}>
                             <div style={{ display: 'flex', gap: 6 }}>
-                              <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                              {(isAdmin || r.housemaster_name === currentUser?.name) && (
+                                <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                              )}
                               {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                             </div>
                           </td>

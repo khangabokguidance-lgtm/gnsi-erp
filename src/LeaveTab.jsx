@@ -4471,6 +4471,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
   // ── Delete
   const handleDelete = async () => {
     if (!deleteTarget) return
+    if (!isAdmin) { alert('Only admins can delete leave records.'); setDeleteTarget(null); return }
     // Feature 19: restore balance if record was fully approved
     if (deleteTarget.status === 'Approved' && (deleteTarget.approval_level ?? 0) >= 2) {
       await incrementBalance(deleteTarget.student_id, deleteTarget.leave_type)

@@ -1179,6 +1179,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   }, [])
 
   const handleAssignHouse = async (studentId, houseName) => {
+    if (!isAdmin) { alert('Only admins can assign students to a house.'); return }
     await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
     // students prop is owned by the parent (Hostel root); it will refetch
     // on its own polling/refresh cycle, but reflect the change locally too
@@ -2020,14 +2021,18 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{s.name}</div>
                             <div style={{ fontSize: '11px', color: '#64748b' }}>GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}</div>
                           </div>
-                          <select
-                            defaultValue=""
-                            onChange={e => { if (e.target.value) handleAssignHouse(s.id, e.target.value) }}
-                            style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: '12px' }}
-                          >
-                            <option value="" disabled>Assign to house...</option>
-                            {allHouseNames.map(h => <option key={h} value={h}>{h}</option>)}
-                          </select>
+                          {isAdmin ? (
+                            <select
+                              defaultValue=""
+                              onChange={e => { if (e.target.value) handleAssignHouse(s.id, e.target.value) }}
+                              style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: '12px' }}
+                            >
+                              <option value="" disabled>Assign to house...</option>
+                              {allHouseNames.map(h => <option key={h} value={h}>{h}</option>)}
+                            </select>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: '#9a3412', fontStyle: 'italic' }}>Ask an admin to assign a house</span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2819,6 +2824,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { showToast('Only admins can delete maintenance records', '#dc2626'); return }
     if (!window.confirm('Delete this maintenance record?')) return
     const { error } = await supabase.from('maintenance_records').delete().eq('id', id)
     if (error) showToast('Delete failed: ' + error.message, '#dc2626')
@@ -2963,7 +2969,17 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
               <div><label style={lbl}>Location/Block *</label><input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required placeholder="e.g. Block A" style={inp} /></div>
               <div><label style={lbl}>Room Number</label><input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} placeholder="101" style={inp} /></div>
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Description *</label><textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required rows={3} placeholder="Describe the issue in detail..." style={{ ...inp, resize: 'vertical' }} /></div>
-              <div><label style={lbl}>Assigned To</label><input value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))} placeholder="Staff name" style={inp} /></div>
+              <div>
+                <label style={lbl}>Assigned To{!isAdmin ? ' (admin only)' : ''}</label>
+                <input
+                  value={form.assigned_to}
+                  onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
+                  placeholder="Staff name"
+                  style={{ ...inp, ...(isAdmin ? {} : { backgroundColor: '#f1f5f9', cursor: 'not-allowed' }) }}
+                  disabled={!isAdmin}
+                  readOnly={!isAdmin}
+                />
+              </div>
               <div><label style={lbl}>Estimated Cost</label><input type="number" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} placeholder="0.00" style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
@@ -2991,7 +3007,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
                   <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.raised_at ? new Date(r.raised_at).toLocaleDateString() : '—'}</td>
                   <td style={{ padding: '11px 14px' }}>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      {r.status === 'Raised' && <button onClick={() => handleStatusChange(r.id, 'Assigned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>Assign</button>}
+                      {r.status === 'Raised' && isAdmin && <button onClick={() => handleStatusChange(r.id, 'Assigned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>Assign</button>}
                       {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#ca8a04'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
                       {r.status === 'In Progress' && <button onClick={() => handleStatusChange(r.id, 'Resolved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>Resolve</button>}
                       {r.status === 'Resolved' && <button onClick={() => handleStatusChange(r.id, 'Closed')} style={{ ...btn('#374151'), fontSize: '11px', padding: '4px 8px' }}>Close</button>}
@@ -3998,7 +4014,8 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 // ══════════════════════════════════════════════════════════════
 //  TAB: HOUSEMASTER JOURNAL
 // ══════════════════════════════════════════════════════════════
-function JournalTab({ currentHousemaster, autoOpenForm }) {
+function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -4036,6 +4053,7 @@ function JournalTab({ currentHousemaster, autoOpenForm }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { showToast('Only admins can delete journal entries.', '#dc2626'); return }
     if (!window.confirm('Delete this journal entry?')) return
     await supabase.from('housemaster_journal').delete().eq('id', id)
     load()
@@ -4109,7 +4127,7 @@ function JournalTab({ currentHousemaster, autoOpenForm }) {
               <div style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{e.content}</div>
               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>📝 {e.housemaster_name}</span>
-                <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}>🗑 Delete</button>
+                {isAdmin && <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}>🗑 Delete</button>}
               </div>
             </MobileRecordCard>
           ))}
@@ -4173,7 +4191,7 @@ function JournalTab({ currentHousemaster, autoOpenForm }) {
                 {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
                 <span style={{ fontSize: '13px', color: '#64748b' }}>{e.entry_date} · {e.entry_time}</span>
               </div>
-              <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑 Delete</button>
+              {isAdmin && <button onClick={() => handleDelete(e.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑 Delete</button>}
             </div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px' }}>{e.title}</h4>
             <p style={{ fontSize: '14px', color: '#374151', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{e.content}</p>
@@ -4196,7 +4214,8 @@ const emptyDayScholar = {
   remarks: '',
 }
 
-function DayScholarTab({ students }) {
+function DayScholarTab({ students, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -4255,6 +4274,7 @@ function DayScholarTab({ students }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { showToast('Only admins can delete day scholar records', '#dc2626'); return }
     if (!window.confirm('Delete this day scholar record?')) return
     await supabase.from('day_scholar_records').delete().eq('id', id)
     load()
@@ -4391,7 +4411,7 @@ create table if not exists day_scholar_records (
               {r.transport_route && <div style={{ fontSize: '12px', color: '#7c3aed', marginTop: '4px' }}>🚌 {r.transport_route} {r.pickup_point ? `· 📍 ${r.pickup_point}` : ''}</div>}
               <MobileActionButtons actions={[
                 { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
-                { label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' },
+                ...(isAdmin ? [{ label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' }] : []),
               ]} />
             </MobileRecordCard>
           ))}
@@ -4530,7 +4550,7 @@ create table if not exists day_scholar_records (
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => openEdit(r)} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
-                        <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                        {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                       </div>
                     </td>
                   </tr>
@@ -4573,7 +4593,8 @@ function saveChecks(obj) {
   try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch { }
 }
 
-function ScheduleTab() {
+function ScheduleTab({ currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const TYPE_TABS = [
     { id: 'weekday', label: '📅 Mon–Sat' },
     { id: 'sunday',  label: '🌿 Sunday' },
@@ -4591,6 +4612,8 @@ function ScheduleTab() {
   const [catFilter, setCatFilter] = useState('All')
   const [newRow,    setNewRow]    = useState({ from_time: '', to_time: '', activity: '', category: 'Routine' })
   const mobile = useMobileView()
+
+  useEffect(() => { if (!isAdmin && adminMode) setAdminMode(false) }, [isAdmin, adminMode])
 
   const todayDayType = (() => {
     const day = new Date().getDay()
@@ -4629,6 +4652,7 @@ function ScheduleTab() {
   }
 
   const handleAdd = async () => {
+    if (!isAdmin) { alert('Only admins can add schedule activities.'); return }
     if (!newRow.from_time || !newRow.activity) { alert('From time and activity name are required'); return }
     setSaving(true)
     const maxNo = rows.length ? Math.max(...rows.map(r => r.no)) : 0
@@ -4646,6 +4670,7 @@ function ScheduleTab() {
   }
 
   const handleDelete = async (id) => {
+    if (!isAdmin) { alert('Only admins can remove schedule activities.'); return }
     if (!window.confirm('Remove this activity?')) return
     setSaving(true)
     await supabase.from('hostel_schedules').delete().eq('id', id)
@@ -4654,6 +4679,7 @@ function ScheduleTab() {
   }
 
   const handleSaveEdit = async (id) => {
+    if (!isAdmin) { alert('Only admins can edit schedule activities.'); return }
     const fromEl = document.getElementById(`se-from-${id}`)
     const toEl   = document.getElementById(`se-to-${id}`)
     const actEl  = document.getElementById(`se-act-${id}`)
@@ -4716,9 +4742,11 @@ function ScheduleTab() {
             rows={visible}
             allRows={rows}
           />
-          <button onClick={() => setAdminMode(m => !m)} style={{ ...btn(adminMode ? '#dc2626' : '#f1f5f9', adminMode ? 'white' : '#374151'), fontSize: '12px', padding: '8px 14px' }}>
-            {adminMode ? '🔓 Admin Mode ON' : '🔒 Admin Mode'}
-          </button>
+          {isAdmin && (
+            <button onClick={() => setAdminMode(m => !m)} style={{ ...btn(adminMode ? '#dc2626' : '#f1f5f9', adminMode ? 'white' : '#374151'), fontSize: '12px', padding: '8px 14px' }}>
+              {adminMode ? '🔓 Admin Mode ON' : '🔒 Admin Mode'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -4941,7 +4969,8 @@ const SHIFT_STYLE = {
   'Full Day': { color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
 }
 
-function NightDutyTab({ staffProfiles, autoOpenForm }) {
+function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -4970,7 +4999,9 @@ function NightDutyTab({ staffProfiles, autoOpenForm }) {
   useEffect(() => { load() }, [])
 
   const handleSave = async e => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!isAdmin) { alert('Only admins can assign mess/night duty.'); return }
+    setSaving(true)
     const payload = {
       date: form.date, shift: form.shift, status: form.status, notes: form.notes, house: form.house || null,
       staff1_id: form.staff1_id || null, staff1: form.staff1, staff1_role: form.staff1_role,
@@ -4991,6 +5022,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { alert('Only admins can delete mess duty records.'); return }
     if (!window.confirm('Delete this mess duty record?')) return
     await supabase.from('mess_duty').delete().eq('id', id); load()
   }
@@ -5169,13 +5201,15 @@ function NightDutyTab({ staffProfiles, autoOpenForm }) {
           rows={monthRoster}
           allRows={enriched}
         />
-        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyMD) }} style={btn()}>
-          {showForm ? '✖ Cancel' : '➕ Assign Duty'}
-        </button>
+        {isAdmin && (
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyMD) }} style={btn()}>
+            {showForm ? '✖ Cancel' : '➕ Assign Duty'}
+          </button>
+        )}
       </div>
 
       {/* ── Form */}
-      {showForm && (
+      {showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
             {editRec ? '✏️ Edit Mess Duty' : '➕ Assign Mess Duty'}
@@ -5270,10 +5304,12 @@ function NightDutyTab({ staffProfiles, autoOpenForm }) {
                   ))}
                 </div>
                 {r.notes && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginBottom: 8 }}>📝 {r.notes}</div>}
-                <MobileActionButtons actions={[
-                  { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
-                  { label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' },
-                ]} />
+                {isAdmin && (
+                  <MobileActionButtons actions={[
+                    { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
+                    { label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' },
+                  ]} />
+                )}
               </MobileRecordCard>
             )
           })}
@@ -5336,10 +5372,12 @@ function NightDutyTab({ staffProfiles, autoOpenForm }) {
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.notes}>{r.notes || '—'}</div>
                     </td>
                     <td style={{ padding: '11px 14px' }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(r)} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
-                        <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
-                      </div>
+                      {isAdmin && (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => openEdit(r)} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                          <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )
@@ -5401,7 +5439,8 @@ const emptyDisc = {
 }
 const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 
-function DisciplineTab({ students, autoOpenForm }) {
+function DisciplineTab({ students, autoOpenForm, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -5462,6 +5501,7 @@ function DisciplineTab({ students, autoOpenForm }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { alert('Only admins can delete discipline records.'); return }
     if (!window.confirm('Delete this record?')) return
     await supabase.from('discipline_records').delete().eq('id', id); load()
   }
@@ -5603,7 +5643,7 @@ function DisciplineTab({ students, autoOpenForm }) {
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
-                        <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                        {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                       </div>
                     </td>
                   </tr>
@@ -5629,7 +5669,8 @@ const emptySick = {
   discharge_date: '', status: 'Admitted', attended_by: '',
 }
 
-function SickbayTab({ students, autoOpenForm }) {
+function SickbayTab({ students, autoOpenForm, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -5688,6 +5729,7 @@ function SickbayTab({ students, autoOpenForm }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { alert('Only admins can delete sickbay records.'); return }
     if (!window.confirm('Delete this record?')) return
     await supabase.from('sickbay_records').delete().eq('id', id); load()
   }
@@ -5828,7 +5870,7 @@ function SickbayTab({ students, autoOpenForm }) {
                       <div style={{ display: 'flex', gap: 6, flexDirection: 'column' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => { setEditRec(r); setForm({ ...r, discharge_date: r.discharge_date || '' }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
-                          <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                          {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                         </div>
                         {r.status === 'Admitted' && (
                           <button onClick={() => handleDischarge(r.id)} style={{ background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap' }}>✅ Discharge</button>
@@ -5898,7 +5940,9 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   useEffect(() => { load() }, [])
 
   const handleSaveHouse = async e => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!isAdmin) { alert('Only admins can create or edit houses.'); return }
+    setSaving(true)
     const HOUSE_COLOR_HEX = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#0891b2']
     const payload = {
       name: form.name.trim(), motto: form.motto, color_index: Number(form.color_index),
@@ -6024,7 +6068,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               </div>
               {/* FIXED: added flexWrap:'wrap' */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>
+                {isAdmin && <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>}
                 {isAdmin && <button onClick={() => handleBulkAssign(activeHouseObj.name)} style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}>+ Assign Unassigned ({unassignedCount})</button>}
               </div>
             </div>
@@ -6115,7 +6159,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
         )
       })()}
 
-      {!activeHouse && showForm && (
+      {!activeHouse && showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>{editRec ? '✏️ Edit House' : '🏠 Create New House'}</h3>
           <form onSubmit={handleSaveHouse}>
@@ -6192,9 +6236,11 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               rows={filteredStudents}
               allRows={students}
             />
-            <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHouse) }} style={btn()}>
-              {showForm ? '✖ Cancel' : '🏠 Create House'}
-            </button>
+            {isAdmin && (
+              <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHouse) }} style={btn()}>
+                {showForm ? '✖ Cancel' : '🏠 Create House'}
+              </button>
+            )}
           </div>
 
           {houses.length === 0
@@ -6330,7 +6376,8 @@ const emptyHM = {
   assigned_date: today(), status: 'Active', remarks: '',
 }
 
-function HousemasterTab() {
+function HousemasterTab({ currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [records, setRecords] = useState([])
   const [houses, setHouses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -6351,7 +6398,9 @@ function HousemasterTab() {
   useEffect(() => { load() }, [])
 
   const handleSave = async e => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!isAdmin) { alert('Only admins can add or edit housemasters.'); return }
+    setSaving(true)
     const { error } = editRec
       ? await supabase.from('housemasters').update(form).eq('id', editRec.id)
       : await supabase.from('housemasters').insert([form])
@@ -6361,6 +6410,7 @@ function HousemasterTab() {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { alert('Only admins can remove housemasters.'); return }
     if (!window.confirm('Remove this housemaster?')) return
     await supabase.from('housemasters').delete().eq('id', id); load()
   }
@@ -6401,9 +6451,11 @@ function HousemasterTab() {
           rows={filtered}
           allRows={records}
         />
-        <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHM) }} style={btn()}>
-          {showForm ? '✖ Cancel' : '➕ Add Housemaster'}
-        </button>
+        {isAdmin && (
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHM) }} style={btn()}>
+            {showForm ? '✖ Cancel' : '➕ Add Housemaster'}
+          </button>
+        )}
       </div>
 
       {houses.length === 0 && (
@@ -6412,7 +6464,7 @@ function HousemasterTab() {
         </div>
       )}
 
-      {showForm && (
+      {showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)', maxWidth: 900 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>{editRec ? '✏️ Edit Housemaster' : '➕ Add Housemaster'}</h3>
           <form onSubmit={handleSave}>
@@ -6471,10 +6523,12 @@ function HousemasterTab() {
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>Since {r.assigned_date || '—'}</div>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: r.status === 'Active' ? '#dcfce7' : '#fee2e2', color: r.status === 'Active' ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{r.status}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                      <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ flex: 1, ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px' }}>✏️ Edit</button>
-                      <button onClick={() => handleDelete(r.id)} style={{ flex: 1, ...btn('#fee2e2', '#dc2626'), fontSize: 12, padding: '7px' }}>🗑 Remove</button>
-                    </div>
+                    {isAdmin && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                        <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ flex: 1, ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px' }}>✏️ Edit</button>
+                        <button onClick={() => handleDelete(r.id)} style={{ flex: 1, ...btn('#fee2e2', '#dc2626'), fontSize: 12, padding: '7px' }}>🗑 Remove</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
@@ -6497,7 +6551,8 @@ function HousemasterTab() {
 const emptyMeal = { date: today(), meal_type: 'Breakfast', menu: '', prepared_by: '', served_count: 0, remarks: '' }
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Tea', 'Dinner']
 
-function KitchenTab() {
+function KitchenTab({ currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -6523,6 +6578,7 @@ function KitchenTab() {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { alert('Only admins can delete kitchen records.'); return }
     if (!window.confirm('Delete this kitchen record?')) return
     await supabase.from('kitchen_records').delete().eq('id', id); load()
   }
@@ -6654,7 +6710,7 @@ function KitchenTab() {
                     <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>{r.served_count || '—'}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.remarks || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
-                      <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>
+                      {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                     </td>
                   </tr>
                 ))}
@@ -6944,14 +7000,14 @@ function Hostel() {
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
 
   const tabContent = {
-    allotments: <DayScholarTab students={students} />,
-    schedule: <ScheduleTab />,
-    nightduty: <NightDutyTab staffProfiles={staffProfiles} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} />,
-    discipline: <DisciplineTab students={students} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} />,
-    sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} />,
+    allotments: <DayScholarTab students={students} currentUser={currentUser} />,
+    schedule: <ScheduleTab currentUser={currentUser} />,
+    nightduty: <NightDutyTab staffProfiles={staffProfiles} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
+    discipline: <DisciplineTab students={students} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
+    sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
-    housemaster: <HousemasterTab />,
-    kitchen: <KitchenTab />,
+    housemaster: <HousemasterTab currentUser={currentUser} />,
+    kitchen: <KitchenTab currentUser={currentUser} />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
@@ -6959,7 +7015,7 @@ function Hostel() {
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} currentUser={currentUser} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
-    journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} />,
+    journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} />,
