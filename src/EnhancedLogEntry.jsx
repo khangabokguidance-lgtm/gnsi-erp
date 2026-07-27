@@ -1385,7 +1385,7 @@ const RANK_MODES = [
 function computeTeacherStats(logs, warnings) {
   const map = {}
   const ensure = name => {
-    if (!map[name]) map[name] = { name, totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, latestWarning:null }
+    if (!map[name]) map[name] = { name, totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, latestWarning:null, allWarnings:[] }
     return map[name]
   }
   logs.forEach(l => {
@@ -1399,6 +1399,7 @@ function computeTeacherStats(logs, warnings) {
     if (!w.teacher_name) return
     const t = ensure(w.teacher_name)
     t.warningCount += 1
+    t.allWarnings.push(w)
     if (!t.latestWarning || new Date(w.created_at) > new Date(t.latestWarning.created_at)) {
       t.latestWarning = w
     }
@@ -1541,6 +1542,7 @@ function TeacherLeaderboard({ currentUser }) {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(false)
   const [rankMode, setRankMode] = useState('composite')
+  const [expandedWarningTeacher, setExpandedWarningTeacher] = useState(null) // teacher name showing full warning history
 
   useEffect(() => {
     let cancelled = false
@@ -1670,24 +1672,60 @@ function TeacherLeaderboard({ currentUser }) {
               {warnedTeachers.length > 0 && (
                 <div>
                   <div style={{ fontWeight:800, fontSize:13, color:C.red, marginBottom:10 }}>⚠️ Teachers with Active Warnings</div>
-                  {warnedTeachers.map(t => (
+                  {warnedTeachers.map(t => {
+                    const isWarningExpanded = expandedWarningTeacher === t.name
+                    const sortedWarnings = [...(t.allWarnings || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                    return (
                     <div key={t.name} style={{
                       padding:'10px 12px', borderRadius:10, marginBottom:6,
                       background: warnBg(t.latestWarning?.warning_type), border:`1px solid ${warnColor(t.latestWarning?.warning_type)}33`,
                     }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+                      <div
+                        onClick={() => setExpandedWarningTeacher(isWarningExpanded ? null : t.name)}
+                        style={{ display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap', cursor: sortedWarnings.length > 1 ? 'pointer' : 'default' }}
+                      >
                         <span style={{ fontWeight:700, fontSize:13, color:'#1e293b' }}>
                           {t.name}{t.name === myName ? ' (You)' : ''}
                         </span>
-                        <span style={{ ...S.badge(warnColor(t.latestWarning?.warning_type), 'white'), border:`1px solid ${warnColor(t.latestWarning?.warning_type)}` }}>
-                          {t.warningCount} warning{t.warningCount>1?'s':''}
-                        </span>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ ...S.badge(warnColor(t.latestWarning?.warning_type), 'white'), border:`1px solid ${warnColor(t.latestWarning?.warning_type)}` }}>
+                            {t.warningCount} warning{t.warningCount>1?'s':''}
+                          </span>
+                          {sortedWarnings.length > 1 && (
+                            <span style={{ fontSize:14, color:'#94a3b8', transition:'transform .15s', transform: isWarningExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                          )}
+                        </div>
                       </div>
-                      {t.latestWarning?.message && (
+                      {!isWarningExpanded && t.latestWarning?.message && (
                         <div style={{ fontSize:12, color:'#374151', marginTop:4 }}>{t.latestWarning.message}</div>
                       )}
+                      {isWarningExpanded && (
+                        <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid rgba(0,0,0,.06)', display:'flex', flexDirection:'column', gap:6 }}>
+                          <div style={{ fontSize:10.5, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.05em' }}>
+                            All {sortedWarnings.length} reasons (most recent first)
+                          </div>
+                          {sortedWarnings.map(w => (
+                            <div key={w.id} style={{
+                              background:'white', border:'1px solid #f1f5f9', borderRadius:8, padding:'8px 10px',
+                              display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap',
+                            }}>
+                              <div style={{ flex:1, minWidth:180 }}>
+                                <div style={{ fontSize:12, color:'#374151' }}>{w.message}</div>
+                                <div style={{ fontSize:10.5, color:'#94a3b8', marginTop:2 }}>
+                                  {w.created_at ? new Date(w.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'}
+                                </div>
+                              </div>
+                              {w.similarity_score && (
+                                <span style={{ padding:'2px 8px', borderRadius:999, fontSize:10, fontWeight:600, background:'#f1f5f9', color:'#64748b', alignSelf:'flex-start' }}>
+                                  {w.similarity_score}%
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
             </>
