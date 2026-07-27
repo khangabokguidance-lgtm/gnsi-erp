@@ -9,54 +9,111 @@ import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } 
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 
 // ══════════════════════════════════════════════════════════════
+//  DESIGN TOKENS — Material Design, grounded in the GNSI navy/gold
+//  identity. Material's defining traits are layered elevation
+//  (shadow depth, not one flat shadow everywhere), tonal color roles
+//  (a color plus its container/on-color pair, not one flat hex), and
+//  a size-to-radius relationship (small controls stay tight, surfaces
+//  get generous rounding). This token block is the single source for
+//  all of it — every shared primitive below derives from these.
+// ══════════════════════════════════════════════════════════════
+const MD = {
+  color: {
+    primary:          '#1e3a5f', // GNSI navy
+    primaryContainer: '#e3ecf7', // tonal navy-10, used behind navy content
+    onPrimaryContainer: '#0d2440',
+    secondary:          '#ca8a04', // GNSI brass/gold
+    secondaryContainer: '#fef3c7',
+    onSecondaryContainer: '#7c5800',
+    surface:          '#ffffff',
+    surfaceDim:       '#f4f6f9',   // page background
+    surfaceContainer: '#ffffff',  // card background
+    surfaceVariant:   '#eef1f6',  // subtle recessed areas (input fill, chips)
+    outline:          '#d7dee8',
+    outlineVariant:   '#e8ecf2',
+    onSurface:        '#1a2233',
+    onSurfaceVariant: '#5b6779',
+    error:            '#dc2626',
+    errorContainer:   '#fee2e2',
+    success:          '#16a34a',
+    successContainer: '#dcfce7',
+  },
+  // Material elevation: layered shadows, each tier pairs a tight
+  // "contact" shadow with a soft "ambient" shadow — this is what
+  // makes Material shadows read as depth rather than a blur filter.
+  elevation: {
+    0: 'none',
+    1: '0 1px 2px rgba(16,24,40,0.06), 0 1px 3px rgba(16,24,40,0.08)',
+    2: '0 2px 4px rgba(16,24,40,0.06), 0 4px 8px rgba(16,24,40,0.10)',
+    3: '0 4px 8px rgba(16,24,40,0.08), 0 8px 20px rgba(16,24,40,0.12)',
+    4: '0 6px 14px rgba(16,24,40,0.10), 0 12px 28px rgba(16,24,40,0.14)',
+  },
+  radius: { control: '10px', field: '12px', card: '18px', sheet: '24px', pill: '999px' },
+  type: {
+    label:    { fontSize: '12px', fontWeight: '600', letterSpacing: '0.02em' },
+    body:     { fontSize: '14px', fontWeight: '500' },
+    title:    { fontSize: '16px', fontWeight: '700' },
+    headline: { fontSize: '22px', fontWeight: '800', letterSpacing: '-0.01em' },
+  },
+}
+
+// ══════════════════════════════════════════════════════════════
 //  MOBILE-FIRST RESPONSIVE STYLES
 // ══════════════════════════════════════════════════════════════
 const isMobile = () => window.innerWidth < 768
 
-// ─── Shared styles ─────────────────────────────────────────────
+// ─── Shared styles — Material-elevated surfaces on the GNSI palette ──
 const inp = {
-  width: '100%', padding: '12px 14px', borderRadius: '10px',
-  border: '1px solid #d1d5db', fontSize: '16px', // 16px prevents iOS zoom
-  boxSizing: 'border-box', backgroundColor: 'white',
-  minHeight: '44px', // Touch-friendly
+  width: '100%', padding: '13px 14px', borderRadius: MD.radius.control,
+  border: `1.5px solid ${MD.color.outline}`, fontSize: '16px', // 16px prevents iOS zoom
+  boxSizing: 'border-box', backgroundColor: MD.color.surfaceVariant,
+  minHeight: '46px', color: MD.color.onSurface,
+  transition: 'border-color 0.15s ease, background-color 0.15s ease',
 }
 const lbl = {
-  display: 'block', fontSize: '13px', fontWeight: '600',
-  color: '#374151', marginBottom: '6px',
+  display: 'block', fontSize: '12px', fontWeight: '700',
+  color: MD.color.onSurfaceVariant, marginBottom: '6px',
+  textTransform: 'uppercase', letterSpacing: '0.04em',
 }
-const btn = (bg = '#1e3a5f', c = 'white') => ({
-  backgroundColor: bg, color: c, border: 'none', borderRadius: '10px',
-  padding: '12px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px',
-  minHeight: '44px', minWidth: '44px', // Touch targets
+// Material "filled" button: flat fill + elevation-1 that lifts to
+// elevation-2 on hover — the press/lift is what reads as Material,
+// not just a colored rectangle.
+const btn = (bg = MD.color.primary, c = 'white') => ({
+  backgroundColor: bg, color: c, border: 'none', borderRadius: MD.radius.control,
+  padding: '12px 22px', fontWeight: '700', cursor: 'pointer', fontSize: '14px',
+  minHeight: '46px', minWidth: '46px', boxShadow: MD.elevation[1],
+  transition: 'box-shadow 0.15s ease, transform 0.1s ease',
 })
+// Elevated card — Material's generous corner radius + layered shadow,
+// no hairline border needed since elevation itself defines the edge.
 const card = {
-  background: 'white', borderRadius: '14px', padding: '16px',
-  boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0',
+  background: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '18px',
+  boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
 }
 const mobileCard = {
   ...card,
-  padding: '12px',
-  borderRadius: '12px',
+  padding: '14px',
+  borderRadius: MD.radius.field,
 }
 
 // ─── Responsive grid helpers ──────────────────────────────────
 const grid2 = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-  gap: '14px',
+  gap: '16px',
 }
 
 const statGrid = (min = 140) => ({
   display: 'grid',
   gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))`,
-  gap: '12px',
-  marginBottom: '20px',
+  gap: '14px',
+  marginBottom: '22px',
 })
 const mobileStatGrid = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
-  gap: '8px',
-  marginBottom: '16px',
+  gap: '10px',
+  marginBottom: '18px',
 }
 
 // ─── Mobile table replacement ─────────────────────────────────
@@ -66,15 +123,19 @@ const MobileCardList = ({ children, style = {} }) => (
   </div>
 )
 
-const MobileRecordCard = ({ children, accentColor = '#1e3a5f', onClick }) => (
+const MobileRecordCard = ({ children, accentColor = MD.color.primary, onClick }) => (
   <div
     onClick={onClick}
     style={{
-      background: 'white', borderRadius: '12px', padding: '14px',
+      background: MD.color.surfaceContainer, borderRadius: MD.radius.field, padding: '15px',
       borderLeft: `4px solid ${accentColor}`,
-      boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+      boxShadow: MD.elevation[1],
+      border: `1px solid ${MD.color.outlineVariant}`,
       cursor: onClick ? 'pointer' : 'default',
+      transition: 'box-shadow 0.15s ease',
     }}
+    onMouseDown={onClick ? (e => e.currentTarget.style.boxShadow = MD.elevation[0]) : undefined}
+    onMouseUp={onClick ? (e => e.currentTarget.style.boxShadow = MD.elevation[2]) : undefined}
   >
     {children}
   </div>
@@ -380,14 +441,17 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
   if (mobile || compact) {
     return (
       <div style={{
-        backgroundColor: bg, borderRadius: '10px', padding: '10px 12px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.06)', borderLeft: `3px solid ${color}`,
-        display: 'flex', alignItems: 'center', gap: '8px',
+        backgroundColor: MD.color.surfaceContainer, borderRadius: MD.radius.field, padding: '11px 13px',
+        boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
+        display: 'flex', alignItems: 'center', gap: '10px',
       }}>
-        <div style={{ fontSize: '18px' }}>{icon}</div>
+        <div style={{
+          fontSize: '16px', width: '32px', height: '32px', borderRadius: '10px',
+          background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: '11px', color, fontWeight: '600', margin: 0, lineHeight: 1.2 }}>{label}</p>
-          <h2 style={{ fontSize: '20px', fontWeight: 'bold', color, margin: '2px 0 0', lineHeight: 1.2 }}>{value}</h2>
+          <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: 0, lineHeight: 1.2, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</p>
+          <h2 style={{ fontSize: '19px', fontWeight: '800', color, margin: '2px 0 0', lineHeight: 1.2 }}>{value}</h2>
         </div>
       </div>
     )
@@ -395,12 +459,15 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
 
   return (
     <div style={{
-      backgroundColor: bg, borderRadius: '12px', padding: '18px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${color}`,
+      backgroundColor: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '18px',
+      boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
     }}>
-      <div style={{ fontSize: '22px', marginBottom: '6px' }}>{icon}</div>
-      <p style={{ fontSize: '13px', color, fontWeight: '600', margin: 0 }}>{label}</p>
-      <h2 style={{ fontSize: '28px', fontWeight: 'bold', color, margin: '4px 0 0' }}>{value}</h2>
+      <div style={{
+        fontSize: '19px', width: '42px', height: '42px', borderRadius: '12px',
+        background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px',
+      }}>{icon}</div>
+      <p style={{ fontSize: '12px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: 0, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</p>
+      <h2 style={{ fontSize: '27px', fontWeight: '800', color, margin: '4px 0 0' }}>{value}</h2>
     </div>
   )
 }
@@ -429,9 +496,9 @@ function statusStyle(status) {
   }
   const s = map[status] || { bg: '#e0f2fe', color: '#0891b2' }
   return {
-    padding: '4px 10px', borderRadius: '999px', fontSize: '12px',
-    fontWeight: '600', backgroundColor: s.bg, color: s.color,
-    whiteSpace: 'nowrap', display: 'inline-block',
+    padding: '5px 12px', borderRadius: MD.radius.pill, fontSize: '12px',
+    fontWeight: '700', backgroundColor: s.bg, color: s.color,
+    whiteSpace: 'nowrap', display: 'inline-block', letterSpacing: '0.01em',
   }
 }
 
@@ -3206,6 +3273,12 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   const [maintenanceOpen, setMaintenanceOpen] = useState([])
   const [disciplineOpen, setDisciplineOpen] = useState([])
   const [nightDutyTonight, setNightDutyTonight] = useState(null)
+  // Pending doubt-session tasks assigned to THIS housemaster (from
+  // EnhancedLogEntry.jsx's doubt_sessions table) — matched by hm_name,
+  // the same plain-text matching convention used elsewhere (e.g.
+  // notifyHousemasterByName). Surfaced here so a housemaster sees their
+  // pending teaching-support task the moment they land on the dashboard.
+  const [myDoubtTasks, setMyDoubtTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const mobile = useMobileView()
 
@@ -3213,13 +3286,17 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
     const loadDashboard = async () => {
       setLoading(true)
       const todayStr = today()
-      const [a, l, s, m, d, n] = await Promise.all([
+      const hmName = (currentHousemaster?.name || '').trim()
+      const [a, l, s, m, d, n, ds] = await Promise.all([
         supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'morning'),
         supabase.from('leave_records').select('*').eq('from_date', todayStr).in('status', ['Approved', 'Pending']),
         supabase.from('sickbay_records').select('*').eq('status', 'Admitted'),
         supabase.from('maintenance_records').select('*').in('status', ['Raised', 'Assigned', 'In Progress']).eq('priority', 'Urgent'),
         supabase.from('discipline_records').select('*').in('status', ['Open', 'In Progress']),
         supabase.from('night_duty').select('*').eq('date', todayStr).limit(1).maybeSingle(),
+        hmName
+          ? supabase.from('doubt_sessions').select('*').ilike('hm_name', hmName).eq('status', 'open').order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] }),
       ])
       setAttendanceToday(a.data || [])
       setLeaveToday(l.data || [])
@@ -3227,10 +3304,11 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       setMaintenanceOpen(m.data || [])
       setDisciplineOpen(d.data || [])
       setNightDutyTonight(n.data)
+      setMyDoubtTasks(ds.data || [])
       setLoading(false)
     }
     loadDashboard()
-  }, [])
+  }, [currentHousemaster?.name])
 
   const presentCount = attendanceToday.filter(r => r.status === 'Present').length
   const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
@@ -3254,6 +3332,29 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}</h2>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{currentHousemaster?.name || currentUser?.name || 'House Master'} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
         </div>
+        {myDoubtTasks.length > 0 && (
+          <div
+            onClick={() => onTabChange?.('doubtsession')}
+            style={{
+              ...mobileCard, marginBottom: '16px', cursor: 'pointer',
+              background: MD.color.secondaryContainer, border: `1.5px solid ${MD.color.secondary}`,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '22px' }}>🙋</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '13px', fontWeight: '800', color: MD.color.onSecondaryContainer }}>
+                  {myDoubtTasks.length} doubt session{myDoubtTasks.length > 1 ? 's' : ''} need{myDoubtTasks.length === 1 ? 's' : ''} your attention
+                </div>
+                <div style={{ fontSize: '11px', color: MD.color.onSecondaryContainer, opacity: 0.85, marginTop: '2px' }}>
+                  {myDoubtTasks.slice(0, 2).map(t => `${t.subject_name || 'Subject'}${t.class_name ? ' · ' + t.class_name : ''}`).join(' · ').slice(0, 90)}
+                  {myDoubtTasks.length > 2 ? '…' : ''}
+                </div>
+              </div>
+              <span style={{ fontSize: '18px', color: MD.color.onSecondaryContainer }}>→</span>
+            </div>
+          </div>
+        )}
         {nightDutyTonight && (
           <div style={{ ...mobileCard, marginBottom: '16px', background: '#1e3a5f', color: 'white' }}>
             <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '6px', opacity: 0.8 }}>🌙 TONIGHT'S DUTY</div>
@@ -3307,6 +3408,28 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           </div>
         )}
       </div>
+      {myDoubtTasks.length > 0 && (
+        <div
+          onClick={() => onTabChange?.('doubtsession')}
+          style={{
+            ...card, marginBottom: '20px', cursor: 'pointer',
+            background: MD.color.secondaryContainer, border: `1.5px solid ${MD.color.secondary}`,
+            display: 'flex', alignItems: 'center', gap: '14px',
+          }}
+        >
+          <span style={{ fontSize: '28px' }}>🙋</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '15px', fontWeight: '800', color: MD.color.onSecondaryContainer }}>
+              {myDoubtTasks.length} doubt session{myDoubtTasks.length > 1 ? 's' : ''} need{myDoubtTasks.length === 1 ? 's' : ''} your attention
+            </div>
+            <div style={{ fontSize: '12px', color: MD.color.onSecondaryContainer, opacity: 0.85, marginTop: '3px' }}>
+              {myDoubtTasks.slice(0, 3).map(t => `${t.subject_name || 'Subject'}${t.class_name ? ' · ' + t.class_name : ''}${t.teacher_name ? ' (from ' + t.teacher_name + ')' : ''}`).join('  ·  ')}
+              {myDoubtTasks.length > 3 ? ` +${myDoubtTasks.length - 3} more` : ''}
+            </div>
+          </div>
+          <span style={{ fontSize: '20px', color: MD.color.onSecondaryContainer, fontWeight: '700' }}>→</span>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
         {quickActions.map(action => (
           <div key={action.id} onClick={() => onTabChange?.(action.id)} style={{ background: action.bg, borderRadius: '14px', padding: '20px', border: `1.5px solid ${action.color}20`, cursor: 'pointer' }}>
@@ -6132,58 +6255,62 @@ function Hostel() {
   }
 
   return (
-    <div style={{ padding: mobile ? '12px' : '24px', fontFamily: 'system-ui,sans-serif', paddingBottom: mobile ? '80px' : '24px' }}>
-      <div style={{ marginBottom: mobile ? '16px' : '24px' }}>
-        <h1 style={{ fontSize: mobile ? '20px' : '26px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>
+    <div style={{
+      padding: mobile ? '12px' : '24px', fontFamily: 'system-ui,sans-serif',
+      paddingBottom: mobile ? '80px' : '24px', background: MD.color.surfaceDim, minHeight: '100vh',
+    }}>
+      <div style={{ marginBottom: mobile ? '18px' : '26px' }}>
+        <h1 style={{ ...MD.type.headline, fontSize: mobile ? '21px' : '27px', color: MD.color.primary, margin: 0 }}>
           🏠 Hostel Management
         </h1>
-        <p style={{ color: '#64748b', fontSize: mobile ? '13px' : '14px', margin: '4px 0 0' }}>
+        <p style={{ color: MD.color.onSurfaceVariant, fontSize: mobile ? '13px' : '14px', margin: '6px 0 0', fontWeight: '500' }}>
           {mobile ? 'Allotments · Schedule · Duty · Discipline · Sickbay · House · Kitchen · Roll Call · Leave · Dashboard · Repairs · Journal' : 'Allotments · Schedule · Night Duty · Discipline · Sickbay · House · Kitchen'}
           {dataLoading
-            ? <span style={{ marginLeft: 12, color: '#f59e0b', fontWeight: 600 }}>⏳ Loading...</span>
-            : <span style={{ marginLeft: 12, color: '#16a34a', fontWeight: 600 }}>✅ {students.length} students · {staffProfiles.length} staff</span>
+            ? <span style={{ marginLeft: 12, color: '#b45309', fontWeight: 700 }}>⏳ Loading...</span>
+            : <span style={{ marginLeft: 12, color: MD.color.success, fontWeight: 700 }}>✅ {students.length} students · {staffProfiles.length} staff</span>
           }
         </p>
       </div>
-      {/* Desktop/Tablet Tab Bar — GRID (no scroll, no missing tabs) */}
+      {/* Desktop/Tablet Tab Bar — Material tonal chips, elevated when active */}
       {!mobile && (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-          gap: '6px',
-          marginBottom: '24px',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))',
+          gap: '8px',
+          marginBottom: '26px',
         }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-              padding: '9px 10px',
-              border: 'none',
-              borderRadius: '10px',
-              background: activeTab === t.id ? '#1e3a5f' : '#f1f5f9',
-              color: activeTab === t.id ? 'white' : '#64748b',
+              padding: '10px 10px',
+              border: activeTab === t.id ? 'none' : `1px solid ${MD.color.outlineVariant}`,
+              borderRadius: MD.radius.control,
+              background: activeTab === t.id ? MD.color.primary : MD.color.surfaceContainer,
+              color: activeTab === t.id ? 'white' : MD.color.onSurfaceVariant,
               cursor: 'pointer',
               fontSize: '12px',
-              fontWeight: activeTab === t.id ? 700 : 500,
+              fontWeight: activeTab === t.id ? 700 : 600,
               whiteSpace: 'nowrap',
               textAlign: 'center',
+              boxShadow: activeTab === t.id ? MD.elevation[2] : 'none',
               transition: 'all .15s',
             }}>{t.label}</button>
           ))}
         </div>
       )}
 
-      {/* Mobile Tab Grid — stat card style */}
+      {/* Mobile Tab Grid — Material tonal cards with elevation lift on active */}
       {mobile && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr 1fr',
-          gap: '8px',
-          marginBottom: '16px',
+          gap: '9px',
+          marginBottom: '18px',
           position: 'sticky',
           top: 0,
           zIndex: 50,
-          background: 'white',
+          background: MD.color.surfaceDim,
           paddingTop: '8px',
-          paddingBottom: '8px',
+          paddingBottom: '10px',
           marginTop: '-8px',
         }}>
           {TABS.map(t => {
@@ -6194,23 +6321,23 @@ function Hostel() {
                 onClick={() => setActiveTab(t.id)}
                 style={{
                   padding: '10px 6px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  background: isActive ? '#1e3a5f' : 'white',
-                  color: isActive ? 'white' : '#64748b',
+                  borderRadius: MD.radius.field,
+                  border: isActive ? 'none' : `1px solid ${MD.color.outlineVariant}`,
+                  background: isActive ? MD.color.primary : MD.color.surfaceContainer,
+                  color: isActive ? 'white' : MD.color.onSurfaceVariant,
                   fontSize: '11px',
-                  fontWeight: isActive ? '700' : '500',
+                  fontWeight: isActive ? '700' : '600',
                   cursor: 'pointer',
-                  boxShadow: isActive ? '0 2px 8px rgba(30,58,95,0.25)' : '0 1px 4px rgba(0,0,0,0.06)',
+                  boxShadow: isActive ? MD.elevation[3] : MD.elevation[1],
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   gap: '4px',
-                  minHeight: '56px',
+                  minHeight: '58px',
                   justifyContent: 'center',
                   lineHeight: 1.2,
                   textAlign: 'center',
-                  borderLeft: isActive ? 'none' : '3px solid #e2e8f0',
+                  transition: 'all .15s',
                 }}
               >
                 <span style={{ fontSize: '18px' }}>{t.label.split(' ')[0]}</span>
