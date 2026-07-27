@@ -264,7 +264,21 @@ const currentAcademicYear = () => {
 // ══════════════════════════════════════════════════════════════
 const GNSI_NAME    = 'Guidance Navodaya & Sainik Institute'
 const GNSI_ADDRESS = 'Khangabok, Thoubal, Manipur — 795134'
-const GNSI_PHONE   = '+91-XXXXXXXXXX'
+// Phone is no longer hardcoded — it's pulled from notification_config
+// (same single-row settings table already used for MSG91 config) so it
+// can be updated from the admin panel without a code change. Falls back
+// to this placeholder only if the config row has no phone set yet.
+const GNSI_PHONE_FALLBACK = '+91-XXXXXXXXXX'
+
+async function getSchoolContact() {
+  try {
+    const { data } = await supabase.from('notification_config').select('school_phone').maybeSingle()
+    return data?.school_phone?.trim() || GNSI_PHONE_FALLBACK
+  } catch (e) {
+    console.error('getSchoolContact failed:', e)
+    return GNSI_PHONE_FALLBACK
+  }
+}
 const VERIFY_BASE  = 'https://guidancekhangabok.in/verify'
 
 // Gate pass number format: GP-YYYY-NNNN
@@ -366,7 +380,7 @@ const CHART_COLORS = ['#1d4ed8','#16a34a','#7c3aed','#ca8a04','#dc2626','#0891b2
 // ══════════════════════════════════════════════════════════════
 
 // Trigger events that fire notifications
-const NOTIF_TRIGGERS = {
+export const NOTIF_TRIGGERS = {
   APPROVED:  'approved',   // Feature 54: SMS on approval
   REJECTED:  'rejected',   // Feature 55: SMS on rejection
   RETURNED:  'returned',   // Feature 56: SMS on return
@@ -451,7 +465,7 @@ async function logNotification(leaveId, studentName, phone, trigger, message, re
 
 // ── Main notification dispatcher
 // Called after every status change; looks up template, fills it, sends SMS, logs
-async function dispatchNotification(trigger, record, hmName = '', hmPhone = '') {
+export async function dispatchNotification(trigger, record, hmName = '', hmPhone = '') {
   const phone = record.parent_contact
   if (!phone) return  // no phone — skip silently
 
@@ -1391,6 +1405,7 @@ async function voidGatePass(leaveId) {
 // ── Core PDF generator
 async function generateGatePassPDF(record, gpData) {
   const { gp_no, is_voided } = gpData
+  const schoolPhone = await getSchoolContact()
 
   // ── Build QR code data URL
   const qrUrl   = `${VERIFY_BASE}?gp=${gp_no}&id=${record.id}`
@@ -1425,7 +1440,7 @@ async function generateGatePassPDF(record, gpData) {
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
   doc.text(GNSI_ADDRESS, W / 2, 14.5, { align: 'center' })
-  doc.text(GNSI_PHONE,   W / 2, 19,   { align: 'center' })
+  doc.text(schoolPhone,  W / 2, 19,   { align: 'center' })
 
   // GATE PASS title
   doc.setFontSize(13)
@@ -3084,23 +3099,24 @@ function NotificationTemplateEditor({ onClose }) {
 //  MSG91 CONFIG PANEL — set auth key + sender ID
 // ══════════════════════════════════════════════════════════════
 function NotificationConfigPanel({ onClose }) {
-  const [cfg,     setCfg]     = useState({ msg91_auth_key: '', sender_id: 'GNSI' })
+  const [cfg,     setCfg]     = useState({ msg91_auth_key: '', sender_id: 'GNSI', school_phone: '' })
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
     supabase.from('notification_config').select('*').single()
-      .then(({ data }) => { if (data) setCfg(data); setLoading(false) })
+      .then(({ data }) => { if (data) setCfg(c => ({ ...c, ...data })); setLoading(false) })
   }, [])
 
   const handleSave = async () => {
     setSaving(true)
     const { data: existing } = await supabase.from('notification_config').select('id').single()
+    const payload = { msg91_auth_key: cfg.msg91_auth_key, sender_id: cfg.sender_id, school_phone: cfg.school_phone }
     if (existing?.id) {
-      await supabase.from('notification_config').update({ msg91_auth_key: cfg.msg91_auth_key, sender_id: cfg.sender_id }).eq('id', existing.id)
+      await supabase.from('notification_config').update(payload).eq('id', existing.id)
     } else {
-      await supabase.from('notification_config').insert([{ msg91_auth_key: cfg.msg91_auth_key, sender_id: cfg.sender_id }])
+      await supabase.from('notification_config').insert([payload])
     }
     setSaving(false)
     alert('✅ Config saved')
@@ -3145,6 +3161,18 @@ function NotificationConfigPanel({ onClose }) {
                   style={inp}
                   maxLength={6}
                 />
+              </div>
+              <div>
+                <label style={lbl}>School Contact Phone</label>
+                <input
+                  value={cfg.school_phone || ''}
+                  onChange={e => setCfg(c => ({ ...c, school_phone: e.target.value }))}
+                  placeholder="+91-9876543210"
+                  style={inp}
+                />
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                  Shown in the header of every printed Gate Pass.
+                </div>
               </div>
               <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                 <button onClick={handleSave} disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>

@@ -5,6 +5,7 @@ import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
 import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
+import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 
 // ══════════════════════════════════════════════════════════════
 //  MOBILE-FIRST RESPONSIVE STYLES
@@ -705,6 +706,12 @@ function AlertStudentPanel({ students, accentColor, actions, onMark, savingId })
 
 function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange, onCompleteTab }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const userRole = (currentUser?.role || currentHousemaster?.role || 'hm').toLowerCase()
+  // Mirrors LeaveTab.jsx's canApprove: level 0 needs HM/admin, level 1 needs Superintendent/admin
+  const canApproveLeaveLevel = (approvalLevel) => {
+    if ((approvalLevel ?? 0) === 0) return userRole === 'hm' || userRole === 'house master' || userRole === 'admin'
+    return userRole === 'superintendent' || userRole === 'admin'
+  }
   // ── View state: 'houses' | 'dashboard' | 'rollcall'
   const [view, setView] = useState('houses')
   const [selectedHouse, setSelectedHouse] = useState(null)
@@ -1181,7 +1188,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       if (hStudentIds.length === 0) return
       const { data: pending } = await supabase
         .from('leave_records')
-        .select('student_name, from_date, to_date')
+        .select('id, student_id, student_name, leave_type, from_date, to_date, approval_level, status')
         .in('student_id', hStudentIds)
         .eq('status', 'Pending')
       setRollCallPendingLeave(pending || [])
@@ -1199,6 +1206,35 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     } catch (e) {
       console.error('notifyPendingLeaveForHouse failed:', e)
     }
+  }
+
+  // ── Inline leave approval from roll call. Uses the exact same DB
+  //    transition as LeaveTab.jsx (leaveApproval.js), so audit rows,
+  //    quota deduction, and parent SMS all stay correct — this is a
+  //    genuine one-click approve, not a shortcut that skips those steps.
+  const [approvingLeaveId, setApprovingLeaveId] = useState(null)
+  const [approvedLeaveIds, setApprovedLeaveIds] = useState({}) // local UI reflection so approved rows disappear immediately
+
+  const handleInlineApprove = async (record) => {
+    setApprovingLeaveId(record.id)
+    try {
+      const { exceeded } = await checkQuotaBeforeApproval(record)
+      if (exceeded) {
+        const proceed = window.confirm(
+          `${record.student_name} has no remaining ${record.leave_type} balance for this year. Approve anyway? (Balance will go negative / be overridden.)`
+        )
+        if (!proceed) { setApprovingLeaveId(null); return }
+      }
+      const actorName = currentHousemaster?.name || currentUser?.name || (userRole === 'superintendent' ? 'Superintendent' : 'HM')
+      const actorPhone = currentHousemaster?.phone || ''
+      await approveLeaveRecord(record, actorName, actorPhone)
+      setApprovedLeaveIds(prev => ({ ...prev, [record.id]: true }))
+      setRollCallPendingLeave(prev => prev.filter(r => r.id !== record.id))
+    } catch (e) {
+      console.error('handleInlineApprove failed:', e)
+      alert('Approval failed: ' + (e.message || 'unknown error'))
+    }
+    setApprovingLeaveId(null)
   }
 
   const startRollCall = (houseName) => {
@@ -1974,9 +2010,38 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const currentStudent = rollCallStudents[rollCallIndex]
     const currentStatus = currentStudent ? getStatus(currentStudent.id) : null
 
+    // When marking a student "On Leave", check if they actually have an
+    // unapproved (Pending) leave request — if so, surface it on the card
+    // with an inline Approve option instead of silently advancing, since
+    // marking someone "On Leave" in roll call shouldn't imply their leave
+    // was ever approved.
+    const [cardLeavePrompt, setCardLeavePrompt] = useState(null) // the pending leave_records row, or null
+    useEffect(() => { setCardLeavePrompt(null) }, [rollCallIndex])
+
     const markAndAdvance = async (studentId, status) => {
+      if (status === 'On Leave') {
+        const { data: pendingLeave } = await supabase
+          .from('leave_records')
+          .select('id, student_id, student_name, leave_type, from_date, to_date, approval_level, status')
+          .eq('student_id', studentId)
+          .eq('status', 'Pending')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (pendingLeave) {
+          await handleMark(studentId, status)
+          setCardLeavePrompt(pendingLeave) // hold on this card — don't auto-advance yet
+          return
+        }
+      }
+      setCardLeavePrompt(null)
       await handleMark(studentId, status)
       setTimeout(() => setRollCallIndex(i => i + 1), 300)
+    }
+
+    const dismissCardLeavePrompt = () => {
+      setCardLeavePrompt(null)
+      setTimeout(() => setRollCallIndex(i => i + 1), 200)
     }
 
     return (
@@ -1984,12 +2049,41 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         {reportModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
-            <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '4px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '8px' }}>
               🚪 {rollCallPendingLeave.length} pending leave request{rollCallPendingLeave.length > 1 ? 's' : ''} for {selectedHouse}
             </div>
-            <div style={{ fontSize: '11px', color: '#1e40af' }}>
-              {rollCallPendingLeave.slice(0, 6).map(p => p.student_name).filter(Boolean).join(', ')}
-              {rollCallPendingLeave.length > 6 ? ` +${rollCallPendingLeave.length - 6} more` : ''} — check before marking Absent.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {rollCallPendingLeave.map(r => {
+                const level = r.approval_level ?? 0
+                const canApproveHere = canApproveLeaveLevel(level)
+                const justApproved = approvedLeaveIds[r.id]
+                return (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: 'white', borderRadius: '8px', padding: '6px 10px' }}>
+                    <div style={{ flex: 1, minWidth: '140px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#1e293b' }}>{r.student_name}</div>
+                      <div style={{ fontSize: '10px', color: '#64748b' }}>
+                        {r.leave_type} · {r.from_date} → {r.to_date} · needs {level === 0 ? 'HM' : 'Superintendent'} approval
+                      </div>
+                    </div>
+                    {justApproved ? (
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a' }}>✅ Approved</span>
+                    ) : canApproveHere ? (
+                      <button
+                        onClick={() => handleInlineApprove(r)}
+                        disabled={approvingLeaveId === r.id}
+                        style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: '#16a34a', color: 'white', fontSize: '11px', fontWeight: '700', cursor: approvingLeaveId === r.id ? 'wait' : 'pointer' }}
+                      >
+                        {approvingLeaveId === r.id ? '⏳' : '✓ Approve'}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '10px', color: '#94a3b8' }}>Needs {level === 0 ? 'HM' : 'Superintendent'}</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: '10px', color: '#1e40af', marginTop: '6px' }}>
+              Check before marking anyone Absent — they may already be on approved leave.
             </div>
           </div>
         )}
@@ -2271,6 +2365,42 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   fontSize: '13px', fontWeight: '700', marginBottom: '16px',
                 }}>
                   {statusConfig[currentStatus]?.icon} Marked as {currentStatus}
+                </div>
+              )}
+
+              {/* Marked On Leave but the leave itself isn't approved yet */}
+              {cardLeavePrompt && cardLeavePrompt.student_id === currentStudent.id && (
+                <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', textAlign: 'left' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#9a3412', marginBottom: '4px' }}>
+                    ⚠️ This leave isn't approved yet
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#7c2d12', marginBottom: '10px' }}>
+                    {cardLeavePrompt.leave_type} · {cardLeavePrompt.from_date} → {cardLeavePrompt.to_date} · awaiting {(cardLeavePrompt.approval_level ?? 0) === 0 ? 'HM' : 'Superintendent'} approval
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {canApproveLeaveLevel(cardLeavePrompt.approval_level) ? (
+                      <button
+                        onClick={async () => {
+                          await handleInlineApprove(cardLeavePrompt)
+                          dismissCardLeavePrompt()
+                        }}
+                        disabled={approvingLeaveId === cardLeavePrompt.id}
+                        style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: '#16a34a', color: 'white', fontSize: '12px', fontWeight: '700', cursor: approvingLeaveId === cardLeavePrompt.id ? 'wait' : 'pointer' }}
+                      >
+                        {approvingLeaveId === cardLeavePrompt.id ? '⏳ Approving...' : '✓ Approve Now'}
+                      </button>
+                    ) : (
+                      <div style={{ flex: 1, fontSize: '11px', color: '#9a3412', alignSelf: 'center' }}>
+                        Needs {(cardLeavePrompt.approval_level ?? 0) === 0 ? 'HM' : 'Superintendent'} to approve
+                      </div>
+                    )}
+                    <button
+                      onClick={dismissCardLeavePrompt}
+                      style={{ padding: '8px 12px', borderRadius: '8px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                    >
+                      Skip
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
