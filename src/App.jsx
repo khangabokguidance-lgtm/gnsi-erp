@@ -36,6 +36,7 @@ import Entrance           from './Entrance'
 import { LOGO_BASE64 }    from './logo'
 import { crossModuleSync } from './CrossModuleSync'
 import LandingPage        from './LandingPage'
+import WebsiteTab         from './WebsiteTab'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff     from './AdminLinkStaff'
 import StudyMaterial      from './StudyMaterial'
@@ -107,6 +108,7 @@ const ALL_GROUPS = [
       { id: 'notice',    label: 'Notice',    icon: '🔔' },
       { id: 'social',    label: 'Social',    icon: '📣' },
       { id: 'connect',   label: 'Connect',   icon: '🔗' },
+      { id: 'website',   label: 'Website Manager', icon: '🌐' },
     ],
   },
   {
@@ -689,6 +691,7 @@ export default function App() {
     teachingaids:      <TeachingAids      currentUser={currentUser} perms={perms('teachingaids')}  />,
     studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={setActive} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
+    website:           <WebsiteTab        />,
     reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
     checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}         />,
     system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}            />,
