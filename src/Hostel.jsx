@@ -262,78 +262,75 @@ function currentDailySlot() {
 // Core checker — takes an explicit {start, end} ISO window so it can be
 // reused by both the roll-call-linked check (12hr split) and the
 // standalone 3x-daily check (8hr split). Returns array of missing tab keys.
+async function hasAny(queryBuilder) {
+  try {
+    const { data, error } = await queryBuilder
+    if (error) return false // treat query errors as "can't verify" not "missing", to avoid false neglect
+    return (data || []).length > 0
+  } catch {
+    return false
+  }
+}
+
+// One query-builder per tab, keyed the same as SIX_TABS — shared by the
+// full six-tab sweep and the single-tab manual recheck ("✓ I've filled
+// this in") so there's exactly one place each tab's logic lives.
+const TAB_CHECKERS = {
+  discipline: async (houseName, start, end, houseStudentIds) => {
+    if (!houseStudentIds.length) return true
+    return hasAny(
+      supabase.from('discipline_records').select('id')
+        .in('student_id', houseStudentIds)
+        .gte('created_at', start).lt('created_at', end)
+        .limit(1)
+    )
+  },
+  sickbay: async (houseName, start, end, houseStudentIds) => {
+    if (!houseStudentIds.length) return true
+    return hasAny(
+      supabase.from('sickbay_records').select('id')
+        .in('student_id', houseStudentIds)
+        .gte('created_at', start).lt('created_at', end)
+        .limit(1)
+    )
+  },
+  maintenance: async (houseName, start, end) => hasAny(
+    supabase.from('maintenance_records').select('id')
+      .ilike('house', houseName)
+      .gte('created_at', start).lt('created_at', end)
+      .limit(1)
+  ),
+  journal: async (houseName, start, end) => hasAny(
+    supabase.from('housemaster_journal').select('id')
+      .ilike('house', houseName)
+      .gte('created_at', start).lt('created_at', end)
+      .limit(1)
+  ),
+  messduty: async (houseName, start, end) => hasAny(
+    supabase.from('mess_duty').select('id')
+      .ilike('house', houseName)
+      .gte('created_at', start).lt('created_at', end)
+      .limit(1)
+  ),
+  activities: async (houseName, start, end) => {
+    for (const tableName of ['housemaster_activities', 'hm_activities', 'activity_logs']) {
+      try {
+        const { data, error } = await supabase.from(tableName).select('id')
+          .ilike('house', houseName)
+          .gte('created_at', start).lt('created_at', end)
+          .limit(1)
+        if (!error) return (data || []).length > 0
+      } catch { /* try next candidate */ }
+    }
+    return true // couldn't verify — don't penalize
+  },
+}
+
 async function checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds) {
   const missing = []
-
-  const hasAny = async (queryBuilder) => {
-    try {
-      const { data, error } = await queryBuilder
-      if (error) return false // treat query errors as "can't verify" not "missing", to avoid false neglect
-      return (data || []).length > 0
-    } catch {
-      return false
-    }
-  }
-
-  const checks = await Promise.all([
-    // Discipline — linked via student_id, house resolved via students table
-    (async () => {
-      if (!houseStudentIds.length) return true
-      return hasAny(
-        supabase.from('discipline_records').select('id')
-          .in('student_id', houseStudentIds)
-          .gte('created_at', start).lt('created_at', end)
-          .limit(1)
-      )
-    })(),
-    // Sickbay — same pattern
-    (async () => {
-      if (!houseStudentIds.length) return true
-      return hasAny(
-        supabase.from('sickbay_records').select('id')
-          .in('student_id', houseStudentIds)
-          .gte('created_at', start).lt('created_at', end)
-          .limit(1)
-      )
-    })(),
-    // Maintenance — direct house column (added via migration above)
-    hasAny(
-      supabase.from('maintenance_records').select('id')
-        .ilike('house', houseName)
-        .gte('created_at', start).lt('created_at', end)
-        .limit(1)
-    ),
-    // Journal — direct house column (already exists, free-text)
-    hasAny(
-      supabase.from('housemaster_journal').select('id')
-        .ilike('house', houseName)
-        .gte('created_at', start).lt('created_at', end)
-        .limit(1)
-    ),
-    // Mess Duty — direct house column (added via migration above)
-    hasAny(
-      supabase.from('mess_duty').select('id')
-        .ilike('house', houseName)
-        .gte('created_at', start).lt('created_at', end)
-        .limit(1)
-    ),
-    // Activities — table name unconfirmed; try common candidates and
-    // silently treat as compliant if none exist, rather than falsely
-    // flagging neglect for a feature we can't verify.
-    (async () => {
-      for (const tableName of ['housemaster_activities', 'hm_activities', 'activity_logs']) {
-        try {
-          const { data, error } = await supabase.from(tableName).select('id')
-            .ilike('house', houseName)
-            .gte('created_at', start).lt('created_at', end)
-            .limit(1)
-          if (!error) return (data || []).length > 0
-        } catch { /* try next candidate */ }
-      }
-      return true // couldn't verify — don't penalize
-    })(),
-  ])
-
+  const checks = await Promise.all(
+    SIX_TABS.map(tab => TAB_CHECKERS[tab.key](houseName, start, end, houseStudentIds))
+  )
   SIX_TABS.forEach((tab, i) => {
     if (!checks[i]) missing.push(tab.key)
   })
@@ -351,6 +348,16 @@ async function checkSixTabCompliance(houseName, dateStr, session, houseStudentId
 async function checkSixTabComplianceForSlot(houseName, dateStr, slotKey, houseStudentIds) {
   const { start, end } = dailySlotWindow(dateStr, slotKey)
   return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+}
+
+// Re-verify a single tab against a given window — used by the manual
+// "✓ I've filled this in" fallback button, so a housemaster can force a
+// recheck without needing to leave and re-enter the roll-call tab (which
+// is what naturally triggers the automatic recheck via component remount).
+async function recheckSingleTab(tabKey, houseName, start, end, houseStudentIds) {
+  const checker = TAB_CHECKERS[tabKey]
+  if (!checker) return true
+  return checker(houseName, start, end, houseStudentIds)
 }
 
 async function logNeglect(houseName, dateStr, session, housemasterName, missingKeys, checkType = 'rollcall') {
@@ -381,6 +388,16 @@ async function logNeglect(houseName, dateStr, session, housemasterName, missingK
     console.error('logNeglect failed:', e)
     return null
   }
+}
+
+// Skip reasons must be a genuine explanation, not a placeholder — at
+// least 10 characters and more than one word, so "na" / "ok" / "done"
+// don't slip through as a justification.
+function isValidSkipReason(text) {
+  const trimmed = (text || '').trim()
+  if (trimmed.length < 10) return false
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length
+  return wordCount > 1
 }
 
 // Attach a housemaster-supplied reason to a specific skipped tab on an
@@ -737,7 +754,7 @@ function AlertStudentPanel({ students, accentColor, actions, onMark, savingId })
   )
 }
 
-function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange }) {
+function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange, onCompleteTab }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   // ── View state: 'houses' | 'dashboard' | 'rollcall'
   const [view, setView] = useState('houses')
@@ -1063,12 +1080,19 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
   const [skipReasonPromptTab, setSkipReasonPromptTab] = useState(null) // tab key currently showing the reason input
   const [skipReasonDraft, setSkipReasonDraft] = useState('')
   const [skippedWithReason, setSkippedWithReason] = useState({}) // key → { [tabKey]: reason } — local UI reflection
+  // Manual fallback for "✓ Complete" — the automatic recheck happens when
+  // this component remounts (navigating away to fill the form and back
+  // re-runs the six-tab check fresh), but this button lets the
+  // housemaster force a recheck without leaving the current view at all.
+  const [resolvedByRecheck, setResolvedByRecheck] = useState({}) // key → Set-like object of tab keys confirmed done
+  const [recheckingTab, setRecheckingTab] = useState(null) // `${key}_${tabKey}` currently being verified
 
   // Clear stale pending-leave and skip-reason UI state when switching houses
   useEffect(() => {
     setRollCallPendingLeave([])
     setSkipReasonPromptTab(null)
     setSkipReasonDraft('')
+    setSkipReasonError('')
   }, [selectedHouse])
 
   const runComplianceCheck = async (houseName) => {
@@ -1086,9 +1110,36 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
     }
   }
 
+  // Manual fallback for "✓ Complete Now" — re-verifies just one tab
+  // in-place, without needing to leave and return to this view. If the
+  // record now exists, the tab is struck off the missing list.
+  const handleRecheckTab = async (complianceKey, tabKey) => {
+    const recheckKey = `${complianceKey}_${tabKey}`
+    setRecheckingTab(recheckKey)
+    const { start, end } = sessionWindow(date, session)
+    const houseStudentIds = activeStudents
+      .filter(s => normalizeHouse(s.house) === normalizeHouse(selectedHouse))
+      .map(s => s.id)
+    const nowCompliant = await recheckSingleTab(tabKey, selectedHouse, start, end, houseStudentIds)
+    if (nowCompliant) {
+      setResolvedByRecheck(prev => ({
+        ...prev,
+        [complianceKey]: { ...(prev[complianceKey] || {}), [tabKey]: true },
+      }))
+    }
+    setRecheckingTab(null)
+    return nowCompliant
+  }
+
+  const [skipReasonError, setSkipReasonError] = useState('')
+
   const handleSkipWithReason = async (complianceKey, tabKey) => {
     const reason = skipReasonDraft.trim()
-    if (!reason) return
+    if (!isValidSkipReason(reason)) {
+      setSkipReasonError('Please write a real reason (at least a short sentence) — single words like "ok" or "na" aren\'t accepted.')
+      return
+    }
+    setSkipReasonError('')
     const logId = complianceLogId[complianceKey]
     await attachSkipReason(logId, tabKey, reason, currentHousemaster?.name)
     setSkippedWithReason(prev => ({
@@ -1109,6 +1160,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
   const [dailySkipDraft, setDailySkipDraft] = useState('')
   const [dailySkippedWithReason, setDailySkippedWithReason] = useState({})
   const [celebratingSlot, setCelebratingSlot] = useState(null) // key that should show the checkmark pop animation
+  // Manual fallback for daily-slot "✓ Complete", mirroring the roll-call
+  // linked version — lets the housemaster force a recheck in place.
+  const [dailyResolvedByRecheck, setDailyResolvedByRecheck] = useState({}) // key → { [tabKey]: true }
+  const [dailyRecheckingTab, setDailyRecheckingTab] = useState(null) // `${key}_${tabKey}` currently being verified
 
   const runDailySlotCheck = async (houseName, slotKey) => {
     const key = `${houseName}_${date}_${slotKey}`
@@ -1130,9 +1185,33 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
     }
   }
 
+  const handleDailyRecheckTab = async (dailyKey, tabKey, houseName, slotKey) => {
+    const recheckKey = `${dailyKey}_${tabKey}`
+    setDailyRecheckingTab(recheckKey)
+    const { start, end } = dailySlotWindow(date, slotKey)
+    const houseStudentIds = activeStudents
+      .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+      .map(s => s.id)
+    const nowCompliant = await recheckSingleTab(tabKey, houseName, start, end, houseStudentIds)
+    if (nowCompliant) {
+      setDailyResolvedByRecheck(prev => ({
+        ...prev,
+        [dailyKey]: { ...(prev[dailyKey] || {}), [tabKey]: true },
+      }))
+    }
+    setDailyRecheckingTab(null)
+    return nowCompliant
+  }
+
+  const [dailySkipReasonError, setDailySkipReasonError] = useState('')
+
   const handleDailySkipWithReason = async (dailyKey, tabKey) => {
     const reason = dailySkipDraft.trim()
-    if (!reason) return
+    if (!isValidSkipReason(reason)) {
+      setDailySkipReasonError('Please write a real reason (at least a short sentence) — single words like "ok" or "na" aren\'t accepted.')
+      return
+    }
+    setDailySkipReasonError('')
     const logId = dailyCheckLogId[dailyKey]
     await attachSkipReason(logId, tabKey, reason, currentHousemaster?.name)
     setDailySkippedWithReason(prev => ({
@@ -1346,12 +1425,23 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
                                     ⏳ Complete {gateLabel} roll call for {houseName} first — this slot unlocks automatically once that session is 100% marked.
                                   </div>
                                 )}
-                                {result?.checked && result.missing.length > 0 && (
+                                {result?.checked && result.missing.length > 0 && (() => {
+                                  const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
+                                  const remainingMissing = result.missing.filter(k => !dailyResolvedSet[k])
+                                  if (remainingMissing.length === 0) {
+                                    return (
+                                      <div style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a' }}>
+                                        ✅ All caught up for this slot!
+                                      </div>
+                                    )
+                                  }
+                                  return (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '700' }}>🚨 Missing for this slot:</div>
-                                    {SIX_TABS.filter(t => result.missing.includes(t.key)).map(t => {
+                                    {SIX_TABS.filter(t => remainingMissing.includes(t.key)).map(t => {
                                       const reasonGiven = dailySkippedWithReason[key]?.[t.key]
                                       const showingPrompt = dailySkipPromptTab === `${key}_${t.key}`
+                                      const recheckKey = `${key}_${t.key}`
                                       return (
                                         <div key={t.key} style={{ background: 'white', border: '1px solid #fecaca', borderRadius: '8px', padding: '8px 10px' }}>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1359,15 +1449,23 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
                                             {reasonGiven ? (
                                               <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', flex: 1 }}>✅ "{reasonGiven}"</span>
                                             ) : (
-                                              <div style={{ display: 'flex', gap: '5px', marginLeft: 'auto' }}>
+                                              <div style={{ display: 'flex', gap: '5px', marginLeft: 'auto', flexWrap: 'wrap' }}>
                                                 <button
-                                                  onClick={() => onTabChange?.(t.rootTabId)}
+                                                  onClick={() => { if (onCompleteTab) onCompleteTab(t.rootTabId, houseName); else onTabChange?.(t.rootTabId) }}
                                                   style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
                                                 >
                                                   ✓ Complete
                                                 </button>
                                                 <button
-                                                  onClick={() => { setDailySkipPromptTab(showingPrompt ? null : `${key}_${t.key}`); setDailySkipDraft('') }}
+                                                  onClick={() => handleDailyRecheckTab(key, t.key, houseName, slot.key)}
+                                                  disabled={dailyRecheckingTab === recheckKey}
+                                                  title="Use this if you already filled it in but it's still showing as missing"
+                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#f0fdf4', color: '#16a34a', fontSize: '10px', fontWeight: '700', cursor: dailyRecheckingTab === recheckKey ? 'wait' : 'pointer' }}
+                                                >
+                                                  {dailyRecheckingTab === recheckKey ? '⏳' : '✓ Filled in'}
+                                                </button>
+                                                <button
+                                                  onClick={() => { setDailySkipPromptTab(showingPrompt ? null : `${key}_${t.key}`); setDailySkipDraft(''); setDailySkipReasonError('') }}
                                                   style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
                                                 >
                                                   ⏭ Skip
@@ -1376,29 +1474,35 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
                                             )}
                                           </div>
                                           {showingPrompt && !reasonGiven && (
-                                            <div style={{ marginTop: '6px', display: 'flex', gap: '5px' }}>
-                                              <input
-                                                autoFocus
-                                                value={dailySkipDraft}
-                                                onChange={e => setDailySkipDraft(e.target.value)}
-                                                placeholder="Reason..."
-                                                style={{ ...inp, fontSize: '11px', padding: '5px 8px' }}
-                                                onKeyDown={e => { if (e.key === 'Enter') handleDailySkipWithReason(key, t.key) }}
-                                              />
-                                              <button
-                                                onClick={() => handleDailySkipWithReason(key, t.key)}
-                                                disabled={!dailySkipDraft.trim()}
-                                                style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: dailySkipDraft.trim() ? '#dc2626' : '#e2e8f0', color: dailySkipDraft.trim() ? 'white' : '#94a3b8', fontSize: '10px', fontWeight: '700', cursor: dailySkipDraft.trim() ? 'pointer' : 'not-allowed' }}
-                                              >
-                                                OK
-                                              </button>
+                                            <div style={{ marginTop: '6px' }}>
+                                              <div style={{ display: 'flex', gap: '5px' }}>
+                                                <input
+                                                  autoFocus
+                                                  value={dailySkipDraft}
+                                                  onChange={e => { setDailySkipDraft(e.target.value); setDailySkipReasonError('') }}
+                                                  placeholder="Explain why (min. a short sentence)..."
+                                                  style={{ ...inp, fontSize: '11px', padding: '5px 8px' }}
+                                                  onKeyDown={e => { if (e.key === 'Enter') handleDailySkipWithReason(key, t.key) }}
+                                                />
+                                                <button
+                                                  onClick={() => handleDailySkipWithReason(key, t.key)}
+                                                  disabled={!isValidSkipReason(dailySkipDraft)}
+                                                  style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: isValidSkipReason(dailySkipDraft) ? '#dc2626' : '#e2e8f0', color: isValidSkipReason(dailySkipDraft) ? 'white' : '#94a3b8', fontSize: '10px', fontWeight: '700', cursor: isValidSkipReason(dailySkipDraft) ? 'pointer' : 'not-allowed' }}
+                                                >
+                                                  OK
+                                                </button>
+                                              </div>
+                                              {dailySkipReasonError && (
+                                                <div style={{ fontSize: '10px', color: '#dc2626', marginTop: '4px' }}>{dailySkipReasonError}</div>
+                                              )}
                                             </div>
                                           )}
                                         </div>
                                       )
                                     })}
                                   </div>
-                                )}
+                                  )
+                                })()}
                               </div>
                             )
                           })}
@@ -1985,7 +2089,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
             // Fire the six-tab compliance check the moment this screen renders complete
             const complianceKey = `${selectedHouse}_${date}_${session}`
             if (!complianceChecked[complianceKey]) runComplianceCheck(selectedHouse)
-            const missingTabs = complianceMissing[complianceKey] || []
+            const rawMissing = complianceMissing[complianceKey] || []
+            const resolvedSet = resolvedByRecheck[complianceKey] || {}
+            const missingTabs = rawMissing.filter(k => !resolvedSet[k])
             const checkDone = complianceKey in complianceMissing
             return (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
@@ -2023,15 +2129,23 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
                               ✅ Skipped — reason: "{reasonGiven}"
                             </span>
                           ) : (
-                            <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+                            <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', flexWrap: 'wrap' }}>
                               <button
-                                onClick={() => { onTabChange?.(t.rootTabId) }}
+                                onClick={() => { if (onCompleteTab) onCompleteTab(t.rootTabId, selectedHouse); else onTabChange?.(t.rootTabId) }}
                                 style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                               >
                                 ✓ Complete Now
                               </button>
                               <button
-                                onClick={() => { setSkipReasonPromptTab(showingPrompt ? null : t.key); setSkipReasonDraft('') }}
+                                onClick={() => handleRecheckTab(complianceKey, t.key)}
+                                disabled={recheckingTab === `${complianceKey}_${t.key}`}
+                                title="Use this if you already filled it in but it's still showing as missing"
+                                style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#f0fdf4', color: '#16a34a', fontSize: '11px', fontWeight: '700', cursor: recheckingTab === `${complianceKey}_${t.key}` ? 'wait' : 'pointer' }}
+                              >
+                                {recheckingTab === `${complianceKey}_${t.key}` ? '⏳ Checking...' : '✓ I\'ve filled this in'}
+                              </button>
+                              <button
+                                onClick={() => { setSkipReasonPromptTab(showingPrompt ? null : t.key); setSkipReasonDraft(''); setSkipReasonError('') }}
                                 style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                               >
                                 ⏭ Skip (reason)
@@ -2040,22 +2154,27 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange 
                           )}
                         </div>
                         {showingPrompt && !reasonGiven && (
-                          <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
-                            <input
-                              autoFocus
-                              value={skipReasonDraft}
-                              onChange={e => setSkipReasonDraft(e.target.value)}
-                              placeholder={`Why was ${t.label.replace(/^\S+\s/, '')} skipped?`}
-                              style={{ ...inp, fontSize: '12px', padding: '7px 10px' }}
-                              onKeyDown={e => { if (e.key === 'Enter') handleSkipWithReason(complianceKey, t.key) }}
-                            />
-                            <button
-                              onClick={() => handleSkipWithReason(complianceKey, t.key)}
-                              disabled={!skipReasonDraft.trim()}
-                              style={{ padding: '7px 12px', borderRadius: '7px', border: 'none', background: skipReasonDraft.trim() ? '#dc2626' : '#e2e8f0', color: skipReasonDraft.trim() ? 'white' : '#94a3b8', fontSize: '11px', fontWeight: '700', cursor: skipReasonDraft.trim() ? 'pointer' : 'not-allowed' }}
-                            >
-                              Confirm
-                            </button>
+                          <div style={{ marginTop: '8px' }}>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <input
+                                autoFocus
+                                value={skipReasonDraft}
+                                onChange={e => { setSkipReasonDraft(e.target.value); setSkipReasonError('') }}
+                                placeholder={`Explain why ${t.label.replace(/^\S+\s/, '')} was skipped (min. a short sentence)...`}
+                                style={{ ...inp, fontSize: '12px', padding: '7px 10px' }}
+                                onKeyDown={e => { if (e.key === 'Enter') handleSkipWithReason(complianceKey, t.key) }}
+                              />
+                              <button
+                                onClick={() => handleSkipWithReason(complianceKey, t.key)}
+                                disabled={!isValidSkipReason(skipReasonDraft)}
+                                style={{ padding: '7px 12px', borderRadius: '7px', border: 'none', background: isValidSkipReason(skipReasonDraft) ? '#dc2626' : '#e2e8f0', color: isValidSkipReason(skipReasonDraft) ? 'white' : '#94a3b8', fontSize: '11px', fontWeight: '700', cursor: isValidSkipReason(skipReasonDraft) ? 'pointer' : 'not-allowed' }}
+                              >
+                                Confirm
+                              </button>
+                            </div>
+                            {skipReasonError && (
+                              <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '4px' }}>{skipReasonError}</div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2290,7 +2409,7 @@ const MAINTENANCE_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const MAINTENANCE_STATUSES = ['Raised', 'Assigned', 'In Progress', 'Resolved', 'Closed']
 const MAINTENANCE_CATEGORIES = ['Plumbing', 'Electrical', 'Furniture', 'Civil', 'Cleaning', 'IT', 'Other']
 
-function MaintenanceTab({ currentHousemaster, currentUser }) {
+function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
 
@@ -2302,9 +2421,17 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
   const [filterPriority, setFilterPriority] = useState('All')
   const [search, setSearch] = useState('')
   const mobile = useMobileView()
-  const [form, setForm] = useState({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' })
+  const emptyMaintenance = { category: 'Plumbing', house: '', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }
+  const [form, setForm] = useState(emptyMaintenance)
   const [toast, setToast] = useState(null)
   const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
+
+  useEffect(() => {
+    if (autoOpenForm) {
+      setForm({ ...emptyMaintenance, house: autoOpenForm.house || '' })
+      setShowForm(true)
+    }
+  }, [autoOpenForm?.nonce])
 
   const load = async () => {
     setLoading(true)
@@ -2324,7 +2451,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
     }
     const { error } = await supabase.from('maintenance_records').insert([payload])
     if (error) showToast('Error: ' + error.message, '#dc2626')
-    else { setForm({ category: 'Plumbing', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }); setShowForm(false); load() }
+    else { setForm(emptyMaintenance); setShowForm(false); load() }
     setSaving(false)
   }
 
@@ -2451,6 +2578,7 @@ function MaintenanceTab({ currentHousemaster, currentUser }) {
             <div style={grid2}>
               <div><label style={lbl}>Category</label><select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{MAINTENANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
               <div><label style={lbl}>Priority</label><select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={inp}>{MAINTENANCE_PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></div>
+              <div><label style={lbl}>House</label><input value={form.house} onChange={e => setForm(f => ({ ...f, house: e.target.value }))} placeholder="e.g. Kombirei" style={inp} /></div>
               <div><label style={lbl}>Location/Block *</label><input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required placeholder="e.g. Block A" style={inp} /></div>
               <div><label style={lbl}>Room Number</label><input value={form.room_number} onChange={e => setForm(f => ({ ...f, room_number: e.target.value }))} placeholder="101" style={inp} /></div>
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Description *</label><textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required rows={3} placeholder="Describe the issue in detail..." style={{ ...inp, resize: 'vertical' }} /></div>
@@ -2641,7 +2769,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 // ══════════════════════════════════════════════════════════════
 //  TAB: HOUSEMASTER JOURNAL
 // ══════════════════════════════════════════════════════════════
-function JournalTab({ currentHousemaster }) {
+function JournalTab({ currentHousemaster, autoOpenForm }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -2652,7 +2780,15 @@ function JournalTab({ currentHousemaster }) {
   const [toast, setToast] = useState(null)
   const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
   const JOURNAL_CATEGORIES = ['General', 'Assembly', 'Discipline', 'Medical', 'Maintenance', 'Parent Call', 'Staff Handover', 'Inspection', 'Event']
-  const [form, setForm] = useState({ entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false })
+  const emptyJournalForm = { entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false }
+  const [form, setForm] = useState(emptyJournalForm)
+
+  useEffect(() => {
+    if (autoOpenForm) {
+      setForm({ ...emptyJournalForm, entry_date: today(), entry_time: nowTime(), house: autoOpenForm.house || '' })
+      setShowForm(true)
+    }
+  }, [autoOpenForm?.nonce])
 
   const load = async () => {
     setLoading(true)
@@ -2666,7 +2802,7 @@ function JournalTab({ currentHousemaster }) {
     e.preventDefault(); setSaving(true)
     const { error } = await supabase.from('housemaster_journal').insert([{ ...form, housemaster_name: currentHousemaster?.name || 'Unknown' }])
     if (error) showToast('Error: ' + error.message, '#dc2626')
-    else { setForm({ entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false }); setShowForm(false); load() }
+    else { setForm({ ...emptyJournalForm, entry_date: today(), entry_time: nowTime() }); setShowForm(false); load() }
     setSaving(false)
   }
 
@@ -3479,7 +3615,7 @@ const MESS_ROLES = ['Mess In-Charge', 'Server', 'Cleaner', 'Cook Assistant', 'Su
 const MESS_STATUSES = ['Assigned', 'On Duty', 'Completed', 'Absent']
 
 const emptyMD = {
-  date: today(), shift: 'Full Day',
+  date: today(), shift: 'Full Day', house: '',
   staff1_id: null, staff1: '', staff1_role: 'Mess In-Charge',
   staff2_id: null, staff2: '', staff2_role: 'Server',
   staff3_id: null, staff3: '', staff3_role: 'Cleaner',
@@ -3494,13 +3630,21 @@ const SHIFT_STYLE = {
   'Full Day': { color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
 }
 
-function NightDutyTab({ staffProfiles }) {
+function NightDutyTab({ staffProfiles, autoOpenForm }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editRec, setEditRec] = useState(null)
   const [form, setForm] = useState(emptyMD)
+
+  useEffect(() => {
+    if (autoOpenForm) {
+      setEditRec(null)
+      setForm({ ...emptyMD, date: today(), house: autoOpenForm.house || '' })
+      setShowForm(true)
+    }
+  }, [autoOpenForm?.nonce])
   const [month, setMonth] = useState(new Date().getMonth())
   const [year, setYear] = useState(new Date().getFullYear())
   const [shiftFilter, setShiftFilter] = useState('All')
@@ -3517,7 +3661,7 @@ function NightDutyTab({ staffProfiles }) {
   const handleSave = async e => {
     e.preventDefault(); setSaving(true)
     const payload = {
-      date: form.date, shift: form.shift, status: form.status, notes: form.notes,
+      date: form.date, shift: form.shift, status: form.status, notes: form.notes, house: form.house || null,
       staff1_id: form.staff1_id || null, staff1: form.staff1, staff1_role: form.staff1_role,
       staff2_id: form.staff2_id || null, staff2: form.staff2 || null, staff2_role: form.staff2 ? form.staff2_role : null,
       staff3_id: form.staff3_id || null, staff3: form.staff3 || null, staff3_role: form.staff3 ? form.staff3_role : null,
@@ -3724,6 +3868,10 @@ function NightDutyTab({ staffProfiles }) {
                 </select>
               </div>
               <div>
+                <label style={lbl}>House</label>
+                <input value={form.house} onChange={e => setForm(f => ({ ...f, house: e.target.value }))} placeholder="e.g. Kombirei" style={inp} />
+              </div>
+              <div>
                 <label style={lbl}>Status</label>
                 <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}>
                   {MESS_STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -3927,7 +4075,7 @@ const emptyDisc = {
 }
 const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 
-function DisciplineTab({ students }) {
+function DisciplineTab({ students, autoOpenForm }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -3936,6 +4084,13 @@ function DisciplineTab({ students }) {
   const [form, setForm] = useState(emptyDisc)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
+
+  // Auto-open the Add form when arriving here via the compliance-check
+  // "✓ Complete" button, so the housemaster lands ready to log, not on
+  // an empty list. Keyed on `nonce` so a repeat click re-triggers it.
+  useEffect(() => {
+    if (autoOpenForm) { setEditRec(null); setForm(emptyDisc); setShowForm(true) }
+  }, [autoOpenForm?.nonce])
 
   const load = async () => {
     setLoading(true)
@@ -4131,7 +4286,7 @@ const emptySick = {
   discharge_date: '', status: 'Admitted', attended_by: '',
 }
 
-function SickbayTab({ students }) {
+function SickbayTab({ students, autoOpenForm }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -4140,6 +4295,10 @@ function SickbayTab({ students }) {
   const [form, setForm] = useState(emptySick)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
+
+  useEffect(() => {
+    if (autoOpenForm) { setEditRec(null); setForm(emptySick); setShowForm(true) }
+  }, [autoOpenForm?.nonce])
 
   const load = async () => {
     setLoading(true)
@@ -5302,6 +5461,14 @@ function Hostel() {
   const [mobile, setMobile] = useState(isMobile())
   const [currentHousemaster, setCurrentHousemaster] = useState(null)
   const [houseColorMap, setHouseColorMap] = useState({})  // ← ADD THIS
+  // Set when the compliance-check "✓ Complete" button is clicked, so the
+  // target tab knows to auto-open its Add form on arrival instead of
+  // landing on an empty list. Consumed once, then cleared.
+  const [autoOpenForm, setAutoOpenForm] = useState(null) // { tabId, house, nonce } | null
+  const navigateAndOpenForm = (tabId, house) => {
+    setAutoOpenForm({ tabId, house, nonce: Date.now() })
+    setActiveTab(tabId)
+  }
   const currentUser = useMemo(() => {
     try {
       const s = localStorage.getItem('gnsi_session')
@@ -5362,20 +5529,20 @@ function Hostel() {
   const tabContent = {
     allotments: <DayScholarTab students={students} />,
     schedule: <ScheduleTab />,
-    nightduty: <NightDutyTab staffProfiles={staffProfiles} />,
-    discipline: <DisciplineTab students={students} />,
-    sickbay: <SickbayTab students={students} />,
+    nightduty: <NightDutyTab staffProfiles={staffProfiles} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} />,
+    discipline: <DisciplineTab students={students} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} />,
+    sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
     housemaster: <HousemasterTab />,
     kitchen: <KitchenTab />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
-    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={setActiveTab} />,
+    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={setActiveTab} onCompleteTab={navigateAndOpenForm} />,
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} currentUser={currentUser} />,
-    maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    journal: <JournalTab currentHousemaster={currentHousemaster} />,
+    maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
+    journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <DoubtSessionTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} />,
