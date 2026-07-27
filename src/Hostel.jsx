@@ -162,6 +162,7 @@ const TABS = [
   { id: 'doubtsession', label: '🙋 Doubt' },
   { id: 'classtimetable', label: '🗓️ Classes' },
   { id: 'neglectreport', label: '🚨 Neglect Report' },
+  { id: 'hmrollreport', label: '📆 Roll Call Report' },
 ]
 
 const MONTHS = [
@@ -3097,6 +3098,226 @@ function MonthlyCertificateCard() {
           {whatsappStatus === 'idle' && '📲 Send via WhatsApp'}
         </button>
       </div>
+    </div>
+  )
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  MONTHLY ROLL CALL REPORT — HM-facing tab (visible to all staff,
+//  same as the rest of Hostel). Toggle between "Last 10 Days" and
+//  "This Month". Shows per-house summary cards (sessions expected,
+//  avg completion %, on-time rate, days blocked) plus a daily
+//  breakdown table (one row per day per house: morning/night %
+//  marked, on-time status, absent count).
+// ══════════════════════════════════════════════════════════════
+function HMRollCallReportTab() {
+  const [rangeMode, setRangeMode] = useState('last10') // 'last10' | 'month'
+  const [loading, setLoading] = useState(true)
+  const [houses, setHouses] = useState([])
+  const [studentsByHouse, setStudentsByHouse] = useState({}) // house → count of active students
+  const [records, setRecords] = useState([]) // attendance_records in range
+  const [expandedHouse, setExpandedHouse] = useState(null)
+  const mobile = useMobileView()
+
+  const { startStr, endStr, dayList } = useMemo(() => {
+    const end = new Date()
+    let start
+    if (rangeMode === 'last10') {
+      start = new Date()
+      start.setDate(start.getDate() - 9) // 10 days inclusive of today
+    } else {
+      start = new Date(end.getFullYear(), end.getMonth(), 1)
+    }
+    const fmt = d => d.toISOString().split('T')[0]
+    const days = []
+    const cursor = new Date(start)
+    while (cursor <= end) {
+      days.push(fmt(cursor))
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    return { startStr: fmt(start), endStr: fmt(end), dayList: days.reverse() } // most recent first
+  }, [rangeMode])
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      const [{ data: houseRows }, { data: studentRows }, { data: attRows }] = await Promise.all([
+        supabase.from('houses').select('name'),
+        supabase.from('students').select('house').neq('status', 'Inactive'),
+        supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startStr).lte('date', endStr),
+      ])
+      setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
+      const counts = {}
+      ;(studentRows || []).forEach(s => {
+        const h = normalizeHouse(s.house)
+        if (h) counts[h] = (counts[h] || 0) + 1
+      })
+      setStudentsByHouse(counts)
+      setRecords(attRows || [])
+      setLoading(false)
+    }
+    load()
+  }, [startStr, endStr])
+
+  // ── Per-house, per-day stats for both sessions ──
+  const getDayStats = (houseName, dateStr, session) => {
+    const total = studentsByHouse[normalizeHouse(houseName)] || 0
+    const dayRecords = records.filter(r =>
+      normalizeHouse(r.house) === normalizeHouse(houseName) && r.date === dateStr && r.session === session
+    )
+    const marked = dayRecords.length
+    const absent = dayRecords.filter(r => r.status === 'Absent').length
+    const pct = total > 0 ? Math.round((marked / total) * 100) : null
+    let onTime = null
+    if (marked > 0 && total > 0 && marked >= total) {
+      const { end } = sessionWindow(dateStr, session)
+      const lastMark = dayRecords.reduce((latest, r) =>
+        r.marked_at && (!latest || new Date(r.marked_at) > new Date(latest)) ? r.marked_at : latest, null)
+      onTime = lastMark ? new Date(lastMark) <= new Date(end) : null
+    }
+    return { total, marked, absent, pct, onTime, complete: total > 0 && marked >= total }
+  }
+
+  // ── Per-house summary across the whole range ──
+  const getHouseSummary = (houseName) => {
+    let sessionsExpected = 0, sessionsComplete = 0, onTimeCount = 0, completeWithTimeData = 0, daysBlocked = 0
+    dayList.forEach(d => {
+      ;['morning', 'night'].forEach(session => {
+        const s = getDayStats(houseName, d, session)
+        if (s.total === 0) return // no students in this house — don't count as expected
+        sessionsExpected++
+        if (s.complete) {
+          sessionsComplete++
+          if (s.onTime !== null) {
+            completeWithTimeData++
+            if (s.onTime) onTimeCount++
+          }
+        }
+      })
+      // A day counts as "blocked/skipped" if BOTH sessions had zero marked
+      // despite students existing in the house — i.e. roll call never ran.
+      const m = getDayStats(houseName, d, 'morning')
+      const n = getDayStats(houseName, d, 'night')
+      if (m.total > 0 && m.marked === 0 && n.marked === 0) daysBlocked++
+    })
+    const completionPct = sessionsExpected > 0 ? Math.round((sessionsComplete / sessionsExpected) * 100) : null
+    const onTimePct = completeWithTimeData > 0 ? Math.round((onTimeCount / completeWithTimeData) * 100) : null
+    return { sessionsExpected, sessionsComplete, completionPct, onTimePct, daysBlocked }
+  }
+
+  const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#ca8a04' : '#dc2626'
+  const scoreBg = (pct) => pct === null ? '#f1f5f9' : pct >= 90 ? '#dcfce7' : pct >= 70 ? '#fef9c3' : '#fee2e2'
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading roll call report...</div>
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
+        <div>
+          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>📆 Roll Call Report</h2>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>{startStr} → {endStr}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '10px' }}>
+          {[{ key: 'last10', label: 'Last 10 Days' }, { key: 'month', label: 'This Month' }].map(m => (
+            <button
+              key={m.key}
+              onClick={() => setRangeMode(m.key)}
+              style={{
+                padding: '8px 14px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
+                background: rangeMode === m.key ? '#1e3a5f' : 'transparent',
+                color: rangeMode === m.key ? 'white' : '#64748b',
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {houses.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No houses found.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {houses.map(houseName => {
+            const summary = getHouseSummary(houseName)
+            const isExpanded = expandedHouse === houseName
+            return (
+              <div key={houseName} style={{ background: 'white', borderRadius: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                <div
+                  onClick={() => setExpandedHouse(isExpanded ? null : houseName)}
+                  style={{ padding: '16px', cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>🏠 {houseName}</span>
+                    <span style={{ fontSize: '14px', color: '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '8px' }}>
+                    {[
+                      { label: 'Sessions', value: `${summary.sessionsComplete}/${summary.sessionsExpected}`, color: '#1e3a5f', bg: '#eff6ff' },
+                      { label: 'Completion', value: summary.completionPct === null ? '—' : `${summary.completionPct}%`, color: scoreColor(summary.completionPct), bg: scoreBg(summary.completionPct) },
+                      { label: 'On-Time Rate', value: summary.onTimePct === null ? '—' : `${summary.onTimePct}%`, color: scoreColor(summary.onTimePct), bg: scoreBg(summary.onTimePct) },
+                      { label: 'Days Blocked', value: summary.daysBlocked, color: summary.daysBlocked > 0 ? '#dc2626' : '#16a34a', bg: summary.daysBlocked > 0 ? '#fee2e2' : '#dcfce7' },
+                    ].map(s => (
+                      <div key={s.label} style={{ background: s.bg, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '16px', fontWeight: '800', color: s.color }}>{s.value}</div>
+                        <div style={{ fontSize: '10px', color: s.color, fontWeight: '600', marginTop: '2px' }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div style={{ padding: '0 16px 16px' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '520px' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc' }}>
+                            {['Date', '🌅 Morning', '🌙 Night', 'Absent (M/N)'].map(h => (
+                              <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '700', color: '#374151', fontSize: '11px' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dayList.map(d => {
+                            const m = getDayStats(houseName, d, 'morning')
+                            const n = getDayStats(houseName, d, 'night')
+                            const cellStyle = (s) => ({
+                              padding: '8px 10px',
+                              color: s.pct === null ? '#94a3b8' : s.complete ? (s.onTime === false ? '#ca8a04' : '#16a34a') : '#dc2626',
+                              fontWeight: '700',
+                            })
+                            return (
+                              <tr key={d} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '8px 10px', color: '#64748b' }}>{d}</td>
+                                <td style={cellStyle(m)}>
+                                  {m.pct === null ? '—' : `${m.pct}%`}
+                                  {m.complete && m.onTime === false && ' ⏰'}
+                                  {m.complete && m.onTime === true && ' ✓'}
+                                </td>
+                                <td style={cellStyle(n)}>
+                                  {n.pct === null ? '—' : `${n.pct}%`}
+                                  {n.complete && n.onTime === false && ' ⏰'}
+                                  {n.complete && n.onTime === true && ' ✓'}
+                                </td>
+                                <td style={{ padding: '8px 10px', color: (m.absent + n.absent) > 0 ? '#dc2626' : '#94a3b8' }}>
+                                  {m.absent} / {n.absent}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -6231,7 +6452,7 @@ function Hostel() {
     fetchShared()
   }, [])
 
-  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport'
+  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
 
   const tabContent = {
     allotments: <DayScholarTab students={students} />,
@@ -6253,6 +6474,7 @@ function Hostel() {
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} />,
+    hmrollreport: <HMRollCallReportTab />,
   }
 
   return (
