@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import jsPDF from 'jspdf'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab, DoubtSessionTab } from './ClassTimetableTab'
 import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
@@ -2709,7 +2710,496 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
 // ══════════════════════════════════════════════════════════════
 //  TAB: HOUSEMASTER DASHBOARD
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  HM PERFORMANCE RANKING — last 7 days, admin-only section inside
+//  HMDashboard. Scores each housemaster (by house) on three equally
+//  weighted factors:
+//    1. On-time roll call % — sessions where the last student was
+//       marked before that session's window closed (Morning by 12:00,
+//       Night by 24:00), out of all sessions that reached 100%.
+//    2. Six-tab compliance % — of compliance checks that ran (roll-call
+//       linked + standalone 3x-daily), the % with zero missing tabs.
+//    3. Neglect-free % — 100 minus (neglect log rows / total checks run).
+//  Weak-performance reasons combine the data pattern (which tabs get
+//  skipped most) with the actual skip_reasons text housemasters typed.
+// ══════════════════════════════════════════════════════════════
+// ── Shared performance scoring — computes the same 3-factor score for
+//    any date range, so both the 7-day ranking panel and the monthly
+//    certificate winner use identical, non-duplicated logic.
+async function computeHMPerformance(startDateStr, endDateStr) {
+  const [{ data: attendance }, { data: neglect }, { data: housemasters }] = await Promise.all([
+    supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr),
+    supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr),
+    supabase.from('housemasters').select('name, house, phone').eq('status', 'Active'),
+  ])
+
+  const houseNames = [...new Set([
+    ...(attendance || []).map(a => a.house),
+    ...(neglect || []).map(n => n.house),
+  ].filter(Boolean))]
+
+  const results = houseNames.map(houseName => {
+    const hm = (housemasters || []).find(h => normalizeHouse(h.house) === normalizeHouse(houseName))
+    const houseAttendance = (attendance || []).filter(a => normalizeHouse(a.house) === normalizeHouse(houseName))
+    const houseNeglect = (neglect || []).filter(n => normalizeHouse(n.house) === normalizeHouse(houseName))
+
+    // ── Factor 1: On-time roll call %
+    const sessionGroups = {}
+    houseAttendance.forEach(a => {
+      const key = `${a.date}_${a.session}`
+      if (!sessionGroups[key]) sessionGroups[key] = []
+      sessionGroups[key].push(a)
+    })
+    const sessionKeys = Object.keys(sessionGroups)
+    let onTimeSessions = 0
+    sessionKeys.forEach(key => {
+      const [dateStr, sess] = key.split('_')
+      const { end } = sessionWindow(dateStr, sess)
+      const lastMark = sessionGroups[key].reduce((latest, r) =>
+        r.marked_at && (!latest || new Date(r.marked_at) > new Date(latest)) ? r.marked_at : latest, null)
+      if (lastMark && new Date(lastMark) <= new Date(end)) onTimeSessions++
+    })
+    const onTimePct = sessionKeys.length > 0 ? Math.round((onTimeSessions / sessionKeys.length) * 100) : null
+
+    // ── Factor 2 & 3: Compliance % and Neglect-free %
+    // We only have neglect rows in the DB (clean passes aren't logged),
+    // so total checks run is estimated as roll-call sessions plus any
+    // standalone slot gaps found — a conservative approximation.
+    const standaloneNeglect = houseNeglect.filter(n => n.check_type === 'standalone')
+    const totalChecksRun = sessionKeys.length + standaloneNeglect.length
+    const cleanChecks = Math.max(0, totalChecksRun - houseNeglect.length)
+    const compliancePct = totalChecksRun > 0 ? Math.round((cleanChecks / totalChecksRun) * 100) : null
+    const neglectFreePct = totalChecksRun > 0
+      ? Math.max(0, 100 - Math.round((houseNeglect.length / totalChecksRun) * 100))
+      : null
+
+    const factors = [onTimePct, compliancePct, neglectFreePct].filter(v => v !== null)
+    const score = factors.length > 0 ? Math.round(factors.reduce((a, b) => a + b, 0) / factors.length) : null
+
+    // ── Weak-performance reasons
+    const tabSkipCounts = {}
+    const typedReasons = []
+    houseNeglect.forEach(n => {
+      (n.missing_tabs || []).forEach(tabKey => {
+        tabSkipCounts[tabKey] = (tabSkipCounts[tabKey] || 0) + 1
+      })
+      if (n.skip_reasons) {
+        Object.entries(n.skip_reasons).forEach(([tabKey, reason]) => {
+          if (reason) typedReasons.push({ tabKey, reason, date: n.date })
+        })
+      }
+    })
+    const topSkippedTabs = Object.entries(tabSkipCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([key, count]) => ({ tab: SIX_TABS.find(t => t.key === key)?.label || key, count }))
+
+    return {
+      house: houseName,
+      hmName: hm?.name || 'Unassigned',
+      hmPhone: hm?.phone || '',
+      onTimePct, compliancePct, neglectFreePct, score,
+      sessionsCount: sessionKeys.length,
+      neglectCount: houseNeglect.length,
+      topSkippedTabs,
+      typedReasons: typedReasons.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5),
+    }
+  })
+
+  results.sort((a, b) => {
+    if (a.score === null && b.score === null) return 0
+    if (a.score === null) return 1
+    if (b.score === null) return -1
+    return b.score - a.score
+  })
+
+  return results
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CERTIFICATE OF APPRECIATION — monthly top-performing housemaster
+//  Auto-computes the winner for the current calendar month (using the
+//  same 3-factor score as the 7-day ranking) and generates a
+//  professional A4-landscape PDF certificate via jsPDF, matching the
+//  navy/gold styling used elsewhere (Gate Pass, reports).
+// ══════════════════════════════════════════════════════════════
+
+const CERT_SCHOOL_NAME = 'Guidance Navodaya & Sainik Institute'
+const CERT_SCHOOL_ADDRESS = 'Khangabok, Thoubal, Manipur — 795134'
+
+function currentMonthRange() {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0) // last day of month
+  const fmt = (d) => d.toISOString().split('T')[0]
+  const monthLabel = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  return { startStr: fmt(start), endStr: fmt(end), monthLabel }
+}
+
+function generateCertificatePDF({ hmName, house, monthLabel, score }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const W = 297, H = 210
+  const navy = [30, 58, 95]
+  const gold = [202, 138, 4]
+  const grey = [100, 116, 139]
+
+  // Decorative border
+  doc.setDrawColor(...gold)
+  doc.setLineWidth(1.2)
+  doc.rect(8, 8, W - 16, H - 16)
+  doc.setLineWidth(0.4)
+  doc.rect(11, 11, W - 22, H - 22)
+
+  // Header
+  doc.setTextColor(...navy)
+  doc.setFont('times', 'bold')
+  doc.setFontSize(13)
+  doc.text(CERT_SCHOOL_NAME, W / 2, 28, { align: 'center' })
+  doc.setFont('times', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...grey)
+  doc.text(CERT_SCHOOL_ADDRESS, W / 2, 34, { align: 'center' })
+
+  // Gold rule
+  doc.setDrawColor(...gold)
+  doc.setLineWidth(0.6)
+  doc.line(W / 2 - 30, 40, W / 2 + 30, 40)
+
+  // Title
+  doc.setTextColor(...gold)
+  doc.setFont('times', 'bold')
+  doc.setFontSize(30)
+  doc.text('Certificate of Appreciation', W / 2, 62, { align: 'center' })
+
+  doc.setTextColor(...grey)
+  doc.setFont('times', 'italic')
+  doc.setFontSize(12)
+  doc.text('Presented for Outstanding Housemaster Performance', W / 2, 72, { align: 'center' })
+
+  // "This is presented to"
+  doc.setFont('times', 'normal')
+  doc.setFontSize(12)
+  doc.setTextColor(...navy)
+  doc.text('This certificate is proudly presented to', W / 2, 92, { align: 'center' })
+
+  // Name — large, centered
+  doc.setFont('times', 'bold')
+  doc.setFontSize(28)
+  doc.setTextColor(...navy)
+  doc.text(hmName, W / 2, 108, { align: 'center' })
+
+  // Underline beneath name
+  const nameWidth = doc.getTextWidth(hmName)
+  doc.setDrawColor(...gold)
+  doc.setLineWidth(0.4)
+  doc.line(W / 2 - nameWidth / 2 - 6, 112, W / 2 + nameWidth / 2 + 6, 112)
+
+  // Body text
+  doc.setFont('times', 'normal')
+  doc.setFontSize(12)
+  doc.setTextColor(...grey)
+  const bodyLines = [
+    `Housemaster of ${house} House`,
+    `in recognition of exemplary dedication, punctual roll-call completion,`,
+    `and consistent compliance during ${monthLabel}.`,
+  ]
+  bodyLines.forEach((line, i) => {
+    doc.text(line, W / 2, 122 + i * 6, { align: 'center' })
+  })
+
+  // Score badge
+  doc.setFont('times', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(...navy)
+  doc.text(`Performance Score: ${score}%`, W / 2, 148, { align: 'center' })
+
+  // Signature lines
+  const sigY = 178
+  doc.setDrawColor(...grey)
+  doc.setLineWidth(0.3)
+  doc.line(50, sigY, 110, sigY)
+  doc.line(W - 110, sigY, W - 50, sigY)
+  doc.setFont('times', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...grey)
+  doc.text('Principal', 80, sigY + 6, { align: 'center' })
+  doc.text('Superintendent', W - 80, sigY + 6, { align: 'center' })
+
+  // Footer date
+  doc.setFontSize(8)
+  doc.text(
+    `Issued: ${new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })}`,
+    W / 2, H - 16, { align: 'center' }
+  )
+
+  doc.save(`Certificate_${hmName.replace(/\s+/g, '_')}_${monthLabel.replace(/\s+/g, '_')}.pdf`)
+}
+
+// ── Monthly winner card — auto-computes the top performer for the
+//    current calendar month (no admin selection needed) and offers
+//    one-click Download PDF + Send via WhatsApp.
+function MonthlyCertificateCard() {
+  const [loading, setLoading] = useState(true)
+  const [winner, setWinner] = useState(null)
+  const [monthLabel, setMonthLabel] = useState('')
+  const [whatsappStatus, setWhatsappStatus] = useState('idle') // idle | generating | ready
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      const { startStr, endStr, monthLabel: label } = currentMonthRange()
+      setMonthLabel(label)
+      const results = await computeHMPerformance(startStr, endStr)
+      const top = results.find(r => r.score !== null)
+      setWinner(top || null)
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const handleDownload = () => {
+    if (!winner) return
+    generateCertificatePDF({ hmName: winner.hmName, house: winner.house, monthLabel, score: winner.score })
+  }
+
+  const handleSendWhatsApp = () => {
+    if (!winner) return
+    setWhatsappStatus('generating')
+    generateCertificatePDF({ hmName: winner.hmName, house: winner.house, monthLabel, score: winner.score })
+    // The PDF downloads locally; WhatsApp can't auto-attach a file via a
+    // link (browser security), so we open a chat with the announcement
+    // pre-filled and the admin attaches the just-downloaded PDF manually.
+    const message = `🏆 Congratulations ${winner.hmName}!\n\nYou've been recognized as the Top Performing Housemaster for ${monthLabel} at ${CERT_SCHOOL_NAME} — ${winner.house} House, Score: ${winner.score}%.\n\nYour Certificate of Appreciation is attached. Well done!`
+    const target = winner.hmPhone ? winner.hmPhone.replace(/\D/g, '') : ''
+    const waUrl = `https://wa.me/${target.length === 10 ? '91' + target : target}?text=${encodeURIComponent(message)}`
+    setTimeout(() => {
+      window.open(waUrl, '_blank')
+      setWhatsappStatus('ready')
+      setTimeout(() => setWhatsappStatus('idle'), 2000)
+    }, 400) // small delay so the PDF save dialog isn't fighting the new tab
+  }
+
+  if (loading) {
+    return (
+      <div style={{ background: 'white', borderRadius: '14px', padding: '24px', textAlign: 'center', color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        ⏳ Computing this month's top performer...
+      </div>
+    )
+  }
+
+  if (!winner) {
+    return (
+      <div style={{ background: 'white', borderRadius: '14px', padding: '24px', textAlign: 'center', color: '#94a3b8', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        No performance data yet for {monthLabel}.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #1e3a5f 0%, #0f2744 100%)',
+      borderRadius: '16px', padding: '22px', color: 'white',
+      boxShadow: '0 4px 16px rgba(30,58,95,0.25)',
+    }}>
+      <div style={{ fontSize: '11px', fontWeight: '700', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>
+        🏆 Certificate of Appreciation — {monthLabel}
+      </div>
+      <div style={{ fontSize: '20px', fontWeight: '800', marginBottom: '2px' }}>{winner.hmName}</div>
+      <div style={{ fontSize: '13px', opacity: 0.85, marginBottom: '16px' }}>🏠 {winner.house} House · Score: {winner.score}%</div>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <button
+          onClick={handleDownload}
+          style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: '#eab308', color: '#1e293b', fontSize: '13px', fontWeight: '800', cursor: 'pointer' }}
+        >
+          ⬇️ Download Certificate
+        </button>
+        <button
+          onClick={handleSendWhatsApp}
+          disabled={whatsappStatus === 'generating'}
+          style={{
+            padding: '10px 18px', borderRadius: '10px', border: 'none',
+            background: whatsappStatus === 'ready' ? '#16a34a' : '#25D366',
+            color: 'white', fontSize: '13px', fontWeight: '800',
+            cursor: whatsappStatus === 'generating' ? 'wait' : 'pointer',
+            opacity: whatsappStatus === 'generating' ? 0.8 : 1,
+          }}
+        >
+          {whatsappStatus === 'generating' && '⏳ Preparing...'}
+          {whatsappStatus === 'ready' && '✅ Sent!'}
+          {whatsappStatus === 'idle' && '📲 Send via WhatsApp'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+function HMPerformanceRanking() {
+  const [loading, setLoading] = useState(true)
+  const [rankings, setRankings] = useState([])
+  const [expandedHouse, setExpandedHouse] = useState(null)
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0]
+      const todayStr = today()
+      const results = await computeHMPerformance(sevenDaysAgoStr, todayStr)
+      setRankings(results)
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const scoreColor = (score) => {
+    if (score === null) return '#94a3b8'
+    if (score >= 80) return '#16a34a'
+    if (score >= 60) return '#ca8a04'
+    return '#dc2626'
+  }
+  const scoreBg = (score) => {
+    if (score === null) return '#f1f5f9'
+    if (score >= 80) return '#dcfce7'
+    if (score >= 60) return '#fef9c3'
+    return '#fee2e2'
+  }
+
+  if (loading) {
+    return (
+      <div style={{ background: 'white', borderRadius: '14px', padding: '30px', textAlign: 'center', color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        ⏳ Calculating housemaster performance...
+      </div>
+    )
+  }
+
+  const topPerformer = rankings.find(r => r.score !== null)
+  const weakestPerformer = [...rankings].reverse().find(r => r.score !== null)
+
+  return (
+    <div style={{ background: 'white', borderRadius: '14px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1e293b', margin: 0 }}>
+          🏆 Housemaster Performance — Last 7 Days
+        </h3>
+      </div>
+      <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '16px' }}>
+        Score = equal weight of on-time roll call, six-tab compliance, and neglect-free rate.
+      </p>
+
+      {rankings.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No roll-call or compliance data in the last 7 days.</div>
+      ) : (
+        <>
+          {/* Top / Weak performer highlight */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+            {topPerformer && (
+              <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                  🥇 Top Performer
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>{topPerformer.hmName}</div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>🏠 {topPerformer.house} · Score: {topPerformer.score}%</div>
+              </div>
+            )}
+            {weakestPerformer && weakestPerformer.house !== topPerformer?.house && (
+              <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                  ⚠️ Needs Attention
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>{weakestPerformer.hmName}</div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>🏠 {weakestPerformer.house} · Score: {weakestPerformer.score}%</div>
+              </div>
+            )}
+          </div>
+
+          {/* Full ranking list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {rankings.map((r, i) => {
+              const isExpanded = expandedHouse === r.house
+              return (
+                <div key={r.house} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                  <div
+                    onClick={() => setExpandedHouse(isExpanded ? null : r.house)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', cursor: 'pointer', background: isExpanded ? '#f8fafc' : 'white' }}
+                  >
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#94a3b8', width: '22px' }}>#{i + 1}</div>
+                    <div style={{ flex: 1, minWidth: '140px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{r.hmName}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>🏠 {r.house} · {r.sessionsCount} roll calls · {r.neglectCount} gaps logged</div>
+                    </div>
+                    <div style={{
+                      padding: '6px 14px', borderRadius: '99px', fontWeight: '800', fontSize: '14px',
+                      background: scoreBg(r.score), color: scoreColor(r.score),
+                    }}>
+                      {r.score === null ? '—' : `${r.score}%`}
+                    </div>
+                    <span style={{ fontSize: '14px', color: '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                  </div>
+                  {isExpanded && (
+                    <div style={{ padding: '14px', borderTop: '1px solid #f1f5f9', background: '#fafbfc' }}>
+                      {/* Factor breakdown */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px', marginBottom: '14px' }}>
+                        {[
+                          { label: '✅ On-Time Roll Call', value: r.onTimePct },
+                          { label: '📋 Six-Tab Compliance', value: r.compliancePct },
+                          { label: '🚫 Neglect-Free', value: r.neglectFreePct },
+                        ].map(f => (
+                          <div key={f.label} style={{ background: 'white', borderRadius: '8px', padding: '8px 10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', marginBottom: '4px' }}>{f.label}</div>
+                            <div style={{ fontSize: '16px', fontWeight: '800', color: scoreColor(f.value) }}>
+                              {f.value === null ? 'No data' : `${f.value}%`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Weak-performance reasons */}
+                      {r.topSkippedTabs.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '6px' }}>Most skipped checks:</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {r.topSkippedTabs.map(t => (
+                              <span key={t.tab} style={{ padding: '3px 10px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '11px', fontWeight: '700' }}>
+                                {t.tab} ({t.count}×)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {r.typedReasons.length > 0 ? (
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: '#374151', marginBottom: '6px' }}>Reasons given (most recent):</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            {r.typedReasons.map((tr, idx) => {
+                              const tabLabel = SIX_TABS.find(t => t.key === tr.tabKey)?.label || tr.tabKey
+                              return (
+                                <div key={idx} style={{ fontSize: '11px', color: '#64748b', background: 'white', border: '1px solid #f1f5f9', borderRadius: '6px', padding: '6px 10px' }}>
+                                  <span style={{ fontWeight: '700', color: '#374151' }}>{tabLabel}</span> ({tr.date}): "{tr.reason}"
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : r.neglectCount > 0 ? (
+                        <div style={{ fontSize: '11px', color: '#9a3412', fontStyle: 'italic' }}>
+                          No reasons were given for the skipped checks above — logged as unexplained gaps.
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [attendanceToday, setAttendanceToday] = useState([])
   const [leaveToday, setLeaveToday] = useState([])
   const [sickbayToday, setSickbayToday] = useState([])
@@ -2791,6 +3281,13 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
             ))}
           </div>
         </div>
+
+        {isAdmin && (
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <MonthlyCertificateCard />
+            <HMPerformanceRanking />
+          </div>
+        )}
       </div>
     )
   }
@@ -2841,6 +3338,13 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           </div>
         </div>
       </div>
+
+      {isAdmin && (
+        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <MonthlyCertificateCard />
+          <HMPerformanceRanking />
+        </div>
+      )}
     </div>
   )
 }
