@@ -1356,6 +1356,22 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setSkipReasonDraft('')
   }
 
+  // ── One-tap "Nothing to report" — the primary, no-typing path for a
+  // quiet day. Reuses the same skip-reason plumbing (so the neglect log
+  // and admin reports keep working unchanged) but with a standard fixed
+  // reason instead of requiring the housemaster to type anything.
+  const [confirmingNoneTab, setConfirmingNoneTab] = useState(null) // tab key currently saving
+  const handleConfirmNothingToReport = async (complianceKey, tabKey) => {
+    setConfirmingNoneTab(tabKey)
+    const logId = complianceLogId[complianceKey]
+    await attachSkipReason(logId, tabKey, 'Nothing to report', currentHousemaster?.name)
+    setSkippedWithReason(prev => ({
+      ...prev,
+      [complianceKey]: { ...(prev[complianceKey] || {}), [tabKey]: 'Nothing to report' },
+    }))
+    setConfirmingNoneTab(null)
+  }
+
   // ── Standalone 3x-daily compliance check (independent of roll call) ──
   // Tracks per house+date+slot: done / missing tabs / whether the "all
   // clear" confirmation animation has already played for this slot.
@@ -2436,7 +2452,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {SIX_TABS.filter(t => missingTabs.includes(t.key)).map(t => {
                     const reasonGiven = skippedWithReason[complianceKey]?.[t.key]
-                    const showingPrompt = skipReasonPromptTab === t.key
+                    const isConfirming = confirmingNoneTab === t.key
                     return (
                       <div key={t.key} style={{ background: 'white', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -2445,57 +2461,28 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                           </span>
                           {reasonGiven ? (
                             <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', flex: 1 }}>
-                              ✅ Skipped — reason: "{reasonGiven}"
+                              {reasonGiven === 'Nothing to report' ? '✅ Confirmed — nothing to report' : `✅ Skipped — reason: "${reasonGiven}"`}
                             </span>
                           ) : (
-                            <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
+                              {/* Primary path: one tap, no typing — covers the common case of a quiet day */}
+                              <button
+                                onClick={() => handleConfirmNothingToReport(complianceKey, t.key)}
+                                disabled={isConfirming}
+                                style={{ padding: '6px 12px', borderRadius: '7px', border: 'none', background: '#16a34a', color: 'white', fontSize: '11px', fontWeight: '700', cursor: isConfirming ? 'wait' : 'pointer' }}
+                              >
+                                {isConfirming ? '⏳ Saving...' : '✅ Nothing to report'}
+                              </button>
+                              {/* Secondary path: something actually happened — jump to log it */}
                               <button
                                 onClick={() => { if (onCompleteTab) onCompleteTab(t.rootTabId, selectedHouse); else onTabChange?.(t.rootTabId) }}
-                                style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                                style={{ padding: '6px 10px', borderRadius: '7px', border: `1px solid #e2e8f0`, background: 'transparent', color: '#64748b', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                               >
-                                ✓ Complete Now
-                              </button>
-                              <button
-                                onClick={() => handleRecheckTab(complianceKey, t.key)}
-                                disabled={recheckingTab === `${complianceKey}_${t.key}`}
-                                title="Use this if you already filled it in but it's still showing as missing"
-                                style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#f0fdf4', color: '#16a34a', fontSize: '11px', fontWeight: '700', cursor: recheckingTab === `${complianceKey}_${t.key}` ? 'wait' : 'pointer' }}
-                              >
-                                {recheckingTab === `${complianceKey}_${t.key}` ? '⏳ Checking...' : '✓ I\'ve filled this in'}
-                              </button>
-                              <button
-                                onClick={() => { setSkipReasonPromptTab(showingPrompt ? null : t.key); setSkipReasonDraft(''); setSkipReasonError('') }}
-                                style={{ padding: '5px 10px', borderRadius: '7px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-                              >
-                                ⏭ Skip (reason)
+                                Log an entry →
                               </button>
                             </div>
                           )}
                         </div>
-                        {showingPrompt && !reasonGiven && (
-                          <div style={{ marginTop: '8px' }}>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <input
-                                autoFocus
-                                value={skipReasonDraft}
-                                onChange={e => { setSkipReasonDraft(e.target.value); setSkipReasonError('') }}
-                                placeholder={`Explain why ${t.label.replace(/^\S+\s/, '')} was skipped (min. a short sentence)...`}
-                                style={{ ...inp, fontSize: '12px', padding: '7px 10px' }}
-                                onKeyDown={e => { if (e.key === 'Enter') handleSkipWithReason(complianceKey, t.key) }}
-                              />
-                              <button
-                                onClick={() => handleSkipWithReason(complianceKey, t.key)}
-                                disabled={!isValidSkipReason(skipReasonDraft)}
-                                style={{ padding: '7px 12px', borderRadius: '7px', border: 'none', background: isValidSkipReason(skipReasonDraft) ? '#dc2626' : '#e2e8f0', color: isValidSkipReason(skipReasonDraft) ? 'white' : '#94a3b8', fontSize: '11px', fontWeight: '700', cursor: isValidSkipReason(skipReasonDraft) ? 'pointer' : 'not-allowed' }}
-                              >
-                                Confirm
-                              </button>
-                            </div>
-                            {skipReasonError && (
-                              <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '4px' }}>{skipReasonError}</div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     )
                   })}
