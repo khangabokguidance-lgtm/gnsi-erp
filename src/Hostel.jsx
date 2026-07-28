@@ -301,6 +301,80 @@ function currentDailySlot() {
   return DAILY_SLOTS.find(s => hour >= s.startHour && hour < s.endHour)?.key || 'morning'
 }
 
+// ══════════════════════════════════════════════════════════════
+//  MANDATORY ROLL CALL DEADLINES + LATE PENALTY
+// ══════════════════════════════════════════════════════════════
+//  Institutional rule: Morning roll call must be completed by 7:00 AM,
+//  Night roll call by 8:00 PM. A 15-minute grace window is allowed
+//  beyond the deadline; a roll call whose LAST student is marked after
+//  deadline + grace is flagged as Late and a penalty/fine record is
+//  logged against that house's housemaster/mistress.
+//
+//  This is separate from sessionWindow() above (which governs the
+//  12-hour six-tab compliance gating and is left untouched) — this is
+//  specifically the hard morning/night mark-by time for the roll call
+//  itself.
+// ══════════════════════════════════════════════════════════════
+const ROLL_CALL_DEADLINE = {
+  morning: { hour: 7, minute: 0, label: '7:00 AM' },
+  night: { hour: 20, minute: 0, label: '8:00 PM' },
+}
+const ROLL_CALL_GRACE_MINUTES = 15
+
+// Returns the hard deadline and grace-expiry Date objects for a given
+// calendar date + session.
+function rollCallDeadline(dateStr, session) {
+  const cfg = ROLL_CALL_DEADLINE[session] || ROLL_CALL_DEADLINE.morning
+  const deadline = new Date(`${dateStr}T00:00:00`)
+  deadline.setHours(cfg.hour, cfg.minute, 0, 0)
+  const graceEnd = new Date(deadline.getTime() + ROLL_CALL_GRACE_MINUTES * 60 * 1000)
+  return { deadline, graceEnd, label: cfg.label }
+}
+
+// Given the timestamp of the LAST student marked in a session, determine
+// whether the roll call is Late (past deadline + grace) and by how many
+// minutes. Returns null minutesLate when marking finished on time.
+function getRollCallLateStatus(dateStr, session, lastMarkedAtIso) {
+  const { deadline, graceEnd, label } = rollCallDeadline(dateStr, session)
+  if (!lastMarkedAtIso) return { isLate: false, minutesLate: null, deadlineLabel: label, graceEnd }
+  const markedAt = new Date(lastMarkedAtIso)
+  const isLate = markedAt > graceEnd
+  const minutesLate = isLate ? Math.round((markedAt - deadline) / 60000) : null
+  return { isLate, minutesLate, deadlineLabel: label, graceEnd }
+}
+
+// ── Penalty/fine logging ──────────────────────────────────────────
+// Reuses hm_neglect_log (same table as compliance-gap logging above)
+// with check_type: 'late_rollcall' so late roll calls surface in the
+// existing Neglect Report alongside other compliance flags, and feed
+// into HM performance ranking. minutesLate is recorded as plain text
+// inside missing_tabs so no schema change is required.
+async function logLateRollCallPenalty(houseName, dateStr, session, housemasterName, minutesLate, deadlineLabel) {
+  try {
+    const { data, error } = await supabase.from('hm_neglect_log').insert([{
+      house: houseName, date: dateStr, session,
+      housemaster_name: housemasterName || 'Unknown',
+      missing_tabs: [`Late roll call — ${minutesLate} min past ${deadlineLabel} deadline (incl. 15-min grace). Penalty/fine applicable.`],
+      skip_reasons: {},
+      check_type: 'late_rollcall',
+    }]).select('id').single()
+    if (error) throw error
+    const { data: admins } = await supabase.from('staff_profiles').select('id').ilike('role', 'admin')
+    if (admins?.length) {
+      await Promise.all(admins.map(a => sendPushToStaffId(
+        a.id,
+        `⏰ Late Roll Call — ${houseName}`,
+        `${housemasterName || 'Housemaster'}: ${session} roll call ${minutesLate} min late (deadline ${deadlineLabel} + 15 min grace). Penalty/fine applicable.`,
+        '/hostel?tab=neglectreport'
+      )))
+    }
+    return data?.id || null
+  } catch (e) {
+    console.error('logLateRollCallPenalty failed:', e)
+    return null
+  }
+}
+
 // Core checker — takes an explicit {start, end} ISO window so it can be
 // reused by both the roll-call-linked check (12hr split) and the
 // standalone 3x-daily check (8hr split). Returns array of missing tab keys.
@@ -1430,6 +1504,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   //    Mess Duty, Activities) — runs once when a roll-call session hits
   //    100%, logs any gaps, and drives the strict warning banner. ──
   const [complianceChecked, setComplianceChecked] = useState({}) // key: `${house}_${date}_${session}` → done
+  const [latePenaltyLogged, setLatePenaltyLogged] = useState({}) // key: `${house}_${date}_${session}` → true once penalty logged this session
   const [complianceMissing, setComplianceMissing] = useState({}) // key → array of missing tab keys
   const [complianceLogId, setComplianceLogId] = useState({}) // key → hm_neglect_log row id (for attaching skip reasons)
   const [skipReasonPromptTab, setSkipReasonPromptTab] = useState(null) // tab key currently showing the reason input
@@ -2658,6 +2733,27 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               setTimeout(() => setComplianceCelebrating(prev => (prev === complianceKey ? null : prev)), 2200)
             }
             const isCelebratingCompliance = complianceCelebrating === complianceKey
+
+            // ── Mandatory roll-call deadline check (Morning 7:00 AM /
+            //    Night 8:00 PM, 15-minute grace) — computed on THIS
+            //    house's own just-completed session, independent of
+            //    whichever house the compliance switcher above is showing.
+            const ownSessionKey = `${selectedHouse}_${date}_${session}`
+            const ownRecords = rollCallStudents
+              .map(s => allRecords.find(r => r.student_id === s.id))
+              .filter(Boolean)
+            const lastMarkedAtForOwnSession = ownRecords.reduce((latest, r) =>
+              r.marked_at && (!latest || new Date(r.marked_at) > new Date(latest)) ? r.marked_at : latest, null)
+            const lateStatus = getRollCallLateStatus(date, session, lastMarkedAtForOwnSession)
+            if (lateStatus.isLate && !latePenaltyLogged[ownSessionKey]) {
+              setLatePenaltyLogged(prev => ({ ...prev, [ownSessionKey]: true }))
+              logLateRollCallPenalty(
+                selectedHouse, date, session,
+                currentUser?.name || currentHousemaster?.name,
+                lateStatus.minutesLate, lateStatus.deadlineLabel
+              )
+            }
+
             return (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
             <style>{`
@@ -2677,8 +2773,25 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '8px' }}>
               {selectedHouse} Roll Call Complete!
             </div>
-            <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '24px' }}>
+            <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
               {marked} of {total} students marked
+            </div>
+
+            {/* Mandatory deadline badge — Morning 7:00 AM / Night 8:00 PM,
+                15-min grace. Late completions are flagged with a penalty/
+                fine notice and logged automatically (see effect above). */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '8px 16px', borderRadius: '999px', marginBottom: '20px',
+              background: lateStatus.isLate ? '#fee2e2' : '#dcfce7',
+              border: `1.5px solid ${lateStatus.isLate ? '#fca5a5' : '#86efac'}`,
+            }}>
+              <span style={{ fontSize: '16px' }}>{lateStatus.isLate ? '⏰' : '✅'}</span>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: lateStatus.isLate ? '#dc2626' : '#16a34a' }}>
+                {lateStatus.isLate
+                  ? `Late — ${lateStatus.minutesLate} min past ${lateStatus.deadlineLabel} deadline. Penalty/fine applicable.`
+                  : `On time — within ${lateStatus.deadlineLabel} deadline (15-min grace)`}
+              </span>
             </div>
 
             {/* Six-Tab Compliance house switcher — lets the housemaster check
