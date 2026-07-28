@@ -18,43 +18,55 @@ import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 //  get generous rounding). This token block is the single source for
 //  all of it — every shared primitive below derives from these.
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  DESIGN TOKENS — "Ledger & Crest" refined corporate system.
+//  A muted navy/gold institutional palette (less saturated than the
+//  original Material tonal set), a serif display face reserved for
+//  headings and key numbers, a sans body face for everything read at
+//  length, and tighter radii/shadows so surfaces read as documents and
+//  panels rather than app "cards". Every shared primitive below derives
+//  from this single token block.
+// ══════════════════════════════════════════════════════════════
+const FONT_DISPLAY = '"Georgia", "Iowan Old Style", "Times New Roman", serif'
+const FONT_BODY = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+
 const MD = {
   color: {
-    primary:          '#1e3a5f', // GNSI navy
-    primaryContainer: '#e3ecf7', // tonal navy-10, used behind navy content
-    onPrimaryContainer: '#0d2440',
-    secondary:          '#ca8a04', // GNSI brass/gold
-    secondaryContainer: '#fef3c7',
-    onSecondaryContainer: '#7c5800',
+    primary:          '#1a2f4d', // muted institutional navy
+    primaryContainer: '#e8edf4', // quiet tonal navy, used behind navy content
+    onPrimaryContainer: '#152238',
+    secondary:          '#a8842f', // muted brass/gold (desaturated from the original brighter gold)
+    secondaryContainer: '#f6efdd',
+    onSecondaryContainer: '#5c4816',
     surface:          '#ffffff',
-    surfaceDim:       '#f4f6f9',   // page background
+    surfaceDim:       '#f5f6f8',   // page background — slightly cooler/quieter grey
     surfaceContainer: '#ffffff',  // card background
-    surfaceVariant:   '#eef1f6',  // subtle recessed areas (input fill, chips)
-    outline:          '#d7dee8',
-    outlineVariant:   '#e8ecf2',
-    onSurface:        '#1a2233',
-    onSurfaceVariant: '#5b6779',
-    error:            '#dc2626',
-    errorContainer:   '#fee2e2',
-    success:          '#16a34a',
-    successContainer: '#dcfce7',
+    surfaceVariant:   '#eef0f3',  // subtle recessed areas (input fill, chips)
+    outline:          '#d9dee5',
+    outlineVariant:   '#e7eaee',
+    onSurface:        '#1c2530',
+    onSurfaceVariant: '#5c6773',
+    error:            '#b3261e',
+    errorContainer:   '#fbe9e7',
+    success:          '#276b3d',
+    successContainer: '#e3f1e7',
   },
-  // Material elevation: layered shadows, each tier pairs a tight
-  // "contact" shadow with a soft "ambient" shadow — this is what
-  // makes Material shadows read as depth rather than a blur filter.
+  // Restrained elevation — a single hairline border plus a very quiet
+  // shadow, closer to how a printed panel or letterhead sits on a page
+  // than a floating app surface.
   elevation: {
     0: 'none',
-    1: '0 1px 2px rgba(16,24,40,0.06), 0 1px 3px rgba(16,24,40,0.08)',
-    2: '0 2px 4px rgba(16,24,40,0.06), 0 4px 8px rgba(16,24,40,0.10)',
-    3: '0 4px 8px rgba(16,24,40,0.08), 0 8px 20px rgba(16,24,40,0.12)',
-    4: '0 6px 14px rgba(16,24,40,0.10), 0 12px 28px rgba(16,24,40,0.14)',
+    1: '0 1px 2px rgba(20,28,40,0.05)',
+    2: '0 2px 6px rgba(20,28,40,0.07)',
+    3: '0 4px 12px rgba(20,28,40,0.09)',
+    4: '0 8px 20px rgba(20,28,40,0.11)',
   },
-  radius: { control: '10px', field: '12px', card: '18px', sheet: '24px', pill: '999px' },
+  radius: { control: '7px', field: '9px', card: '11px', sheet: '16px', pill: '999px' },
   type: {
-    label:    { fontSize: '12px', fontWeight: '600', letterSpacing: '0.02em' },
-    body:     { fontSize: '14px', fontWeight: '500' },
-    title:    { fontSize: '16px', fontWeight: '700' },
-    headline: { fontSize: '22px', fontWeight: '800', letterSpacing: '-0.01em' },
+    label:    { fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em', fontFamily: FONT_BODY },
+    body:     { fontSize: '14px', fontWeight: '500', fontFamily: FONT_BODY },
+    title:    { fontSize: '16px', fontWeight: '700', fontFamily: FONT_DISPLAY },
+    headline: { fontSize: '22px', fontWeight: '700', letterSpacing: '-0.005em', fontFamily: FONT_DISPLAY },
   },
 }
 
@@ -91,30 +103,31 @@ function saveAutoFired(obj) {
   try { localStorage.setItem(AUTO_FIRED_KEY, JSON.stringify(obj)) } catch { }
 }
 
-// ─── Shared styles — Material-elevated surfaces on the GNSI palette ──
+// ─── Shared styles — quiet institutional surfaces on the refined palette ──
 const inp = {
-  width: '100%', padding: '13px 14px', borderRadius: MD.radius.control,
-  border: `1.5px solid ${MD.color.outline}`, fontSize: '16px', // 16px prevents iOS zoom
+  width: '100%', padding: '11px 13px', borderRadius: MD.radius.control,
+  border: `1px solid ${MD.color.outline}`, fontSize: '15px', // 16px prevents iOS zoom; 15px + explicit font stack reads calmer
   boxSizing: 'border-box', backgroundColor: MD.color.surfaceVariant,
-  minHeight: '46px', color: MD.color.onSurface,
+  minHeight: '44px', color: MD.color.onSurface, fontFamily: FONT_BODY,
   transition: 'border-color 0.15s ease, background-color 0.15s ease',
 }
 const lbl = {
-  display: 'block', fontSize: '12px', fontWeight: '700',
+  display: 'block', fontSize: '11px', fontWeight: '700',
   color: MD.color.onSurfaceVariant, marginBottom: '6px',
-  textTransform: 'uppercase', letterSpacing: '0.04em',
+  textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: FONT_BODY,
 }
-// Material "filled" button: flat fill + elevation-1 that lifts to
-// elevation-2 on hover — the press/lift is what reads as Material,
-// not just a colored rectangle.
+// Restrained filled button: flat fill, quiet elevation, a subtle lift on
+// hover rather than a pronounced Material "press" — reads as a document
+// action, not an app control.
 const btn = (bg = MD.color.primary, c = 'white') => ({
   backgroundColor: bg, color: c, border: 'none', borderRadius: MD.radius.control,
-  padding: '12px 22px', fontWeight: '700', cursor: 'pointer', fontSize: '14px',
-  minHeight: '46px', minWidth: '46px', boxShadow: MD.elevation[1],
+  padding: '11px 20px', fontWeight: '700', cursor: 'pointer', fontSize: '13px',
+  minHeight: '44px', minWidth: '44px', boxShadow: MD.elevation[1], fontFamily: FONT_BODY,
+  letterSpacing: '0.01em',
   transition: 'box-shadow 0.15s ease, transform 0.1s ease',
 })
-// Elevated card — Material's generous corner radius + layered shadow,
-// no hairline border needed since elevation itself defines the edge.
+// Quiet panel — hairline border carries the edge, shadow is nearly
+// imperceptible; reads as a printed panel rather than a floating card.
 const card = {
   background: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '18px',
   boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
@@ -171,26 +184,26 @@ const MobileRecordCard = ({ children, accentColor = MD.color.primary, onClick })
 )
 
 const TABS = [
-  { id: 'schedule', label: '📅 Schedule' },
-  { id: 'house', label: '🏠 Houses' },
-  { id: 'housemaster', label: '👨‍🏫 HM' },
-  { id: 'hmactivities', label: '📌 Activities' },
-  { id: 'adminmonitor', label: '🖥 Monitor' },
-  { id: 'discipline', label: '⚠️ Discipline' },
-  { id: 'sickbay', label: '🏥 Sickbay' },
-  { id: 'kitchen', label: '🍽️ Kitchen' },
-  { id: 'nightduty', label: '🍽️ Mess Duty' },
-  { id: 'allotments', label: '📋 Day Scholar' },
+  { id: 'schedule', label: '🗓 Schedule' },
+  { id: 'house', label: '🏛 Houses' },
+  { id: 'housemaster', label: '👤 HM' },
+  { id: 'hmactivities', label: '▣ Activities' },
+  { id: 'adminmonitor', label: '◧ Monitor' },
+  { id: 'discipline', label: '▲ Discipline' },
+  { id: 'sickbay', label: '✚ Sickbay' },
+  { id: 'kitchen', label: '◈ Kitchen' },
+  { id: 'nightduty', label: '◈ Mess Duty' },
+  { id: 'allotments', label: '☰ Day Scholar' },
   // ─── NEW: House Master Daily Features ──────────────────
-  { id: 'attendance', label: '✅ Roll Call' },
-  { id: 'leave', label: '🚪 Leave' },
-  { id: 'hmdashboard', label: '📊 HM Dash' },
-  { id: 'maintenance', label: '🔧 Repairs' },
-  { id: 'journal', label: '📝 Journal' },
-  { id: 'doubtsession', label: '🙋 Doubt' },
-  { id: 'classtimetable', label: '🗓️ Classes' },
-  { id: 'neglectreport', label: '🚨 Neglect Report' },
-  { id: 'hmrollreport', label: '📆 Roll Call Report' },
+  { id: 'attendance', label: '✓ Roll Call' },
+  { id: 'leave', label: '⇥ Leave' },
+  { id: 'hmdashboard', label: '◫ HM Dash' },
+  { id: 'maintenance', label: '⚙ Repairs' },
+  { id: 'journal', label: '☰ Journal' },
+  { id: 'doubtsession', label: '? Doubt' },
+  { id: 'classtimetable', label: '🗓 Classes' },
+  { id: 'neglectreport', label: '▲ Neglect Report' },
+  { id: 'hmrollreport', label: '☰ Roll Call Report' },
 ]
 
 const MONTHS = [
@@ -626,20 +639,20 @@ function statusStyle(status) {
   const map = {
     Occupied: { bg: '#dcfce7', color: '#16a34a' },
     Vacant: { bg: '#fee2e2', color: '#dc2626' },
-    Shifted: { bg: '#fef9c3', color: '#ca8a04' },
+    Shifted: { bg: '#fef9c3', color: '#a8842f' },
     Vacated: { bg: '#e5e7eb', color: '#374151' },
     Resolved: { bg: '#dcfce7', color: '#16a34a' },
     Open: { bg: '#fee2e2', color: '#dc2626' },
-    'In Progress': { bg: '#fef9c3', color: '#ca8a04' },
+    'In Progress': { bg: '#fef9c3', color: '#a8842f' },
     Closed: { bg: '#e5e7eb', color: '#374151' },
     Discharged: { bg: '#dcfce7', color: '#16a34a' },
     Admitted: { bg: '#dbeafe', color: '#1d4ed8' },
     Present: { bg: '#dcfce7', color: '#16a34a' },
     Absent: { bg: '#fee2e2', color: '#dc2626' },
-    Late: { bg: '#fef9c3', color: '#ca8a04' },
+    Late: { bg: '#fef9c3', color: '#a8842f' },
     'On Leave': { bg: '#dbeafe', color: '#1d4ed8' },
     Sick: { bg: '#f5f3ff', color: '#7c3aed' },
-    Pending: { bg: '#fef9c3', color: '#ca8a04' },
+    Pending: { bg: '#fef9c3', color: '#a8842f' },
     Approved: { bg: '#dcfce7', color: '#16a34a' },
     Rejected: { bg: '#fee2e2', color: '#dc2626' },
     Overdue: { bg: '#fee2e2', color: '#dc2626' },
@@ -927,11 +940,11 @@ function printTableReport({ title, subtitle, columns, rows, schoolName = 'Guidan
         <title>${title}</title>
         <style>
           body { font-family: sans-serif; padding: 24px; color: #1e293b; }
-          h1 { font-size: 18px; color: #1e3a5f; margin-bottom: 2px; }
+          h1 { font-size: 18px; color: #1a2f4d; margin-bottom: 2px; }
           h2 { font-size: 13px; color: #64748b; font-weight: 500; margin: 0 0 4px; }
           .sub { font-size: 11px; color: #94a3b8; margin-bottom: 16px; }
           table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          th { background: #1e3a5f; color: white; padding: 6px 8px; text-align: left; }
+          th { background: #1a2f4d; color: white; padding: 6px 8px; text-align: left; }
           td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
           .empty { text-align: center; padding: 30px; color: #94a3b8; }
         </style>
@@ -970,7 +983,7 @@ function ReportExportButtons({ title, subtitle, columns, rows, allRows }) {
       )}
       <button
         onClick={() => generateTableReportPDF({ title, subtitle, columns, rows: activeRows })}
-        style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+        style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
       >
         ⬇️ PDF
       </button>
@@ -1007,7 +1020,7 @@ function MobileActionButtons({ actions }) {
             borderRadius: '8px',
             border: 'none',
             background: action.bg || '#eff6ff',
-            color: action.color || '#1e3a5f',
+            color: action.color || '#1a2f4d',
             fontSize: '12px',
             fontWeight: '700',
             cursor: 'pointer',
@@ -1034,7 +1047,7 @@ const HOUSE_PALETTE = [
   { color: '#1d4ed8', bg: '#dbeafe', light: '#eff6ff', border: '#93c5fd', dark: '#1e40af' },
   { color: '#dc2626', bg: '#fee2e2', light: '#fff1f2', border: '#fca5a5', dark: '#b91c1c' },
   { color: '#16a34a', bg: '#dcfce7', light: '#f0fdf4', border: '#6ee7b7', dark: '#15803d' },
-  { color: '#ca8a04', bg: '#fef9c3', light: '#fefce8', border: '#fde047', dark: '#a16207' },
+  { color: '#a8842f', bg: '#fef9c3', light: '#fefce8', border: '#fde047', dark: '#a16207' },
   { color: '#7c3aed', bg: '#f5f3ff', light: '#faf5ff', border: '#c4b5fd', dark: '#6d28d9' },
   { color: '#0891b2', bg: '#e0f2fe', light: '#f0f9ff', border: '#7dd3fc', dark: '#0e7490' },
   { color: '#be185d', bg: '#fce7f3', light: '#fdf2f8', border: '#f9a8d4', dark: '#9d174d' },
@@ -1044,7 +1057,7 @@ const HOUSE_PALETTE = [
 const statusConfig = {
   Present: { bg: '#dcfce7', color: '#16a34a', icon: '✓' },
   Absent: { bg: '#fee2e2', color: '#dc2626', icon: '✕' },
-  Late: { bg: '#fef9c3', color: '#ca8a04', icon: '⏰' },
+  Late: { bg: '#fef9c3', color: '#a8842f', icon: '⏰' },
   'On Leave': { bg: '#dbeafe', color: '#1d4ed8', icon: '🚪' },
   Sick: { bg: '#f5f3ff', color: '#7c3aed', icon: '🏥' },
   Unmarked: { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
@@ -1846,7 +1859,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
         {/* Overall stats bar */}
         <div style={{
-          background: '#1e3a5f', borderRadius: '14px', padding: '16px 20px',
+          background: '#1a2f4d', borderRadius: '14px', padding: '16px 20px',
           marginBottom: '20px', color: 'white',
         }}>
           <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '10px', fontWeight: '600' }}>
@@ -1915,7 +1928,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                 key={slot.key}
                                 style={{
                                   width: '10px', height: '10px', borderRadius: '50%',
-                                  background: done ? '#16a34a' : gaps ? '#dc2626' : locked ? '#94a3b8' : isCurrent ? '#ca8a04' : '#e2e8f0',
+                                  background: done ? '#16a34a' : gaps ? '#dc2626' : locked ? '#94a3b8' : isCurrent ? '#a8842f' : '#e2e8f0',
                                   boxShadow: isCurrent && !result?.checked && !locked ? '0 0 0 3px rgba(202,138,4,0.2)' : 'none',
                                 }}
                                 title={`${slot.label}: ${done ? 'Complete' : gaps ? 'Gaps found' : locked ? 'Locked — matching roll call not done yet' : isCurrent ? 'Current slot — not checked yet' : 'Not checked'}`}
@@ -1938,7 +1951,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                               <div key={slot.key} style={{ background: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: (result?.checked && result.missing.length > 0) || !gateComplete ? '8px' : 0 }}>
                                   <span style={{ fontSize: '12px', fontWeight: '700', color: '#374151', flex: 1 }}>
-                                    {slot.label} {isCurrent && <span style={{ color: '#ca8a04' }}>(current)</span>}
+                                    {slot.label} {isCurrent && <span style={{ color: '#a8842f' }}>(current)</span>}
                                   </span>
                                   {isCelebrating && (
                                     <span className="hr-pop-in-anim" style={{ fontSize: '16px' }}>✅🎉</span>
@@ -1946,7 +1959,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                   {!result?.checked && gateComplete && (
                                     <button
                                       onClick={() => runDailySlotCheck(houseName, slot.key)}
-                                      style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                                      style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                                     >
                                       Run Check
                                     </button>
@@ -1992,7 +2005,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                               <div style={{ display: 'flex', gap: '5px', marginLeft: 'auto', flexWrap: 'wrap' }}>
                                                 <button
                                                   onClick={() => { if (onCompleteTab) onCompleteTab(t.rootTabId, houseName); else onTabChange?.(t.rootTabId) }}
-                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
+                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
                                                 >
                                                   ✓ Complete
                                                 </button>
@@ -2115,7 +2128,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         </div>
                         {allDone
                           ? <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#dcfce7', color: '#16a34a' }}>✓ Complete</span>
-                          : <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#fef9c3', color: '#ca8a04' }}>{stats.unmarked} pending</span>
+                          : <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#fef9c3', color: '#a8842f' }}>{stats.unmarked} pending</span>
                         }
                       </div>
 
@@ -2124,7 +2137,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         {[
                           { label: 'P', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
                           { label: 'A', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-                          { label: 'L', value: stats.late, color: '#ca8a04', bg: '#fef9c3' },
+                          { label: 'L', value: stats.late, color: '#a8842f', bg: '#fef9c3' },
                           { label: '🚪', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
                           { label: '🏥', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
                         ].map(s => (
@@ -2165,7 +2178,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                 </div>
                                 <button
                                   onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
-                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1e3a5f', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
+                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
                                 >
                                   📋 Complete Missed Roll Call
                                 </button>
@@ -2288,11 +2301,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                       {activeAlertPanel === 'unmarked' && (
                         <AlertStudentPanel
                           students={unmarkedStudentsAll}
-                          accentColor="#ca8a04"
+                          accentColor="#a8842f"
                           actions={[
                             { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
                             { label: '✕ Absent', status: 'Absent', bg: '#fee2e2', color: '#dc2626' },
-                            { label: '⏰ Late', status: 'Late', bg: '#fef9c3', color: '#ca8a04' },
+                            { label: '⏰ Late', status: 'Late', bg: '#fef9c3', color: '#a8842f' },
                             { label: '🚪 Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
                           ]}
                           onMark={handleMark}
@@ -2417,7 +2430,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => handleCatchUpRollCall(selectedHouse)}
-                style={{ ...btn('#1e3a5f'), fontSize: '12px', padding: '8px 16px' }}
+                style={{ ...btn('#1a2f4d'), fontSize: '12px', padding: '8px 16px' }}
               >
                 📋 Complete Missed Roll Call
               </button>
@@ -2439,7 +2452,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             { icon: '👥', label: 'Total', value: stats.total, color: pal.color, bg: pal.bg },
             { icon: '✅', label: 'Present', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
             { icon: '❌', label: 'Absent', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-            { icon: '⏰', label: 'Late', value: stats.late, color: '#ca8a04', bg: '#fef9c3' },
+            { icon: '⏰', label: 'Late', value: stats.late, color: '#a8842f', bg: '#fef9c3' },
             { icon: '🏥', label: 'Sick', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
             { icon: '🚪', label: 'On Leave', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
             { icon: '⚪', label: 'Unmarked', value: stats.unmarked, color: '#94a3b8', bg: '#f1f5f9' },
@@ -2838,7 +2851,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', flex: 1 }}>
                               {reasonGiven === 'Nothing to report' ? '✅ Confirmed — nothing to report' : `✅ Skipped — reason: "${reasonGiven}"`}
                               {reasonGiven === 'Nothing to report' && streak >= 8 && (
-                                <div style={{ color: '#ca8a04', fontWeight: '600', marginTop: '3px' }}>
+                                <div style={{ color: '#a8842f', fontWeight: '600', marginTop: '3px' }}>
                                   📋 This has been "Nothing to report" for {t.label} in most recent sessions here — worth double-checking it's genuinely quiet.
                                 </div>
                               )}
@@ -2908,7 +2921,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     const firstUnmarked = rollCallStudents.findIndex(s => getStatus(s.id) === 'Unmarked')
                     if (firstUnmarked >= 0) { setRollCallIndex(firstUnmarked); setView('rollcall') }
                   }}
-                  style={{ ...btn('#ca8a04'), padding: '12px 24px' }}
+                  style={{ ...btn('#a8842f'), padding: '12px 24px' }}
                 >
                   ⏳ Mark Remaining
                 </button>
@@ -3087,7 +3100,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             {/* Secondary status buttons */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
               {[
-                { status: 'Late', bg: '#ca8a04', label: '⏰ Late' },
+                { status: 'Late', bg: '#a8842f', label: '⏰ Late' },
                 { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick' },
                 { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave' },
               ].map(({ status, bg, label }) => (
@@ -3234,8 +3247,8 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
       <div>
         {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
         <div style={mobileStatGrid}>
-          <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" compact />
-          <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" compact />
+          <StatCard icon="📋" label="Raised" value={stats.raised} color="#1a2f4d" bg="#eff6ff" compact />
+          <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#a8842f" bg="#fef9c3" compact />
           <StatCard icon="🚨" label="Urgent" value={stats.urgent} color="#dc2626" bg="#fee2e2" compact />
           <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" compact />
         </div>
@@ -3263,7 +3276,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
         </div>
         {showForm && (
           <div style={{ ...mobileCard, marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>🔧 New Complaint</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a2f4d', margin: '0 0 12px' }}>New Complaint</h3>
             <form onSubmit={handleSave}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -3285,9 +3298,9 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
         )}
         <MobileCardList>
           {filtered.map(r => (
-            <MobileRecordCard key={r.id} accentColor={r.priority === 'Urgent' ? '#dc2626' : r.priority === 'High' ? '#ca8a04' : '#1e3a5f'}>
+            <MobileRecordCard key={r.id} accentColor={r.priority === 'Urgent' ? '#dc2626' : r.priority === 'High' ? '#a8842f' : '#1a2f4d'}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                <div><span style={{ fontSize: '12px', fontWeight: '700', color: '#1e3a5f', background: '#eff6ff', padding: '2px 8px', borderRadius: '99px' }}>{r.category}</span><span style={{ marginLeft: '6px', ...statusStyle(r.priority) }}>{r.priority}</span></div>
+                <div><span style={{ fontSize: '12px', fontWeight: '700', color: '#1a2f4d', background: '#eff6ff', padding: '2px 8px', borderRadius: '99px' }}>{r.category}</span><span style={{ marginLeft: '6px', ...statusStyle(r.priority) }}>{r.priority}</span></div>
                 <span style={statusStyle(r.status)}>{r.status}</span>
               </div>
               <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', marginBottom: '4px' }}>📍 {r.location}{r.room_number ? ` · Room ${r.room_number}` : ''}</div>
@@ -3295,7 +3308,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
               {r.status !== 'Closed' && r.status !== 'Resolved' && (
                 <MobileActionButtons actions={[
                   ...(r.status === 'Raised' ? [{ label: 'Assign', onClick: () => handleStatusChange(r.id, 'Assigned'), bg: '#dbeafe', color: '#1d4ed8' }] : []),
-                  ...(r.status === 'Assigned' ? [{ label: 'Start Work', onClick: () => handleStatusChange(r.id, 'In Progress'), bg: '#fef9c3', color: '#ca8a04' }] : []),
+                  ...(r.status === 'Assigned' ? [{ label: 'Start Work', onClick: () => handleStatusChange(r.id, 'In Progress'), bg: '#fef9c3', color: '#a8842f' }] : []),
                   ...(r.status === 'In Progress' ? [{ label: 'Resolve', onClick: () => handleStatusChange(r.id, 'Resolved'), bg: '#dcfce7', color: '#16a34a' }] : []),
                   { label: 'Close', onClick: () => handleStatusChange(r.id, 'Closed'), bg: '#e5e7eb', color: '#374151' },
                 ]} />
@@ -3312,8 +3325,8 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
     <div>
       {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
       <div style={statGrid(130)}>
-        <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a5f" bg="#eff6ff" />
-        <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="📋" label="Raised" value={stats.raised} color="#1a2f4d" bg="#eff6ff" />
+        <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#a8842f" bg="#fef9c3" />
         <StatCard icon="🚨" label="Urgent Open" value={stats.urgent} color="#dc2626" bg="#fee2e2" />
         <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" />
       </div>
@@ -3343,7 +3356,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
       </div>
       {showForm && (
         <div style={{ ...card, marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>🔧 New Maintenance Request</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a2f4d', marginBottom: '16px' }}>New Maintenance Request</h3>
           <form onSubmit={handleSave}>
             <div style={grid2}>
               <div><label style={lbl}>Category</label><select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{MAINTENANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
@@ -3375,12 +3388,12 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
       {loading ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div> : (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 900 }}>
-            <thead><tr style={{ background: '#1e3a5f' }}>{['#', 'Category', 'Priority', 'Location', 'Room', 'Description', 'Status', 'Assigned', 'Raised', 'Actions'].map(h => <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: '#1a2f4d' }}>{['#', 'Category', 'Priority', 'Location', 'Room', 'Description', 'Status', 'Assigned', 'Raised', 'Actions'].map(h => <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map((r, i) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                   <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
-                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e3a5f' }}>{r.category}</td>
+                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1a2f4d' }}>{r.category}</td>
                   <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.priority)}>{r.priority}</span></td>
                   <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.location}</td>
                   <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: 'monospace' }}>{r.room_number || '—'}</td>
@@ -3391,7 +3404,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
                   <td style={{ padding: '11px 14px' }}>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       {r.status === 'Raised' && isAdmin && <button onClick={() => handleStatusChange(r.id, 'Assigned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>Assign</button>}
-                      {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#ca8a04'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
+                      {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#a8842f'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
                       {r.status === 'In Progress' && <button onClick={() => handleStatusChange(r.id, 'Resolved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>Resolve</button>}
                       {r.status === 'Resolved' && <button onClick={() => handleStatusChange(r.id, 'Closed')} style={{ ...btn('#374151'), fontSize: '11px', padding: '4px 8px' }}>Close</button>}
                       {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>}
@@ -3749,7 +3762,7 @@ function MonthlyCertificateCard() {
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #1e3a5f 0%, #0f2744 100%)',
+      background: 'linear-gradient(135deg, #1a2f4d 0%, #0f2744 100%)',
       borderRadius: '16px', padding: '22px', color: 'white',
       boxShadow: '0 4px 16px rgba(30,58,95,0.25)',
     }}>
@@ -3890,7 +3903,7 @@ function HMRollCallReportTab() {
     return { sessionsExpected, sessionsComplete, completionPct, onTimePct, daysBlocked }
   }
 
-  const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#ca8a04' : '#dc2626'
+  const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#a8842f' : '#dc2626'
   const scoreBg = (pct) => pct === null ? '#f1f5f9' : pct >= 90 ? '#dcfce7' : pct >= 70 ? '#fef9c3' : '#fee2e2'
 
   // Flattened one-row-per-house-per-day-per-session view, for export only.
@@ -3922,7 +3935,7 @@ function HMRollCallReportTab() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>📆 Roll Call Report</h2>
+          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>Roll Call Report</h2>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>{startStr} → {endStr}</p>
         </div>
         <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '10px' }}>
@@ -3932,7 +3945,7 @@ function HMRollCallReportTab() {
               onClick={() => setRangeMode(m.key)}
               style={{
                 padding: '8px 14px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-                background: rangeMode === m.key ? '#1e3a5f' : 'transparent',
+                background: rangeMode === m.key ? '#1a2f4d' : 'transparent',
                 color: rangeMode === m.key ? 'white' : '#64748b',
               }}
             >
@@ -3975,7 +3988,7 @@ function HMRollCallReportTab() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '8px' }}>
                     {[
-                      { label: 'Sessions', value: `${summary.sessionsComplete}/${summary.sessionsExpected}`, color: '#1e3a5f', bg: '#eff6ff' },
+                      { label: 'Sessions', value: `${summary.sessionsComplete}/${summary.sessionsExpected}`, color: '#1a2f4d', bg: '#eff6ff' },
                       { label: 'Completion', value: summary.completionPct === null ? '—' : `${summary.completionPct}%`, color: scoreColor(summary.completionPct), bg: scoreBg(summary.completionPct) },
                       { label: 'On-Time Rate', value: summary.onTimePct === null ? '—' : `${summary.onTimePct}%`, color: scoreColor(summary.onTimePct), bg: scoreBg(summary.onTimePct) },
                       { label: 'Days Blocked', value: summary.daysBlocked, color: summary.daysBlocked > 0 ? '#dc2626' : '#16a34a', bg: summary.daysBlocked > 0 ? '#fee2e2' : '#dcfce7' },
@@ -4005,7 +4018,7 @@ function HMRollCallReportTab() {
                             const n = getDayStats(houseName, d, 'night')
                             const cellStyle = (s) => ({
                               padding: '8px 10px',
-                              color: s.pct === null ? '#94a3b8' : s.complete ? (s.onTime === false ? '#ca8a04' : '#16a34a') : '#dc2626',
+                              color: s.pct === null ? '#94a3b8' : s.complete ? (s.onTime === false ? '#a8842f' : '#16a34a') : '#dc2626',
                               fontWeight: '700',
                             })
                             return (
@@ -4063,7 +4076,7 @@ function HMPerformanceRanking() {
   const scoreColor = (score) => {
     if (score === null) return '#94a3b8'
     if (score >= 80) return '#16a34a'
-    if (score >= 60) return '#ca8a04'
+    if (score >= 60) return '#a8842f'
     return '#dc2626'
   }
   const scoreBg = (score) => {
@@ -4088,7 +4101,7 @@ function HMPerformanceRanking() {
     <div style={{ background: 'white', borderRadius: '14px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
         <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1e293b', margin: 0 }}>
-          🏆 Housemaster Performance — Last 7 Days
+          Housemaster Performance — Last 7 Days
         </h3>
       </div>
       <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '16px' }}>
@@ -4149,7 +4162,7 @@ function HMPerformanceRanking() {
                       {r.score === null ? '—' : `${r.score}%`}
                     </div>
                     <span style={{
-                      fontSize: '14px', color: isExpanded ? '#1e3a5f' : '#94a3b8', transition: 'transform 0.2s',
+                      fontSize: '14px', color: isExpanded ? '#1a2f4d' : '#94a3b8', transition: 'transform 0.2s',
                       transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'inline-flex',
                       width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center',
                       borderRadius: '50%', background: isExpanded ? '#e3ecf7' : 'transparent',
@@ -4250,6 +4263,135 @@ const SealDot = ({ color, size = 9 }) => (
   }} />
 )
 
+// ══════════════════════════════════════════════════════════════
+//  MEAL HEADCOUNT — animated count-up card for HM Dashboard
+// ══════════════════════════════════════════════════════════════
+//  "To feed" = Present (morning roll call) minus students currently in
+//  Sickbay (own kitchen/tray) minus students on approved/pending Leave
+//  today (not on campus) — the number the kitchen/mess actually needs
+//  for meal preparation. Animates on mount and whenever the underlying
+//  count changes, so a housemaster visually sees the number tick to its
+//  new value rather than just snapping.
+// ══════════════════════════════════════════════════════════════
+function useCountUp(target, durationMs = 700) {
+  const [display, setDisplay] = useState(0)
+  const fromRef = useRef(0)
+  useEffect(() => {
+    const from = fromRef.current
+    const to = Math.max(0, Number(target) || 0)
+    if (from === to) { setDisplay(to); return }
+    const start = performance.now()
+    let raf
+    const tick = (now) => {
+      const elapsed = now - start
+      const t = Math.min(1, elapsed / durationMs)
+      // ease-out cubic — fast start, settles gently on the final count
+      const eased = 1 - Math.pow(1 - t, 3)
+      const value = Math.round(from + (to - from) * eased)
+      setDisplay(value)
+      if (t < 1) raf = requestAnimationFrame(tick)
+      else fromRef.current = to
+    }
+    raf = requestAnimationFrame(tick)
+    return () => raf && cancelAnimationFrame(raf)
+  }, [target, durationMs])
+  return display
+}
+
+function MealHeadcountCard({ presentCount, sickbayCount, leaveCount, mobile, onSendToKitchen }) {
+  const toFeed = Math.max(0, presentCount - sickbayCount - leaveCount)
+  const animatedCount = useCountUp(toFeed)
+  const [pulse, setPulse] = useState(false)
+  const prevToFeed = useRef(toFeed)
+  useEffect(() => {
+    if (prevToFeed.current !== toFeed) {
+      setPulse(true)
+      const t = setTimeout(() => setPulse(false), 650)
+      prevToFeed.current = toFeed
+      return () => clearTimeout(t)
+    }
+  }, [toFeed])
+
+  const breakdown = [
+    { label: 'Present', value: presentCount, color: MD.color.success, sign: '' },
+    { label: 'Sickbay tray', value: sickbayCount, color: '#7c3aed', sign: '−' },
+    { label: 'On Leave', value: leaveCount, color: MD.color.primary, sign: '−' },
+  ]
+
+  return (
+    <div style={{
+      ...(mobile ? mobileCard : card),
+      background: `linear-gradient(135deg, ${MD.color.primary} 0%, #14284a 100%)`,
+      border: 'none', color: 'white', position: 'relative', overflow: 'hidden',
+    }}>
+      <style>{`
+        @keyframes hr-meal-pulse {
+          0% { transform: scale(1); }
+          40% { transform: scale(1.08); }
+          100% { transform: scale(1); }
+        }
+        .hr-meal-count-anim { animation: hr-meal-pulse 0.6s ease-out; display: inline-block; }
+        @keyframes hr-meal-steam {
+          0%, 100% { transform: translateY(0) scaleY(1); opacity: 0.5; }
+          50% { transform: translateY(-6px) scaleY(1.15); opacity: 0.9; }
+        }
+        .hr-meal-steam { animation: hr-meal-steam 2.2s ease-in-out infinite; }
+      `}</style>
+      <div style={{ position: 'absolute', top: '-30px', right: '-20px', width: '140px', height: '140px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.08)' }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: mobile ? '10px' : '14px' }}>
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', color: MD.color.secondary }}>
+            Meal Headcount
+          </div>
+          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '2px' }}>For mess/kitchen arrangement · {today()}</div>
+        </div>
+        <span className="hr-meal-steam" style={{ fontSize: mobile ? '22px' : '26px' }}>🍽️</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: mobile ? '12px' : '16px' }}>
+        <span key={toFeed} className="hr-meal-count-anim" style={{
+          fontSize: mobile ? '42px' : '52px', fontWeight: '800', lineHeight: 1,
+          fontFamily: 'Georgia, serif', color: 'white',
+        }}>
+          {animatedCount}
+        </span>
+        <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', fontWeight: '600' }}>students to feed</span>
+      </div>
+
+      <div style={{
+        display: 'flex', borderTop: '1px solid rgba(255,255,255,0.15)',
+        borderBottom: onSendToKitchen ? '1px solid rgba(255,255,255,0.15)' : 'none',
+        marginBottom: onSendToKitchen ? (mobile ? '10px' : '14px') : 0,
+      }}>
+        {breakdown.map((b, idx) => (
+          <div key={b.label} style={{
+            flex: 1, textAlign: 'center', padding: mobile ? '10px 4px' : '12px 8px',
+            borderLeft: idx > 0 ? '1px dashed rgba(255,255,255,0.15)' : 'none',
+          }}>
+            <div style={{ fontSize: mobile ? '15px' : '18px', fontWeight: '800', color: 'white' }}>
+              {b.sign}{b.value}
+            </div>
+            <div style={{ fontSize: mobile ? '9px' : '10px', color: 'rgba(255,255,255,0.6)', fontWeight: '600', marginTop: '2px' }}>{b.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {onSendToKitchen && (
+        <button
+          onClick={onSendToKitchen}
+          style={{
+            width: '100%', background: MD.color.secondary, color: '#3a2a00', border: 'none',
+            borderRadius: MD.radius.control, padding: mobile ? '10px' : '11px 16px',
+            fontWeight: '700', fontSize: '13px', cursor: 'pointer',
+          }}
+        >
+          📤 Send Headcount to Kitchen
+        </button>
+      )}
+    </div>
+  )
+}
+
 function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [attendanceToday, setAttendanceToday] = useState([])
@@ -4316,8 +4458,8 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
     { id: 'leave', label: '🚪 Leave', icon: '🚪', color: '#1d4ed8', bg: '#dbeafe', desc: `${leaveToday.length} requests` },
     { id: 'sickbay', label: '🏥 Sickbay', icon: '🏥', color: '#7c3aed', bg: '#f5f3ff', desc: `${sickbayToday.length} admitted` },
     { id: 'discipline', label: '⚠️ Discipline', icon: '⚠️', color: '#dc2626', bg: '#fee2e2', desc: `${disciplineOpen.length} open` },
-    { id: 'maintenance', label: '🔧 Repairs', icon: '🔧', color: '#ca8a04', bg: '#fef9c3', desc: `${maintenanceOpen.length} urgent` },
-    { id: 'journal', label: '📝 Journal', icon: '📝', color: '#1e3a5f', bg: '#eff6ff', desc: 'Daily notes' },
+    { id: 'maintenance', label: '🔧 Repairs', icon: '🔧', color: '#a8842f', bg: '#fef9c3', desc: `${maintenanceOpen.length} urgent` },
+    { id: 'journal', label: '📝 Journal', icon: '📝', color: '#1a2f4d', bg: '#eff6ff', desc: 'Daily notes' },
     { id: 'doubtsession', label: '🙋 Doubt', icon: '🙋', color: '#b45309', bg: '#fef9c3', desc: `${myDoubtTasks.length} pending` },
   ]
 
@@ -4438,6 +4580,16 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
               </>
             )
           })()}
+        </div>
+
+        <div style={{ marginBottom: '14px' }}>
+          <MealHeadcountCard
+            presentCount={presentCount}
+            sickbayCount={sickbayToday.length}
+            leaveCount={leaveToday.length}
+            mobile
+            onSendToKitchen={() => onTabChange?.('kitchen')}
+          />
         </div>
 
         {isAdmin && (
@@ -4604,6 +4756,12 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
             )}
           </div>
         </div>
+        <MealHeadcountCard
+          presentCount={presentCount}
+          sickbayCount={sickbayToday.length}
+          leaveCount={leaveToday.length}
+          onSendToKitchen={() => onTabChange?.('kitchen')}
+        />
       </div>
 
       {isAdmin && (
@@ -4671,7 +4829,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
     return f
   }, [entries, date, search])
 
-  const categoryColors = { General: '#1e3a5f', Assembly: '#16a34a', Discipline: '#dc2626', Medical: '#7c3aed', Maintenance: '#ca8a04', 'Parent Call': '#1d4ed8', 'Staff Handover': '#0891b2', Inspection: '#374151', Event: '#059669' }
+  const categoryColors = { General: '#1a2f4d', Assembly: '#16a34a', Discipline: '#dc2626', Medical: '#7c3aed', Maintenance: '#a8842f', 'Parent Call': '#1d4ed8', 'Staff Handover': '#0891b2', Inspection: '#374151', Event: '#059669' }
 
   if (mobile) {
     return (
@@ -4711,7 +4869,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
                 <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={4} placeholder="Write your notes here..." required style={{ ...inp, resize: 'vertical' }} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151' }}><input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} style={{ width: '20px', height: '20px' }} />🚩 Flag as important</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1a2f4d'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
                   <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
                 </div>
               </div>
@@ -4720,10 +4878,10 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
         )}
         <MobileCardList>
           {filtered.map(e => (
-            <MobileRecordCard key={e.id} accentColor={categoryColors[e.category] || '#1e3a5f'}>
+            <MobileRecordCard key={e.id} accentColor={categoryColors[e.category] || '#1a2f4d'}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a5f') + '15', color: categoryColors[e.category] || '#1e3a5f' }}>{e.category}</span>
+                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '99px', background: (categoryColors[e.category] || '#1a2f4d') + '15', color: categoryColors[e.category] || '#1a2f4d' }}>{e.category}</span>
                   {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
                 </div>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>{e.entry_time}</span>
@@ -4769,7 +4927,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
       </div>
       {showForm && (
         <div style={{ ...card, marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>📝 New Journal Entry</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a2f4d', marginBottom: '16px' }}>New Journal Entry</h3>
           <form onSubmit={handleSave}>
             <div style={grid2}>
               <div><label style={lbl}>Date *</label><input type="date" value={form.entry_date} onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))} required style={inp} /></div>
@@ -4781,7 +4939,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
               <div style={{ gridColumn: '1/-1' }}><label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151', cursor: 'pointer' }}><input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} />🚩 Flag as important</label></div>
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Entry'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save Entry'}</button>
               <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -4789,10 +4947,10 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {filtered.map(e => (
-          <div key={e.id} style={{ background: 'white', borderRadius: '12px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${categoryColors[e.category] || '#1e3a5f'}` }}>
+          <div key={e.id} style={{ background: 'white', borderRadius: '12px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${categoryColors[e.category] || '#1a2f4d'}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 10px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a5f') + '15', color: categoryColors[e.category] || '#1e3a5f' }}>{e.category}</span>
+                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 10px', borderRadius: '99px', background: (categoryColors[e.category] || '#1a2f4d') + '15', color: categoryColors[e.category] || '#1a2f4d' }}>{e.category}</span>
                 {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
                 <span style={{ fontSize: '13px', color: '#64748b' }}>{e.entry_date} · {e.entry_time}</span>
               </div>
@@ -4933,7 +5091,7 @@ create table if not exists day_scholar_records (
       <div>
         {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
         <div style={mobileStatGrid}>
-          <StatCard icon="📋" label="Total" value={records.length} color="#1e3a5f" bg="#eff6ff" compact />
+          <StatCard icon="📋" label="Total" value={records.length} color="#1a2f4d" bg="#eff6ff" compact />
           <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" compact />
           <StatCard icon="🚌" label="With Transport" value={withTransport} color="#7c3aed" bg="#f5f3ff" compact />
           <StatCard icon="⏸" label="Inactive" value={inactive} color="#dc2626" bg="#fee2e2" compact />
@@ -4962,7 +5120,7 @@ create table if not exists day_scholar_records (
         </div>
         {showForm && (
           <div style={{ ...mobileCard, marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 12px' }}>{editRec ? '✏️ Edit Record' : '➕ New Day Scholar'}</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a2f4d', margin: '0 0 12px' }}>{editRec ? 'Edit Record' : 'New Day Scholar'}</h3>
             <form onSubmit={handleSave}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div>
@@ -4995,7 +5153,7 @@ create table if not exists day_scholar_records (
                 </div>
                 <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Remarks..." rows={2} style={{ ...inp, resize: 'vertical' }} />
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1a2f4d'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
                   <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
                 </div>
               </div>
@@ -5015,7 +5173,7 @@ create table if not exists day_scholar_records (
               {r.parent_name && <div style={{ fontSize: '12px', color: '#374151' }}>👨‍👩‍👦 {r.parent_name} {r.parent_phone ? `· 📞 ${r.parent_phone}` : ''}</div>}
               {r.transport_route && <div style={{ fontSize: '12px', color: '#7c3aed', marginTop: '4px' }}>🚌 {r.transport_route} {r.pickup_point ? `· 📍 ${r.pickup_point}` : ''}</div>}
               <MobileActionButtons actions={[
-                { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
+                { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1a2f4d' },
                 ...(isAdmin ? [{ label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' }] : []),
               ]} />
             </MobileRecordCard>
@@ -5030,7 +5188,7 @@ create table if not exists day_scholar_records (
     <div>
       {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
       <div style={statGrid()}>
-        <StatCard icon="📋" label="Total Day Scholars" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="📋" label="Total Day Scholars" value={records.length} color="#1a2f4d" bg="#eff6ff" />
         <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" />
         <StatCard icon="🚌" label="With Transport" value={withTransport} color="#7c3aed" bg="#f5f3ff" />
         <StatCard icon="⏸" label="Inactive" value={inactive} color="#dc2626" bg="#fee2e2" />
@@ -5071,8 +5229,8 @@ create table if not exists day_scholar_records (
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '4px' }}>
-            {editRec ? '✏️ Edit Day Scholar Record' : '➕ New Day Scholar Record'}
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a2f4d', marginBottom: '4px' }}>
+            {editRec ? 'Edit Day Scholar Record' : 'New Day Scholar Record'}
           </h3>
           <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>🔗 Link to a student from the Students module or enter manually</p>
           <form onSubmit={handleSave}>
@@ -5110,7 +5268,7 @@ create table if not exists day_scholar_records (
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Record'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save Record'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -5123,7 +5281,7 @@ create table if not exists day_scholar_records (
           <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 1000 }}>
               <thead>
-                <tr style={{ background: '#1e3a5f' }}>
+                <tr style={{ background: '#1a2f4d' }}>
                   {['#', 'GCC', 'Student', 'Class', 'Parent', 'Phone', 'Route', 'Pickup', 'Vehicle', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -5136,7 +5294,7 @@ create table if not exists day_scholar_records (
                     onMouseLeave={e => e.currentTarget.style.background = 'white'}
                   >
                     <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 12 }}>{i + 1}</td>
-                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -5184,7 +5342,7 @@ const CATEGORY_STYLE = {
   Routine: { color: '#0891b2', bg: '#e0f2fe' },
   Physical: { color: '#16a34a', bg: '#dcfce7' },
   Assembly: { color: '#7c3aed', bg: '#f5f3ff' },
-  Meals: { color: '#ca8a04', bg: '#fef9c3' },
+  Meals: { color: '#a8842f', bg: '#fef9c3' },
   Academic: { color: '#1d4ed8', bg: '#dbeafe' },
   Special: { color: '#be185d', bg: '#fce7f3' },
   Other: { color: '#374151', bg: '#f1f5f9' },
@@ -5325,7 +5483,7 @@ function ScheduleTab({ currentUser }) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>🏠 Hostel Daily Activities</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>Hostel Daily Activities</h2>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>
             Today is a <strong style={{ color: todayDayType === 'sunday' ? '#16a34a' : '#1d4ed8' }}>
               {todayDayType === 'sunday' ? 'Sunday / Rest Day' : 'Weekday'}
@@ -5360,7 +5518,7 @@ function ScheduleTab({ currentUser }) {
         {TYPE_TABS.map(t => (
           <button key={t.id} onClick={() => { setType(t.id); setCatFilter('All') }} style={{
             flex: 1, padding: '9px 10px', border: 'none', borderRadius: '8px',
-            background: type === t.id ? '#1e3a5f' : 'transparent',
+            background: type === t.id ? '#1a2f4d' : 'transparent',
             color: type === t.id ? 'white' : '#64748b',
             cursor: 'pointer', fontSize: '13px', fontWeight: type === t.id ? 700 : 500,
           }}>{t.label}</button>
@@ -5368,7 +5526,7 @@ function ScheduleTab({ currentUser }) {
       </div>
 
       {/* Progress bar */}
-      <div style={{ background: '#1e3a5f', borderRadius: '14px', padding: '16px 20px', marginBottom: '16px', color: 'white' }}>
+      <div style={{ background: '#1a2f4d', borderRadius: '14px', padding: '16px 20px', marginBottom: '16px', color: 'white' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
           <div>
             <div style={{ fontSize: '13px', fontWeight: '700', opacity: 0.8 }}>TODAY'S ACTIVITY PROGRESS</div>
@@ -5469,7 +5627,7 @@ function ScheduleTab({ currentUser }) {
                 </div>
                 {adminMode && (
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button onClick={() => setEditRow(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#eff6ff', color: '#1e3a5f', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
+                    <button onClick={() => setEditRow(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#eff6ff', color: '#1a2f4d', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
                     <button onClick={() => handleDelete(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '12px' }}>✕</button>
                   </div>
                 )}
@@ -5483,7 +5641,7 @@ function ScheduleTab({ currentUser }) {
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 560 }}>
             <thead>
-              <tr style={{ background: '#1e3a5f' }}>
+              <tr style={{ background: '#1a2f4d' }}>
                 {['#', 'From', 'To', 'Activity', 'Category', adminMode ? 'Actions' : '', '✓ Done'].map((h, i) => (
                   <th key={i} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -5517,7 +5675,7 @@ function ScheduleTab({ currentUser }) {
                 return (
                   <tr key={r.id} style={{ background: isDone ? '#f0fdf4' : 'white', borderBottom: '1px solid #f1f5f9', opacity: isDone ? 0.75 : 1 }}>
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{r.from_time}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1a2f4d' }}>{r.from_time}</td>
                     <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to_time || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
@@ -5529,7 +5687,7 @@ function ScheduleTab({ currentUser }) {
                     {adminMode ? (
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => setEditRow(r.id)} style={{ background: '#eff6ff', color: '#1e3a5f', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
+                          <button onClick={() => setEditRow(r.id)} style={{ background: '#eff6ff', color: '#1a2f4d', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
                           <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✕ Del</button>
                         </div>
                       </td>
@@ -5567,11 +5725,11 @@ const emptyMD = {
 }
 
 const SHIFT_STYLE = {
-  'Breakfast': { color: '#ca8a04', bg: '#fef9c3', icon: '🌅' },
+  'Breakfast': { color: '#a8842f', bg: '#fef9c3', icon: '🌅' },
   'Lunch': { color: '#16a34a', bg: '#dcfce7', icon: '☀️' },
   'Tea': { color: '#0891b2', bg: '#e0f2fe', icon: '☕' },
   'Dinner': { color: '#7c3aed', bg: '#f5f3ff', icon: '🌙' },
-  'Full Day': { color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
+  'Full Day': { color: '#1a2f4d', bg: '#eff6ff', icon: '📋' },
 }
 
 function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
@@ -5695,7 +5853,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
         placeholder={`Search ${label.toLowerCase()}...`}
       />
       {form[`staff${slot}`] && (
-        <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a5f', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1a2f4d', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>✅ {form[`staff${slot}`]}</span>
           <button type="button" onClick={() => clearStaff(slot)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕ Clear</button>
         </div>
@@ -5719,7 +5877,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
         <button onClick={() => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }}
           style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>‹</button>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f' }}>{MONTHS[month]} {year}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#1a2f4d' }}>{MONTHS[month]} {year}</div>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
             {monthRoster.length} duties assigned ·{' '}
             {uncovered.length > 0
@@ -5735,7 +5893,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
       {/* ── Today's duties banner */}
       {todayDuties.length > 0 && (
         <div style={{
-          background: '#1e3a5f', borderRadius: 12, padding: '14px 18px',
+          background: '#1a2f4d', borderRadius: 12, padding: '14px 18px',
           marginBottom: 16, color: 'white',
         }}>
           <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -5774,9 +5932,9 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
 
       {/* ── Stats */}
       <div style={mobile ? mobileStatGrid : statGrid(130)}>
-        <StatCard icon="📋" label="Total" value={stats.total} color="#1e3a5f" bg="#eff6ff" compact={mobile} />
+        <StatCard icon="📋" label="Total" value={stats.total} color="#1a2f4d" bg="#eff6ff" compact={mobile} />
         <StatCard icon="✅" label="Completed" value={stats.completed} color="#16a34a" bg="#dcfce7" compact={mobile} />
-        <StatCard icon="🟡" label="On Duty" value={stats.onDuty} color="#ca8a04" bg="#fef9c3" compact={mobile} />
+        <StatCard icon="🟡" label="On Duty" value={stats.onDuty} color="#a8842f" bg="#fef9c3" compact={mobile} />
         <StatCard icon="❌" label="Absent" value={stats.absent} color="#dc2626" bg="#fee2e2" compact={mobile} />
       </div>
 
@@ -5786,7 +5944,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
           {['All', ...MESS_SHIFTS].map(s => (
             <button key={s} onClick={() => setShiftFilter(s)} style={{
               padding: '6px 12px', borderRadius: 99, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              background: shiftFilter === s ? '#1e3a5f' : '#f1f5f9',
+              background: shiftFilter === s ? '#1a2f4d' : '#f1f5f9',
               color: shiftFilter === s ? 'white' : '#64748b',
             }}>{s === 'All' ? '📋 All' : `${SHIFT_STYLE[s]?.icon || ''} ${s}`}</button>
           ))}
@@ -5816,8 +5974,8 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
       {/* ── Form */}
       {showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>
-            {editRec ? '✏️ Edit Mess Duty' : '➕ Assign Mess Duty'}
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 4 }}>
+            {editRec ? 'Edit Mess Duty' : 'Assign Mess Duty'}
           </h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Staff pulled live from Staff Profiles · Up to 3 staff per duty slot</p>
           <form onSubmit={handleSave}>
@@ -5860,7 +6018,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>
                 {saving ? '⏳ Saving...' : '✅ Save Duty'}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
@@ -5911,7 +6069,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
                 {r.notes && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginBottom: 8 }}>📝 {r.notes}</div>}
                 {isAdmin && (
                   <MobileActionButtons actions={[
-                    { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
+                    { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1a2f4d' },
                     { label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' },
                   ]} />
                 )}
@@ -5924,7 +6082,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
         <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 780 }}>
             <thead>
-              <tr style={{ background: '#1e3a5f' }}>
+              <tr style={{ background: '#1a2f4d' }}>
                 {['#', 'Date', 'Shift', 'Staff 1', 'Staff 2', 'Staff 3', 'Status', 'Notes', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -6135,9 +6293,9 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
     <div>
       {/* FIXED: was repeat(4,1fr) */}
       <div style={statGrid()}>
-        <StatCard icon="📋" label="Total" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="📋" label="Total" value={records.length} color="#1a2f4d" bg="#eff6ff" />
         <StatCard icon="🔴" label="Open" value={open} color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#a8842f" bg="#fef9c3" />
         <StatCard icon="🟢" label="Resolved" value={resolved} color="#16a34a" bg="#dcfce7" />
       </div>
 
@@ -6173,7 +6331,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>{editRec ? '✏️ Edit Record' : '➕ New Discipline Record'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 4 }}>{editRec ? 'Edit Record' : 'New Discipline Record'}</h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
@@ -6198,7 +6356,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -6211,7 +6369,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
               <thead>
-                <tr style={{ background: '#1e3a5f' }}>
+                <tr style={{ background: '#1a2f4d' }}>
                   {['#', 'Date', 'GCC', 'Student', 'Batch', 'House', 'Incident', 'Action', 'Reported By', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                   ))}
@@ -6225,7 +6383,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -6362,7 +6520,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
     <div>
       {/* FIXED: was repeat(3,1fr) */}
       <div style={statGrid(160)}>
-        <StatCard icon="🏥" label="Total Records" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🏥" label="Total Records" value={records.length} color="#1a2f4d" bg="#eff6ff" />
         <StatCard icon="🛏️" label="Currently Admitted" value={admitted} color="#1d4ed8" bg="#dbeafe" />
         <StatCard icon="✅" label="Discharged" value={discharged} color="#16a34a" bg="#dcfce7" />
       </div>
@@ -6400,7 +6558,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 4 }}>{editRec ? '✏️ Edit Record' : '➕ New Sickbay Record'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 4 }}>{editRec ? 'Edit Record' : 'New Sickbay Record'}</h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
@@ -6427,7 +6585,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
               <div><label style={lbl}>Status</label><select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}><option>Admitted</option><option>Discharged</option></select></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -6440,7 +6598,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1000 }}>
               <thead>
-                <tr style={{ background: '#1e3a5f' }}>
+                <tr style={{ background: '#1a2f4d' }}>
                   {['#', 'Date', 'GCC', 'Student', 'Batch', 'House', 'Hostel Type', 'Complaint', 'Treatment', 'Referred', 'Attended By', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                   ))}
@@ -6454,7 +6612,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -6503,7 +6661,7 @@ const HOUSE_COLORS = [
   { color: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' },
   { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
   { color: '#16a34a', bg: '#dcfce7', border: '#6ee7b7' },
-  { color: '#ca8a04', bg: '#fef9c3', border: '#fde047' },
+  { color: '#a8842f', bg: '#fef9c3', border: '#fde047' },
   { color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
   { color: '#0891b2', bg: '#e0f2fe', border: '#7dd3fc' },
 ]
@@ -6548,7 +6706,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     e.preventDefault()
     if (!isAdmin) { alert('Only admins can create or edit houses.'); return }
     setSaving(true)
-    const HOUSE_COLOR_HEX = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#0891b2']
+    const HOUSE_COLOR_HEX = ['#1d4ed8', '#dc2626', '#16a34a', '#a8842f', '#7c3aed', '#0891b2']
     const payload = {
       name: form.name.trim(), motto: form.motto, color_index: Number(form.color_index),
       color: HOUSE_COLOR_HEX[Number(form.color_index) % HOUSE_COLOR_HEX.length],
@@ -6603,7 +6761,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const handleBulkAssign = async houseName => {
     if (!isAdmin) { showToast('Only admins can bulk assign', '#dc2626'); return }
     const unassigned = students.filter(s => !isAssigned(s))
-    if (!unassigned.length) { showToast('No unassigned students', '#ca8a04'); return }
+    if (!unassigned.length) { showToast('No unassigned students', '#a8842f'); return }
     const remaining = getHouseRemaining(houseName)
     if (remaining && unassigned.length > remaining.available) {
       if (!window.confirm(`⚠ ${houseName} only has ${remaining.available} seat(s) left (${remaining.occupied}/${remaining.capacity}), but ${unassigned.length} students are unassigned. Assign anyway? (will exceed capacity)`)) return
@@ -6673,7 +6831,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               </div>
               {/* FIXED: added flexWrap:'wrap' */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {isAdmin && <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>}
+                {isAdmin && <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1a2f4d'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>}
                 {isAdmin && <button onClick={() => handleBulkAssign(activeHouseObj.name)} style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}>+ Assign Unassigned ({unassignedCount})</button>}
               </div>
             </div>
@@ -6747,7 +6905,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           onMouseLeave={e => e.currentTarget.style.background = 'white'}
                         >
                           <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                           <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.gender || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
@@ -6769,7 +6927,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
       {!activeHouse && showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>{editRec ? '✏️ Edit House' : '🏠 Create New House'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 16 }}>{editRec ? 'Edit House' : 'Create New House'}</h3>
           <form onSubmit={handleSaveHouse}>
             {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
@@ -6804,7 +6962,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save House'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save House'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -6815,7 +6973,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
         <>
           {/* FIXED: was repeat(4,1fr) */}
           <div style={statGrid(130)}>
-            <StatCard icon="🏠" label="Total Houses" value={houses.length} color="#1e3a5f" bg="#eff6ff" />
+            <StatCard icon="🏠" label="Total Houses" value={houses.length} color="#1a2f4d" bg="#eff6ff" />
             <StatCard icon="👥" label="Assigned" value={students.filter(s => s.house).length} color="#16a34a" bg="#dcfce7" />
             <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" />
             <StatCard icon="👨‍🏫" label="Housemasters" value={masters.length} color="#7c3aed" bg="#f5f3ff" />
@@ -6883,7 +7041,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                             {h.motto && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>"{h.motto}"</div>}
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }} style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                            <button onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }} style={{ background: '#eff6ff', color: '#1a2f4d', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
                             {isAdmin && <button onClick={e => { e.stopPropagation(); handleDeleteHouse(h.id) }} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                           </div>
                         </div>
@@ -6930,7 +7088,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
           {houses.length > 0 && (
             <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
-              <div style={{ background: '#1e3a5f', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ background: '#1a2f4d', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontWeight: 700, color: 'white', fontSize: 13 }}>📋 All Students — House Assignment</span>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{unassignedCount} unassigned</span>
               </div>
@@ -6952,7 +7110,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
                         <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.course || '—'}</td>
@@ -7086,7 +7244,7 @@ function HousemasterTab({ currentUser }) {
 
       {showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)', maxWidth: 900 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>{editRec ? '✏️ Edit Housemaster' : '➕ Add Housemaster'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 16 }}>{editRec ? 'Edit Housemaster' : 'Add Housemaster'}</h3>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
@@ -7111,7 +7269,7 @@ function HousemasterTab({ currentUser }) {
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -7145,7 +7303,7 @@ function HousemasterTab({ currentUser }) {
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                        <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ flex: 1, ...btn('#eff6ff', '#1e3a5f'), fontSize: 12, padding: '7px' }}>✏️ Edit</button>
+                        <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ flex: 1, ...btn('#eff6ff', '#1a2f4d'), fontSize: 12, padding: '7px' }}>✏️ Edit</button>
                         <button onClick={() => handleDelete(r.id)} style={{ flex: 1, ...btn('#fee2e2', '#dc2626'), fontSize: 12, padding: '7px' }}>🗑 Remove</button>
                       </div>
                     )}
@@ -7218,9 +7376,9 @@ function KitchenTab({ currentUser }) {
     <div>
       {/* FIXED: was repeat(5,1fr) — worst mobile offender */}
       <div style={statGrid(130)}>
-        <StatCard icon="📋" label="Total Records" value={records.length} color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="📋" label="Total Records" value={records.length} color="#1a2f4d" bg="#eff6ff" />
         {MEAL_TYPES.map((m, i) => {
-          const colors = ['#ca8a04', '#16a34a', '#0891b2', '#7c3aed']
+          const colors = ['#a8842f', '#16a34a', '#0891b2', '#7c3aed']
           const bgs = ['#fef9c3', '#dcfce7', '#e0f2fe', '#f5f3ff']
           return (
             <StatCard key={m}
@@ -7261,7 +7419,7 @@ function KitchenTab({ currentUser }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f', marginBottom: 16 }}>➕ Log Kitchen Record</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 16 }}>Log Kitchen Record</h3>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
@@ -7293,7 +7451,7 @@ function KitchenTab({ currentUser }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Log Meal'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Log Meal'}</button>
               <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -7306,7 +7464,7 @@ function KitchenTab({ currentUser }) {
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
               <thead>
-                <tr style={{ background: '#1e3a5f' }}>
+                <tr style={{ background: '#1a2f4d' }}>
                   {['#', 'Date', 'Meal', 'Menu', 'Prepared By', 'Served', 'Remarks', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                   ))}
@@ -7321,7 +7479,7 @@ function KitchenTab({ currentUser }) {
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
                     <td style={{ padding: '10px 14px' }}>
-                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a5f' }}>{r.meal_type}</span>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d' }}>{r.meal_type}</span>
                     </td>
                     <td style={{ padding: '10px 14px', color: '#374151', maxWidth: 200 }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.menu}>{r.menu}</div>
@@ -7405,7 +7563,7 @@ function NeglectReportTab({ currentUser }) {
 
   return (
     <div>
-      <div style={{ background: '#1e3a5f', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', color: 'white' }}>
+      <div style={{ background: '#1a2f4d', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', color: 'white' }}>
         <div style={{ fontSize: '14px', fontWeight: '800', marginBottom: '4px' }}>🚨 Six-Tab Compliance Neglect Report</div>
         <div style={{ fontSize: '12px', opacity: 0.75 }}>
           Tracks housemasters who complete roll call without logging Discipline, Sickbay, Repairs, Journal, Mess Duty, or Activities for their house that session.
@@ -7488,7 +7646,7 @@ function NeglectReportTab({ currentUser }) {
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 700 }}>
             <thead>
-              <tr style={{ background: '#1e3a5f' }}>
+              <tr style={{ background: '#1a2f4d' }}>
                 {['#', 'Date', 'Type', 'Session', 'House', 'Housemaster', 'Missing Checks'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                 ))}
@@ -7503,7 +7661,7 @@ function NeglectReportTab({ currentUser }) {
                     <span style={{
                       padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700,
                       background: r.check_type === 'standalone' ? '#f5f3ff' : r.check_type === 'rushed_rollcall' ? '#fef2f2' : '#eff6ff',
-                      color: r.check_type === 'standalone' ? '#7c3aed' : r.check_type === 'rushed_rollcall' ? '#dc2626' : '#1e3a5f',
+                      color: r.check_type === 'standalone' ? '#7c3aed' : r.check_type === 'rushed_rollcall' ? '#dc2626' : '#1a2f4d',
                     }}>
                       {r.check_type === 'standalone' ? '📋 3x-Daily' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : '✅ Roll Call'}
                     </span>
@@ -7512,12 +7670,12 @@ function NeglectReportTab({ currentUser }) {
                     <span style={{
                       padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700,
                       background: r.session === 'morning' ? '#fef9c3' : r.session === 'afternoon' ? '#fef3c7' : '#e0f2fe',
-                      color: r.session === 'morning' ? '#ca8a04' : r.session === 'afternoon' ? '#d97706' : '#0891b2',
+                      color: r.session === 'morning' ? '#a8842f' : r.session === 'afternoon' ? '#d97706' : '#0891b2',
                     }}>
                       {r.session === 'morning' ? '🌅' : r.session === 'afternoon' ? '☀️' : '🌙'} {r.session}
                     </span>
                   </td>
-                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e3a5f' }}>🏠 {r.house}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1a2f4d' }}>🏠 {r.house}</td>
                   <td style={{ padding: '10px 14px', color: '#374151' }}>{r.housemaster_name || 'Unknown'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -7613,7 +7771,7 @@ function Hostel() {
       // Load house colors
       if (houses?.length) {
         const colorMap = {}
-        const palette = ['#1d4ed8', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#0891b2', '#be185d', '#047857']
+        const palette = ['#1d4ed8', '#dc2626', '#16a34a', '#a8842f', '#7c3aed', '#0891b2', '#be185d', '#047857']
         houses.forEach(h => {
           colorMap[h.name] = palette[Number(h.color_index) % palette.length]
         })
@@ -7651,55 +7809,81 @@ function Hostel() {
   }
 
   return (
-    <div style={{
-      padding: mobile ? '12px' : '24px', fontFamily: 'system-ui,sans-serif',
-      paddingBottom: mobile ? '80px' : '24px', background: MD.color.surfaceDim, minHeight: '100vh',
+    <div className="gnsi-hostel-root" style={{
+      padding: mobile ? '12px' : '28px', fontFamily: FONT_BODY,
+      paddingBottom: mobile ? '80px' : '28px', background: MD.color.surfaceDim, minHeight: '100vh',
     }}>
-      <div style={{ marginBottom: mobile ? '18px' : '26px' }}>
-        <h1 style={{ ...MD.type.headline, fontSize: mobile ? '21px' : '27px', color: MD.color.primary, margin: 0 }}>
-          🏠 Hostel Management
-        </h1>
-        <p style={{ color: MD.color.onSurfaceVariant, fontSize: mobile ? '13px' : '14px', margin: '6px 0 0', fontWeight: '500' }}>
+      {/* Module-wide heading default — serif display face for every h1–h3
+          that doesn't explicitly override it, so the refined type system
+          applies consistently across all 17 tabs without editing each
+          individual heading's inline style. */}
+      <style>{`
+        .gnsi-hostel-root h1, .gnsi-hostel-root h2, .gnsi-hostel-root h3 {
+          font-family: ${FONT_DISPLAY};
+        }
+      `}</style>
+      {/* ── Letterhead header — navy panel, gold foil rule, serif institutional mark ── */}
+      <div style={{
+        background: MD.color.primary, borderRadius: MD.radius.card,
+        padding: mobile ? '16px 18px 14px' : '22px 26px 18px',
+        marginBottom: mobile ? '16px' : '22px', position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 75%)` }} />
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '4px' }}>
+              GNSI · Boarding Administration
+            </div>
+            <h1 style={{ ...MD.type.headline, fontSize: mobile ? '20px' : '26px', color: 'white', margin: 0 }}>
+              Hostel Management
+            </h1>
+          </div>
+          <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: mobile ? '12px' : '13px', margin: 0, fontWeight: '500', textAlign: 'right' }}>
+            {dataLoading
+              ? <span style={{ color: MD.color.secondary, fontWeight: 700 }}>Loading…</span>
+              : <span style={{ fontWeight: 700 }}>{students.length} students · {staffProfiles.length} staff</span>
+            }
+          </p>
+        </div>
+        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: mobile ? '11px' : '12px', margin: '8px 0 0', fontWeight: '500', letterSpacing: '0.01em' }}>
           {mobile ? 'Allotments · Schedule · Duty · Discipline · Sickbay · House · Kitchen · Roll Call · Leave · Dashboard · Repairs · Journal' : 'Allotments · Schedule · Night Duty · Discipline · Sickbay · House · Kitchen'}
-          {dataLoading
-            ? <span style={{ marginLeft: 12, color: '#b45309', fontWeight: 700 }}>⏳ Loading...</span>
-            : <span style={{ marginLeft: 12, color: MD.color.success, fontWeight: 700 }}>✅ {students.length} students · {staffProfiles.length} staff</span>
-          }
         </p>
       </div>
-      {/* Desktop/Tablet Tab Bar — Material tonal chips, elevated when active */}
+      {/* Desktop/Tablet Tab Bar — quiet register strip, gold underline marks the active section */}
       {!mobile && (
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))',
-          gap: '8px',
-          marginBottom: '26px',
+          display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '24px',
+          borderBottom: `1px solid ${MD.color.outlineVariant}`, paddingBottom: 0,
         }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-              padding: '10px 10px',
-              border: activeTab === t.id ? 'none' : `1px solid ${MD.color.outlineVariant}`,
-              borderRadius: MD.radius.control,
-              background: activeTab === t.id ? MD.color.primary : MD.color.surfaceContainer,
-              color: activeTab === t.id ? 'white' : MD.color.onSurfaceVariant,
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: activeTab === t.id ? 700 : 600,
-              whiteSpace: 'nowrap',
-              textAlign: 'center',
-              boxShadow: activeTab === t.id ? MD.elevation[2] : 'none',
-              transition: 'all .15s',
-            }}>{t.label}</button>
-          ))}
+          {TABS.map(t => {
+            const isActive = activeTab === t.id
+            return (
+              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+                padding: '9px 14px 10px',
+                border: 'none',
+                borderBottom: isActive ? `2px solid ${MD.color.secondary}` : '2px solid transparent',
+                marginBottom: '-1px',
+                background: 'transparent',
+                color: isActive ? MD.color.primary : MD.color.onSurfaceVariant,
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontFamily: FONT_BODY,
+                fontWeight: isActive ? 700 : 500,
+                whiteSpace: 'nowrap',
+                textAlign: 'center',
+                transition: 'color .15s, border-color .15s',
+              }}>{t.label}</button>
+            )
+          })}
         </div>
       )}
 
-      {/* Mobile Tab Grid — Material tonal cards with elevation lift on active */}
+      {/* Mobile Tab Grid — quiet outlined cards, navy fill only on the active tab */}
       {mobile && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr 1fr',
-          gap: '9px',
+          gap: '8px',
           marginBottom: '18px',
           position: 'sticky',
           top: 0,
@@ -7716,27 +7900,28 @@ function Hostel() {
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
                 style={{
-                  padding: '10px 6px',
+                  padding: '9px 6px',
                   borderRadius: MD.radius.field,
-                  border: isActive ? 'none' : `1px solid ${MD.color.outlineVariant}`,
+                  border: isActive ? `1px solid ${MD.color.primary}` : `1px solid ${MD.color.outlineVariant}`,
                   background: isActive ? MD.color.primary : MD.color.surfaceContainer,
                   color: isActive ? 'white' : MD.color.onSurfaceVariant,
-                  fontSize: '11px',
+                  fontSize: '10px',
+                  fontFamily: FONT_BODY,
                   fontWeight: isActive ? '700' : '600',
                   cursor: 'pointer',
-                  boxShadow: isActive ? MD.elevation[3] : MD.elevation[1],
+                  boxShadow: isActive ? MD.elevation[2] : MD.elevation[1],
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   gap: '4px',
-                  minHeight: '58px',
+                  minHeight: '54px',
                   justifyContent: 'center',
                   lineHeight: 1.2,
                   textAlign: 'center',
                   transition: 'all .15s',
                 }}
               >
-                <span style={{ fontSize: '18px' }}>{t.label.split(' ')[0]}</span>
+                <span style={{ fontSize: '15px' }}>{t.label.split(' ')[0]}</span>
                 <span>{t.label.split(' ').slice(1).join(' ')}</span>
               </button>
             )
