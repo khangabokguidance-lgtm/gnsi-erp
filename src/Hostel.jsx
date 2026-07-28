@@ -1465,6 +1465,18 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   const [approvingLeaveId, setApprovingLeaveId] = useState(null)
   const [approvedLeaveIds, setApprovedLeaveIds] = useState({}) // local UI reflection so approved rows disappear immediately
 
+  // When marking a student "On Leave" in roll call, check if they actually have an
+  // unapproved (Pending) leave request — if so, surface it on the card
+  // with an inline Approve option instead of silently advancing, since
+  // marking someone "On Leave" in roll call shouldn't imply their leave
+  // was ever approved.
+  // Hoisted to top level (must run unconditionally every render — was
+  // previously declared inside the `view === 'rollcall'` conditional block,
+  // causing "rendered more hooks than during previous render" (#310)
+  // whenever `view` changed away from 'rollcall').
+  const [cardLeavePrompt, setCardLeavePrompt] = useState(null) // the pending leave_records row, or null
+  useEffect(() => { setCardLeavePrompt(null) }, [rollCallIndex])
+
   const handleInlineApprove = async (record) => {
     setApprovingLeaveId(record.id)
     try {
@@ -2281,14 +2293,6 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     const currentStudent = rollCallStudents[rollCallIndex]
     const currentStatus = currentStudent ? getStatus(currentStudent.id) : null
-
-    // When marking a student "On Leave", check if they actually have an
-    // unapproved (Pending) leave request — if so, surface it on the card
-    // with an inline Approve option instead of silently advancing, since
-    // marking someone "On Leave" in roll call shouldn't imply their leave
-    // was ever approved.
-    const [cardLeavePrompt, setCardLeavePrompt] = useState(null) // the pending leave_records row, or null
-    useEffect(() => { setCardLeavePrompt(null) }, [rollCallIndex])
 
     const markAndAdvance = async (studentId, status) => {
       if (status === 'On Leave') {
@@ -6753,15 +6757,6 @@ function NeglectReportTab({ currentUser }) {
   }
   useEffect(() => { if (isAdmin) load() }, [isAdmin])
 
-  if (!isAdmin) {
-    return (
-      <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
-        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
-        <div style={{ fontSize: '15px', fontWeight: '700' }}>Admin access only</div>
-      </div>
-    )
-  }
-
   const houseNames = [...new Set(records.map(r => r.house))].sort()
   const hmNames = [...new Set(records.map(r => r.housemaster_name).filter(Boolean))].sort()
 
@@ -6771,6 +6766,10 @@ function NeglectReportTab({ currentUser }) {
   )
 
   // Per-housemaster tally for a quick "who neglects most" summary
+  // Hoisted above the `!isAdmin` early return below (must run unconditionally
+  // every render — was previously declared after the early return, causing
+  // a rules-of-hooks violation / "rendered more hooks than previous render"
+  // for any non-admin user).
   const tally = useMemo(() => {
     const t = {}
     filtered.forEach(r => {
@@ -6779,6 +6778,15 @@ function NeglectReportTab({ currentUser }) {
     })
     return Object.entries(t).sort((a, b) => b[1] - a[1])
   }, [filtered])
+
+  if (!isAdmin) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
+        <div style={{ fontSize: '15px', fontWeight: '700' }}>Admin access only</div>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -6996,7 +7004,7 @@ function Hostel() {
       setDataLoading(false)
     }
     fetchShared()
-  }, [])
+  }, [currentUser?.name])
 
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
 
