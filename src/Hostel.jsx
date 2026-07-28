@@ -3774,6 +3774,20 @@ function HMPerformanceRanking() {
   )
 }
 
+// ── Ledger-style helpers for HMDashboard's redesigned header/attention list ──
+const greetingWord = () => {
+  const h = new Date().getHours()
+  return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening'
+}
+// A small filled dot in the given color — reads as a wax-seal / register
+// priority mark instead of a colored left-border strip.
+const SealDot = ({ color, size = 9 }) => (
+  <span style={{
+    display: 'inline-block', width: size, height: size, borderRadius: '50%',
+    background: color, boxShadow: `0 0 0 3px ${color}22`, flexShrink: 0,
+  }} />
+)
+
 function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [attendanceToday, setAttendanceToday] = useState([])
@@ -3850,10 +3864,22 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   if (mobile) {
     return (
       <div>
-        <div style={{ marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}</h2>
-          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{currentHousemaster?.name || currentUser?.name || 'House Master'} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-          <div style={{ marginTop: '10px' }}>
+        {/* ── Ledger header band: navy surface, gold foil rule, register-line greeting ── */}
+        <div style={{
+          background: MD.color.primary, borderRadius: MD.radius.card,
+          padding: '18px 18px 16px', marginBottom: '16px', position: 'relative', overflow: 'hidden',
+        }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 85%)` }} />
+          <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '4px' }}>
+            Today's Entry
+          </div>
+          <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'white', margin: 0, fontFamily: 'Georgia, "Times New Roman", serif' }}>
+            Good {greetingWord()}, {currentHousemaster?.name || currentUser?.name || 'House Master'}
+          </h2>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', margin: '4px 0 0' }}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+          <div style={{ marginTop: '12px' }}>
             <ReportExportButtons
               title="HM Dashboard — Daily Snapshot"
               subtitle={`${currentHousemaster?.name || currentUser?.name || 'House Master'} · ${today()}`}
@@ -3869,7 +3895,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           <div
             onClick={() => onTabChange?.('doubtsession')}
             style={{
-              ...mobileCard, marginBottom: '16px', cursor: 'pointer',
+              ...mobileCard, marginBottom: '14px', cursor: 'pointer',
               background: MD.color.secondaryContainer, border: `1.5px solid ${MD.color.secondary}`,
             }}
           >
@@ -3889,35 +3915,45 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           </div>
         )}
         {nightDutyTonight && (
-          <div style={{ ...mobileCard, marginBottom: '16px', background: '#1e3a5f', color: 'white' }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '6px', opacity: 0.8 }}>🌙 TONIGHT'S DUTY</div>
-            <div style={{ fontSize: '16px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
-            <div style={{ fontSize: '13px', marginTop: '4px', opacity: 0.8 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
+          <div style={{ ...mobileCard, marginBottom: '14px', background: MD.color.primary, color: 'white', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '22px' }}>🌙</span>
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.7 }}>Tonight's Duty</div>
+              <div style={{ fontSize: '15px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
+              <div style={{ fontSize: '12px', marginTop: '2px', opacity: 0.75 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
+            </div>
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+        {/* ── Index-tab quick actions: flat cream cards with a colored top tab, not a filled tonal block ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
           {quickActions.map(action => (
-            <button key={action.id} onClick={() => onTabChange?.(action.id)} style={{ background: action.bg, border: `1.5px solid ${action.color}20`, borderRadius: '14px', padding: '16px 12px', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '6px', minHeight: '90px' }}>
-              <span style={{ fontSize: '24px' }}>{action.icon}</span>
-              <span style={{ fontSize: '14px', fontWeight: '700', color: action.color }}>{action.label}</span>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>{action.desc}</span>
+            <button key={action.id} onClick={() => onTabChange?.(action.id)} style={{
+              background: MD.color.surfaceContainer, border: `1px solid ${MD.color.outlineVariant}`,
+              borderTop: `3px solid ${action.color}`, borderRadius: MD.radius.field,
+              padding: '14px 12px', cursor: 'pointer', textAlign: 'left',
+              display: 'flex', flexDirection: 'column', gap: '5px', minHeight: '86px',
+              boxShadow: MD.elevation[1],
+            }}>
+              <span style={{ fontSize: '22px' }}>{action.icon}</span>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: MD.color.onSurface }}>{action.label}</span>
+              <span style={{ fontSize: '11px', color: MD.color.onSurfaceVariant }}>{action.desc}</span>
             </button>
           ))}
         </div>
-        <div style={{ ...mobileCard }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 12px' }}>📊 Today's Snapshot</h3>
+        <div style={{ ...mobileCard, marginBottom: '14px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 12px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            {[{ label: 'Present', value: presentCount, color: '#16a34a', bg: '#dcfce7' }, { label: 'Absent', value: absentCount, color: '#dc2626', bg: '#fee2e2' }, { label: 'On Leave', value: leaveToday.length, color: '#1d4ed8', bg: '#dbeafe' }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
-              <div key={s.label} style={{ textAlign: 'center', padding: '12px', background: s.bg, borderRadius: '10px' }}>
-                <div style={{ fontSize: '24px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>{s.label}</div>
+            {[{ label: 'Present', value: presentCount, color: MD.color.success, bg: MD.color.successContainer }, { label: 'Absent', value: absentCount, color: MD.color.error, bg: MD.color.errorContainer }, { label: 'On Leave', value: leaveToday.length, color: MD.color.primary, bg: MD.color.primaryContainer }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
+              <div key={s.label} style={{ textAlign: 'center', padding: '12px', background: s.bg, borderRadius: MD.radius.control }}>
+                <div style={{ fontSize: '22px', fontWeight: '800', color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>{s.label}</div>
               </div>
             ))}
           </div>
         </div>
 
         {isAdmin && (
-          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <MonthlyCertificateCard />
             <HMPerformanceRanking />
           </div>
@@ -3928,11 +3964,25 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      {/* ── Ledger header band: navy surface, gold foil rule, register-line greeting ── */}
+      <div style={{
+        background: MD.color.primary, borderRadius: MD.radius.card,
+        padding: '26px 28px 22px', marginBottom: '24px', position: 'relative', overflow: 'hidden',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '20px', flexWrap: 'wrap',
+      }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '4px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 70%)` }} />
+        <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '160px', height: '160px', borderRadius: '50%', border: `1px solid rgba(255,255,255,0.06)` }} />
         <div>
-          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>👋 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {currentHousemaster?.name || currentUser?.name || 'House Master'}</h2>
-          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-          <div style={{ marginTop: '10px' }}>
+          <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '6px' }}>
+            Today's Entry · {today()}
+          </div>
+          <h2 style={{ fontSize: '27px', fontWeight: '800', color: 'white', margin: 0, fontFamily: 'Georgia, "Times New Roman", serif' }}>
+            Good {greetingWord()}, {currentHousemaster?.name || currentUser?.name || 'House Master'}
+          </h2>
+          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', margin: '5px 0 0' }}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+          <div style={{ marginTop: '14px' }}>
             <ReportExportButtons
               title="HM Dashboard — Daily Snapshot"
               subtitle={`${currentHousemaster?.name || currentUser?.name || 'House Master'} · ${today()}`}
@@ -3945,10 +3995,10 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           </div>
         </div>
         {nightDutyTonight && (
-          <div style={{ background: '#1e3a5f', color: 'white', padding: '12px 20px', borderRadius: '12px' }}>
-            <div style={{ fontSize: '12px', opacity: 0.8 }}>🌙 TONIGHT'S DUTY</div>
-            <div style={{ fontSize: '16px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
-            <div style={{ fontSize: '12px', opacity: 0.8 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
+          <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', color: 'white', padding: '14px 22px', borderRadius: MD.radius.field, backdropFilter: 'blur(2px)' }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', color: MD.color.secondary }}>🌙 Tonight's Duty</div>
+            <div style={{ fontSize: '17px', fontWeight: '700', marginTop: '2px' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
+            <div style={{ fontSize: '12px', opacity: 0.75 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
           </div>
         )}
       </div>
@@ -3974,34 +4024,69 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           <span style={{ fontSize: '20px', color: MD.color.onSecondaryContainer, fontWeight: '700' }}>→</span>
         </div>
       )}
+      {/* ── Index-tab quick actions: flat surface cards with a colored top tab, not a filled tonal block ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
         {quickActions.map(action => (
-          <div key={action.id} onClick={() => onTabChange?.(action.id)} style={{ background: action.bg, borderRadius: '14px', padding: '20px', border: `1.5px solid ${action.color}20`, cursor: 'pointer' }}>
-            <div style={{ fontSize: '28px', marginBottom: '8px' }}>{action.icon}</div>
-            <div style={{ fontSize: '16px', fontWeight: '700', color: action.color, marginBottom: '4px' }}>{action.label}</div>
-            <div style={{ fontSize: '13px', color: '#64748b' }}>{action.desc}</div>
+          <div key={action.id} onClick={() => onTabChange?.(action.id)} style={{
+            background: MD.color.surfaceContainer, borderRadius: MD.radius.card,
+            padding: '20px', border: `1px solid ${MD.color.outlineVariant}`,
+            borderTop: `3px solid ${action.color}`, cursor: 'pointer',
+            boxShadow: MD.elevation[1], transition: 'box-shadow 0.15s ease, transform 0.1s ease',
+          }}>
+            <div style={{ fontSize: '26px', marginBottom: '10px' }}>{action.icon}</div>
+            <div style={{ fontSize: '15px', fontWeight: '700', color: action.color, marginBottom: '4px' }}>{action.label}</div>
+            <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>{action.desc}</div>
           </div>
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
         <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>📊 Today's Snapshot</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {[{ label: 'Present', value: presentCount, color: '#16a34a', bg: '#dcfce7' }, { label: 'Absent', value: absentCount, color: '#dc2626', bg: '#fee2e2' }, { label: 'On Leave', value: leaveToday.length, color: '#1d4ed8', bg: '#dbeafe' }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
-              <div key={s.label} style={{ textAlign: 'center', padding: '16px', background: s.bg, borderRadius: '10px' }}>
+            {[{ label: 'Present', value: presentCount, color: MD.color.success, bg: MD.color.successContainer }, { label: 'Absent', value: absentCount, color: MD.color.error, bg: MD.color.errorContainer }, { label: 'On Leave', value: leaveToday.length, color: MD.color.primary, bg: MD.color.primaryContainer }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
+              <div key={s.label} style={{ textAlign: 'center', padding: '16px', background: s.bg, borderRadius: MD.radius.control }}>
                 <div style={{ fontSize: '28px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '13px', color: '#64748b' }}>{s.label}</div>
+                <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>{s.label}</div>
               </div>
             ))}
           </div>
         </div>
         <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 16px' }}>🚨 Attention Required</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: 'Georgia, serif' }}>Attention Required</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {unmarkedCount > 0 && <div style={{ padding: '12px', background: '#fef9c3', borderRadius: '10px', borderLeft: '3px solid #ca8a04' }}><div style={{ fontWeight: '700', color: '#ca8a04' }}>⏳ {unmarkedCount} students unmarked</div><div style={{ fontSize: '13px', color: '#64748b' }}>Morning roll call pending</div></div>}
-            {maintenanceOpen.map(m => <div key={m.id} style={{ padding: '12px', background: '#fee2e2', borderRadius: '10px', borderLeft: '3px solid #dc2626' }}><div style={{ fontWeight: '700', color: '#dc2626' }}>🔧 Urgent: {m.category}</div><div style={{ fontSize: '13px', color: '#374151' }}>{m.location} · {m.description}</div></div>)}
-            {disciplineOpen.slice(0, 3).map(d => <div key={d.id} style={{ padding: '12px', background: '#fee2e2', borderRadius: '10px', borderLeft: '3px solid #dc2626' }}><div style={{ fontWeight: '700', color: '#dc2626' }}>⚠️ {d.student_name}</div><div style={{ fontSize: '13px', color: '#374151' }}>{d.incident}</div></div>)}
-            {unmarkedCount === 0 && maintenanceOpen.length === 0 && disciplineOpen.length === 0 && <div style={{ textAlign: 'center', padding: '20px', color: '#16a34a', fontWeight: '600' }}>✅ All clear! No urgent items.</div>}
+            {unmarkedCount > 0 && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', background: MD.color.secondaryContainer, borderRadius: MD.radius.control }}>
+                <SealDot color={MD.color.secondary} />
+                <div>
+                  <div style={{ fontWeight: '700', color: MD.color.onSecondaryContainer, fontSize: '14px' }}>{unmarkedCount} students unmarked</div>
+                  <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>Morning roll call pending</div>
+                </div>
+              </div>
+            )}
+            {maintenanceOpen.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', background: MD.color.errorContainer, borderRadius: MD.radius.control }}>
+                <SealDot color={MD.color.error} />
+                <div>
+                  <div style={{ fontWeight: '700', color: MD.color.error, fontSize: '14px' }}>🔧 Urgent: {m.category}</div>
+                  <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>{m.location} · {m.description}</div>
+                </div>
+              </div>
+            ))}
+            {disciplineOpen.slice(0, 3).map(d => (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', background: MD.color.errorContainer, borderRadius: MD.radius.control }}>
+                <SealDot color={MD.color.error} />
+                <div>
+                  <div style={{ fontWeight: '700', color: MD.color.error, fontSize: '14px' }}>⚠️ {d.student_name}</div>
+                  <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>{d.incident}</div>
+                </div>
+              </div>
+            ))}
+            {unmarkedCount === 0 && maintenanceOpen.length === 0 && disciplineOpen.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '24px 20px', color: MD.color.success, fontWeight: '700' }}>
+                <div style={{ fontSize: '22px', marginBottom: '6px' }}>✅</div>
+                All clear! No urgent items.
+              </div>
+            )}
           </div>
         </div>
       </div>
