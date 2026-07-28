@@ -87,6 +87,14 @@ const mobileStatGrid = {
   display: 'grid', gridTemplateColumns: '1fr 1fr',
   gap: '8px', marginBottom: '16px',
 }
+// ── Compact actions-menu item — used by the row-level ⋮ dropdown that
+//    replaces the old inline button row in the leave records grid.
+const menuItemStyle = {
+  background: 'none', border: 'none', textAlign: 'left', padding: '8px 10px',
+  borderRadius: MD.radius.control, fontSize: '13px', fontWeight: '600',
+  color: MD.color.onSurface, cursor: 'pointer', fontFamily: FONT_BODY,
+  width: '100%',
+}
 
 const isMobile = () => window.innerWidth < 768
 
@@ -3932,6 +3940,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
   const [approveTarget,    setApproveTarget]    = useState(null) // record pending approval confirm
   const [rejectTarget,     setRejectTarget]     = useState(null) // record pending rejection
   const [expandedHistory,   setExpandedHistory]   = useState(null) // leave_id whose trail is expanded
+  const [openActionMenu,    setOpenActionMenu]    = useState(null) // leave_id whose compact actions menu is open
   // ── Balance / quota states
   const [quotaExceededRec,  setQuotaExceededRec]  = useState(null)  // record that triggered quota exceeded
   const [quotaExceededBal,  setQuotaExceededBal]  = useState(null)  // balance object at time of trigger
@@ -5204,155 +5213,191 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
       {/* Table */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
-      ) : (
+      ) : (() => {
+        // ── Grid columns — 8 columns (down from the original 12) so the
+        //    table fits a normal desktop width with no horizontal scroll.
+        //    GCC/Parent/Actual-Return are folded into adjacent cells
+        //    (Student subline, Duration/Return merge, Status subline)
+        //    rather than dropped, and all row actions collapse into one
+        //    compact ⋮ menu instead of a button row.
+        const GRID_COLS = '44px 1.7fr 1fr 0.9fr 1.2fr 1.2fr 1.3fr 48px'
+        return (
         <div style={{
           background: MD.color.surfaceContainer, borderRadius: MD.radius.card,
           boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
-          overflowX: 'auto', overflowY: 'hidden', width: '100%', maxWidth: '100%',
+          width: '100%', maxWidth: '100%', overflow: 'visible',
         }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px', fontFamily: FONT_BODY }}>
-            <thead>
-              <tr style={{ background: MD.color.primary }}>
-                {['#', 'Student', 'GCC', 'House', 'Type', 'From', 'To', 'Return By', 'Actual Return', 'Status', 'Parent', 'Actions'].map(h => (
-                  <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '11px', letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, i) => (
-                <tr
-                  key={r.id}
-                  style={{ borderBottom: '1px solid #f1f5f9' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                >
-                  <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
-                  <td style={{ padding: '11px 14px' }}>
-                    <div style={{ fontWeight: '600', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {r.student_name}
-                      {/* Feature 63: student-submitted indicator */}
-                      {r.requested_by === 'student' && (
-                        <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '99px', background: '#f5f3ff', color: '#7c3aed', whiteSpace: 'nowrap' }}>
-                          🎓 Self
-                        </span>
-                      )}
-                    </div>
-                    {r.class_name && <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.class_name}</div>}
-                  </td>
-                  <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: '12px', color: '#1a2f4d', fontWeight: '700' }}>
-                    {r.gcc_no ? `GCC-${r.gcc_no}` : '—'}
-                  </td>
-                  <td style={{ padding: '11px 14px', color: '#7c3aed', fontSize: '12px', fontWeight: '600' }}>
-                    {r.house || '—'}
-                  </td>
-                  <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.leave_type}</td>
-                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.from_date}</td>
-                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>{r.to_date}</td>
-                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>
+          {/* Header row */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: GRID_COLS,
+            background: MD.color.primary, borderRadius: `${MD.radius.card} ${MD.radius.card} 0 0`,
+          }}>
+            {['#', 'Student', 'House', 'Type', 'Duration', 'Return', 'Status', ''].map(h => (
+              <div key={h} style={{ padding: '12px 10px', fontWeight: '700', color: 'white', fontSize: '11px', letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h}</div>
+            ))}
+          </div>
+
+          {/* Body rows */}
+          {filtered.map((r, i) => {
+            const isMenuOpen = openActionMenu === r.id
+            const isHistoryOpen = expandedHistory === r.id
+            return (
+            <div key={r.id} style={{ position: 'relative' }}>
+              <div
+                style={{
+                  display: 'grid', gridTemplateColumns: GRID_COLS, alignItems: 'start',
+                  borderBottom: `1px solid ${MD.color.outlineVariant}`, fontSize: '13px', fontFamily: FONT_BODY,
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = MD.color.surfaceDim}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{ padding: '11px 10px', color: MD.color.onSurfaceVariant, fontSize: '12px' }}>{i + 1}</div>
+
+                {/* Student — name, self-request badge, class, GCC folded in as subline */}
+                <div style={{ padding: '11px 10px', minWidth: 0 }}>
+                  <div style={{ fontWeight: '600', color: MD.color.onSurface, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.student_name}</span>
+                    {r.requested_by === 'student' && (
+                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '99px', background: '#f5f3ff', color: '#7c3aed', whiteSpace: 'nowrap' }}>
+                        Self
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, marginTop: '2px' }}>
+                    {r.gcc_no ? `GCC-${r.gcc_no}` : '—'}{r.class_name ? ` · ${r.class_name}` : ''}
+                  </div>
+                </div>
+
+                <div style={{ padding: '11px 10px', color: '#7c3aed', fontSize: '12px', fontWeight: '600' }}>{r.house || '—'}</div>
+                <div style={{ padding: '11px 10px', color: MD.color.onSurfaceVariant, fontSize: '12px' }}>{r.leave_type}</div>
+
+                {/* Duration — From → To merged into one cell */}
+                <div style={{ padding: '11px 10px', color: MD.color.onSurfaceVariant, fontSize: '12px', lineHeight: 1.5 }}>
+                  <div>{r.from_date}</div>
+                  <div style={{ color: MD.color.outline }}>→ {r.to_date}</div>
+                </div>
+
+                {/* Return — Return By + Actual Return merged into one cell */}
+                <div style={{ padding: '11px 10px', fontSize: '12px', lineHeight: 1.5 }}>
+                  <div style={{ color: MD.color.onSurfaceVariant }}>
                     {r.expected_return
                       ? new Date(r.expected_return).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
                       : '—'}
-                  </td>
-                  <td style={{ padding: '11px 14px', fontSize: '12px' }}>
-                    {r.actual_return
-                      ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ color: '#16a34a', fontWeight: '600' }}>
-                            🏠 {new Date(r.actual_return).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
-                          </span>
-                          {/* Feature 34: overstay badge */}
-                          <OverstayBadge record={r} />
-                        </div>
-                      )
-                      : <span style={{ color: '#94a3b8' }}>—</span>}
-                  </td>
-                  {/* Status — approval badge */}
-                  <td style={{ padding: '11px 14px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <ApprovalBadge record={r} />
-                      {/* Superintendent sent back notice */}
-                      {r.status === 'Pending' && (r.approval_level ?? 0) === 0 && r.rejection_reason && (
-                        <span style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>↩️ Sent back</span>
-                      )}
-                      {/* Rejection reason */}
-                      {r.status === 'Rejected' && r.rejection_reason && (
-                        <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '500' }} title={r.rejection_reason}>
-                          ❌ {r.rejection_reason.length > 30 ? r.rejection_reason.slice(0,30) + '…' : r.rejection_reason}
-                        </span>
-                      )}
+                  </div>
+                  {r.actual_return ? (
+                    <div style={{ marginTop: '2px' }}>
+                      <span style={{ color: MD.color.success, fontWeight: '600' }}>
+                        ✓ {new Date(r.actual_return).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                      </span>
+                      <OverstayBadge record={r} />
                     </div>
-                  </td>
-                  <td style={{ padding: '11px 14px', color: '#64748b', fontSize: '12px' }}>
-                    <div>{r.parent_contact || '—'}</div>
-                    {r.parent_approved && (r.approval_level ?? 0) >= 1 && <div style={{ color: '#16a34a', fontSize: '11px', fontWeight: '600' }}>✅ Approved</div>}
-                    {/* Approval trail toggle */}
-                    <button
-                      onClick={() => setExpandedHistory(expandedHistory === r.id ? null : r.id)}
-                      style={{ background: 'none', border: 'none', fontSize: '10px', color: '#1d4ed8', cursor: 'pointer', fontWeight: '700', padding: '2px 0', marginTop: '2px' }}
-                    >
-                      {expandedHistory === r.id ? '▲ Hide trail' : '▼ Trail'}
-                    </button>
-                  </td>
-                  <td style={{ padding: '11px 14px' }}>
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {/* Edit */}
-                      <button onClick={() => openEdit(r)} style={{ background: '#eff6ff', color: '#1a2f4d', border: 'none', borderRadius: '6px', padding: '5px 9px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }} title="Edit">✏️</button>
-                      {/* Approve — role-aware */}
-                      {canApprove(r) && (
-                        <button onClick={() => handleApproveClick(r)} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '5px 10px' }} title="Approve">✓</button>
-                      )}
-                      {/* Reject — role-aware */}
-                      {canReject(r) && (
-                        <button onClick={() => handleRejectClick(r)} style={{ ...btn('#dc2626'), fontSize: '11px', padding: '5px 10px' }} title="Reject">✕</button>
-                      )}
-                      {/* Mark Returned */}
-                      {((r.status === 'Approved' && (r.approval_level ?? 0) >= 2) || r.status === 'Overdue') && (
-                        <button onClick={() => handleMarkReturned(r)} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '5px 8px' }} title="Mark Returned">🏠</button>
-                      )}
-                      {/* Gate Pass — compact button */}
-                      <GatePassButton record={r} compact={true} />
-                      {/* Delete — admin only */}
-                      {isAdmin && (
-                        <button onClick={() => setDeleteTarget(r)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '5px 9px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }} title="Delete">🗑</button>
-                      )}
-                    </div>
-                    {/* Approval trail inline */}
-                    {expandedHistory === r.id && (
-                      <div style={{ marginTop: '8px', minWidth: '260px' }}>
-                        <ApprovalHistoryPanel leaveId={r.id} />
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                  ) : null}
+                </div>
 
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={12} style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
-                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>🚪</div>
-                    No leave records found
-                  </td>
-                </tr>
+                {/* Status — approval badge, sent-back/rejection notice, parent approval, trail toggle */}
+                <div style={{ padding: '11px 10px', minWidth: 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                    <ApprovalBadge record={r} />
+                    {r.status === 'Pending' && (r.approval_level ?? 0) === 0 && r.rejection_reason && (
+                      <span style={{ fontSize: '10px', color: '#9a3412', fontWeight: '600' }}>↩ Sent back</span>
+                    )}
+                    {r.status === 'Rejected' && r.rejection_reason && (
+                      <span style={{ fontSize: '10px', color: MD.color.error, fontWeight: '500' }} title={r.rejection_reason}>
+                        {r.rejection_reason.length > 26 ? r.rejection_reason.slice(0, 26) + '…' : r.rejection_reason}
+                      </span>
+                    )}
+                    {r.parent_contact && (
+                      <span style={{ fontSize: '10px', color: MD.color.onSurfaceVariant }}>
+                        Parent: {r.parent_contact}
+                        {r.parent_approved && (r.approval_level ?? 0) >= 1 ? <span style={{ color: MD.color.success, fontWeight: '600' }}> ✓</span> : null}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setExpandedHistory(isHistoryOpen ? null : r.id)}
+                      style={{ background: 'none', border: 'none', fontSize: '10px', color: '#1d4ed8', cursor: 'pointer', fontWeight: '700', padding: 0 }}
+                    >
+                      {isHistoryOpen ? '▲ Hide trail' : '▼ Trail'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Actions — collapsed into a single compact ⋮ menu */}
+                <div style={{ padding: '11px 6px', position: 'relative', textAlign: 'right' }}>
+                  <button
+                    onClick={() => setOpenActionMenu(isMenuOpen ? null : r.id)}
+                    style={{
+                      background: isMenuOpen ? MD.color.primaryContainer : 'transparent',
+                      border: `1px solid ${MD.color.outlineVariant}`, borderRadius: MD.radius.control,
+                      width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px',
+                      color: MD.color.onSurfaceVariant, fontWeight: '700', lineHeight: 1,
+                    }}
+                    title="Actions"
+                  >
+                    ⋮
+                  </button>
+                  {isMenuOpen && (
+                    <div
+                      onMouseLeave={() => setOpenActionMenu(null)}
+                      style={{
+                        position: 'absolute', right: '6px', top: '40px', zIndex: 30,
+                        background: 'white', border: `1px solid ${MD.color.outlineVariant}`,
+                        borderRadius: MD.radius.field, boxShadow: MD.elevation[3],
+                        minWidth: '168px', padding: '6px', display: 'flex', flexDirection: 'column', gap: '2px',
+                      }}
+                    >
+                      <button onClick={() => { openEdit(r); setOpenActionMenu(null) }} style={menuItemStyle}>Edit</button>
+                      {canApprove(r) && (
+                        <button onClick={() => { handleApproveClick(r); setOpenActionMenu(null) }} style={{ ...menuItemStyle, color: MD.color.success }}>Approve</button>
+                      )}
+                      {canReject(r) && (
+                        <button onClick={() => { handleRejectClick(r); setOpenActionMenu(null) }} style={{ ...menuItemStyle, color: MD.color.error }}>Reject</button>
+                      )}
+                      {((r.status === 'Approved' && (r.approval_level ?? 0) >= 2) || r.status === 'Overdue') && (
+                        <button onClick={() => { handleMarkReturned(r); setOpenActionMenu(null) }} style={{ ...menuItemStyle, color: '#1d4ed8' }}>Mark Returned</button>
+                      )}
+                      <div style={{ padding: '2px 10px' }}><GatePassButton record={r} compact={true} /></div>
+                      {isAdmin && (
+                        <button onClick={() => { setDeleteTarget(r); setOpenActionMenu(null) }} style={{ ...menuItemStyle, color: MD.color.error }}>Delete</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Approval trail — full width beneath the row when expanded */}
+              {isHistoryOpen && (
+                <div style={{ padding: '10px 16px 14px', borderBottom: `1px solid ${MD.color.outlineVariant}`, background: MD.color.surfaceDim }}>
+                  <ApprovalHistoryPanel leaveId={r.id} />
+                </div>
               )}
-            </tbody>
-          </table>
+            </div>
+            )
+          })}
+
+          {filtered.length === 0 && (
+            <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
+              <div style={{ fontSize: '32px', marginBottom: '8px' }}>🚪</div>
+              No leave records found
+            </div>
+          )}
 
           {/* Table footer */}
-          <div style={{ padding: '10px 16px', borderTop: '1px solid #f1f5f9', fontSize: '12px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '10px 16px', borderTop: `1px solid ${MD.color.outlineVariant}`, fontSize: '12px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>
               {isFiltered
-                ? <span style={{ color: '#1a2f4d', fontWeight: '600' }}>{filtered.length} of {records.length} records match filters</span>
+                ? <span style={{ color: MD.color.primary, fontWeight: '600' }}>{filtered.length} of {records.length} records match filters</span>
                 : <span>{filtered.length} record{filtered.length !== 1 ? 's' : ''} total</span>
               }
             </span>
             {isFiltered && (
-              <button onClick={clearAllFilters} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}>
+              <button onClick={clearAllFilters} style={{ background: 'none', border: 'none', color: MD.color.error, fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}>
                 ✕ Clear filters
               </button>
             )}
           </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
