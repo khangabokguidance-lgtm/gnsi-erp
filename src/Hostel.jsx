@@ -432,6 +432,37 @@ async function logNeglect(houseName, dateStr, session, housemasterName, missingK
   }
 }
 
+// ── Rushed/careless roll call flagging ──────────────────────────────
+// Reuses hm_neglect_log with check_type: 'rushed_rollcall' so it shows
+// up in the existing Neglect Report alongside missed six-tab checks.
+// `reason` is put directly in missing_tabs as a plain-English note
+// (the report table already falls back to raw text for unknown keys).
+async function logRushedRollCall(houseName, dateStr, session, housemasterName, reason) {
+  try {
+    const { data, error } = await supabase.from('hm_neglect_log').insert([{
+      house: houseName, date: dateStr, session,
+      housemaster_name: housemasterName || 'Unknown',
+      missing_tabs: [reason],
+      skip_reasons: {},
+      check_type: 'rushed_rollcall',
+    }]).select('id').single()
+    if (error) throw error
+    const { data: admins } = await supabase.from('staff_profiles').select('id').ilike('role', 'admin')
+    if (admins?.length) {
+      await Promise.all(admins.map(a => sendPushToStaffId(
+        a.id,
+        `⚠️ Possible rushed roll call — ${houseName}`,
+        `${housemasterName || 'Housemaster'}: ${reason} (${session}, ${dateStr})`,
+        '/hostel?tab=neglectreport'
+      )))
+    }
+    return data?.id || null
+  } catch (e) {
+    console.error('logRushedRollCall failed:', e)
+    return null
+  }
+}
+
 // Skip reasons must be a genuine explanation, not a placeholder — at
 // least 10 characters and more than one word, so "na" / "ok" / "done"
 // don't slip through as a justification.
@@ -1299,7 +1330,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         setSavingId(null)
       }
 
-  const handleBulkMark = async (studentIds, status) => {
+  const handleBulkMark = async (studentIds, status, houseNameForLog) => {
     setSaving(true)
     const payloads = studentIds.map(id => {
       const student = activeStudents.find(s => s.id === id)
@@ -1318,6 +1349,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const { error } = await supabase.from('attendance_records').upsert(payloads, {
       onConflict: 'date,session,student_id'
     })
+    if (!error && status === 'Present' && studentIds.length >= 3) {
+      // Bulk-marking a group Present in one tap skips checking each
+      // student individually — flag it for admin visibility. Bulk
+      // Absent/On Leave aren't flagged since those are normal corrections,
+      // not a shortcut around verification.
+      logRushedRollCall(
+        houseNameForLog || selectedHouse || '',
+        date, session, currentHousemaster?.name,
+        `Bulk-marked ${studentIds.length} students Present at once (no individual check)`
+      )
+    }
     if (!error) await loadAll()
     setSaving(false)
   }
@@ -1368,6 +1410,28 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     if (missing.length > 0) {
       const logId = await logNeglect(houseName, date, session, currentHousemaster?.name, missing, 'rollcall')
       if (logId) setComplianceLogId(prev => ({ ...prev, [key]: logId }))
+    }
+    // ── Rushed-marking check: flag a roll call whose per-student marks
+    //    are all clustered in an implausibly short window (e.g. tapping
+    //    through 20 students in under 20 seconds is not real checking). ──
+    const houseRecords = allRecords.filter(r =>
+      normalizeHouse(r.house) === normalizeHouse(houseName) && r.marked_at
+    )
+    if (houseRecords.length >= 3) {
+      const times = houseRecords.map(r => new Date(r.marked_at).getTime()).sort((a, b) => a - b)
+      const spanSeconds = (times[times.length - 1] - times[0]) / 1000
+      const secondsPerStudent = spanSeconds / houseRecords.length
+      const allSameStatus = new Set(houseRecords.map(r => r.status)).size === 1
+      // Under ~2 seconds/student average is not enough time to actually
+      // look at each student — flag it, more urgently if every status
+      // came out identical (suggests no real per-student decision at all).
+      if (secondsPerStudent < 2) {
+        logRushedRollCall(
+          houseName, date, session, currentHousemaster?.name,
+          `Roll call for ${houseRecords.length} students completed in ${Math.round(spanSeconds)}s` +
+          (allSameStatus ? ' — all marked identically' : '')
+        )
+      }
     }
   }
 
@@ -2275,8 +2339,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   key={status}
                   disabled={saving}
                   onClick={async () => {
-                    if (window.confirm(`Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as ${status}?`)) {
-                      await handleBulkMark(unmarkedStudents.map(s => s.id), status)
+                    const confirmMsg = status === 'Present'
+                      ? `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as Present WITHOUT checking each one individually?\n\nThis is only meant for genuine emergencies. Please verify each student's bed/presence whenever possible — this action is logged and visible to admin.`
+                      : `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as ${status}?`
+                    if (window.confirm(confirmMsg)) {
+                      await handleBulkMark(unmarkedStudents.map(s => s.id), status, selectedHouse)
                     }
                   }}
                   style={{
@@ -7232,8 +7299,12 @@ function NeglectReportTab({ currentUser }) {
                   <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                   <td style={{ padding: '10px 14px', color: '#64748b' }}>{r.date}</td>
                   <td style={{ padding: '10px 14px' }}>
-                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: r.check_type === 'standalone' ? '#f5f3ff' : '#eff6ff', color: r.check_type === 'standalone' ? '#7c3aed' : '#1e3a5f' }}>
-                      {r.check_type === 'standalone' ? '📋 3x-Daily' : '✅ Roll Call'}
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700,
+                      background: r.check_type === 'standalone' ? '#f5f3ff' : r.check_type === 'rushed_rollcall' ? '#fef2f2' : '#eff6ff',
+                      color: r.check_type === 'standalone' ? '#7c3aed' : r.check_type === 'rushed_rollcall' ? '#dc2626' : '#1e3a5f',
+                    }}>
+                      {r.check_type === 'standalone' ? '📋 3x-Daily' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : '✅ Roll Call'}
                     </span>
                   </td>
                   <td style={{ padding: '10px 14px' }}>
