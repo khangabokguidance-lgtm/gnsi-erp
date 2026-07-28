@@ -6567,6 +6567,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
             {/* FIXED: was repeat(4,1fr) */}
             <div style={statGrid(130)}>
               <StatCard icon="👥" label="Students" value={houseStudents.length} color={hs.color} bg={hs.bg} />
+              <StatCard icon="♂" label="Male" value={houseStudents.filter(s => s.gender === 'Male').length} color={hs.color} bg={hs.bg} />
+              <StatCard icon="♀" label="Female" value={houseStudents.filter(s => s.gender === 'Female').length} color={hs.color} bg={hs.bg} />
               <StatCard icon="👨‍🏫" label="Housemasters" value={houseMasters.length} color={hs.color} bg={hs.bg} />
               <StatCard icon="🎖" label="Captain" value={activeHouseObj.captain || '—'} color={hs.color} bg={hs.bg} />
               <StatCard icon="🎗" label="Vice Captain" value={activeHouseObj.vice_captain || '—'} color={hs.color} bg={hs.bg} />
@@ -6619,7 +6621,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
                     <thead>
                       <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        {['#', 'GCC', 'Student', 'Batch', 'Course', 'Hostel Type', 'Remove'].map(h => (
+                        {['#', 'GCC', 'Student', 'Gender', 'Batch', 'Course', 'Hostel Type', 'Remove'].map(h => (
                           <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 12 }}>{h}</th>
                         ))}
                       </tr>
@@ -6633,6 +6635,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                           <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                           <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.gender || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.hostel_type || '—'}</td>
@@ -6746,7 +6749,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, marginBottom: 24 }}>
                 {houses.map(h => {
                   const hs = getHouseStyle(h)
-                  const cnt = students.filter(s => normalizeHouse(s.house) === normalizeHouse(h.name)).length
+                  const houseStudents = students.filter(s => normalizeHouse(s.house) === normalizeHouse(h.name))
+                  const cnt = houseStudents.length
+                  const maleCnt = houseStudents.filter(s => s.gender === 'Male').length
+                  const femaleCnt = houseStudents.filter(s => s.gender === 'Female').length
                   const hms = masters.filter(m => normalizeHouse(m.house) === normalizeHouse(h.name))
                   return (
                     <div key={h.id}
@@ -6783,6 +6789,15 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                             </div>
                           ))}
                         </div>
+                        {cnt > 0 && (maleCnt > 0 || femaleCnt > 0) && (
+                          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99, background: '#eff6ff', color: '#3B82F6' }}>♂ {maleCnt}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99, background: '#fdf2f8', color: '#EC4899' }}>♀ {femaleCnt}</span>
+                            {cnt > maleCnt + femaleCnt && (
+                              <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 99, background: '#f1f5f9', color: '#64748b' }}>? {cnt - maleCnt - femaleCnt}</span>
+                            )}
+                          </div>
+                        )}
                         {(h.captain || h.vice_captain) && (
                           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                             {h.captain && <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: hs.bg, color: hs.color, fontWeight: 700 }}>🎖 {h.captain}</span>}
@@ -7464,7 +7479,7 @@ function Hostel() {
     const fetchShared = async () => {
       setDataLoading(true)
       const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
-        supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob').order('name'),
+        supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender').order('name'),
         supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
         supabase.from('housemasters').select('*')
           .eq('status', 'Active')
