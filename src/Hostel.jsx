@@ -3644,7 +3644,8 @@ function MonthlyCertificateCard() {
         🏆 Certificate of Appreciation — {monthLabel}
       </div>
       <div style={{ fontSize: '20px', fontWeight: '800', marginBottom: '2px' }}>{winner.hmName}</div>
-      <div style={{ fontSize: '13px', opacity: 0.85, marginBottom: '16px' }}>🏠 {winner.house} House · Score: {winner.score}%</div>
+      <div style={{ fontSize: '13px', opacity: 0.85, marginBottom: '4px' }}>🏠 {winner.house} House · Score: {winner.score}%</div>
+      <div style={{ fontSize: '11px', opacity: 0.6, marginBottom: '16px' }}>Ranked over {monthLabel} month-to-date — a different window than the "Last 7 Days" list below, so rankings may not match.</div>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <button
           onClick={handleDownload}
