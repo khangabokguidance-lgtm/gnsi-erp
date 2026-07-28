@@ -3059,9 +3059,16 @@ async function computeHMPerformance(startDateStr, endDateStr) {
   // produce two separate entries for what is actually the same house,
   // each pulling in the same underlying records and housemaster, so the
   // ranking list showed the same housemaster twice with identical stats.
+  //
+  // Also seed from every ACTIVE housemaster's assigned house, not just
+  // houses that happen to appear in attendance/neglect records — a
+  // housemaster with zero roll calls logged in the last 7 days was
+  // previously missing from the ranking entirely instead of showing up
+  // with "No data".
   const houseKeys = [...new Set([
     ...(attendance || []).map(a => normalizeHouse(a.house)),
     ...(neglect || []).map(n => normalizeHouse(n.house)),
+    ...(housemasters || []).map(h => normalizeHouse(h.house)),
   ].filter(Boolean))]
 
   // For display, prefer the housemaster's own house label (usually the
@@ -3969,15 +3976,41 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           ))}
         </div>
         <div style={{ ...mobileCard, marginBottom: '14px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 12px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            {[{ label: 'Present', value: presentCount, color: MD.color.success, bg: MD.color.successContainer }, { label: 'Absent', value: absentCount, color: MD.color.error, bg: MD.color.errorContainer }, { label: 'On Leave', value: leaveToday.length, color: MD.color.primary, bg: MD.color.primaryContainer }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
-              <div key={s.label} style={{ textAlign: 'center', padding: '12px', background: s.bg, borderRadius: MD.radius.control }}>
-                <div style={{ fontSize: '22px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 2px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
+          <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, margin: '0 0 14px' }}>Morning roll call</p>
+          {(() => {
+            const totalMarked = presentCount + absentCount
+            const attendedPct = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : null
+            const tallyItems = [
+              { label: 'Present', value: presentCount, color: MD.color.success },
+              { label: 'Absent', value: absentCount, color: MD.color.error },
+              { label: 'On Leave', value: leaveToday.length, color: MD.color.primary },
+              { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed' },
+              { label: 'Unmarked', value: unmarkedCount, color: MD.color.secondary },
+            ]
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '32px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: 'Georgia, serif' }}>
+                    {attendedPct === null ? '—' : `${attendedPct}%`}
+                  </span>
+                  <span style={{ fontSize: '12px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || students.length} marked</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', border: `1px solid ${MD.color.outlineVariant}`, borderRadius: MD.radius.control, overflow: 'hidden' }}>
+                  {tallyItems.map((s, idx) => (
+                    <div key={s.label} style={{
+                      textAlign: 'center', padding: '10px 4px',
+                      borderLeft: idx % 3 > 0 ? `1px dashed ${MD.color.outlineVariant}` : 'none',
+                      borderTop: idx >= 3 ? `1px dashed ${MD.color.outlineVariant}` : 'none',
+                    }}>
+                      <div style={{ fontSize: '18px', fontWeight: '800', color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, fontWeight: '600', marginTop: '2px' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          })()}
         </div>
 
         {isAdmin && (
@@ -4069,15 +4102,42 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
         <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {[{ label: 'Present', value: presentCount, color: MD.color.success, bg: MD.color.successContainer }, { label: 'Absent', value: absentCount, color: MD.color.error, bg: MD.color.errorContainer }, { label: 'On Leave', value: leaveToday.length, color: MD.color.primary, bg: MD.color.primaryContainer }, { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed', bg: '#f5f3ff' }].map(s => (
-              <div key={s.label} style={{ textAlign: 'center', padding: '16px', background: s.bg, borderRadius: MD.radius.control }}>
-                <div style={{ fontSize: '28px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
+          <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, margin: '0 0 18px' }}>Morning roll call · {today()}</p>
+          {(() => {
+            const totalMarked = presentCount + absentCount
+            const attendedPct = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : null
+            const tallyItems = [
+              { label: 'Present', value: presentCount, color: MD.color.success },
+              { label: 'Absent', value: absentCount, color: MD.color.error },
+              { label: 'On Leave', value: leaveToday.length, color: MD.color.primary },
+              { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed' },
+              { label: 'Unmarked', value: unmarkedCount, color: MD.color.secondary },
+            ]
+            return (
+              <>
+                {/* Anchor stat — the number an HM actually scans for first */}
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '40px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: 'Georgia, serif' }}>
+                    {attendedPct === null ? '—' : `${attendedPct}%`}
+                  </span>
+                  <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || students.length} marked</span>
+                </div>
+                {/* Ledger tally row — a single ruled strip, entries separated by hairline dividers like a register page, instead of four competing colored blocks */}
+                <div style={{ display: 'flex', borderTop: `1px solid ${MD.color.outlineVariant}`, borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
+                  {tallyItems.map((s, idx) => (
+                    <div key={s.label} style={{
+                      flex: 1, textAlign: 'center', padding: '14px 8px',
+                      borderLeft: idx > 0 ? `1px dashed ${MD.color.outlineVariant}` : 'none',
+                    }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, fontWeight: '600', marginTop: '2px' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          })()}
         </div>
         <div style={card}>
           <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: 'Georgia, serif' }}>Attention Required</h3>
