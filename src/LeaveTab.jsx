@@ -14,27 +14,70 @@ import QRCode from 'qrcode'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 
-// ── Shared styles (copy from Hostel.jsx or import from a shared file)
+// ══════════════════════════════════════════════════════════════
+//  DESIGN TOKENS — "Ledger & Crest" refined corporate system.
+//  Mirrors the token set in Hostel.jsx exactly so the Leave tab reads
+//  as part of the same institutional module, not a visually separate
+//  screen. Muted navy/gold palette, serif display face for headings,
+//  sans body face for everything read at length, tight radii/shadows.
+// ══════════════════════════════════════════════════════════════
+const FONT_DISPLAY = '"Georgia", "Iowan Old Style", "Times New Roman", serif'
+const FONT_BODY = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+
+const MD = {
+  color: {
+    primary:          '#1a2f4d',
+    primaryContainer: '#e8edf4',
+    onPrimaryContainer: '#152238',
+    secondary:          '#a8842f',
+    secondaryContainer: '#f6efdd',
+    onSecondaryContainer: '#5c4816',
+    surface:          '#ffffff',
+    surfaceDim:       '#f5f6f8',
+    surfaceContainer: '#ffffff',
+    surfaceVariant:   '#eef0f3',
+    outline:          '#d9dee5',
+    outlineVariant:   '#e7eaee',
+    onSurface:        '#1c2530',
+    onSurfaceVariant: '#5c6773',
+    error:            '#b3261e',
+    errorContainer:   '#fbe9e7',
+    success:          '#276b3d',
+    successContainer: '#e3f1e7',
+  },
+  elevation: {
+    0: 'none',
+    1: '0 1px 2px rgba(20,28,40,0.05)',
+    2: '0 2px 6px rgba(20,28,40,0.07)',
+    3: '0 4px 12px rgba(20,28,40,0.09)',
+    4: '0 8px 20px rgba(20,28,40,0.11)',
+  },
+  radius: { control: '7px', field: '9px', card: '11px', sheet: '16px', pill: '999px' },
+}
+
+// ── Shared styles — quiet institutional surfaces on the refined palette ──
 const inp = {
-  width: '100%', padding: '12px 14px', borderRadius: '10px',
-  border: '1px solid #d1d5db', fontSize: '16px',
-  boxSizing: 'border-box', backgroundColor: 'white',
-  minHeight: '44px',
+  width: '100%', padding: '11px 13px', borderRadius: MD.radius.control,
+  border: `1px solid ${MD.color.outline}`, fontSize: '15px',
+  boxSizing: 'border-box', backgroundColor: MD.color.surfaceVariant,
+  minHeight: '44px', color: MD.color.onSurface, fontFamily: FONT_BODY,
 }
 const lbl = {
-  display: 'block', fontSize: '13px', fontWeight: '600',
-  color: '#374151', marginBottom: '6px',
+  display: 'block', fontSize: '11px', fontWeight: '700',
+  color: MD.color.onSurfaceVariant, marginBottom: '6px',
+  textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: FONT_BODY,
 }
-const btn = (bg = '#1e3a5f', c = 'white') => ({
-  backgroundColor: bg, color: c, border: 'none', borderRadius: '10px',
-  padding: '12px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px',
-  minHeight: '44px', minWidth: '44px',
+const btn = (bg = MD.color.primary, c = 'white') => ({
+  backgroundColor: bg, color: c, border: 'none', borderRadius: MD.radius.control,
+  padding: '11px 20px', fontWeight: '700', cursor: 'pointer', fontSize: '13px',
+  minHeight: '44px', minWidth: '44px', boxShadow: MD.elevation[1], fontFamily: FONT_BODY,
+  letterSpacing: '0.01em',
 })
 const card = {
-  background: 'white', borderRadius: '14px', padding: '16px',
-  boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0',
+  background: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '18px',
+  boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
 }
-const mobileCard = { ...card, padding: '12px', borderRadius: '12px' }
+const mobileCard = { ...card, padding: '14px', borderRadius: MD.radius.field }
 const grid2 = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
@@ -81,11 +124,11 @@ function getApprovalDisplay(record) {
   const status = record.status || 'Pending'
   if (status === 'Rejected') return { label: '❌ Rejected',                bg: '#fee2e2', color: '#dc2626' }
   if (status === 'Overdue')  return { label: '⚠️ Overdue',                bg: '#fee2e2', color: '#dc2626' }
-  if (status === 'Returned') return { label: '🏠 Returned',               bg: '#eff6ff', color: '#1e3a5f' }
+  if (status === 'Returned') return { label: '🏠 Returned',               bg: '#eff6ff', color: '#1a2f4d' }
   if (status === 'Approved' && level >= 2)
                              return { label: '✅ Fully Approved',          bg: '#dcfce7', color: '#16a34a' }
   if (level === 1)           return { label: '🔵 Pending Superintendent',  bg: '#dbeafe', color: '#1d4ed8' }
-  return                            { label: '⏳ Pending HM',              bg: '#fef9c3', color: '#ca8a04' }
+  return                            { label: '⏳ Pending HM',              bg: '#fef9c3', color: '#a8842f' }
 }
 
 function ApprovalBadge({ record, style = {} }) {
@@ -103,11 +146,11 @@ function ApprovalBadge({ record, style = {} }) {
 
 function statusStyle(status) {
   const map = {
-    Pending:   { bg: '#fef9c3', color: '#ca8a04' },
+    Pending:   { bg: '#fef9c3', color: '#a8842f' },
     Approved:  { bg: '#dcfce7', color: '#16a34a' },
     Rejected:  { bg: '#fee2e2', color: '#dc2626' },
     Overdue:   { bg: '#fee2e2', color: '#dc2626' },
-    Returned:  { bg: '#eff6ff', color: '#1e3a5f' },
+    Returned:  { bg: '#eff6ff', color: '#1a2f4d' },
   }
   const s = map[status] || { bg: '#e0f2fe', color: '#0891b2' }
   return {
@@ -204,7 +247,7 @@ function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GC
 const MobileCardList = ({ children }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{children}</div>
 )
-const MobileRecordCard = ({ children, accentColor = '#1e3a5f' }) => (
+const MobileRecordCard = ({ children, accentColor = '#1a2f4d' }) => (
   <div style={{
     background: 'white', borderRadius: '12px', padding: '14px',
     borderLeft: `4px solid ${accentColor}`,
@@ -223,7 +266,7 @@ const MobileActionButtons = ({ actions }) => (
           flex: action.fullWidth ? '1 1 100%' : '1 1 auto',
           padding: '8px 12px', borderRadius: '8px', border: 'none',
           background: action.bg || '#eff6ff',
-          color: action.color || '#1e3a5f',
+          color: action.color || '#1a2f4d',
           fontSize: '12px', fontWeight: '700',
           cursor: 'pointer', minHeight: '36px',
         }}
@@ -328,7 +371,7 @@ const LEAVE_TYPE_COLORS = {
   'Home Leave':    { bg: '#dbeafe', color: '#1d4ed8', dot: '#1d4ed8' },
   'Day Outing':    { bg: '#dcfce7', color: '#16a34a', dot: '#16a34a' },
   'Night Out':     { bg: '#f5f3ff', color: '#7c3aed', dot: '#7c3aed' },
-  'Weekend Leave': { bg: '#fef9c3', color: '#ca8a04', dot: '#ca8a04' },
+  'Weekend Leave': { bg: '#fef9c3', color: '#a8842f', dot: '#a8842f' },
   'Emergency':     { bg: '#fee2e2', color: '#dc2626', dot: '#dc2626' },
 }
 const leaveTypeColor = (type) =>
@@ -373,7 +416,7 @@ const overdueRate = (recs) => {
 }
 
 // Chart color palette
-const CHART_COLORS = ['#1d4ed8','#16a34a','#7c3aed','#ca8a04','#dc2626','#0891b2','#be185d','#047857']
+const CHART_COLORS = ['#1d4ed8','#16a34a','#7c3aed','#a8842f','#dc2626','#0891b2','#be185d','#047857']
 
 // ══════════════════════════════════════════════════════════════
 //  NOTIFICATION ENGINE CONSTANTS
@@ -605,7 +648,7 @@ async function alertStuckApproval(record) {
 const chipStyle = {
   display: 'inline-flex', alignItems: 'center', gap: '4px',
   padding: '3px 8px 3px 10px', borderRadius: '99px',
-  background: '#eff6ff', color: '#1e3a5f',
+  background: '#eff6ff', color: '#1a2f4d',
   fontSize: '12px', fontWeight: '600', border: '1px solid #bfdbfe',
 }
 const chipX = {
@@ -645,13 +688,13 @@ function LeaveForm({ form, setForm, students, onSave, onCancel, saving, isEdit }
     <div style={{ ...card, marginBottom: mobile ? '12px' : '20px' }}>
       {/* ── Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h3 style={{ fontSize: mobile ? '15px' : '16px', fontWeight: '700', color: '#1e3a5f', margin: 0 }}>
-          {isEdit ? '✏️ Edit Leave Request' : '🚪 New Leave Request'}
+        <h3 style={{ fontSize: mobile ? '15px' : '16px', fontWeight: '700', color: '#1a2f4d', margin: 0 }}>
+          {isEdit ? 'Edit Leave Request' : 'New Leave Request'}
         </h3>
         {isEdit && (
           <span style={{
             fontSize: '11px', padding: '3px 10px', borderRadius: '99px',
-            background: '#fef9c3', color: '#ca8a04', fontWeight: '700',
+            background: '#fef9c3', color: '#a8842f', fontWeight: '700',
           }}>
             Editing Record
           </span>
@@ -832,7 +875,7 @@ function LeaveForm({ form, setForm, students, onSave, onCancel, saving, isEdit }
             type="submit"
             disabled={saving || !form.student_name}
             style={{
-              ...btn(saving || !form.student_name ? '#94a3b8' : '#1e3a5f'),
+              ...btn(saving || !form.student_name ? '#94a3b8' : '#1a2f4d'),
               flex: mobile ? 1 : 'unset',
             }}
           >
@@ -931,7 +974,7 @@ function BalanceCard({ studentId, leaveType }) {
   const pct      = balance.is_unlimited ? 100 : Math.round((balance.used / balance.total_quota) * 100)
   const isZero   = !balance.is_unlimited && balance.remaining <= 0
   const isLow    = !balance.is_unlimited && balance.remaining === 1
-  const barColor = isZero ? '#dc2626' : isLow ? '#ca8a04' : '#16a34a'
+  const barColor = isZero ? '#dc2626' : isLow ? '#a8842f' : '#16a34a'
   const bg       = isZero ? '#fee2e2' : isLow ? '#fef9c3' : '#f0fdf4'
   const border   = isZero ? '#fca5a5' : isLow ? '#fde047' : '#bbf7d0'
 
@@ -976,7 +1019,7 @@ function BalanceCard({ studentId, leaveType }) {
         </div>
       )}
       {isLow && (
-        <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: '700', color: '#ca8a04' }}>
+        <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: '700', color: '#a8842f' }}>
           ⚠️ Only 1 {leaveType} remaining this year.
         </div>
       )}
@@ -1025,7 +1068,7 @@ function QuotaExceededModal({ record, balance, onOverride, onCancel }) {
           />
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={handleOverride} style={{ ...btn('#ca8a04'), flex: 1 }}>⚠️ Approve Anyway</button>
+          <button onClick={handleOverride} style={{ ...btn('#a8842f'), flex: 1 }}>⚠️ Approve Anyway</button>
           <button onClick={onCancel}       style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
         </div>
       </div>
@@ -1095,7 +1138,7 @@ function QuotaAdminPanel({ onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '28px', maxWidth: '520px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>⚙️ Leave Quota Configuration</h3>
+          <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>Leave Quota Configuration</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>✕</button>
         </div>
 
@@ -1147,7 +1190,7 @@ function QuotaAdminPanel({ onClose }) {
               ))}
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={handleSave} disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>
+              <button onClick={handleSave} disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1a2f4d'), flex: 1 }}>
                 {saving ? '⏳ Saving...' : '✅ Save Quotas'}
               </button>
               <button onClick={onClose} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
@@ -1242,7 +1285,7 @@ function StudentBalancePanel({ students, onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '28px', maxWidth: '560px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>🎛 Per-Student Balance Override</h3>
+          <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>Per-Student Balance Override</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>✕</button>
         </div>
 
@@ -1272,7 +1315,7 @@ function StudentBalancePanel({ students, onClose }) {
         </div>
 
         {selectedStudent && (
-          <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#1e3a5f', fontWeight: '600' }}>
+          <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#1a2f4d', fontWeight: '600' }}>
             👤 {selectedStudent.name} · GCC-{selectedStudent.gcc_no || '--'} · {selectedStudent.house || '--'} · {year}
           </div>
         )}
@@ -1300,7 +1343,7 @@ function StudentBalancePanel({ students, onClose }) {
                       <div style={{ color: '#64748b' }}>Used</div>
                     </div>
                     <div style={{ textAlign: 'center', background: '#eff6ff', borderRadius: '8px', padding: '6px' }}>
-                      <div style={{ fontWeight: '800', color: '#1e3a5f', fontSize: '16px' }}>{b.total_quota}</div>
+                      <div style={{ fontWeight: '800', color: '#1a2f4d', fontSize: '16px' }}>{b.total_quota}</div>
                       <div style={{ color: '#64748b' }}>Quota</div>
                     </div>
                   </div>
@@ -1319,7 +1362,7 @@ function StudentBalancePanel({ students, onClose }) {
                     style={{ ...inp, width: '70px', padding: '6px 10px', fontSize: '13px' }}
                   />
                   <span style={{ fontSize: '12px', color: '#94a3b8' }}>tab out to save</span>
-                  {saving && <span style={{ fontSize: '12px', color: '#ca8a04' }}>⏳</span>}
+                  {saving && <span style={{ fontSize: '12px', color: '#a8842f' }}>⏳</span>}
                 </div>
               </div>
             ))}
@@ -1411,7 +1454,7 @@ async function generateGatePassPDF(record, gpData) {
   const qrUrl   = `${VERIFY_BASE}?gp=${gp_no}&id=${record.id}`
   const qrDataUrl = await QRCode.toDataURL(qrUrl, {
     width: 120, margin: 1,
-    color: { dark: '#1e3a5f', light: '#ffffff' },
+    color: { dark: '#1a2f4d', light: '#ffffff' },
   })
 
   // ── Create A5 PDF (148 x 210 mm)
@@ -1646,7 +1689,7 @@ function GatePassButton({ record, compact = false }) {
         title={hasPass ? `Reprint ${gpData.gp_no}` : 'Generate Gate Pass'}
         style={{
           background: isVoided ? '#fee2e2' : hasPass ? '#dcfce7' : '#eff6ff',
-          color:      isVoided ? '#dc2626' : hasPass ? '#16a34a' : '#1e3a5f',
+          color:      isVoided ? '#dc2626' : hasPass ? '#16a34a' : '#1a2f4d',
           border: 'none', borderRadius: '6px', padding: '5px 9px',
           fontSize: '11px', cursor: 'pointer', fontWeight: '700',
           whiteSpace: 'nowrap',
@@ -1666,7 +1709,7 @@ function GatePassButton({ record, compact = false }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: '13px', fontWeight: '700', color: isVoided ? '#dc2626' : '#1e3a5f' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: isVoided ? '#dc2626' : '#1a2f4d' }}>
             {isVoided ? '🔴 Gate Pass Voided' : hasPass ? `✅ Gate Pass Issued` : '🎫 Gate Pass'}
           </div>
           {hasPass && (
@@ -1680,7 +1723,7 @@ function GatePassButton({ record, compact = false }) {
           onClick={handleGenerate}
           disabled={generating}
           style={{
-            background: isVoided ? '#dc2626' : '#1e3a5f',
+            background: isVoided ? '#dc2626' : '#1a2f4d',
             color: 'white', border: 'none', borderRadius: '8px',
             padding: '8px 14px', fontSize: '12px', fontWeight: '700',
             cursor: 'pointer',
@@ -1760,7 +1803,7 @@ export function GatePassVerifyPage() {
   const isOverdue  = record.status === 'Overdue'
   const isValid    = record.status === 'Approved' && (record.approval_level ?? 0) >= 2
 
-  const statusColor = isReturned ? '#16a34a' : isOverdue ? '#dc2626' : isValid ? '#1d4ed8' : '#ca8a04'
+  const statusColor = isReturned ? '#16a34a' : isOverdue ? '#dc2626' : isValid ? '#1d4ed8' : '#a8842f'
   const statusBg    = isReturned ? '#dcfce7'  : isOverdue ? '#fee2e2'  : isValid ? '#dbeafe'  : '#fef9c3'
   const statusLabel = isReturned ? '✅ Returned — Pass Voided'
                     : isOverdue  ? '⚠️ OVERDUE — Not Yet Returned'
@@ -1773,7 +1816,7 @@ export function GatePassVerifyPage() {
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{GNSI_NAME}</div>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: '4px 0' }}>Gate Pass Verification</h2>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1a2f4d', margin: '4px 0' }}>Gate Pass Verification</h2>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#94a3b8' }}>{gpData?.gp_no}</div>
         </div>
 
@@ -2164,7 +2207,7 @@ function LeaveCalendarView({ records, students }) {
       }}>
         <button onClick={prevMonth} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: '16px' }}>‹</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: mobile ? '16px' : '20px', fontWeight: '800', color: '#1e3a5f' }}>
+          <div style={{ fontSize: mobile ? '16px' : '20px', fontWeight: '800', color: '#1a2f4d' }}>
             {MONTH_NAMES[viewMonth]} {viewYear}
           </div>
           <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
@@ -2230,7 +2273,7 @@ function LeaveCalendarView({ records, students }) {
                     minHeight: mobile ? '48px' : '72px',
                     borderRadius: '8px',
                     border: isSelected
-                      ? '2px solid #1e3a5f'
+                      ? '2px solid #1a2f4d'
                       : isHigh
                       ? '1.5px solid #fca5a5'
                       : '1px solid #e2e8f0',
@@ -2254,7 +2297,7 @@ function LeaveCalendarView({ records, students }) {
                   <div style={{
                     fontSize: '11px',
                     fontWeight: isToday ? '800' : '600',
-                    color: isToday ? '#1e3a5f' : isHigh ? '#dc2626' : '#374151',
+                    color: isToday ? '#1a2f4d' : isHigh ? '#dc2626' : '#374151',
                     marginBottom: '3px',
                     display: 'flex',
                     alignItems: 'center',
@@ -2262,7 +2305,7 @@ function LeaveCalendarView({ records, students }) {
                   }}>
                     <span style={{
                       ...(isToday ? {
-                        background: '#1e3a5f', color: 'white',
+                        background: '#1a2f4d', color: 'white',
                         borderRadius: '50%', width: '18px', height: '18px',
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '10px',
@@ -2278,7 +2321,7 @@ function LeaveCalendarView({ records, students }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexWrap: 'wrap' }}>
                         <span style={{
                           fontSize: '10px', fontWeight: '800',
-                          color: isHigh ? '#dc2626' : '#1e3a5f',
+                          color: isHigh ? '#dc2626' : '#1a2f4d',
                         }}>{recs.length}</span>
                         {recs.slice(0, 3).map((r, i) => {
                           const c = leaveTypeColor(r.leave_type)
@@ -2332,7 +2375,7 @@ function LeaveCalendarView({ records, students }) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a5f' }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1a2f4d' }}>
                   {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
@@ -2423,12 +2466,12 @@ function LeaveCalendarView({ records, students }) {
                 >
                   {/* Date label */}
                   <div style={{ minWidth: '80px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: '800', color: isHigh ? '#dc2626' : '#1e3a5f' }}>{label}</div>
+                    <div style={{ fontSize: '12px', fontWeight: '800', color: isHigh ? '#dc2626' : '#1a2f4d' }}>{label}</div>
                     <div style={{ fontSize: '10px', color: '#94a3b8' }}>{dateStr}</div>
                   </div>
 
                   {/* Count */}
-                  <div style={{ fontSize: '20px', fontWeight: '800', color: isHigh ? '#dc2626' : '#1e3a5f', minWidth: '28px' }}>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: isHigh ? '#dc2626' : '#1a2f4d', minWidth: '28px' }}>
                     {recs.length}
                   </div>
 
@@ -2619,7 +2662,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
   }, [balanceData, students])
 
   // ── KPI card helper
-  const KPI = ({ icon, label, value, sub, color = '#1e3a5f', bg = '#eff6ff' }) => (
+  const KPI = ({ icon, label, value, sub, color = '#1a2f4d', bg = '#eff6ff' }) => (
     <div style={{
       background: bg, borderRadius: '12px', padding: '16px',
       borderLeft: `4px solid ${color}`,
@@ -2657,7 +2700,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
         gap: '12px', marginBottom: '24px',
       }}>
         <KPI icon="📋" label="Total Leaves" value={filtered.length}
-          sub={`${thisMonth.length} this month`} color="#1e3a5f" bg="#eff6ff" />
+          sub={`${thisMonth.length} this month`} color="#1a2f4d" bg="#eff6ff" />
         <KPI icon="✅" label="Approval Rate" value={`${approvalRate(filtered)}%`}
           sub={`${filtered.filter(r => (r.approval_level??0) >= 2).length} approved`} color="#16a34a" bg="#dcfce7" />
         <KPI icon="📅" label="Avg Duration" value={`${avgDuration(filtered)}d`}
@@ -2665,7 +2708,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
         <KPI icon="⚠️" label="Overdue Rate" value={`${overdueRate(filtered)}%`}
           sub="of returned leaves" color="#dc2626" bg="#fee2e2" />
         <KPI icon="👥" label="Unique Students" value={new Set(filtered.map(r => r.student_id).filter(Boolean)).size}
-          sub="took leave" color="#ca8a04" bg="#fef9c3" />
+          sub="took leave" color="#a8842f" bg="#fef9c3" />
         <KPI icon="🔴" label="Repeat Patterns" value={repeatPatterns.length}
           sub="≥3 months" color="#be185d" bg="#fce7f3" />
       </div>
@@ -2680,7 +2723,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
         {/* Feature 48: Leaves by type — bar chart */}
         <div style={{ background: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
           <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '14px' }}>
-            🚪 Leaves by Type
+            Leaves by Type
           </div>
           {byType.length === 0
             ? <div style={{ textAlign: 'center', color: '#94a3b8', padding: '30px', fontSize: '13px' }}>No data</div>
@@ -2702,7 +2745,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
         {/* Feature 49: Monthly frequency — line chart */}
         <div style={{ background: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
           <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '14px' }}>
-            📈 Monthly Leave Frequency · {yearFilter}
+            Monthly Leave Frequency · {yearFilter}
           </div>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={byMonth} margin={{ left: -10, right: 10 }}>
@@ -2718,7 +2761,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
         {byHouse.length > 0 && (
           <div style={{ background: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '14px' }}>
-              🏠 House Comparison
+              House Comparison
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={byHouse} margin={{ left: -10, right: 10 }}>
@@ -2737,7 +2780,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
         {byType.length > 0 && (
           <div style={{ background: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
             <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '14px' }}>
-              🥧 Leave Type Distribution
+              Leave Type Distribution
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -2759,7 +2802,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
       {/* ── Feature 50: Top 10 frequent leave-takers */}
       <div style={{ background: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '20px' }}>
         <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '14px' }}>
-          🏆 Top 10 Most Frequent Leave-Takers
+          Top 10 Most Frequent Leave-Takers
         </div>
         {topTakers.length === 0
           ? <div style={{ textAlign: 'center', color: '#94a3b8', padding: '20px', fontSize: '13px' }}>No data for this period</div>
@@ -2782,17 +2825,17 @@ function LeaveAnalyticsDashboard({ records, students }) {
                         onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
-                        <td style={{ padding: '10px 12px', color: i < 3 ? '#ca8a04' : '#94a3b8', fontWeight: '800', fontSize: '14px' }}>
+                        <td style={{ padding: '10px 12px', color: i < 3 ? '#a8842f' : '#94a3b8', fontWeight: '800', fontSize: '14px' }}>
                           {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
                         </td>
                         <td style={{ padding: '10px 12px', fontWeight: '600', color: '#1e293b' }}>{s.student_name}</td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', color: '#1e3a5f' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', color: '#1a2f4d' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '10px 12px', color: '#64748b' }}>{s.house || '—'}</td>
                         <td style={{ padding: '10px 12px', color: '#64748b' }}>{s.class_name || '—'}</td>
                         <td style={{ padding: '10px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{ width: `${Math.min(s.count * 12, 80)}px`, height: '6px', background: '#1d4ed8', borderRadius: '99px' }} />
-                            <span style={{ fontWeight: '800', color: '#1e3a5f' }}>{s.count}</span>
+                            <span style={{ fontWeight: '800', color: '#1a2f4d' }}>{s.count}</span>
                           </div>
                         </td>
                         <td style={{ padding: '10px 12px' }}>
@@ -2814,7 +2857,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
       {repeatPatterns.length > 0 && (
         <div style={{ background: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '20px' }}>
           <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '4px' }}>
-            🔁 Repeat Pattern Flags
+            Repeat Pattern Flags
           </div>
           <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
             Students who took leave in 3+ different months this year — may indicate chronic pattern
@@ -2838,7 +2881,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
       {/* ── Feature 53: Balance utilization */}
       <div style={{ background: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '20px' }}>
         <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '4px' }}>
-          📊 High Balance Utilization (≥75% quota used)
+          High Balance Utilization (≥75% quota used)
         </div>
         <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
           Students approaching or at their annual leave quota
@@ -2865,11 +2908,11 @@ function LeaveAnalyticsDashboard({ records, students }) {
                     <div style={{ flex: 1, height: '8px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
                       <div style={{
                         height: '100%', width: `${Math.min(b.pct, 100)}%`,
-                        background: b.pct >= 100 ? '#dc2626' : '#ca8a04',
+                        background: b.pct >= 100 ? '#dc2626' : '#a8842f',
                         borderRadius: '99px', transition: 'width 0.4s',
                       }} />
                     </div>
-                    <span style={{ fontSize: '12px', fontWeight: '800', color: b.pct >= 100 ? '#dc2626' : '#ca8a04', minWidth: '36px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '800', color: b.pct >= 100 ? '#dc2626' : '#a8842f', minWidth: '36px' }}>
                       {b.pct}%
                     </span>
                   </div>
@@ -2916,14 +2959,14 @@ function NotificationLogPanel({ onClose }) {
   const statusColor = s => ({
     sent:    { bg: '#dcfce7', color: '#16a34a' },
     failed:  { bg: '#fee2e2', color: '#dc2626' },
-    skipped: { bg: '#fef9c3', color: '#ca8a04' },
+    skipped: { bg: '#fef9c3', color: '#a8842f' },
   }[s] || { bg: '#e0f2fe', color: '#0891b2' })
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '24px', maxWidth: '680px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>📋 Notification Log</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>Notification Log</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>✕</button>
         </div>
         {loading
@@ -3046,7 +3089,7 @@ function NotificationTemplateEditor({ onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '24px', maxWidth: '600px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>📝 SMS Templates</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>SMS Templates</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>✕</button>
         </div>
         <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '20px', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px' }}>
@@ -3088,7 +3131,7 @@ function NotificationTemplateEditor({ onClose }) {
                     <span style={{ color: '#64748b' }}>
                       ~{Math.ceil((preview[tpl.trigger_event] || tpl.message_template.length) / 160)} SMS part(s)
                     </span>
-                    <span style={{ color: (preview[tpl.trigger_event] || tpl.message_template.length) > 160 ? '#ca8a04' : '#94a3b8' }}>
+                    <span style={{ color: (preview[tpl.trigger_event] || tpl.message_template.length) > 160 ? '#a8842f' : '#94a3b8' }}>
                       {preview[tpl.trigger_event] || tpl.message_template.length} chars
                     </span>
                   </div>
@@ -3099,7 +3142,7 @@ function NotificationTemplateEditor({ onClose }) {
         }
 
         <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-          <button onClick={handleSave} disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>
+          <button onClick={handleSave} disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1a2f4d'), flex: 1 }}>
             {saving ? '⏳ Saving...' : '✅ Save Templates'}
           </button>
           <button onClick={onClose} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
@@ -3141,14 +3184,14 @@ function NotificationConfigPanel({ onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '24px', maxWidth: '460px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1e3a5f', margin: 0 }}>📡 MSG91 SMS Config</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>MSG91 SMS Config</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>✕</button>
         </div>
         {loading
           ? <div style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>⏳ Loading...</div>
           : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '12px 14px', fontSize: '12px', color: '#1e3a5f' }}>
+              <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '12px 14px', fontSize: '12px', color: '#1a2f4d' }}>
                 Get your auth key from <strong>msg91.com</strong> → API → Auth Key. Sender ID must be approved by MSG91 (6 chars, e.g. GNSI).
               </div>
               <div>
@@ -3189,7 +3232,7 @@ function NotificationConfigPanel({ onClose }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                <button onClick={handleSave} disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a5f'), flex: 1 }}>
+                <button onClick={handleSave} disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1a2f4d'), flex: 1 }}>
                   {saving ? '⏳ Saving...' : '✅ Save Config'}
                 </button>
                 <button onClick={onClose} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
@@ -3246,7 +3289,7 @@ function StudentLoginScreen({ onLogin }) {
     <div style={{ maxWidth: '400px', margin: '0 auto', padding: '24px 0' }}>
       <div style={{ textAlign: 'center', marginBottom: '28px' }}>
         <div style={{ fontSize: '40px', marginBottom: '10px' }}>🎓</div>
-        <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1e3a5f', margin: '0 0 6px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#1a2f4d', margin: '0 0 6px' }}>
           Student Leave Portal
         </h2>
         <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
@@ -3284,7 +3327,7 @@ function StudentLoginScreen({ onLogin }) {
           <button
             onClick={handleLogin}
             disabled={loading}
-            style={{ ...btn(loading ? '#94a3b8' : '#1e3a5f'), width: '100%' }}
+            style={{ ...btn(loading ? '#94a3b8' : '#1a2f4d'), width: '100%' }}
           >
             {loading ? '⏳ Verifying...' : '🔑 Login'}
           </button>
@@ -3386,7 +3429,7 @@ function StudentSelfServicePortal({ student, onLogout }) {
   return (
     <div style={{ maxWidth: '520px', margin: '0 auto', padding: '16px 0' }}>
       {/* Header */}
-      <div style={{ background: '#1e3a5f', borderRadius: '16px', padding: '20px', marginBottom: '20px', color: 'white' }}>
+      <div style={{ background: '#1a2f4d', borderRadius: '16px', padding: '20px', marginBottom: '20px', color: 'white' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px' }}>
@@ -3410,7 +3453,7 @@ function StudentSelfServicePortal({ student, onLogout }) {
         {[['status', '📋 My Requests'], ['new', '➕ New Request']].map(([id, label]) => (
           <button key={id} onClick={() => setActiveView(id)} style={{
             flex: 1, padding: '12px', border: 'none',
-            background: activeView === id ? '#1e3a5f' : 'white',
+            background: activeView === id ? '#1a2f4d' : 'white',
             color: activeView === id ? 'white' : '#64748b',
             fontWeight: activeView === id ? '700' : '500',
             fontSize: '14px', cursor: 'pointer',
@@ -3423,20 +3466,20 @@ function StudentSelfServicePortal({ student, onLogout }) {
       {/* ── View: New Request (Feature 61) */}
       {activeView === 'new' && (
         <div style={{ background: 'white', borderRadius: '14px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', margin: '0 0 16px' }}>
-            🚪 Leave Request Form
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a2f4d', margin: '0 0 16px' }}>
+            Leave Request Form
           </h3>
 
           {/* Feature 64: block if pending exists */}
           {hasPending && (
             <div style={{ background: '#fef9c3', border: '1.5px solid #fde047', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: '#ca8a04', marginBottom: '4px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#a8842f', marginBottom: '4px' }}>
                 ⏳ You already have a pending request
               </div>
               <div style={{ fontSize: '12px', color: '#64748b' }}>
                 You can only have 1 pending request at a time. Please wait for your current request to be processed.
               </div>
-              <button onClick={() => setActiveView('status')} style={{ ...btn('#fef9c3', '#ca8a04'), fontSize: '12px', padding: '6px 14px', marginTop: '8px', border: '1px solid #fde047' }}>
+              <button onClick={() => setActiveView('status')} style={{ ...btn('#fef9c3', '#a8842f'), fontSize: '12px', padding: '6px 14px', marginTop: '8px', border: '1px solid #fde047' }}>
                 View My Requests →
               </button>
             </div>
@@ -3518,7 +3561,7 @@ function StudentSelfServicePortal({ student, onLogout }) {
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
                 <div style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', marginBottom: '6px' }}>No Leave Requests Yet</div>
                 <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>You haven't submitted any leave requests this year.</div>
-                <button onClick={() => setActiveView('new')} style={{ ...btn('#1e3a5f'), padding: '10px 24px' }}>
+                <button onClick={() => setActiveView('new')} style={{ ...btn('#1a2f4d'), padding: '10px 24px' }}>
                   ➕ Submit First Request
                 </button>
               </div>
@@ -3751,7 +3794,7 @@ function ApprovalHistoryPanel({ leaveId }) {
 
   const actionIcon  = a => a === 'Approved' ? '✅' : a === 'Rejected' ? '❌' : '↩️'
   const levelLabel  = l => l === 0 ? 'HM' : l === 1 ? 'Superintendent' : 'System'
-  const actionColor = a => a === 'Approved' ? '#16a34a' : a === 'Rejected' ? '#dc2626' : '#ca8a04'
+  const actionColor = a => a === 'Approved' ? '#16a34a' : a === 'Rejected' ? '#dc2626' : '#a8842f'
 
   return (
     <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', marginTop: '8px' }}>
@@ -4604,7 +4647,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
   // ══════════════════════════════════════════════
   if (mobile) {
     return (
-      <div>
+      <div style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
         {/* Modals */}
         <DeleteModal
           record={deleteTarget}
@@ -4644,7 +4687,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
 
         {/* Stat cards */}
         <div style={mobileStatGrid}>
-          <StatCard icon="⏳" label="Pending HM"    value={stats.pendingHM}    color="#ca8a04" bg="#fef9c3" compact />
+          <StatCard icon="⏳" label="Pending HM"    value={stats.pendingHM}    color="#a8842f" bg="#fef9c3" compact />
           <StatCard icon="🔵" label="Pending Supt"  value={stats.pendingSuept} color="#1d4ed8" bg="#dbeafe" compact />
           <StatCard icon="✅" label="Fully Approved" value={stats.approved}     color="#16a34a" bg="#dcfce7" compact />
           <StatCard icon="⚠️" label="Overdue"        value={stats.overdue}      color="#dc2626" bg="#fee2e2" compact />
@@ -4658,17 +4701,17 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
             </button>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button onClick={() => { setShowCalendar(true); setShowAnalytics(false) }}
-                style={{ ...btn('#1e3a5f'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
+                style={{ ...btn('#1a2f4d'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
                 📅 Calendar
               </button>
               <button onClick={() => { setShowAnalytics(true); setShowCalendar(false) }}
                 style={{ ...btn('#7c3aed'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
                 📈 Analytics
               </button>
-              <button onClick={() => setShowQuotaAdmin(true)} style={{ ...btn('#f1f5f9', '#1e3a5f'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
+              <button onClick={() => setShowQuotaAdmin(true)} style={{ ...btn('#f1f5f9', '#1a2f4d'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
                 ⚙️ Quota
               </button>
-              <button onClick={() => setShowBalancePanel(true)} style={{ ...btn('#f1f5f9', '#1e3a5f'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
+              <button onClick={() => setShowBalancePanel(true)} style={{ ...btn('#f1f5f9', '#1a2f4d'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
                 📊 Balance
               </button>
               <button onClick={() => setShowNotifLog(true)} style={{ ...btn('#f1f5f9', '#047857'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
@@ -4680,7 +4723,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
               <button onClick={() => setShowNotifCfg(true)} style={{ ...btn('#f1f5f9', '#047857'), flex: '1 1 auto', fontSize: '12px', padding: '9px' }}>
                 📡 SMS Config
               </button>
-              <a href="/student-leave" target="_blank" rel="noopener noreferrer" style={{ ...btn('#fef9c3', '#ca8a04'), flex: '1 1 auto', fontSize: '12px', padding: '9px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🎓 Portal ↗</a>
+              <a href="/student-leave" target="_blank" rel="noopener noreferrer" style={{ ...btn('#fef9c3', '#a8842f'), flex: '1 1 auto', fontSize: '12px', padding: '9px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🎓 Portal ↗</a>
             </div>
           </div>
         )}
@@ -4693,7 +4736,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
                 style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: '13px' }}>
                 ← Back to List
               </button>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f' }}>📅 Leave Calendar</div>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: '#1a2f4d' }}>Leave Calendar</div>
             </div>
             <LeaveCalendarView records={records} students={students} />
           </div>
@@ -4707,7 +4750,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
                 style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: '13px' }}>
                 ← Back to List
               </button>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: '#7c3aed' }}>📈 Leave Analytics</div>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: '#7c3aed' }}>Leave Analytics</div>
             </div>
             <LeaveAnalyticsDashboard records={records} students={students} />
           </div>
@@ -4728,13 +4771,13 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
 
         {/* Tab toggle */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-          {[['requests', '📋 Active'], ['history', '📜 History']].map(([id, label]) => (
+          {[['requests', 'Active'], ['history', 'History']].map(([id, label]) => (
             <button
               key={id}
               onClick={() => { setActiveTab(id); clearAllFilters() }}
               style={{
                 flex: 1, padding: '10px', borderRadius: '10px', border: 'none',
-                background: activeTab === id ? '#1e3a5f' : '#f1f5f9',
+                background: activeTab === id ? '#1a2f4d' : '#f1f5f9',
                 color: activeTab === id ? 'white' : '#64748b',
                 fontWeight: '700', fontSize: '13px', cursor: 'pointer',
               }}
@@ -4756,7 +4799,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
           <button
             onClick={() => setShowFilters(v => !v)}
             style={{
-              ...btn(showFilters ? '#1e3a5f' : '#f1f5f9', showFilters ? 'white' : '#374151'),
+              ...btn(showFilters ? '#1a2f4d' : '#f1f5f9', showFilters ? 'white' : '#374151'),
               padding: '10px 14px', fontSize: '13px', position: 'relative', flexShrink: 0,
             }}
           >
@@ -4933,7 +4976,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
 
                 {/* Action buttons */}
                 <MobileActionButtons actions={[
-                  { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a5f' },
+                  { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1a2f4d' },
                   ...(canApprove(r) ? [{ label: '✓ Approve', onClick: () => handleApproveClick(r), bg: '#dcfce7', color: '#16a34a' }] : []),
                   ...(canReject(r)  ? [{ label: '✕ Reject',  onClick: () => handleRejectClick(r),  bg: '#fee2e2', color: '#dc2626' }] : []),
                   ...((r.status === 'Approved' && (r.approval_level ?? 0) >= 2) || r.status === 'Overdue'
@@ -4959,7 +5002,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
   //  DESKTOP LAYOUT
   // ══════════════════════════════════════════════
   return (
-    <div>
+    <div style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       {/* Modals */}
       <DeleteModal
         record={deleteTarget}
@@ -5003,24 +5046,24 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
         gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
         gap: '12px', marginBottom: '20px',
       }}>
-        <StatCard icon="⏳" label="Pending HM"        value={stats.pendingHM}    color="#ca8a04" bg="#fef9c3" />
+        <StatCard icon="⏳" label="Pending HM"        value={stats.pendingHM}    color="#a8842f" bg="#fef9c3" />
         <StatCard icon="🔵" label="Pending Supt"      value={stats.pendingSuept} color="#1d4ed8" bg="#dbeafe" />
         <StatCard icon="✅" label="Fully Approved"    value={stats.approved}     color="#16a34a" bg="#dcfce7" />
         <StatCard icon="⚠️" label="Overdue"           value={stats.overdue}      color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🏠" label="Returned"          value={stats.returned}     color="#1e3a5f" bg="#eff6ff" />
+        <StatCard icon="🏠" label="Returned"          value={stats.returned}     color="#1a2f4d" bg="#eff6ff" />
         <StatCard icon="❌" label="Rejected"          value={stats.rejected}     color="#dc2626" bg="#fee2e2" />
       </div>
 
       {/* Toolbar row 1: tab toggle + create button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', borderRadius: '10px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-          {[['requests', '📋 Active'], ['history', '📜 History']].map(([id, label]) => (
+          {[['requests', 'Active'], ['history', 'History']].map(([id, label]) => (
             <button
               key={id}
               onClick={() => { setActiveTab(id); clearAllFilters() }}
               style={{
                 padding: '9px 20px', border: 'none',
-                background: activeTab === id ? '#1e3a5f' : 'white',
+                background: activeTab === id ? '#1a2f4d' : 'white',
                 color: activeTab === id ? 'white' : '#64748b',
                 fontWeight: activeTab === id ? '700' : '500',
                 fontSize: '13px', cursor: 'pointer',
@@ -5033,7 +5076,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             onClick={() => { setShowCalendar(v => !v); setShowAnalytics(false) }}
-            style={{ ...btn(showCalendar ? '#1e3a5f' : '#eff6ff', showCalendar ? 'white' : '#1e3a5f'), fontSize: '12px', padding: '9px 14px' }}
+            style={{ ...btn(showCalendar ? '#1a2f4d' : '#eff6ff', showCalendar ? 'white' : '#1a2f4d'), fontSize: '12px', padding: '9px 14px' }}
           >
             📅 {showCalendar ? 'Hide Calendar' : 'Calendar'}
           </button>
@@ -5043,15 +5086,15 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
           >
             📈 {showAnalytics ? 'Hide Analytics' : 'Analytics'}
           </button>
-          <button onClick={() => setShowBalancePanel(true)} style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: '12px', padding: '9px 14px' }}>📊 Balances</button>
-          <button onClick={() => setShowQuotaAdmin(true)}   style={{ ...btn('#eff6ff', '#1e3a5f'), fontSize: '12px', padding: '9px 14px' }}>⚙️ Quota Config</button>
+          <button onClick={() => setShowBalancePanel(true)} style={{ ...btn('#eff6ff', '#1a2f4d'), fontSize: '12px', padding: '9px 14px' }}>📊 Balances</button>
+          <button onClick={() => setShowQuotaAdmin(true)}   style={{ ...btn('#eff6ff', '#1a2f4d'), fontSize: '12px', padding: '9px 14px' }}>⚙️ Quota Config</button>
           <button onClick={() => setShowNotifLog(true)}     style={{ ...btn('#ecfdf5', '#047857'), fontSize: '12px', padding: '9px 14px' }}>📋 SMS Log</button>
           <button onClick={() => setShowNotifTpl(true)}     style={{ ...btn('#ecfdf5', '#047857'), fontSize: '12px', padding: '9px 14px' }}>📝 Templates</button>
           <button onClick={() => setShowNotifCfg(true)}     style={{ ...btn('#ecfdf5', '#047857'), fontSize: '12px', padding: '9px 14px' }}>📡 SMS Config</button>
-          <a href="/student-leave" target="_blank" rel="noopener noreferrer" style={{ ...btn('#fef9c3', '#ca8a04'), fontSize: '12px', padding: '9px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>🎓 Student Portal ↗</a>
+          <a href="/student-leave" target="_blank" rel="noopener noreferrer" style={{ ...btn('#fef9c3', '#a8842f'), fontSize: '12px', padding: '9px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>🎓 Student Portal ↗</a>
           <button
             onClick={showForm && !editRec ? cancelForm : openCreate}
-            style={btn(showForm && !editRec ? '#f1f5f9' : '#1e3a5f', showForm && !editRec ? '#374151' : 'white')}
+            style={btn(showForm && !editRec ? '#f1f5f9' : '#1a2f4d', showForm && !editRec ? '#374151' : 'white')}
           >
             {showForm && !editRec ? '✖ Cancel' : '➕ New Leave Request'}
           </button>
@@ -5077,7 +5120,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
           marginBottom: '16px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: '#7c3aed' }}>📈 Leave Analytics Dashboard</div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#7c3aed' }}>Leave Analytics Dashboard</div>
             <span style={{ fontSize: '12px', color: '#94a3b8' }}>— based on all records</span>
           </div>
           <LeaveAnalyticsDashboard records={records} students={students} />
@@ -5162,12 +5205,16 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
       ) : (
-        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px' }}>
+        <div style={{
+          background: MD.color.surfaceContainer, borderRadius: MD.radius.card,
+          boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
+          overflowX: 'auto', overflowY: 'hidden', width: '100%', maxWidth: '100%',
+        }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px', fontFamily: FONT_BODY }}>
             <thead>
-              <tr style={{ background: '#1e3a5f' }}>
+              <tr style={{ background: MD.color.primary }}>
                 {['#', 'Student', 'GCC', 'House', 'Type', 'From', 'To', 'Return By', 'Actual Return', 'Status', 'Parent', 'Actions'].map(h => (
-                  <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '11px', letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -5192,7 +5239,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
                     </div>
                     {r.class_name && <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.class_name}</div>}
                   </td>
-                  <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: '12px', color: '#1e3a5f', fontWeight: '700' }}>
+                  <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: '12px', color: '#1a2f4d', fontWeight: '700' }}>
                     {r.gcc_no ? `GCC-${r.gcc_no}` : '—'}
                   </td>
                   <td style={{ padding: '11px 14px', color: '#7c3aed', fontSize: '12px', fontWeight: '600' }}>
@@ -5249,7 +5296,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
                   <td style={{ padding: '11px 14px' }}>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                       {/* Edit */}
-                      <button onClick={() => openEdit(r)} style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: '6px', padding: '5px 9px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }} title="Edit">✏️</button>
+                      <button onClick={() => openEdit(r)} style={{ background: '#eff6ff', color: '#1a2f4d', border: 'none', borderRadius: '6px', padding: '5px 9px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }} title="Edit">✏️</button>
                       {/* Approve — role-aware */}
                       {canApprove(r) && (
                         <button onClick={() => handleApproveClick(r)} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '5px 10px' }} title="Approve">✓</button>
@@ -5294,7 +5341,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
           <div style={{ padding: '10px 16px', borderTop: '1px solid #f1f5f9', fontSize: '12px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>
               {isFiltered
-                ? <span style={{ color: '#1e3a5f', fontWeight: '600' }}>{filtered.length} of {records.length} records match filters</span>
+                ? <span style={{ color: '#1a2f4d', fontWeight: '600' }}>{filtered.length} of {records.length} records match filters</span>
                 : <span>{filtered.length} record{filtered.length !== 1 ? 's' : ''} total</span>
               }
             </span>
