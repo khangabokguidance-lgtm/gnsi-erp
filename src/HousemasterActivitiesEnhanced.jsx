@@ -281,12 +281,35 @@ function DoubtSessionPanel({ houses }) {
 // ══════════════════════════════════════════════════════════════
 //  DAILY TASK CHECKLIST — for housemaster
 // ══════════════════════════════════════════════════════════════
+//  Each checkbox toggle now writes LIVE to Supabase (table:
+//  hm_daily_task_checks) in addition to a localStorage cache. Admin's
+//  AdminMonitorTab can therefore see in-progress completion for any
+//  house today, instead of only seeing something once a housemaster
+//  clicks "Submit Day Report" at the end of the day. localStorage is
+//  kept purely as an instant-paint cache so the UI doesn't flash empty
+//  while the Supabase fetch is in flight — it is never the source of
+//  truth once the network call resolves.
+//
+//  REQUIRED SQL (run once in Supabase):
+//    create table if not exists hm_daily_task_checks (
+//      id bigserial primary key,
+//      housemaster_id text not null,
+//      housemaster_name text,
+//      house text,
+//      date date not null,
+//      task_id text not null,
+//      checked boolean not null default true,
+//      updated_at timestamptz default now(),
+//      unique (housemaster_id, date, task_id)
+//    );
+//    alter table hm_daily_task_checks disable row level security;
+// ══════════════════════════════════════════════════════════════
 
 const todayKey = () => new Date().toISOString().split('T')[0]
 const loadDailyChecks = hmId => {
   try { return JSON.parse(localStorage.getItem(`hm_daily_${hmId}_${todayKey()}`) || '{}') } catch { return {} }
 }
-const saveDailyChecks = (hmId, obj) => localStorage.setItem(`hm_daily_${hmId}_${todayKey()}`, JSON.stringify(obj))
+const saveDailyChecksCache = (hmId, obj) => localStorage.setItem(`hm_daily_${hmId}_${todayKey()}`, JSON.stringify(obj))
 
 function DailyTaskChecklist({ staffProfiles, houses }) {
   const [housemasters, setHousemasters] = useState([])
@@ -297,6 +320,7 @@ function DailyTaskChecklist({ staffProfiles, houses }) {
   const [noteText, setNoteText] = useState('')
   const [notes, setNotes] = useState({})
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false) // true while a checkbox toggle is being written to Supabase
 
   useEffect(() => {
     supabase
@@ -307,18 +331,51 @@ function DailyTaskChecklist({ staffProfiles, houses }) {
       .then(({ data }) => setHousemasters(data || []))
   }, [])
 
-  // Load checks when HM selected
+  // Load checks when HM selected — paint instantly from the localStorage
+  // cache, then reconcile against Supabase (the real source of truth,
+  // since it's shared across devices/sessions and read by admin).
   useEffect(() => {
-    if (selectedHM) {
-      const c = loadDailyChecks(selectedHM.id)
-      setChecks(c)
-    }
+    if (!selectedHM) return
+    setChecks(loadDailyChecks(selectedHM.id)) // instant paint from cache
+    supabase
+      .from('hm_daily_task_checks')
+      .select('task_id, checked')
+      .eq('housemaster_id', selectedHM.id)
+      .eq('date', todayKey())
+      .then(({ data, error }) => {
+        if (error) { console.error('hm_daily_task_checks fetch error (has the table been created?):', error); return }
+        const fromDb = {}
+        ;(data || []).forEach(row => { fromDb[row.task_id] = row.checked })
+        setChecks(fromDb)
+        saveDailyChecksCache(selectedHM.id, fromDb)
+      })
   }, [selectedHM])
 
-  const toggle = taskId => {
-    const next = { ...checks, [taskId]: !checks[taskId] }
-    setChecks(next)
-    if (selectedHM) saveDailyChecks(selectedHM.id, next)
+  const toggle = async taskId => {
+    const nextVal = !checks[taskId]
+    const next = { ...checks, [taskId]: nextVal }
+    setChecks(next) // optimistic UI update
+    if (selectedHM) saveDailyChecksCache(selectedHM.id, next)
+    if (!selectedHM) return
+    setSyncing(true)
+    const { error } = await supabase.from('hm_daily_task_checks').upsert([{
+      housemaster_id: selectedHM.id,
+      housemaster_name: selectedHM.name,
+      house: selectedHouse || selectedHM.house || null,
+      date: todayKey(),
+      task_id: taskId,
+      checked: nextVal,
+      updated_at: new Date().toISOString(),
+    }], { onConflict: 'housemaster_id,date,task_id' })
+    setSyncing(false)
+    if (error) {
+      console.error('Failed to sync checklist tick to Supabase:', error)
+      // Roll back the optimistic tick so the housemaster isn't shown a
+      // false "done" state that admin can never actually see.
+      setChecks(checks)
+      if (selectedHM) saveDailyChecksCache(selectedHM.id, checks)
+      alert('Could not save this tick — check your connection and try again.')
+    }
   }
 
   const saveNote = taskId => {
@@ -415,8 +472,9 @@ function DailyTaskChecklist({ staffProfiles, houses }) {
           {/* Progress bar */}
           <div style={{ padding: '14px 20px', background: '#f0f9ff', borderBottom: '1px solid #bae6fd' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#0369a1' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0369a1', display: 'flex', alignItems: 'center', gap: 8 }}>
                 Progress — {selectedHM.name} {selectedHouse ? `· ${selectedHouse}` : ''}
+                {syncing && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>saving…</span>}
               </span>
               <span style={{ fontSize: 12, fontFamily: 'monospace', color: pct === 100 ? '#16a34a' : '#0369a1', fontWeight: 700 }}>
                 {completedTotal}/{totalTasks} total · {completedMandatory}/{mandatoryTasks.length} mandatory
@@ -539,6 +597,7 @@ export function AdminMonitorTab({ staffProfiles }) {
   const [allActivities, setAllActivities] = useState([])
   const [allDoubtLogs, setAllDoubtLogs] = useState([])
   const [students, setStudents] = useState([])
+  const [todayChecks, setTodayChecks] = useState([]) // live per-task ticks from hm_daily_task_checks, today only
   const [loading, setLoading] = useState(true)
   const [selectedHouse, setSelectedHouse] = useState('All')
   const [dateRange, setDateRange] = useState(7) // days
@@ -546,16 +605,19 @@ export function AdminMonitorTab({ staffProfiles }) {
 
   const load = async () => {
     setLoading(true)
-    const [{ data: h }, { data: a }, { data: d }, { data: s }] = await Promise.all([
+    const [{ data: h }, { data: a }, { data: d }, { data: s }, { data: tc, error: tcErr }] = await Promise.all([
       supabase.from('houses').select('*').order('name'),
       supabase.from('housemaster_activities').select('*').order('date', { ascending: false }).limit(200),
       supabase.from('doubt_session_logs').select('*').order('date', { ascending: false }).limit(100),
       supabase.from('students').select('id,name,house,hostel_type').order('name'),
+      supabase.from('hm_daily_task_checks').select('housemaster_name, house, task_id, checked').eq('date', today).eq('checked', true),
     ])
+    if (tcErr) console.error('hm_daily_task_checks fetch error (has the table been created?):', tcErr)
     setHouses(h || [])
     setAllActivities(a || [])
     setAllDoubtLogs(d || [])
     setStudents(s || [])
+    setTodayChecks(tc || [])
     setLoading(false)
   }
 
@@ -585,9 +647,19 @@ export function AdminMonitorTab({ staffProfiles }) {
     const todayActs = allActivities.filter(a => a.house === h.name && a.date === today)
     const hStudents = students.filter(s => s.house === h.name)
 
-    // Today's mandatory tasks completion
-    const todayTaskIds = new Set(todayActs.map(a => a.activity_type))
-    const mandatoryDone = DAILY_TASKS.filter(t => t.mandatory && todayTaskIds.has(t.label)).length
+    // Today's mandatory tasks completion — read LIVE from
+    // hm_daily_task_checks (per-checkbox ticks), not from
+    // housemaster_activities, which only ever gets a single end-of-day
+    // summary row and never the individual task labels. This means
+    // admin now sees in-progress completion through the day, not just
+    // after a housemaster clicks "Submit Day Report".
+    // Matched by house — the tick-write fallback above guarantees every
+    // row carries a house (selectedHouse, or the housemaster's own
+    // assigned house if the dropdown wasn't touched), so this direct
+    // match is reliable without needing to guess at staffProfiles' shape.
+    const hChecksToday = todayChecks.filter(c => c.house === h.name)
+    const checkedTaskIds = new Set(hChecksToday.map(c => c.task_id))
+    const mandatoryDone = DAILY_TASKS.filter(t => t.mandatory && checkedTaskIds.has(t.id)).length
     const mandatoryPct = Math.round(mandatoryDone / DAILY_TASKS.filter(t => t.mandatory).length * 100)
 
     const lastActivity = hActs[0]?.date || null
@@ -606,7 +678,7 @@ export function AdminMonitorTab({ staffProfiles }) {
       doubtLogged: allDoubtLogs.some(d => d.house === h.name && d.date === today),
       alert: daysSinceActivity > 2 || mandatoryPct < 50,
     }
-  }), [houses, allActivities, allDoubtLogs, students, rangeStart, today])
+  }), [houses, allActivities, allDoubtLogs, students, todayChecks, rangeStart, today])
 
   // Activity by category breakdown
   const catBreakdown = useMemo(() => {
