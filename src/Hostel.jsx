@@ -63,6 +63,34 @@ const MD = {
 // ══════════════════════════════════════════════════════════════
 const isMobile = () => window.innerWidth < 768
 
+// ── Persisted "already auto-shown" tracker for the House Report modal ──
+// AttendanceTab remounts on ordinary tab navigation, which used to reset
+// its in-memory autoFired state and made the 100%-complete report modal
+// pop up again every time a housemaster reopened a fully-marked house's
+// roll call. Persisting to localStorage (keyed by house+date+session, so
+// it naturally rolls over to a fresh day) keeps "already shown" true
+// across remounts and page reloads, not just for one component lifetime.
+const AUTO_FIRED_KEY = 'gnsi_house_report_autofired'
+function loadAutoFired() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(AUTO_FIRED_KEY) || '{}')
+    // Prune entries older than yesterday so this doesn't grow unbounded
+    // over months of daily use — each key embeds its own date, e.g.
+    // "Shiroi_2026-07-28_morning".
+    const todayStr = today()
+    const y = new Date(); y.setDate(y.getDate() - 1)
+    const yesterdayStr = y.toISOString().split('T')[0]
+    const pruned = {}
+    Object.keys(raw).forEach(key => {
+      if (key.includes(todayStr) || key.includes(yesterdayStr)) pruned[key] = raw[key]
+    })
+    return pruned
+  } catch { return {} }
+}
+function saveAutoFired(obj) {
+  try { localStorage.setItem(AUTO_FIRED_KEY, JSON.stringify(obj)) } catch { }
+}
+
 // ─── Shared styles — Material-elevated surfaces on the GNSI palette ──
 const inp = {
   width: '100%', padding: '13px 14px', borderRadius: MD.radius.control,
@@ -1001,7 +1029,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   // ── House Report modal state (auto-fires when a house hits 100%) ──
   const [reportHouse, setReportHouse] = useState(null)
-  const [autoFired, setAutoFired] = useState({}) // key: `${house}_${date}_${session}` → already auto-opened
+  const [autoFired, setAutoFired] = useState(loadAutoFired) // key: `${house}_${date}_${session}` → already auto-opened; persisted so it survives remounts
   // Which house the Six-Tab Compliance card on the roll-call "Done" screen
   // is currently showing — defaults to the house whose roll call was just
   // completed, but the housemaster can switch to check another house's
@@ -1199,7 +1227,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       const stats = getHouseStats(houseName)
       const key = `${houseName}_${date}_${session}`
       if (stats.total > 0 && stats.unmarked === 0 && !autoFired[key]) {
-        setAutoFired(prev => ({ ...prev, [key]: true }))
+        setAutoFired(prev => {
+          const next = { ...prev, [key]: true }
+          saveAutoFired(next)
+          return next
+        })
         setReportHouse(houseName)
       }
     })
