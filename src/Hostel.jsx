@@ -1002,6 +1002,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // ── House Report modal state (auto-fires when a house hits 100%) ──
   const [reportHouse, setReportHouse] = useState(null)
   const [autoFired, setAutoFired] = useState({}) // key: `${house}_${date}_${session}` → already auto-opened
+  // Which house the Six-Tab Compliance card on the roll-call "Done" screen
+  // is currently showing — defaults to the house whose roll call was just
+  // completed, but the housemaster can switch to check another house's
+  // compliance status without leaving this screen or restarting a roll call.
+  const [complianceViewHouse, setComplianceViewHouse] = useState(null)
 
   const activeStudents = useMemo(() =>
     students.filter(s => s.status !== 'Inactive'),
@@ -1299,6 +1304,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setSkipReasonPromptTab(null)
     setSkipReasonDraft('')
     setSkipReasonError('')
+    setComplianceViewHouse(null) // resets the compliance card back to this roll call's own house
   }, [selectedHouse])
 
   const runComplianceCheck = async (houseName) => {
@@ -1382,6 +1388,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   const [dailySkipDraft, setDailySkipDraft] = useState('')
   const [dailySkippedWithReason, setDailySkippedWithReason] = useState({})
   const [celebratingSlot, setCelebratingSlot] = useState(null) // key that should show the checkmark pop animation
+  // Six-Tab Compliance "all clear" celebration on the roll-call Done
+  // screen — fires once per complianceKey the moment all 6 checks are
+  // confirmed logged, so it plays on the transition into "all clear"
+  // rather than replaying on every re-render of an already-clear house.
+  const [complianceCelebrated, setComplianceCelebrated] = useState({}) // key: complianceKey → true once played
+  const [complianceCelebrating, setComplianceCelebrating] = useState(null) // complianceKey currently animating
   // Manual fallback for daily-slot "✓ Complete", mirroring the roll-call
   // linked version — lets the housemaster force a recheck in place.
   const [dailyResolvedByRecheck, setDailyResolvedByRecheck] = useState({}) // key → { [tabKey]: true }
@@ -2305,9 +2317,20 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const total = rollCallStudents.length
     const marked = rollCallStudents.filter(s => getStatus(s.id) !== 'Unmarked').length
     const pct = total ? Math.round(marked / total * 100) : 0
-    const isDone = rollCallIndex >= total
+    // "Done" means every student is actually marked — not just that the
+    // card index reached the end of the list. Using index alone let the
+    // completion screen show even with real students still unmarked if
+    // the housemaster paged/skipped past cards without marking them.
+    const isDone = total > 0 && marked >= total
 
-    const currentStudent = rollCallStudents[rollCallIndex]
+    // If the index has run past the list (e.g. paged through without
+    // marking everyone) but real students are still unmarked, fall back
+    // to the first unmarked student instead of an out-of-bounds/undefined
+    // card — this is what actually surfaces "still incomplete, please
+    // finish" instead of a broken or blank card.
+    const firstUnmarkedIdx = rollCallStudents.findIndex(s => getStatus(s.id) === 'Unmarked')
+    const effectiveIndex = (!isDone && rollCallIndex >= total && firstUnmarkedIdx >= 0) ? firstUnmarkedIdx : rollCallIndex
+    const currentStudent = rollCallStudents[effectiveIndex]
     const currentStatus = currentStudent ? getStatus(currentStudent.id) : null
 
     const markAndAdvance = async (studentId, status) => {
@@ -2328,12 +2351,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       }
       setCardLeavePrompt(null)
       await handleMark(studentId, status)
-      setTimeout(() => setRollCallIndex(i => i + 1), 300)
+      // Advance from effectiveIndex (not the raw state) so a corrected
+      // fallback position doesn't leave rollCallIndex growing unbounded
+      // past the list length on every subsequent mark.
+      setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 300)
     }
 
     const dismissCardLeavePrompt = () => {
       setCardLeavePrompt(null)
-      setTimeout(() => setRollCallIndex(i => i + 1), 200)
+      setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 200)
     }
 
     return (
@@ -2421,15 +2447,39 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         {isDone ? (
           /* ── Done screen ── */
           (() => {
+            // House the compliance card is currently showing — defaults to
+            // the house whose roll call was just completed, switchable below.
+            const complianceHouse = complianceViewHouse || selectedHouse
             // Fire the six-tab compliance check the moment this screen renders complete
-            const complianceKey = `${selectedHouse}_${date}_${session}`
-            if (!complianceChecked[complianceKey]) runComplianceCheck(selectedHouse)
+            const complianceKey = `${complianceHouse}_${date}_${session}`
+            if (!complianceChecked[complianceKey]) runComplianceCheck(complianceHouse)
             const rawMissing = complianceMissing[complianceKey] || []
             const resolvedSet = resolvedByRecheck[complianceKey] || {}
             const missingTabs = rawMissing.filter(k => !resolvedSet[k])
             const checkDone = complianceKey in complianceMissing
+            // Fire the "all clear" celebration exactly once per complianceKey —
+            // on the transition into all-clear, not on every re-render.
+            if (checkDone && missingTabs.length === 0 && !complianceCelebrated[complianceKey]) {
+              setComplianceCelebrated(prev => ({ ...prev, [complianceKey]: true }))
+              setComplianceCelebrating(complianceKey)
+              setTimeout(() => setComplianceCelebrating(prev => (prev === complianceKey ? null : prev)), 2200)
+            }
+            const isCelebratingCompliance = complianceCelebrating === complianceKey
             return (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <style>{`
+              @keyframes hr-compliance-pop {
+                0% { transform: scale(0.5) rotate(-8deg); opacity: 0; }
+                55% { transform: scale(1.15) rotate(4deg); opacity: 1; }
+                100% { transform: scale(1) rotate(0deg); opacity: 1; }
+              }
+              @keyframes hr-compliance-glow {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.35); }
+                50% { box-shadow: 0 0 0 10px rgba(22,163,74,0); }
+              }
+              .hr-compliance-pop-anim { display: inline-block; animation: hr-compliance-pop 0.55s ease-out; }
+              .hr-compliance-glow-anim { animation: hr-compliance-glow 1.4s ease-out 2; }
+            `}</style>
             <div style={{ fontSize: '64px', marginBottom: '16px' }}>🎉</div>
             <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '8px' }}>
               {selectedHouse} Roll Call Complete!
@@ -2437,6 +2487,24 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '24px' }}>
               {marked} of {total} students marked
             </div>
+
+            {/* Six-Tab Compliance house switcher — lets the housemaster check
+                another house's compliance status without leaving this screen
+                or starting a new roll call for that house. */}
+            {houses.length > 1 && (
+              <div style={{ textAlign: 'left', marginBottom: '14px' }}>
+                <label style={{ ...lbl, marginBottom: '4px' }}>Six-Tab Compliance for</label>
+                <select
+                  value={complianceHouse}
+                  onChange={e => setComplianceViewHouse(e.target.value)}
+                  style={{ ...inp, maxWidth: '260px' }}
+                >
+                  {houses.map(h => (
+                    <option key={h} value={h}>{h}{h === selectedHouse ? ' (this roll call)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {checkDone && missingTabs.length > 0 && (
               <div style={{
@@ -2447,7 +2515,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   <span style={{ fontSize: '20px' }}>🚨</span> STRICT WARNING — Mandatory Checks Skipped
                 </div>
                 <div style={{ fontSize: '13px', color: '#7f1d1d', marginBottom: '12px' }}>
-                  You did not log any activity in the following section{missingTabs.length > 1 ? 's' : ''} for {selectedHouse} during this {session} session. This has been recorded and flagged to admin.
+                  You did not log any activity in the following section{missingTabs.length > 1 ? 's' : ''} for {complianceHouse} during this {session} session. This has been recorded and flagged to admin.
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {SIX_TABS.filter(t => missingTabs.includes(t.key)).map(t => {
@@ -2475,7 +2543,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                               </button>
                               {/* Secondary path: something actually happened — jump to log it */}
                               <button
-                                onClick={() => { if (onCompleteTab) onCompleteTab(t.rootTabId, selectedHouse); else onTabChange?.(t.rootTabId) }}
+                                onClick={() => { if (onCompleteTab) onCompleteTab(t.rootTabId, complianceHouse); else onTabChange?.(t.rootTabId) }}
                                 style={{ padding: '6px 10px', borderRadius: '7px', border: `1px solid #e2e8f0`, background: 'transparent', color: '#64748b', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                               >
                                 Log an entry →
@@ -2490,11 +2558,18 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
             )}
             {checkDone && missingTabs.length === 0 && (
-              <div style={{
-                background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px',
-                padding: '12px 16px', marginBottom: '24px', fontSize: '13px', fontWeight: '700', color: '#16a34a',
-              }}>
-                ✅ All 6 mandatory checks logged for this session — great work!
+              <div
+                className={isCelebratingCompliance ? 'hr-compliance-glow-anim' : ''}
+                style={{
+                  background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px',
+                  padding: '14px 16px', marginBottom: '24px', fontSize: '13px', fontWeight: '700', color: '#16a34a',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flexWrap: 'wrap',
+                }}
+              >
+                {isCelebratingCompliance && (
+                  <span className="hr-compliance-pop-anim" style={{ fontSize: '20px' }}>🎉</span>
+                )}
+                <span>✅ Six-Tab Compliance complete for {complianceHouse} — great work! Continue to roll call below.</span>
               </div>
             )}
 
