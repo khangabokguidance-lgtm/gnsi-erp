@@ -9,6 +9,35 @@ import FeeCollectionModal from './FeeCollectionModal'
 import { getFlatFeeAmtSync, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
 import { useAuth } from './AuthContext'
 
+// ── Pagination-safe, chunked fetch — Supabase/PostgREST caps a single
+//    .select() at 1000 rows regardless of .in() filters, and a large .in()
+//    list (hundreds of GCC numbers) risks hitting URL-length limits on GET.
+//    adm_fee_collections / adm_flat_fees / adm_course_fees can each exceed
+//    1000 rows across 400+ students, so every fetch against them MUST page
+//    through .range() and chunk the .in() list, or the newest payments
+//    silently vanish from the Fee record modal — exactly the bug reported
+//    against THANGJAM REDY SINGH's July 2026 course fee.
+async function fetchAllByIn(table, { select = '*', inCol, inValues = [], filters = [] } = {}) {
+  const PAGE = 1000
+  const CHUNK = 150
+  let all = []
+  for (let i = 0; i < inValues.length; i += CHUNK) {
+    const chunk = inValues.slice(i, i + CHUNK)
+    let from = 0
+    while (true) {
+      let q = supabase.from(table).select(select).in(inCol, chunk)
+      for (const [col, op, val] of filters) q = q[op](col, val)
+      q = q.range(from, from + PAGE - 1)
+      const { data, error } = await q
+      if (error) { console.error(`fetchAllByIn(${table}) error:`, error.message); break }
+      all = all.concat(data || [])
+      if (!data || data.length < PAGE) break
+      from += PAGE
+    }
+  }
+  return all
+}
+
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const fmt  = n => Number(n||0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}) : '—'
@@ -3384,16 +3413,16 @@ const effectiveCols = visibleCols.filter(col => {
       // Build gcc list from student rows (adm_ tables key on gcc, not student UUID)
       const gccList=studentRows.map(s=>gccStrFee(s.gcc_no)).filter(Boolean)
       const [admRes,flatRes,crsfRes]=await Promise.all([
-        supabase.from('adm_fee_collections').select('adm_app_id,amount_paid,pay_date,fee_type,description,pay_mode').in('adm_app_id',gccList).eq('reverted',false),
-        supabase.from('adm_flat_fees').select('adm_app_id,amount,pay_date,month,year,pay_mode').in('adm_app_id',gccList).eq('paid',true).eq('reverted',false),
-        supabase.from('adm_course_fees').select('adm_app_id,amount_paid,pay_date,course,for_month,year,pay_mode').in('adm_app_id',gccList).eq('reverted',false),
+        fetchAllByIn('adm_fee_collections',{select:'adm_app_id,amount_paid,pay_date,fee_type,description,pay_mode',inCol:'adm_app_id',inValues:gccList,filters:[['reverted','eq',false]]}),
+        fetchAllByIn('adm_flat_fees',{select:'adm_app_id,amount,pay_date,month,year,pay_mode',inCol:'adm_app_id',inValues:gccList,filters:[['paid','eq',true],['reverted','eq',false]]}),
+        fetchAllByIn('adm_course_fees',{select:'adm_app_id,amount_paid,pay_date,course,for_month,year,pay_mode',inCol:'adm_app_id',inValues:gccList,filters:[['reverted','eq',false]]}),
       ])
       // Build per-gcc totals, last-paid date, AND full itemized history for the viewer
       const totals={},lastPaid={},history={}
       const pushHist=(gcc,row)=>{if(!history[gcc])history[gcc]=[];history[gcc].push(row)}
-      ;(admRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:r.fee_type||'Admission Fee',desc:r.description||'',mode:r.pay_mode||''})})
-      ;(flatRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount||0),payment_date:r.pay_date,type:'Flat Fee',desc:`${r.month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
-      ;(crsfRes.data||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:'Course Fee',desc:`${r.course||''} ${r.for_month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
+      ;(admRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:r.fee_type||'Admission Fee',desc:r.description||'',mode:r.pay_mode||''})})
+      ;(flatRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount||0),payment_date:r.pay_date,type:'Flat Fee',desc:`${r.month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
+      ;(crsfRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:'Course Fee',desc:`${r.course||''} ${r.for_month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
       const result={},histResult={}
       for(const s of studentRows){
         const gcc=gccStrFee(s.gcc_no)
