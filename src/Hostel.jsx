@@ -1572,6 +1572,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         if (aMarked && !bMarked) return 1
         return (a.name || '').localeCompare(b.name || '')
       })
+    if (hStudents.length === 0) {
+      alert(`No active students found in ${houseName}. Check that student house names match.`)
+      return
+    }
     setRollCallStudents(hStudents)
     setRollCallIndex(0)
     setView('rollcall')
@@ -2670,6 +2674,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           </div>
             )
           })()
+        ) : !currentStudent ? (
+          /* ── No student to show yet (list still loading, or nothing to mark) ── */
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+            Loading roll call…
+          </div>
         ) : (
           /* ── Student card */
           <div>
