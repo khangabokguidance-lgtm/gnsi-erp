@@ -1195,7 +1195,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     // which would otherwise let this effect run against the previous
     // day's stale allRecords (or silently stall forever).
     if (loading || allRecordsFor.date !== target.date || allRecordsFor.session !== target.session) return
-    const started = startRollCall(pendingCatchUpHouse)
+    const started = startRollCall(pendingCatchUpHouse, { skipBlockCheck: true })
     if (started) {
       setView('rollcall')
     } else {
@@ -1576,8 +1576,14 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setApprovingLeaveId(null)
   }
 
-  const startRollCall = (houseName) => {
-    if (isHouseBlocked(houseName)) return false // safety net; UI should already prevent this call
+  const startRollCall = (houseName, { skipBlockCheck = false } = {}) => {
+    // isHouseBlocked checks whether the day before "today" (homeDate) is
+    // complete. That check is meaningless — and self-defeating — while
+    // we're deliberately opening the *missed* prior day's catch-up roll
+    // call: the prior day is incomplete by definition, that's the whole
+    // reason catch-up mode exists. Only enforce the block for the normal
+    // live/current-day flow.
+    if (!skipBlockCheck && isHouseBlocked(houseName)) return false // safety net; UI should already prevent this call
     notifyPendingLeaveForHouse(houseName) // fire-and-forget; doesn't block roll call opening
     const hStudents = activeStudents
       .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
