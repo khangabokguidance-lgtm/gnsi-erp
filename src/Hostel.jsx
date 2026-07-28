@@ -3048,10 +3048,14 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
 //    any date range, so both the 7-day ranking panel and the monthly
 //    certificate winner use identical, non-duplicated logic.
 async function computeHMPerformance(startDateStr, endDateStr) {
-  const [{ data: attendance }, { data: neglect }, { data: housemasters }] = await Promise.all([
+  const [{ data: attendance }, { data: neglect }, { data: housemasters }, { data: studentsForCount }] = await Promise.all([
     supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr),
     supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr),
     supabase.from('housemasters').select('name, house, phone').eq('status', 'Active'),
+    // Fetched so a "No data" house can be distinguished as either
+    // "no students assigned here" or "students exist but nothing was
+    // logged" — otherwise both look identical in the ranking card.
+    supabase.from('students').select('house, status').neq('status', 'Inactive'),
   ])
 
   // Dedupe by NORMALIZED house name — using the raw string here let
@@ -3087,6 +3091,7 @@ async function computeHMPerformance(startDateStr, endDateStr) {
     const hm = (housemasters || []).find(h => normalizeHouse(h.house) === houseKey)
     const houseAttendance = (attendance || []).filter(a => normalizeHouse(a.house) === houseKey)
     const houseNeglect = (neglect || []).filter(n => normalizeHouse(n.house) === houseKey)
+    const studentCount = (studentsForCount || []).filter(s => normalizeHouse(s.house) === houseKey).length
 
     // ── Factor 1: On-time roll call %
     const sessionGroups = {}
@@ -3146,6 +3151,7 @@ async function computeHMPerformance(startDateStr, endDateStr) {
       onTimePct, compliancePct, neglectFreePct, score,
       sessionsCount: sessionKeys.length,
       neglectCount: houseNeglect.length,
+      studentCount,
       topSkippedTabs,
       typedReasons: typedReasons.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5),
     }
@@ -3749,6 +3755,25 @@ function HMPerformanceRanking() {
                   </div>
                   {isExpanded && (
                     <div style={{ padding: '14px', borderTop: '1px solid #f1f5f9', background: '#fafbfc' }}>
+                      {/* Diagnostic: why this house has "No data" — distinguishes
+                          "no students assigned" from "students exist but nothing
+                          was logged in 7 days", since both looked identical before. */}
+                      {r.score === null && (
+                        <div style={{
+                          display: 'flex', alignItems: 'flex-start', gap: '8px',
+                          padding: '10px 12px', borderRadius: '8px', marginBottom: '12px',
+                          background: r.studentCount === 0 ? '#f1f5f9' : '#fef2f2',
+                          border: `1px solid ${r.studentCount === 0 ? '#e2e8f0' : '#fca5a5'}`,
+                        }}>
+                          <span style={{ fontSize: '14px' }}>{r.studentCount === 0 ? 'ℹ️' : '⚠️'}</span>
+                          <div style={{ fontSize: '12px', color: '#374151' }}>
+                            {r.studentCount === 0
+                              ? <>No active students are currently assigned to this house.</>
+                              : <><strong>{r.studentCount} student{r.studentCount !== 1 ? 's' : ''}</strong> in this house, but no roll call or check has been logged in the last 7 days — {r.hmName} may not be using the app for daily checks.</>
+                            }
+                          </div>
+                        </div>
+                      )}
                       {/* Factor breakdown */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px', marginBottom: '14px' }}>
                         {[
