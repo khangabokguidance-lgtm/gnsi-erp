@@ -12,6 +12,31 @@ import {
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
 
+// ── Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
+//    1000 rows by default. Any table that can grow past that (fees,
+//    admissions, adm_fee_collections, adm_flat_fees, adm_course_fees) MUST be
+//    fetched through this helper or the newest rows silently vanish from the
+//    UI once the table crosses the cap — this is exactly what caused the
+//    ~₹86K Fees/Accounts mismatch previously, and the July 2026 course-fee
+//    row missing from the Fee record modal / Student Ledger tab.
+async function fetchAllRows(table, { select = '*', filters = [], orderCol = null, ascending = true } = {}) {
+  const PAGE = 1000
+  let from = 0
+  let all = []
+  while (true) {
+    let q = supabase.from(table).select(select)
+    for (const [col, op, val] of filters) q = q[op](col, val)
+    if (orderCol) q = q.order(orderCol, { ascending })
+    q = q.range(from, from + PAGE - 1)
+    const { data, error } = await q
+    if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); break }
+    all = all.concat(data || [])
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
 // ── Responsive hook ───────────────────────────────────────────────────────────
 function useWindowWidth() {
   const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200)
@@ -1775,20 +1800,20 @@ export default function Fees() {
 
   const loadAll = async () => {
     setLoading(true)
-    const [fR, sR, aR, cR, flR, crR] = await Promise.all([
-      supabase.from('fees').select('*').order('created_at', { ascending: false }),
-      supabase.from('students').select('*').order('name'),
-      supabase.from('admissions').select('*'),
-      supabase.from('adm_fee_collections').select('*').eq('reverted', false),
-      supabase.from('adm_flat_fees').select('*').eq('paid', true).eq('reverted', false),
-      supabase.from('adm_course_fees').select('*').eq('reverted', false),
+    const [fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
+      fetchAllRows('fees', { orderCol: 'created_at', ascending: false }),
+      fetchAllRows('students', { orderCol: 'name' }),
+      fetchAllRows('admissions'),
+      fetchAllRows('adm_fee_collections', { filters: [['reverted', 'eq', false]] }),
+      fetchAllRows('adm_flat_fees', { filters: [['paid', 'eq', true], ['reverted', 'eq', false]] }),
+      fetchAllRows('adm_course_fees', { filters: [['reverted', 'eq', false]] }),
     ])
-    setFees(fR.data || [])
-    setStudents(sR.data || [])
-    setAdmissions(aR.data || [])
-    setAdmFeeCols(cR.data || [])
-    setAdmFlatFees(flR.data || [])
-    setAdmCourseFees(crR.data || [])
+    setFees(fees_)
+    setStudents(students_)
+    setAdmissions(admissions_)
+    setAdmFeeCols(admFeeCols_)
+    setAdmFlatFees(admFlatFees_)
+    setAdmCourseFees(admCourseFees_)
     setLoading(false)
   }
 
