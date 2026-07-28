@@ -469,8 +469,23 @@ async function logRushedRollCall(houseName, dateStr, session, housemasterName, r
 function isValidSkipReason(text) {
   const trimmed = (text || '').trim()
   if (trimmed.length < 10) return false
-  const wordCount = trimmed.split(/\s+/).filter(Boolean).length
-  return wordCount > 1
+  const words = trimmed.split(/\s+/).filter(Boolean)
+  if (words.length < 2) return false
+  // Reject reasons that are just one word repeated ("na na na na",
+  // "asdf asdf asdf") — passes the word-count check above but is
+  // exactly the kind of filler that satisfies validation without
+  // giving any real information.
+  const uniqueWords = new Set(words.map(w => w.toLowerCase()))
+  if (uniqueWords.size === 1) return false
+  // Reject keyboard-mashing / repeated-character strings ("aaaaaaaaaa",
+  // "asasasasas") — a low ratio of distinct characters to total length
+  // is a strong signal of filler rather than genuine prose.
+  const lettersOnly = trimmed.toLowerCase().replace(/[^a-z]/g, '')
+  if (lettersOnly.length >= 8) {
+    const uniqueChars = new Set(lettersOnly).size
+    if (uniqueChars <= 3) return false
+  }
+  return true
 }
 
 // Attach a housemaster-supplied reason to a specific skipped tab on an
@@ -1268,6 +1283,29 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     await loadAll()
   }
 
+  // ── Rushed-marking check: flag a roll call whose per-student marks are
+  //    all clustered in an implausibly short window (e.g. tapping through
+  //    20 students in under 20 seconds is not real checking). Standalone
+  //    so it can run from the universal 100%-completion effect below,
+  //    not just from the card-view Done screen — a house completed via
+  //    the dashboard's bulk-mark buttons never opens the card view at
+  //    all, and would otherwise never get checked. ──
+  const checkForRushedMarking = (houseName, recordsForHouse) => {
+    const houseRecords = recordsForHouse.filter(r => r.marked_at)
+    if (houseRecords.length < 3) return
+    const times = houseRecords.map(r => new Date(r.marked_at).getTime()).sort((a, b) => a - b)
+    const spanSeconds = (times[times.length - 1] - times[0]) / 1000
+    const secondsPerStudent = spanSeconds / houseRecords.length
+    const allSameStatus = new Set(houseRecords.map(r => r.status)).size === 1
+    if (secondsPerStudent < 2) {
+      logRushedRollCall(
+        houseName, date, session, currentHousemaster?.name,
+        `Roll call for ${houseRecords.length} students completed in ${Math.round(spanSeconds)}s` +
+        (allSameStatus ? ' — all marked identically' : '')
+      )
+    }
+  }
+
   // ── Auto-fire the House Report the moment a house reaches 100% for this date+session ──
   useEffect(() => {
     if (loading) return
@@ -1281,6 +1319,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           return next
         })
         setReportHouse(houseName)
+        checkForRushedMarking(houseName, allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName)))
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1302,6 +1341,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setSavingId(studentId)
     const existing = allRecords.find(r => r.student_id === studentId)
     const student = activeStudents.find(s => s.id === studentId)
+    const markedByName = currentHousemaster?.name || currentUser?.name
+      || (userRole === 'superintendent' ? 'Superintendent' : userRole === 'admin' ? 'Admin' : null)
+    if (!markedByName) {
+      console.warn('handleMark: no identifiable marker (currentHousemaster/currentUser both missing) — attendance will be attributed to "Unknown"')
+    }
     const payload = {
       date, session,
       student_id: studentId,
@@ -1310,7 +1354,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       class_name: getStudentClass(student),
       house: student?.house || '',
       status,
-      marked_by: currentHousemaster?.name || 'System',
+      marked_by: markedByName || 'Unknown',
+      // This client timestamp is a fallback only. Once migration
+      // 001_server_side_marked_at.sql is applied, a DB trigger
+      // overwrites marked_at with the server's own clock on every
+      // write — the value sent here is ignored, closing the loophole
+      // where a client could spoof timing to defeat rushed-marking
+      // detection.
       marked_at: new Date().toISOString(),
     }
     const { error } = existing
@@ -1332,6 +1382,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   const handleBulkMark = async (studentIds, status, houseNameForLog) => {
     setSaving(true)
+    const markedByName = currentHousemaster?.name || currentUser?.name
+      || (userRole === 'superintendent' ? 'Superintendent' : userRole === 'admin' ? 'Admin' : null)
     const payloads = studentIds.map(id => {
       const student = activeStudents.find(s => s.id === id)
       return {
@@ -1342,7 +1394,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         class_name: getStudentClass(student),
         house: student?.house || '',
         status,
-        marked_by: currentHousemaster?.name || 'System',
+        marked_by: markedByName || 'Unknown',
+        // Advisory only — see note in handleMark; server trigger overwrites this.
         marked_at: new Date().toISOString(),
       }
     })
@@ -1411,28 +1464,6 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       const logId = await logNeglect(houseName, date, session, currentHousemaster?.name, missing, 'rollcall')
       if (logId) setComplianceLogId(prev => ({ ...prev, [key]: logId }))
     }
-    // ── Rushed-marking check: flag a roll call whose per-student marks
-    //    are all clustered in an implausibly short window (e.g. tapping
-    //    through 20 students in under 20 seconds is not real checking). ──
-    const houseRecords = allRecords.filter(r =>
-      normalizeHouse(r.house) === normalizeHouse(houseName) && r.marked_at
-    )
-    if (houseRecords.length >= 3) {
-      const times = houseRecords.map(r => new Date(r.marked_at).getTime()).sort((a, b) => a - b)
-      const spanSeconds = (times[times.length - 1] - times[0]) / 1000
-      const secondsPerStudent = spanSeconds / houseRecords.length
-      const allSameStatus = new Set(houseRecords.map(r => r.status)).size === 1
-      // Under ~2 seconds/student average is not enough time to actually
-      // look at each student — flag it, more urgently if every status
-      // came out identical (suggests no real per-student decision at all).
-      if (secondsPerStudent < 2) {
-        logRushedRollCall(
-          houseName, date, session, currentHousemaster?.name,
-          `Roll call for ${houseRecords.length} students completed in ${Math.round(spanSeconds)}s` +
-          (allSameStatus ? ' — all marked identically' : '')
-        )
-      }
-    }
   }
 
   // Manual fallback for "✓ Complete Now" — re-verifies just one tab
@@ -1480,7 +1511,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // and admin reports keep working unchanged) but with a standard fixed
   // reason instead of requiring the housemaster to type anything.
   const [confirmingNoneTab, setConfirmingNoneTab] = useState(null) // tab key currently saving
-  const handleConfirmNothingToReport = async (complianceKey, tabKey) => {
+  const [nothingToReportStreak, setNothingToReportStreak] = useState({}) // key: `${house}_${tabKey}` → recent streak count, once computed
+  const handleConfirmNothingToReport = async (complianceKey, tabKey, houseName) => {
     setConfirmingNoneTab(tabKey)
     const logId = complianceLogId[complianceKey]
     await attachSkipReason(logId, tabKey, 'Nothing to report', currentHousemaster?.name)
@@ -1489,6 +1521,40 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       [complianceKey]: { ...(prev[complianceKey] || {}), [tabKey]: 'Nothing to report' },
     }))
     setConfirmingNoneTab(null)
+    // ── Check how many of the last 10 rollcall-type logs for this house
+    //    were also dismissed as "Nothing to report" for this same tab.
+    //    Doesn't block anything — just surfaces the pattern so an admin
+    //    (or the housemaster themselves) can see a tab that's *always*
+    //    "nothing to report" is either genuinely quiet or genuinely
+    //    unchecked, and there's currently no way to tell those apart. ──
+    try {
+      const { data: recentLogs } = await supabase
+        .from('hm_neglect_log')
+        .select('skip_reasons, created_at')
+        .eq('house', houseName)
+        .eq('check_type', 'rollcall')
+        .order('created_at', { ascending: false })
+        .limit(10)
+      if (recentLogs && recentLogs.length >= 5) {
+        const streak = recentLogs.filter(r => r.skip_reasons?.[tabKey] === 'Nothing to report').length
+        const streakKey = `${houseName}_${tabKey}`
+        setNothingToReportStreak(prev => ({ ...prev, [streakKey]: streak }))
+        if (streak >= 8) {
+          const { data: admins } = await supabase.from('staff_profiles').select('id').ilike('role', 'admin')
+          if (admins?.length) {
+            const label = SIX_TABS.find(t => t.key === tabKey)?.label || tabKey
+            await Promise.all(admins.map(a => sendPushToStaffId(
+              a.id,
+              `📋 Pattern check — ${houseName}`,
+              `${label} marked "Nothing to report" in ${streak} of the last ${recentLogs.length} sessions for ${houseName}.`,
+              '/hostel?tab=neglectreport'
+            )))
+          }
+        }
+      }
+    } catch (e) {
+      console.error('nothing-to-report streak check failed:', e)
+    }
   }
 
   // ── Standalone 3x-daily compliance check (independent of roll call) ──
@@ -2648,6 +2714,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   {SIX_TABS.filter(t => missingTabs.includes(t.key)).map(t => {
                     const reasonGiven = skippedWithReason[complianceKey]?.[t.key]
                     const isConfirming = confirmingNoneTab === t.key
+                    const streak = nothingToReportStreak[`${complianceHouse}_${t.key}`]
                     return (
                       <div key={t.key} style={{ background: 'white', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -2657,12 +2724,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                           {reasonGiven ? (
                             <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', flex: 1 }}>
                               {reasonGiven === 'Nothing to report' ? '✅ Confirmed — nothing to report' : `✅ Skipped — reason: "${reasonGiven}"`}
+                              {reasonGiven === 'Nothing to report' && streak >= 8 && (
+                                <div style={{ color: '#ca8a04', fontWeight: '600', marginTop: '3px' }}>
+                                  📋 This has been "Nothing to report" for {t.label} in most recent sessions here — worth double-checking it's genuinely quiet.
+                                </div>
+                              )}
                             </span>
                           ) : (
                             <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
                               {/* Primary path: one tap, no typing — covers the common case of a quiet day */}
                               <button
-                                onClick={() => handleConfirmNothingToReport(complianceKey, t.key)}
+                                onClick={() => handleConfirmNothingToReport(complianceKey, t.key, complianceHouse)}
                                 disabled={isConfirming}
                                 style={{ padding: '6px 12px', borderRadius: '7px', border: 'none', background: '#16a34a', color: 'white', fontSize: '11px', fontWeight: '700', cursor: isConfirming ? 'wait' : 'pointer' }}
                               >
