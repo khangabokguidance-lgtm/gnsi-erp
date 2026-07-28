@@ -994,6 +994,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   const [selectedHouse, setSelectedHouse] = useState(null)
   const [records, setRecords] = useState([])
   const [allRecords, setAllRecords] = useState([])
+  const [allRecordsFor, setAllRecordsFor] = useState({ date: null, session: null })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [date, setDate] = useState(today())
@@ -1059,6 +1060,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       .eq('date', date)
       .eq('session', session)
     setAllRecords(data || [])
+    setAllRecordsFor({ date, session })
     setLoading(false)
   }, [date, session])
 
@@ -1183,9 +1185,16 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // Once date/session switch to the catch-up target and records for
   // that target have loaded, actually open the roll-call view.
   useEffect(() => {
-    if (!pendingCatchUpHouse || loading) return
+    if (!pendingCatchUpHouse) return
     const target = catchUpTargetRef.current
     if (!target || date !== target.date || session !== target.session) return
+    // Wait until allRecords has actually been (re)fetched for this exact
+    // date/session — checking `loading === false` alone isn't enough,
+    // since there's a render gap where date/session already match the
+    // target but loadAll's fetch for them hasn't started/finished yet,
+    // which would otherwise let this effect run against the previous
+    // day's stale allRecords (or silently stall forever).
+    if (loading || allRecordsFor.date !== target.date || allRecordsFor.session !== target.session) return
     const started = startRollCall(pendingCatchUpHouse)
     if (started) {
       setView('rollcall')
@@ -1199,7 +1208,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setPendingCatchUpHouse(null)
     catchUpTargetRef.current = null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingCatchUpHouse, loading, allRecords, date, session])
+  }, [pendingCatchUpHouse, loading, allRecords, allRecordsFor, date, session])
 
   const returnFromCatchUp = () => {
     if (!catchUpReturn) return
