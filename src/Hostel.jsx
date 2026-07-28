@@ -3047,10 +3047,32 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
 // ── Shared performance scoring — computes the same 3-factor score for
 //    any date range, so both the 7-day ranking panel and the monthly
 //    certificate winner use identical, non-duplicated logic.
+// Supabase caps a single .select() at 1000 rows by default. Queries that
+// pull attendance/neglect/student data across a whole school for a week
+// or a month can easily exceed that — and when they do, Supabase silently
+// returns only the first 1000 rows in whatever order Postgres happens to
+// produce (not ordered by house or date), so entire houses can vanish
+// from aggregate reports with no error. This helper pages through with
+// .range() until a page comes back short, guaranteeing every matching
+// row is fetched regardless of table size.
+async function fetchAllRows(buildQuery) {
+  const pageSize = 1000
+  let allRows = []
+  let from = 0
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+    if (error) { console.error('fetchAllRows error:', error); break }
+    allRows = allRows.concat(data || [])
+    if (!data || data.length < pageSize) break
+    from += pageSize
+  }
+  return allRows
+}
+
 async function computeHMPerformance(startDateStr, endDateStr) {
-  const [{ data: attendance }, { data: neglect }, { data: housemasters }, { data: studentsForCount }] = await Promise.all([
-    supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr),
-    supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr),
+  const [attendance, neglect, { data: housemasters }, { data: studentsForCount }] = await Promise.all([
+    fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr)),
+    fetchAllRows(() => supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr)),
     supabase.from('housemasters').select('name, house, phone').eq('status', 'Active'),
     // Fetched so a "No data" house can be distinguished as either
     // "no students assigned here" or "students exist but nothing was
@@ -3424,10 +3446,10 @@ function HMRollCallReportTab() {
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const [{ data: houseRows }, { data: studentRows }, { data: attRows }] = await Promise.all([
+      const [{ data: houseRows }, { data: studentRows }, attRows] = await Promise.all([
         supabase.from('houses').select('name'),
         supabase.from('students').select('house').neq('status', 'Inactive'),
-        supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startStr).lte('date', endStr),
+        fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startStr).lte('date', endStr)),
       ])
       setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
       const counts = {}
