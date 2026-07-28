@@ -3054,15 +3054,32 @@ async function computeHMPerformance(startDateStr, endDateStr) {
     supabase.from('housemasters').select('name, house, phone').eq('status', 'Active'),
   ])
 
-  const houseNames = [...new Set([
-    ...(attendance || []).map(a => a.house),
-    ...(neglect || []).map(n => n.house),
+  // Dedupe by NORMALIZED house name — using the raw string here let
+  // casing inconsistencies in stored data (e.g. "Kombirei" vs "KOMBIREI")
+  // produce two separate entries for what is actually the same house,
+  // each pulling in the same underlying records and housemaster, so the
+  // ranking list showed the same housemaster twice with identical stats.
+  const houseKeys = [...new Set([
+    ...(attendance || []).map(a => normalizeHouse(a.house)),
+    ...(neglect || []).map(n => normalizeHouse(n.house)),
   ].filter(Boolean))]
 
-  const results = houseNames.map(houseName => {
-    const hm = (housemasters || []).find(h => normalizeHouse(h.house) === normalizeHouse(houseName))
-    const houseAttendance = (attendance || []).filter(a => normalizeHouse(a.house) === normalizeHouse(houseName))
-    const houseNeglect = (neglect || []).filter(n => normalizeHouse(n.house) === normalizeHouse(houseName))
+  // For display, prefer the housemaster's own house label (usually the
+  // best-formatted source) for each normalized key, falling back to
+  // whatever casing first appears in attendance/neglect data.
+  const displayLabelFor = (key) => {
+    const hm = (housemasters || []).find(h => normalizeHouse(h.house) === key)
+    if (hm?.house) return hm.house
+    const fromAttendance = (attendance || []).find(a => normalizeHouse(a.house) === key)?.house
+    if (fromAttendance) return fromAttendance
+    return (neglect || []).find(n => normalizeHouse(n.house) === key)?.house || key
+  }
+
+  const results = houseKeys.map(houseKey => {
+    const houseName = displayLabelFor(houseKey)
+    const hm = (housemasters || []).find(h => normalizeHouse(h.house) === houseKey)
+    const houseAttendance = (attendance || []).filter(a => normalizeHouse(a.house) === houseKey)
+    const houseNeglect = (neglect || []).filter(n => normalizeHouse(n.house) === houseKey)
 
     // ── Factor 1: On-time roll call %
     const sessionGroups = {}
@@ -3694,9 +3711,15 @@ function HMPerformanceRanking() {
             {rankings.map((r, i) => {
               const isExpanded = expandedHouse === r.house
               return (
-                <div key={r.house} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                <div key={r.house} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', transition: 'box-shadow 0.15s ease' }}>
                   <div
                     onClick={() => setExpandedHouse(isExpanded ? null : r.house)}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = isExpanded ? '#f8fafc' : 'white' }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedHouse(isExpanded ? null : r.house) } }}
+                    title={isExpanded ? 'Click to collapse' : 'Click to see details'}
                     style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', cursor: 'pointer', background: isExpanded ? '#f8fafc' : 'white' }}
                   >
                     <div style={{ fontSize: '13px', fontWeight: '800', color: '#94a3b8', width: '22px' }}>#{i + 1}</div>
@@ -3710,7 +3733,12 @@ function HMPerformanceRanking() {
                     }}>
                       {r.score === null ? '—' : `${r.score}%`}
                     </div>
-                    <span style={{ fontSize: '14px', color: '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                    <span style={{
+                      fontSize: '14px', color: isExpanded ? '#1e3a5f' : '#94a3b8', transition: 'transform 0.2s',
+                      transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'inline-flex',
+                      width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '50%', background: isExpanded ? '#e3ecf7' : 'transparent',
+                    }}>▾</span>
                   </div>
                   {isExpanded && (
                     <div style={{ padding: '14px', borderTop: '1px solid #f1f5f9', background: '#fafbfc' }}>

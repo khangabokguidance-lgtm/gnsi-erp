@@ -1892,6 +1892,11 @@ function MarkReturnedModal({ record, onConfirm, onCancel }) {
   const [returnTime,       setReturnTime]       = useState(nowLocal())
   const [createDiscipline, setCreateDiscipline] = useState(true)
   const [disciplineRemarks, setDisciplineRemarks] = useState('')
+  // Guards against duplicate submissions (double-click / slow network) —
+  // without this, onConfirm (an async parent handler) can fire more than
+  // once while still in flight, inserting duplicate discipline_records
+  // rows and sending duplicate SMS for the same return event.
+  const [submitting, setSubmitting] = useState(false)
 
   if (!record) return null
 
@@ -2030,17 +2035,26 @@ function MarkReturnedModal({ record, onConfirm, onCancel }) {
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
-            onClick={() => onConfirm({
-              actualReturn:    returnTime,
-              createDiscipline: willPrompt && createDiscipline,
-              incidentText,
-              disciplineRemarks,
-            })}
-            style={{ ...btn('#16a34a'), flex: 1 }}
+            onClick={async () => {
+              if (submitting) return
+              setSubmitting(true)
+              try {
+                await onConfirm({
+                  actualReturn:    returnTime,
+                  createDiscipline: willPrompt && createDiscipline,
+                  incidentText,
+                  disciplineRemarks,
+                })
+              } finally {
+                setSubmitting(false)
+              }
+            }}
+            disabled={submitting}
+            style={{ ...btn('#16a34a'), flex: 1, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'wait' : 'pointer' }}
           >
-            🏠 Confirm Return
+            {submitting ? '⏳ Saving...' : '🏠 Confirm Return'}
           </button>
-          <button onClick={onCancel} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>
+          <button onClick={onCancel} disabled={submitting} style={{ ...btn('#f1f5f9', '#374151'), flex: 1, opacity: submitting ? 0.6 : 1 }}>
             Cancel
           </button>
         </div>
@@ -4282,21 +4296,32 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
     await voidGatePass(record.id)
 
     // Feature 35 + 36: auto-create discipline record if overstay > 2h
+    // Idempotency guard: skip if a discipline record already exists for
+    // this leave (leave_id) — prevents duplicate rows if this handler is
+    // ever invoked more than once for the same return event (e.g. two
+    // browser tabs, or a retry after a slow response).
     if (createDiscipline && incidentText) {
-      await supabase.from('discipline_records').insert([{
-        date:         new Date().toISOString().split('T')[0],
-        student_id:   record.student_id   || null,
-        gcc_no:       record.gcc_no       || null,
-        student_name: record.student_name || '',
-        class_name:   record.class_name   || '',
-        incident:     incidentText,
-        action_taken: '',
-        reported_by:  currentHousemaster?.name || 'System',
-        status:       'Open',
-        remarks:      disciplineRemarks || '',
-        // Feature 36: link back to leave record
-        leave_id:     record.id,
-      }])
+      const { data: existingDiscipline } = await supabase
+        .from('discipline_records')
+        .select('id')
+        .eq('leave_id', record.id)
+        .maybeSingle()
+      if (!existingDiscipline) {
+        await supabase.from('discipline_records').insert([{
+          date:         new Date().toISOString().split('T')[0],
+          student_id:   record.student_id   || null,
+          gcc_no:       record.gcc_no       || null,
+          student_name: record.student_name || '',
+          class_name:   record.class_name   || '',
+          incident:     incidentText,
+          action_taken: '',
+          reported_by:  currentHousemaster?.name || 'System',
+          status:       'Open',
+          remarks:      disciplineRemarks || '',
+          // Feature 36: link back to leave record
+          leave_id:     record.id,
+        }])
+      }
     }
 
     // ── Feature 56: SMS to parent on return
