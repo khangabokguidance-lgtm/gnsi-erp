@@ -99,13 +99,15 @@ const C = {
   radius:    12,
 }
 
-// Placeholder schema config — student/fees/hostel table & column
-// names are BEST GUESSES. Update these three lines once you confirm
-// your actual Supabase schema; nothing else needs to change.
+// Schema config — student/fees/hostel table & column names.
+// fees/discipline updated to match the real tables confirmed in
+// Fees.jsx/feeEngine.js and Hostel.jsx (the originals here were
+// placeholder guesses — 'fee_records' and 'discipline_logs' never
+// existed, so these signals always silently showed '—').
 const SCHEMA = {
   students:   { table: 'students',        id: 'gcc_no', name: 'student_name', course: 'course', className: 'class_name' },
-  fees:       { table: 'fee_records',      studentKey: 'gcc_no', dueAmount: 'due_amount', dueDate: 'due_date', status: 'status' },
-  discipline: { table: 'discipline_logs',  studentKey: 'gcc_no', date: 'incident_date', category: 'category', status: 'status', remark: 'remark' },
+  fees:       { table: 'adm_course_fees',  studentKey: 'adm_app_id', dueDate: 'pay_date', status: 'reverted' },
+  discipline: { table: 'discipline_records', studentKey: 'gcc_no', date: 'incident_date', category: 'category', status: 'status', remark: 'remark' },
   hostel:     { table: 'sickbay_records',  studentKey: 'gcc_no', admittedDate: 'admitted_on', status: 'status', note: 'note' },
 }
 
@@ -3429,6 +3431,25 @@ async function safeQuery(fn) {
   } catch { return null }
 }
 
+// Paginated variant — adm_course_fees/discipline_records can exceed
+// Supabase's 1000-row default cap once the institute has enough history;
+// an unpaginated select() there would silently drop the newest rows,
+// same bug class already fixed in Fees.jsx/Students.jsx.
+async function safeQueryAll(table, select = '*') {
+  const PAGE = 1000
+  let from = 0, all = []
+  try {
+    while (true) {
+      const { data, error } = await supabase.from(table).select(select).range(from, from + PAGE - 1)
+      if (error) return all.length ? all : null
+      all = all.concat(data || [])
+      if (!data || data.length < PAGE) break
+      from += PAGE
+    }
+    return all
+  } catch { return all.length ? all : null }
+}
+
 function useStudentSignals(monthStr) {
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
@@ -3450,18 +3471,20 @@ function useStudentSignals(monthStr) {
 
       const map = {}
       recs.forEach(r => {
-        const key = r.gcc_no || r.student_name
+        const key = r.gcc_no != null ? String(r.gcc_no) : r.student_name
         if (!map[key]) map[key] = {
           name: r.student_name, gcc: r.gcc_no, className: r.class_name,
-          course: sessionCourse[r.session_id] || '—', present: 0, total: 0,
+          course: sessionCourse[r.session_id] || '—', present: 0, late: 0, total: 0,
         }
         if (r.status === 'Present') map[key].present++
+        if (r.status === 'Late') map[key].late++
         map[key].total++
       })
 
-      // Placeholder cross-module signals — degrade silently if tables don't exist yet
-      const feeRows = await safeQuery(() => supabase.from(SCHEMA.fees.table).select('*'))
-      const discRows = await safeQuery(() => supabase.from(SCHEMA.discipline.table).select('*'))
+      // Cross-module signals — fees/discipline can exceed 1000 rows, so use
+      // the paginated fetch; hostel/sickbay stays small enough for safeQuery.
+      const feeRows = await safeQueryAll(SCHEMA.fees.table)
+      const discRows = await safeQueryAll(SCHEMA.discipline.table)
       const hostelRows = await safeQuery(() => supabase.from(SCHEMA.hostel.table).select('*'))
 
       if (cancelled) return
@@ -3469,24 +3492,32 @@ function useStudentSignals(monthStr) {
 
       const feeByStudent = {}
       ;(feeRows || []).forEach(f => {
-        const k = f[SCHEMA.fees.studentKey]
-        const due = new Date(f[SCHEMA.fees.dueDate] || Date.now())
-        const overdueDays = f[SCHEMA.fees.status] === 'paid' ? 0 : Math.max(0, Math.round((Date.now() - due) / 86400000))
-        if (!feeByStudent[k] || overdueDays > feeByStudent[k]) feeByStudent[k] = overdueDays
+        if (f[SCHEMA.fees.status]) return // reverted=true — not a valid payment
+        const k = String(f[SCHEMA.fees.studentKey])
+        const payDate = f[SCHEMA.fees.dueDate]
+        if (!payDate) return
+        const daysSince = Math.max(0, Math.round((Date.now() - new Date(payDate)) / 86400000))
+        // "Overdue days" here = days since last recorded course-fee payment.
+        // adm_course_fees only stores payments made (no due-date column), so
+        // this is a recency signal, not a true arrears calc — for a precise
+        // arrears figure use Students.jsx's getEffectiveMonthlyDue logic.
+        if (feeByStudent[k] === undefined || daysSince < feeByStudent[k]) feeByStudent[k] = daysSince
       })
       const discByStudent = {}
       ;(discRows || []).forEach(d => {
-        const k = d[SCHEMA.discipline.studentKey]
+        const k = String(d[SCHEMA.discipline.studentKey])
         if (d[SCHEMA.discipline.status] !== 'resolved') discByStudent[k] = (discByStudent[k] || 0) + 1
       })
       const hostelByStudent = {}
       ;(hostelRows || []).forEach(h => {
-        const k = h[SCHEMA.hostel.studentKey]
+        const k = String(h[SCHEMA.hostel.studentKey])
         if (h[SCHEMA.hostel.status] === 'active') hostelByStudent[k] = 'Sickbay'
       })
 
       const out = Object.entries(map).map(([key, r]) => {
-        const pct = r.total > 0 ? Math.round((r.present / r.total) * 100) : null
+        // Late counts as half-credit — matches Students.jsx's attendance
+        // formula so the same student's % agrees across both modules.
+        const pct = r.total > 0 ? Math.round(((r.present + r.late * 0.5) / r.total) * 100) : null
         const signals = {
           attendancePct: pct,
           disciplineOpen: discRows === null ? null : (discByStudent[key] || 0),
@@ -3895,11 +3926,17 @@ function HomeV2({ onNavigate }) {
 // by student_id going forward rather than storing name/gcc_no directly,
 // though that migration is outside this tab's scope.
 //
-// Column names (name, gcc_no, course, class_name, phone) are inferred
-// from existing usage elsewhere in this file (NotifyPanel's
-// s.students?.phone, course/class_name used throughout) — confirm
-// against your actual Supabase schema and adjust the field list below
-// if any column is actually named differently.
+// FIXED: this tab's insert/update previously wrote a bare 6-field payload
+// that didn't match Students.jsx's canonical 21-field shape — new students
+// created here had status=null (invisible to every 'status=Active' filter
+// elsewhere, e.g. Hostel.jsx), no batch/house/session/admission_date, and
+// gcc_no as a raw string while Students.jsx writes it via parseInt() —
+// producing a genuinely mixed-type gcc_no column across the two write
+// paths. The payload below now sets the same safe defaults Students.jsx
+// uses (status:'Active', hostel_type:'Day Scholar' fallback) and matches
+// gcc_no's type. This tab still only collects a subset of fields — for
+// full student records (house, batch, admission details) use the
+// Students.jsx module; this stays a quick lookup/edit console.
 const emptyStudentForm = { name: '', gcc_no: '', course: '', class_name: '', phone: '', hostel_type: '' }
 
 function TabStudentDB({ isAdmin }) {
@@ -3942,20 +3979,30 @@ function TabStudentDB({ isAdmin }) {
   const openAdd = () => { setEditingId(null); setForm(emptyStudentForm); setShowForm(true) }
   const openEdit = (s) => {
     setEditingId(s.id)
-    setForm({ name: s.name || '', gcc_no: s.gcc_no || '', course: s.course || '', class_name: s.class_name || '', phone: s.phone || '', hostel_type: s.hostel_type || '' })
+    setForm({ name: s.name || '', gcc_no: s.gcc_no != null ? String(s.gcc_no) : '', course: s.course || '', class_name: s.class_name || '', phone: s.phone || '', hostel_type: s.hostel_type || '' })
     setShowForm(true)
   }
 
   const handleSave = async () => {
     if (!form.name.trim()) { setToast({ type: 'warn', msg: 'Student name is required.' }); return }
+    // gcc_no must be parseInt'd here to match Students.jsx's canonical
+    // insert — writing it as a string produced a genuinely mixed-type
+    // gcc_no column when both write paths were live simultaneously.
+    const gccParsed = form.gcc_no.trim() ? parseInt(form.gcc_no.trim(), 10) : null
+    if (form.gcc_no.trim() && Number.isNaN(gccParsed)) { setToast({ type: 'warn', msg: 'GCC No. must be a number.' }); setSaving(false); return }
     setSaving(true)
     const payload = {
       name: form.name.trim(),
-      gcc_no: form.gcc_no.trim() || null,
+      gcc_no: gccParsed,
       course: form.course || null,
       class_name: form.class_name || null,
       phone: form.phone.trim() || null,
-      hostel_type: form.hostel_type || null,
+      hostel_type: form.hostel_type || 'Day Scholar',
+      // Only set on create — Students.jsx defaults new students to
+      // Active; without this, students added from this tab had
+      // status=null and silently vanished from every view that
+      // filters status='Active' (e.g. Hostel.jsx's roster).
+      ...(editingId ? {} : { status: 'Active' }),
     }
     const { error } = editingId
       ? await supabase.from('students').update(payload).eq('id', editingId)

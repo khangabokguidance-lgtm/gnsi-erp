@@ -721,10 +721,15 @@ function AttendanceViewerModal({ student, onClose }) {
       // gcc_no/student_name matching for older records saved before that
       // field existed. Match on all three here too, or students with
       // legacy rows show "no records" even though they have history.
+      //
+      // Hostel.jsx's roll-call feature writes to this same table with
+      // session_id=null (date+session instead) — exclude those or they
+      // either pollute this academic-attendance % or show up mislabeled
+      // as "Session deleted" orphaned rows below.
       const gcc=student.gcc_no?String(student.gcc_no):null
-      const queries=[supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).limit(300)]
-      if(gcc)queries.push(supabase.from('attendance_records').select('status,session_id').eq('gcc_no',gcc).limit(300))
-      queries.push(supabase.from('attendance_records').select('status,session_id').eq('student_name',student.name).limit(300))
+      const queries=[supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).not('session_id','is',null).limit(300)]
+      if(gcc)queries.push(supabase.from('attendance_records').select('status,session_id').eq('gcc_no',gcc).not('session_id','is',null).limit(300))
+      queries.push(supabase.from('attendance_records').select('status,session_id').eq('student_name',student.name).not('session_id','is',null).limit(300))
       const results=await Promise.all(queries)
       if(cancelled)return
       const seen=new Set()
@@ -928,11 +933,12 @@ function AttendanceTab({ student, can, showToast }) {
     setLoading(true)
     // Wired to the real Attendance module (attendance_records + attendance_sessions).
     // student_id may be missing on legacy rows — fall back to gcc_no/name match,
-    // same as the card's AttendanceViewerModal.
+    // same as the card's AttendanceViewerModal. Hostel.jsx's roll-call rows share
+    // this table with session_id=null — excluded here for the same reason.
     const gcc=student.gcc_no?String(student.gcc_no):null
-    const queries=[supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).limit(400)]
-    if(gcc)queries.push(supabase.from('attendance_records').select('status,session_id').eq('gcc_no',gcc).limit(400))
-    queries.push(supabase.from('attendance_records').select('status,session_id').eq('student_name',student.name).limit(400))
+    const queries=[supabase.from('attendance_records').select('status,session_id').eq('student_id',student.id).not('session_id','is',null).limit(400)]
+    if(gcc)queries.push(supabase.from('attendance_records').select('status,session_id').eq('gcc_no',gcc).not('session_id','is',null).limit(400))
+    queries.push(supabase.from('attendance_records').select('status,session_id').eq('student_name',student.name).not('session_id','is',null).limit(400))
     const results=await Promise.all(queries)
     const seen=new Set(),recs=[]
     results.forEach(({data})=>{(data||[]).forEach(r=>{const key=`${r.session_id}|${r.status}`;if(seen.has(key))return;seen.add(key);recs.push(r)})})
@@ -3352,14 +3358,22 @@ const effectiveCols = visibleCols.filter(col => {
       // Attendance.jsx falls back to gcc_no/student_name matching for records
       // saved before student_id existed on a row — match all three here too,
       // or students with older records show an artificially low/blank %.
+      //
+      // IMPORTANT: Hostel.jsx's roll-call feature writes to this SAME table
+      // (date+session, e.g. "morning"/"evening", no session_id) for a
+      // completely different concept — hostel roll call, not class
+      // attendance. Every query below must filter .not('session_id','is',null)
+      // or a boarder's roll-call marks silently blend into their academic
+      // attendance %, inflating or deflating it depending on how the two
+      // happen to diverge.
       const gccByStudentId={},nameByStudentId={}
       studentRows.forEach(s=>{if(s.gcc_no)gccByStudentId[s.id]=String(s.gcc_no);nameByStudentId[s.id]=s.name})
       const gccList=Object.values(gccByStudentId)
       const nameList=Object.values(nameByStudentId)
       const[byId,byGcc,byName]=await Promise.all([
-        supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('student_id',ids),
-        gccList.length?supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('gcc_no',gccList):Promise.resolve({data:[]}),
-        supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('student_name',nameList),
+        supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('student_id',ids).not('session_id','is',null),
+        gccList.length?supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('gcc_no',gccList).not('session_id','is',null):Promise.resolve({data:[]}),
+        supabase.from('attendance_records').select('student_id,gcc_no,student_name,status').in('student_name',nameList).not('session_id','is',null),
       ])
       const allRecs=[...(byId.data||[]),...(byGcc.data||[]),...(byName.data||[])]
       if(!allRecs.length){const map={};ids.forEach(id=>map[id]=null);setAttData(map);return}
@@ -3368,7 +3382,7 @@ const effectiveCols = visibleCols.filter(col => {
         const gcc=gccByStudentId[id],name=nameByStudentId[id]
         const seen=new Set()
         const recs=allRecs.filter(r=>{
-          const matches=r.student_id===id||(gcc&&r.gcc_no===gcc)||(name&&r.student_name===name)
+          const matches=r.student_id===id||(gcc&&String(r.gcc_no)===gcc)||(name&&r.student_name===name)
           if(!matches)return false
           const key=`${r.student_id}|${r.gcc_no}|${r.student_name}|${r.status}`
           if(seen.has(key))return false

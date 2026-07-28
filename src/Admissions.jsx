@@ -22,6 +22,27 @@ import ReportGenerator from './ReportGenerator'
 import { promoteToStudent, getFlatFeeAmtSync, checkHouseCapacity } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 
+// Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
+// 1000 rows. Both `admissions` and `adm_fee_collections` can cross that
+// with 400+ students' worth of applications/payments, silently dropping
+// the newest rows (new applications, latest fee collections) from this
+// module — same bug already fixed in Fees.jsx/Students.jsx.
+async function fetchAllRows(table, { select = '*', orderCol = null, ascending = true } = {}) {
+  const PAGE = 1000
+  let from = 0, all = []
+  while (true) {
+    let q = supabase.from(table).select(select)
+    if (orderCol) q = q.order(orderCol, { ascending })
+    q = q.range(from, from + PAGE - 1)
+    const { data, error } = await q
+    if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); break }
+    all = all.concat(data || [])
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SECURITY LAYER — Validation · Authorization · Rate Limiting · Sanitization
 // ═════════════════════════════════════════════════════════════════════════════
@@ -440,11 +461,7 @@ function mapFromDB(row) {
 // ─── Supabase helpers ──────────────────────────────────────────────────────────
 const sbApps = {
   fetch: async () => {
-    const { data, error } = await supabase
-      .from('admissions')
-      .select('*')
-      .order('gcc_no', { ascending: false })
-    if (error) { console.error('fetch admissions:', error); return null }
+    const data = await fetchAllRows('admissions', { orderCol: 'gcc_no', ascending: false })
     return data.map(mapFromDB)
   },
 }
@@ -1966,12 +1983,12 @@ export default function Admissions() {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [appsData, colsData] = await Promise.all([
+    const [appsData, colsRows] = await Promise.all([
       sbApps.fetch(),
-      supabase.from('adm_fee_collections').select('*').order('created_at', { ascending:false }),
+      fetchAllRows('adm_fee_collections', { orderCol: 'created_at', ascending: false }),
     ])
     if (appsData) setApps(appsData)
-    if (!colsData.error) setCols(colsData.data)
+    setCols(colsRows)
     setLoading(false)
   }, [])
 
