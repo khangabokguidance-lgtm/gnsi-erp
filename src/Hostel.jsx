@@ -1186,8 +1186,16 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     if (!pendingCatchUpHouse || loading) return
     const target = catchUpTargetRef.current
     if (!target || date !== target.date || session !== target.session) return
-    startRollCall(pendingCatchUpHouse)
-    setView('rollcall')
+    const started = startRollCall(pendingCatchUpHouse)
+    if (started) {
+      setView('rollcall')
+    } else {
+      // No students in this house for the catch-up target — bail out of
+      // catch-up mode entirely instead of leaving the UI stuck on a
+      // permanent "Loading roll call..." screen with nothing to show.
+      returnFromCatchUp()
+      setView('houses')
+    }
     setPendingCatchUpHouse(null)
     catchUpTargetRef.current = null
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1560,7 +1568,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   }
 
   const startRollCall = (houseName) => {
-    if (isHouseBlocked(houseName)) return // safety net; UI should already prevent this call
+    if (isHouseBlocked(houseName)) return false // safety net; UI should already prevent this call
     notifyPendingLeaveForHouse(houseName) // fire-and-forget; doesn't block roll call opening
     const hStudents = activeStudents
       .filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
@@ -1574,11 +1582,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       })
     if (hStudents.length === 0) {
       alert(`No active students found in ${houseName}. Check that student house names match.`)
-      return
+      return false
     }
     setRollCallStudents(hStudents)
     setRollCallIndex(0)
     setView('rollcall')
+    return true
   }
 
   // ══════════════════════════════════════════════════
