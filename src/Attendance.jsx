@@ -423,6 +423,7 @@ const SUBJECTS = [
   'Mathematics','English Grammar','General Knowledge','General Science',
   'Vocabulary','Reasoning','Foundation Mathematics','Hindi',
   'Mental Ability','Meitei Mayek','Mathematics I','Mathematics II',
+  'Environmental Studies',
 ]
 
 const today    = () => new Date().toISOString().split('T')[0]

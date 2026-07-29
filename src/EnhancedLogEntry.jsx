@@ -25,7 +25,7 @@ import { EventBus, GNSI_EVENTS } from './EventBus'
 const SUBJECTS = [
   'Mathematics','Mathematics I','Mathematics II','English Grammar',
   'General Knowledge','General Science','Reasoning','Mental Ability',
-  'Hindi','Vocabulary','Meitei Mayek',
+  'Hindi','Vocabulary','Meitei Mayek','Environmental Studies',
 ]
 
 const TEACHING_TECHNIQUES = [
@@ -291,6 +291,31 @@ const isPeriodUnlocked = (periodNo, teacherName, staffList = []) => {
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-'
 const pct = (s, m) => m > 0 ? Math.round((s/m)*100) : 0
 
+// ─── Month utilities for the monthly-reset leaderboard ───────────────────────
+// "This month" = current calendar month only, so ranks/warning counts start
+// fresh on the 1st. Nothing is deleted — teaching_logs/teacher_warnings keep
+// full history forever; the leaderboard just filters by date range. Past
+// Months lets a teacher pick any earlier month and see it computed the exact
+// same way it looked at the time (a frozen view over that month's own rows).
+const monthKeyOf = dateStr => {
+  const d = new Date(dateStr)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+}
+const currentMonthKey = () => monthKeyOf(new Date().toISOString())
+const monthLabel = key => {
+  const [y, m] = key.split('-')
+  return new Date(Number(y), Number(m)-1).toLocaleDateString('en-IN', { month:'long', year:'numeric' })
+}
+// Every month key present in the data, most recent first — used to populate
+// the Past Months dropdown without hardcoding a lookback window.
+const monthKeysFromRows = (logs, warnings) => {
+  const set = new Set()
+  logs.forEach(l => { if (l.teaching_date) set.add(monthKeyOf(l.teaching_date)) })
+  warnings.forEach(w => { if (w.created_at) set.add(monthKeyOf(w.created_at)) })
+  set.add(currentMonthKey())
+  return [...set].sort((a,b) => b.localeCompare(a))
+}
+
 const wc = str => str?.trim().split(/\s+/).filter(Boolean).length || 0
 const WC_MIN = { topic_taught:0, classwork:0, homework:0, remarks:0, technique_detail:0, key_concepts:0, technique_avoid:0 }
 const wcOk = (field, val) => wc(val) >= WC_MIN[field]
@@ -333,7 +358,15 @@ const isExcellentLog = (log) => {
     (keyWc   >= 30 ? 1 : 0) +
     (hasDoubt ? 1 : 0) +
     (hasPqs   ? 1 : 0)
-  return score >= 8
+  // Threshold lowered from 8 to 6 (out of a max 12) — the original bar
+  // required near-max marks across nearly every category simultaneously
+  // on a single log, which real day-to-day logs essentially never hit:
+  // across hundreds of real logs in production, not one teacher had ever
+  // earned a single excellence_flag, making the whole leaderboard column
+  // and "Excellent" status badge permanently dead. 6/12 still requires
+  // solid detail in more than half the categories, but is actually
+  // reachable by a genuinely well-written log.
+  return score >= 6
 }
 
 const C = { navy:'#1e3a5f', green:'#16a34a', amber:'#d97706', purple:'#7c3aed', red:'#dc2626', sky:'#0891b2' }
@@ -1372,9 +1405,19 @@ const RANK_MODES = [
 
 function computeTeacherStats(logs, warnings) {
   const map = {}
-  const ensure = name => {
-    if (!map[name]) map[name] = { name, totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, latestWarning:null, allWarnings:[] }
-    return map[name]
+  // Group by a normalized key (trimmed, collapsed whitespace, lowercased)
+  // instead of the raw string — the leaderboard was previously showing the
+  // same teacher twice (e.g. one entry from a dropdown-selected name, another
+  // from a slightly different spelling/whitespace/case in an older or
+  // manually-typed record) because two distinct raw strings that clearly
+  // refer to the same person were never merged. `name` on the returned
+  // stat object keeps the first-seen display spelling so the UI still shows
+  // a real name, not the normalized key.
+  const normalize = s => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+  const ensure = rawName => {
+    const key = normalize(rawName)
+    if (!map[key]) map[key] = { name: rawName.trim(), totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, latestWarning:null, allWarnings:[] }
+    return map[key]
   }
   logs.forEach(l => {
     if (!l.teacher_name) return
@@ -1525,12 +1568,18 @@ function MyStatusBanner({ myStat, loading }) {
 }
 
 function TeacherLeaderboard({ currentUser }) {
-  const [logs, setLogs] = useState([])
-  const [warnings, setWarnings] = useState([])
+  const [allLogs, setAllLogs] = useState([])
+  const [allWarnings, setAllWarnings] = useState([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(false)
   const [rankMode, setRankMode] = useState('composite')
   const [expandedWarningTeacher, setExpandedWarningTeacher] = useState(null) // teacher name showing full warning history
+  // Defaults to the current calendar month — this is the "monthly reset":
+  // nothing is deleted, the leaderboard just only counts rows dated in the
+  // selected month. Switching this dropdown is how a teacher browses Past
+  // Months; it's the same computeTeacherStats logic run over a different
+  // date-filtered slice of the same data.
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey())
 
   useEffect(() => {
     let cancelled = false
@@ -1540,22 +1589,44 @@ function TeacherLeaderboard({ currentUser }) {
         supabase.from('teaching_logs')
           .select('teacher_name,excellence_flag,late_submission,teaching_date')
           .order('teaching_date', { ascending:false })
-          .limit(1000),
+          .limit(2000),
         supabase.from('teacher_warnings')
           .select('teacher_name,warning_type,message,created_at')
           .order('created_at', { ascending:false })
-          .limit(300),
+          .limit(600),
       ])
       if (cancelled) return
-      setLogs(logData || [])
-      setWarnings(warnData || [])
+      setAllLogs(logData || [])
+      setAllWarnings(warnData || [])
       setLoading(false)
     }
     fetchAll()
     return () => { cancelled = true }
   }, [])
 
+  const availableMonths = useMemo(() => monthKeysFromRows(allLogs, allWarnings), [allLogs, allWarnings])
+  const isCurrentMonth = selectedMonth === currentMonthKey()
+
+  const logs = useMemo(() =>
+    allLogs.filter(l => l.teaching_date && monthKeyOf(l.teaching_date) === selectedMonth),
+  [allLogs, selectedMonth])
+  const warnings = useMemo(() =>
+    allWarnings.filter(w => w.created_at && monthKeyOf(w.created_at) === selectedMonth),
+  [allWarnings, selectedMonth])
+
   const stats = useMemo(() => computeTeacherStats(logs, warnings), [logs, warnings])
+
+  // MyStatusBanner (salary-risk / warning status) must always reflect the
+  // teacher's real current-month standing, never whatever past month they
+  // happen to be browsing in the dropdown below — otherwise browsing an old
+  // month could wrongly show/hide the "at risk" banner for today.
+  const currentMonthLogs = useMemo(() =>
+    allLogs.filter(l => l.teaching_date && monthKeyOf(l.teaching_date) === currentMonthKey()),
+  [allLogs])
+  const currentMonthWarnings = useMemo(() =>
+    allWarnings.filter(w => w.created_at && monthKeyOf(w.created_at) === currentMonthKey()),
+  [allWarnings])
+  const currentMonthStats = useMemo(() => computeTeacherStats(currentMonthLogs, currentMonthWarnings), [currentMonthLogs, currentMonthWarnings])
 
   const sortKeyFor = mode => {
     if (mode === 'excellent') return t => t.excellentLogs
@@ -1575,7 +1646,7 @@ function TeacherLeaderboard({ currentUser }) {
 
   const myName = currentUser?.name
   const myRank = myName ? ranked.findIndex(t => t.name === myName) + 1 : 0
-  const myStat = myName ? stats.find(t => t.name === myName) || { name:myName, totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, onTimeRate:0, composite:0 } : null
+  const myCurrentStat = myName ? currentMonthStats.find(t => t.name === myName) || { name:myName, totalLogs:0, excellentLogs:0, lateLogs:0, warningCount:0, latestWarning:null, allWarnings:[], onTimeRate:0, composite:0 } : null
 
   const medalFor = i => i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `#${i+1}`
   const warnColor = wt => wt==='blocked' ? C.red : wt==='final_warning' ? '#d97706' : '#eab308'
@@ -1583,13 +1654,15 @@ function TeacherLeaderboard({ currentUser }) {
 
   return (
     <>
-    {myName && <MyStatusBanner myStat={myStat} loading={loading}/>}
+    {myName && <MyStatusBanner myStat={myCurrentStat} loading={loading}/>}
     <div style={{ ...S.card, cursor:'pointer' }} onClick={() => setExpanded(e => !e)}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
           <span style={{ fontSize:22 }}>🏆</span>
           <div>
-            <div style={{ fontWeight:800, fontSize:15, color:C.navy }}>Teacher Leaderboard</div>
+            <div style={{ fontWeight:800, fontSize:15, color:C.navy }}>
+              Teacher Leaderboard{!isCurrentMonth ? ` — ${monthLabel(selectedMonth)}` : ''}
+            </div>
             <div style={{ fontSize:12, color:'#64748b' }}>
               {loading ? 'Loading rankings...' : myName && myRank
                 ? `You're ranked #${myRank} of ${ranked.length} · Tap to ${expanded?'collapse':'view all'}`
@@ -1598,7 +1671,7 @@ function TeacherLeaderboard({ currentUser }) {
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          {warnedTeachers.length > 0 && (
+          {isCurrentMonth && warnedTeachers.length > 0 && (
             <span style={S.badge(C.red, '#fee2e2')}>⚠️ {warnedTeachers.length} with warnings</span>
           )}
           <span style={{ fontSize:18, color:'#94a3b8', transform: expanded?'rotate(180deg)':'none', transition:'transform .15s' }}>▾</span>
@@ -1611,6 +1684,31 @@ function TeacherLeaderboard({ currentUser }) {
             <div style={{ textAlign:'center', padding:24, color:'#64748b', fontSize:13 }}>⏳ Loading leaderboard...</div>
           ) : (
             <>
+              {/* Past Months — browse any earlier month's frozen leaderboard.
+                  Ranks/scores/warnings reset automatically on the 1st of each
+                  month simply by this defaulting back to currentMonthKey(); no
+                  data is ever deleted, so every past month stays browsable here. */}
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+                <span style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.05em' }}>📅 Month</span>
+                <select
+                  value={selectedMonth}
+                  onChange={e => setSelectedMonth(e.target.value)}
+                  style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #d1d5db', fontSize:12.5, fontWeight:600, background:'white', color:'#1e293b', cursor:'pointer' }}
+                >
+                  {availableMonths.map(mk => (
+                    <option key={mk} value={mk}>
+                      {mk === currentMonthKey() ? `${monthLabel(mk)} (current)` : monthLabel(mk)}
+                    </option>
+                  ))}
+                </select>
+                {!isCurrentMonth && (
+                  <button type="button" onClick={() => setSelectedMonth(currentMonthKey())}
+                    style={{ fontSize:11.5, color:C.navy, background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>
+                    ← Back to current month
+                  </button>
+                )}
+              </div>
+
               {/* Ranking mode tabs */}
               <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
                 {RANK_MODES.map(m => (
@@ -1659,7 +1757,14 @@ function TeacherLeaderboard({ currentUser }) {
               {/* Warnings section */}
               {warnedTeachers.length > 0 && (
                 <div>
-                  <div style={{ fontWeight:800, fontSize:13, color:C.red, marginBottom:10 }}>⚠️ Teachers with Active Warnings</div>
+                  <div style={{ fontWeight:800, fontSize:13, color:C.red, marginBottom:10 }}>
+                    ⚠️ {isCurrentMonth ? 'Teachers with Active Warnings' : `Warnings issued in ${monthLabel(selectedMonth)}`}
+                  </div>
+                  {!isCurrentMonth && (
+                    <div style={{ fontSize:11.5, color:'#94a3b8', marginBottom:10 }}>
+                      This is historical — these warnings no longer count toward current status.
+                    </div>
+                  )}
                   {warnedTeachers.map(t => {
                     const isWarningExpanded = expandedWarningTeacher === t.name
                     const sortedWarnings = [...(t.allWarnings || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
