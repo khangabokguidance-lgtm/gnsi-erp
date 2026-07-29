@@ -10,7 +10,7 @@
 //  7. hm_notifications insert gated behind dsError === null (no orphaned notifications)
 //  8. practice_questions insert now has error handling with toast
 //  9. Draft restore: stale period lock detected on mount and warned to user
-// 10. discardDraft: resets gpsStatus, attWarn, dupWarn, gpsDistance alongside form
+// 10. resetForm: resets gpsStatus, attWarn, dupWarn, gpsDistance alongside form (draft feature removed — see note above const loadLastSelection)
 // 11. SpotCheckModal: suppressed when log is already copy_paste flagged
 // 12. HMDoubtSessionPanel: window.confirm/prompt replaced with inline UI modals
 // 13. HMDoubtSessionPanel: print hide delay replaced with afterprint event listener
@@ -353,27 +353,15 @@ const S = {
   stepLine: (done) => ({ flex:1, height:2, background:done?C.green:'#e2e8f0', marginTop:15 }),
 }
 
-// ─── FIX 4 helper: draft-stale period check ──────────────────────────────────
-// FIX 9: on restore, warn if the period in the draft is now locked
-const isDraftPeriodStale = (form, staff) => {
-  if (!form.period_number || !form.teacher_name) return false
-  return !isPeriodUnlocked(Number(form.period_number), form.teacher_name, staff || [])
-}
-
-// ─── Draft persistence helpers ────────────────────────────────────────────────
-const DRAFT_KEY = 'gnsi_teaching_log_draft'
-const saveDraft = (form) => {
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(form)) } catch(e) {}
-}
-const loadDraft = () => {
-  try {
-    const raw = localStorage.getItem(DRAFT_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch(e) { return null }
-}
-const clearDraft = () => {
-  try { localStorage.removeItem(DRAFT_KEY) } catch(e) {}
-}
+// ─── Draft feature removed ──────────────────────────────────────────────────
+// The localStorage-based draft (single un-dated key, not scoped by teaching
+// date/period/batch) was silently restoring stale, half-filled form state
+// on every page load — including required fields left blank from a prior
+// abandoned attempt — which then blocked Save with a generic "fill in all
+// required fields" error that didn't match what was visibly on screen.
+// The form now always starts clean (or pre-filled from the teacher's last
+// saved log via loadLastSelection, which only carries course/batch/class/
+// subject — never partially-entered content).
 
 // Remembers the last course/batch/class/subject a teacher picked, so the next
 // log starts pre-filled instead of asking the same 4 fields every single time.
@@ -1740,23 +1728,12 @@ function TeacherLeaderboard({ currentUser }) {
 export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs }) {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState(() => {
-  const draft = loadDraft()
-  if (!draft) {
-    // No draft to recover — pre-fill identity fields from this teacher's
-    // last log so they only confirm/change what's different today.
+    // Pre-fill identity fields from this teacher's last log so they only
+    // confirm/change what's different today — no draft restore.
     const last = loadLastSelection(currentUser?.name)
     if (last) return { ...emptyForm, ...last }
     return { ...emptyForm }
-  }
-  // Discard draft if it belongs to a different teacher
-  if (currentUser?.name && draft.teacher_name && draft.teacher_name !== currentUser.name) {
-    clearDraft()
-    const last = loadLastSelection(currentUser?.name)
-    if (last) return { ...emptyForm, ...last }
-    return { ...emptyForm }
-  }
-  return { ...emptyForm, ...draft }
-})
+  })
   const [saving, setSaving] = useState(false)
   const [chapters, setChapters] = useState([])
   const [loadingChapters, setLoadingChapters] = useState(false)
@@ -1769,45 +1746,24 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [gpsDistance, setGpsDistance] = useState(null)
   const [attWarn, setAttWarn] = useState(false)
   const [spotCheck, setSpotCheck] = useState(null)
-  const [hasDraft, setHasDraft] = useState(false)
-  // FIX 9: warn when draft's period is now locked
-  const [draftPeriodStaleWarn, setDraftPeriodStaleWarn] = useState(false)
   const { show: showToast, el: toastEl } = useToast()
   const savingRef = useRef(false)
   // FIX 4: track whether GPS check has already been done for this Step-0 advance
   const gpsCheckedRef = useRef(false)
 
-  // FIX 9: check for stale period on initial mount if draft was restored
   useEffect(() => {
-    const draft = loadDraft()
-    if (draft && staff?.length > 0) {
-      setDraftPeriodStaleWarn(isDraftPeriodStale(draft, staff))
+    if (!currentUser?.name) return
+    const s = staff.find(x => x.name === currentUser.name)
+    // If the form's teacher doesn't match the logged-in user, reset clean
+    if (form.teacher_name && form.teacher_name !== currentUser.name) {
+      setForm({ ...emptyForm, teacher_name: currentUser.name, staff_id: s?.id || '' })
+      return
     }
-  }, [staff])
-
-  useEffect(() => {
-    if (form.course || form.subject_name || form.topic_taught) {
-      saveDraft(form)
-      setHasDraft(true)
+    // Normal case: set teacher name if not already set
+    if (!form.teacher_name) {
+      setForm(f => ({ ...f, teacher_name: currentUser.name, staff_id: s?.id || '' }))
     }
-  }, [form])
-
-  useEffect(() => {
-  if (!currentUser?.name) return
-  const s = staff.find(x => x.name === currentUser.name)
-  // If draft belongs to a different teacher, discard it and start clean
-  if (form.teacher_name && form.teacher_name !== currentUser.name) {
-    clearDraft()
-    setHasDraft(false)
-    setForm({ ...emptyForm, teacher_name: currentUser.name, staff_id: s?.id || '' })
-    return
-  }
-  // Normal case: set teacher name if not already set
-  if (loadDraft()) setHasDraft(true)
-  if (!form.teacher_name) {
-    setForm(f => ({ ...f, teacher_name: currentUser.name, staff_id: s?.id || '' }))
-  }
-}, [currentUser, staff])
+  }, [currentUser, staff])
 
   // Pulls the real syllabus (seeded/maintained in the Syllabus tab) for this
   // course + subtype + subject, so the log form's Chapter/Sub-topic pickers
@@ -1945,8 +1901,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }).eq('id', spotCheck.logId)
     }
     setSpotCheck(null)
-    clearDraft()
-    setHasDraft(false)
     showToast('Log saved successfully ✓', C.green)
     saveLastSelection(currentUser?.name, { course:form.course, subtype:form.subtype, class_name:form.class_name, batch_id:form.batch_id, subject_name:form.subject_name })
     setForm({ ...emptyForm })
@@ -1963,8 +1917,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       }).eq('id', spotCheck.logId)
     }
     setSpotCheck(null)
-    clearDraft()
-    setHasDraft(false)
     showToast('⚠️ Spot-check skipped — log flagged for review.', C.amber)
     saveLastSelection(currentUser?.name, { course:form.course, subtype:form.subtype, class_name:form.class_name, batch_id:form.batch_id, subject_name:form.subject_name })
     setForm({ ...emptyForm })
@@ -2275,8 +2227,6 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         setSpotCheck({ logId, question: randomQ })
       } else {
         // copy-paste flagged: skip spot-check, just clean up
-        clearDraft()
-        setHasDraft(false)
         saveLastSelection(currentUser?.name, { course:form.course, subtype:form.subtype, class_name:form.class_name, batch_id:form.batch_id, subject_name:form.subject_name })
         setForm({ ...emptyForm })
         setStep(0)
@@ -2292,12 +2242,8 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     }
   }
 
-  // FIX 10: discardDraft resets all warning/GPS state too
-  const discardDraft = () => {
-    clearDraft()
+  const resetForm = () => {
     clearLastSelection(currentUser?.name)
-    setHasDraft(false)
-    setDraftPeriodStaleWarn(false)
     setDupWarn('')
     setAttWarn(false)
     setGpsStatus('idle')
@@ -2331,17 +2277,9 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
       )}
 
       <div style={S.card}>
-        {/* Draft banner */}
-        {hasDraft && (
-          <div style={{ padding:'10px 14px', background:'#fef9c3', border:'1px solid #fde68a', borderRadius:8, marginBottom:14, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
-            <span style={{ fontSize:13, fontWeight:600, color:'#92400e' }}>📝 Draft restored — continue where you left off.</span>
-            <button type="button" onClick={discardDraft} style={{ fontSize:12, color:'#dc2626', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>✕ Discard Draft</button>
-          </div>
-        )}
-
-        {draftPeriodStaleWarn && (
-          <div style={{ padding:'10px 14px', background:'#fee2e2', border:'1px solid #fecaca', borderRadius:8, marginBottom:14, fontSize:13, fontWeight:600, color:C.red }}>
-            🔒 Your draft has Period {form.period_number} selected, which is now locked. Please select a different period before proceeding.
+        {(form.course || form.subject_name || form.topic_taught) && (
+          <div style={{ padding:'8px 14px', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:8, marginBottom:14, display:'flex', alignItems:'center', justifyContent:'flex-end' }}>
+            <button type="button" onClick={resetForm} style={{ fontSize:12, color:'#dc2626', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>✕ Clear form</button>
           </div>
         )}
 
