@@ -6,7 +6,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts'
 
 // ─── COURSE STRUCTURE ────────────────────────────────────────
@@ -3940,6 +3941,364 @@ function HomeV2({ onNavigate }) {
           </div>
         </ConsoleCard>
       </div>
+
+      <ConsoleCard className="gnsi-hover-lift" style={{
+        background: 'linear-gradient(135deg, #EEF2FF, #F5F3FF)', border: `1px solid ${C.indigo}33`,
+      }}>
+        <div style={{
+          padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: C.indigo, color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}><Icon.chart size={17} /></div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Full attendance dashboard</div>
+              <div style={{ fontSize: 12, color: C.inkMuted, marginTop: 1 }}>Course breakdowns, weekday patterns, streaks and rankings</div>
+            </div>
+          </div>
+          <ConsoleBtn variant="primary" small onClick={() => onNavigate('dashboard')}>Open dashboard <Icon.chevron size={12} /></ConsoleBtn>
+        </div>
+      </ConsoleCard>
+    </div>
+  )
+}
+
+// ─── Full Dashboard — heavy analytics page ─────────────────────
+// Pulls a wider slice of attendance_sessions/attendance_records than
+// HomeV2's summary cards: per-course trend lines, weekday pattern,
+// a course radar comparison, and a top/bottom streak leaderboard.
+// Refetches on the same gnsi:attendance-updated bus as everything else.
+
+const WEEKDAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const COURSE_LINE_COLOR = {
+  Sainik: '#1d4ed8', Navodaya: '#15803d', Foundation: '#b45309', 'Combined Course': '#6d28d9',
+}
+
+function useDashboardData(monthsBack = 6) {
+  const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  useAttendanceUpdatedListener(useCallback(() => setRefreshKey(k => k + 1), []))
+
+  const [courseTrend, setCourseTrend]   = useState([])   // [{ label, Sainik, Navodaya, ... }]
+  const [weekdayData, setWeekdayData]   = useState([])   // [{ day, pct, sessions }]
+  const [courseRadar, setCourseRadar]   = useState([])   // [{ course, pct }]
+  const [statusSplit, setStatusSplit]   = useState({ Present:0, Absent:0, Late:0, Leave:0 })
+  const [streaks,     setStreaks]       = useState({ top: [], bottom: [] })
+  const [totals,      setTotals]        = useState({ sessions: 0, students: 0, avgPct: 0 })
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      const months = monthOptions(monthsBack).reverse()
+      const rangeStart = `${months[0]}-01`
+      const lastMonth = months[months.length - 1]
+      const rangeEnd = new Date(lastMonth.split('-')[0], Number(lastMonth.split('-')[1]), 0).toISOString().split('T')[0]
+
+      const sessions = await safeQuery(() => supabase
+        .from('attendance_sessions').select('id,session_date,course').gte('session_date', rangeStart).lte('session_date', rangeEnd)) || []
+
+      if (!sessions.length) {
+        if (!cancelled) {
+          setCourseTrend([]); setWeekdayData([]); setCourseRadar([])
+          setStatusSplit({ Present:0, Absent:0, Late:0, Leave:0 })
+          setStreaks({ top: [], bottom: [] }); setTotals({ sessions:0, students:0, avgPct:0 })
+          setLoading(false)
+        }
+        return
+      }
+
+      const ids = sessions.map(s => s.id)
+      const sessById = {}
+      sessions.forEach(s => { sessById[s.id] = s })
+
+      const recs = await safeQuery(() => supabase
+        .from('attendance_records').select('student_name,gcc_no,status,session_id').in('session_id', ids)) || []
+
+      // Monthly trend, split by course
+      const byMonthCourse = {}
+      // Weekday pattern (aggregate across whole range)
+      const byWeekday = {}
+      WEEKDAY_ORDER.forEach(d => { byWeekday[d] = { Present: 0, total: 0 } })
+      // Course-wide totals
+      const byCourse = {}
+      // Overall status split
+      const statusCounts = { Present:0, Absent:0, Late:0, Leave:0 }
+      // Per-student, for streaks
+      const byStudent = {}
+
+      recs.forEach(r => {
+        const sess = sessById[r.session_id]
+        if (!sess) return
+        const month = sess.session_date.slice(0,7)
+        const course = sess.course || 'Other'
+        const weekday = new Date(sess.session_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })
+
+        if (!byMonthCourse[month]) byMonthCourse[month] = {}
+        if (!byMonthCourse[month][course]) byMonthCourse[month][course] = { Present: 0, total: 0 }
+        byMonthCourse[month][course].total++
+        if (r.status === 'Present') byMonthCourse[month][course].Present++
+
+        if (byWeekday[weekday]) {
+          byWeekday[weekday].total++
+          if (r.status === 'Present') byWeekday[weekday].Present++
+        }
+
+        if (!byCourse[course]) byCourse[course] = { Present: 0, total: 0 }
+        byCourse[course].total++
+        if (r.status === 'Present') byCourse[course].Present++
+
+        if (statusCounts[r.status] !== undefined) statusCounts[r.status]++
+
+        const key = r.gcc_no != null ? String(r.gcc_no) : r.student_name
+        if (!byStudent[key]) byStudent[key] = { name: r.student_name, gcc: r.gcc_no, dates: [] }
+        byStudent[key].dates.push({ date: sess.session_date, status: r.status })
+      })
+
+      // Course trend series
+      const trend = months.map(m => {
+        const row = { label: fmtMonth(m).split(' ')[0] }
+        COURSES.forEach(c => {
+          const cell = byMonthCourse[m]?.[c]
+          row[c] = cell && cell.total > 0 ? Math.round((cell.Present / cell.total) * 100) : null
+        })
+        return row
+      })
+
+      // Weekday pattern
+      const weekday = WEEKDAY_ORDER.map(d => ({
+        day: d.slice(0,3),
+        pct: byWeekday[d].total > 0 ? Math.round((byWeekday[d].Present / byWeekday[d].total) * 100) : 0,
+        sessions: byWeekday[d].total,
+      }))
+
+      // Course radar
+      const radar = COURSES.map(c => ({
+        course: c,
+        pct: byCourse[c] && byCourse[c].total > 0 ? Math.round((byCourse[c].Present / byCourse[c].total) * 100) : 0,
+      }))
+
+      // Streaks — current consecutive "Present" run per student, sorted desc/asc
+      const withStreaks = Object.values(byStudent).map(s => {
+        const sorted = [...s.dates].sort((a,b) => a.date > b.date ? -1 : 1)
+        let streak = 0
+        for (const d of sorted) { if (d.status === 'Present') streak++; else break }
+        const totalMarked = s.dates.length
+        const presentCount = s.dates.filter(d => d.status === 'Present').length
+        const pct = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : 0
+        return { name: s.name, gcc: s.gcc, streak, pct, totalMarked }
+      }).filter(s => s.totalMarked >= 3)
+
+      const top = [...withStreaks].sort((a,b) => b.streak - a.streak || b.pct - a.pct).slice(0, 6)
+      const bottom = [...withStreaks].sort((a,b) => a.pct - b.pct).slice(0, 6)
+
+      const totalStudents = Object.keys(byStudent).length
+      const overallPct = recs.length ? Math.round((statusCounts.Present / recs.length) * 100) : 0
+
+      if (cancelled) return
+      setCourseTrend(trend)
+      setWeekdayData(weekday)
+      setCourseRadar(radar)
+      setStatusSplit(statusCounts)
+      setStreaks({ top, bottom })
+      setTotals({ sessions: sessions.length, students: totalStudents, avgPct: overallPct })
+      setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [monthsBack, refreshKey])
+
+  return { loading, courseTrend, weekdayData, courseRadar, statusSplit, streaks, totals }
+}
+
+function MultiLineCourseTrend({ data, height = 260 }) {
+  if (!data?.length) return <div style={{ height, display:'flex', alignItems:'center', justifyContent:'center', color: C.inkFaint, fontSize: 12.5 }}>No data yet</div>
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={{ stroke: C.border }} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={false} tickLine={false} width={32} domain={[0,100]} />
+        <Tooltip content={<ConsoleTooltip />} />
+        <Legend wrapperStyle={{ fontSize: 11.5, fontFamily: font }} />
+        {COURSES.map(c => (
+          <Line key={c} type="monotone" dataKey={c} name={c} stroke={COURSE_LINE_COLOR[c]} strokeWidth={2} dot={{ r: 2.5 }} connectNulls />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+function WeekdayBarChart({ data, height = 220 }) {
+  if (!data?.some(d => d.sessions > 0)) return <div style={{ height, display:'flex', alignItems:'center', justifyContent:'center', color: C.inkFaint, fontSize: 12.5 }}>No data yet</div>
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+        <XAxis dataKey="day" tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={{ stroke: C.border }} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={false} tickLine={false} width={32} domain={[0,100]} />
+        <Tooltip content={<ConsoleTooltip />} cursor={{ fill: C.bg }} />
+        <Bar dataKey="pct" name="Attendance %" radius={[6,6,0,0]}>
+          {data.map((d,i) => <Cell key={i} fill={d.pct>=75?CHART_TONE.good:d.pct>=50?CHART_TONE.warn:CHART_TONE.bad} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+function CourseRadarChart({ data, height = 260 }) {
+  if (!data?.length) return <div style={{ height, display:'flex', alignItems:'center', justifyContent:'center', color: C.inkFaint, fontSize: 12.5 }}>No data yet</div>
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <RadarChart data={data} outerRadius="72%">
+        <PolarGrid stroke={C.border} />
+        <PolarAngleAxis dataKey="course" tick={{ fontSize: 11, fill: C.inkMuted }} />
+        <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 9.5, fill: C.inkFaint }} />
+        <Radar name="Attendance %" dataKey="pct" stroke={CHART_TONE.indigo} fill={CHART_TONE.indigo} fillOpacity={0.28} />
+        <Tooltip content={<ConsoleTooltip />} />
+      </RadarChart>
+    </ResponsiveContainer>
+  )
+}
+
+function StatusSplitBars({ counts, height = 110 }) {
+  const total = Object.values(counts).reduce((a,b)=>a+b,0)
+  const rows = [
+    { key: 'Present', color: CHART_TONE.good },
+    { key: 'Absent',  color: CHART_TONE.bad },
+    { key: 'Late',    color: CHART_TONE.warn },
+    { key: 'Leave',   color: '#8B5CF6' },
+  ]
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '2px 0' }}>
+      {rows.map(r => {
+        const val = counts[r.key] || 0
+        const pct = total > 0 ? Math.round((val/total)*100) : 0
+        return (
+          <div key={r.key}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, color: C.ink }}>{r.key}</span>
+              <span style={{ fontFamily: fontMono, color: C.inkMuted }}>{val} · {pct}%</span>
+            </div>
+            <div style={{ height: 7, borderRadius: 999, background: C.bg, overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: r.color, borderRadius: 999, transition: 'width .4s' }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function StreakLeaderboard({ title, rows, tone, icon }) {
+  const toneColor = tone === 'good' ? CHART_TONE.good : CHART_TONE.bad
+  const toneBg = tone === 'good' ? C.greenSoft : C.redSoft
+  return (
+    <ConsoleCard>
+      <ConsoleCardHeader icon={icon} title={title} subtitle={tone === 'good' ? 'Longest active present streaks' : 'Lowest attendance this range'} />
+      <div>
+        {rows.length === 0 && (
+          <div style={{ padding: 24, textAlign: 'center', color: C.inkFaint, fontSize: 12.5 }}>Not enough data yet.</div>
+        )}
+        {rows.map((s, i) => (
+          <div key={s.gcc || s.name} style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+            borderBottom: i < rows.length - 1 ? `1px solid ${C.border}` : 'none',
+          }}>
+            <div style={{
+              width: 24, height: 24, borderRadius: 7, background: toneBg, color: toneColor,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
+            }}>{i+1}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
+              {s.gcc && <div style={{ fontSize: 10.5, color: C.inkFaint, fontFamily: fontMono }}>GCC-{s.gcc}</div>}
+            </div>
+            {tone === 'good' ? (
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: toneColor, fontFamily: fontMono, flexShrink: 0 }}>🔥 {s.streak}d</span>
+            ) : (
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: toneColor, fontFamily: fontMono, flexShrink: 0 }}>{s.pct}%</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </ConsoleCard>
+  )
+}
+
+function DashboardPage() {
+  const isMobile = useIsMobile()
+  const [monthsBack, setMonthsBack] = useState(6)
+  const { loading, courseTrend, weekdayData, courseRadar, statusSplit, streaks, totals } = useDashboardData(monthsBack)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="gnsi-fade-in">
+      <ConsoleAnimStyles />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Attendance dashboard</div>
+          <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>Deep analytics across courses, weekdays, and students</div>
+        </div>
+        <ConsoleSelect value={monthsBack} onChange={e => setMonthsBack(Number(e.target.value))} style={{ width: 'auto' }}>
+          <option value={3}>Last 3 months</option>
+          <option value={6}>Last 6 months</option>
+          <option value={12}>Last 12 months</option>
+        </ConsoleSelect>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: 10 }}>
+        {loading ? [0,1,2].map(i => <SkeletonStatCard key={i} />) : [
+          { label: 'Sessions logged', value: totals.sessions, icon: Icon.calendar, color: C.indigo, bg: C.indigoSoft },
+          { label: 'Students tracked', value: totals.students, icon: Icon.users, color: C.violet, bg: C.violetSoft },
+          { label: 'Overall attendance', value: `${totals.avgPct}%`, icon: Icon.check, color: totals.avgPct>=75?C.green:C.amber, bg: totals.avgPct>=75?C.greenSoft:C.amberSoft },
+        ].map((k,i) => (
+          <ConsoleCard key={i} style={{ padding: '16px 18px' }} padded={false}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMuted }}>{k.label}</div>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: k.bg, color: k.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <k.icon size={13} />
+              </div>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: C.ink, marginTop: 8 }}>{k.value}</div>
+          </ConsoleCard>
+        ))}
+      </div>
+
+      <ConsoleCard className="gnsi-hover-lift">
+        <ConsoleCardHeader icon={<Icon.chart size={16} />} title="Attendance by course, over time" subtitle="Monthly % per course track" />
+        <div style={{ padding: '14px 18px 8px' }}>
+          {loading ? <Skeleton w="100%" h={260} radius={10} /> : <MultiLineCourseTrend data={courseTrend} />}
+        </div>
+      </ConsoleCard>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 16, alignItems: 'start' }}>
+        <ConsoleCard className="gnsi-hover-lift">
+          <ConsoleCardHeader icon={<Icon.calendar size={16} />} title="Weekday pattern" subtitle="Which days attendance dips" />
+          <div style={{ padding: '14px 18px 8px' }}>
+            {loading ? <Skeleton w="100%" h={220} radius={10} /> : <WeekdayBarChart data={weekdayData} />}
+          </div>
+        </ConsoleCard>
+        <ConsoleCard className="gnsi-hover-lift">
+          <ConsoleCardHeader icon={<Icon.shield size={16} />} title="Course comparison" subtitle="Overall % per track, this range" />
+          <div style={{ padding: '14px 18px 8px' }}>
+            {loading ? <Skeleton w="100%" h={260} radius={10} /> : <CourseRadarChart data={courseRadar} />}
+          </div>
+        </ConsoleCard>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1.4fr', gap: 16, alignItems: 'start' }}>
+        <ConsoleCard className="gnsi-hover-lift">
+          <ConsoleCardHeader icon={<Icon.pulse size={16} />} title="Status split" subtitle="All records, this range" />
+          <div style={{ padding: '16px 18px' }}>
+            {loading ? <Skeleton w="100%" h={110} radius={10} /> : <StatusSplitBars counts={statusSplit} />}
+          </div>
+        </ConsoleCard>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 16 }}>
+          <StreakLeaderboard title="Longest streaks" rows={streaks.top} tone="good" icon={<Icon.award size={16} />} />
+          <StreakLeaderboard title="Needs attention" rows={streaks.bottom} tone="bad" icon={<Icon.bell size={16} />} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -4235,6 +4594,7 @@ const NAV_ITEMS = [
   { key:'student360',label:'Student 360', icon: Icon.users },
   { key:'mark',      label:'Mark',        icon: Icon.check },
   { key:'view',      label:'Sessions',    icon: Icon.calendar },
+  { key:'dashboard', label:'Dashboard',   icon: Icon.chart },
   { key:'report',    label:'Reports',     icon: Icon.chart },
   { key:'leave',     label:'Leaves',      icon: Icon.leaf },
   { key:'awards',    label:'Awards',      icon: Icon.award },
@@ -4246,6 +4606,7 @@ const PAGE_META = {
   student360: { title: 'Student 360' },
   mark:       { title: 'Mark attendance' },
   view:       { title: 'Sessions' },
+  dashboard:  { title: 'Dashboard' },
   report:     { title: 'Reports' },
   leave:      { title: 'Leaves' },
   awards:     { title: 'Awards' },
@@ -4348,6 +4709,7 @@ export default function Attendance({ currentUser, isAdmin }) {
       case 'home':       return <HomeV2 onNavigate={navigateTo} />
       case 'studentdb':  return <TabStudentDB isAdmin={isAdmin} />
       case 'student360': return <Student360Page />
+      case 'dashboard':  return <DashboardPage />
       case 'mark':       return <TabMark staff={staff} prefill={markPrefill} />
       case 'view':       return <TabView />
       case 'report':     return <TabReport />
