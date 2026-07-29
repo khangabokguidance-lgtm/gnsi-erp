@@ -763,6 +763,8 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   // no fuzzy matching, no "combined vs split" mismatches.
   const [scheduledSubjects, setScheduledSubjects] = useState([]); // [{id, subject, total_marks}]
   const [scheduleError, setScheduleError] = useState("");
+  const [quickCreating, setQuickCreating] = useState(false);
+  const [quickCreateError, setQuickCreateError] = useState("");
   const subjects = scheduledSubjects.map(s => s.subject);
   const getSubMax = (sub) => {
     const found = scheduledSubjects.find(s => s.subject === sub);
@@ -872,6 +874,56 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   }, [students]);
 
   useEffect(() => { loadScheduleAndMarks(examType, course); }, [examType, course, loadScheduleAndMarks]);
+
+  // "Create schedule now" — lets the user fix a missing exam_schedule right
+  // from the Mark Entry error banner instead of switching to Exams → Schedule.
+  // Subject list + max marks are sourced, in priority order:
+  //   1. An EXAM_CONFIG_PRESETS entry whose id/date matches examDate and that
+  //      defines subjects for this exact course (covers the common case where
+  //      the person picked a known exam like "1st Monthly Test July 2026").
+  //   2. Whatever's in the static courseSubjects/COURSE_MAX_MARKS config.
+  // Every scheduled subject gets the SAME exam_date (the one currently picked
+  // in Mark Entry) — this is a quick single-day schedule, not a multi-day
+  // generator; for staggered per-subject dates, use Exams → Schedule → Multi.
+  const handleQuickCreateSchedule = async () => {
+    if (!examType || !course) return;
+    setQuickCreating(true);
+    setQuickCreateError("");
+    try {
+      const matchingPreset = EXAM_CONFIG_PRESETS.find(p =>
+        (p.examDate && p.examDate === examDate && p.courseSubjects?.[course]?.length) ||
+        p.id === "default" && !EXAM_CONFIG_PRESETS.some(q => q.examDate === examDate && q.courseSubjects?.[course]?.length)
+      );
+      const subjectList = matchingPreset?.courseSubjects?.[course] || courseSubjects[course] || [];
+      if (!subjectList.length) {
+        setQuickCreateError(`No subjects configured for "${course}" anywhere — set up subjects in Exam Config first.`);
+        setQuickCreating(false);
+        return;
+      }
+      const maxMap = matchingPreset?.courseMaxMarks?.[course] || {};
+      const rows = subjectList.map(subject => ({
+        exam_type_id: examType,
+        course,
+        subject,
+        exam_date: examDate || new Date().toISOString().split("T")[0],
+        time: "09:00",
+        shift: "Morning",
+        room: "",
+        total_marks: Number(maxMap[subject]) || getSubjectMax(course, subject),
+      }));
+      const { error } = await supabase.from("exam_schedule").insert(rows);
+      if (error) {
+        setQuickCreateError(error.message || String(error));
+        setQuickCreating(false);
+        return;
+      }
+      setQuickCreating(false);
+      await loadScheduleAndMarks(examType, course);
+    } catch (e) {
+      setQuickCreateError(e?.message || String(e));
+      setQuickCreating(false);
+    }
+  };
 
   const handleMark = (sid, sub, val) => {
     const num = val === "" ? "" : Math.min(Number(val), getSubMax(sub));
@@ -1792,7 +1844,21 @@ for (const st of courseStudents) {
 
       {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved!</div>}
       {saveError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⚠ Save failed: {saveError}</div>}
-      {scheduleError && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>📋 {scheduleError}</div>}
+      {scheduleError && (
+        <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <span>📋 {scheduleError}</span>
+          {perm?.canEdit !== false && (
+            <button
+              onClick={handleQuickCreateSchedule}
+              disabled={quickCreating}
+              style={{ ...css.btn, background: "#92400E", color: "white", opacity: quickCreating ? 0.6 : 1, cursor: quickCreating ? "not-allowed" : "pointer", flexShrink: 0 }}
+            >
+              {quickCreating ? "Creating…" : `⚡ Create schedule for ${course} now`}
+            </button>
+          )}
+        </div>
+      )}
+      {quickCreateError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⚠ Couldn't create schedule: {quickCreateError}</div>}
       {importMode && <ImportPreview />}
 
       {loading ? <Spinner /> : (
