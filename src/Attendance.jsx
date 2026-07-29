@@ -467,6 +467,25 @@ async function sendPushToStaffId(staffId, title, body, url = '/attendance') {
   }
 }
 
+// ─── Cross-tab live-refresh bus ────────────────────────────────
+// Mark tab dispatches this after a successful save so Overview,
+// Student 360, and any other listening dashboard refetch immediately
+// instead of waiting for a manual reload or tab switch.
+const ATTENDANCE_UPDATED_EVENT = 'gnsi:attendance-updated'
+function broadcastAttendanceUpdate(detail) {
+  try { window.dispatchEvent(new CustomEvent(ATTENDANCE_UPDATED_EVENT, { detail })) } catch (e) {
+    console.error('broadcastAttendanceUpdate failed:', e)
+  }
+}
+function useAttendanceUpdatedListener(callback) {
+  useEffect(() => {
+    const handler = (e) => callback(e.detail)
+    window.addEventListener(ATTENDANCE_UPDATED_EVENT, handler)
+    return () => window.removeEventListener(ATTENDANCE_UPDATED_EVENT, handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callback])
+}
+
 // ─── Mobile Hook ─────────────────────────────────────────────
 
 function useIsMobile() {
@@ -990,6 +1009,8 @@ function TabHome({ onNavigate }) {
   const [loading,    setLoading]    = useState(true)
   const [threshold,  setThreshold]  = useState(75)
   const [stats,      setStats]      = useState({ total:0, pending:0, risk:0, avgPct:0 })
+  const [refreshKey, setRefreshKey] = useState(0)
+  useAttendanceUpdatedListener(useCallback(() => setRefreshKey(k => k + 1), []))
 
   useEffect(() => {
     const load = async () => {
@@ -1030,7 +1051,7 @@ function TabHome({ onNavigate }) {
       setLoading(false)
     }
     load()
-  }, [threshold])
+  }, [threshold, refreshKey])
 
   if (loading) return (
     <div style={{ padding: 64, textAlign: 'center', color: T.gray400, fontSize: 13 }}>
@@ -1409,6 +1430,7 @@ function TabMark({ staff, prefill }) {
     const { error: e2 } = await supabase.from('attendance_records').insert(rows)
     setSaving(false)
     if (e2) { setToast({ type:'error', msg: e2.message }); return }
+    broadcastAttendanceUpdate({ course: form.course, subtype: form.subtype, class_name: form.class_name, date: form.session_date })
     setShowNotify(true)
     setShowReceipt(true)
     setToast({ type:'success', msg: `Saved attendance for ${students.length} students.` })
@@ -3454,6 +3476,8 @@ function useStudentSignals(monthStr) {
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [degraded, setDegraded] = useState({ fees: false, discipline: false, hostel: false })
+  const [refreshKey, setRefreshKey] = useState(0)
+  useAttendanceUpdatedListener(useCallback(() => setRefreshKey(k => k + 1), []))
 
   useEffect(() => {
     let cancelled = false
@@ -3536,7 +3560,7 @@ function useStudentSignals(monthStr) {
     }
     load()
     return () => { cancelled = true }
-  }, [monthStr])
+  }, [monthStr, refreshKey])
 
   return { rows, loading, degraded }
 }
@@ -3696,6 +3720,8 @@ function AlertFeed({ rows }) {
 function useAttendanceTrend(monthsBack = 6) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  useAttendanceUpdatedListener(useCallback(() => setRefreshKey(k => k + 1), []))
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -3718,13 +3744,15 @@ function useAttendanceTrend(monthsBack = 6) {
     }
     load()
     return () => { cancelled = true }
-  }, [monthsBack])
+  }, [monthsBack, refreshKey])
   return { data, loading }
 }
 
 function useTodayStatusCounts() {
   const [counts, setCounts] = useState({ Present:0, Absent:0, Late:0, Leave:0 })
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  useAttendanceUpdatedListener(useCallback(() => setRefreshKey(k => k + 1), []))
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -3740,7 +3768,7 @@ function useTodayStatusCounts() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [refreshKey])
   return { counts, loading }
 }
 
@@ -4223,12 +4251,79 @@ const PAGE_META = {
   awards:     { title: 'Awards' },
 }
 
+// Bottom tab bar for mobile — the 5 most-used destinations get a
+// thumb-reachable icon+label button; everything else (Reports, Leaves,
+// Awards) stays reachable via the "More" button in the top bar dropdown.
+const MOBILE_NAV_ITEMS = NAV_ITEMS.slice(0, 5)
+
+function MobileBottomNav({ route, onNavigate, onMore, moreActive }) {
+  return (
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+      background: C.sidebar, display: 'flex', justifyContent: 'space-around',
+      alignItems: 'stretch', padding: '4px 2px calc(4px + env(safe-area-inset-bottom, 0px))',
+      borderTop: `1px solid ${C.sidebarHover}`, boxShadow: '0 -6px 20px rgba(0,0,0,.22)',
+    }}>
+      {MOBILE_NAV_ITEMS.map(item => {
+        const active = route === item.key
+        return (
+          <button
+            key={item.key}
+            onClick={() => onNavigate(item.key)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 2, flex: 1,
+              background: 'none', border: 'none', padding: '6px 2px', minHeight: 52,
+              color: active ? '#fff' : C.sidebarText, fontFamily: font, cursor: 'pointer',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <div style={{
+              width: 30, height: 22, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: active ? C.indigo : 'transparent', transition: 'background .12s',
+            }}>
+              <item.icon size={17} />
+            </div>
+            <span style={{ fontSize: 9.5, fontWeight: active ? 700 : 500, lineHeight: 1 }}>{item.label}</span>
+          </button>
+        )
+      })}
+      <button
+        onClick={onMore}
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', gap: 2, flex: 1,
+          background: 'none', border: 'none', padding: '6px 2px', minHeight: 52,
+          color: moreActive ? '#fff' : C.sidebarText, fontFamily: font, cursor: 'pointer',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        <div style={{
+          width: 30, height: 22, borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: moreActive ? C.indigo : 'transparent', transition: 'background .12s',
+        }}>
+          <svg viewBox="0 0 24 24" width={17} height={17} fill="none" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+            <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+          </svg>
+        </div>
+        <span style={{ fontSize: 9.5, fontWeight: moreActive ? 700 : 500, lineHeight: 1 }}>More</span>
+      </button>
+    </div>
+  )
+}
+
 export default function Attendance({ currentUser, isAdmin }) {
   const isMobile  = useIsMobile()
   const [staff,       setStaff]       = useState([])
   const [markPrefill, setMarkPrefill] = useState(null)
   const [route, setRoute]             = useState('home')
   const [navOpen, setNavOpen]         = useState(false)
+  const moreRoutes = useMemo(() => NAV_ITEMS.slice(5).map(i => i.key), [])
+  const isMoreActive = isMobile && moreRoutes.includes(route)
 
   useEffect(() => {
     supabase.from('staff_profiles').select('id,name,designation').order('name')
@@ -4283,7 +4378,9 @@ export default function Attendance({ currentUser, isAdmin }) {
           </div>
         </div>
 
-        {/* Nav dropdown trigger */}
+        {/* Nav dropdown trigger — on mobile this becomes the "More" menu
+            for the tabs that don't fit in the bottom bar (Reports, Leaves,
+            Awards); on desktop it remains the full primary nav. */}
         <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
           <button onClick={() => setNavOpen(v => !v)} style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -4302,7 +4399,7 @@ export default function Attendance({ currentUser, isAdmin }) {
               background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
               boxShadow: C.shadowMd, minWidth: 200, padding: 6,
             }}>
-              {NAV_ITEMS.map(item => {
+              {(isMobile ? NAV_ITEMS.slice(5) : NAV_ITEMS).map(item => {
                 const active = route === item.key
                 return (
                   <button key={item.key} onClick={() => navigateTo(item.key)} style={{
@@ -4327,9 +4424,21 @@ export default function Attendance({ currentUser, isAdmin }) {
       </div>
 
       {/* Main content */}
-      <div style={{ padding: isMobile ? '16px 14px' : '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{
+        padding: isMobile ? '16px 14px' : '28px 32px', maxWidth: 1200, margin: '0 auto',
+        paddingBottom: isMobile ? 84 : 28,
+      }}>
         {renderPage()}
       </div>
+
+      {isMobile && (
+        <MobileBottomNav
+          route={route}
+          onNavigate={navigateTo}
+          onMore={() => setNavOpen(v => !v)}
+          moreActive={isMoreActive}
+        />
+      )}
     </div>
   )
 }
