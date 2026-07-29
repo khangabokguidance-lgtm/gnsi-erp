@@ -487,6 +487,21 @@ function useAttendanceUpdatedListener(callback) {
   }, [callback])
 }
 
+// Separate event for the `students` table itself changing — archived,
+// restored, or moved to a different course/batch — dispatched by
+// Students.jsx. TabMark's roll call reads `students` live (see below), so
+// this just tells it to refetch immediately instead of waiting for the
+// person to change the course/batch dropdown and change it back.
+const STUDENTS_UPDATED_EVENT = 'gnsi:students-updated'
+function useStudentsUpdatedListener(callback) {
+  useEffect(() => {
+    const handler = (e) => callback(e.detail)
+    window.addEventListener(STUDENTS_UPDATED_EVENT, handler)
+    return () => window.removeEventListener(STUDENTS_UPDATED_EVENT, handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callback])
+}
+
 // ─── Mobile Hook ─────────────────────────────────────────────
 
 function useIsMobile() {
@@ -1340,22 +1355,60 @@ function TabMark({ staff, prefill }) {
     fetch()
   }, [form.course, form.subtype, form.class_name])
 
-  useEffect(() => {
+  // Roster is read straight from the `students` table (the same table
+  // Students.jsx edits) rather than the separate `course_enrollments` table.
+  // course_enrollments was never kept in sync with student deletes/edits —
+  // archiving a student or changing their course/batch in Students.jsx only
+  // ever touched `students.deleted_at`/`students.course`/`students.class_name`,
+  // so a stale course_enrollments row kept showing that student in roll call
+  // (or hid a newly-added one) until someone manually reconciled both tables.
+  // Reading `students` directly means Mark's roster always reflects the
+  // current state of the one table that's actually authoritative.
+  //
+  // .eq('status','Active') is also what excludes dropout students: marking
+  // someone as Dropout (in either Students.jsx or this module's Student DB
+  // tab) sets status='Dropout' without touching deleted_at, so their row
+  // and full history stay intact — they just fall out of this filter and
+  // stop appearing in daily roll call. See handleMarkDropout in TabStudentDB.
+  const fetchRoster = useCallback(async () => {
     if (!form.course) { setStudents([]); setRecords({}); return }
-    const fetch = async () => {
-      let q = supabase.from('course_enrollments')
-        .select('id,student_name,gcc_no,student_id,hostel_type')
-        .eq('status','Active').eq('course', form.course)
-      if (form.subtype)    q = q.eq('subtype',    form.subtype)
-      if (form.class_name) q = q.eq('class_name', form.class_name)
-      const { data } = await q.order('student_name')
-      setStudents(data || [])
+    let q = supabase.from('students')
+      .select('id,name,gcc_no,course,class_name,hostel_type,status,deleted_at')
+      .is('deleted_at', null).eq('status', 'Active').eq('course', form.course)
+    if (form.class_name) q = q.eq('class_name', form.class_name)
+    const { data } = await q.order('name')
+    // Map to the field names the rest of this component (and the save/
+    // WhatsApp-report/notify code below) already expects, so nothing
+    // downstream needs to change: student_id/student_name/gcc_no/hostel_type.
+    const rows = (data || []).map(s => ({
+      student_id: s.id, student_name: s.name, gcc_no: s.gcc_no,
+      hostel_type: s.hostel_type, class_name: s.class_name,
+    }))
+    // subtype/batch isn't a column on `students` — Students.jsx stores the
+    // finer Achiever/Leader/Elite split in class_name, same as before, so
+    // the class_name filter above already narrows to the right batch when
+    // the form's subtype selection matches how batches are named.
+    setStudents(rows)
+    setRecords(prev => {
       const init = {}
-      ;(data||[]).forEach(s => { init[s.student_id || s.student_name] = 'Present' })
-      setRecords(init)
-    }
-    fetch()
-  }, [form.course, form.subtype, form.class_name])
+      rows.forEach(s => {
+        const k = s.student_id || s.student_name
+        // Preserve marks already entered for students who are still on the
+        // roster after a live refetch (e.g. a different student was deleted
+        // mid-session) — only newly-appearing students default to Present.
+        init[k] = prev[k] || 'Present'
+      })
+      return init
+    })
+  }, [form.course, form.class_name])
+
+  useEffect(() => { fetchRoster() }, [fetchRoster])
+
+  // Live refresh — if a student is archived, restored, or moved to a
+  // different course/batch in Students.jsx while this course/batch is
+  // already open here, the roster updates immediately instead of only
+  // picking up the change the next time the course/batch dropdown changes.
+  useStudentsUpdatedListener(fetchRoster)
 
   const handlePeriod = (period) => {
     setForm(prev => ({ ...prev, period_number: period }))
@@ -4307,11 +4360,10 @@ function DashboardPage() {
 
 // ─── STUDENT DATABASE TAB ──────────────────────────────────────
 // Manages the central `students` table directly — the same table
-// NotifyPanel already joins against for parent phone (s.students?.phone)
-// and TabLeave now looks up by name for WhatsApp. course_enrollments
-// (used by TabMark to build class rosters) should reference students
-// by student_id going forward rather than storing name/gcc_no directly,
-// though that migration is outside this tab's scope.
+// NotifyPanel already joins against for parent phone (s.students?.phone),
+// TabLeave looks up by name for WhatsApp, and TabMark's roll call now reads
+// live for its roster (course_enrollments was a separate, unsynced table
+// that has been retired from that path — see fetchRoster in TabMark).
 //
 // FIXED: this tab's insert/update previously wrote a bare 6-field payload
 // that didn't match Students.jsx's canonical 21-field shape — new students
@@ -4338,7 +4390,8 @@ function TabStudentDB({ isAdmin }) {
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null) // { id, mode: 'soft' | 'permanent' }
-  const [showDeleted, setShowDeleted] = useState(false) // admin-only view of soft-deleted students
+  const [confirmDropout, setConfirmDropout] = useState(null) // student id pending dropout confirmation
+  const [viewMode, setViewMode] = useState('active') // 'active' | 'dropout' | 'trash' — trash is admin-only
 
   // REQUIRED SQL (run once): alter table students add column if not exists deleted_at timestamptz;
   const load = async () => {
@@ -4350,7 +4403,18 @@ function TabStudentDB({ isAdmin }) {
   }
   useEffect(() => { load() }, [])
 
-  const visibleStudents = students.filter(s => showDeleted ? !!s.deleted_at : !s.deleted_at)
+  // Dropout is a status change, not a delete — a dropout student's row still
+  // exists (deleted_at stays null) so their historical attendance/exam/fee
+  // records remain intact and queryable; they're just excluded from the
+  // Active view and, critically, from TabMark's roll-call roster (which
+  // filters .eq('status','Active')), so they stop appearing in daily
+  // attendance the moment they're marked here — no separate sync needed.
+  const visibleStudents = students.filter(s => {
+    if (s.deleted_at) return viewMode === 'trash'
+    if (viewMode === 'trash') return false
+    if (viewMode === 'dropout') return s.status === 'Dropout'
+    return s.status !== 'Dropout'
+  })
 
   const filtered = visibleStudents.filter(s => {
     if (courseFilter !== 'all' && s.course !== courseFilter) return false
@@ -4403,6 +4467,31 @@ function TabStudentDB({ isAdmin }) {
     load()
   }
 
+  // Mark as Dropout — a status change (students.status = 'Dropout'), not a
+  // delete. Row and history stay intact; the student simply stops appearing
+  // in TabMark's roll call (which filters status='Active') and in the
+  // Active view here. Broadcasting students-updated means any Mark tab
+  // already open for this student's course drops them from the roster
+  // immediately, without needing to reselect the course/batch.
+  const handleMarkDropout = async (id) => {
+    const { error } = await supabase.from('students').update({ status: 'Dropout' }).eq('id', id)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: 'Student marked as dropout — removed from active roll call.' })
+    setConfirmDropout(null)
+    broadcastStudentsUpdate({ type: 'dropout', student_id: id })
+    load()
+  }
+
+  // Reactivate — undoes a dropout, restoring status to Active so the
+  // student reappears in TabMark's roll call for their course/batch.
+  const handleReactivate = async (id) => {
+    const { error } = await supabase.from('students').update({ status: 'Active' }).eq('id', id)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: 'Student reactivated — back in active roll call.' })
+    broadcastStudentsUpdate({ type: 'reactivate', student_id: id })
+    load()
+  }
+
   // Soft delete — available to all staff. Marks deleted_at instead of
   // removing the row, so an admin can review/restore before anything
   // is actually destroyed.
@@ -4411,6 +4500,7 @@ function TabStudentDB({ isAdmin }) {
     if (error) { setToast({ type: 'error', msg: error.message }); return }
     setToast({ type: 'success', msg: 'Student moved to deleted (recoverable by admin).' })
     setConfirmDelete(null)
+    broadcastStudentsUpdate({ type: 'delete', student_id: id })
     load()
   }
 
@@ -4420,6 +4510,7 @@ function TabStudentDB({ isAdmin }) {
     const { error } = await supabase.from('students').update({ deleted_at: null }).eq('id', id)
     if (error) { setToast({ type: 'error', msg: error.message }); return }
     setToast({ type: 'success', msg: 'Student restored.' })
+    broadcastStudentsUpdate({ type: 'restore', student_id: id })
     load()
   }
 
@@ -4432,6 +4523,7 @@ function TabStudentDB({ isAdmin }) {
     if (error) { setToast({ type: 'error', msg: error.message }); return }
     setToast({ type: 'success', msg: 'Student permanently deleted.' })
     setConfirmDelete(null)
+    broadcastStudentsUpdate({ type: 'permanent_delete', student_id: id })
     load()
   }
 
@@ -4440,29 +4532,47 @@ function TabStudentDB({ isAdmin }) {
       <CardHeader
         icon="🎓"
         title="Student Database"
-        subtitle={`${visibleStudents.length} ${showDeleted ? 'deleted' : 'active'} student${visibleStudents.length===1?'':'s'}${isAdmin ? ` · ${students.filter(s=>s.deleted_at).length} in trash` : ''}`}
+        subtitle={`${visibleStudents.length} ${viewMode} student${visibleStudents.length===1?'':'s'} · ${students.filter(s=>s.status==='Dropout'&&!s.deleted_at).length} dropout${isAdmin ? ` · ${students.filter(s=>s.deleted_at).length} in trash` : ''}`}
         accent={T.blue}
         right={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {isAdmin && (
-              <Btn small variant={showDeleted ? 'amber' : 'ghost'} onClick={() => setShowDeleted(v => !v)}>
-                {showDeleted ? '👥 Active Students' : '🗑 View Trash'}
-              </Btn>
-            )}
-            {!showDeleted && <Btn small onClick={openAdd}>{showForm && !editingId ? '✕ Cancel' : '+ Add Student'}</Btn>}
+            <div style={{ display: 'flex', gap: 4, background: T.gray100, borderRadius: 8, padding: 3 }}>
+              {[
+                { key: 'active', label: '👥 Active' },
+                { key: 'dropout', label: `🚪 Dropout${students.filter(s=>s.status==='Dropout'&&!s.deleted_at).length ? ` (${students.filter(s=>s.status==='Dropout'&&!s.deleted_at).length})` : ''}` },
+                ...(isAdmin ? [{ key: 'trash', label: '🗑 Trash' }] : []),
+              ].map(v => (
+                <button key={v.key} onClick={() => setViewMode(v.key)} style={{
+                  padding: '6px 11px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  fontFamily: font, fontSize: 12, fontWeight: 700,
+                  background: viewMode === v.key ? T.white : 'transparent',
+                  color: viewMode === v.key ? (v.key === 'dropout' ? T.red : T.navy) : T.gray500,
+                  boxShadow: viewMode === v.key ? T.shadowSm : 'none',
+                }}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {viewMode === 'active' && <Btn small onClick={openAdd}>{showForm && !editingId ? '✕ Cancel' : '+ Add Student'}</Btn>}
           </div>
         }
       />
       <div style={{ padding: isMobile ? '12px 16px' : '16px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
-        {!isAdmin && (
+        {viewMode === 'dropout' && (
+          <div style={{ background: T.redSoft ?? '#fff1f2', border: `1px solid #fecdd3`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#be123c' }}>
+            🚪 These students are excluded from Mark's roll call for their course/batch, but their attendance, exam, and fee history stays intact. Reactivate to bring them back into daily marking.
+          </div>
+        )}
+
+        {!isAdmin && viewMode !== 'dropout' && (
           <div style={{ background: T.blueSoft, border: `1px solid #bfdbfe`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#1e40af' }}>
             🔒 Parent contact numbers are hidden for non-admin accounts. Deleting a student here moves them to trash — only an admin can permanently remove a record.
           </div>
         )}
 
-        {showForm && !showDeleted && (
+        {showForm && viewMode === 'active' && (
           <div style={{ background: T.gray50, border: `1.5px solid ${T.gray150}`, borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, marginBottom: 12 }}>
               {editingId ? '✏️ Edit Student' : '+ Add New Student'}
@@ -4526,19 +4636,22 @@ function TabStudentDB({ isAdmin }) {
           <div style={{ textAlign: 'center', padding: '40px 0', color: T.gray400 }}>Loading…</div>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: T.gray400, fontSize: 13 }}>
-            {showDeleted ? 'Trash is empty.' : 'No students found.'}
+            {viewMode === 'trash' ? 'Trash is empty.' : viewMode === 'dropout' ? 'No dropout students.' : 'No students found.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filtered.map(s => (
               <div key={s.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-                padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${s.deleted_at ? '#fecaca' : T.gray150}`,
-                background: s.deleted_at ? '#fff8f8' : T.white,
+                padding: '12px 14px', borderRadius: 10,
+                border: `1.5px solid ${s.deleted_at ? '#fecaca' : s.status === 'Dropout' ? '#fecdd3' : T.gray150}`,
+                background: s.deleted_at ? '#fff8f8' : s.status === 'Dropout' ? '#fffbfb' : T.white,
               }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>
-                    {s.name}{s.deleted_at && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: T.red }}>DELETED {fmtDate(s.deleted_at.split('T')[0])}</span>}
+                    {s.name}
+                    {s.deleted_at && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: T.red }}>DELETED {fmtDate(s.deleted_at.split('T')[0])}</span>}
+                    {!s.deleted_at && s.status === 'Dropout' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: T.red }}>🚪 DROPOUT</span>}
                   </div>
                   <div style={{ fontSize: 11.5, color: T.gray400, marginTop: 2 }}>
                     {s.gcc_no ? `GCC-${s.gcc_no}` : '—'} · {s.course || '—'}{s.class_name ? ` · ${s.class_name}` : ''}
@@ -4551,7 +4664,7 @@ function TabStudentDB({ isAdmin }) {
                   </div>
                 </div>
 
-                {showDeleted ? (
+                {viewMode === 'trash' ? (
                   // Trash view: restore (any staff) or permanently delete (admin only)
                   confirmDelete?.id === s.id && confirmDelete.mode === 'permanent' ? (
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -4564,8 +4677,8 @@ function TabStudentDB({ isAdmin }) {
                       {isAdmin && <Btn small variant="danger" onClick={() => setConfirmDelete({ id: s.id, mode: 'permanent' })}>🗑 Delete Forever</Btn>}
                     </div>
                   )
-                ) : (
-                  // Active view: edit + soft delete (any staff)
+                ) : viewMode === 'dropout' ? (
+                  // Dropout view: reactivate (back into roll call) or soft delete
                   confirmDelete?.id === s.id && confirmDelete.mode === 'soft' ? (
                     <div style={{ display: 'flex', gap: 6 }}>
                       <Btn small variant="danger" onClick={() => handleSoftDelete(s.id)}>Confirm Delete</Btn>
@@ -4573,7 +4686,27 @@ function TabStudentDB({ isAdmin }) {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="success" onClick={() => handleReactivate(s.id)}>↩️ Reactivate</Btn>
                       <Btn small variant="ghost" onClick={() => openEdit(s)}>✏️ Edit</Btn>
+                      <Btn small variant="danger" onClick={() => setConfirmDelete({ id: s.id, mode: 'soft' })}>🗑 Delete</Btn>
+                    </div>
+                  )
+                ) : (
+                  // Active view: edit, mark as dropout, or soft delete
+                  confirmDelete?.id === s.id && confirmDelete.mode === 'soft' ? (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="danger" onClick={() => handleSoftDelete(s.id)}>Confirm Delete</Btn>
+                      <Btn small variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+                    </div>
+                  ) : confirmDropout === s.id ? (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="danger" onClick={() => handleMarkDropout(s.id)}>⚠️ Confirm Dropout</Btn>
+                      <Btn small variant="ghost" onClick={() => setConfirmDropout(null)}>Cancel</Btn>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn small variant="ghost" onClick={() => openEdit(s)}>✏️ Edit</Btn>
+                      <Btn small variant="amber" onClick={() => setConfirmDropout(s.id)}>🚪 Dropout</Btn>
                       <Btn small variant="danger" onClick={() => setConfirmDelete({ id: s.id, mode: 'soft' })}>🗑 Delete</Btn>
                     </div>
                   )

@@ -9,6 +9,40 @@ import FeeCollectionModal from './FeeCollectionModal'
 import { getFlatFeeAmtSync, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
 import { useAuth } from './AuthContext'
 
+// ── Live-refresh listener for the Attendance module's save event ──────────
+// Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
+// right after a Mark-tab save completes. This file has no import
+// relationship to Attendance.jsx (same pattern as the sendPushToStaffId /
+// openWhatsApp helpers duplicated across modules elsewhere in the portal),
+// so the listener is a small self-contained copy rather than a shared
+// import — the event name string is the actual contract between the two.
+// Without this, attendance % anywhere in Students.jsx (cards, dashboard,
+// detail drawer, reports) only refreshed on a full page reload or when the
+// `students` list itself changed — never when someone just marked today's
+// roll call.
+const ATTENDANCE_UPDATED_EVENT = 'gnsi:attendance-updated'
+function useAttendanceUpdatedListener(callback) {
+  useEffect(() => {
+    const handler = (e) => callback(e.detail)
+    window.addEventListener(ATTENDANCE_UPDATED_EVENT, handler)
+    return () => window.removeEventListener(ATTENDANCE_UPDATED_EVENT, handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callback])
+}
+
+// Companion broadcast — tells Attendance.jsx's Mark tab (which now reads
+// its roll-call roster live from the `students` table) to refetch the
+// instant a student is archived, restored, or has their course/batch
+// changed here. Without this, a student removed or moved in Students.jsx
+// would still show up in an already-open Mark roster until the teacher
+// re-picked the course/batch dropdown.
+const STUDENTS_UPDATED_EVENT = 'gnsi:students-updated'
+function broadcastStudentsUpdate(detail) {
+  try { window.dispatchEvent(new CustomEvent(STUDENTS_UPDATED_EVENT, { detail })) } catch (e) {
+    console.error('broadcastStudentsUpdate failed:', e)
+  }
+}
+
 // ── Pagination-safe, chunked fetch — Supabase/PostgREST caps a single
 //    .select() at 1000 rows regardless of .in() filters, and a large .in()
 //    list (hundreds of GCC numbers) risks hitting URL-length limits on GET.
@@ -135,7 +169,7 @@ const CSS_VARS = `
 // ─── Constants (unchanged) ────────────────────────────────────────────────────
 const COURSES      = ['All','Sainik','Navodaya','Foundation','Combined Course']
 const HOSTEL_TYPES = ['All','Boarder','Day Scholar','Day Boarder']
-const STATUSES     = ['All','Active','Inactive','Passed Out','Withdrawn']
+const STATUSES     = ['All','Active','Inactive','Passed Out','Withdrawn','Dropout']
 const GENDERS      = ['All','Male','Female']
 const SESSIONS     = ['2024-25','2025-26','2026-27']
 const SUBJECTS     = ['Mathematics','Science','English','Social Studies','Hindi','GK','Reasoning']
@@ -190,6 +224,7 @@ const STATUS_CFG = {
   Inactive:    { color:'#D97706', bg:'#FFFBEB', border:'#FDE68A', dot:'#F59E0B', label:'Inactive' },
   'Passed Out':{ color:'#0284C7', bg:'#F0F9FF', border:'#BAE6FD', dot:'#38BDF8', label:'Passed Out' },
   Withdrawn:   { color:'#DC2626', bg:'#FEF2F2', border:'#FECACA', dot:'#F87171', label:'Withdrawn' },
+  Dropout:     { color:'#991B1B', bg:'#FEF2F2', border:'#FCA5A5', dot:'#DC2626', label:'Dropout' },
 }
 
 const HOSTEL_CFG = {
@@ -714,6 +749,8 @@ function IfCan({ can, fallback=null, children }) {
 function AttendanceViewerModal({ student, onClose }) {
   const [loading,setLoading]=useState(true)
   const [records,setRecords]=useState([])
+  const [refreshKey,setRefreshKey]=useState(0)
+  useAttendanceUpdatedListener(useCallback(()=>setRefreshKey(k=>k+1),[]))
   useEffect(()=>{
     let cancelled=false
     const load=async()=>{
@@ -760,7 +797,7 @@ function AttendanceViewerModal({ student, onClose }) {
     }
     load()
     return()=>{cancelled=true}
-  },[student.id,student.gcc_no,student.name])
+  },[student.id,student.gcc_no,student.name,refreshKey])
 
   const present=records.filter(r=>r.status==='Present').length
   const absent=records.filter(r=>r.status==='Absent').length
@@ -952,6 +989,7 @@ function AttendanceTab({ student, can, showToast }) {
     setLoading(false)
   },[student.id,student.gcc_no,student.name])
   useEffect(()=>{load()},[load])
+  useAttendanceUpdatedListener(load)
 
   const presentDays=records.filter(r=>r.status==='Present').length
   const lateDays=records.filter(r=>r.status==='Late').length
@@ -1245,6 +1283,7 @@ function BulkOperationsModal({ students, selectedIds, can, onClose, onRefresh, s
       else if(action==='promote'){if(!canPromote){showToast('Some cannot be promoted',T.red);setProcessing(false);return}for(const u of selected)await supabase.from('students').update({batch:PROMOTION_MAP[u.batch],status:'Active'}).eq('id',u.id);showToast(`${ids.length} promoted`,T.green)}
       else if(action==='session'){if(!targetSession){showToast('Select session',T.red);setProcessing(false);return}await supabase.from('students').update({session:targetSession}).in('id',ids);showToast(`Session → ${targetSession}`,T.green)}
       else if(action==='batch'){if(!targetBatch){showToast('Enter batch',T.red);setProcessing(false);return}await supabase.from('students').update({batch:targetBatch}).in('id',ids);showToast(`Batch → ${targetBatch}`,T.green)}
+      broadcastStudentsUpdate({type:'bulk_'+action,ids})
       onRefresh();onClose()
     }catch(err){showToast('Failed: '+err.message,T.red)}
     setProcessing(false)
@@ -1453,6 +1492,7 @@ function MergeDuplicatesModal({ students, can, onClose, onRefresh, showToast }) 
         await supabase.from(tbl).update({student_id:primaryId}).in('student_id',mergeIds)
       await supabase.from('students').update({deleted_at:new Date().toISOString(),remarks:'Merged into '+primaryId}).in('id',mergeIds)
       await auditLog('merge_duplicates',{primaryId,mergeIds})
+      broadcastStudentsUpdate({type:'merge',primaryId,mergeIds})
       showToast('Merged successfully',T.green);onRefresh();onClose()
     }catch(err){showToast('Merge failed: '+err.message,T.red)}
     setProcessing(false)
@@ -3459,6 +3499,16 @@ const effectiveCols = visibleCols.filter(col => {
   useEffect(()=>{if(showDeleted)loadDeleted()},[showDeleted])
   useEffect(()=>{const h=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();searchRef.current?.focus()}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[])
 
+  // Live refresh — when Attendance.jsx's Mark tab saves a session, only
+  // attendance % is stale here (students/fees/exams are unaffected), so
+  // re-run just loadAttData instead of the full loadAll+loadFeeData+
+  // loadExamData cascade above. Keeps cards, the dashboard, the detail
+  // drawer, and report generator all showing today's mark the moment
+  // it's saved, without a manual reload.
+  useAttendanceUpdatedListener(useCallback(()=>{
+    if(students.length)loadAttData(students.map(s=>s.id),students)
+  },[students,loadAttData]))
+
   // ── Mutations (logic unchanged) ───────────────────────────────────────────────
   const handleSave=async(eid,obj)=>{
     if(!can.write){showToast('No permission',T.red);return}
@@ -3468,11 +3518,13 @@ const effectiveCols = visibleCols.filter(col => {
       if(error){showToast('Update failed: '+error.message,T.red);return}
       setStudents(prev=>prev.map(s=>s.id===eid?{...s,...payload}:s))
       await auditLog('student_update',{student_id:eid});showToast('Student updated',T.amber)
+      broadcastStudentsUpdate({type:'update',student_id:eid,course:payload.course,class_name:payload.class_name})
     }else{
       const{data,error}=await supabase.from('students').insert(payload).select().single()
       if(error){showToast(error.code==='23505'?`GCC ${obj.gcc_no} already exists`:'Save failed: '+error.message,T.red);return}
       setStudents(prev=>[data,...prev])
       await auditLog('student_create',{student_id:data.id,gcc_no:data.gcc_no});showToast(`${data.name} added`,T.green)
+      broadcastStudentsUpdate({type:'create',student_id:data.id,course:data.course,class_name:data.class_name})
     }
     setFormOpen(false);setEditing(null)
   }
@@ -3488,6 +3540,7 @@ const effectiveCols = visibleCols.filter(col => {
     setStudents(prev=>prev.map(s=>s.id===studentId?{...s,...payload}:s))
     await auditLog('student_quick_complete',{student_id:studentId,fields:Object.keys(fields)})
     showToast('Details saved',T.green)
+    if('course' in payload || 'class_name' in payload || 'status' in payload) broadcastStudentsUpdate({type:'quick_update',student_id:studentId})
   }
 
   const handleClone=student=>{
@@ -3504,6 +3557,7 @@ const effectiveCols = visibleCols.filter(col => {
       setConfirmModal(null);setStudents(prev=>prev.filter(x=>x.id!==s.id));setUndoItem(s);setDeletedRow(s)
       await supabase.from('students').update({deleted_at:new Date().toISOString(),undo_pending:true}).eq('id',s.id)
       await auditLog('student_delete',{student_id:s.id,gcc_no:s.gcc_no,name:s.name})
+      broadcastStudentsUpdate({type:'delete',student_id:s.id,course:s.course,class_name:s.class_name})
       if(undoTimer.current)clearTimeout(undoTimer.current)
       undoTimer.current=setTimeout(async()=>{await supabase.from('students').update({undo_pending:false}).eq('id',s.id);setUndoItem(null);setDeletedRow(null);showToast('Record archived',T.amber)},7000)
     }})
@@ -3515,6 +3569,7 @@ const effectiveCols = visibleCols.filter(col => {
     await auditLog('student_restore',{student_id:deletedRow.id,name:deletedRow.name})
     setStudents(prev=>[deletedRow,...prev].sort((a,b)=>(a.name||'').localeCompare(b.name||'')))
     setUndoItem(null);setDeletedRow(null);showToast('Restored: '+deletedRow.name,T.green)
+    broadcastStudentsUpdate({type:'restore',student_id:deletedRow.id,course:deletedRow.course,class_name:deletedRow.class_name})
   }
 
   const handleRestore=async s=>{
@@ -3562,6 +3617,7 @@ const effectiveCols = visibleCols.filter(col => {
   const KPI_ITEMS=[
     {label:'Total',value:students.length,color:T.text2,icon:'👥'},
     {label:'Active',value:students.filter(s=>s.status==='Active').length,color:T.green,icon:'●',fkey:'status',fval:'Active'},
+    {label:'Dropout',value:students.filter(s=>s.status==='Dropout').length,color:T.red,icon:'🚪',fkey:'status',fval:'Dropout',warn:students.filter(s=>s.status==='Dropout').length>0},
     {label:'Boarders',value:students.filter(s=>s.hostel_type==='Boarder').length,color:T.green,icon:'🏠',fkey:'hostel',fval:'Boarder'},
     {label:'Day Boarders',value:students.filter(s=>s.hostel_type==='Day Boarder').length,color:T.amber,icon:'🌅',fkey:'hostel',fval:'Day Boarder'},
     {label:'Day Scholars',value:students.filter(s=>s.hostel_type==='Day Scholar').length,color:T.text3,icon:'🏫',fkey:'hostel',fval:'Day Scholar'},
