@@ -1279,32 +1279,67 @@ const STATUS_TONE = {
   Leave:   { color: C.violet,bg: C.violetSoft },
 }
 
+const STATUS_ICON = { Present: '✓', Absent: '✕', Late: '◔', Leave: '⤴' }
+
 function StudentRowMark({ student, status, onChange }) {
   const initials = student.student_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
-  const cycle = () => {
-    const idx = STATUSES.indexOf(status)
-    onChange(STATUSES[(idx + 1) % STATUSES.length])
-  }
   const tone = STATUS_TONE[status] || STATUS_TONE.Present
+  const needsContact = (status === 'Absent' || status === 'Late') && student.phone
   return (
-    <button onClick={cycle} style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-      border: `1px solid ${C.border}`, borderRadius: 10, background: C.surface,
-      cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: font,
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 8,
+      padding: '12px 14px', border: `1px solid ${status === 'Absent' ? tone.color + '33' : C.border}`,
+      borderRadius: 12, background: C.surface,
+      boxShadow: status === 'Absent' ? `0 0 0 1px ${tone.bg}` : 'none',
     }}>
-      <div style={{
-        width: 30, height: 30, borderRadius: 8, background: C.indigoSoft, color: C.indigo,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0,
-      }}>{initials}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{student.student_name}</div>
-        {student.gcc_no && <div style={{ fontSize: 10.5, color: C.inkFaint }}>GCC {student.gcc_no}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 10, background: C.indigoSoft, color: C.indigo,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
+        }}>{initials}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{student.student_name}</div>
+          <div style={{ fontSize: 10.5, color: C.inkFaint, display: 'flex', gap: 6 }}>
+            {student.gcc_no && <span>GCC {student.gcc_no}</span>}
+            {!student.phone && <span style={{ color: C.amber }}>· no parent contact</span>}
+          </div>
+        </div>
+        {needsContact && (
+          <button
+            onClick={(e) => { e.stopPropagation(); openWhatsApp(student.phone,
+              `Dear Parent, your ward ${student.student_name} was marked ${status} today (${fmtDate(today())}). Please ensure regular attendance. — GNSI`) }}
+            title="Message parent on WhatsApp"
+            style={{
+              width: 30, height: 30, borderRadius: 9, border: 'none', flexShrink: 0,
+              background: '#25D366', color: '#fff', fontSize: 14, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >📲</button>
+        )}
       </div>
-      <span style={{
-        fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999,
-        background: tone.bg, color: tone.color, flexShrink: 0,
-      }}>{status}</span>
-    </button>
+
+      {/* Segmented status control — replaces tap-to-cycle so the current
+          state and all options are visible at once, the way a mobile
+          attendance app would present it. */}
+      <div style={{ display: 'flex', gap: 4, background: C.bg, padding: 3, borderRadius: 9 }}>
+        {STATUSES.map(s => {
+          const active = status === s
+          const t = STATUS_TONE[s]
+          return (
+            <button key={s} onClick={() => onChange(s)} style={{
+              flex: 1, padding: '6px 4px', borderRadius: 7, border: 'none',
+              background: active ? t.color : 'transparent',
+              color: active ? '#fff' : C.inkMuted,
+              fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: font,
+              transition: 'all .12s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+            }}>
+              <span>{STATUS_ICON[s]}</span>
+              {s}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -1372,22 +1407,33 @@ function TabMark({ staff, prefill }) {
   // stop appearing in daily roll call. See handleMarkDropout in TabStudentDB.
   const fetchRoster = useCallback(async () => {
     if (!form.course) { setStudents([]); setRecords({}); return }
+    // NOTE: `students.batch` is the Lakshya/Umeed/Achiever/etc. split
+    // (Students.jsx writes it via `form.batch`) — it is a DIFFERENT column
+    // from `class_name`, which is a separate free-text section field
+    // (e.g. "9A"). Filtering only on `class_name` here meant every subtype
+    // under a course (e.g. both Lakshya and Umeed under Navodaya) was
+    // fetched together whenever the section field was left blank — that's
+    // why the "students enrolled" count included both batches combined.
     let q = supabase.from('students')
-      .select('id,name,gcc_no,course,class_name,hostel_type,status,deleted_at')
+      .select('id,name,gcc_no,course,batch,class_name,hostel_type,status,deleted_at,phone')
       .is('deleted_at', null).eq('status', 'Active').eq('course', form.course)
+    if (form.subtype)   q = q.eq('batch', form.subtype)
     if (form.class_name) q = q.eq('class_name', form.class_name)
     const { data } = await q.order('name')
     // Map to the field names the rest of this component (and the save/
     // WhatsApp-report/notify code below) already expects, so nothing
     // downstream needs to change: student_id/student_name/gcc_no/hostel_type.
+    // `phone` is the parent contact number (same column Students.jsx writes
+    // to) — carried through as a flat field so NotifyPanel/StudentRowMark
+    // can offer a "message parent" action without a second fetch. Previously
+    // this was missing entirely, so the WhatsApp button in NotifyPanel
+    // (which read a non-existent `s.students?.phone`) never rendered for
+    // any student marked from this roster.
     const rows = (data || []).map(s => ({
       student_id: s.id, student_name: s.name, gcc_no: s.gcc_no,
-      hostel_type: s.hostel_type, class_name: s.class_name,
+      hostel_type: s.hostel_type, class_name: s.class_name, batch: s.batch,
+      phone: s.phone || null,
     }))
-    // subtype/batch isn't a column on `students` — Students.jsx stores the
-    // finer Achiever/Leader/Elite split in class_name, same as before, so
-    // the class_name filter above already narrows to the right batch when
-    // the form's subtype selection matches how batches are named.
     setStudents(rows)
     setRecords(prev => {
       const init = {}
@@ -1400,7 +1446,7 @@ function TabMark({ staff, prefill }) {
       })
       return init
     })
-  }, [form.course, form.class_name])
+  }, [form.course, form.subtype, form.class_name])
 
   useEffect(() => { fetchRoster() }, [fetchRoster])
 
@@ -1508,12 +1554,23 @@ function TabMark({ staff, prefill }) {
   , [students, records])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: isMobile ? 8 : 0 }}>
       <AttendanceAnimStyles />
 
-      <div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Mark attendance</div>
-        <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>Configure the session, then mark each student</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Mark attendance</div>
+          <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>Configure the session, then mark each student</div>
+        </div>
+        {absentStudents.length > 0 && (
+          <button onClick={() => setShowNotify(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999,
+            border: 'none', background: C.redSoft, color: C.red, fontWeight: 700, fontSize: 12,
+            cursor: 'pointer', fontFamily: font, flexShrink: 0,
+          }}>
+            📲 <span>{absentStudents.length}</span>
+          </button>
+        )}
       </div>
 
       <ConsoleCard>
@@ -1653,8 +1710,11 @@ function TabMark({ staff, prefill }) {
               </div>
             )}
           </div>
-          <div style={{ padding: '14px 20px', borderTop: `1px solid ${C.border}`, background: C.bg }}>
-            <ConsoleBtn variant="primary" disabled={saving} onClick={handleSave} style={{ width: '100%', justifyContent: 'center', minHeight: 42 }}>
+          <div style={{
+            padding: '14px 20px', borderTop: `1px solid ${C.border}`, background: C.bg,
+            ...(isMobile ? { position: 'sticky', bottom: 76, zIndex: 20, borderRadius: '0 0 12px 12px', boxShadow: '0 -4px 12px rgba(15,23,42,.06)' } : {}),
+          }}>
+            <ConsoleBtn variant="primary" disabled={saving} onClick={handleSave} style={{ width: '100%', justifyContent: 'center', minHeight: 46 }}>
               {saving ? 'Saving…' : `Save attendance · ${students.length} students`}
             </ConsoleBtn>
           </div>
@@ -2182,7 +2242,7 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
     setSending(true)
     const rows = students.map(s => ({
       student_name: s.student_name, student_id: s.student_id || null,
-      phone: s.students?.phone || null, channel, message: msgFor(s),
+      phone: s.phone || null, channel, message: msgFor(s),
       status: 'sent', sent_at: new Date().toISOString(),
     }))
     await supabase.from('parent_notifications').insert(rows)
@@ -2192,8 +2252,8 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
     // We open the first student's chat now (this click counts as the
     // gesture); each remaining student gets a manual "📲" button below.
     if (channel === 'whatsapp' || channel === 'both') {
-      const first = students.find(s => s.students?.phone)
-      if (first) openWhatsApp(first.students.phone, msgFor(first))
+      const first = students.find(s => s.phone)
+      if (first) openWhatsApp(first.phone, msgFor(first))
     }
 
     const sentMap = {}
@@ -2256,12 +2316,12 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
                     {s.student_name}
                   </div>
                   <div style={{ fontSize: 11.5, color: T.gray400 }}>
-                    {s.students?.phone ? `📞 ${s.students.phone}` : 'No phone on record'}
+                    {s.phone ? `📞 ${s.phone}` : 'No phone on record'}
                   </div>
                 </div>
-                {s.students?.phone && (channel === 'whatsapp' || channel === 'both') && (
+                {s.phone && (channel === 'whatsapp' || channel === 'both') && (
                   <button
-                    onClick={() => openWhatsApp(s.students.phone, msgFor(s))}
+                    onClick={() => openWhatsApp(s.phone, msgFor(s))}
                     style={{
                       padding: '5px 10px', borderRadius: 7, border: 'none',
                       background: '#25D366', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer',
