@@ -3951,6 +3951,16 @@ function usePeriod1Check() {
   return { missing, checked }
 }
 
+// Overview gets its own bold accent — a vivid indigo→violet identity that
+// makes it visually distinct from Dashboard's teal/amber theme, even though
+// both reuse the shared ConsoleCard chrome underneath.
+const OV = {
+  grad: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 55%, #A855F7 100%)',
+  ink: '#312E81',
+  soft: '#EEF2FF',
+  ring: '#6366F1',
+}
+
 function HomeV2({ onNavigate }) {
   const isMobile = useIsMobile()
   const month = monthOptions()[0]
@@ -3965,9 +3975,24 @@ function HomeV2({ onNavigate }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="gnsi-fade-in">
       <ConsoleAnimStyles />
-      <div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Overview</div>
-        <div style={{ fontSize: 13, color: C.inkMuted, marginTop: 2 }}>{fmtDate(today())} · {todayDay()}</div>
+
+      {/* Bold hero banner — establishes Overview's own color identity up front */}
+      <div style={{
+        background: OV.grad, borderRadius: 16, padding: isMobile ? '18px 20px' : '22px 26px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+        boxShadow: '0 8px 24px rgba(79,70,229,.25)',
+      }}>
+        <div>
+          <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, color: '#fff', letterSpacing: '-.02em' }}>Overview</div>
+          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.85)', marginTop: 2 }}>{fmtDate(today())} · {todayDay()}</div>
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.16)',
+          padding: '8px 14px', borderRadius: 999, backdropFilter: 'blur(4px)',
+        }}>
+          <span style={{ fontSize: 20, fontWeight: 800, color: '#fff', fontFamily: fontMono }}>{avgAttendance}%</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.85)' }}>avg. attendance</span>
+        </div>
       </div>
 
       {period1Missing.length > 0 && (
@@ -3990,12 +4015,12 @@ function HomeV2({ onNavigate }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
         {loading ? [0,1,2,3].map(i => <SkeletonStatCard key={i} />) : [
-          { label: 'Students tracked', value: rows.length, icon: Icon.users, color: C.indigo, bg: C.indigoSoft },
-          { label: 'Avg. attendance', value: `${avgAttendance}%`, icon: Icon.check, color: avgAttendance>=75?C.green:C.amber, bg: avgAttendance>=75?C.greenSoft:C.amberSoft },
-          { label: 'High risk', value: highRiskCount, icon: Icon.bell, color: C.red, bg: C.redSoft },
-          { label: 'On track', value: rows.filter(r=>r.risk==='low').length, icon: Icon.award, color: C.green, bg: C.greenSoft },
+          { label: 'Students tracked', value: rows.length, icon: Icon.users, color: '#4F46E5', bg: '#EEF2FF' },
+          { label: 'Avg. attendance', value: `${avgAttendance}%`, icon: Icon.check, color: avgAttendance>=75?'#059669':'#D97706', bg: avgAttendance>=75?'#ECFDF5':'#FFFBEB' },
+          { label: 'High risk', value: highRiskCount, icon: Icon.bell, color: '#DC2626', bg: '#FEF2F2' },
+          { label: 'On track', value: rows.filter(r=>r.risk==='low').length, icon: Icon.award, color: '#7C3AED', bg: '#F5F3FF' },
         ].map((k,i) => (
-          <ConsoleCard key={i} style={{ padding: '16px 18px' }} padded={false}>
+          <ConsoleCard key={i} style={{ padding: '16px 18px', borderTop: `3px solid ${k.color}` }} padded={false}>
             <div className="gnsi-hover-lift" style={{ borderRadius: C.radius }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMuted }}>{k.label}</div>
@@ -4056,22 +4081,27 @@ function HomeV2({ onNavigate }) {
       </div>
 
       <ConsoleCard className="gnsi-hover-lift" style={{
-        background: 'linear-gradient(135deg, #EEF2FF, #F5F3FF)', border: `1px solid ${C.indigo}33`,
+        background: OV.grad, border: 'none', boxShadow: '0 6px 20px rgba(124,58,237,.22)',
       }}>
         <div style={{
           padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
-              width: 36, height: 36, borderRadius: 10, background: C.indigo, color: '#fff',
+              width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,.22)', color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}><Icon.chart size={17} /></div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>Full attendance dashboard</div>
-              <div style={{ fontSize: 12, color: C.inkMuted, marginTop: 1 }}>Course breakdowns, weekday patterns, streaks and rankings</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>Full attendance dashboard</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.82)', marginTop: 1 }}>Course breakdowns, weekday patterns, streaks and rankings</div>
             </div>
           </div>
-          <ConsoleBtn variant="primary" small onClick={() => onNavigate('dashboard')}>Open dashboard <Icon.chevron size={12} /></ConsoleBtn>
+          <button onClick={() => onNavigate('dashboard')} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9,
+            border: 'none', background: '#fff', color: '#4F46E5', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: font,
+          }}>
+            Open dashboard <Icon.chevron size={12} />
+          </button>
         </div>
       </ConsoleCard>
     </div>
@@ -4340,6 +4370,13 @@ function StreakLeaderboard({ title, rows, tone, icon }) {
   )
 }
 
+// Dashboard's own bold accent — teal→amber, deliberately distinct from
+// Overview's indigo/violet so the two tabs read as different "zones" at
+// a glance, not just the same page with a different title.
+const DB = {
+  grad: 'linear-gradient(135deg, #0D9488 0%, #0891B2 55%, #0369A1 100%)',
+}
+
 function DashboardPage() {
   const isMobile = useIsMobile()
   const [monthsBack, setMonthsBack] = useState(6)
@@ -4348,25 +4385,34 @@ function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="gnsi-fade-in">
       <ConsoleAnimStyles />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+
+      {/* Bold hero banner — teal/amber identity distinct from Overview's indigo/violet */}
+      <div style={{
+        background: DB.grad, borderRadius: 16, padding: isMobile ? '18px 20px' : '22px 26px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+        boxShadow: '0 8px 24px rgba(13,148,136,.25)',
+      }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Attendance dashboard</div>
-          <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>Deep analytics across courses, weekdays, and students</div>
+          <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, color: '#fff', letterSpacing: '-.02em' }}>Dashboard</div>
+          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.85)', marginTop: 2 }}>Deep analytics across courses, weekdays, and students</div>
         </div>
-        <ConsoleSelect value={monthsBack} onChange={e => setMonthsBack(Number(e.target.value))} style={{ width: 'auto' }}>
-          <option value={3}>Last 3 months</option>
-          <option value={6}>Last 6 months</option>
-          <option value={12}>Last 12 months</option>
-        </ConsoleSelect>
+        <select value={monthsBack} onChange={e => setMonthsBack(Number(e.target.value))} style={{
+          padding: '9px 14px', borderRadius: 999, border: 'none', background: 'rgba(255,255,255,.18)',
+          color: '#fff', fontWeight: 700, fontSize: 12.5, fontFamily: font, cursor: 'pointer', backdropFilter: 'blur(4px)',
+        }}>
+          <option value={3} style={{ color: '#0f172a' }}>Last 3 months</option>
+          <option value={6} style={{ color: '#0f172a' }}>Last 6 months</option>
+          <option value={12} style={{ color: '#0f172a' }}>Last 12 months</option>
+        </select>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: 10 }}>
         {loading ? [0,1,2].map(i => <SkeletonStatCard key={i} />) : [
-          { label: 'Sessions logged', value: totals.sessions, icon: Icon.calendar, color: C.indigo, bg: C.indigoSoft },
-          { label: 'Students tracked', value: totals.students, icon: Icon.users, color: C.violet, bg: C.violetSoft },
-          { label: 'Overall attendance', value: `${totals.avgPct}%`, icon: Icon.check, color: totals.avgPct>=75?C.green:C.amber, bg: totals.avgPct>=75?C.greenSoft:C.amberSoft },
+          { label: 'Sessions logged', value: totals.sessions, icon: Icon.calendar, color: '#0D9488', bg: '#F0FDFA' },
+          { label: 'Students tracked', value: totals.students, icon: Icon.users, color: '#0369A1', bg: '#F0F9FF' },
+          { label: 'Overall attendance', value: `${totals.avgPct}%`, icon: Icon.check, color: totals.avgPct>=75?'#059669':'#D97706', bg: totals.avgPct>=75?'#ECFDF5':'#FFFBEB' },
         ].map((k,i) => (
-          <ConsoleCard key={i} style={{ padding: '16px 18px' }} padded={false}>
+          <ConsoleCard key={i} style={{ padding: '16px 18px', borderTop: `3px solid ${k.color}` }} padded={false}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMuted }}>{k.label}</div>
               <div style={{ width: 26, height: 26, borderRadius: 7, background: k.bg, color: k.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
