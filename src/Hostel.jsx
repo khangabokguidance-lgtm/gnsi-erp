@@ -9,6 +9,26 @@ import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 
+// ── Live-refresh listener for student record changes ──────────────────────
+// Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
+// CustomEvent 'gnsi:students-updated' whenever a student is archived,
+// restored, marked Dropout/reactivated, or edited. This file has no import
+// relationship to those modules, so the listener is a small self-contained
+// copy — same pattern used across the portal's other modules. Hostel's
+// roll-call roster (activeStudents, see the House-Roll-Call component)
+// already excludes status==='Dropout'; this just means that exclusion
+// takes effect immediately if a student is marked dropout while a
+// housemaster already has roll call open, instead of only on next reload.
+function useStudentsUpdatedListener(callback) {
+  useEffect(() => {
+    const handler = (e) => callback(e.detail)
+    window.addEventListener('gnsi:students-updated', handler)
+    return () => window.removeEventListener('gnsi:students-updated', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callback])
+}
+
+
 // ══════════════════════════════════════════════════════════════
 //  DESIGN TOKENS — Material Design, grounded in the GNSI navy/gold
 //  identity. Material's defining traits are layered elevation
@@ -1170,8 +1190,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // compliance status without leaving this screen or restarting a roll call.
   const [complianceViewHouse, setComplianceViewHouse] = useState(null)
 
+  // Dropout students are excluded the same way Attendance.jsx's Mark tab
+  // excludes them from academic roll call — a status change, not a delete,
+  // so their history stays intact but they stop needing a hostel roll call.
   const activeStudents = useMemo(() =>
-    students.filter(s => s.status !== 'Inactive'),
+    students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout'),
     [students]
   )
 
@@ -3469,7 +3492,7 @@ async function computeHMPerformance(startDateStr, endDateStr) {
     // Fetched so a "No data" house can be distinguished as either
     // "no students assigned here" or "students exist but nothing was
     // logged" — otherwise both look identical in the ranking card.
-    supabase.from('students').select('house, status').neq('status', 'Inactive'),
+    supabase.from('students').select('house, status').neq('status', 'Inactive').neq('status', 'Dropout'),
   ])
 
   // Dedupe by NORMALIZED house name — using the raw string here let
@@ -3841,7 +3864,7 @@ function HMRollCallReportTab() {
       setLoading(true)
       const [{ data: houseRows }, { data: studentRows }, attRows] = await Promise.all([
         supabase.from('houses').select('name'),
-        supabase.from('students').select('house').neq('status', 'Inactive'),
+        supabase.from('students').select('house').neq('status', 'Inactive').neq('status', 'Dropout'),
         fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startStr).lte('date', endStr)),
       ])
       setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
@@ -4439,7 +4462,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 
   const presentCount = attendanceToday.filter(r => r.status === 'Present').length
   const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
-  const unmarkedCount = students.filter(s => s.status !== 'Inactive').length - attendanceToday.length
+  const unmarkedCount = students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout').length - attendanceToday.length
 
   // One-row-per-metric summary, for the dashboard's Generate Report button.
   const snapshotRows = [
@@ -7747,41 +7770,46 @@ function Hostel() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  useEffect(() => {
-    const fetchShared = async () => {
-      setDataLoading(true)
-      const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
-        supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender').order('name'),
-        supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
-        supabase.from('housemasters').select('*')
-          .eq('status', 'Active')
-          .eq('name', (currentUser?.name || '').trim())
-          .maybeSingle(),
-        supabase.from('houses').select('name, color_index'),
-      ])
-      if (e1) console.error('Students fetch error:', e1)
-      if (e2) console.error('Staff fetch error:', e2)
-      if (e3) console.error('Housemaster fetch error:', e3)
-      if (e4) console.error('Houses fetch error:', e4)
-      console.log('Loaded:', s?.length, 'students,', st?.length, 'staff | sample:', s?.[0])
-      setStudents(s || [])
-      setStaffProfiles(st || [])
-      setCurrentHousemaster(hm || null)
+  const fetchShared = useCallback(async () => {
+    setDataLoading(true)
+    const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
+      supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender').order('name'),
+      supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
+      supabase.from('housemasters').select('*')
+        .eq('status', 'Active')
+        .eq('name', (currentUser?.name || '').trim())
+        .maybeSingle(),
+      supabase.from('houses').select('name, color_index'),
+    ])
+    if (e1) console.error('Students fetch error:', e1)
+    if (e2) console.error('Staff fetch error:', e2)
+    if (e3) console.error('Housemaster fetch error:', e3)
+    if (e4) console.error('Houses fetch error:', e4)
+    console.log('Loaded:', s?.length, 'students,', st?.length, 'staff | sample:', s?.[0])
+    setStudents(s || [])
+    setStaffProfiles(st || [])
+    setCurrentHousemaster(hm || null)
 
-      // Load house colors
-      if (houses?.length) {
-        const colorMap = {}
-        const palette = ['#1d4ed8', '#dc2626', '#16a34a', '#a8842f', '#7c3aed', '#0891b2', '#be185d', '#047857']
-        houses.forEach(h => {
-          colorMap[h.name] = palette[Number(h.color_index) % palette.length]
-        })
-        setHouseColorMap(colorMap)
-      }
-
-      setDataLoading(false)
+    // Load house colors
+    if (houses?.length) {
+      const colorMap = {}
+      const palette = ['#1d4ed8', '#dc2626', '#16a34a', '#a8842f', '#7c3aed', '#0891b2', '#be185d', '#047857']
+      houses.forEach(h => {
+        colorMap[h.name] = palette[Number(h.color_index) % palette.length]
+      })
+      setHouseColorMap(colorMap)
     }
-    fetchShared()
+
+    setDataLoading(false)
   }, [currentUser?.name])
+
+  useEffect(() => { fetchShared() }, [fetchShared])
+
+  // Live refresh — if a student is marked Dropout/reactivated, archived,
+  // restored, or moved to a different course while this module is open,
+  // refetch immediately so activeStudents (and every roll-call view built
+  // from it) drops or re-adds them without needing a manual reload.
+  useStudentsUpdatedListener(fetchShared)
 
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
 

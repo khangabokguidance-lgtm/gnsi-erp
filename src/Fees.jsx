@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   fmt, today, gccStr, rcptNo,
   collectFee, deleteLegacyFeeRecord,
@@ -11,6 +11,27 @@ import {
   COURSE_RATES, FLAT_RATES,
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
+
+// ── Live-refresh listener for student record changes ──────────────────────
+// Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
+// CustomEvent 'gnsi:students-updated' whenever a student is archived,
+// restored, marked Dropout/reactivated, or edited. This file has no import
+// relationship to those modules, so the listener is a small self-contained
+// copy — same pattern used across the portal's other modules — rather
+// than a shared import. Fees intentionally does NOT filter dropout
+// students out of loadAll(): a dropout student can still owe money, and
+// silently hiding them from the dues/anomaly views would let outstanding
+// balances go untracked. Instead this just keeps `students` fresh so the
+// "DROPOUT" badge (see StudentLedgerTab) and any status-based filtering
+// reflect the change immediately.
+function useStudentsUpdatedListener(callback) {
+  useEffect(() => {
+    const handler = (e) => callback(e.detail)
+    window.addEventListener('gnsi:students-updated', handler)
+    return () => window.removeEventListener('gnsi:students-updated', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callback])
+}
 
 // ── Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 //    1000 rows by default. Any table that can grow past that (fees,
@@ -379,9 +400,10 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
 
 // ── Student Ledger Tab ────────────────────────────────────────────────────────
 function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,isAdmin,currentUser,onRefresh,onCollect}){
-  const [search,setSearch]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[selected,setSelected]=useState(null)
+  const [search,setSearch]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[dropoutOnly,setDropoutOnly]=useState(false),[selected,setSelected]=useState(null)
   const n=v=>Number(v||0).toLocaleString('en-IN')
-  const filtered=useMemo(()=>{const q=search.toLowerCase();return liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return[s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))})},[liveRows,search,courseF,hostelF,statusF])
+  const filtered=useMemo(()=>{const q=search.toLowerCase();return liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;if(dropoutOnly&&s.status!=='Dropout')return false;return[s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))})},[liveRows,search,courseF,hostelF,statusF,dropoutOnly])
+  const dropoutDueCount=useMemo(()=>liveRows.filter(s=>s.status==='Dropout'&&s.grandTotal===0).length,[liveRows])
   const inp2={width:'100%',padding:'8px 12px',borderRadius:7,border:'1px solid #d1d5db',fontSize:13,outline:'none',background:'white'}
   return(
     <div style={{display:'flex',gap:20,alignItems:'flex-start',flexWrap:'wrap'}}>
@@ -395,6 +417,9 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
               <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Hostel</option>{['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}</select>
               <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Pending</option></select>
             </div>
+            <button onClick={()=>setDropoutOnly(v=>!v)} style={{marginTop:8,width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'6px 8px',borderRadius:7,border:dropoutOnly?'1px solid #fca5a5':'1px solid #e2e8f0',background:dropoutOnly?'#fee2e2':'white',color:dropoutOnly?'#991b1b':'#64748b',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+              🚪 Dropout only{dropoutDueCount>0?` · ${dropoutDueCount} owe nothing paid`:''}
+            </button>
             <div style={{fontSize:11,color:'#94a3b8',marginTop:6}}>{filtered.length} of {students.length} students</div>
           </div>
           <div style={{maxHeight:520,overflowY:'auto'}}>
@@ -402,7 +427,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             {filtered.map(s=>{const isSel=selected?.id===s.id,sc=s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':'#dc2626',sb=s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':'#fee2e2';return(
               <div key={s.id} onClick={()=>setSelected(s)} style={{padding:'11px 14px',cursor:'pointer',borderBottom:'1px solid #f8fafc',background:isSel?'#eff6ff':'white',borderLeft:isSel?'3px solid #1e3a5f':'3px solid transparent'}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#f8fafc'}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='white'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#1e293b',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#94a3b8',marginTop:1}}>{s.hostel_type||'—'}</div></div>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#1e293b',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}{s.status==='Dropout'&&<span style={{fontSize:8,fontWeight:800,color:'#991b1b',background:'#fee2e2',padding:'1px 4px',borderRadius:2,border:'1px solid #fca5a5'}}>DROPOUT</span>}</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#94a3b8',marginTop:1}}>{s.hostel_type||'—'}</div></div>
                   <div style={{textAlign:'right',flexShrink:0}}><div style={{fontSize:13,fontWeight:900,color:s.grandTotal>0?'#16a34a':'#94a3b8'}}>{s.grandTotal>0?`₹${n(s.grandTotal)}`:'₹0'}</div><span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,background:sb,color:sc,marginTop:3,display:'inline-block'}}>{s.liveStatus}</span></div>
                 </div>
               </div>
@@ -1818,6 +1843,11 @@ export default function Fees() {
   }
 
   useEffect(() => { loadAll() }, [])
+
+  // Live refresh — a student's status (e.g. Dropout/reactivate), course,
+  // or archive state can change while this dashboard is open; refetch
+  // students so the DROPOUT badge and any status filtering stay current.
+  useStudentsUpdatedListener(useCallback(() => { loadAll() }, []))
 
   const getLiveFees = s => {
     const gcc = gccStr(s.gcc_no)
