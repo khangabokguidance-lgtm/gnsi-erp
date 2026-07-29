@@ -49,7 +49,11 @@ const DEFAULT_COURSE_SUBJECTS = {
   UMEED:     ["Grammar & Vocabulary", "Mental", "Mathematics", "Meitei Mayek"],
   CHAMPION:  ["Vocabulary", "General Knowledge", "Mathematics-II", "Mathematics - I", "Reasoning", "Grammar", "Science"],
   LEADER:    ["Vocabulary", "Grammar", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
-  "Combined Navodaya Course (Sainik Appearing Group)": ["English Grammar", "Vocabulary", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
+  // Corrected to match this batch's actual exam papers (Mathematics-I,
+  // Mathematics-II, Mental Ability, Passage, EVS — confirmed from real
+  // result sheets) rather than the Sainik-style subject set this previously
+  // held, which never matched what was actually being marked for this batch.
+  "Combined Navodaya Course (Sainik Appearing Group)": ["Mathematics -I", "Mathematics - II", "Mental Ability", "Passage", "EVS"],
 };
 
 // ─── Track (real exam track) → Batches it contains ───────────────────────────
@@ -84,7 +88,8 @@ const COURSE_MAX_MARKS = {
   UMEED:     { "Grammar & Vocabulary": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   CHAMPION:  { "Vocabulary": 10, "General Knowledge": 10, "Mathematics-II": 20, "Mathematics - I": 20, "Reasoning": 20, "Grammar": 10, "Science": 10 },
   LEADER:    { "Vocabulary": 10, "Grammar": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
-  "Combined Navodaya Course (Sainik Appearing Group)": { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
+  // Matches actual result sheets: each subject out of 20, totaling 100.
+  "Combined Navodaya Course (Sainik Appearing Group)": { "Mathematics -I": 20, "Mathematics - II": 20, "Mental Ability": 20, "Passage": 20, "EVS": 20 },
 };
 
 function getCourseMax(course) {
@@ -6779,7 +6784,25 @@ export default function Exams({ currentUser, perms }) {
   // `batch`, not `class_name`. This normalizer maps batch → class_name on every
   // student record so the rest of this file (which reads s.class_name everywhere)
   // always sees the current, correct batch — without needing to touch 50+ call sites.
-  const normalizeStudent = (s) => ({ ...s, class_name: s.batch || s.class_name || "" });
+  //
+  // Combined Course fix: students on the "Combined Course" track have no real
+  // batch split, so Students.jsx/Attendance.jsx store their `batch` as the
+  // placeholder "—" (an em-dash). But every exam function here (ReportCards,
+  // BulkReports, AdmitCardsTab, MarkEntry, ...) filters students by comparing
+  // class_name against a key in `courseSubjects`, and the only Combined Course
+  // key that exists there is the full descriptive string
+  // "Combined Navodaya Course (Sainik Appearing Group)" — which "—" never
+  // equals. That mismatch is exactly why Combined Course had no student list
+  // anywhere in Exams: every course/batch filter silently returned zero
+  // students for it. Translating the placeholder here, in the one shared
+  // normalizer, fixes every exam function at once without touching each one.
+  const COMBINED_COURSE_BATCH_LABEL = "Combined Navodaya Course (Sainik Appearing Group)";
+  const normalizeStudent = (s) => {
+    const batch = (s.course === "Combined Course" && (!s.batch || s.batch === "—"))
+      ? COMBINED_COURSE_BATCH_LABEL
+      : (s.batch || s.class_name || "");
+    return { ...s, class_name: batch };
+  };
 
   useEffect(() => {
     ensureLibs();
