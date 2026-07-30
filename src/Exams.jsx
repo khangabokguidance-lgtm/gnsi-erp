@@ -3248,7 +3248,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
 
   const statsPerCourse = courses.map(c => ({
     course: c,
-    count: students.filter(s => (s.class_name || "").toUpperCase() === c).length,
+    count: students.filter(s => (s.class_name || "").trim().toUpperCase() === c.trim().toUpperCase()).length,
     batches: batchesForTrack(trackForBatch(c)),
   }));
 
@@ -5608,6 +5608,18 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
     fetchSchedule(); onScheduleChange?.();
   };
 
+  // Edits Time / Shift / Room (and, less commonly, marks) on an EXISTING
+  // schedule entry — needed because results are sometimes imported before
+  // these are known (e.g. the Result Sheet importer lets Time/Room stay
+  // blank), and the only prior way to fix that was delete + recreate, which
+  // loses the schedule entry's exam_id and would orphan any marks already
+  // recorded against it. This updates in place instead.
+  const handleUpdateRow = async (id, patch) => {
+    const { error } = await supabase.from("exam_schedule").update(patch).eq("id", id);
+    if (error) { alert(error.message); return; }
+    fetchSchedule(); onScheduleChange?.();
+  };
+
   const filtered = schedule.filter(s => {
     const matchCourse = filterCourse === "ALL" || s.course === filterCourse;
     const matchType = filterExamType === "ALL" || s.exam_type_id === filterExamType;
@@ -5683,7 +5695,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
           <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
             filterCourse={filterCourse} setFilterCourse={setFilterCourse}
             filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-            onDelete={handleDelete} selectable={false} />
+            onDelete={handleDelete} onUpdate={handleUpdateRow} selectable={false} />
         </div>
       )}
 
@@ -5774,7 +5786,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
           <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
             filterCourse={filterCourse} setFilterCourse={setFilterCourse}
             filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-            onDelete={handleDelete} selectable={false} />
+            onDelete={handleDelete} onUpdate={handleUpdateRow} selectable={false} />
         </div>
       )}
 
@@ -5868,7 +5880,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
           <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
             filterCourse={filterCourse} setFilterCourse={setFilterCourse}
             filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-            onDelete={handleDelete} selectable={true} selected={dupIds}
+            onDelete={handleDelete} onUpdate={handleUpdateRow} selectable={true} selected={dupIds}
             onToggle={id => setDupIds(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; })}
             onSelectAll={() => setDupIds(new Set(filtered.map(s => s.id)))}
             onDeselectAll={() => setDupIds(new Set())} />
@@ -5930,14 +5942,31 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
         <ScheduleTable schedule={filtered} examTypes={examTypes} courses={courses}
           filterCourse={filterCourse} setFilterCourse={setFilterCourse}
           filterExamType={filterExamType} setFilterExamType={setFilterExamType}
-          onDelete={handleDelete} selectable={false} />
+          onDelete={handleDelete} onUpdate={handleUpdateRow} selectable={false} />
       )}
     </div>
   );
 }
 
 // ─── Shared Schedule Table ────────────────────────────────────────────────────
-function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCourse, filterExamType, setFilterExamType, onDelete, selectable, selected, onToggle, onSelectAll, onDeselectAll }) {
+function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCourse, filterExamType, setFilterExamType, onDelete, onUpdate, selectable, selected, onToggle, onSelectAll, onDeselectAll }) {
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const startEdit = (s) => {
+    setEditingId(s.id);
+    setEditForm({ time: s.time || "", shift: s.shift || "", room: s.room || "" });
+  };
+  const cancelEdit = () => { setEditingId(null); setEditForm({}); };
+  const saveEdit = async (id) => {
+    setSavingEdit(true);
+    await onUpdate?.(id, { time: editForm.time || null, shift: editForm.shift || null, room: editForm.room || null });
+    setSavingEdit(false);
+    setEditingId(null);
+    setEditForm({});
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -5968,7 +5997,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
         <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 520 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
               {selectable && <th style={{ padding: "10px 12px", width: 36 }}></th>}
               {["Date","Course","Exam Type","Subject","Shift","Time","Marks","Room",""].map(h => (
@@ -5976,20 +6005,46 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
               ))}
             </tr></thead>
             <tbody>
-              {schedule.map((s, i) => (
+              {schedule.map((s, i) => {
+                const missingForAdmitCard = !s.time || !s.room;
+                return (
                 <tr key={s.id} style={{ background: selectable && selected && selected.has(s.id) ? "#EFF6FF" : i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
                   {selectable && <td style={{ padding: "9px 12px", textAlign: "center" }}><input type="checkbox" checked={selected && selected.has(s.id) || false} onChange={() => onToggle(s.id)} /></td>}
                   <td style={{ padding: "9px 10px", fontWeight: 600 }}>{s.exam_date}</td>
                   <td style={{ padding: "9px 10px" }}><span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 7px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.course || "—"}</span></td>
                   <td style={{ padding: "9px 10px" }}>{examTypes.find(e => e.id === s.exam_type_id)?.name || s.exam_type_id}</td>
                   <td style={{ padding: "9px 10px" }}>{s.subject}</td>
-                  <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.shift || "Morning"}</td>
-                  <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.time || "--"}</td>
-                  <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.total_marks}</td>
-                  <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.room || "--"}</td>
-                  <td style={{ padding: "9px 10px" }}><button onClick={() => onDelete(s.id)} style={{ ...css.btn, padding: "4px 8px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 11 }}>✕</button></td>
+                  {editingId === s.id ? (
+                    <>
+                      <td style={{ padding: "6px 8px" }}><input value={editForm.shift} onChange={e => setEditForm(p => ({ ...p, shift: e.target.value }))} placeholder="Morning" style={{ ...css.input, width: 90, fontSize: 12 }} /></td>
+                      <td style={{ padding: "6px 8px" }}><input value={editForm.time} onChange={e => setEditForm(p => ({ ...p, time: e.target.value }))} placeholder="09:00 AM" style={{ ...css.input, width: 90, fontSize: 12 }} /></td>
+                      <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.total_marks}</td>
+                      <td style={{ padding: "6px 8px" }}><input value={editForm.room} onChange={e => setEditForm(p => ({ ...p, room: e.target.value }))} placeholder="Hall 2" style={{ ...css.input, width: 90, fontSize: 12 }} /></td>
+                      <td style={{ padding: "9px 10px" }}>
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button onClick={() => saveEdit(s.id)} disabled={savingEdit} style={{ ...css.btn, padding: "4px 10px", background: "#1a3c2e", color: "white", fontSize: 11 }}>{savingEdit ? "…" : "✓"}</button>
+                          <button onClick={cancelEdit} style={{ ...css.btn, padding: "4px 8px", background: "#F3F4F6", color: "#374151", fontSize: 11 }}>✕</button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.shift || "Morning"}</td>
+                      <td style={{ padding: "9px 10px", color: missingForAdmitCard ? "#DC2626" : "#64748b", fontWeight: missingForAdmitCard ? 700 : 400 }}>{s.time || "-- (not set)"}</td>
+                      <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.total_marks}</td>
+                      <td style={{ padding: "9px 10px", color: missingForAdmitCard ? "#DC2626" : "#64748b", fontWeight: missingForAdmitCard ? 700 : 400 }}>{s.room || "-- (not set)"}</td>
+                      <td style={{ padding: "9px 10px" }}>
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button onClick={() => startEdit(s)} title={missingForAdmitCard ? "Add time/room for Admit Cards" : "Edit time/shift/room"}
+                            style={{ ...css.btn, padding: "4px 8px", background: missingForAdmitCard ? "#FFFBEB" : "#EFF6FF", color: missingForAdmitCard ? "#92400E" : "#1D4ED8", border: `1px solid ${missingForAdmitCard ? "#FDE68A" : "#BFDBFE"}`, fontSize: 11 }}>✏️</button>
+                          <button onClick={() => onDelete(s.id)} style={{ ...css.btn, padding: "4px 8px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 11 }}>✕</button>
+                        </div>
+                      </td>
+                    </>
+                  )}
                 </tr>
-              ))}
+                );
+              })}
               {!schedule.length && <tr><td colSpan={selectable ? 10 : 9} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No schedule entries yet.</td></tr>}
             </tbody>
           </table>
