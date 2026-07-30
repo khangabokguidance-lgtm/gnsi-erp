@@ -5399,7 +5399,7 @@ function RenameCourseModal({ courseSubjects, oldName, onClose, onDone, onCourseS
       return;
     }
 
-    onCourseSubjectsUpdate(updatedCourseSubjects);
+    onCourseSubjectsUpdate?.(updatedCourseSubjects);
     onDone(trimmed);
   };
 
@@ -7655,7 +7655,7 @@ const COURSE_TARGET_TOTAL = {
   // everything else defaults to 100
 };
 
-function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, prefillName }) {
+function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, prefillName, onCourseSubjectsUpdate }) {
   const isMobile = useMobile();
   const allCourses = Object.keys(courseSubjects);
   const isEdit = !!editingConfig;
@@ -7711,6 +7711,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
   const [markInput, setMarkInput] = useState("");
   const markRef = useRef("");
   const [editingSub, setEditingSub] = useState(null);
+  const [renamingCourse, setRenamingCourse] = useState(null); // course currently being renamed (global, cascading)
 
   // Step 4
   const [sessions, setSessions] = useState(
@@ -7789,6 +7790,22 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     setCourseData(prev => {
       const existing = prev[course] || { subjects: [], marks: {} };
       return { ...prev, [course]: { ...existing, marks: { ...existing.marks, [sub]: Number(val) } } };
+    });
+  };
+
+  // Renames a subject in place — keeps its position in the list and carries
+  // its mark value across to the new name (a plain remove+add would lose the
+  // mark and reorder it to the bottom of the list).
+  const renameSubject = (course, oldSub, newSub) => {
+    const trimmed = newSub.trim();
+    if (!trimmed || trimmed === oldSub) return;
+    setCourseData(prev => {
+      const existing = prev[course] || { subjects: [], marks: {} };
+      if (existing.subjects.includes(trimmed)) return prev; // name collision — leave unchanged
+      const subjects = existing.subjects.map(s => s === oldSub ? trimmed : s);
+      const marks = { ...existing.marks };
+      if (oldSub in marks) { marks[trimmed] = marks[oldSub]; delete marks[oldSub]; }
+      return { ...prev, [course]: { ...existing, subjects, marks } };
     });
   };
 
@@ -7981,11 +7998,17 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
           const subCount = courseData[c]?.subjects?.length || courseSubjects[c]?.length || 0;
           return (
             <div key={c} onClick={() => toggleCourse(c)}
-              style={{ padding:"14px 16px", borderRadius:12, border: sel?"2px solid #1a3c2e":"1.5px solid #E5E7EB", background: sel?"#E1F5EE":"#F9FAFB", cursor:"pointer", transition:"all .15s" }}>
+              style={{ padding:"14px 16px", borderRadius:12, border: sel?"2px solid #1a3c2e":"1.5px solid #E5E7EB", background: sel?"#E1F5EE":"#F9FAFB", cursor:"pointer", transition:"all .15s", position:"relative" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                 <div style={{ fontWeight:700, fontSize:14, color: sel?"#0F6E56":"#374151" }}>{c}</div>
-                <div style={{ width:20, height:20, borderRadius:"50%", background: sel?"#0F6E56":"#E5E7EB", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"white", fontWeight:700 }}>
-                  {sel ? "✓" : ""}
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <button onClick={e => { e.stopPropagation(); setRenamingCourse(c); }} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
+                    style={{ ...css.btn, padding:"2px 6px", fontSize:11, background: sel?"#0F6E56":"#E5E7EB", color: sel?"white":"#6B7280", border:"none" }}>
+                    ✏️
+                  </button>
+                  <div style={{ width:20, height:20, borderRadius:"50%", background: sel?"#0F6E56":"#E5E7EB", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"white", fontWeight:700, flexShrink:0 }}>
+                    {sel ? "✓" : ""}
+                  </div>
                 </div>
               </div>
               <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{subCount} subjects</div>
@@ -8014,19 +8037,30 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
               const cd = courseData[c] || { subjects:[], marks:{} };
               const ok = cd.subjects.length > 0;
               return (
-                <button key={c} onClick={() => setActiveCourse(c)}
-                  style={{ ...css.btn, padding:"8px 12px", textAlign:"left", fontSize:12,
-                    background: activeCourse===c?"#1a3c2e":"#F9FAFB",
-                    color: activeCourse===c?"white":"#374151",
-                    border: activeCourse===c?"none": ok?"1px solid #BBF7D0":"1px solid #E5E7EB",
-                    display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
-                  <span>{c}</span>
-                  <span style={{ fontSize:10, opacity:0.75 }}>{ok ? `${cd.subjects.length}s` : "⚠️"}</span>
-                </button>
+                <div key={c} style={{ display:"flex", alignItems:"stretch", gap:0 }}>
+                  <button onClick={() => setActiveCourse(c)}
+                    style={{ ...css.btn, padding:"8px 12px", textAlign:"left", fontSize:12, flex:1,
+                      background: activeCourse===c?"#1a3c2e":"#F9FAFB",
+                      color: activeCourse===c?"white":"#374151",
+                      border: activeCourse===c?"none": ok?"1px solid #BBF7D0":"1px solid #E5E7EB",
+                      borderRadius: "8px 0 0 8px",
+                      display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+                    <span>{c}</span>
+                    <span style={{ fontSize:10, opacity:0.75 }}>{ok ? `${cd.subjects.length}s` : "⚠️"}</span>
+                  </button>
+                  <button onClick={() => setRenamingCourse(c)} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
+                    style={{ ...css.btn, padding:"8px 8px", fontSize:11, borderRadius:"0 8px 8px 0",
+                      background: activeCourse===c?"#14532d":"#E5E7EB",
+                      color: activeCourse===c?"white":"#6B7280",
+                      border: activeCourse===c?"none":"1px solid #E5E7EB", borderLeft:"none" }}>
+                    ✏️
+                  </button>
+                </div>
               );
             })}
           </div>
         </div>
+
 
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
@@ -8064,7 +8098,20 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
             {d.subjects.map((sub, i) => (
               <div key={sub} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 12px", background: i%2?"#F9FAFB":"white", borderRadius:8, border:"1px solid #F1F5F9" }}>
                 <div style={{ fontSize:10, color:"#CBD5E1", fontWeight:700, width:18, flexShrink:0 }}>{i+1}</div>
-                <div style={{ flex:1, fontSize:13, fontWeight:600, color:"#1e293b" }}>{sub}</div>
+                {editingSub === `name-${activeCourse}-${sub}` ? (
+                  <input type="text" autoFocus defaultValue={sub}
+                    style={{ flex:1, fontSize:13, fontWeight:600, color:"#1e293b", padding:"4px 8px", borderRadius:6, border:"1.5px solid #6366f1", outline:"none" }}
+                    onBlur={e => { renameSubject(activeCourse, sub, e.target.value); setEditingSub(null); }}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { renameSubject(activeCourse, sub, e.target.value); setEditingSub(null); }
+                      if (e.key === "Escape") setEditingSub(null);
+                    }} />
+                ) : (
+                  <div onClick={() => setEditingSub(`name-${activeCourse}-${sub}`)} title="Click to edit subject name"
+                    style={{ flex:1, fontSize:13, fontWeight:600, color:"#1e293b", cursor:"pointer", padding:"4px 8px", borderRadius:6 }}>
+                    {sub}
+                  </div>
+                )}
                 {editingSub === `${activeCourse}-${sub}` ? (
                   <input type="number" autoFocus defaultValue={d.marks[sub]||""}
                     style={{ ...css.input, width:70, fontSize:13, padding:"4px 8px" }}
@@ -8210,6 +8257,40 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
         {stepFns[step - 1]()}
         <NavButtons />
       </div>
+
+      {renamingCourse && (
+        <RenameCourseModal
+          courseSubjects={courseSubjects}
+          oldName={renamingCourse}
+          onClose={() => setRenamingCourse(null)}
+          onDone={(newName) => {
+            // Keep this in-progress wizard consistent with the global rename:
+            // swap the key in local courseData/selectedCourses/activeCourse
+            // so the rest of the wizard doesn't silently point at a name
+            // that no longer exists anywhere else in the app. Rendered here,
+            // once, at the top level — Step2 and Step3 both trigger renames
+            // via the same renamingCourse state, but only one step is
+            // mounted at a time, so the modal itself must live outside them.
+            setCourseData(prev => {
+              if (!(renamingCourse in prev)) return prev;
+              const next = { ...prev };
+              next[newName] = next[renamingCourse];
+              delete next[renamingCourse];
+              return next;
+            });
+            setSelectedCourses(prev => {
+              if (!prev.has(renamingCourse)) return prev;
+              const next = new Set(prev);
+              next.delete(renamingCourse);
+              next.add(newName);
+              return next;
+            });
+            if (activeCourse === renamingCourse) setActiveCourse(newName);
+            setRenamingCourse(null);
+          }}
+          onCourseSubjectsUpdate={onCourseSubjectsUpdate}
+        />
+      )}
 
       <div style={{ padding:"0 28px 18px", textAlign:"center" }}>
         <button onClick={onCancel} style={{ ...css.btn, background:"none", color:"#9CA3AF", fontSize:12, border:"none" }}>✕ Cancel and go back</button>
@@ -8520,6 +8601,7 @@ setLoading(false);
       onCancel={() => { setShowBuilder(false); setEditingConfig(null); setBuilderPrefillName(""); }}
       editingConfig={editingConfig}
       prefillName={builderPrefillName}
+      onCourseSubjectsUpdate={onUpdate}
     />
   );
 
