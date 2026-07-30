@@ -821,6 +821,9 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [lastImportSummary, setLastImportSummary] = useState(null); // persists after the import panel closes, so the save is never invisible
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
+  const [isDirty, setIsDirty] = useState(false); // true once any mark changes since last successful save
+  const [pendingCourseChange, setPendingCourseChange] = useState(null); // { type: 'course'|'examType'|'examDate', value } — held until confirmed
+  const [bulkFillValues, setBulkFillValues] = useState({}); // { [subject]: string } — the bulk-fill input per subject column
 
   // Loads the real exam_schedule rows for (course, examType), then loads any
   // exam_marks already saved against those exact exam_ids. This allows subjects
@@ -881,15 +884,39 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       const sub = examIdToSubject[r.exam_id];
       if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
     });
-    setMarks(map); setLoading(false);
+    setMarks(map); setLoading(false); setIsDirty(false); setAbsentSet(new Set());
   }, [students]);
 
   useEffect(() => { loadScheduleAndMarks(examType, course); }, [examType, course, loadScheduleAndMarks]);
+
+  // Warn on tab close/refresh if there are unsaved mark changes — standard
+  // browser-level protection, same pattern used for any form with real data
+  // entry risk. This can't intercept in-app navigation (switching tabs within
+  // this app), which is handled separately by confirmSwitch() below.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  // Guards against silently discarding unsaved marks when switching course,
+  // exam type, or exam date — each of these triggers a fresh load that would
+  // overwrite `marks` with whatever's already in the DB, losing anything
+  // entered but not yet saved. Confirms first if dirty, otherwise switches
+  // immediately.
+  const confirmSwitch = (setter, value) => {
+    if (isDirty) {
+      if (!window.confirm("You have unsaved marks. Switching now will discard them. Continue anyway?")) return;
+    }
+    setter(value);
+  };
 
   const handleMark = (sid, sub, val) => {
     const num = val === "" ? "" : Math.min(Number(val), getSubMax(sub));
     setMarks(p => ({ ...p, [`${sid}-${sub}`]: num }));
     setSaved(false);
+    setIsDirty(true);
   };
   const toggleAbsent = (sid, sub) => {
     const key = `${sid}-${sub}`;
@@ -899,6 +926,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
       else { next.add(key); setMarks(p => ({ ...p, [key]: 0 })); setSaved(false); }
       return next;
     });
+    setIsDirty(true);
   };
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const calcPctLocal = (total) => courseMax ? (total / courseMax) * 100 : 0;
@@ -952,6 +980,7 @@ for (const st of courseStudents) {
       if (!rows.length) {
         setSaving(false);
         setSaved(true);
+        setIsDirty(false);
         setTimeout(() => setSaved(false), 3000);
         return;
       }
@@ -974,6 +1003,7 @@ for (const st of courseStudents) {
       
       setSaving(false); 
       setSaved(true);
+      setIsDirty(false);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       console.error("Save error:", err);
@@ -1256,6 +1286,77 @@ for (const st of courseStudents) {
   };
 
   const filtered = courseStudents.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()));
+
+  // Progress tracker: a student counts as "complete" once every scheduled
+  // subject has a value entered (including 0 for a marked-absent subject) —
+  // partial entries (some subjects filled, others blank) count as incomplete
+  // so a clerk can see at a glance who still needs attention.
+  const isStudentComplete = (sid) => subjects.length > 0 && subjects.every(sub => {
+    const v = marks[`${sid}-${sub}`];
+    return v !== "" && v !== undefined && v !== null;
+  });
+  const completeCount = courseStudents.filter(s => isStudentComplete(s.id)).length;
+  const progressPct = courseStudents.length ? Math.round((completeCount / courseStudents.length) * 100) : 0;
+
+  // Keyboard navigation across the mark-entry grid, Excel-style: arrow keys
+  // move between cells, Enter moves down a row (staying in the same subject
+  // column — the natural flow when entering one subject for everyone),
+  // Tab/Shift+Tab move across subjects within the same student row (native
+  // browser behavior, no override needed for those two). Refs are keyed by
+  // "rowIndex-colIndex" against the CURRENTLY FILTERED list, since that's
+  // what's actually rendered and navigable at any given moment.
+  const cellRefs = useRef({});
+  const setCellRef = (row, col) => (el) => { cellRefs.current[`${row}-${col}`] = el; };
+  const focusCell = (row, col) => {
+    const el = cellRefs.current[`${row}-${col}`];
+    if (el) { el.focus(); el.select?.(); }
+  };
+  const handleCellKeyDown = (e, row, col) => {
+    const maxRow = filtered.length - 1;
+    const maxCol = subjects.length - 1;
+    if (e.key === "ArrowDown" || (e.key === "Enter" && !e.shiftKey)) {
+      e.preventDefault();
+      if (row < maxRow) focusCell(row + 1, col);
+    } else if (e.key === "ArrowUp" || (e.key === "Enter" && e.shiftKey)) {
+      e.preventDefault();
+      if (row > 0) focusCell(row - 1, col);
+    } else if (e.key === "ArrowRight") {
+      const input = e.target;
+      // Only hijack ArrowRight when the cursor is already at the end of the
+      // field's text — otherwise this would block normal cursor movement
+      // while editing a multi-digit number.
+      if (input.selectionStart === String(input.value).length && col < maxCol) {
+        e.preventDefault();
+        focusCell(row, col + 1);
+      }
+    } else if (e.key === "ArrowLeft") {
+      const input = e.target;
+      if (input.selectionStart === 0 && col > 0) {
+        e.preventDefault();
+        focusCell(row, col - 1);
+      }
+    }
+  };
+
+  // Bulk-fill: sets one value across every subject cell in a column, for all
+  // currently-visible (filtered) students at once — e.g. giving everyone 0 for
+  // a subject that was cancelled that day, or a flat baseline before manual
+  // adjustments. Only touches students in the current filtered/search view,
+  // so a search can scope a bulk-fill to a subset if needed.
+  const applyBulkFill = (sub) => {
+    const raw = bulkFillValues[sub];
+    if (raw === undefined || raw === "") return;
+    const val = Math.min(Number(raw), getSubMax(sub));
+    if (isNaN(val)) return;
+    if (!window.confirm(`Set "${sub}" to ${val} for all ${filtered.length} visible student(s)? This overwrites any existing value in this column.`)) return;
+    setMarks(prev => {
+      const next = { ...prev };
+      filtered.forEach(st => { next[`${st.id}-${sub}`] = val; });
+      return next;
+    });
+    setIsDirty(true);
+    setSaved(false);
+  };
 
   // Mobile: compact controls stacked
   const controlsStyle = isMobile
@@ -1741,7 +1842,7 @@ for (const st of courseStudents) {
 
       {/* Course picker */}
       <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
-        <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); }} />
+        <CoursePicker courses={courses} value={course} onChange={c => confirmSwitch(setCourse, c)} />
         {subjects.length > 0 && (
           <div style={{ marginTop: 10, display: "flex", gap: 5, flexWrap: "wrap" }}>
             {subjects.map(s => (
@@ -1761,13 +1862,13 @@ for (const st of courseStudents) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Exam Type</label>
-                <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input }}>
+                <select value={examType} onChange={e => confirmSwitch(setExamType, e.target.value)} style={{ ...css.input }}>
                   {examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Date</label>
-                <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} style={css.input} />
+                <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDate, e.target.value)} style={css.input} />
               </div>
             </div>
             <input placeholder="🔍 Search student…" value={search} onChange={e => setSearch(e.target.value)} style={css.input} />
@@ -1784,11 +1885,11 @@ for (const st of courseStudents) {
           <>
             <div>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
-              <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: 180 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
+              <select value={examType} onChange={e => confirmSwitch(setExamType, e.target.value)} style={{ ...css.input, width: 180 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
             </div>
             <div>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Date</label>
-              <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: 160 }} />
+              <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDate, e.target.value)} style={{ ...css.input, width: 160 }} />
             </div>
             <div style={{ flex: 1, minWidth: 160 }}>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Search Student</label>
@@ -1808,6 +1909,25 @@ for (const st of courseStudents) {
       {scheduleError && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>📋 {scheduleError}</div>}
       {importMode && <ImportPreview />}
 
+      {!loading && subjects.length > 0 && courseStudents.length > 0 && (
+        <div style={{ background: "white", borderRadius: 10, padding: "10px 16px", marginBottom: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#6B7280", marginBottom: 4 }}>
+              <span>Entry progress</span>
+              <span style={{ fontWeight: 700, color: progressPct === 100 ? "#0F6E56" : "#374151" }}>{completeCount} / {courseStudents.length} students ({progressPct}%)</span>
+            </div>
+            <div style={{ height: 7, background: "#F1F5F9", borderRadius: 999, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${progressPct}%`, background: progressPct === 100 ? "#16A34A" : "#1a3c2e", borderRadius: 999, transition: "width .3s" }} />
+            </div>
+          </div>
+          {isDirty && (
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: "#B45309", background: "#FFFBEB", border: "1px solid #FDE68A", padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
+              ● Unsaved changes
+            </span>
+          )}
+        </div>
+      )}
+
       {loading ? <Spinner /> : (
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 500 : "auto" }}>
@@ -1823,6 +1943,25 @@ for (const st of courseStudents) {
                 <th style={{ padding: "10px 8px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 11 }}>%</th>
                 <th style={{ padding: "10px 8px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 11 }}>Grd</th>
               </tr>
+              {!isMobile && subjects.length > 0 && (
+                <tr style={{ background: "#F0F4F2" }}>
+                  <th style={{ padding: "6px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#6B7280", position: "sticky", left: 0, background: "#F0F4F2", zIndex: 2 }}>⚡ Bulk fill</th>
+                  {subjects.map(sub => (
+                    <th key={sub} style={{ padding: "4px 3px" }}>
+                      <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
+                        <input type="number" min="0" max={getSubMax(sub)} placeholder="all"
+                          value={bulkFillValues[sub] ?? ""}
+                          onChange={e => setBulkFillValues(p => ({ ...p, [sub]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === "Enter") applyBulkFill(sub); }}
+                          style={{ width: 34, padding: "3px 2px", borderRadius: 5, border: "1px solid #D1D5DB", textAlign: "center", fontSize: 11 }} />
+                        <button onClick={() => applyBulkFill(sub)} title={`Fill ${sub} for all visible students`}
+                          style={{ ...css.btn, padding: "2px 5px", fontSize: 10, background: "#1a3c2e", color: "white" }}>✓</button>
+                      </div>
+                    </th>
+                  ))}
+                  <th colSpan={3}></th>
+                </tr>
+              )}
             </thead>
             <tbody>
               {filtered.map((st, i) => {
@@ -1835,18 +1974,24 @@ for (const st of courseStudents) {
                       <div style={{ fontWeight: 600, color: "#1e293b", fontSize: isMobile ? 11 : 13, whiteSpace: "nowrap" }}>{st.name}</div>
                       <div style={{ fontSize: 10, color: "#9CA3AF" }}>{st.class_name} · {st.gcc_no}</div>
                     </td>
-                    {subjects.map(sub => (
+                    {subjects.map((sub, colIdx) => {
+                      const val = marks[`${st.id}-${sub}`];
+                      const overMax = val !== "" && val !== undefined && Number(val) > getSubMax(sub);
+                      return (
                       <td key={sub} style={{ padding: "5px 3px", textAlign: "center" }}>
                         <input type="number" min="0" max={getSubMax(sub)} placeholder="--"
-                          value={marks[`${st.id}-${sub}`] ?? ""}
+                          ref={setCellRef(i, colIdx)}
+                          value={val ?? ""}
                           onChange={e => handleMark(st.id, sub, e.target.value)}
-                          style={{ width: isMobile ? 40 : 52, padding: "4px 2px", borderRadius: 6, border: "1px solid #D1D5DB", textAlign: "center", fontSize: isMobile ? 12 : 13, outline: "none" }} />
+                          onKeyDown={e => handleCellKeyDown(e, i, colIdx)}
+                          style={{ width: isMobile ? 40 : 52, padding: "4px 2px", borderRadius: 6, border: overMax ? "1.5px solid #DC2626" : "1px solid #D1D5DB", textAlign: "center", fontSize: isMobile ? 12 : 13, outline: "none", background: overMax ? "#FEF2F2" : "white" }} />
                         <button onClick={() => toggleAbsent(st.id, sub)}
                           style={{ display: "block", margin: "2px auto 0", fontSize: 8, padding: "1px 4px", borderRadius: 3, border: "1px solid #FECACA", background: absentSet.has(`${st.id}-${sub}`) ? "#FCA5A5" : "#F9FAFB", color: absentSet.has(`${st.id}-${sub}`) ? "#DC2626" : "#9CA3AF", cursor: "pointer", fontWeight: 700 }}>
                           {absentSet.has(`${st.id}-${sub}`) ? "ABS" : "A"}
                         </button>
                       </td>
-                    ))}
+                      );
+                    })}
                     <td style={{ padding: "6px 6px", textAlign: "center", fontWeight: 800, fontSize: isMobile ? 12 : 13 }}>{total}</td>
                     <td style={{ padding: "6px 6px", textAlign: "center", color: g.color, fontWeight: 700, fontSize: isMobile ? 11 : 13 }}>{pct.toFixed(0)}%</td>
                     <td style={{ padding: "6px 6px", textAlign: "center" }}><Badge label={g.label} color={g.color} bg={g.bg} /></td>
