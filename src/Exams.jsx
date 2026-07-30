@@ -5173,7 +5173,12 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
       const batch = s.batch || "";
       if (!SUFFIX_RE.test(batch)) return false;
       const stripped = batch.replace(SUFFIX_RE, "");
-      return stripped === (s.class_name || "");
+      // class_name is always stored UPPERCASE everywhere in this app (see
+      // every insert path: `class_name: batchVal.toUpperCase()`), while
+      // `batch` preserves whatever case it was originally typed in ("Leader"
+      // vs "LEADER") — comparing them directly here silently found ZERO
+      // matches even on real corrupted rows, because "Leader" !== "LEADER".
+      return stripped.trim().toUpperCase() === (s.class_name || "").trim().toUpperCase();
     }).map(s => {
       const suffix = (s.batch.match(SUFFIX_RE) || ["", ""])[1].toUpperCase();
       const correctSecondaryBatch = SUFFIX_TO_SECONDARY_BATCH[suffix] || null;
@@ -5186,6 +5191,7 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
       );
       return {
         ...s,
+        _restoredBatch: s.batch.replace(SUFFIX_RE, "").trim(), // preserves original mixed case, e.g. "Leader" not "LEADER"
         _extractedSuffix: suffix,
         _correctSecondaryBatch: correctSecondaryBatch,
         _alreadyHasCorrectTag: correctSecondaryBatch ? currentSecondaryBatches.includes(correctSecondaryBatch) : false,
@@ -5209,7 +5215,7 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
 
     for (const s of toFix) {
       // 1) Restore the real primary batch (strip the corrupted suffix).
-      const { error: batchErr } = await supabase.from("students").update({ batch: s.class_name }).eq("id", s.id);
+      const { error: batchErr } = await supabase.from("students").update({ batch: s._restoredBatch }).eq("id", s.id);
       if (batchErr) { errors.push(`${s.name}: ${batchErr.message}`); continue; }
 
       // 2) Remove any WRONG "Combined Navodaya Course..." secondary tag the
@@ -5236,7 +5242,8 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
       setResult({ ok: true, message: `Fixed ${toFix.length} student(s) — batch restored and correctly tagged by section (ENG/MM).` });
     }
     const fixedIds = new Set(toFix.map(s => s.id));
-    onStudentsChange(students.map(s => fixedIds.has(s.id) ? { ...s, batch: s.class_name } : s));
+    const restoredBatchById = new Map(toFix.map(s => [s.id, s._restoredBatch]));
+    onStudentsChange(students.map(s => fixedIds.has(s.id) ? { ...s, batch: restoredBatchById.get(s.id) } : s));
     setAffected(prev => prev.filter(s => !fixedIds.has(s.id)));
     setSelected(new Set());
   };
@@ -5274,7 +5281,7 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
                     <span style={{ color: "#94A3B8" }}>GCC {s.gcc_no}</span>
                     <span style={{ background: "#FEF2F2", color: "#DC2626", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.batch}</span>
                     <span style={{ color: "#9CA3AF" }}>→</span>
-                    <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.class_name}</span>
+                    <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s._restoredBatch}</span>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingLeft: 24 }}>
                     {s._wrongSecondaryBatches.map(b => (
