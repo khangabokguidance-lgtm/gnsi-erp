@@ -8557,6 +8557,30 @@ export default function Exams({ currentUser, perms }) {
     setSecondaryBatchMap(map);
   }, []);
 
+  // MarkEntry receives the EXPANDED list (examStudents, computed below) so
+  // dual-appearing students show up correctly, but its own "add new student
+  // inline" flow spreads that same list and calls onStudentsChange with it. If
+  // that were wired straight to setStudents, every phantom secondary-batch
+  // entry would get written back into the real students state as if it were a
+  // distinct student, permanently duplicating every dual-appearing student.
+  // This wrapper only takes newly-added real students (ones with no
+  // _isSecondaryBatchView marker that aren't already in `students`) and merges
+  // just those into the real list, dropping any phantom entries that were
+  // only ever an artifact of the expansion.
+  //
+  // IMPORTANT: this hook must stay ABOVE the `if (loading) return` below —
+  // hooks can never be called conditionally or after an early return, since
+  // React tracks hooks by call order across renders. Placing this after the
+  // early return caused "Rendered more hooks than during the previous
+  // render" (React error #310) once `loading` flipped to false.
+  const handleMarkEntryStudentsChange = useCallback((updatedExpandedList) => {
+    setStudents(prev => {
+      const existingIds = new Set(prev.map(s => s.id));
+      const genuinelyNew = updatedExpandedList.filter(s => !s._isSecondaryBatchView && !existingIds.has(s.id));
+      return genuinelyNew.length ? [...prev, ...genuinelyNew].sort((a, b) => (a.name || "").localeCompare(b.name || "")) : prev;
+    });
+  }, []);
+
   useEffect(() => {
     ensureLibs();
 
@@ -8652,24 +8676,6 @@ export default function Exams({ currentUser, perms }) {
   // this — one row per real person there, with the secondary batch shown as a
   // tag rather than a duplicate row.
   const examStudents = expandWithSecondaryBatches(students, secondaryBatchMap);
-
-  // MarkEntry receives the EXPANDED list (examStudents) so dual-appearing
-  // students show up correctly, but its own "add new student inline" flow
-  // spreads that same list and calls onStudentsChange with it. If that were
-  // wired straight to setStudents, every phantom secondary-batch entry would
-  // get written back into the real students state as if it were a distinct
-  // student, permanently duplicating every dual-appearing student. This
-  // wrapper only takes newly-added real students (ones with no
-  // _isSecondaryBatchView marker that aren't already in `students`) and
-  // merges just those into the real list, dropping any phantom entries that
-  // were only ever an artifact of the expansion.
-  const handleMarkEntryStudentsChange = useCallback((updatedExpandedList) => {
-    setStudents(prev => {
-      const existingIds = new Set(prev.map(s => s.id));
-      const genuinelyNew = updatedExpandedList.filter(s => !s._isSecondaryBatchView && !existingIds.has(s.id));
-      return genuinelyNew.length ? [...prev, ...genuinelyNew].sort((a, b) => (a.name || "").localeCompare(b.name || "")) : prev;
-    });
-  }, []);
  
   const handleCSVImportDone = (_marksMap, course, examTypeId, examDate) => {
     // ExamCSVImport already upserted the marks to Supabase internally, and tells us
