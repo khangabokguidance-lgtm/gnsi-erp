@@ -1073,7 +1073,7 @@ for (const st of courseStudents) {
     if (nameCol === -1) { alert("Could not find a 'STUDENTS NAME' column."); return; }
     const excludedCols = new Set([nameCol, gccCol, admCol, courseCol].filter(c => c !== -1 && c !== undefined));
     const subjectColMap = findBestColumnMatches(importSubjects, headers, excludedCols);
-    const allStudentsForCourse = students.filter(s => (s.class_name || "").toUpperCase() === detectedCourse);
+    const allStudentsForCourse = students.filter(s => (s.class_name || "").toUpperCase() === detectedCourse.toUpperCase());
     const matchPool = allStudentsForCourse.length ? allStudentsForCourse : students;
     const matched = []; const errors = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1368,7 +1368,7 @@ for (const st of courseStudents) {
     const detCourse = importInfo?.detectedCourse || course;
 
     // Same pool the auto-detector used, for manual search/assignment of unmatched rows
-    const manualPoolBase = students.filter(s => (s.class_name || "").toUpperCase() === detCourse);
+    const manualPoolBase = students.filter(s => (s.class_name || "").toUpperCase() === detCourse.toUpperCase());
     const manualPool = manualPoolBase.length ? manualPoolBase : students;
     const assignedIds = new Set(importRows.map(r => r.student.id));
 
@@ -6673,7 +6673,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
   }, [examType, examDate, seats]);
 
   const filteredStudents = students.filter(s => {
-    const matchCourse = filterCourse==="ALL" || (s.class_name||"").toUpperCase()===filterCourse;
+    const matchCourse = filterCourse==="ALL" || (s.class_name||"").toUpperCase()===filterCourse.toUpperCase();
     const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search);
     return matchCourse && matchSearch;
   }).sort((a,b) => {
@@ -6683,7 +6683,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
   });
 
   const autoAssign = () => {
-    const unassigned = students.filter(s => (filterCourse==="ALL" || (s.class_name||"").toUpperCase()===filterCourse) && !globalAssigned.has(s.id));
+    const unassigned = students.filter(s => (filterCourse==="ALL" || (s.class_name||"").toUpperCase()===filterCourse.toUpperCase()) && !globalAssigned.has(s.id));
     const newSeats = { ...seats }; let si = 0;
     for (let seat = 1; seat <= capacity && si < unassigned.length; seat++) {
       if (!newSeats[seat]) { newSeats[seat] = unassigned[si].id; si++; }
@@ -7276,8 +7276,8 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const rcCourseMax = rcScheduledRows.length
     ? rcScheduledRows.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
     : getCourseMax(rcCourse);
-  const rcStudents = students.filter(s => (s.class_name||"").toUpperCase()===rcCourse);
-  const acStudents = students.filter(s => (s.class_name||"").toUpperCase()===acCourse);
+  const rcStudents = students.filter(s => (s.class_name||"").trim().toUpperCase()===rcCourse.trim().toUpperCase());
+  const acStudents = students.filter(s => (s.class_name||"").trim().toUpperCase()===acCourse.trim().toUpperCase());
   const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course.toUpperCase() === acCourse.toUpperCase()));
   const acExamName = examTypes.find(e=>e.id===acExamType)?.name||"Examination";
 
