@@ -3170,6 +3170,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   const [bulkAbsentOpen, setBulkAbsentOpen] = useState(false);   // find & remove exam-absent students
   const [secondaryBatchStudent, setSecondaryBatchStudent] = useState(null); // student currently managing secondary batch for
   const [bulkSecondaryOpen, setBulkSecondaryOpen] = useState(false); // bulk-add secondary batch to selected students
+  const [batchCleanupOpen, setBatchCleanupOpen] = useState(false); // fix corrupted "Batch — SUFFIX" entries
 
   // Existing batch values already in use (for quick-pick buttons). Track has no further
   // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
@@ -3305,6 +3306,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
             🚫 Find Exam-Absent Students
           </button>
         )}
+        {perm.canEdit && (
+          <button onClick={() => setBatchCleanupOpen(true)} style={{ ...css.btn, padding: "8px 20px", background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}>
+            🧹 Fix Corrupted Batch Suffixes
+          </button>
+        )}
       </div>
 
       {bulkAbsentOpen && (
@@ -3313,6 +3319,14 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           students={students}
           onStudentsChange={onStudentsChange}
           onClose={() => setBulkAbsentOpen(false)}
+        />
+      )}
+
+      {batchCleanupOpen && (
+        <BatchSuffixCleanupTool
+          students={students}
+          onStudentsChange={onStudentsChange}
+          onClose={() => setBatchCleanupOpen(false)}
         />
       )}
 
@@ -4595,10 +4609,6 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
     setSaving(true);
     const batchVal = batch.trim();
     const sectionSuffix = section.trim() ? ` — ${section.trim().toUpperCase()}` : "";
-    // Strip any PREVIOUS section suffix this same batch may already carry, so
-    // re-importing under a different section tag doesn't accumulate suffixes
-    // like "... — ENG — MAN" on repeated runs.
-    const stripOldSuffix = (b) => (b || "").replace(/\s+—\s+[A-Z]+$/, "");
 
     // 1) Insert new students (roster), tagging batch with the section suffix.
     // Each outgoing row carries a client-side `_rowIdx` so the inserted rows
@@ -4641,22 +4651,23 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
       if (found) idByRowIdx[r.idx] = found.id;
     });
 
-    // Also tag the section suffix onto any EXISTING students matched from this
-    // file, so section stays consistent even for students who were already on
-    // the roster before this import. Failures here are collected (not silently
-    // dropped) and surfaced in the summary — the marks import still proceeds
-    // since a failed batch tag isn't a reason to lose the marks data.
-    const existingToTag = rows.filter(r =>
-      r.status === "existing" && r.student && sectionSuffix &&
-      stripOldSuffix(r.student.batch) + sectionSuffix !== (r.student.batch || "")
-    );
-    const taggedIds = new Set();
-    const tagErrors = [];
-    for (const r of existingToTag) {
-      const newBatchVal = stripOldSuffix(r.student.batch) + sectionSuffix;
-      const { error } = await supabase.from("students").update({ batch: newBatchVal }).eq("id", r.student.id);
-      if (error) tagErrors.push(`${r.student.name}: ${error.message}`);
-      else taggedIds.add(r.student.id);
+    // Existing students matched from this file are NOT touched on their
+    // primary batch/class_name at all — that was the bug here previously:
+    // appending the section suffix onto whatever their current `batch` value
+    // already was (e.g. turning "ACHIEVER" into "ACHIEVER — ENG") silently
+    // mutated their real identity and caused class_name/batch to drift apart,
+    // which is what produced confusing dual-appearance behavior. Instead,
+    // matched existing students are recorded as properly belonging to THIS
+    // (Combined Navodaya) batch via student_secondary_batches — the same
+    // mechanism the 🔗 Secondary Batch feature uses — leaving their real
+    // Sainik/Foundation/Navodaya batch completely untouched.
+    const existingToLink = rows.filter(r => r.status === "existing" && r.student && r.student.class_name !== batchVal);
+    const secondaryBatchValue = batchVal + sectionSuffix;
+    const linkErrors = [];
+    if (existingToLink.length) {
+      const linkRows = existingToLink.map(r => ({ student_id: r.student.id, batch: secondaryBatchValue }));
+      const { error } = await supabase.from("student_secondary_batches").upsert(linkRows, { onConflict: "student_id,batch" });
+      if (error) linkErrors.push(`student_secondary_batches: ${error.message}`);
     }
 
     // 2) Ensure exam_schedule rows exist for this batch + exam type + date
@@ -4683,9 +4694,9 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
           message: `Students were added (${insertedStudents.length}) but the exam schedule could not be created: ${schedErr.message}. Marks were NOT imported — re-run the import once schedule creation succeeds; already-added students won't be duplicated.`,
         });
         setSaving(false);
-        // Still refresh the roster so the newly-added students are visible even though marks failed.
-        const taggedList = students.map(s => taggedIds.has(s.id) ? { ...s, batch: stripOldSuffix(s.batch) + sectionSuffix } : s);
-        onStudentsChange([...taggedList, ...insertedStudents].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+        // Existing matched students were never mutated (see note above), so
+        // the local list just needs the newly-inserted students merged in.
+        onStudentsChange([...students, ...insertedStudents].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
         return;
       }
       (createdSched || []).forEach(s => { subjectToExamId[s.subject] = s.id; });
@@ -4716,17 +4727,18 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
       if (error) writeErrors.push(error.message || String(error));
     }
 
-    // Refresh local student list with newly inserted + section-tagged students
-    const tagged = students.map(s => taggedIds.has(s.id) ? { ...s, batch: stripOldSuffix(s.batch) + sectionSuffix } : s);
-    onStudentsChange([...tagged, ...insertedStudents].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    // Refresh local student list — existing matched students are untouched
+    // (their secondary-batch link lives in student_secondary_batches, not on
+    // their row), so this just merges in the newly-inserted students.
+    onStudentsChange([...students, ...insertedStudents].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
 
     setSaving(false);
-    const allErrors = [...tagErrors, ...writeErrors];
+    const allErrors = [...linkErrors, ...writeErrors];
     setSaveSummary({
       ok: allErrors.length === 0,
       message: allErrors.length
         ? `${insertedStudents.length} student(s) added and ${markRows.length} mark entries written, but ${allErrors.length} operation(s) failed: ${allErrors[0]}${allErrors.length > 1 ? ` (+${allErrors.length - 1} more)` : ""}`
-        : undefined,
+        : `✅ Added ${insertedStudents.length} new student(s), linked ${existingToLink.length} existing student(s) to this batch as a secondary batch, wrote ${markRows.length} mark entries. ${skipCount} row(s) skipped.`,
       added: insertedStudents.length,
       matched: existingCount,
       skipped: skipCount,
@@ -5120,6 +5132,118 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
               </>
             )}
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── FIX CORRUPTED BATCH SUFFIXES (one-click cleanup for the section-tag bug) ──
+// An earlier version of the Result Sheet Import mistakenly appended a section
+// suffix (e.g. " — ENG") onto an EXISTING matched student's real `batch`
+// field — turning "ACHIEVER" into "ACHIEVER — ENG" — instead of recording it
+// as a proper secondary-batch link. This left `class_name` (their real batch,
+// unaffected) and `batch` (corrupted) out of sync, which is what produces the
+// confusing "Achiever — ENG" pill shown in the roster. This tool finds every
+// student where stripping a trailing " — SUFFIX" from `batch` would exactly
+// match their real `class_name`, and offers to restore `batch` back to it.
+function BatchSuffixCleanupTool({ students, onStudentsChange, onClose }) {
+  const [scanning, setScanning] = useState(true);
+  const [affected, setAffected] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+  const [applying, setApplying] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const SUFFIX_RE = /\s+—\s+[A-Za-z]+$/;
+
+  useEffect(() => {
+    // No DB round-trip needed — the same `batch` value already loaded into
+    // `students` is enough to detect this locally.
+    const found = students.filter(s => {
+      const batch = s.batch || "";
+      if (!SUFFIX_RE.test(batch)) return false;
+      const stripped = batch.replace(SUFFIX_RE, "");
+      return stripped === (s.class_name || "");
+    }).map(s => ({
+      ...s,
+      _extractedSuffix: (s.batch.match(SUFFIX_RE) || [""])[0].replace(/^\s+—\s+/, ""),
+    }));
+    setAffected(found);
+    setSelected(new Set(found.map(s => s.id)));
+    setScanning(false);
+  }, [students]);
+
+  const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const selectAll = () => setSelected(new Set(affected.map(s => s.id)));
+  const deselectAll = () => setSelected(new Set());
+
+  const applyFix = async () => {
+    if (!selected.size) return;
+    setApplying(true);
+    const ids = [...selected];
+    const toFix = affected.filter(s => selected.has(s.id));
+    const errors = [];
+    for (const s of toFix) {
+      const { error } = await supabase.from("students").update({ batch: s.class_name }).eq("id", s.id);
+      if (error) errors.push(`${s.name}: ${error.message}`);
+    }
+    setApplying(false);
+    if (errors.length) {
+      setResult({ ok: false, message: `${errors.length} update(s) failed: ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}` });
+      return;
+    }
+    const fixedIds = new Set(toFix.map(s => s.id));
+    onStudentsChange(students.map(s => fixedIds.has(s.id) ? { ...s, batch: s.class_name } : s));
+    setAffected(prev => prev.filter(s => !fixedIds.has(s.id)));
+    setSelected(new Set());
+    setResult({ ok: true, message: `Fixed ${toFix.length} student(s) — their batch now correctly shows "${toFix[0]?.class_name}" again.` });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, overflowY: "auto" }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 640, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🧹 Fix Corrupted Batch Suffixes</div>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          Finds students whose Batch shows a stray suffix like "Achiever — ENG" from an earlier import bug, where the real batch is
+          just "Achiever". Restores their Batch field to match their actual batch — their secondary-batch tags (the purple "+ ..." line)
+          and everything else about them stays untouched.
+        </div>
+
+        {scanning ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#9CA3AF" }}>Scanning…</div>
+        ) : affected.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#0F6E56", fontWeight: 600 }}>✅ No corrupted batch suffixes found. Nothing to fix.</div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <button onClick={selectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#E0F2FE", color: "#0369A1" }}>Select All</button>
+              <button onClick={deselectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>Deselect All</button>
+              <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{affected.length} affected</div>
+            </div>
+            <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 14 }}>
+              {affected.map(s => (
+                <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #F1F5F9", fontSize: 12.5, cursor: "pointer" }}>
+                  <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSel(s.id)} />
+                  <span style={{ fontWeight: 600, flex: 1 }}>{s.name}</span>
+                  <span style={{ color: "#94A3B8" }}>GCC {s.gcc_no}</span>
+                  <span style={{ background: "#FEF2F2", color: "#DC2626", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.batch}</span>
+                  <span style={{ color: "#9CA3AF" }}>→</span>
+                  <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.class_name}</span>
+                </label>
+              ))}
+            </div>
+            {result && (
+              <div style={{ background: result.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${result.ok ? "#BBF7D0" : "#FECACA"}`, color: result.ok ? "#166534" : "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>
+                {result.ok ? "✅ " : "⚠️ "}{result.message}
+              </div>
+            )}
+            <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#93C5FD" : "#1a3c2e", color: "white", width: "100%" }}>
+              {applying ? "⏳ Fixing…" : `✅ Fix ${selected.size} Selected Student(s)`}
+            </button>
+          </>
         )}
       </div>
     </div>
