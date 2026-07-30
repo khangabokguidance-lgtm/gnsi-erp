@@ -3326,6 +3326,8 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
         <BatchSuffixCleanupTool
           students={students}
           onStudentsChange={onStudentsChange}
+          secondaryBatchMap={secondaryBatchMap}
+          onSecondaryBatchesChange={onSecondaryBatchesChange}
           onClose={() => setBatchCleanupOpen(false)}
         />
       )}
@@ -5147,14 +5149,22 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
 // confusing "Achiever — ENG" pill shown in the roster. This tool finds every
 // student where stripping a trailing " — SUFFIX" from `batch` would exactly
 // match their real `class_name`, and offers to restore `batch` back to it.
-function BatchSuffixCleanupTool({ students, onStudentsChange, onClose }) {
+function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap, onSecondaryBatchesChange, onClose }) {
   const [scanning, setScanning] = useState(true);
   const [affected, setAffected] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState(null);
 
-  const SUFFIX_RE = /\s+—\s+[A-Za-z]+$/;
+  const SUFFIX_RE = /\s+—\s+([A-Za-z]+)$/;
+
+  // Maps the extracted suffix to the batch it actually should have been
+  // recorded as a secondary batch for. Confirmed exact names: "ENG" → the
+  // English-medium Combined Navodaya batch, "MM" → the Manipuri-medium one.
+  const SUFFIX_TO_SECONDARY_BATCH = {
+    ENG: "Combined Navodaya Course(ENG)",
+    MM: "Combined Navodaya Course (MM)",
+  };
 
   useEffect(() => {
     // No DB round-trip needed — the same `batch` value already loaded into
@@ -5164,14 +5174,28 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, onClose }) {
       if (!SUFFIX_RE.test(batch)) return false;
       const stripped = batch.replace(SUFFIX_RE, "");
       return stripped === (s.class_name || "");
-    }).map(s => ({
-      ...s,
-      _extractedSuffix: (s.batch.match(SUFFIX_RE) || [""])[0].replace(/^\s+—\s+/, ""),
-    }));
+    }).map(s => {
+      const suffix = (s.batch.match(SUFFIX_RE) || ["", ""])[1].toUpperCase();
+      const correctSecondaryBatch = SUFFIX_TO_SECONDARY_BATCH[suffix] || null;
+      const currentSecondaryBatches = secondaryBatchMap?.[s.id] || [];
+      // Flag any EXISTING secondary tag that starts with "Combined Navodaya
+      // Course" but isn't the one this suffix actually points to — that's the
+      // bug's blanket mis-assignment (e.g. an ENG student tagged "(MM)").
+      const wrongSecondaryBatches = currentSecondaryBatches.filter(b =>
+        b.startsWith("Combined Navodaya Course") && b !== correctSecondaryBatch
+      );
+      return {
+        ...s,
+        _extractedSuffix: suffix,
+        _correctSecondaryBatch: correctSecondaryBatch,
+        _alreadyHasCorrectTag: correctSecondaryBatch ? currentSecondaryBatches.includes(correctSecondaryBatch) : false,
+        _wrongSecondaryBatches: wrongSecondaryBatches,
+      };
+    });
     setAffected(found);
     setSelected(new Set(found.map(s => s.id)));
     setScanning(false);
-  }, [students]);
+  }, [students, secondaryBatchMap]);
 
   const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const selectAll = () => setSelected(new Set(affected.map(s => s.id)));
@@ -5180,36 +5204,54 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, onClose }) {
   const applyFix = async () => {
     if (!selected.size) return;
     setApplying(true);
-    const ids = [...selected];
     const toFix = affected.filter(s => selected.has(s.id));
     const errors = [];
+
     for (const s of toFix) {
-      const { error } = await supabase.from("students").update({ batch: s.class_name }).eq("id", s.id);
-      if (error) errors.push(`${s.name}: ${error.message}`);
+      // 1) Restore the real primary batch (strip the corrupted suffix).
+      const { error: batchErr } = await supabase.from("students").update({ batch: s.class_name }).eq("id", s.id);
+      if (batchErr) { errors.push(`${s.name}: ${batchErr.message}`); continue; }
+
+      // 2) Remove any WRONG "Combined Navodaya Course..." secondary tag the
+      // bug applied (e.g. tagged "(MM)" when the student is actually ENG).
+      for (const wrongBatch of s._wrongSecondaryBatches) {
+        const { error } = await supabase.from("student_secondary_batches").delete().eq("student_id", s.id).eq("batch", wrongBatch);
+        if (error) errors.push(`${s.name} (removing "${wrongBatch}"): ${error.message}`);
+      }
+
+      // 3) Add the CORRECT secondary batch based on the suffix that was
+      // extracted (ENG/MM), if it isn't already there.
+      if (s._correctSecondaryBatch && !s._alreadyHasCorrectTag) {
+        const { error } = await supabase.from("student_secondary_batches")
+          .upsert([{ student_id: s.id, batch: s._correctSecondaryBatch }], { onConflict: "student_id,batch" });
+        if (error) errors.push(`${s.name} (adding "${s._correctSecondaryBatch}"): ${error.message}`);
+      }
     }
+
     setApplying(false);
+    onSecondaryBatchesChange?.(); // refetch the secondary-batch map so counts update
     if (errors.length) {
-      setResult({ ok: false, message: `${errors.length} update(s) failed: ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}` });
-      return;
+      setResult({ ok: false, message: `${errors.length} operation(s) failed: ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}` });
+    } else {
+      setResult({ ok: true, message: `Fixed ${toFix.length} student(s) — batch restored and correctly tagged by section (ENG/MM).` });
     }
     const fixedIds = new Set(toFix.map(s => s.id));
     onStudentsChange(students.map(s => fixedIds.has(s.id) ? { ...s, batch: s.class_name } : s));
     setAffected(prev => prev.filter(s => !fixedIds.has(s.id)));
     setSelected(new Set());
-    setResult({ ok: true, message: `Fixed ${toFix.length} student(s) — their batch now correctly shows "${toFix[0]?.class_name}" again.` });
   };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, overflowY: "auto" }}>
-      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 640, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 680, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🧹 Fix Corrupted Batch Suffixes</div>
           <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
         </div>
         <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
-          Finds students whose Batch shows a stray suffix like "Achiever — ENG" from an earlier import bug, where the real batch is
-          just "Achiever". Restores their Batch field to match their actual batch — their secondary-batch tags (the purple "+ ..." line)
-          and everything else about them stays untouched.
+          Finds students whose Batch shows a stray suffix like "Achiever — ENG" from an earlier import bug. For each one, this: restores
+          their Batch to the real value ("Achiever"), removes any wrong "Combined Navodaya Course..." tag the bug applied, and adds the
+          <b> correct</b> one based on their actual section — ENG → <code>Combined Navodaya Course(ENG)</code>, MM → <code>Combined Navodaya Course (MM)</code>.
         </div>
 
         {scanning ? (
@@ -5223,15 +5265,27 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, onClose }) {
               <button onClick={deselectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>Deselect All</button>
               <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{affected.length} affected</div>
             </div>
-            <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 14 }}>
+            <div style={{ maxHeight: 380, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 14 }}>
               {affected.map(s => (
-                <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #F1F5F9", fontSize: 12.5, cursor: "pointer" }}>
-                  <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSel(s.id)} />
-                  <span style={{ fontWeight: 600, flex: 1 }}>{s.name}</span>
-                  <span style={{ color: "#94A3B8" }}>GCC {s.gcc_no}</span>
-                  <span style={{ background: "#FEF2F2", color: "#DC2626", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.batch}</span>
-                  <span style={{ color: "#9CA3AF" }}>→</span>
-                  <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.class_name}</span>
+                <label key={s.id} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 12px", borderBottom: "1px solid #F1F5F9", fontSize: 12.5, cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSel(s.id)} />
+                    <span style={{ fontWeight: 600, flex: 1 }}>{s.name}</span>
+                    <span style={{ color: "#94A3B8" }}>GCC {s.gcc_no}</span>
+                    <span style={{ background: "#FEF2F2", color: "#DC2626", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.batch}</span>
+                    <span style={{ color: "#9CA3AF" }}>→</span>
+                    <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.class_name}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingLeft: 24 }}>
+                    {s._wrongSecondaryBatches.map(b => (
+                      <span key={b} style={{ fontSize: 10.5, background: "#FEF2F2", color: "#DC2626", padding: "1px 7px", borderRadius: 999, textDecoration: "line-through" }}>{b}</span>
+                    ))}
+                    {s._correctSecondaryBatch && (
+                      <span style={{ fontSize: 10.5, background: s._alreadyHasCorrectTag ? "#F5F3FF" : "#ECFDF5", color: s._alreadyHasCorrectTag ? "#7c3aed" : "#047857", padding: "1px 7px", borderRadius: 999, fontWeight: 700 }}>
+                        {s._alreadyHasCorrectTag ? "✓ " : "+ "}{s._correctSecondaryBatch}
+                      </span>
+                    )}
+                  </div>
                 </label>
               ))}
             </div>
