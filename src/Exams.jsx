@@ -3330,6 +3330,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   const [secondaryBatchStudent, setSecondaryBatchStudent] = useState(null); // student currently managing secondary batch for
   const [bulkSecondaryOpen, setBulkSecondaryOpen] = useState(false); // bulk-add secondary batch to selected students
   const [batchCleanupOpen, setBatchCleanupOpen] = useState(false); // fix corrupted "Batch — SUFFIX" entries
+  const [dupTagResolverOpen, setDupTagResolverOpen] = useState(false); // resolve students tagged into both ENG and MM sections
 
   // Existing batch values already in use (for quick-pick buttons). Track has no further
   // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
@@ -3470,6 +3471,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
             🧹 Fix Corrupted Batch Suffixes
           </button>
         )}
+        {perm.canEdit && (
+          <button onClick={() => setDupTagResolverOpen(true)} style={{ ...css.btn, padding: "8px 20px", background: "#F5F3FF", color: "#7c3aed", border: "1px solid #DDD6FE" }}>
+            🔀 Resolve Duplicate Section Tags
+          </button>
+        )}
       </div>
 
       {bulkAbsentOpen && (
@@ -3488,6 +3494,15 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           secondaryBatchMap={secondaryBatchMap}
           onSecondaryBatchesChange={onSecondaryBatchesChange}
           onClose={() => setBatchCleanupOpen(false)}
+        />
+      )}
+
+      {dupTagResolverOpen && (
+        <DuplicateSectionTagResolver
+          students={students}
+          secondaryBatchMap={secondaryBatchMap}
+          onSecondaryBatchesChange={onSecondaryBatchesChange}
+          onClose={() => setDupTagResolverOpen(false)}
         />
       )}
 
@@ -5463,6 +5478,133 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
             <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#93C5FD" : "#1a3c2e", color: "white", width: "100%" }}>
               {applying ? "⏳ Fixing…" : `✅ Fix ${selected.size} Selected Student(s)`}
             </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── RESOLVE DUPLICATE SECTION TAGS (ENG + MM at once) ─────────────────────────
+// A student who imported into both the ENG and MM Combined Navodaya sections
+// (leftover from the earlier import bug) still has BOTH secondary-batch tags
+// at once. That's not just cosmetic — every exam-facing tab (Mark Entry,
+// Report Cards, Bulk Reports, Admit Cards) generates one "phantom" roster
+// entry per secondary batch, so selecting EITHER "Combined Navodaya
+// Course(ENG)" or "Combined Navodaya Course (MM)" legitimately shows this
+// student, since they really do have both tags. This tool finds everyone with
+// both and lets you pick which one is correct, removing the other.
+function DuplicateSectionTagResolver({ students, secondaryBatchMap, onSecondaryBatchesChange, onClose }) {
+  const ENG = "Combined Navodaya Course(ENG)";
+  const MM = "Combined Navodaya Course (MM)";
+  const [affected, setAffected] = useState([]);
+  const [resolving, setResolving] = useState(null); // student id currently being resolved (single) or "bulk" during a bulk run
+  const [resolved, setResolved] = useState(new Set());
+  const [err, setErr] = useState("");
+  const [excluded, setExcluded] = useState(new Set()); // student ids to skip during a bulk resolve
+  const [bulkResult, setBulkResult] = useState(null);
+
+  useEffect(() => {
+    const found = students.filter(s => {
+      const tags = secondaryBatchMap?.[s.id] || [];
+      return tags.includes(ENG) && tags.includes(MM);
+    });
+    setAffected(found);
+  }, [students, secondaryBatchMap]);
+
+  const resolve = async (student, keep) => {
+    const remove = keep === ENG ? MM : ENG;
+    setErr(""); setResolving(student.id);
+    const { error } = await supabase.from("student_secondary_batches").delete().eq("student_id", student.id).eq("batch", remove);
+    setResolving(null);
+    if (error) { setErr(`${student.name}: ${error.message}`); return; }
+    onSecondaryBatchesChange?.();
+    setResolved(prev => new Set(prev).add(student.id));
+  };
+
+  const remaining = affected.filter(s => !resolved.has(s.id));
+  const toggleExclude = (id) => setExcluded(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  // Bulk-resolve: applies the SAME keep-decision to every remaining student
+  // except any explicitly excluded via checkbox — useful when, like here, an
+  // entire batch of students came from one file (e.g. all 42 from the ENG
+  // result sheet) and should uniformly keep that one section.
+  const bulkResolve = async (keep) => {
+    const remove = keep === ENG ? MM : ENG;
+    const toResolve = remaining.filter(s => !excluded.has(s.id));
+    if (!toResolve.length) return;
+    if (!window.confirm(`Keep "${keep}" and remove "${remove}" for ${toResolve.length} student(s)? This cannot be undone.`)) return;
+    setErr(""); setResolving("bulk"); setBulkResult(null);
+    const errors = [];
+    for (const s of toResolve) {
+      const { error } = await supabase.from("student_secondary_batches").delete().eq("student_id", s.id).eq("batch", remove);
+      if (error) errors.push(`${s.name}: ${error.message}`);
+    }
+    setResolving(null);
+    onSecondaryBatchesChange?.();
+    setResolved(prev => new Set([...prev, ...toResolve.filter(s => !errors.some(e => e.startsWith(s.name + ":"))).map(s => s.id)]));
+    setBulkResult(errors.length
+      ? { ok: false, message: `${toResolve.length - errors.length} resolved, ${errors.length} failed: ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}` }
+      : { ok: true, message: `Resolved ${toResolve.length} student(s) — kept "${keep}" for all.` });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, overflowY: "auto" }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 680, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🔀 Resolve Duplicate Section Tags</div>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          These students are tagged into BOTH Combined Navodaya sections at once — leftover from an earlier import mix-up. That's why
+          selecting either "Combined Navodaya Course(ENG)" or "Combined Navodaya Course (MM)" shows them: they genuinely have both
+          tags right now. Pick which section each one actually belongs to; the other tag will be removed. Uncheck anyone below who
+          should be handled individually instead, then use the bulk buttons for everyone else.
+        </div>
+
+        {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>⚠️ {err}</div>}
+        {bulkResult && (
+          <div style={{ background: bulkResult.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${bulkResult.ok ? "#BBF7D0" : "#FECACA"}`, color: bulkResult.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
+            {bulkResult.ok ? "✅ " : "⚠️ "}{bulkResult.message}
+          </div>
+        )}
+
+        {remaining.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#0F6E56", fontWeight: 600 }}>
+            {affected.length === 0 ? "✅ No students currently have both tags. Nothing to resolve." : "✅ All resolved."}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Bulk resolve {remaining.length - excluded.size} of {remaining.length}:</span>
+              <button onClick={() => bulkResolve(ENG)} disabled={resolving !== null}
+                style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#1D4ED8", color: "white" }}>
+                {resolving === "bulk" ? "⏳ Working…" : "Keep ENG for All"}
+              </button>
+              <button onClick={() => bulkResolve(MM)} disabled={resolving !== null}
+                style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#7c3aed", color: "white" }}>
+                {resolving === "bulk" ? "⏳ Working…" : "Keep MM for All"}
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 380, overflowY: "auto" }}>
+              {remaining.map(s => (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: "1px solid #E5E7EB", borderRadius: 10, background: excluded.has(s.id) ? "#FFFBEB" : "#F9FAFB" }}>
+                  <input type="checkbox" checked={!excluded.has(s.id)} onChange={() => toggleExclude(s.id)} title="Uncheck to exclude from bulk actions" />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: "#94A3B8" }}>GCC {s.gcc_no ?? "—"} · real batch: {s.class_name || "—"}</div>
+                  </div>
+                  <button onClick={() => resolve(s, ENG)} disabled={resolving !== null}
+                    style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" }}>
+                    {resolving === s.id ? "…" : "Keep ENG"}
+                  </button>
+                  <button onClick={() => resolve(s, MM)} disabled={resolving !== null}
+                    style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#F5F3FF", color: "#7c3aed", border: "1px solid #DDD6FE" }}>
+                    {resolving === s.id ? "…" : "Keep MM"}
+                  </button>
+                </div>
+              ))}
+            </div>
           </>
         )}
       </div>
