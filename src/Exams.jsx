@@ -5253,6 +5253,197 @@ function MeritList({ courseSubjects, examTypes, students }) {
 }
 
 // ─── COURSE SUBJECTS MANAGER ──────────────────────────────────────────────────
+// ─── RENAME COURSE / BATCH (cascading — touches every table that stores it) ───
+// A course/batch name is stored as plain text (not a foreign key) in several
+// places: students.class_name, students.batch, exam_schedule.course,
+// exam_marks.class_name, student_secondary_batches.batch, the live
+// course_subjects config, and any saved custom Exam Config presets
+// (courseSubjects + courseMaxMarks keys). Renaming it means updating all of
+// these together — missing even one leaves that batch split into two names
+// with data silently orphaned under the old one.
+function RenameCourseModal({ courseSubjects, oldName, onClose, onDone, onCourseSubjectsUpdate }) {
+  const [newName, setNewName] = useState(oldName);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [progress, setProgress] = useState("");
+  const [affectedCounts, setAffectedCounts] = useState(null); // preview counts, loaded on open
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [{ count: studentCount }, { count: schedCount }, { count: marksCount }, { count: secCount }] = await Promise.all([
+        supabase.from("students").select("*", { count: "exact", head: true }).eq("class_name", oldName),
+        supabase.from("exam_schedule").select("*", { count: "exact", head: true }).eq("course", oldName),
+        supabase.from("exam_marks").select("*", { count: "exact", head: true }).eq("class_name", oldName),
+        supabase.from("student_secondary_batches").select("*", { count: "exact", head: true }).eq("batch", oldName),
+      ]);
+      if (!cancelled) {
+        setAffectedCounts({
+          students: studentCount || 0,
+          schedule: schedCount || 0,
+          marks: marksCount || 0,
+          secondary: secCount || 0,
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [oldName]);
+
+  const rename = async () => {
+    const trimmed = newName.trim();
+    if (!trimmed) { setErr("New name can't be empty."); return; }
+    if (trimmed === oldName) { setErr("That's the same name — nothing to rename."); return; }
+    if (courseSubjects[trimmed]) { setErr(`"${trimmed}" already exists as a separate course. Merging two courses isn't supported here — pick a name that doesn't already exist.`); return; }
+
+    setErr(""); setSaving(true);
+    const errors = [];
+
+    // 1) students — both class_name (what everything filters on) and the
+    // legacy `batch` field, but ONLY when batch matches the old name exactly
+    // (batch may carry a " — SECTION" suffix, which must be preserved).
+    setProgress("Updating students…");
+    {
+      const { error } = await supabase.from("students").update({ class_name: trimmed }).eq("class_name", oldName);
+      if (error) errors.push(`students.class_name: ${error.message}`);
+    }
+    {
+      const { error } = await supabase.from("students").update({ batch: trimmed }).eq("batch", oldName);
+      if (error) errors.push(`students.batch (exact): ${error.message}`);
+    }
+    // Students whose batch carries a section suffix (e.g. "OLDNAME — ENG")
+    // need that suffix preserved across the rename.
+    {
+      const { data: withSuffix } = await supabase.from("students").select("id, batch").ilike("batch", `${oldName} — %`);
+      for (const s of withSuffix || []) {
+        const suffix = s.batch.slice(oldName.length);
+        const { error } = await supabase.from("students").update({ batch: trimmed + suffix }).eq("id", s.id);
+        if (error) errors.push(`students.batch (suffixed, id ${s.id}): ${error.message}`);
+      }
+    }
+
+    // 2) exam_schedule.course
+    setProgress("Updating exam schedule…");
+    {
+      const { error } = await supabase.from("exam_schedule").update({ course: trimmed }).eq("course", oldName);
+      if (error) errors.push(`exam_schedule.course: ${error.message}`);
+    }
+
+    // 3) exam_marks.class_name (denormalized label on each mark row)
+    setProgress("Updating exam marks…");
+    {
+      const { error } = await supabase.from("exam_marks").update({ class_name: trimmed }).eq("class_name", oldName);
+      if (error) errors.push(`exam_marks.class_name: ${error.message}`);
+    }
+
+    // 4) student_secondary_batches.batch
+    setProgress("Updating secondary batch tags…");
+    {
+      const { error } = await supabase.from("student_secondary_batches").update({ batch: trimmed }).eq("batch", oldName);
+      if (error) errors.push(`student_secondary_batches.batch: ${error.message}`);
+    }
+
+    // 5) live course_subjects config (the key itself, keeping its subject list)
+    setProgress("Updating course/subject config…");
+    const updatedCourseSubjects = {};
+    for (const [k, v] of Object.entries(courseSubjects)) {
+      updatedCourseSubjects[k === oldName ? trimmed : k] = v;
+    }
+    {
+      const { error } = await supabase.from("system_settings").upsert(
+        { key: "course_subjects", value: JSON.stringify(updatedCourseSubjects) },
+        { onConflict: "key" }
+      );
+      if (error) errors.push(`course_subjects config: ${error.message}`);
+    }
+
+    // 6) any saved CUSTOM exam config presets — patch both courseSubjects and
+    // courseMaxMarks keys inside each one. Built-in presets (EXAM_CONFIG_PRESETS)
+    // are a hardcoded JS constant, not user data, so they're intentionally left
+    // untouched — there's nothing to persist for them anyway.
+    setProgress("Updating saved exam config presets…");
+    {
+      const { data: cfgRow } = await supabase.from("system_settings").select("value").eq("key", "exam_configs").single();
+      if (cfgRow?.value) {
+        try {
+          const customConfigs = JSON.parse(cfgRow.value);
+          const patched = customConfigs.map(cfg => {
+            const next = { ...cfg };
+            if (next.courseSubjects && next.courseSubjects[oldName] !== undefined) {
+              const cs = {};
+              for (const [k, v] of Object.entries(next.courseSubjects)) cs[k === oldName ? trimmed : k] = v;
+              next.courseSubjects = cs;
+            }
+            if (next.courseMaxMarks && next.courseMaxMarks[oldName] !== undefined) {
+              const cm = {};
+              for (const [k, v] of Object.entries(next.courseMaxMarks)) cm[k === oldName ? trimmed : k] = v;
+              next.courseMaxMarks = cm;
+            }
+            return next;
+          });
+          const { error } = await supabase.from("system_settings").upsert(
+            { key: "exam_configs", value: JSON.stringify(patched) },
+            { onConflict: "key" }
+          );
+          if (error) errors.push(`exam_configs presets: ${error.message}`);
+        } catch (e) {
+          errors.push(`exam_configs presets: could not parse saved config JSON — left untouched, check manually.`);
+        }
+      }
+    }
+
+    setProgress("");
+    setSaving(false);
+
+    if (errors.length) {
+      setErr(`Partially completed with ${errors.length} error(s): ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}. Some data may still reference the old name — check the affected tables before relying on the new name everywhere.`);
+      return;
+    }
+
+    onCourseSubjectsUpdate(updatedCourseSubjects);
+    onDone(trimmed);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 520, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 6 }}>✏️ Rename Course / Batch</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          This renames <b>"{oldName}"</b> everywhere — every student assigned to it, every schedule entry, every exam mark record,
+          every secondary-batch tag, and any saved Exam Config presets that reference it. This cannot be easily undone; the old name
+          will no longer exist anywhere in the app afterward.
+        </div>
+
+        {affectedCounts && (
+          <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 12.5 }}>
+            <div style={{ fontWeight: 700, color: "#374151", marginBottom: 6 }}>This will affect:</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <Badge label={`${affectedCounts.students} student(s)`} color="#0369A1" bg="#E0F2FE" />
+              <Badge label={`${affectedCounts.schedule} schedule entr${affectedCounts.schedule === 1 ? "y" : "ies"}`} color="#0F6E56" bg="#E1F5EE" />
+              <Badge label={`${affectedCounts.marks} mark record(s)`} color="#92740C" bg="#FEF9E7" />
+              {affectedCounts.secondary > 0 && <Badge label={`${affectedCounts.secondary} secondary-batch tag(s)`} color="#7c3aed" bg="#F5F3FF" />}
+            </div>
+          </div>
+        )}
+
+        {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>⚠️ {err}</div>}
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>New Name</label>
+          <input value={newName} onChange={e => setNewName(e.target.value)} style={css.input} disabled={saving} autoFocus />
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} disabled={saving} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+          <button onClick={rename} disabled={saving || !newName.trim() || newName.trim() === oldName}
+            style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#DC2626", color: "white" }}>
+            {saving ? `⏳ ${progress || "Renaming…"}` : "✅ Rename Everywhere"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CourseSubjectsManager({ courseSubjects, onUpdate }) {
   const courses = Object.keys(courseSubjects);
   const [selected, setSelected] = useState(courses[0] || "");
@@ -5261,6 +5452,7 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
   const [newCourse, setNewCourse] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [renamingCourse, setRenamingCourse] = useState(null); // course name currently being renamed
 
   useEffect(() => { setList(courseSubjects[selected] || []); }, [selected, courseSubjects]);
 
@@ -5285,10 +5477,16 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
         <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 17, color: "#1e293b", marginBottom: 16 }}>📚 Subjects per Course / Batch</div>
         <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
           {Object.keys(courseSubjects).map(c => (
-            <button key={c} onClick={() => setSelected(c)}
-              style={{ ...css.btn, padding: "6px 16px", background: selected === c ? "#1a3c2e" : "#F3F4F6", color: selected === c ? "white" : "#374151", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB") }}>
-              {c} <span style={{ fontSize: 11, opacity: 0.7 }}>({(courseSubjects[c] || []).length})</span>
-            </button>
+            <div key={c} style={{ display: "flex", alignItems: "stretch" }}>
+              <button onClick={() => setSelected(c)}
+                style={{ ...css.btn, padding: "6px 16px", background: selected === c ? "#1a3c2e" : "#F3F4F6", color: selected === c ? "white" : "#374151", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderRadius: "8px 0 0 8px" }}>
+                {c} <span style={{ fontSize: 11, opacity: 0.7 }}>({(courseSubjects[c] || []).length})</span>
+              </button>
+              <button onClick={() => setRenamingCourse(c)} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
+                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#14532d" : "#E5E7EB", color: selected === c ? "white" : "#6B7280", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderLeft: "none", borderRadius: "0 8px 8px 0", fontSize: 12 }}>
+                ✏️
+              </button>
+            </div>
           ))}
           <div style={{ display: "flex", gap: 6 }}>
             <input value={newCourse} onChange={e => setNewCourse(e.target.value)} placeholder="New course…" style={{ ...css.input, width: 120, fontSize: 12 }}
@@ -5296,6 +5494,20 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
             <button onClick={addCourse} style={{ ...css.btn, padding: "6px 12px", background: "#E0F2FE", color: "#0369A1", fontSize: 12 }}>+ Add</button>
           </div>
         </div>
+
+        {renamingCourse && (
+          <RenameCourseModal
+            courseSubjects={courseSubjects}
+            oldName={renamingCourse}
+            onClose={() => setRenamingCourse(null)}
+            onDone={(newName) => {
+              setRenamingCourse(null);
+              if (selected === renamingCourse) setSelected(newName);
+              // onUpdate is called by RenameCourseModal itself with the patched courseSubjects
+            }}
+            onCourseSubjectsUpdate={onUpdate}
+          />
+        )}
         {selected && (
           <>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", marginBottom: 8 }}>
