@@ -792,7 +792,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
     if (!trackName) return [];
     const canonical = TRACK_BATCHES[trackName] || [];
     const seen = new Set(
-      students.filter(s => (s.course || "").trim() === trackName).map(s => (s.class_name || s.batch || "").toUpperCase()).filter(Boolean)
+      students.filter(s => (s.course || "").trim() === trackName).map(s => (s.class_name || "").toUpperCase()).filter(Boolean)
     );
     return [...new Set([...canonical, ...seen])];
   };
@@ -3339,7 +3339,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
     const seen = new Set(
       students
         .filter(s => (s.course || "").trim() === trackName)
-        .map(s => (s.class_name || s.batch || "").toUpperCase())
+        .map(s => (s.class_name || "").toUpperCase())
         .filter(Boolean)
     );
     return [...new Set([...canonical, ...seen])];
@@ -9205,10 +9205,20 @@ export default function Exams({ currentUser, perms }) {
   }, []);
  
   // Exams.jsx historically treats `class_name` as "the batch" (Achiever / Champion /
-  // Umeed / etc). The Students module writes the real value to a column called
-  // `batch`, not `class_name`. This normalizer maps batch → class_name on every
-  // student record so the rest of this file (which reads s.class_name everywhere)
-  // always sees the current, correct batch — without needing to touch 50+ call sites.
+  // Umeed / etc). At one point the Students module wrote the real value to a
+  // column called `batch` instead of `class_name`, so this normalizer preferred
+  // `batch` over `class_name` to paper over that mismatch.
+  //
+  // That preference became actively harmful once the Result Sheet importer /
+  // rename tool / cleanup tools were built: those all treat `class_name` as
+  // the single source of truth for a student's real batch, and use `batch` as
+  // a secondary DISPLAY field that can carry an extra " — SECTION" suffix
+  // (e.g. "ACHIEVER — ENG"). With `s.batch || s.class_name`, any student whose
+  // `batch` got corrupted with that suffix had their CORRECT class_name
+  // silently overwritten in memory on every single page load — invisible in
+  // the database (where class_name was always right), but very visible in the
+  // app, where it undercounted batches like ACHIEVER by dozens of students.
+  // class_name is now the trusted field; batch is never used to override it.
   //
   // Combined Course fix: students on the "Combined Course" track have no real
   // batch split, so Students.jsx/Attendance.jsx store their `batch` as the
@@ -9223,9 +9233,9 @@ export default function Exams({ currentUser, perms }) {
   // normalizer, fixes every exam function at once without touching each one.
   const COMBINED_COURSE_BATCH_LABEL = "Combined Navodaya Course (Sainik Appearing Group)";
   const normalizeStudent = (s) => {
-    const batch = (s.course === "Combined Course" && (!s.batch || s.batch === "—"))
+    const batch = (s.course === "Combined Course" && (!s.class_name || s.class_name === "—"))
       ? COMBINED_COURSE_BATCH_LABEL
-      : (s.batch || s.class_name || "");
+      : (s.class_name || s.batch || "");
     return { ...s, class_name: batch };
   };
 
