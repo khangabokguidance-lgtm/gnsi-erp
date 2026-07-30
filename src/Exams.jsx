@@ -3135,7 +3135,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
 // ─── REPORT CARD SETTINGS PANEL wrapper (drop-in for BulkReports) ────────────
 
 // ─── STUDENTS TAB ─────────────────────────────────────────────────────────────
-function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, perms }) {
+function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, currentUser, perms }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms)
   const courses = Object.keys(courseSubjects); // NOTE: these are BATCH names (Achiever, Champion...), not real tracks
@@ -3154,6 +3154,20 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
   const [editSaving, setEditSaving] = useState(false);
   const [deleteId, setDeleteId]     = useState(null);
   const [view, setView]             = useState("list");
+
+  // ── Bulk selection (checkboxes in the list) ──────────────────────────────
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // ── Bulk action modals ───────────────────────────────────────────────────
+  const [bulkChangeOpen, setBulkChangeOpen] = useState(false);   // change track/batch for selected
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);   // delete selected
+  const [bulkAbsentOpen, setBulkAbsentOpen] = useState(false);   // find & remove exam-absent students
 
   // Existing batch values already in use (for quick-pick buttons). Track has no further
   // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
@@ -3269,7 +3283,50 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
             ➕ Add New Student
           </button>
         )}
+        {perm.canEdit && (
+          <button onClick={() => { setView("import"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "import" ? "#1a3c2e" : "#F3F4F6", color: view === "import" ? "white" : "#374151" }}>
+            📥 Import from CSV / Excel
+          </button>
+        )}
+        {perm.canEdit && (
+          <button onClick={() => { setView("resultimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "resultimport" ? "#1a3c2e" : "#F3F4F6", color: view === "resultimport" ? "white" : "#374151" }}>
+            🧾 Import Result Sheet
+          </button>
+        )}
+        {perm.canEdit && (
+          <button onClick={() => setBulkAbsentOpen(true)} style={{ ...css.btn, padding: "8px 20px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
+            🚫 Find Exam-Absent Students
+          </button>
+        )}
       </div>
+
+      {bulkAbsentOpen && (
+        <ExamAbsentFinder
+          courseSubjects={courseSubjects}
+          students={students}
+          onStudentsChange={onStudentsChange}
+          onClose={() => setBulkAbsentOpen(false)}
+        />
+      )}
+
+      {view === "import" && (
+        <StudentRosterImport
+          courseSubjects={courseSubjects}
+          students={students}
+          onStudentsChange={onStudentsChange}
+          onDone={() => setView("list")}
+        />
+      )}
+
+      {view === "resultimport" && (
+        <ResultSheetImport
+          courseSubjects={courseSubjects}
+          students={students}
+          examTypes={examTypes || []}
+          onStudentsChange={onStudentsChange}
+          onDone={() => setView("list")}
+        />
+      )}
 
       {view === "add" && (
         <div style={{ maxWidth: 560 }}>
@@ -3362,10 +3419,55 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
               </button>
             )}
           </div>
+
+          {selectedIds.size > 0 && perm.canEdit && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#4338CA" }}>{selectedIds.size} selected</span>
+              <button onClick={() => setBulkChangeOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#4338CA", color: "white" }}>
+                🔁 Change Track / Batch
+              </button>
+              {perm.canDelete && (
+                <button onClick={() => setBulkDeleteOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#DC2626", color: "white" }}>
+                  🗑️ Remove Selected
+                </button>
+              )}
+              <button onClick={clearSelection} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#F3F4F6", color: "#374151" }}>
+                ✕ Clear
+              </button>
+            </div>
+          )}
+
+          {bulkChangeOpen && (
+            <BulkChangeCourseModal
+              selectedIds={selectedIds}
+              students={students}
+              onStudentsChange={onStudentsChange}
+              onClose={() => setBulkChangeOpen(false)}
+              onDone={() => { setBulkChangeOpen(false); clearSelection(); }}
+            />
+          )}
+          {bulkDeleteOpen && (
+            <BulkDeleteModal
+              selectedIds={selectedIds}
+              students={students}
+              onStudentsChange={onStudentsChange}
+              onClose={() => setBulkDeleteOpen(false)}
+              onDone={() => { setBulkDeleteOpen(false); clearSelection(); }}
+            />
+          )}
+
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 520 : "auto" }}>
               <thead>
                 <tr style={{ background: "#1a3c2e" }}>
+                  <th style={{ padding: "10px 8px", textAlign: "center", width: 34 }}>
+                    <input type="checkbox"
+                      checked={filtered.length > 0 && filtered.every(s => selectedIds.has(s.id))}
+                      onChange={e => {
+                        if (e.target.checked) setSelectedIds(prev => new Set([...prev, ...filtered.map(s => s.id)]));
+                        else setSelectedIds(prev => { const next = new Set(prev); filtered.forEach(s => next.delete(s.id)); return next; });
+                      }} />
+                  </th>
                   {["GCC No.", "Name", "Batch", "Track", "Adm. No.", "Actions"].map(h => (
                     <th key={h} style={{ padding: "10px 12px", textAlign: h === "Name" ? "left" : "center", color: "white", fontWeight: 700, fontSize: 11, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
@@ -3374,7 +3476,7 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
               <tbody>
                 {!filtered.length && (
                   <tr>
-                    <td colSpan={6} style={{ padding: "28px 12px", textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>
+                    <td colSpan={7} style={{ padding: "28px 12px", textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>
                       {students.length
                         ? <>No students match your current filters. <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }} style={{ color: "#1a3c2e", fontWeight: 700, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Reset filters</button> to see all {students.length}.</>
                         : "No students loaded yet."}
@@ -3382,7 +3484,10 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
                   </tr>
                 )}
                 {filtered.map((st, i) => (
-                  <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                  <tr key={st.id} style={{ background: selectedIds.has(st.id) ? "#EEF2FF" : (i % 2 ? "#F9FAFB" : "white"), borderBottom: "1px solid #F1F5F9" }}>
+                    <td style={{ padding: "9px 8px", textAlign: "center" }}>
+                      <input type="checkbox" checked={selectedIds.has(st.id)} onChange={() => toggleSelect(st.id)} />
+                    </td>
                     {editId === st.id ? (
                       <>
                         <td style={{ padding: "6px 8px", textAlign: "center" }}><EditCell field="gcc_no" width={60} type="number" /></td>
@@ -3424,13 +3529,1106 @@ function StudentsTab({ courseSubjects, students, onStudentsChange, currentUser, 
                   </tr>
                 ))}
                 {!filtered.length && (
-                  <tr><td colSpan={6} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No students found.</td></tr>
+                  <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No students found.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ─── BULK: Change Track / Batch for selected students ─────────────────────────
+function BulkChangeCourseModal({ selectedIds, students, onStudentsChange, onClose, onDone }) {
+  const selected = students.filter(s => selectedIds.has(s.id));
+  const [track, setTrack] = useState("");
+  const [batch, setBatch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const batchOptions = track ? (TRACK_BATCHES[track] || []) : [];
+
+  const apply = async () => {
+    setErr("");
+    if (!track && !batch.trim()) { setErr("Pick a track and/or type a batch to apply."); return; }
+    setSaving(true);
+    const payload = {};
+    if (track) payload.course = track;
+    if (batch.trim()) { payload.class_name = batch.trim().toUpperCase(); payload.batch = batch.trim(); }
+    const ids = [...selectedIds];
+    const { error } = await supabase.from("students").update(payload).in("id", ids);
+    if (error) { setErr(error.message); setSaving(false); return; }
+    onStudentsChange(students.map(s => selectedIds.has(s.id) ? { ...s, ...payload } : s));
+    setSaving(false);
+    onDone();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 460, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 6 }}>🔁 Change Track / Batch</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          Applying to <b>{selected.length}</b> selected student{selected.length === 1 ? "" : "s"}. Leave a field blank to keep it unchanged.
+        </div>
+        {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>⚠️ {err}</div>}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>New Track (optional)</label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => setTrack("")} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === "" ? "#1a3c2e" : "#F3F4F6", color: track === "" ? "white" : "#374151" }}>— Keep —</button>
+            {TRACKS.map(t => (
+              <button key={t} onClick={() => setTrack(t)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === t ? "#1a3c2e" : "#F3F4F6", color: track === t ? "white" : "#374151" }}>{t}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>New Batch (optional)</label>
+          {batchOptions.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {batchOptions.map(b => (
+                <button key={b} onClick={() => setBatch(b)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: batch === b ? "#7c3aed" : "#F5F3FF", color: batch === b ? "white" : "#5B21B6" }}>{b}</button>
+              ))}
+            </div>
+          )}
+          <input value={batch} onChange={e => setBatch(e.target.value)} placeholder="Leave blank to keep current batch" style={css.input} />
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+          <button onClick={apply} disabled={saving} style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#1a3c2e", color: "white" }}>
+            {saving ? "⏳ Applying…" : `✅ Apply to ${selected.length}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BULK: Delete selected students ────────────────────────────────────────────
+function BulkDeleteModal({ selectedIds, students, onStudentsChange, onClose, onDone }) {
+  const selected = students.filter(s => selectedIds.has(s.id));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [markDropoutInstead, setMarkDropoutInstead] = useState(true); // safer default: preserves marks history
+
+  const apply = async () => {
+    setErr("");
+    setSaving(true);
+    const ids = [...selectedIds];
+    if (markDropoutInstead) {
+      const { error } = await supabase.from("students").update({ status: "Dropout" }).in("id", ids);
+      if (error) { setErr(error.message); setSaving(false); return; }
+      onStudentsChange(students.map(s => selectedIds.has(s.id) ? { ...s, status: "Dropout" } : s));
+    } else {
+      const { error } = await supabase.from("students").delete().in("id", ids);
+      if (error) { setErr(error.message); setSaving(false); return; }
+      onStudentsChange(students.filter(s => !selectedIds.has(s.id)));
+    }
+    setSaving(false);
+    onDone();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 460, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ fontSize: 32, textAlign: "center", marginBottom: 8 }}>⚠️</div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, textAlign: "center", marginBottom: 6 }}>Remove {selected.length} Student{selected.length === 1 ? "" : "s"}?</div>
+        {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>⚠️ {err}</div>}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 10, cursor: "pointer" }}>
+          <input type="checkbox" checked={markDropoutInstead} onChange={e => setMarkDropoutInstead(e.target.checked)} style={{ marginTop: 2 }} />
+          <span style={{ fontSize: 12.5, color: "#374151" }}>
+            <b>Mark as Dropout instead of deleting</b> — recommended. Keeps their name and past exam marks in history, but excludes them from active rosters, MarkEntry, and Admit Cards.
+          </span>
+        </label>
+        {!markDropoutInstead && (
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
+            Permanent delete removes the student record entirely. Their exam marks may become orphaned. This cannot be undone.
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+          <button onClick={apply} disabled={saving} style={{ ...css.btn, flex: 2, background: saving ? "#FCA5A5" : "#DC2626", color: "white" }}>
+            {saving ? "⏳ Working…" : markDropoutInstead ? "✅ Mark as Dropout" : "🗑️ Delete Permanently"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SMART STUDENT ROSTER IMPORT (CSV/Excel → fuzzy match → add/merge) ────────
+// Reuses findBestStudentMatch / normalizeNameValue / normalizeGccValue already
+// defined near the top of this file for the marks-CSV importer, so the same
+// matching quality (GCC → Admission No. → exact name → fuzzy name) applies here.
+function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDone }) {
+  const isMobile = useMobile();
+  const courses = Object.keys(courseSubjects);
+  const [rawRows, setRawRows] = useState(null);   // parsed sheet rows (array of arrays)
+  const [headers, setHeaders] = useState([]);
+  const [colMap, setColMap] = useState({ name: -1, gcc: -1, admission: -1 });
+  const [defaultTrack, setDefaultTrack] = useState("");
+  const [defaultBatch, setDefaultBatch] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [rows, setRows] = useState([]);           // processed rows with match info
+  const [saving, setSaving] = useState(false);
+  const [saveSummary, setSaveSummary] = useState(null);
+  const [manualOpenIdx, setManualOpenIdx] = useState(null);
+  const [manualSearch, setManualSearch] = useState({});
+  const fileInputRef = useRef(null);
+
+  // ── Step 1: parse the uploaded file into headers + raw rows ─────────────
+  const handleFile = async (file) => {
+    setParseError(""); setParsing(true); setRows([]); setSaveSummary(null);
+    try {
+      await ensureLibs();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      if (!aoa.length) { setParseError("The file appears to be empty."); setParsing(false); return; }
+      const hdrs = aoa[0].map(h => String(h ?? "").trim());
+      const body = aoa.slice(1).filter(r => r.some(c => String(c ?? "").trim() !== ""));
+      setHeaders(hdrs);
+      setRawRows(body);
+
+      // Best-effort auto column detection
+      const findCol = (patterns) => hdrs.findIndex(h => patterns.some(p => h.toLowerCase().includes(p)));
+      setColMap({
+        name: findCol(["name", "student"]),
+        gcc: findCol(["gcc"]),
+        admission: findCol(["admission", "adm no", "adm.", "adm_no"]),
+      });
+    } catch (e) {
+      setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
+    }
+    setParsing(false);
+  };
+
+  // ── Step 2: process rows against existing students once columns + defaults are set ──
+  const processRows = () => {
+    if (!rawRows || colMap.name === -1) { setParseError("Please select which column holds the student name."); return; }
+    setParseError("");
+    const matchPool = students; // fuzzy-match against ALL existing students (track/batch reassigned per-row if picked)
+    const processed = rawRows.map((r, idx) => {
+      const rawName = String(r[colMap.name] ?? "").trim();
+      const rawGcc = colMap.gcc !== -1 ? r[colMap.gcc] : "";
+      const rawAdm = colMap.admission !== -1 ? r[colMap.admission] : "";
+      if (!rawName) return { idx, rawName, rawGcc, rawAdm, status: "skip", reason: "Empty name" };
+
+      const match = findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool });
+      if (match.student) {
+        return { idx, rawName, rawGcc, rawAdm, status: "existing", student: match.student, matchType: match.matchType, confidence: match.confidence };
+      }
+      return {
+        idx, rawName, rawGcc, rawAdm, status: "new", suggestion: match.suggestion, confidence: match.confidence,
+        track: defaultTrack, batch: defaultBatch,
+      };
+    });
+    setRows(processed);
+  };
+
+  const updateRow = (idx, patch) => setRows(prev => prev.map(r => r.idx === idx ? { ...r, ...patch } : r));
+
+  const markAsNew = (idx) => updateRow(idx, { status: "new", student: null, suggestion: null });
+  const markManualMatch = (idx, student) => updateRow(idx, { status: "existing", student, matchType: "Manual", confidence: 1 });
+  const markSkip = (idx) => updateRow(idx, { status: "skip", reason: "Manually skipped" });
+
+  const newRowsCount = rows.filter(r => r.status === "new").length;
+  const existingRowsCount = rows.filter(r => r.status === "existing").length;
+  const skipRowsCount = rows.filter(r => r.status === "skip").length;
+
+  // ── "Missing students" detector: existing students of the relevant batch(es)
+  // who do NOT appear anywhere in the uploaded file (by GCC/admission/fuzzy name).
+  // Scope defaults to whichever batch was explicitly picked for new students, but
+  // that's optional — if a file contains only students who already exist (no "new"
+  // rows), defaultBatch may never get clicked at all. So when it's unset, fall back
+  // to auto-detecting the batch(es) actually represented among matched students in
+  // this file, so the check still runs instead of silently doing nothing.
+  const missingStudents = (() => {
+    if (!rows.length) return [];
+    const matchedIds = new Set(rows.filter(r => r.student).map(r => r.student.id));
+    const matchedStudents = rows.filter(r => r.student).map(r => r.student);
+    const scopeBatches = defaultBatch
+      ? [defaultBatch.toUpperCase()]
+      : [...new Set(matchedStudents.map(s => (s.class_name || "").toUpperCase()).filter(Boolean))];
+    if (!scopeBatches.length) return [];
+    return students.filter(s =>
+      scopeBatches.includes((s.class_name || "").toUpperCase()) &&
+      s.status !== "Dropout" &&
+      !matchedIds.has(s.id)
+    );
+  })();
+  // Human-readable label for the banner — one batch name, or "these batches" when
+  // the file spans more than one (auto-detected) batch.
+  const missingStudentsScopeLabel = (() => {
+    if (defaultBatch) return defaultBatch;
+    const scopeBatches = [...new Set(rows.filter(r => r.student).map(r => r.student.class_name).filter(Boolean))];
+    return scopeBatches.length === 1 ? scopeBatches[0] : "the matched batch(es)";
+  })();
+
+  const handleSaveNew = async () => {
+    setSaving(true);
+    const toInsert = rows.filter(r => r.status === "new").map(r => {
+      const batchVal = (r.batch || defaultBatch || "").trim();
+      return {
+        name: r.rawName.trim().toUpperCase(),
+        gcc_no: r.rawGcc ? Number(normalizeGccValue(r.rawGcc)) || null : null,
+        admission_no: r.rawAdm ? String(r.rawAdm).trim() : null,
+        course: r.track || defaultTrack || "",
+        class_name: batchVal.toUpperCase(),
+        batch: batchVal,
+      };
+    }).filter(p => p.name);
+
+    if (!toInsert.length) { setSaving(false); return; }
+
+    const { data, error } = await supabase.from("students").insert(toInsert).select();
+    if (error) {
+      setSaveSummary({ ok: false, message: error.message });
+      setSaving(false);
+      return;
+    }
+    onStudentsChange([...students, ...(data || [])].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    setSaveSummary({ ok: true, added: data?.length || 0, skippedExisting: existingRowsCount, skipped: skipRowsCount });
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={css.card}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, marginBottom: 4 }}>📥 Smart Roster Import</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          Upload a CSV or Excel roster. Existing students are matched automatically (GCC No. → Admission No. → exact name → fuzzy name);
+          anything unmatched can be added as new, matched manually, or skipped. You can reuse this for every future exam's roster.
+        </div>
+
+        {!rawRows && (
+          <div>
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
+              style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 22px" }}>
+              {parsing ? "⏳ Reading file…" : "📂 Choose CSV / Excel File"}
+            </button>
+            {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
+          </div>
+        )}
+
+        {rawRows && !rows.length && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Map Columns</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[["name", "Student Name *"], ["gcc", "GCC No."], ["admission", "Admission No."]].map(([key, label]) => (
+                <div key={key}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>{label}</label>
+                  <select value={colMap[key]} onChange={e => setColMap(p => ({ ...p, [key]: Number(e.target.value) }))} style={css.input}>
+                    <option value={-1}>— Not in file —</option>
+                    {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Default Track / Batch for New Students</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {TRACKS.map(t => (
+                <button key={t} onClick={() => setDefaultTrack(t)} style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: defaultTrack === t ? "#1a3c2e" : "#F3F4F6", color: defaultTrack === t ? "white" : "#374151" }}>{t}</button>
+              ))}
+            </div>
+            {defaultTrack && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+                {(TRACK_BATCHES[defaultTrack] || []).map(b => (
+                  <button key={b} onClick={() => setDefaultBatch(b)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: defaultBatch === b ? "#7c3aed" : "#F5F3FF", color: defaultBatch === b ? "white" : "#5B21B6" }}>{b}</button>
+                ))}
+              </div>
+            )}
+
+            {parseError && <div style={{ marginBottom: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#1a3c2e", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+            </div>
+          </div>
+        )}
+
+        {rows.length > 0 && (
+          <div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+              <Badge label={`${existingRowsCount} already exist`} color="#0F6E56" bg="#E1F5EE" />
+              <Badge label={`${newRowsCount} new`} color="#047857" bg="#ECFDF5" />
+              {skipRowsCount > 0 && <Badge label={`${skipRowsCount} skipped`} color="#92740C" bg="#FEF9E7" />}
+            </div>
+
+            <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <thead style={{ position: "sticky", top: 0 }}>
+                  <tr style={{ background: "#1a3c2e" }}>
+                    {["Row", "Name (from file)", "Match", "Action"].map(h => (
+                      <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.idx} style={{ borderBottom: "1px solid #F1F5F9", background: r.status === "skip" ? "#FAFAFA" : "white" }}>
+                      <td style={{ padding: "7px 10px", color: "#9CA3AF" }}>{r.idx + 2}</td>
+                      <td style={{ padding: "7px 10px", fontWeight: 600 }}>{r.rawName || <i style={{ color: "#DC2626" }}>{r.reason}</i>}</td>
+                      <td style={{ padding: "7px 10px" }}>
+                        {r.status === "existing" && (
+                          <div>
+                            <MatchBadge matchType={r.matchType} confidence={r.confidence} />
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{r.student?.name} · {r.student?.class_name}</div>
+                          </div>
+                        )}
+                        {r.status === "new" && <MatchBadge matchType="New" />}
+                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>Skipped</span>}
+                        {r.status === "new" && r.suggestion && (
+                          <div style={{ fontSize: 10.5, color: "#B8860B", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: "7px 10px" }}>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                          {r.status !== "new" && <button onClick={() => markAsNew(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" }}>+ New</button>}
+                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>🔍 Pick manually</button>
+                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#F3F4F6", color: "#6B7280" }}>Skip</button>}
+                        </div>
+                        {manualOpenIdx === r.idx && (
+                          <div style={{ marginTop: 6 }}>
+                            <input placeholder="Search existing students…" value={manualSearch[r.idx] || ""} onChange={e => setManualSearch(p => ({ ...p, [r.idx]: e.target.value }))} style={{ ...css.input, fontSize: 11, padding: "4px 8px" }} />
+                            <div style={{ maxHeight: 140, overflowY: "auto", marginTop: 4, border: "1px solid #E5E7EB", borderRadius: 6 }}>
+                              {students
+                                .filter(s => {
+                                  const q = (manualSearch[r.idx] || "").toLowerCase();
+                                  return !q || (s.name || "").toLowerCase().includes(q) || String(s.gcc_no ?? "").includes(q);
+                                })
+                                .slice(0, 25)
+                                .map(s => (
+                                  <div key={s.id} onClick={() => { markManualMatch(r.idx, s); setManualOpenIdx(null); }}
+                                    style={{ padding: "4px 8px", fontSize: 11, cursor: "pointer", borderBottom: "1px solid #F1F5F9" }}
+                                    onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+                                    onMouseLeave={e => e.currentTarget.style.background = "white"}>
+                                    {s.name} — GCC {s.gcc_no} ({s.class_name})
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {missingStudents.length > 0 && (
+              <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>⚠️ {missingStudents.length} student(s) in {missingStudentsScopeLabel} not found in this file:</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {missingStudents.map(s => (
+                    <span key={s.id} style={{ fontSize: 11, background: "white", border: "1px solid #FDE68A", borderRadius: 999, padding: "2px 9px", color: "#92400E" }}>{s.name}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {saveSummary && (
+              <div style={{ background: saveSummary.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${saveSummary.ok ? "#BBF7D0" : "#FECACA"}`, color: saveSummary.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
+                {saveSummary.ok
+                  ? `✅ Added ${saveSummary.added} new student(s). ${saveSummary.skippedExisting} already existed, ${saveSummary.skipped} skipped.`
+                  : `⚠️ ${saveSummary.message}`}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
+              <button onClick={handleSaveNew} disabled={saving || newRowsCount === 0} style={{ ...css.btn, background: saving ? "#93C5FD" : "#1a3c2e", color: "white", flex: 1 }}>
+                {saving ? "⏳ Saving…" : `✅ Add ${newRowsCount} New Student(s)`}
+              </button>
+              <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── RESULT SHEET IMPORT (roster + marks + section, one file, one click) ──────
+// Built for result sheets that already carry Sl.No / GCC No. / Name / per-subject
+// marks / Score / Rank (e.g. exported "RESULT_<SECTION>_<BATCH>.xls" files) — the
+// same shape as a normal marks import, but this ALSO seeds the student roster
+// (so future exams have these students ready) and tags a "section" label
+// (e.g. ENG / MAN medium-of-instruction group) purely for display, stored in the
+// `batch` column as a suffix. `batch` is written but never read for course-key
+// matching anywhere else in this file — only `class_name` is — so this is safe.
+function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChange, onDone }) {
+  const isMobile = useMobile();
+  const courses = Object.keys(courseSubjects);
+  const [rawRows, setRawRows] = useState(null);
+  const [headers, setHeaders] = useState([]);
+  const [colMap, setColMap] = useState({ name: -1, gcc: -1, admission: -1 });
+  const [subjectColMap, setSubjectColMap] = useState([]); // [{sub, col, matchType, confidence}]
+  const [track, setTrack] = useState("Combined Course");
+  const [batch, setBatch] = useState("Combined Navodaya Course (Sainik Appearing Group)");
+  const [section, setSection] = useState("");   // e.g. "ENG" / "MAN" — display tag only
+  const [examTypeId, setExamTypeId] = useState(examTypes[0]?.id || "");
+  const [examDate, setExamDate] = useState(new Date().toISOString().split("T")[0]);
+  const [examTime, setExamTime] = useState("");     // optional — needed for Admit Cards
+  const [examShift, setExamShift] = useState("");   // optional — e.g. "Morning" / "Afternoon"
+  const [examRoom, setExamRoom] = useState("");     // optional — room/hall
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [rows, setRows] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saveSummary, setSaveSummary] = useState(null);
+  const [manualOpenIdx, setManualOpenIdx] = useState(null);
+  const [manualSearch, setManualSearch] = useState({});
+  const fileInputRef = useRef(null);
+
+  const subjects = courseSubjects[batch] || [];
+
+  const handleFile = async (file) => {
+    setParseError(""); setParsing(true); setRows([]); setSaveSummary(null);
+    try {
+      await ensureLibs();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      if (!aoa.length) { setParseError("The file appears to be empty."); setParsing(false); return; }
+      const hdrs = aoa[0].map(h => String(h ?? "").trim());
+      const body = aoa.slice(1).filter(r => r.some(c => String(c ?? "").trim() !== ""));
+      setHeaders(hdrs);
+      setRawRows(body);
+
+      const findCol = (patterns) => hdrs.findIndex(h => patterns.some(p => h.toLowerCase().includes(p)));
+      const nameCol = findCol(["name of student", "name", "student"]);
+      const gccCol = findCol(["gcc"]);
+      const admCol = findCol(["admission", "adm no", "adm."]);
+      setColMap({ name: nameCol, gcc: gccCol, admission: admCol });
+
+      // Auto-detect which columns hold marks for this batch's subjects (reuses
+      // the same column-matching helper as the marks CSV importer).
+      const excluded = new Set([nameCol, gccCol, admCol, findCol(["sl. no", "sl no"]), findCol(["score"]), findCol(["rank"])].filter(i => i !== -1));
+      setSubjectColMap(findBestColumnMatches(subjects, hdrs, excluded));
+
+      // Best-effort section guess from the filename, e.g. RESULT__ENG_COMBINED.xls
+      const guess = file.name.toUpperCase().match(/\b(ENG|MAN|HIN|MEI)\b/);
+      if (guess) setSection(guess[1]);
+    } catch (e) {
+      setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
+    }
+    setParsing(false);
+  };
+
+  const processRows = () => {
+    if (!rawRows || colMap.name === -1) { setParseError("Please select which column holds the student name."); return; }
+    setParseError("");
+    const matchPool = students;
+    const seenGcc = new Map();   // normalized GCC -> row idx already claimed within THIS file
+    const seenName = new Map();  // normalized name -> row idx already claimed within THIS file
+    const processed = rawRows.map((r, idx) => {
+      const rawName = String(r[colMap.name] ?? "").trim();
+      const rawGcc = colMap.gcc !== -1 ? r[colMap.gcc] : "";
+      const rawAdm = colMap.admission !== -1 ? r[colMap.admission] : "";
+      const subMarks = extractSubMarksFromRow(r, subjectColMap);
+      if (!rawName) return { idx, rawName, rawGcc, rawAdm, subMarks, status: "skip", reason: "Empty name" };
+
+      // In-file duplicate guard: same GCC or same normalized name appearing twice
+      // in this upload would otherwise create two separate "new" student rows.
+      const gccKey = rawGcc ? normalizeGccValue(rawGcc) : "";
+      const nameKey = normalizeNameValue(rawName);
+      if (gccKey && seenGcc.has(gccKey)) {
+        return { idx, rawName, rawGcc, rawAdm, subMarks, status: "skip", reason: `Duplicate GCC ${rawGcc} (already seen at row ${seenGcc.get(gccKey) + 2})` };
+      }
+      if (!gccKey && seenName.has(nameKey)) {
+        return { idx, rawName, rawGcc, rawAdm, subMarks, status: "skip", reason: `Duplicate name (already seen at row ${seenName.get(nameKey) + 2})` };
+      }
+      if (gccKey) seenGcc.set(gccKey, idx); else seenName.set(nameKey, idx);
+
+      const match = findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool });
+      if (match.student) {
+        return { idx, rawName, rawGcc, rawAdm, subMarks, status: "existing", student: match.student, matchType: match.matchType, confidence: match.confidence };
+      }
+      return { idx, rawName, rawGcc, rawAdm, subMarks, status: "new", suggestion: match.suggestion, confidence: match.confidence };
+    });
+    setRows(processed);
+  };
+
+  const updateRow = (idx, patch) => setRows(prev => prev.map(r => r.idx === idx ? { ...r, ...patch } : r));
+  const markAsNew = (idx) => updateRow(idx, { status: "new", student: null, suggestion: null });
+  const markManualMatch = (idx, student) => updateRow(idx, { status: "existing", student, matchType: "Manual", confidence: 1 });
+  const markSkip = (idx) => updateRow(idx, { status: "skip", reason: "Manually skipped" });
+
+  const newCount = rows.filter(r => r.status === "new").length;
+  const existingCount = rows.filter(r => r.status === "existing").length;
+  const skipCount = rows.filter(r => r.status === "skip").length;
+
+  // GCC numbers that are about to be inserted as new students but collide with
+  // a GCC already in the system (e.g. the local `students` list is stale, or a
+  // row was manually forced to "new" despite a real GCC match existing) — these
+  // would violate the same uniqueness the single-student Add form enforces.
+  const gccConflicts = (() => {
+    const existingGcc = new Set(students.map(s => normalizeGccValue(s.gcc_no)).filter(Boolean));
+    const conflicts = [];
+    rows.forEach(r => {
+      if (r.status !== "new" || !r.rawGcc) return;
+      const key = normalizeGccValue(r.rawGcc);
+      if (key && existingGcc.has(key)) conflicts.push(r);
+    });
+    return conflicts;
+  })();
+
+  // ── "Missing students" detector: existing (non-Dropout) students of the
+  // chosen batch who do NOT appear anywhere in this result sheet — i.e. someone
+  // on the roster whose result wasn't in the file at all (absent-from-import,
+  // not the same as MarkEntry's absent-with-zero-marks). `batch` here is
+  // always an explicit required field (unlike the generic roster importer), so
+  // this check always has a scope to run against once rows are matched.
+  const missingStudents = (() => {
+    if (!rows.length || !batch) return [];
+    const matchedIds = new Set(rows.filter(r => r.student).map(r => r.student.id));
+    return students.filter(s =>
+      (s.class_name || "").toUpperCase() === batch.trim().toUpperCase() &&
+      s.status !== "Dropout" &&
+      !matchedIds.has(s.id)
+    );
+  })();
+
+  const handleImportAll = async () => {
+    if (gccConflicts.length) return; // blocked — see warning banner in the UI
+    setSaving(true);
+    const batchVal = batch.trim();
+    const sectionSuffix = section.trim() ? ` — ${section.trim().toUpperCase()}` : "";
+    // Strip any PREVIOUS section suffix this same batch may already carry, so
+    // re-importing under a different section tag doesn't accumulate suffixes
+    // like "... — ENG — MAN" on repeated runs.
+    const stripOldSuffix = (b) => (b || "").replace(/\s+—\s+[A-Z]+$/, "");
+
+    // 1) Insert new students (roster), tagging batch with the section suffix.
+    // Each outgoing row carries a client-side `_rowIdx` so the inserted rows
+    // can be matched back to their source row by GCC/name instead of by
+    // array position — Postgres/PostgREST does NOT guarantee that a bulk
+    // insert().select() returns rows in the same order they were sent.
+    const newRowsToInsert = rows.filter(r => r.status === "new" && r.rawName);
+    const toInsert = newRowsToInsert.map(r => ({
+      name: r.rawName.trim().toUpperCase(),
+      gcc_no: r.rawGcc ? Number(normalizeGccValue(r.rawGcc)) || null : null,
+      admission_no: r.rawAdm ? String(r.rawAdm).trim() : null,
+      course: track,
+      class_name: batchVal.toUpperCase(),
+      batch: batchVal + sectionSuffix,
+    }));
+
+    let insertedStudents = [];
+    if (toInsert.length) {
+      const { data, error } = await supabase.from("students").insert(toInsert).select();
+      if (error) {
+        setSaveSummary({ ok: false, message: `Import stopped before any changes were made: ${error.message}` });
+        setSaving(false);
+        return;
+      }
+      insertedStudents = data || [];
+    }
+
+    // Map each inserted DB row back to its source file row by GCC (or, lacking
+    // a GCC, by exact normalized name) — never by position.
+    const idByRowIdx = {};
+    rows.forEach(r => {
+      if (r.status === "existing" && r.student) idByRowIdx[r.idx] = r.student.id;
+    });
+    newRowsToInsert.forEach(r => {
+      const gccKey = r.rawGcc ? normalizeGccValue(r.rawGcc) : "";
+      const nameKey = normalizeNameValue(r.rawName);
+      const found = insertedStudents.find(s =>
+        gccKey ? normalizeGccValue(s.gcc_no) === gccKey : normalizeNameValue(s.name) === nameKey
+      );
+      if (found) idByRowIdx[r.idx] = found.id;
+    });
+
+    // Also tag the section suffix onto any EXISTING students matched from this
+    // file, so section stays consistent even for students who were already on
+    // the roster before this import. Failures here are collected (not silently
+    // dropped) and surfaced in the summary — the marks import still proceeds
+    // since a failed batch tag isn't a reason to lose the marks data.
+    const existingToTag = rows.filter(r =>
+      r.status === "existing" && r.student && sectionSuffix &&
+      stripOldSuffix(r.student.batch) + sectionSuffix !== (r.student.batch || "")
+    );
+    const taggedIds = new Set();
+    const tagErrors = [];
+    for (const r of existingToTag) {
+      const newBatchVal = stripOldSuffix(r.student.batch) + sectionSuffix;
+      const { error } = await supabase.from("students").update({ batch: newBatchVal }).eq("id", r.student.id);
+      if (error) tagErrors.push(`${r.student.name}: ${error.message}`);
+      else taggedIds.add(r.student.id);
+    }
+
+    // 2) Ensure exam_schedule rows exist for this batch + exam type + date
+    //    (one per subject), so marks have somewhere to attach to.
+    const { data: existingSched } = await supabase
+      .from("exam_schedule")
+      .select("id, subject")
+      .eq("exam_type_id", examTypeId)
+      .eq("course", batchVal);
+    const subjectToExamId = {};
+    (existingSched || []).forEach(s => { subjectToExamId[s.subject] = s.id; });
+
+    const missingSubjects = subjects.filter(s => !subjectToExamId[s]);
+    if (missingSubjects.length) {
+      const newSchedRows = missingSubjects.map(sub => ({
+        exam_type_id: examTypeId, course: batchVal, subject: sub,
+        exam_date: examDate, total_marks: getSubjectMax(batchVal, sub) || 20,
+        time: examTime || null, shift: examShift || null, room: examRoom || null,
+      }));
+      const { data: createdSched, error: schedErr } = await supabase.from("exam_schedule").insert(newSchedRows).select();
+      if (schedErr) {
+        setSaveSummary({
+          ok: false,
+          message: `Students were added (${insertedStudents.length}) but the exam schedule could not be created: ${schedErr.message}. Marks were NOT imported — re-run the import once schedule creation succeeds; already-added students won't be duplicated.`,
+        });
+        setSaving(false);
+        // Still refresh the roster so the newly-added students are visible even though marks failed.
+        const taggedList = students.map(s => taggedIds.has(s.id) ? { ...s, batch: stripOldSuffix(s.batch) + sectionSuffix } : s);
+        onStudentsChange([...taggedList, ...insertedStudents].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+        return;
+      }
+      (createdSched || []).forEach(s => { subjectToExamId[s.subject] = s.id; });
+    }
+
+    // 3) Upsert exam_marks for every matched/new student × subject with marks in the file
+    const markRows = [];
+    rows.forEach(r => {
+      if (r.status === "skip") return;
+      const sid = idByRowIdx[r.idx];
+      if (!sid) return;
+      subjects.forEach(sub => {
+        const examId = subjectToExamId[sub];
+        if (!examId) return;
+        const m = r.subMarks[sub];
+        if (m === undefined) return;
+        markRows.push({
+          student_id: sid, exam_id: examId, exam_type_id: examTypeId, exam_date: examDate,
+          subject: sub, marks_obtained: m, marks: m, max_marks: getSubjectMax(batchVal, sub),
+          total_marks: getSubjectMax(batchVal, sub), class_name: batchVal.toUpperCase(),
+        });
+      });
+    });
+
+    const writeErrors = [];
+    for (let i = 0; i < markRows.length; i += 100) {
+      const { error } = await supabase.from("exam_marks").upsert(markRows.slice(i, i + 100), { onConflict: "student_id,exam_id" });
+      if (error) writeErrors.push(error.message || String(error));
+    }
+
+    // Refresh local student list with newly inserted + section-tagged students
+    const tagged = students.map(s => taggedIds.has(s.id) ? { ...s, batch: stripOldSuffix(s.batch) + sectionSuffix } : s);
+    onStudentsChange([...tagged, ...insertedStudents].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+
+    setSaving(false);
+    const allErrors = [...tagErrors, ...writeErrors];
+    setSaveSummary({
+      ok: allErrors.length === 0,
+      message: allErrors.length
+        ? `${insertedStudents.length} student(s) added and ${markRows.length} mark entries written, but ${allErrors.length} operation(s) failed: ${allErrors[0]}${allErrors.length > 1 ? ` (+${allErrors.length - 1} more)` : ""}`
+        : undefined,
+      added: insertedStudents.length,
+      matched: existingCount,
+      skipped: skipCount,
+      marksWritten: markRows.length,
+    });
+  };
+
+  return (
+    <div style={{ maxWidth: 940 }}>
+      <div style={css.card}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, marginBottom: 4 }}>🧾 Import Result Sheet (Roster + Marks + Section)</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          Upload a result sheet (Sl. No. / GCC No. / Name / subject marks / Score / Rank). This adds any new students to the permanent
+          roster, tags them with a section label (e.g. ENG / MAN) for future filtering, and imports these marks as a real exam — all in
+          one step. The roster is then reused automatically for every future exam of this batch.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Track</label>
+            <select value={track} onChange={e => setTrack(e.target.value)} style={css.input}>
+              {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Batch</label>
+            <select value={batch} onChange={e => setBatch(e.target.value)} style={css.input}>
+              {courses.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Section Tag (optional)</label>
+            <input value={section} onChange={e => setSection(e.target.value)} placeholder="e.g. ENG, MAN" style={css.input} />
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Type</label>
+            <select value={examTypeId} onChange={e => setExamTypeId(e.target.value)} style={css.input}>
+              {examTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Date</label>
+            <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} style={css.input} />
+          </div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>
+            Time / Shift / Room <span style={{ fontWeight: 400, textTransform: "none", color: "#9CA3AF" }}>(optional — only needed if you also want Admit Cards for this sitting)</span>
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
+            <input value={examTime} onChange={e => setExamTime(e.target.value)} placeholder="e.g. 09:00 AM" style={css.input} />
+            <input value={examShift} onChange={e => setExamShift(e.target.value)} placeholder="e.g. Morning" style={css.input} />
+            <input value={examRoom} onChange={e => setExamRoom(e.target.value)} placeholder="e.g. Hall 2" style={css.input} />
+          </div>
+        </div>
+
+        {!rawRows && (
+          <div>
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
+              style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 22px" }}>
+              {parsing ? "⏳ Reading file…" : "📂 Choose Result Sheet File"}
+            </button>
+            {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
+          </div>
+        )}
+
+        {rawRows && !rows.length && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Map Identity Columns</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[["name", "Student Name *"], ["gcc", "GCC No."], ["admission", "Admission No."]].map(([key, label]) => (
+                <div key={key}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>{label}</label>
+                  <select value={colMap[key]} onChange={e => setColMap(p => ({ ...p, [key]: Number(e.target.value) }))} style={css.input}>
+                    <option value={-1}>— Not in file —</option>
+                    {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Subject Columns for {batch}</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 16 }}>
+              {subjects.map(sub => {
+                const entry = subjectColMap.find(m => m.sub === sub) || { col: -1, matchType: "none", confidence: 0 };
+                return (
+                  <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, width: 140, flexShrink: 0 }}>{sub}</div>
+                    <select value={entry.col} onChange={e => {
+                      const col = Number(e.target.value);
+                      setSubjectColMap(prev => {
+                        const next = prev.filter(m => m.sub !== sub);
+                        next.push({ sub, col, matchType: "Manual", confidence: 1 });
+                        return next;
+                      });
+                    }} style={{ ...css.input, flex: 1 }}>
+                      <option value={-1}>— Not in file —</option>
+                      {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+                    </select>
+                    <ColumnMatchBadge matchType={entry.matchType} confidence={entry.confidence} />
+                  </div>
+                );
+              })}
+            </div>
+
+            {parseError && <div style={{ marginBottom: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#1a3c2e", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+            </div>
+          </div>
+        )}
+
+        {rows.length > 0 && (
+          <div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+              <Badge label={`${existingCount} already on roster`} color="#0F6E56" bg="#E1F5EE" />
+              <Badge label={`${newCount} new students`} color="#047857" bg="#ECFDF5" />
+              {skipCount > 0 && <Badge label={`${skipCount} skipped`} color="#92740C" bg="#FEF9E7" />}
+              {section.trim() && <Badge label={`Section: ${section.trim().toUpperCase()}`} color="#4338CA" bg="#EEF2FF" />}
+            </div>
+
+            <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <thead style={{ position: "sticky", top: 0 }}>
+                  <tr style={{ background: "#1a3c2e" }}>
+                    {["Row", "Name (from file)", "Match", "Marks Found", "Action"].map(h => (
+                      <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.idx} style={{ borderBottom: "1px solid #F1F5F9", background: r.status === "skip" ? "#FAFAFA" : "white" }}>
+                      <td style={{ padding: "7px 10px", color: "#9CA3AF" }}>{r.idx + 2}</td>
+                      <td style={{ padding: "7px 10px", fontWeight: 600 }}>{r.rawName || <i style={{ color: "#DC2626" }}>{r.reason}</i>}</td>
+                      <td style={{ padding: "7px 10px" }}>
+                        {r.status === "existing" && (
+                          <div>
+                            <MatchBadge matchType={r.matchType} confidence={r.confidence} />
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{r.student?.name} · {r.student?.class_name}</div>
+                          </div>
+                        )}
+                        {r.status === "new" && <MatchBadge matchType="New" />}
+                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>{r.reason || "Skipped"}</span>}
+                        {r.status === "new" && r.suggestion && (
+                          <div style={{ fontSize: 10.5, color: "#B8860B", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: "7px 10px", color: "#64748b" }}>{Object.keys(r.subMarks || {}).length}/{subjects.length} subjects</td>
+                      <td style={{ padding: "7px 10px" }}>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                          {r.status !== "new" && <button onClick={() => markAsNew(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" }}>+ New</button>}
+                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>🔍 Pick manually</button>
+                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#F3F4F6", color: "#6B7280" }}>Skip</button>}
+                        </div>
+                        {manualOpenIdx === r.idx && (
+                          <div style={{ marginTop: 6 }}>
+                            <input placeholder="Search existing students…" value={manualSearch[r.idx] || ""} onChange={e => setManualSearch(p => ({ ...p, [r.idx]: e.target.value }))} style={{ ...css.input, fontSize: 11, padding: "4px 8px" }} />
+                            <div style={{ maxHeight: 140, overflowY: "auto", marginTop: 4, border: "1px solid #E5E7EB", borderRadius: 6 }}>
+                              {students
+                                .filter(s => {
+                                  const q = (manualSearch[r.idx] || "").toLowerCase();
+                                  return !q || (s.name || "").toLowerCase().includes(q) || String(s.gcc_no ?? "").includes(q);
+                                })
+                                .slice(0, 25)
+                                .map(s => (
+                                  <div key={s.id} onClick={() => { markManualMatch(r.idx, s); setManualOpenIdx(null); }}
+                                    style={{ padding: "4px 8px", fontSize: 11, cursor: "pointer", borderBottom: "1px solid #F1F5F9" }}
+                                    onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+                                    onMouseLeave={e => e.currentTarget.style.background = "white"}>
+                                    {s.name} — GCC {s.gcc_no} ({s.class_name})
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {missingStudents.length > 0 && (
+              <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>⚠️ {missingStudents.length} student(s) already on the {batch} roster were not found in this result sheet:</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {missingStudents.map(s => (
+                    <span key={s.id} style={{ fontSize: 11, background: "white", border: "1px solid #FDE68A", borderRadius: 999, padding: "2px 9px", color: "#92400E" }}>{s.name} · GCC {s.gcc_no || "—"}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {gccConflicts.length > 0 && (
+              <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 14px", marginBottom: 14, fontSize: 12.5, color: "#991B1B" }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠️ {gccConflicts.length} row(s) marked "New" have a GCC No. that already exists in the system:</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                  {gccConflicts.map(r => (
+                    <span key={r.idx} style={{ fontSize: 11, background: "white", border: "1px solid #FECACA", borderRadius: 999, padding: "2px 9px" }}>{r.rawName} (GCC {r.rawGcc})</span>
+                  ))}
+                </div>
+                Import is blocked until these are resolved — use <b>🔍 Pick manually</b> to match them to the existing student, or correct the GCC No. and re-upload.
+              </div>
+            )}
+
+            {saveSummary && (
+              <div style={{ background: saveSummary.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${saveSummary.ok ? "#BBF7D0" : "#FECACA"}`, color: saveSummary.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 8 }}>
+                {saveSummary.ok
+                  ? (saveSummary.message || `✅ Added ${saveSummary.added} new student(s), matched ${saveSummary.matched} existing, wrote ${saveSummary.marksWritten} mark entries. ${saveSummary.skipped} row(s) skipped.`)
+                  : `⚠️ ${saveSummary.message}`}
+              </div>
+            )}
+            {saveSummary?.ok && !(examTime.trim() && examRoom.trim()) && (
+              <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 12, color: "#92400E" }}>
+                ℹ️ Time/Room weren't set for this sitting, so Admit Cards won't have a time/hall to print yet — fill those in under <b>Schedule</b> if you need admit cards for it.
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
+              <button onClick={handleImportAll} disabled={saving || !examTypeId || !examDate || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#1a3c2e", color: "white", flex: 1 }}>
+                {saving ? "⏳ Importing…" : gccConflicts.length ? "⚠️ Resolve GCC conflicts above first" : `✅ Import Roster + Marks (${rows.length - skipCount} students)`}
+              </button>
+              <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose }) {
+  const courses = Object.keys(courseSubjects);
+  const [course, setCourse] = useState(courses[0] || "");
+  const [examTypeId, setExamTypeId] = useState("");
+  const [examTypesList, setExamTypesList] = useState([]);
+  const [examDate, setExamDate] = useState("");
+  const [availableDates, setAvailableDates] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [absentees, setAbsentees] = useState(null); // null = not searched yet
+  const [selected, setSelected] = useState(new Set());
+  const [applying, setApplying] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    supabase.from("exam_types").select("*").order("created_at").then(({ data }) => setExamTypesList(data || []));
+  }, []);
+
+  useEffect(() => {
+    if (!examTypeId) { setAvailableDates([]); return; }
+    supabase.from("exam_marks").select("exam_date").eq("exam_type_id", examTypeId).then(({ data }) => {
+      setAvailableDates([...new Set((data || []).map(d => d.exam_date).filter(Boolean))].sort());
+    });
+  }, [examTypeId]);
+
+  const search = async () => {
+    if (!course || !examTypeId) return;
+    setLoading(true); setAbsentees(null); setSelected(new Set()); setResult(null);
+
+    const { data: schedData } = await supabase
+      .from("exam_schedule")
+      .select("id")
+      .eq("exam_type_id", examTypeId)
+      .eq("course", course);
+    const examIds = (schedData || []).map(s => s.id);
+    if (!examIds.length) { setAbsentees([]); setLoading(false); return; }
+
+    const courseStudents = students.filter(s => (s.class_name || "").toUpperCase() === course.toUpperCase() && s.status !== "Dropout");
+    const ids = courseStudents.map(s => s.id);
+    if (!ids.length) { setAbsentees([]); setLoading(false); return; }
+
+    let q = supabase.from("exam_marks").select("student_id, exam_id, marks_obtained, exam_date").in("student_id", ids).in("exam_id", examIds);
+    if (examDate) q = q.eq("exam_date", examDate);
+    const { data: marksData } = await q;
+
+    // Group marks by student. A student counts as "absent" for this sitting if
+    // every subject they have a row for is 0 AND they have a row for every
+    // scheduled subject (so a student simply not yet entered isn't flagged).
+    const byStudent = {};
+    (marksData || []).forEach(m => {
+      byStudent[m.student_id] = byStudent[m.student_id] || [];
+      byStudent[m.student_id].push(m);
+    });
+
+    const absent = courseStudents.filter(s => {
+      const rows = byStudent[s.id] || [];
+      if (rows.length < examIds.length) return false; // incomplete entry, not confirmed absent
+      return rows.every(r => Number(r.marks_obtained) === 0);
+    });
+
+    setAbsentees(absent);
+    setLoading(false);
+  };
+
+  const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const applyAction = async (action) => {
+    if (!selected.size) return;
+    setApplying(true);
+    const ids = [...selected];
+    if (action === "dropout") {
+      const { error } = await supabase.from("students").update({ status: "Dropout" }).in("id", ids);
+      if (!error) onStudentsChange(students.map(s => selected.has(s.id) ? { ...s, status: "Dropout" } : s));
+      setResult(error ? { ok: false, message: error.message } : { ok: true, message: `Marked ${ids.length} student(s) as Dropout.` });
+    } else if (action === "delete") {
+      const { error } = await supabase.from("students").delete().in("id", ids);
+      if (!error) onStudentsChange(students.filter(s => !selected.has(s.id)));
+      setResult(error ? { ok: false, message: error.message } : { ok: true, message: `Permanently removed ${ids.length} student(s).` });
+    }
+    setApplying(false);
+    if (absentees) setAbsentees(absentees.filter(s => !selected.has(s.id)));
+    setSelected(new Set());
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, overflowY: "auto" }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 640, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🚫 Find Exam-Absent Students</div>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          Finds students marked absent (0 in every subject) for a given exam sitting, so they can be removed from the active roster or marked Dropout in bulk.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Batch / Course</label>
+            <select value={course} onChange={e => setCourse(e.target.value)} style={css.input}>
+              {courses.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Type</label>
+            <select value={examTypeId} onChange={e => { setExamTypeId(e.target.value); setExamDate(""); }} style={css.input}>
+              <option value="">— Select —</option>
+              {examTypesList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Date (optional — leave blank to check all dates for this type)</label>
+          <select value={examDate} onChange={e => setExamDate(e.target.value)} style={css.input}>
+            <option value="">— All dates —</option>
+            {availableDates.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+
+        <button onClick={search} disabled={loading || !course || !examTypeId} style={{ ...css.btn, background: "#1a3c2e", color: "white", marginBottom: 16 }}>
+          {loading ? "⏳ Searching…" : "🔎 Find Absent Students"}
+        </button>
+
+        {absentees !== null && (
+          <div>
+            {absentees.length === 0 ? (
+              <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>No fully-absent students found for this sitting.</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#DC2626", marginBottom: 8 }}>{absentees.length} student(s) absent for every subject:</div>
+                <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 14 }}>
+                  {absentees.map(s => (
+                    <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #F1F5F9", fontSize: 12.5, cursor: "pointer" }}>
+                      <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSel(s.id)} />
+                      <span style={{ fontWeight: 600 }}>{s.name}</span>
+                      <span style={{ color: "#94A3B8" }}>GCC {s.gcc_no} · {s.class_name}</span>
+                    </label>
+                  ))}
+                </div>
+                {result && (
+                  <div style={{ background: result.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${result.ok ? "#BBF7D0" : "#FECACA"}`, color: result.ok ? "#166534" : "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>
+                    {result.ok ? "✅ " : "⚠️ "}{result.message}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button onClick={() => applyAction("dropout")} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#93C5FD" : "#B45309", color: "white" }}>
+                    📤 Mark Selected as Dropout
+                  </button>
+                  <button onClick={() => applyAction("delete")} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#FCA5A5" : "#DC2626", color: "white" }}>
+                    🗑️ Delete Selected Permanently
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -4744,6 +5942,18 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
 }
 
 // ─── REPORT CARD ITEM ─────────────────────────────────────────────────────────
+// ─── Shared "is this student absent for this exam sitting?" check ─────────────
+// Same convention as ExamAbsentFinder / MarkEntry's toggleAbsent: absence is
+// recorded as marks_obtained = 0 in every subject. A student with NO rows at
+// all (not yet entered) is NOT counted as absent — only fully-zero rows are.
+function isStudentAbsentForExam(studentId, subjects, marksMap) {
+  if (!subjects.length) return false;
+  const values = subjects.map(sub => marksMap[`${studentId}-${sub}`]);
+  const hasAnyRow = values.some(v => v !== undefined && v !== null && v !== "");
+  if (!hasAnyRow) return false;
+  return values.every(v => Number(v) === 0);
+}
+
 function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examType, examDate, examName, institute, allStudents, course }) {
   const { remark, setRemark, save: saveRemark, saving: savingRemark, saved: savedRemark } = useRemarks(st.id, examType, examDate);
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
@@ -4818,6 +6028,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
   const [datesLoaded, setDatesLoaded] = useState(false); // distinguishes "still checking" from "confirmed zero"
+  const [excludeAbsent, setExcludeAbsent] = useState(true); // hide absent students from report cards + ranking
   // ── Real exam config, sourced live from exam_schedule for this exact course + exam type —
   // NOT the static courseSubjects/COURSE_MAX_MARKS config, which can drift out of sync with
   // whatever was actually scheduled and marked. This is what makes Report Cards "integrate
@@ -4871,6 +6082,8 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   }, [examType, course, examDate]);
 
   const examName = examTypes.find(e => e.id === examType)?.name || "Examination";
+  const absentCount = courseStudents.filter(s => isStudentAbsentForExam(s.id, subjects, marks)).length;
+  const visibleStudents = excludeAbsent ? courseStudents.filter(s => !isStudentAbsentForExam(s.id, subjects, marks)) : courseStudents;
   return (
     <div>
       <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
@@ -4888,6 +6101,10 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
             {dates.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer", background: "white", padding: "8px 14px", borderRadius: 8, border: "1px solid #E5E7EB" }}>
+          <input type="checkbox" checked={excludeAbsent} onChange={e => setExcludeAbsent(e.target.checked)} />
+          Exclude absent students {absentCount > 0 && <span style={{ color: "#DC2626", fontWeight: 700 }}>({absentCount})</span>}
+        </label>
       </div>
       {datesLoaded && !dates.length && (
         <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "#92400E", lineHeight: 1.6 }}>
@@ -4900,9 +6117,14 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
           ⚠️ No exam is scheduled for <b>{course}</b> under "<b>{examName}</b>" — totals and max marks below are falling back to the static Course Subjects config, which may not match what was actually entered. Set up the schedule in <b>Exams → Schedule</b> for accurate report cards.
         </div>
       )}
+      {excludeAbsent && absentCount > 0 && (
+        <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#6B7280" }}>
+          🚫 {absentCount} absent student{absentCount === 1 ? "" : "s"} hidden from this view and excluded from ranking. Uncheck "Exclude absent students" above to show them.
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
-        {courseStudents.map(st => (
-          <ReportCardItem key={st.id} st={st} subjects={subjects} subjectMaxMap={subjectMaxMap} courseMax={courseMax} marks={marks} examType={examType} examDate={examDate} examName={examName} institute={institute} allStudents={courseStudents} course={course} />
+        {visibleStudents.map(st => (
+          <ReportCardItem key={st.id} st={st} subjects={subjects} subjectMaxMap={subjectMaxMap} courseMax={courseMax} marks={marks} examType={examType} examDate={examDate} examName={examName} institute={institute} allStudents={visibleStudents} course={course} />
         ))}
       </div>
     </div>
@@ -4929,6 +6151,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const [rcSortBy, setRcSortBy]       = useState("name");
   const [rcIncludeRemarks, setRcIncludeRemarks] = useState(true);
   const [rcPageBreak, setRcPageBreak] = useState(true);
+  const [rcExcludeAbsent, setRcExcludeAbsent] = useState(true); // hide absent students from bulk report cards + ranking
 
   const [acCourse, setAcCourse]       = useState(courses[0] || "");
   const [acExamType, setAcExamType]   = useState(examTypes[0]?.id || "");
@@ -4993,7 +6216,10 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const getTotal = (sid) => rcSubjects.reduce((s,sub)=>s+(Number(rcMarks[`${sid}-${sub}`])||0),0);
   const getPct   = (sid) => rcCourseMax ? (getTotal(sid) / rcCourseMax) * 100 : 0;
 
-  const sortedRcStudents = [...rcStudents].sort((a,b)=>{
+  const absentRcCount = rcStudents.filter(s => isStudentAbsentForExam(s.id, rcSubjects, rcMarks)).length;
+  const rankingPoolRcStudents = rcExcludeAbsent ? rcStudents.filter(s => !isStudentAbsentForExam(s.id, rcSubjects, rcMarks)) : rcStudents;
+
+  const sortedRcStudents = [...rankingPoolRcStudents].sort((a,b)=>{
     if (rcSortBy==="rank") return getTotal(b.id)-getTotal(a.id);
     if (rcSortBy==="gcc")  return Number(a.gcc_no)-Number(b.gcc_no);
     return a.name.localeCompare(b.name);
@@ -5024,7 +6250,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     for (let i = 0; i < filteredRcStudents.length; i++) {
       const st = filteredRcStudents[i];
       const remark = rcIncludeRemarks ? (rcRemarks[st.id] || "") : "";
-      cards.push(buildReportCardHTML(st, rcSubjects, rcSubjectMaxMap, rcCourseMax, rcMarks, rcCourse, rcStudents, examTypes.find(e=>e.id===rcExamType)?.name||"Examination", rcExamDate, institute, remark));
+      cards.push(buildReportCardHTML(st, rcSubjects, rcSubjectMaxMap, rcCourseMax, rcMarks, rcCourse, rankingPoolRcStudents, examTypes.find(e=>e.id===rcExamType)?.name||"Examination", rcExamDate, institute, remark));
       setRcProgress({ current: i+1, total: filteredRcStudents.length });
       await new Promise(r => setTimeout(r, 0));
     }
@@ -5128,6 +6354,10 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
                     {rcFilter==="topN" && <input type="number" value={rcTopN} onChange={e=>setRcTopN(Number(e.target.value))} min={1} style={{ ...css.input, width:80, marginLeft:22 }} />}
                   </div>
                 </div>
+                <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer" }}>
+                  <input type="checkbox" checked={rcExcludeAbsent} onChange={e=>setRcExcludeAbsent(e.target.checked)} />
+                  Exclude absent students {absentRcCount > 0 && <span style={{ color:"#DC2626", fontWeight:700 }}>({absentRcCount})</span>}
+                </label>
                 <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Sort By</label>
                   <select value={rcSortBy} onChange={e=>setRcSortBy(e.target.value)} style={css.input}><option value="name">Name (A–Z)</option><option value="rank">Rank</option><option value="gcc">GCC No.</option></select></div>
                 <div><input placeholder="Search name or GCC…" value={rcSearch} onChange={e=>setRcSearch(e.target.value)} style={css.input} /></div>
@@ -5142,8 +6372,9 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
             <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap:10 }}>
               <StatPill label="Total"   value={rcStudents.length}          color="#1a3c2e" />
               <StatPill label="Will Print" value={filteredRcStudents.length}  color="#185FA5" />
-              <StatPill label="Passed"  value={rcStudents.filter(s=>getPct(s.id)>=40).length} color="#0F6E56" />
-              <StatPill label="Failed"  value={rcStudents.filter(s=>getPct(s.id)<40 && getTotal(s.id)>0).length} color="#A32D2D" />
+              <StatPill label="Passed"  value={rankingPoolRcStudents.filter(s=>getPct(s.id)>=40).length} color="#0F6E56" />
+              <StatPill label="Failed"  value={rankingPoolRcStudents.filter(s=>getPct(s.id)<40 && getTotal(s.id)>0).length} color="#A32D2D" />
+              {absentRcCount > 0 && <StatPill label="Absent" value={absentRcCount} color="#DC2626" />}
             </div>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", padding:18 }}>
               {rcProgress ? (
@@ -6914,7 +8145,7 @@ export default function Exams({ currentUser, perms }) {
     // ── SYNCED: Schedule now uses syncVersion and refetchSchedule ──
     schedule:       () => <Schedule key={syncVersion} courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
     seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
+    studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} examTypes={examTypes} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
     // ── SYNCED: CourseSubjectsManager uses centralized handler ──
     coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
     examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); setTab("examconfig"); }} courseSubjects={courseSubjects} onScheduleChange={refetchSchedule} />,
