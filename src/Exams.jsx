@@ -2058,18 +2058,19 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
     const ids = courseStudents.map(s => s.id);
     // Resolve via exam_schedule (exam_id -> subject) rather than trusting the raw
     // `subject` text column on exam_marks, which can be null/stale on older rows.
-    Promise.all([
-      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
-      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]),
-    ]).then(([{ data: sched }, { data }]) => {
-      const examIdToSubject = {};
-      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
-      const map = {};
-      (data || []).forEach(r => {
-        const sub = examIdToSubject[r.exam_id] || r.subject;
-        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
-      });
-      setMarks(map); setLoading(false);
+    supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course).then(({ data: sched }) => {
+        const examIdToSubject = {};
+        (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+        const scopedExamIds = (sched || []).map(s => s.id);
+        if (!scopedExamIds.length) { setMarks({}); setLoading(false); return; }
+        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+          const map = {};
+          (data || []).forEach(r => {
+            const sub = examIdToSubject[r.exam_id];
+            if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+          });
+          setMarks(map); setLoading(false);
+        });
     });
   }, [examType, examDate, course]);
 
@@ -2191,18 +2192,19 @@ function Analytics({ courseSubjects, examTypes, students }) {
     // raw `subject` text column on exam_marks directly — that column can be null/stale
     // on older rows or out of sync with the current schedule, which silently dropped
     // marks here even though Mark Entry (which joins via exam_id) could see them fine.
-    Promise.all([
-      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
-      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
-    ]).then(([{ data: sched }, { data }]) => {
-      const examIdToSubject = {};
-      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
-      const map = {};
-      (data || []).forEach(r => {
-        const sub = examIdToSubject[r.exam_id] || r.subject;
-        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
-      });
-      setMarks(map);
+    supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course).then(({ data: sched }) => {
+        const examIdToSubject = {};
+        (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+        const scopedExamIds = (sched || []).map(s => s.id);
+        if (!scopedExamIds.length) { setMarks({}); return; }
+        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+          const map = {};
+          (data || []).forEach(r => {
+            const sub = examIdToSubject[r.exam_id];
+            if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+          });
+          setMarks(map);
+        });
     });
   }, [examType, course, examDate]);
 
@@ -2344,18 +2346,19 @@ function Rankings({ courseSubjects, examTypes, students }) {
     // raw `subject` text column on exam_marks directly — that column can be null/stale
     // on older rows or out of sync with the current schedule, which silently dropped
     // marks here even though Mark Entry (which joins via exam_id) could see them fine.
-    Promise.all([
-      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
-      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
-    ]).then(([{ data: sched }, { data }]) => {
-      const examIdToSubject = {};
-      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
-      const map = {};
-      (data || []).forEach(r => {
-        const sub = examIdToSubject[r.exam_id] || r.subject;
-        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
-      });
-      setMarks(map);
+    supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course).then(({ data: sched }) => {
+        const examIdToSubject = {};
+        (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+        const scopedExamIds = (sched || []).map(s => s.id);
+        if (!scopedExamIds.length) { setMarks({}); return; }
+        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+          const map = {};
+          (data || []).forEach(r => {
+            const sub = examIdToSubject[r.exam_id];
+            if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+          });
+          setMarks(map);
+        });
     });
   }, [examType, course, examDate]);
 
@@ -2482,9 +2485,19 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
 
   // exam_id -> subject map, resolved from the live schedule rather than the raw
   // `subject` text column on exam_marks (which can be null/stale on older rows).
+  // allMarks is fetched by student_id + exam_type_id only (see effect above),
+  // so a dual-appearing student's marks from a DIFFERENT course under the same
+  // exam type can be mixed in too. Only exam_ids that belong to the CURRENTLY
+  // SELECTED course's schedule are kept — a row whose exam_id isn't in this
+  // course's schedule is dropped rather than mislabeled with `|| r.subject`,
+  // which previously let another course's mark silently masquerade as this
+  // course's subject whenever the raw text happened to match (e.g. "Mathematics
+  // I" existing in both an ACHIEVER schedule and a Combined Navodaya schedule).
   const examIdToSubject = {};
   scheduledSubjects.forEach(s => { examIdToSubject[s.id] = s.subject; });
-  const resolvedMarks = allMarks.map(r => ({ ...r, subject: examIdToSubject[r.exam_id] || r.subject }));
+  const resolvedMarks = allMarks
+    .filter(r => examIdToSubject[r.exam_id] !== undefined)
+    .map(r => ({ ...r, subject: examIdToSubject[r.exam_id] }));
 
   // Subjects for the chart legend: union across all scheduled dates for this exam type,
   // since a months-long trend can span schedule revisions.
@@ -2676,18 +2689,19 @@ function CompareTab({ courseSubjects, examTypes, students }) {
     // raw `subject` text column on exam_marks directly — that column can be null/stale
     // on older rows or out of sync with the current schedule, which silently dropped
     // marks here even though Mark Entry (which joins via exam_id) could see them fine.
-    Promise.all([
-      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
-      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
-    ]).then(([{ data: sched }, { data }]) => {
-      const examIdToSubject = {};
-      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
-      const map = {};
-      (data || []).forEach(r => {
-        const sub = examIdToSubject[r.exam_id] || r.subject;
-        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
-      });
-      setMarks(map);
+    supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course).then(({ data: sched }) => {
+        const examIdToSubject = {};
+        (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+        const scopedExamIds = (sched || []).map(s => s.id);
+        if (!scopedExamIds.length) { setMarks({}); return; }
+        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+          const map = {};
+          (data || []).forEach(r => {
+            const sub = examIdToSubject[r.exam_id];
+            if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+          });
+          setMarks(map);
+        });
     });
   }, [examType, course, examDate]);
 
@@ -5500,18 +5514,19 @@ function MeritList({ courseSubjects, examTypes, students }) {
     // raw `subject` text column on exam_marks directly — that column can be null/stale
     // on older rows or out of sync with the current schedule, which silently dropped
     // marks here even though Mark Entry (which joins via exam_id) could see them fine.
-    Promise.all([
-      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
-      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
-    ]).then(([{ data: sched }, { data }]) => {
-      const examIdToSubject = {};
-      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
-      const map = {};
-      (data || []).forEach(r => {
-        const sub = examIdToSubject[r.exam_id] || r.subject;
-        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
-      });
-      setMarks(map);
+    supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course).then(({ data: sched }) => {
+        const examIdToSubject = {};
+        (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+        const scopedExamIds = (sched || []).map(s => s.id);
+        if (!scopedExamIds.length) { setMarks({}); return; }
+        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+          const map = {};
+          (data || []).forEach(r => {
+            const sub = examIdToSubject[r.exam_id];
+            if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+          });
+          setMarks(map);
+        });
     });
   }, [examType, course, examDate]);
 
@@ -7156,18 +7171,19 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
     // raw `subject` text column on exam_marks directly — that column can be null/stale
     // on older rows or out of sync with the current schedule, which silently dropped
     // marks here even though Mark Entry (which joins via exam_id) could see them fine.
-    Promise.all([
-      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course),
-      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]),
-    ]).then(([{ data: sched }, { data }]) => {
-      const examIdToSubject = {};
-      (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
-      const map = {};
-      (data || []).forEach(r => {
-        const sub = examIdToSubject[r.exam_id] || r.subject;
-        if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
-      });
-      setMarks(map);
+    supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", examType).eq("course", course).then(({ data: sched }) => {
+        const examIdToSubject = {};
+        (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
+        const scopedExamIds = (sched || []).map(s => s.id);
+        if (!scopedExamIds.length) { setMarks({}); return; }
+        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+          const map = {};
+          (data || []).forEach(r => {
+            const sub = examIdToSubject[r.exam_id];
+            if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+          });
+          setMarks(map);
+        });
     });
   }, [examType, course, examDate]);
 
@@ -7277,20 +7293,26 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
     if (!rcExamType || !rcExamDate) return;
     setRcLoading(true);
     const ids = rcStudents.map(s=>s.id);
-    // Resolve via exam_schedule (exam_id -> subject) rather than trusting the raw
-    // `subject` text column on exam_marks, which can be null/stale on older rows.
-    Promise.all([
-      supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", rcExamType).eq("course", rcCourse),
-      supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained").eq("exam_type_id", rcExamType).in("student_id", ids.length?ids:["__none__"]),
-    ]).then(([{ data: sched }, { data }]) => {
+    // Resolve via exam_schedule (exam_id -> subject), scoped to THIS course's
+    // schedule only — see the matching fix in ReportCards/Analytics/Rankings/
+    // etc. for the full explanation. Querying exam_marks by exam_type_id alone
+    // (previously with a `|| r.subject` fallback) let a dual-appearing
+    // student's OTHER course's mark silently overwrite this course's mark
+    // whenever the raw subject text happened to collide (e.g. "Mathematics I"
+    // in both ACHIEVER and Combined Navodaya), inflating totals past 100%.
+    supabase.from("exam_schedule").select("id, subject").eq("exam_type_id", rcExamType).eq("course", rcCourse).then(({ data: sched }) => {
       const examIdToSubject = {};
       (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
-      const map = {};
-      (data||[]).forEach(r=>{
-        const sub = examIdToSubject[r.exam_id] || r.subject;
-        if (sub) map[`${r.student_id}-${sub}`]=r.marks_obtained;
+      const scopedExamIds = (sched || []).map(s => s.id);
+      if (!scopedExamIds.length) { setRcMarks({}); setRcLoading(false); return; }
+      supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", rcExamType).in("student_id", ids.length?ids:["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+        const map = {};
+        (data||[]).forEach(r=>{
+          const sub = examIdToSubject[r.exam_id];
+          if (sub) map[`${r.student_id}-${sub}`]=r.marks_obtained;
+        });
+        setRcMarks(map); setRcLoading(false);
       });
-      setRcMarks(map); setRcLoading(false);
     });
   }, [rcExamType, rcCourse, rcExamDate]);
 
