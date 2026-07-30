@@ -3135,7 +3135,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
 // ─── REPORT CARD SETTINGS PANEL wrapper (drop-in for BulkReports) ────────────
 
 // ─── STUDENTS TAB ─────────────────────────────────────────────────────────────
-function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, currentUser, perms }) {
+function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, currentUser, perms, secondaryBatchMap, onSecondaryBatchesChange }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms)
   const courses = Object.keys(courseSubjects); // NOTE: these are BATCH names (Achiever, Champion...), not real tracks
@@ -3168,6 +3168,8 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   const [bulkChangeOpen, setBulkChangeOpen] = useState(false);   // change track/batch for selected
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);   // delete selected
   const [bulkAbsentOpen, setBulkAbsentOpen] = useState(false);   // find & remove exam-absent students
+  const [secondaryBatchStudent, setSecondaryBatchStudent] = useState(null); // student currently managing secondary batch for
+  const [bulkSecondaryOpen, setBulkSecondaryOpen] = useState(false); // bulk-add secondary batch to selected students
 
   // Existing batch values already in use (for quick-pick buttons). Track has no further
   // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
@@ -3294,6 +3296,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           </button>
         )}
         {perm.canEdit && (
+          <button onClick={() => { setView("secondaryimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "secondaryimport" ? "#1a3c2e" : "#F3F4F6", color: view === "secondaryimport" ? "white" : "#374151" }}>
+            🔗📥 Import Secondary Batch
+          </button>
+        )}
+        {perm.canEdit && (
           <button onClick={() => setBulkAbsentOpen(true)} style={{ ...css.btn, padding: "8px 20px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
             🚫 Find Exam-Absent Students
           </button>
@@ -3306,6 +3313,16 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           students={students}
           onStudentsChange={onStudentsChange}
           onClose={() => setBulkAbsentOpen(false)}
+        />
+      )}
+
+      {secondaryBatchStudent && (
+        <SecondaryBatchModal
+          student={secondaryBatchStudent}
+          courseSubjects={courseSubjects}
+          currentSecondaryBatches={secondaryBatchMap?.[secondaryBatchStudent.id] || []}
+          onClose={() => setSecondaryBatchStudent(null)}
+          onChanged={() => onSecondaryBatchesChange?.()}
         />
       )}
 
@@ -3324,6 +3341,15 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           students={students}
           examTypes={examTypes || []}
           onStudentsChange={onStudentsChange}
+          onDone={() => setView("list")}
+        />
+      )}
+
+      {view === "secondaryimport" && (
+        <SecondaryBatchCSVImport
+          courseSubjects={courseSubjects}
+          students={students}
+          onChanged={() => onSecondaryBatchesChange?.()}
           onDone={() => setView("list")}
         />
       )}
@@ -3426,6 +3452,9 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
               <button onClick={() => setBulkChangeOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#4338CA", color: "white" }}>
                 🔁 Change Track / Batch
               </button>
+              <button onClick={() => setBulkSecondaryOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#7c3aed", color: "white" }}>
+                🔗 Add Secondary Batch
+              </button>
               {perm.canDelete && (
                 <button onClick={() => setBulkDeleteOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#DC2626", color: "white" }}>
                   🗑️ Remove Selected
@@ -3453,6 +3482,16 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
               onStudentsChange={onStudentsChange}
               onClose={() => setBulkDeleteOpen(false)}
               onDone={() => { setBulkDeleteOpen(false); clearSelection(); }}
+            />
+          )}
+          {bulkSecondaryOpen && (
+            <BulkSecondaryBatchModal
+              selectedIds={selectedIds}
+              students={students}
+              courseSubjects={courseSubjects}
+              secondaryBatchMap={secondaryBatchMap}
+              onClose={() => setBulkSecondaryOpen(false)}
+              onDone={() => { setBulkSecondaryOpen(false); clearSelection(); onSecondaryBatchesChange?.(); }}
             />
           )}
 
@@ -3513,6 +3552,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                         <td style={{ padding: "9px 12px", fontWeight: 600, color: "#1e293b" }}>{st.name}</td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span>
+                          {(secondaryBatchMap?.[st.id] || []).map(b => (
+                            <div key={b} style={{ marginTop: 3 }}>
+                              <span style={{ background: "#F5F3FF", color: "#7c3aed", padding: "1px 7px", borderRadius: 999, fontSize: 9.5, fontWeight: 700 }}>+ {b}</span>
+                            </div>
+                          ))}
                         </td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.course || "—"}</span>
@@ -3521,6 +3565,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
                             <button onClick={() => startEdit(st)} style={{ ...css.btn, padding: "4px 10px", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", fontSize: 11 }}>✏️</button>
+                            {perm.canEdit && <button onClick={() => setSecondaryBatchStudent(st)} style={{ ...css.btn, padding: "4px 8px", background: "#F5F3FF", color: "#7c3aed", border: "1px solid #DDD6FE", fontSize: 11 }} title="Manage secondary batch (e.g. also appearing for Combined Navodaya)">🔗</button>}
                             {perm.canDelete && <button onClick={() => setDeleteId(st.id)} style={{ ...css.btn, padding: "4px 8px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 11 }}>🗑️</button>}
                           </div>
                         </td>
@@ -3656,6 +3701,163 @@ function BulkDeleteModal({ selectedIds, students, onStudentsChange, onClose, onD
   );
 }
 
+// ─── SECONDARY BATCH (dual-appearing students, e.g. Sainik + Combined Navodaya) ──
+// A student's primary batch lives in students.class_name (one value only) and
+// their GCC No. is globally unique, so the same student can't literally occupy
+// two class_name rows. This lets them appear in Mark Entry / Report Cards /
+// Admit Cards / etc. under a SECOND batch too — writing to a small separate
+// student_secondary_batches table — without duplicating the student row or
+// GCC. The expansion into a second "phantom" entry (same real id, so marks
+// always write against the correct student) happens once, centrally, in the
+// top-level component via expandWithSecondaryBatches().
+function SecondaryBatchModal({ student, courseSubjects, currentSecondaryBatches, onClose, onChanged }) {
+  const allBatches = Object.keys(courseSubjects);
+  const availableBatches = allBatches.filter(b => b !== student.class_name && !currentSecondaryBatches.includes(b));
+  const [adding, setAdding] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [removingBatch, setRemovingBatch] = useState(null);
+
+  const addSecondary = async () => {
+    if (!adding) return;
+    setErr(""); setSaving(true);
+    const { error } = await supabase.from("student_secondary_batches").insert([{ student_id: student.id, batch: adding }]);
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    setAdding("");
+    onChanged();
+  };
+
+  const removeSecondary = async (batch) => {
+    setErr(""); setRemovingBatch(batch);
+    const { error } = await supabase.from("student_secondary_batches").delete().eq("student_id", student.id).eq("batch", batch);
+    setRemovingBatch(null);
+    if (error) { setErr(error.message); return; }
+    onChanged();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 4 }}>🔗 Secondary Batch</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          <b>{student.name}</b> (GCC {student.gcc_no}) is on the <b>{student.class_name}</b> roster. Add a second batch below if they're
+          also appearing for another exam — e.g. a Sainik-batch student who is also sitting the Combined Navodaya exam. They'll show up
+          in Mark Entry, Report Cards, and Admit Cards under both batches, using this same GCC No. — no duplicate student is created.
+        </div>
+
+        {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>⚠️ {err}</div>}
+
+        {currentSecondaryBatches.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Current Secondary Batch(es)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {currentSecondaryBatches.map(b => (
+                <div key={b} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 8, padding: "7px 12px" }}>
+                  <span style={{ fontSize: 12.5, color: "#5B21B6", fontWeight: 600 }}>{b}</span>
+                  <button onClick={() => removeSecondary(b)} disabled={removingBatch === b}
+                    style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: "white", color: "#DC2626", border: "1px solid #FECACA" }}>
+                    {removingBatch === b ? "…" : "✕ Remove"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Add Another Batch</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <select value={adding} onChange={e => setAdding(e.target.value)} style={{ ...css.input, flex: 1 }}>
+              <option value="">— Select batch —</option>
+              {availableBatches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <button onClick={addSecondary} disabled={!adding || saving} style={{ ...css.btn, background: saving ? "#93C5FD" : "#7c3aed", color: "white", padding: "8px 18px" }}>
+              {saving ? "…" : "+ Add"}
+            </button>
+          </div>
+          {!availableBatches.length && <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 6 }}>No other batches available to add.</div>}
+        </div>
+
+        <button onClick={onClose} style={{ ...css.btn, width: "100%", background: "#F3F4F6", color: "#374151" }}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── BULK: Add a secondary batch to every selected student at once ────────────
+function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, secondaryBatchMap, onClose, onDone }) {
+  const selected = students.filter(s => selectedIds.has(s.id));
+  const allBatches = Object.keys(courseSubjects);
+  const [batch, setBatch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null);
+
+  const apply = async () => {
+    if (!batch) { setErr("Pick a batch to add."); return; }
+    setErr(""); setSaving(true);
+
+    // Skip anyone who already primarily belongs to this batch, or already has
+    // it as a secondary batch — inserting either would be redundant/invalid.
+    const toAdd = selected.filter(s =>
+      s.class_name !== batch && !(secondaryBatchMap?.[s.id] || []).includes(batch)
+    );
+    const alreadySet = selected.length - toAdd.length;
+
+    if (!toAdd.length) {
+      setSaving(false);
+      setResult({ ok: true, added: 0, skipped: alreadySet, message: "Every selected student already has this batch (as primary or secondary) — nothing to add." });
+      return;
+    }
+
+    const rows = toAdd.map(s => ({ student_id: s.id, batch }));
+    const { error } = await supabase.from("student_secondary_batches").upsert(rows, { onConflict: "student_id,batch" });
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    setResult({ ok: true, added: toAdd.length, skipped: alreadySet });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 6 }}>🔗 Bulk Add Secondary Batch</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          Applying to <b>{selected.length}</b> selected student{selected.length === 1 ? "" : "s"}. Each will keep their existing batch
+          and GCC No. unchanged, and additionally appear under the batch you pick below in Mark Entry, Report Cards, and Admit Cards.
+        </div>
+
+        {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>⚠️ {err}</div>}
+        {result && (
+          <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>
+            ✅ {result.message || `Added secondary batch to ${result.added} student(s).`} {result.skipped > 0 && !result.message ? `${result.skipped} already had it and were skipped.` : ""}
+          </div>
+        )}
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Secondary Batch</label>
+          <select value={batch} onChange={e => setBatch(e.target.value)} style={css.input}>
+            <option value="">— Select batch —</option>
+            {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>{result ? "Close" : "Cancel"}</button>
+          {!result && (
+            <button onClick={apply} disabled={saving || !batch} style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#7c3aed", color: "white" }}>
+              {saving ? "⏳ Applying…" : `✅ Apply to ${selected.length}`}
+            </button>
+          )}
+          {result && (
+            <button onClick={onDone} style={{ ...css.btn, flex: 2, background: "#1a3c2e", color: "white" }}>Done</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── SMART STUDENT ROSTER IMPORT (CSV/Excel → fuzzy match → add/merge) ────────
 // Reuses findBestStudentMatch / normalizeNameValue / normalizeGccValue already
 // defined near the top of this file for the marks-CSV importer, so the same
@@ -3767,7 +3969,28 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
     return scopeBatches.length === 1 ? scopeBatches[0] : "the matched batch(es)";
   })();
 
+  // GCC numbers about to be inserted that collide either with an existing
+  // student already in the system, or with ANOTHER row also marked "new" in
+  // this same batch (e.g. two rows both failed to auto-match, or a row was
+  // manually switched to "new" after the initial match pass) — either case
+  // violates the DB's unique constraint on students.gcc_no if sent together.
+  const gccConflicts = (() => {
+    const existingGcc = new Set(students.map(s => normalizeGccValue(s.gcc_no)).filter(Boolean));
+    const newRows = rows.filter(r => r.status === "new" && r.rawGcc);
+    const seenInBatch = new Map();
+    const conflicts = [];
+    newRows.forEach(r => {
+      const key = normalizeGccValue(r.rawGcc);
+      if (!key) return;
+      if (existingGcc.has(key)) { conflicts.push(r); return; }
+      if (seenInBatch.has(key)) { conflicts.push(r); conflicts.push(seenInBatch.get(key)); return; }
+      seenInBatch.set(key, r);
+    });
+    return [...new Map(conflicts.map(r => [r.idx, r])).values()];
+  })();
+
   const handleSaveNew = async () => {
+    if (gccConflicts.length) return; // blocked — see warning banner in the UI
     setSaving(true);
     const toInsert = rows.filter(r => r.status === "new").map(r => {
       const batchVal = (r.batch || defaultBatch || "").trim();
@@ -3933,6 +4156,18 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
               </div>
             )}
 
+            {gccConflicts.length > 0 && (
+              <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 14px", marginBottom: 16, fontSize: 12.5, color: "#991B1B" }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠️ {gccConflicts.length} row(s) marked "New" have a GCC No. that already exists or is duplicated within this file:</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                  {gccConflicts.map(r => (
+                    <span key={r.idx} style={{ fontSize: 11, background: "white", border: "1px solid #FECACA", borderRadius: 999, padding: "2px 9px" }}>{r.rawName} (GCC {r.rawGcc})</span>
+                  ))}
+                </div>
+                Adding is blocked until these are resolved — use <b>🔍 Pick manually</b> to match them to the existing student, mark one as Skip, or correct the GCC No. and re-upload.
+              </div>
+            )}
+
             {saveSummary && (
               <div style={{ background: saveSummary.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${saveSummary.ok ? "#BBF7D0" : "#FECACA"}`, color: saveSummary.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
                 {saveSummary.ok
@@ -3943,8 +4178,8 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
-              <button onClick={handleSaveNew} disabled={saving || newRowsCount === 0} style={{ ...css.btn, background: saving ? "#93C5FD" : "#1a3c2e", color: "white", flex: 1 }}>
-                {saving ? "⏳ Saving…" : `✅ Add ${newRowsCount} New Student(s)`}
+              <button onClick={handleSaveNew} disabled={saving || newRowsCount === 0 || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#1a3c2e", color: "white", flex: 1 }}>
+                {saving ? "⏳ Saving…" : gccConflicts.length ? "⚠️ Resolve GCC conflicts above first" : `✅ Add ${newRowsCount} New Student(s)`}
               </button>
               <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
             </div>
@@ -3955,7 +4190,254 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
   );
 }
 
-// ─── RESULT SHEET IMPORT (roster + marks + section, one file, one click) ──────
+// ─── SECONDARY BATCH CSV/EXCEL IMPORT ──────────────────────────────────────────
+// Upload a list of students (by GCC No. and/or Name — e.g. a list of students
+// who are also appearing for the Combined Navodaya exam) and assign all of
+// them to one secondary batch in one go, reusing the same fuzzy-match logic
+// as the other importers. Only ever writes to student_secondary_batches —
+// never touches the student's row, GCC, or primary batch.
+function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }) {
+  const isMobile = useMobile();
+  const allBatches = Object.keys(courseSubjects);
+  const [rawRows, setRawRows] = useState(null);
+  const [headers, setHeaders] = useState([]);
+  const [colMap, setColMap] = useState({ name: -1, gcc: -1, admission: -1 });
+  const [batch, setBatch] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [rows, setRows] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saveSummary, setSaveSummary] = useState(null);
+  const [manualOpenIdx, setManualOpenIdx] = useState(null);
+  const [manualSearch, setManualSearch] = useState({});
+  const fileInputRef = useRef(null);
+
+  const handleFile = async (file) => {
+    setParseError(""); setParsing(true); setRows([]); setSaveSummary(null);
+    try {
+      await ensureLibs();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      if (!aoa.length) { setParseError("The file appears to be empty."); setParsing(false); return; }
+      const hdrs = aoa[0].map(h => String(h ?? "").trim());
+      const body = aoa.slice(1).filter(r => r.some(c => String(c ?? "").trim() !== ""));
+      setHeaders(hdrs);
+      setRawRows(body);
+
+      const findCol = (patterns) => hdrs.findIndex(h => patterns.some(p => h.toLowerCase().includes(p)));
+      setColMap({
+        name: findCol(["name of student", "name", "student"]),
+        gcc: findCol(["gcc"]),
+        admission: findCol(["admission", "adm no", "adm."]),
+      });
+    } catch (e) {
+      setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
+    }
+    setParsing(false);
+  };
+
+  const processRows = () => {
+    if (!rawRows) { setParseError("File has no rows to match."); return; }
+    if (colMap.name === -1 && colMap.gcc === -1) { setParseError("Please select at least a Name or GCC No. column."); return; }
+    setParseError("");
+    const matchPool = students;
+    const processed = rawRows.map((r, idx) => {
+      const rawName = colMap.name !== -1 ? String(r[colMap.name] ?? "").trim() : "";
+      const rawGcc = colMap.gcc !== -1 ? r[colMap.gcc] : "";
+      const rawAdm = colMap.admission !== -1 ? r[colMap.admission] : "";
+      if (!rawName && !rawGcc) return { idx, rawName, rawGcc, rawAdm, status: "skip", reason: "Empty row" };
+
+      const match = findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool });
+      if (match.student) {
+        return { idx, rawName, rawGcc, rawAdm, status: "matched", student: match.student, matchType: match.matchType, confidence: match.confidence };
+      }
+      return { idx, rawName, rawGcc, rawAdm, status: "unmatched", suggestion: match.suggestion, confidence: match.confidence };
+    });
+    setRows(processed);
+  };
+
+  const updateRow = (idx, patch) => setRows(prev => prev.map(r => r.idx === idx ? { ...r, ...patch } : r));
+  const markManualMatch = (idx, student) => updateRow(idx, { status: "matched", student, matchType: "Manual", confidence: 1 });
+  const markSkip = (idx) => updateRow(idx, { status: "skip", reason: "Manually skipped" });
+
+  const matchedCount = rows.filter(r => r.status === "matched").length;
+  const unmatchedCount = rows.filter(r => r.status === "unmatched").length;
+  const skipCount = rows.filter(r => r.status === "skip").length;
+
+  // Students who already have this batch (as primary or an existing
+  // secondary) — shown so it's clear they'll just be skipped, not duplicated.
+  const alreadyHaveBatch = rows.filter(r => r.status === "matched" && r.student.class_name === batch).length;
+
+  const handleImportAll = async () => {
+    if (!batch) { setParseError("Pick which secondary batch to assign."); return; }
+    setSaving(true);
+    const matched = rows.filter(r => r.status === "matched" && r.student && r.student.class_name !== batch);
+    if (!matched.length) {
+      setSaving(false);
+      setSaveSummary({ ok: true, added: 0, message: "No students to add — either none matched, or they already belong to this batch." });
+      return;
+    }
+    const dbRows = matched.map(r => ({ student_id: r.student.id, batch }));
+    const { error } = await supabase.from("student_secondary_batches").upsert(dbRows, { onConflict: "student_id,batch" });
+    setSaving(false);
+    if (error) { setSaveSummary({ ok: false, message: error.message }); return; }
+    onChanged?.();
+    setSaveSummary({ ok: true, added: matched.length, skipped: rows.length - matched.length });
+  };
+
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={css.card}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, marginBottom: 4 }}>🔗📥 Import Secondary Batch</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          Upload a list of existing students (by GCC No. and/or Name) and assign all of them to one secondary batch at once — e.g. a
+          list of Sainik-batch students who are also appearing for the Combined Navodaya exam. This never changes their primary batch,
+          GCC No., or creates a duplicate student — it only adds the extra batch tag.
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Secondary Batch to Assign *</label>
+          <select value={batch} onChange={e => setBatch(e.target.value)} style={css.input}>
+            <option value="">— Select batch —</option>
+            {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+
+        {!rawRows && (
+          <div>
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
+              style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 22px" }}>
+              {parsing ? "⏳ Reading file…" : "📂 Choose CSV / Excel File"}
+            </button>
+            {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
+          </div>
+        )}
+
+        {rawRows && !rows.length && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Map Columns</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[["name", "Student Name"], ["gcc", "GCC No."], ["admission", "Admission No."]].map(([key, label]) => (
+                <div key={key}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>{label}</label>
+                  <select value={colMap[key]} onChange={e => setColMap(p => ({ ...p, [key]: Number(e.target.value) }))} style={css.input}>
+                    <option value={-1}>— Not in file —</option>
+                    {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {parseError && <div style={{ marginBottom: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#1a3c2e", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+            </div>
+          </div>
+        )}
+
+        {rows.length > 0 && (
+          <div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+              <Badge label={`${matchedCount} matched`} color="#0F6E56" bg="#E1F5EE" />
+              {unmatchedCount > 0 && <Badge label={`${unmatchedCount} unmatched`} color="#A32D2D" bg="#FCEBEB" />}
+              {skipCount > 0 && <Badge label={`${skipCount} skipped`} color="#92740C" bg="#FEF9E7" />}
+              {alreadyHaveBatch > 0 && <Badge label={`${alreadyHaveBatch} already in this batch`} color="#7c3aed" bg="#F5F3FF" />}
+            </div>
+
+            <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <thead style={{ position: "sticky", top: 0 }}>
+                  <tr style={{ background: "#1a3c2e" }}>
+                    {["Row", "Name (from file)", "Match", "Action"].map(h => (
+                      <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.idx} style={{ borderBottom: "1px solid #F1F5F9", background: r.status === "skip" ? "#FAFAFA" : "white" }}>
+                      <td style={{ padding: "7px 10px", color: "#9CA3AF" }}>{r.idx + 2}</td>
+                      <td style={{ padding: "7px 10px", fontWeight: 600 }}>{r.rawName || r.rawGcc || <i style={{ color: "#DC2626" }}>{r.reason}</i>}</td>
+                      <td style={{ padding: "7px 10px" }}>
+                        {r.status === "matched" && (
+                          <div>
+                            <MatchBadge matchType={r.matchType} confidence={r.confidence} />
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                              {r.student?.name} · {r.student?.class_name}
+                              {r.student?.class_name === batch && <span style={{ color: "#7c3aed", fontWeight: 700 }}> (already this batch)</span>}
+                            </div>
+                          </div>
+                        )}
+                        {r.status === "unmatched" && <span style={{ fontSize: 11, color: "#A32D2D", fontWeight: 700 }}>No match found</span>}
+                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>{r.reason || "Skipped"}</span>}
+                        {r.status === "unmatched" && r.suggestion && (
+                          <div style={{ fontSize: 10.5, color: "#B8860B", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: "7px 10px" }}>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>🔍 Pick manually</button>
+                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#F3F4F6", color: "#6B7280" }}>Skip</button>}
+                        </div>
+                        {manualOpenIdx === r.idx && (
+                          <div style={{ marginTop: 6 }}>
+                            <input placeholder="Search existing students…" value={manualSearch[r.idx] || ""} onChange={e => setManualSearch(p => ({ ...p, [r.idx]: e.target.value }))} style={{ ...css.input, fontSize: 11, padding: "4px 8px" }} />
+                            <div style={{ maxHeight: 140, overflowY: "auto", marginTop: 4, border: "1px solid #E5E7EB", borderRadius: 6 }}>
+                              {students
+                                .filter(s => {
+                                  const q = (manualSearch[r.idx] || "").toLowerCase();
+                                  return !q || (s.name || "").toLowerCase().includes(q) || String(s.gcc_no ?? "").includes(q);
+                                })
+                                .slice(0, 25)
+                                .map(s => (
+                                  <div key={s.id} onClick={() => { markManualMatch(r.idx, s); setManualOpenIdx(null); }}
+                                    style={{ padding: "4px 8px", fontSize: 11, cursor: "pointer", borderBottom: "1px solid #F1F5F9" }}
+                                    onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+                                    onMouseLeave={e => e.currentTarget.style.background = "white"}>
+                                    {s.name} — GCC {s.gcc_no} ({s.class_name})
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {parseError && <div style={{ marginBottom: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
+
+            {saveSummary && (
+              <div style={{ background: saveSummary.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${saveSummary.ok ? "#BBF7D0" : "#FECACA"}`, color: saveSummary.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
+                {saveSummary.ok
+                  ? (saveSummary.message || `✅ Added secondary batch "${batch}" to ${saveSummary.added} student(s). ${saveSummary.skipped || 0} skipped/unmatched.`)
+                  : `⚠️ ${saveSummary.message}`}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
+              <button onClick={handleImportAll} disabled={saving || !batch || matchedCount === 0} style={{ ...css.btn, background: saving ? "#93C5FD" : "#7c3aed", color: "white", flex: 1 }}>
+                {saving ? "⏳ Importing…" : `✅ Assign Secondary Batch to ${matchedCount - alreadyHaveBatch} Student(s)`}
+              </button>
+              <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 // Built for result sheets that already carry Sl.No / GCC No. / Name / per-subject
 // marks / Score / Rank (e.g. exported "RESULT_<SECTION>_<BATCH>.xls" files) — the
 // same shape as a normal marks import, but this ALSO seeds the student roster
@@ -4067,18 +4549,29 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
   const skipCount = rows.filter(r => r.status === "skip").length;
 
   // GCC numbers that are about to be inserted as new students but collide with
-  // a GCC already in the system (e.g. the local `students` list is stale, or a
-  // row was manually forced to "new" despite a real GCC match existing) — these
-  // would violate the same uniqueness the single-student Add form enforces.
+  // (a) a GCC already in the system, e.g. the local `students` list is stale, or
+  // (b) another row ALSO marked "new" in this same batch — this second case is
+  // the one that actually violates the DB's unique constraint on bulk insert:
+  // the initial in-file dedup in processRows() only runs once at match time, so
+  // if a row is later manually switched to "new" (via markAsNew / "Pick manually"
+  // reverted), or two rows both fail to auto-match and both get left as "new"
+  // with the same GCC, nothing re-checks them against each other before the
+  // insert — this closes that gap.
   const gccConflicts = (() => {
     const existingGcc = new Set(students.map(s => normalizeGccValue(s.gcc_no)).filter(Boolean));
+    const newRows = rows.filter(r => r.status === "new" && r.rawGcc);
+    const seenInBatch = new Map(); // gcc key -> first row idx claiming it
     const conflicts = [];
-    rows.forEach(r => {
-      if (r.status !== "new" || !r.rawGcc) return;
+    newRows.forEach(r => {
       const key = normalizeGccValue(r.rawGcc);
-      if (key && existingGcc.has(key)) conflicts.push(r);
+      if (!key) return;
+      if (existingGcc.has(key)) { conflicts.push(r); return; }
+      if (seenInBatch.has(key)) { conflicts.push(r); conflicts.push(seenInBatch.get(key)); return; }
+      seenInBatch.set(key, r);
     });
-    return conflicts;
+    // de-duplicate (a row can only be flagged once, even though the loop above
+    // can push the same "first claimant" row multiple times if 3+ rows collide)
+    return [...new Map(conflicts.map(r => [r.idx, r])).values()];
   })();
 
   // ── "Missing students" detector: existing (non-Dropout) students of the
@@ -8035,20 +8528,53 @@ export default function Exams({ currentUser, perms }) {
     return { ...s, class_name: batch };
   };
 
+  // ── Secondary batches: a student can appear under a SECOND batch (e.g. a
+  // Sainik-batch student who is ALSO appearing for the Combined Navodaya exam)
+  // without duplicating their row or their GCC No. — students.class_name can
+  // only hold one value, so this is tracked in a small separate table and
+  // merged in below as read-only "phantom" entries that share the real
+  // student's id (so marks/seat assignments/etc. still write against the
+  // correct, single real student). Only exam-facing tabs get the expanded
+  // list; the Students roster itself (studentsmgr) shows one row per person.
+  const [secondaryBatchMap, setSecondaryBatchMap] = useState({}); // { studentId: [batch, ...] }
+
+  const expandWithSecondaryBatches = useCallback((list, map) => {
+    const extra = [];
+    list.forEach(s => {
+      (map[s.id] || []).forEach(batch => {
+        if (batch && batch !== s.class_name) {
+          extra.push({ ...s, class_name: batch, _isSecondaryBatchView: true, _primaryClassName: s.class_name });
+        }
+      });
+    });
+    return extra.length ? [...list, ...extra] : list;
+  }, []);
+
+  const refetchSecondaryBatches = useCallback(async () => {
+    const { data } = await supabase.from("student_secondary_batches").select("student_id, batch");
+    const map = {};
+    (data || []).forEach(r => { (map[r.student_id] = map[r.student_id] || []).push(r.batch); });
+    setSecondaryBatchMap(map);
+  }, []);
+
   useEffect(() => {
     ensureLibs();
 
     const loadData = async () => {
-      const [{ data: sts }, { data: types }, { data: csSetting }, { data: sched }, { data: instSetting }] =
+      const [{ data: sts }, { data: types }, { data: csSetting }, { data: sched }, { data: instSetting }, { data: secBatches }] =
         await Promise.all([
           supabase.from("students").select("id,name,class_name,course,batch,admission_no,gcc_no,status").order("name"),
           supabase.from("exam_types").select("*").order("created_at"),
           supabase.from("system_settings").select("value").eq("key", "course_subjects").single(),
           supabase.from("exam_schedule").select("*").order("exam_date"),
           supabase.from("system_settings").select("value").eq("key", "exam_institute_config").single(),
+          supabase.from("student_secondary_batches").select("student_id, batch"),
         ]);
 
       setStudents((sts || []).map(normalizeStudent));
+      const secMap = {};
+      (secBatches || []).forEach(r => { (secMap[r.student_id] = secMap[r.student_id] || []).push(r.batch); });
+      setSecondaryBatchMap(secMap);
       setExamTypes(types && types.length ? types : [{ id: "default", name: "1st Monthly Test" }]);
       if (csSetting?.value) {
         try {
@@ -8092,8 +8618,19 @@ export default function Exams({ currentUser, perms }) {
       )
       .subscribe();
 
+    // ── Realtime: keep secondary-batch tags in sync too ──
+    const secondaryBatchChannel = supabase
+      .channel('exams:secondary-batches-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'student_secondary_batches' },
+        () => { refetchSecondaryBatches(); }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(studentsChannel);
+      supabase.removeChannel(secondaryBatchChannel);
     };
   }, []);
  
@@ -8107,6 +8644,33 @@ export default function Exams({ currentUser, perms }) {
  
   const courses = Object.keys(courseSubjects);
  
+  // Expanded student list for every EXAM-FACING tab: a student with a
+  // secondary batch appears once under their real batch (unchanged) and once
+  // more under the secondary batch, sharing the same real id so marks/seat
+  // assignments always write against the correct single student row. The raw
+  // Students roster (studentsmgr) intentionally uses `students` directly, not
+  // this — one row per real person there, with the secondary batch shown as a
+  // tag rather than a duplicate row.
+  const examStudents = expandWithSecondaryBatches(students, secondaryBatchMap);
+
+  // MarkEntry receives the EXPANDED list (examStudents) so dual-appearing
+  // students show up correctly, but its own "add new student inline" flow
+  // spreads that same list and calls onStudentsChange with it. If that were
+  // wired straight to setStudents, every phantom secondary-batch entry would
+  // get written back into the real students state as if it were a distinct
+  // student, permanently duplicating every dual-appearing student. This
+  // wrapper only takes newly-added real students (ones with no
+  // _isSecondaryBatchView marker that aren't already in `students`) and
+  // merges just those into the real list, dropping any phantom entries that
+  // were only ever an artifact of the expansion.
+  const handleMarkEntryStudentsChange = useCallback((updatedExpandedList) => {
+    setStudents(prev => {
+      const existingIds = new Set(prev.map(s => s.id));
+      const genuinelyNew = updatedExpandedList.filter(s => !s._isSecondaryBatchView && !existingIds.has(s.id));
+      return genuinelyNew.length ? [...prev, ...genuinelyNew].sort((a, b) => (a.name || "").localeCompare(b.name || "")) : prev;
+    });
+  }, []);
+ 
   const handleCSVImportDone = (_marksMap, course, examTypeId, examDate) => {
     // ExamCSVImport already upserted the marks to Supabase internally, and tells us
     // exactly which course / exam type / date it used. Capture that so the remounted
@@ -8119,15 +8683,15 @@ export default function Exams({ currentUser, perms }) {
  
   // ── Section map ────────────────────────────────────────────────────────────
   const sectionMap = {
-    dashboard:      () => <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    toppers:        () => <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
-    entry:          () => <MarkEntry key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={students} currentUser={currentUser} perms={perms} onStudentsChange={setStudents} initialCourse={lastCSVImportContext?.course} initialExamType={lastCSVImportContext?.examTypeId} initialExamDate={lastCSVImportContext?.examDate} />,
+    dashboard:      () => <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
+    toppers:        () => <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} />,
+    entry:          () => <MarkEntry key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} currentUser={currentUser} perms={perms} onStudentsChange={handleMarkEntryStudentsChange} initialCourse={lastCSVImportContext?.course} initialExamType={lastCSVImportContext?.examTypeId} initialExamDate={lastCSVImportContext?.examDate} />,
  
     // ── NEW: smart CSV import tab ──────────────────────────────────────────
     csvimport: () => (
       <ExamCSVImport
         courseSubjects={courseSubjects}
-        students={students}
+        students={examStudents}
         examTypes={examTypes}
         examDate={new Date().toISOString().split("T")[0]}
         examTypeId={examTypes[0]?.id || ""}
@@ -8137,25 +8701,25 @@ export default function Exams({ currentUser, perms }) {
     ),
     // ──────────────────────────────────────────────────────────────────────
  
-    marks:          () => <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    analytics:      () => <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    rankings:       () => <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    merit:          () => <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    reportcard:     () => <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} />,
+    marks:          () => <MarksGrid courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
+    analytics:      () => <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
+    rankings:       () => <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
+    merit:          () => <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
+    reportcard:     () => <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} />,
     // ── SYNCED: Schedule now uses syncVersion and refetchSchedule ──
     schedule:       () => <Schedule key={syncVersion} courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
-    seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
-    studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} examTypes={examTypes} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} />,
+    seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
+    studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} examTypes={examTypes} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} secondaryBatchMap={secondaryBatchMap} onSecondaryBatchesChange={refetchSecondaryBatches} />,
     // ── SYNCED: CourseSubjectsManager uses centralized handler ──
     coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
     examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); setTab("examconfig"); }} courseSubjects={courseSubjects} onScheduleChange={refetchSchedule} />,
     // ── SYNCED: ExamConfigManager notifies on config switch ──
     examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} prefillName={examConfigPrefillName} onPrefillConsumed={() => setExamConfigPrefillName("")} />,
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
-    progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} />,
-    admitcard:      () => <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} onScheduleChange={refetchSchedule} />,
-    bulkreport:     () => <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={students} institute={institute} schedule={schedule} />,
+    progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
+    compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
+    admitcard:      () => <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} onScheduleChange={refetchSchedule} />,
+    bulkreport:     () => <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
   };
  
   const activeTabInfo = TAB_GROUPS.flatMap(g => g.tabs).find(t => t.id === tab);
