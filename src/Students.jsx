@@ -8,6 +8,7 @@ import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 import { getFlatFeeAmtSync, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
 import { useAuth } from './AuthContext'
+import { staffDB } from './staffDB'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -405,14 +406,60 @@ function exportToPDF(title, headers, rows) {
 }
 
 // ─── Hooks (unchanged logic) ──────────────────────────────────────────────────
+// Named write-access overrides: staff who should be able to edit student data
+// even though their role isn't Admin/Manager. Store lowercase full names as
+// they appear in staff_profiles.name — matched via staffDB (getById first,
+// falling back to getByName) so the override only fires against a REAL,
+// confirmed staff record, not just whatever name string the auth session
+// happens to carry. Add more names here as needed.
+const NAMED_WRITE_OVERRIDES = ['ningthoujam johnson singh']
+
+function useNamedWriteOverride(user) {
+  const [granted, setGranted] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const authName = (user?.name || user?.full_name || user?.username || '').trim().toLowerCase()
+
+    // Nothing to check yet, or the auth name (if any) isn't even on the list —
+    // skip the staffDB round-trip entirely.
+    if (!user || (!user?.id && !authName)) { setGranted(false); return }
+
+    ;(async () => {
+      try {
+        // Prefer resolving by id (in case the auth user id lines up with the
+        // staff_profiles id) — this is the more trustworthy lookup, since a
+        // display name can drift out of sync with the staff record.
+        let staff = user?.id ? await staffDB.getById(user.id) : null
+        if (!staff && authName) staff = await staffDB.getByName(authName)
+
+        const staffName = (staff?.name || '').trim().toLowerCase()
+        const isActive = !staff?.status || staff.status === 'Active'
+        const isOverridden = staffName && NAMED_WRITE_OVERRIDES.includes(staffName) && isActive
+
+        if (!cancelled) setGranted(isOverridden)
+      } catch (err) {
+        console.error('useNamedWriteOverride: staffDB lookup failed:', err.message)
+        if (!cancelled) setGranted(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [user?.id, user?.name, user?.full_name, user?.username])
+
+  return granted
+}
+
 function usePermissions() {
   const { user } = useAuth()
   const role = user?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'viewer'
+  const namedWriteOverride = useNamedWriteOverride(user)
+  const roleWrite = ['admin','manager','Admin','Manager'].includes(role)
   return {
     role,
     user,
     can: {
-      write:   ['admin','manager','Admin','Manager'].includes(role),
+      write:   roleWrite || namedWriteOverride,
       fees:    ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
       exams:   ['admin','manager','teacher','Admin','Manager','Teacher'].includes(role),
       attend:  ['admin','manager','teacher','hostel','Admin','Manager','Teacher','Hostel'].includes(role),
