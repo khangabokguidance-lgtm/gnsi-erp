@@ -14,6 +14,11 @@
 // 11. SpotCheckModal: suppressed when log is already copy_paste flagged
 // 12. HMDoubtSessionPanel: window.confirm/prompt replaced with inline UI modals
 // 13. HMDoubtSessionPanel: print hide delay replaced with afterprint event listener
+// 14. Doubt-session WhatsApp notification now auto-opens (wa.me) right after
+//     submit instead of waiting for a manual "Send via WhatsApp" click; falls
+//     back to the visible banner button if the popup is blocked or no phone
+//     number is on file. Still requires a human tap on Send inside WhatsApp
+//     itself — no WhatsApp Business API server credentials are wired up here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
@@ -2387,7 +2392,32 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
             form.hm_instruction_message ? `Instructions: ${form.hm_instruction_message}` : null,
             `— ${form.teacher_name || 'Teacher'}`,
           ].filter(Boolean).join('\n')
-          setWhatsappPrompt({ hmName: resolvedHM, phone: form.assigned_hm_phone || '', message: waMessage })
+
+          // FIX 14: auto-fire the WhatsApp send right after submit — no manual
+          // "Send via WhatsApp" click needed anymore. This still opens a
+          // wa.me tab/app with the message pre-filled rather than truly
+          // silently transmitting it: a wa.me link is the only WhatsApp
+          // integration available client-side without WhatsApp Business API
+          // server credentials (see buildWhatsAppLink comment above), and
+          // WhatsApp itself requires a human tap on Send inside its own UI —
+          // no browser can complete that last tap on the user's behalf.
+          // If a phone number is on file we open it immediately; if the
+          // browser's popup blocker swallows the auto-open (common when it
+          // happens after an `await`, since it can fall outside the
+          // "user gesture" window some browsers require), the banner below
+          // still shows a one-tap fallback button so nothing is silently lost.
+          let autoWaOpened = false
+          if (form.assigned_hm_phone) {
+            const waLink = buildWhatsAppLink(form.assigned_hm_phone, waMessage)
+            if (waLink) {
+              const popup = window.open(waLink, '_blank', 'noopener,noreferrer')
+              autoWaOpened = !!popup
+              if (!autoWaOpened) {
+                showToast('⚠️ Browser blocked the automatic WhatsApp popup — tap "Send via WhatsApp" below.', C.amber)
+              }
+            }
+          }
+          setWhatsappPrompt({ hmName: resolvedHM, phone: form.assigned_hm_phone || '', message: waMessage, autoSent: autoWaOpened })
         }
       }
 
@@ -2440,10 +2470,15 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
         }}>
           <div style={{ flex:1, minWidth:200 }}>
             <div style={{ fontWeight:700, color:'#166534', fontSize:13, marginBottom:2 }}>
-              ✅ Doubt session logged — notify {whatsappPrompt.hmName || 'the HM'} on WhatsApp?
+              {whatsappPrompt.autoSent
+                ? `✅ WhatsApp opened automatically for ${whatsappPrompt.hmName || 'the HM'} — just tap Send in WhatsApp to confirm.`
+                : `✅ Doubt session logged — notify ${whatsappPrompt.hmName || 'the HM'} on WhatsApp?`}
             </div>
             {!whatsappPrompt.phone && (
               <div style={{ fontSize:12, color:'#b45309' }}>No phone number was entered — add one below to enable sending.</div>
+            )}
+            {whatsappPrompt.phone && !whatsappPrompt.autoSent && (
+              <div style={{ fontSize:12, color:'#b45309' }}>Auto-send didn't open (popup blocked) — tap the button to send manually.</div>
             )}
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
@@ -2462,6 +2497,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
               onClick={e => {
                 if (!whatsappPrompt.phone) { e.preventDefault(); return }
                 saveHMPhone(whatsappPrompt.hmName, whatsappPrompt.phone)
+                setWhatsappPrompt(p => ({ ...p, autoSent: true }))
               }}
               style={{
                 ...S.btn('#25D366', !whatsappPrompt.phone),
@@ -2469,7 +2505,7 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
                 pointerEvents: whatsappPrompt.phone ? 'auto' : 'none', opacity: whatsappPrompt.phone ? 1 : 0.6,
               }}
             >
-              📲 Send via WhatsApp
+              📲 {whatsappPrompt.autoSent ? 'Resend via WhatsApp' : 'Send via WhatsApp'}
             </a>
             <button type="button" onClick={() => setWhatsappPrompt(null)} style={{ ...S.btnSm('#94a3b8'), padding:'8px 12px' }}>
               Dismiss
