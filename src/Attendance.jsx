@@ -4534,6 +4534,45 @@ function TabStudentDB({ isAdmin }) {
     return searchable.some(v => (v || '').toString().toLowerCase().includes(q))
   })
 
+  // Data health: TabMark's roster filter does an EXACT match against
+  // COURSE_STRUCTURE[course] (e.g. .eq('batch','Achiever')). Any row whose
+  // `batch` is a typo, stray whitespace, or a placeholder like "???" (seen
+  // in real data — likely leftover from a CSV import that used "???" as a
+  // default for an unmapped column) silently never appears in that course's
+  // Mark roster, while still showing up fine here since this list has no
+  // such filter. Group active, non-deleted students by (course, batch) for
+  // any batch that ISN'T one of the course's canonical names so staff can
+  // spot and bulk-correct them in one place, instead of finding each one
+  // individually via the per-row ⚠️ badge (which only catches a null batch,
+  // not a wrong-but-present one).
+  const badBatchGroups = useMemo(() => {
+    const groups = {}
+    visibleStudents.forEach(s => {
+      if (!s.course || !s.batch) return
+      const valid = COURSE_STRUCTURE[s.course] || []
+      if (valid.includes(s.batch)) return
+      const key = `${s.course}||${s.batch}`
+      if (!groups[key]) groups[key] = { course: s.course, batch: s.batch, count: 0 }
+      groups[key].count++
+    })
+    return Object.values(groups).sort((a, b) => b.count - a.count)
+  }, [visibleStudents])
+
+  const [fixTargets, setFixTargets] = useState({}) // key `${course}||${badBatch}` -> chosen correct batch
+  const [fixingKey, setFixingKey] = useState(null)
+
+  const handleFixBatch = async (course, badBatch) => {
+    const key = `${course}||${badBatch}`
+    const target = fixTargets[key]
+    if (!target) { setToast({ type: 'warn', msg: 'Pick the correct batch first.' }); return }
+    setFixingKey(key)
+    const { error } = await supabase.from('students').update({ batch: target }).eq('course', course).eq('batch', badBatch)
+    setFixingKey(null)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: `Moved all "${badBatch}" students in ${course} to ${target}.` })
+    load()
+  }
+
   const openAdd = () => { setEditingId(null); setForm(emptyStudentForm); setShowForm(true) }
   const openEdit = (s) => {
     setEditingId(s.id)
@@ -4677,6 +4716,35 @@ function TabStudentDB({ isAdmin }) {
       />
       <div style={{ padding: isMobile ? '12px 16px' : '16px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
+
+        {isAdmin && viewMode === 'active' && badBatchGroups.length > 0 && (
+          <div style={{ background: T.amberSoft, border: `1.5px solid #fde68a`, borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>
+              ⚠️ {badBatchGroups.reduce((n, g) => n + g.count, 0)} student(s) have a batch value that doesn't match any real batch for their course — they're invisible in Mark's roll call until fixed.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {badBatchGroups.map(g => {
+                const key = `${g.course}||${g.batch}`
+                const options = COURSE_STRUCTURE[g.course] || []
+                return (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: T.ink, minWidth: 0 }}>
+                      {g.count} × {g.course} · <span style={{ fontFamily: fontMono }}>"{g.batch}"</span>
+                    </span>
+                    <span style={{ fontSize: 11.5, color: T.gray400 }}>→</span>
+                    <Select value={fixTargets[key] || ''} onChange={e => setFixTargets(prev => ({ ...prev, [key]: e.target.value }))} style={{ maxWidth: 160 }}>
+                      <option value="">Correct batch…</option>
+                      {options.map(o => <option key={o}>{o}</option>)}
+                    </Select>
+                    <Btn small onClick={() => handleFixBatch(g.course, g.batch)} disabled={fixingKey === key || !fixTargets[key]}>
+                      {fixingKey === key ? 'Fixing…' : `Fix all ${g.count}`}
+                    </Btn>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {viewMode === 'dropout' && (
           <div style={{ background: T.redSoft ?? '#fff1f2', border: `1px solid #fecdd3`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#be123c' }}>
