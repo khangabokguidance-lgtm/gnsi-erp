@@ -494,6 +494,22 @@ function useAttendanceUpdatedListener(callback) {
 // this just tells it to refetch immediately instead of waiting for the
 // person to change the course/batch dropdown and change it back.
 const STUDENTS_UPDATED_EVENT = 'gnsi:students-updated'
+// Dispatcher for the event above. This was missing entirely — every caller
+// below (handleMarkDropout, handleReactivate, handleSoftDelete, handleRestore,
+// handlePermanentDelete in TabStudentDB) called broadcastStudentsUpdate(...)
+// assuming it existed, but only the *listener* (useStudentsUpdatedListener)
+// was ever defined in this file. The undefined-function call threw a
+// ReferenceError right after the Supabase update succeeded but *before* each
+// handler's trailing load() ran — so the DB write actually went through
+// (status really did flip to Dropout/Active, etc.) but the on-screen list
+// never refetched, making Dropout/Reactivate look broken/stuck until a full
+// page reload. Defining it here, matching broadcastAttendanceUpdate's
+// pattern, fixes all five handlers at once.
+function broadcastStudentsUpdate(detail) {
+  try { window.dispatchEvent(new CustomEvent(STUDENTS_UPDATED_EVENT, { detail })) } catch (e) {
+    console.error('broadcastStudentsUpdate failed:', e)
+  }
+}
 function useStudentsUpdatedListener(callback) {
   useEffect(() => {
     const handler = (e) => callback(e.detail)
@@ -3952,6 +3968,39 @@ function usePeriod1Check() {
   return { missing, checked }
 }
 
+// Same detection TabStudentDB's badBatchGroups panel uses (a batch value
+// that isn't an exact match for one of COURSE_STRUCTURE[course]'s canonical
+// names, e.g. "???" or "Leader — ENG"), but fetched independently here so
+// Overview can surface it the moment someone opens the app for the day,
+// instead of only being visible after navigating into Student DB. Also
+// counts students with no batch at all (null), which is the other way a
+// student silently drops out of Mark's roll call for their course.
+function useBatchHealth() {
+  const [state, setState] = useState({ groups: [], nullBatchCount: 0, totalBad: 0, loading: true })
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('students').select('course,batch,status,deleted_at').then(({ data }) => {
+      if (cancelled) return
+      const rows = (data || []).filter(s => !s.deleted_at && s.status !== 'Dropout')
+      const byKey = {}
+      let nullBatchCount = 0
+      rows.forEach(s => {
+        if (!s.course) return
+        if (!s.batch) { nullBatchCount++; return }
+        const valid = COURSE_STRUCTURE[s.course] || []
+        if (valid.includes(s.batch)) return
+        const key = `${s.course}||${s.batch}`
+        if (!byKey[key]) byKey[key] = { course: s.course, batch: s.batch, count: 0 }
+        byKey[key].count++
+      })
+      const groups = Object.values(byKey).sort((a, b) => b.count - a.count)
+      setState({ groups, nullBatchCount, totalBad: groups.reduce((n, g) => n + g.count, 0) + nullBatchCount, loading: false })
+    })
+    return () => { cancelled = true }
+  }, [])
+  return state
+}
+
 // Overview gets its own bold accent — a vivid indigo→violet identity that
 // makes it visually distinct from Dashboard's teal/amber theme, even though
 // both reuse the shared ConsoleCard chrome underneath.
@@ -3962,13 +4011,14 @@ const OV = {
   ring: '#6366F1',
 }
 
-function HomeV2({ onNavigate }) {
+function HomeV2({ onNavigate, isAdmin }) {
   const isMobile = useIsMobile()
   const month = monthOptions()[0]
   const { rows, loading } = useStudentSignals(month)
   const { data: trendData, loading: trendLoading } = useAttendanceTrend(6)
   const { counts: todayCounts, loading: todayLoading } = useTodayStatusCounts()
   const { missing: period1Missing } = usePeriod1Check()
+  const batchHealth = useBatchHealth()
 
   const avgAttendance = rows.length ? Math.round(rows.reduce((s,r)=>s+(r.attendancePct||0),0)/rows.length) : 0
   const highRiskCount = rows.filter(r => r.risk === 'high').length
@@ -4011,6 +4061,27 @@ function HomeV2({ onNavigate }) {
             </div>
           </div>
           <Btn small variant="danger" onClick={() => onNavigate('mark')}>Mark Now</Btn>
+        </div>
+      )}
+
+      {batchHealth.totalBad > 0 && (
+        <div style={{
+          background: C.amberSoft, border: `1.5px solid #fde68a`, borderRadius: C.radius,
+          padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 22 }}>⚠️</span>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#92400e' }}>
+              Batch health — {fmtDate(today())}: {batchHealth.totalBad} student{batchHealth.totalBad === 1 ? '' : 's'} invisible in Mark's roll call
+            </div>
+            <div style={{ fontSize: 12, color: '#a16207', marginTop: 2 }}>
+              {batchHealth.groups.slice(0, 3).map(g => `${g.count} × ${g.course} "${g.batch}"`).join(', ')}
+              {batchHealth.groups.length > 3 ? `, +${batchHealth.groups.length - 3} more` : ''}
+              {batchHealth.nullBatchCount > 0 ? `${batchHealth.groups.length ? ', ' : ''}${batchHealth.nullBatchCount} with no batch set` : ''}
+              {' — '}{isAdmin ? 'fix these in Student DB.' : 'ask an admin to fix these in Student DB.'}
+            </div>
+          </div>
+          {isAdmin && <Btn small variant="amber" onClick={() => onNavigate('studentdb')}>Open Student DB</Btn>}
         </div>
       )}
 
@@ -4491,6 +4562,7 @@ function TabStudentDB({ isAdmin }) {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [courseFilter, setCourseFilter] = useState('all')
+  const [batchFilter, setBatchFilter] = useState('all')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyStudentForm)
@@ -4523,8 +4595,14 @@ function TabStudentDB({ isAdmin }) {
     return s.status !== 'Dropout'
   })
 
+  const batchOptions = useMemo(() => {
+    if (courseFilter === 'all') return [...new Set(Object.values(COURSE_STRUCTURE).flat())]
+    return COURSE_STRUCTURE[courseFilter] || []
+  }, [courseFilter])
+
   const filtered = visibleStudents.filter(s => {
     if (courseFilter !== 'all' && s.course !== courseFilter) return false
+    if (batchFilter !== 'all' && s.batch !== batchFilter) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
     // Phone is masked for non-admins (see render below), so it also
@@ -4816,9 +4894,13 @@ function TabStudentDB({ isAdmin }) {
             placeholder={isAdmin ? "🔍 Search name, GCC no, class, phone…" : "🔍 Search name, GCC no, class…"}
             style={{ ...inputStyle(), flex: 2, minWidth: 200 }}
           />
-          <Select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
+          <Select value={courseFilter} onChange={e => { setCourseFilter(e.target.value); setBatchFilter('all') }} style={{ width: 'auto', minWidth: 160 }}>
             <option value="all">All Courses</option>
             {COURSES.map(c => <option key={c}>{c}</option>)}
+          </Select>
+          <Select value={batchFilter} onChange={e => setBatchFilter(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
+            <option value="all">All Batches</option>
+            {batchOptions.map(b => <option key={b}>{b}</option>)}
           </Select>
         </div>
 
@@ -5030,7 +5112,7 @@ export default function Attendance({ currentUser, isAdmin }) {
 
   const renderPage = () => {
     switch (route) {
-      case 'home':       return <HomeV2 onNavigate={navigateTo} />
+      case 'home':       return <HomeV2 onNavigate={navigateTo} isAdmin={isAdmin} />
       case 'studentdb':  return <TabStudentDB isAdmin={isAdmin} />
       case 'student360': return <Student360Page />
       case 'dashboard':  return <DashboardPage />
