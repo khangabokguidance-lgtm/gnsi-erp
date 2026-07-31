@@ -96,9 +96,15 @@ function useUserRole() {
     setRole(sessionRole) // set immediately — don't stay stuck on 'staff' while the staffDB check below resolves
 
     const nameKey = (userName || '').trim().toLowerCase()
+    // TEMP DIAGNOSTIC — remove once the override is confirmed working.
+    console.log('[useUserRole] session:', { sessionRole, userId, userName, nameKey })
+
     // Nothing to check unless there's an id to look up, or the session name
     // is even on the override list — skip the staffDB round-trip otherwise.
-    if (!userId && !NAMED_ROLE_OVERRIDES[nameKey]) return
+    if (!userId && !NAMED_ROLE_OVERRIDES[nameKey]) {
+      console.log('[useUserRole] skipped staffDB lookup — no userId and nameKey not on override list:', nameKey)
+      return
+    }
 
     ;(async () => {
       try {
@@ -106,15 +112,21 @@ function useUserRole() {
         // the staff_profiles id) — more trustworthy than trusting whatever
         // display name happens to be sitting in localStorage.
         let staff = userId ? await staffDB.getById(userId) : null
-        if (!staff && nameKey) staff = await staffDB.getByName(nameKey)
-        if (cancelled || !staff) return
+        console.log('[useUserRole] getById(', userId, ') ->', staff)
+        if (!staff && nameKey) {
+          staff = await staffDB.getByName(nameKey)
+          console.log('[useUserRole] getByName(', nameKey, ') ->', staff)
+        }
+        if (cancelled || !staff) { console.log('[useUserRole] no staff record found — override not applied'); return }
 
         const staffNameKey  = (staff.name || '').trim().toLowerCase()
         const overrideRole  = NAMED_ROLE_OVERRIDES[staffNameKey]
         const isActive      = !staff.status || staff.status === 'Active'
-        if (overrideRole && isActive) setRole(overrideRole)
+        console.log('[useUserRole] staffNameKey:', staffNameKey, 'overrideRole:', overrideRole, 'status:', staff.status, 'isActive:', isActive)
+        if (overrideRole && isActive) { setRole(overrideRole); console.log('[useUserRole] role overridden to:', overrideRole) }
+        else console.log('[useUserRole] override NOT applied — check name match above and staff.status')
       } catch (err) {
-        console.error('useUserRole: staffDB override lookup failed:', err.message)
+        console.error('[useUserRole] staffDB override lookup failed:', err.message, err)
       }
     })()
 
