@@ -4483,7 +4483,7 @@ function DashboardPage() {
 // gcc_no's type. This tab still only collects a subset of fields — for
 // full student records (house, batch, admission details) use the
 // Students.jsx module; this stays a quick lookup/edit console.
-const emptyStudentForm = { name: '', gcc_no: '', course: '', class_name: '', phone: '', hostel_type: '' }
+const emptyStudentForm = { name: '', gcc_no: '', course: '', batch: '', class_name: '', phone: '', hostel_type: '' }
 
 function TabStudentDB({ isAdmin }) {
   const isMobile = useIsMobile()
@@ -4530,14 +4530,14 @@ function TabStudentDB({ isAdmin }) {
     // Phone is masked for non-admins (see render below), so it also
     // shouldn't be searchable by non-admins — otherwise search results
     // would leak numbers indirectly via matching.
-    const searchable = isAdmin ? [s.name, s.gcc_no, s.class_name, s.phone] : [s.name, s.gcc_no, s.class_name]
+    const searchable = isAdmin ? [s.name, s.gcc_no, s.batch, s.class_name, s.phone] : [s.name, s.gcc_no, s.batch, s.class_name]
     return searchable.some(v => (v || '').toString().toLowerCase().includes(q))
   })
 
   const openAdd = () => { setEditingId(null); setForm(emptyStudentForm); setShowForm(true) }
   const openEdit = (s) => {
     setEditingId(s.id)
-    setForm({ name: s.name || '', gcc_no: s.gcc_no != null ? String(s.gcc_no) : '', course: s.course || '', class_name: s.class_name || '', phone: s.phone || '', hostel_type: s.hostel_type || '' })
+    setForm({ name: s.name || '', gcc_no: s.gcc_no != null ? String(s.gcc_no) : '', course: s.course || '', batch: s.batch || '', class_name: s.class_name || '', phone: s.phone || '', hostel_type: s.hostel_type || '' })
     setShowForm(true)
   }
 
@@ -4553,6 +4553,17 @@ function TabStudentDB({ isAdmin }) {
       name: form.name.trim(),
       gcc_no: gccParsed,
       course: form.course || null,
+      // `batch` (Achiever/Leader/Umeed/etc.) is a DIFFERENT column from
+      // `class_name` (free-text section, e.g. "9A") — see SCHEMA comment
+      // above and TabMark's fetchRoster, which filters on `batch` for the
+      // selected course. This form used to write the batch dropdown's
+      // value into `class_name` instead of `batch`, so any student added
+      // or edited here kept `batch` null/stale and silently vanished from
+      // that batch's attendance roster in TabMark, even though they still
+      // showed up fine in this Student DB list. Writing both columns here
+      // keeps a student visible in Mark's roll call the moment they're
+      // saved.
+      batch: form.batch || null,
       class_name: form.class_name || null,
       phone: form.phone.trim() || null,
       hostel_type: form.hostel_type || 'Day Scholar',
@@ -4695,17 +4706,21 @@ function TabStudentDB({ isAdmin }) {
               </div>
               <div>
                 <Label>Course</Label>
-                <Select value={form.course} onChange={e => setForm(f => ({ ...f, course: e.target.value }))}>
+                <Select value={form.course} onChange={e => setForm(f => ({ ...f, course: e.target.value, batch: '' }))}>
                   <option value="">Select course…</option>
                   {COURSES.map(c => <option key={c}>{c}</option>)}
                 </Select>
               </div>
               <div>
-                <Label>Batch / Class</Label>
-                <Select value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} disabled={!form.course}>
+                <Label>Batch</Label>
+                <Select value={form.batch} onChange={e => setForm(f => ({ ...f, batch: e.target.value }))} disabled={!form.course}>
                   <option value="">Select batch…</option>
                   {(form.course ? COURSE_STRUCTURE[form.course] || [] : []).map(s => <option key={s}>{s}</option>)}
                 </Select>
+              </div>
+              <div>
+                <Label>Class (optional)</Label>
+                <input value={form.class_name} onChange={e => setForm(f => ({ ...f, class_name: e.target.value }))} placeholder="e.g. 9A" style={inputStyle()} />
               </div>
               <div>
                 <Label required>Parent Contact No.</Label>
@@ -4761,7 +4776,8 @@ function TabStudentDB({ isAdmin }) {
                     {!s.deleted_at && s.status === 'Dropout' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: T.red }}>🚪 DROPOUT</span>}
                   </div>
                   <div style={{ fontSize: 11.5, color: T.gray400, marginTop: 2 }}>
-                    {s.gcc_no ? `GCC-${s.gcc_no}` : '—'} · {s.course || '—'}{s.class_name ? ` · ${s.class_name}` : ''}
+                    {s.gcc_no ? `GCC-${s.gcc_no}` : '—'} · {s.course || '—'}{s.batch ? ` · ${s.batch}` : ''}{s.class_name ? ` · ${s.class_name}` : ''}
+                    {s.course && !s.batch && <span style={{ marginLeft: 6, fontWeight: 700, color: T.amber }}>⚠️ no batch — won't appear in Mark</span>}
                   </div>
                   <div style={{ fontSize: 11.5, color: s.phone ? T.gray500 : T.red, marginTop: 2 }}>
                     {isAdmin
