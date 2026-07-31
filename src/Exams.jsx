@@ -131,21 +131,82 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
-// Order-independent + typo-tolerant name similarity, 0..1
+function levenshteinRatio(a, b) {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  const dist = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length) || 1;
+  return 1 - dist / maxLen;
+}
+
+// Score one token against another: exact match, single-letter-initial vs.
+// prefix match, or fuzzy Levenshtein ratio for everything else.
+function tokenPairScore(ta, tb) {
+  if (ta === tb) return 1;
+  if (ta.length === 1 && tb.startsWith(ta)) return 0.85;
+  if (tb.length === 1 && ta.startsWith(tb)) return 0.85;
+  return levenshteinRatio(ta, tb);
+}
+
+// Splits a short all-caps cluster like "PK" into ["P","K"] as an alternate
+// tokenization, so squashed initials (teachers often type "PK BIDYALUXMI"
+// for "Pukhrambam Kh. Bidyaluxmi") still get matched against DB tokens.
+function expandInitialClusters(tokens) {
+  const out = [];
+  tokens.forEach(t => {
+    if (t.length >= 2 && t.length <= 3 && /^[A-Z]+$/.test(t)) out.push(...t.split(""));
+    else out.push(t);
+  });
+  return out;
+}
+
+// Greedy best-pairing between two token lists, weighted by token length so a
+// strong match on a long distinctive token (e.g. a surname) outweighs a
+// short/coincidental one, and each DB token can only be claimed once.
+function pairAndScoreTokens(tokensA, tokensB) {
+  if (!tokensA.length || !tokensB.length) return 0;
+  const remaining = [...tokensB];
+  let weightedSum = 0, weightSum = 0;
+  const order = [...tokensA].sort((x, y) => y.length - x.length);
+  for (const ta of order) {
+    let bestIdx = -1, bestScore = -1;
+    for (let i = 0; i < remaining.length; i++) {
+      const s = tokenPairScore(ta, remaining[i]);
+      if (s > bestScore) { bestScore = s; bestIdx = i; }
+    }
+    const weight = Math.max(ta.length, 1);
+    weightedSum += Math.max(bestScore, 0) * weight;
+    weightSum += weight;
+    if (bestIdx !== -1 && bestScore > 0) remaining.splice(bestIdx, 1);
+  }
+  return weightSum ? weightedSum / weightSum : 0;
+}
+
+// Order-independent + typo-tolerant + initials-tolerant name similarity, 0..1.
+//
+// FIX: previously this sorted each name's words alphabetically, joined them
+// back into one flat string, and ran whole-string Levenshtein on that pair.
+// That approach silently fails whenever names have a different NUMBER of
+// words (an initial like "M" vs a full middle name, or a missing/extra
+// surname/suffix like "DEVI") — sorting+joining does not line matching
+// words up against each other, so a genuinely strong single-token match
+// (e.g. "BIDYALUXMI" appearing in both names) gets buried inside a long
+// diffed string instead of being recognised as strong evidence on its own.
+// This version tokenizes both names and pairs tokens up individually
+// (longest/most distinctive tokens claim their best match first), plus
+// tries an initials-expanded tokenization for squashed initials like "PK".
 function nameSimilarity(a, b) {
   const na = normalizeNameValue(a), nb = normalizeNameValue(b);
   if (!na || !nb) return 0;
   if (na === nb) return 1;
 
-  const sa = na.split(" ").filter(Boolean).sort().join(" ");
-  const sb = nb.split(" ").filter(Boolean).sort().join(" ");
-  if (sa === sb) return 0.97; // same words, different order (e.g. "SHARMA RAHUL")
+  const ta = na.split(" ").filter(Boolean);
+  const tb = nb.split(" ").filter(Boolean);
 
-  const dist = levenshtein(sa, sb);
-  const maxLen = Math.max(sa.length, sb.length) || 1;
-  const ratio = 1 - dist / maxLen;
-  const containBonus = (sa.includes(sb) || sb.includes(sa)) ? 0.1 : 0;
-  return Math.min(1, Math.max(0, ratio + containBonus));
+  const plain = pairAndScoreTokens(ta, tb);
+  const expanded = pairAndScoreTokens(expandInitialClusters(ta), tb);
+
+  return Math.max(plain, expanded);
 }
 
 /**
