@@ -347,8 +347,8 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
           </div>
           <div>
             <label style={S.label}>Student</label>
-            <select value={selectedStudent?.id || ''} disabled={!course || loadingStudents}
-              onChange={e => setSelectedStudent(students.find(s => s.id === e.target.value) || null)} style={S.input}>
+            <select value={selectedStudent?.id ?? ''} disabled={!course || loadingStudents}
+              onChange={e => setSelectedStudent(students.find(s => String(s.id) === e.target.value) || null)} style={S.input}>
               <option value="">{loadingStudents ? 'Loading…' : `Select student (${students.length})…`}</option>
               {students.map(s => <option key={s.id} value={s.id}>{s.name}{s.roll_number ? ` (${s.roll_number})` : ''}</option>)}
             </select>
