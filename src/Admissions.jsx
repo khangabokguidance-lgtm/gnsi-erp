@@ -21,6 +21,7 @@ import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
 import { promoteToStudent, getFlatFeeAmtSync, checkHouseCapacity } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
+import { staffDB } from './staffDB'
 
 // Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 // 1000 rows. Both `admissions` and `adm_fee_collections` can cross that
@@ -59,6 +60,17 @@ function checkPermission(role, action) {
   return (ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.staff).includes(action)
 }
 
+// Staff listed here are elevated to the role on the right — verified against
+// a real, ACTIVE staffDB record (by id first, falling back to name), not
+// just trusted from whatever's in localStorage — regardless of their stored
+// session role. Keys are lowercase full names as they appear in
+// staff_profiles.name. 'admission_officer' grants create/read/update/export/
+// wa/viewContacts but NOT delete/bulk (still admin-only). Add more entries
+// here as needed.
+const NAMED_ROLE_OVERRIDES = {
+  'ningthoujam johnson singh': 'admission_officer',
+}
+
 // Reads identity from the existing gnsi_session localStorage entry (set by
 // login) so this integrates with the portal's existing custom-auth system
 // without requiring a separate auth context.
@@ -78,7 +90,36 @@ function getSessionInfo() {
 
 function useUserRole() {
   const [role, setRole] = useState('staff')
-  useEffect(() => { setRole(getSessionInfo().role) }, [])
+  useEffect(() => {
+    let cancelled = false
+    const { role: sessionRole, userId, userName } = getSessionInfo()
+    setRole(sessionRole) // set immediately — don't stay stuck on 'staff' while the staffDB check below resolves
+
+    const nameKey = (userName || '').trim().toLowerCase()
+    // Nothing to check unless there's an id to look up, or the session name
+    // is even on the override list — skip the staffDB round-trip otherwise.
+    if (!userId && !NAMED_ROLE_OVERRIDES[nameKey]) return
+
+    ;(async () => {
+      try {
+        // Prefer resolving by id (in case the session's userId lines up with
+        // the staff_profiles id) — more trustworthy than trusting whatever
+        // display name happens to be sitting in localStorage.
+        let staff = userId ? await staffDB.getById(userId) : null
+        if (!staff && nameKey) staff = await staffDB.getByName(nameKey)
+        if (cancelled || !staff) return
+
+        const staffNameKey  = (staff.name || '').trim().toLowerCase()
+        const overrideRole  = NAMED_ROLE_OVERRIDES[staffNameKey]
+        const isActive      = !staff.status || staff.status === 'Active'
+        if (overrideRole && isActive) setRole(overrideRole)
+      } catch (err) {
+        console.error('useUserRole: staffDB override lookup failed:', err.message)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [])
   return role
 }
 
