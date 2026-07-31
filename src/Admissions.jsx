@@ -53,7 +53,7 @@ const ROLE_PERMISSIONS = {
   admin:             ['create','read','update','delete','bulk','export','wa','viewContacts'],
   admission_officer: ['create','read','update','export','wa','viewContacts'],
   reception:         ['create','read'],
-  staff:             ['read'],
+  staff:             ['read','update'],
 }
 
 function checkPermission(role, action) {
