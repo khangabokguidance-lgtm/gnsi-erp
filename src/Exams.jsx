@@ -212,18 +212,37 @@ function nameSimilarity(a, b) {
 /**
  * Best-effort student detection for a CSV/Excel row.
  * Priority: exact GCC → exact admission no → exact name → fuzzy name.
+ *
+ * `matchPool` is normally the batch/course-scoped pool — keeping fuzzy NAME
+ * matching scoped to it is deliberate, since it disambiguates the many
+ * students across the school who share a first or last name.
+ *
+ * `fullPool`, if provided, is the whole unfiltered student list. GCC and
+ * admission numbers are unique per student regardless of batch, so those
+ * lookups always check `fullPool` first — a student tagged under the wrong
+ * batch (mis-tagged, transferred, mid-move between batches) should still
+ * resolve instantly on their ID instead of being invisible to the matcher
+ * and falling through to an unrelated fuzzy name guess. If NAME matching
+ * finds nothing good enough in the scoped pool, it also falls back to
+ * searching `fullPool` rather than returning a weak in-batch guess — a
+ * strong match in the "wrong" batch is far more useful than a coincidental
+ * weak match in the "right" one, and usually just means the CSV's detected
+ * course or the student's batch field needs a look.
  */
-function findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool }) {
+function findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool, fullPool }) {
+  const idPool = (fullPool && fullPool.length) ? fullPool : matchPool;
+  const crossBatch = (student) => idPool !== matchPool && !matchPool.some(s => s.id === student.id);
+
   const gccNorm = normalizeGccValue(rawGcc);
   if (gccNorm) {
-    const hit = matchPool.find(s => normalizeGccValue(s.gcc_no) === gccNorm);
-    if (hit) return { student: hit, matchType: "GCC", confidence: 1 };
+    const hit = idPool.find(s => normalizeGccValue(s.gcc_no) === gccNorm);
+    if (hit) return { student: hit, matchType: crossBatch(hit) ? "GCC (different batch)" : "GCC", confidence: 1 };
   }
 
   const admNorm = String(rawAdm || "").trim().toUpperCase();
   if (admNorm) {
-    const hit = matchPool.find(s => String(s.admission_no || "").trim().toUpperCase() === admNorm);
-    if (hit) return { student: hit, matchType: "Admission No.", confidence: 1 };
+    const hit = idPool.find(s => String(s.admission_no || "").trim().toUpperCase() === admNorm);
+    if (hit) return { student: hit, matchType: crossBatch(hit) ? "Admission No. (different batch)" : "Admission No.", confidence: 1 };
   }
 
   if (!rawName) return { student: null, matchType: "none", confidence: 0, suggestion: null };
@@ -232,15 +251,29 @@ function findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool }) {
   const exact = matchPool.find(s => normalizeNameValue(s.name) === nameNorm);
   if (exact) return { student: exact, matchType: "Name (exact)", confidence: 1 };
 
+  const THRESHOLD = 0.72;
+
   let best = null, bestScore = 0;
   for (const s of matchPool) {
     const score = nameSimilarity(rawName, s.name);
     if (score > bestScore) { bestScore = score; best = s; }
   }
-  const THRESHOLD = 0.72;
   if (best && bestScore >= THRESHOLD) {
     return { student: best, matchType: "Name (fuzzy)", confidence: bestScore, suggestion: null };
   }
+
+  if (fullPool && fullPool.length && fullPool !== matchPool) {
+    let bestFull = null, bestFullScore = 0;
+    for (const s of fullPool) {
+      const score = nameSimilarity(rawName, s.name);
+      if (score > bestFullScore) { bestFullScore = score; bestFull = s; }
+    }
+    if (bestFull && bestFullScore >= THRESHOLD) {
+      return { student: bestFull, matchType: "Name (fuzzy, different batch)", confidence: bestFullScore, suggestion: null };
+    }
+    if (bestFullScore > bestScore) { best = bestFull; bestScore = bestFullScore; }
+  }
+
   return { student: null, matchType: "none", confidence: bestScore, suggestion: best };
 }
 
@@ -251,8 +284,14 @@ function MatchBadge({ matchType, confidence }) {
     if (pct >= 90) { bg = "#FEF9E7"; color = "#92740C"; }
     else { bg = "#FCEBEB"; color = "#A32D2D"; }
     label = `Name ≈${pct}%`;
+  } else if (matchType === "Name (fuzzy, different batch)") {
+    bg = "#FEF3E2"; color = "#B45309";
+    label = `Name ≈${pct}% · different batch`;
   } else if (matchType === "Name (exact)") {
     label = "Name match";
+  } else if (matchType === "GCC (different batch)" || matchType === "Admission No. (different batch)") {
+    bg = "#FEF3E2"; color = "#B45309";
+    label = `${matchType.split(" (")[0]} · different batch`;
   } else if (matchType === "Manual") {
     bg = "#EEF2FF"; color = "#4338CA"; label = "Manual";
   } else if (matchType === "New") {
@@ -1144,7 +1183,7 @@ for (const st of courseStudents) {
       const rawAdm = admCol !== -1 ? row[admCol]?.toString().trim() : "";
       const subMarks = extractSubMarksFromRow(row, subjectColMap);
 
-      const { student, matchType, confidence, suggestion } = findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool });
+      const { student, matchType, confidence, suggestion } = findBestStudentMatch({ rawName, rawGcc, rawAdm, matchPool, fullPool: students });
 
       if (!student) { errors.push({ rawName, rawGcc, rawAdm, subMarks, suggestion, rowIndex: i }); continue; }
       matched.push({ student, subMarks, matchType, confidence, rowIndex: i });
