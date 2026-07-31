@@ -416,6 +416,41 @@ const clearLastSelection = (teacherName) => {
   try { localStorage.removeItem(LAST_SELECTION_PREFIX + teacherName) } catch(e) {}
 }
 
+// Remembers a Housemaster's WhatsApp number by name, shared across all
+// teachers on this device (a phone number is data about the HM, not the
+// teacher, so it isn't scoped per-teacher like the selections above).
+// This is a stopgap: the correct long-term home for this is a `phone`
+// column on the staff table itself, set once by an admin. Until that
+// exists, each teacher who sends a WhatsApp message confirms/corrects the
+// number inline, and this cache just saves re-typing it every time.
+const HM_PHONE_STORE_KEY = 'gnsi_hm_phone_numbers'
+const loadHMPhoneBook = () => {
+  try { return JSON.parse(localStorage.getItem(HM_PHONE_STORE_KEY) || '{}') } catch(e) { return {} }
+}
+const saveHMPhone = (hmName, phone) => {
+  if (!hmName) return
+  try {
+    const book = loadHMPhoneBook()
+    book[hmName] = phone
+    localStorage.setItem(HM_PHONE_STORE_KEY, JSON.stringify(book))
+  } catch(e) {}
+}
+
+// Builds a wa.me deep link with the doubt-session details pre-filled as the
+// message text. Opens WhatsApp (mobile app or web) with the message ready to
+// send — the teacher/HM still taps Send themselves; this app never sends
+// messages on its own behalf (no WhatsApp Business API / server credentials
+// wired up here).
+const buildWhatsAppLink = (phone, message) => {
+  const digitsOnly = String(phone || '').replace(/[^0-9]/g, '')
+  if (!digitsOnly) return null
+  // wa.me expects a full international number with no leading zeros/plus.
+  // Indian numbers are typically stored as 10 digits — assume +91 if no
+  // country code appears to already be present (11+ digits).
+  const withCountryCode = digitsOnly.length <= 10 ? `91${digitsOnly}` : digitsOnly
+  return `https://wa.me/${withCountryCode}?text=${encodeURIComponent(message)}`
+}
+
 // ─── Suggestion Picker ────────────────────────────────────────────────────────
 
 function SuggestionPicker({ field, value, onChange, form }) {
@@ -1061,16 +1096,31 @@ function Step5HMAssign({ form, setForm, staff, students, loadingStudents }) {
             {hmStaff.length > 0
               ? <select value={form.assigned_hm_id||''} onChange={e => {
                   const s = hmStaff.find(x => x.id===e.target.value)
-                  setForm(f => ({ ...f, assigned_hm_id:e.target.value, assigned_hm_name:s?.name||'' }))
+                  const savedPhone = s?.name ? (loadHMPhoneBook()[s.name] || '') : ''
+                  setForm(f => ({ ...f, assigned_hm_id:e.target.value, assigned_hm_name:s?.name||'', assigned_hm_phone: savedPhone || f.assigned_hm_phone }))
                 }} required style={S.select}>
                   <option value="">Select HM/Warden</option>
                   {hmStaff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.designation||'HM'})</option>)}
                 </select>
-              : <select value={form.assigned_hm_name||''} onChange={e => setForm(f => ({ ...f, assigned_hm_name:e.target.value }))} required style={S.select}>
+              : <select value={form.assigned_hm_name||''} onChange={e => {
+                  const savedPhone = e.target.value ? (loadHMPhoneBook()[e.target.value] || '') : ''
+                  setForm(f => ({ ...f, assigned_hm_name:e.target.value, assigned_hm_phone: savedPhone || f.assigned_hm_phone }))
+                }} required style={S.select}>
                   <option value="">Select Staff</option>
                   {[...new Set(DOUBT_SESSION_MAP.map(d => d.hm))].sort().map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
             }
+          </div>
+
+          <div style={{ marginBottom:14 }}>
+            <label style={S.label}>HM's WhatsApp Number <span style={{ fontSize:11, color:'#94a3b8', fontWeight:400 }}>(so the notification can be sent via WhatsApp)</span></label>
+            <input
+              type="tel"
+              value={form.assigned_hm_phone||''}
+              onChange={e => setForm(f => ({ ...f, assigned_hm_phone: e.target.value }))}
+              placeholder="e.g. 9876543210"
+              style={S.input}
+            />
           </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
@@ -1384,7 +1434,7 @@ const emptyForm = {
   range_from:'', range_to:'', topic_taught:'', classwork:'', homework:'', remarks:'',
   techniques:[], technique_detail:'', key_concepts:'', technique_avoid:'',
   practice_questions:[],
-  needs_doubt_session:false, assigned_hm_id:'', assigned_hm_name:'',
+  needs_doubt_session:false, assigned_hm_id:'', assigned_hm_name:'', assigned_hm_phone:'',
   doubt_date:'', doubt_time_slot:'',
   hm_instruction_message:'', focus_student_ids:[], weak_students:[],
 }
@@ -1851,6 +1901,11 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
   const [gpsDistance, setGpsDistance] = useState(null)
   const [attWarn, setAttWarn] = useState(false)
   const [spotCheck, setSpotCheck] = useState(null)
+  // Set right after a successful save that included a doubt-session HM
+  // assignment — holds everything needed to render a "send via WhatsApp"
+  // action that survives independently of the spot-check modal / form reset
+  // that happens immediately afterward.
+  const [whatsappPrompt, setWhatsappPrompt] = useState(null) // { hmName, phone, message }
   const { show: showToast, el: toastEl } = useToast()
   const savingRef = useRef(false)
   // FIX 4: track whether GPS check has already been done for this Step-0 advance
@@ -2318,6 +2373,21 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
             status: 'unread',
             created_at: new Date().toISOString(),
           }])
+
+          // Remember this HM's number for next time, and stage the WhatsApp
+          // send option — rendered after the save fully completes below,
+          // independent of the spot-check modal / form-reset that follows.
+          if (form.assigned_hm_phone) saveHMPhone(resolvedHM, form.assigned_hm_phone)
+          const waMessage = [
+            `📚 *Doubt Session Notification*`,
+            `Subject: ${form.subject_name}${chapterFinal ? ' — ' + chapterFinal : ''}`,
+            `Batch: ${form.subtype || form.course}`,
+            `Date: ${form.doubt_date || 'Not set'}${resolvedSlot ? ' at ' + resolvedSlot : ''}`,
+            focusNames.length ? `Students needing help: ${focusNames.join(', ')}` : null,
+            form.hm_instruction_message ? `Instructions: ${form.hm_instruction_message}` : null,
+            `— ${form.teacher_name || 'Teacher'}`,
+          ].filter(Boolean).join('\n')
+          setWhatsappPrompt({ hmName: resolvedHM, phone: form.assigned_hm_phone || '', message: waMessage })
         }
       }
 
@@ -2356,12 +2426,57 @@ export function EnhancedLogForm({ onSaved, courseData, staff, currentUser, logs 
     gpsCheckedRef.current = false
     setForm({ ...emptyForm })
     setStep(0)
+    setWhatsappPrompt(null)
   }
 
   return (
     <>
       <style>{css}</style>
       {toastEl}
+      {whatsappPrompt && (
+        <div style={{
+          padding:'14px 16px', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:10,
+          marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap',
+        }}>
+          <div style={{ flex:1, minWidth:200 }}>
+            <div style={{ fontWeight:700, color:'#166534', fontSize:13, marginBottom:2 }}>
+              ✅ Doubt session logged — notify {whatsappPrompt.hmName || 'the HM'} on WhatsApp?
+            </div>
+            {!whatsappPrompt.phone && (
+              <div style={{ fontSize:12, color:'#b45309' }}>No phone number was entered — add one below to enable sending.</div>
+            )}
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+            {!whatsappPrompt.phone && (
+              <input
+                type="tel"
+                placeholder="HM's WhatsApp number"
+                style={{ ...S.input, width:170, minHeight:38 }}
+                onChange={e => setWhatsappPrompt(p => ({ ...p, phone: e.target.value }))}
+              />
+            )}
+            <a
+              href={buildWhatsAppLink(whatsappPrompt.phone, whatsappPrompt.message) || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => {
+                if (!whatsappPrompt.phone) { e.preventDefault(); return }
+                saveHMPhone(whatsappPrompt.hmName, whatsappPrompt.phone)
+              }}
+              style={{
+                ...S.btn('#25D366', !whatsappPrompt.phone),
+                textDecoration:'none', display:'inline-flex', alignItems:'center', gap:6,
+                pointerEvents: whatsappPrompt.phone ? 'auto' : 'none', opacity: whatsappPrompt.phone ? 1 : 0.6,
+              }}
+            >
+              📲 Send via WhatsApp
+            </a>
+            <button type="button" onClick={() => setWhatsappPrompt(null)} style={{ ...S.btnSm('#94a3b8'), padding:'8px 12px' }}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
       <SOPReferencePanel/>
       <TeacherLeaderboard currentUser={currentUser}/>
       {spotCheck && (
