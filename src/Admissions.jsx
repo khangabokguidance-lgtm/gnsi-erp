@@ -481,6 +481,143 @@ function deriveHostelType(house, hostelType) {
 
 const DRAFT_KEY = 'gnsi_adm_draft'
 
+// ═════════════════════════════════════════════════════════════════════════
+// GOOGLE DRIVE PHOTO STORAGE — one shared GNSI Drive account, every
+// student's photo uploaded into a single "GNSI Admissions Photos" folder,
+// named by GCC No. Uses Google Identity Services (GIS) for OAuth — no
+// backend server needed, works entirely from the browser.
+//
+// ✦ SETUP REQUIRED BEFORE THIS WORKS (cannot be done from code):
+//   1. Create a Google Cloud project at console.cloud.google.com
+//   2. Enable the "Google Drive API" for that project
+//   3. Create an OAuth 2.0 Client ID (Application type: Web application)
+//      — Authorized JavaScript origin: https://www.guidancekhangabok.in
+//        (and http://localhost:PORT for local dev, if needed)
+//   4. Paste the Client ID below, replacing the placeholder.
+//   5. On first use, whichever staff member is logged in will see a
+//      "Connect Google Drive" prompt — they sign in with the ONE shared
+//      GNSI Google account (not their own), granting Drive access. That
+//      authorization is then reused for all future uploads until the
+//      token expires (Google tokens typically last ~1 hour; this module
+//      re-prompts automatically when that happens).
+// ═════════════════════════════════════════════════════════════════════════
+const GOOGLE_DRIVE_CLIENT_ID = '683423605919-vt02fh84rnv4ai9o12qbbuitffvsh9ah.apps.googleusercontent.com'
+const GNSI_DRIVE_FOLDER_NAME = 'GNSI Admissions Photos'
+
+let _gisLoaded = false
+let _driveAccessToken = null
+let _driveFolderId = null
+
+function loadGoogleIdentityScript() {
+  return new Promise((resolve, reject) => {
+    if (_gisLoaded && window.google?.accounts?.oauth2) { resolve(); return }
+    const existing = document.getElementById('gis-script')
+    if (existing) { existing.addEventListener('load', () => { _gisLoaded = true; resolve() }); return }
+    const script = document.createElement('script')
+    script.id = 'gis-script'
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.onload = () => { _gisLoaded = true; resolve() }
+    script.onerror = () => reject(new Error('Failed to load Google Identity Services script'))
+    document.head.appendChild(script)
+  })
+}
+
+// Requests a fresh Drive access token via Google's OAuth popup — this is
+// the "Connect Google Drive" step. Scope is deliberately narrow
+// (drive.file — only files this app creates, not the whole Drive) so the
+// shared account isn't granting broad access to everything in its Drive.
+function requestDriveAccessToken() {
+  return new Promise((resolve, reject) => {
+    if (!window.google?.accounts?.oauth2) { reject(new Error('Google Identity Services not loaded')); return }
+    if (GOOGLE_DRIVE_CLIENT_ID.startsWith('REPLACE_WITH')) {
+      reject(new Error('Google Drive Client ID not configured yet — see GOOGLE_DRIVE_CLIENT_ID at the top of Admissions.jsx'))
+      return
+    }
+    const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_DRIVE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp) => {
+        if (resp.error) { reject(new Error(resp.error)); return }
+        _driveAccessToken = resp.access_token
+        resolve(resp.access_token)
+      },
+    })
+    tokenClient.requestAccessToken()
+  })
+}
+
+async function ensureDriveAccessToken() {
+  if (_driveAccessToken) return _driveAccessToken
+  await loadGoogleIdentityScript()
+  return requestDriveAccessToken()
+}
+
+// Finds (or creates, on first ever use) the shared "GNSI Admissions
+// Photos" folder in the connected account's Drive, so every upload lands
+// in one predictable place rather than scattered across "My Drive".
+async function ensureGnsiPhotosFolder(token) {
+  if (_driveFolderId) return _driveFolderId
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`name='${GNSI_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`)}&fields=files(id,name)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  const searchData = await searchRes.json()
+  if (searchData.files?.length) { _driveFolderId = searchData.files[0].id; return _driveFolderId }
+
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: GNSI_DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }),
+  })
+  const createData = await createRes.json()
+  if (!createData.id) throw new Error('Failed to create GNSI Admissions Photos folder in Drive')
+  _driveFolderId = createData.id
+  return _driveFolderId
+}
+
+/**
+ * Uploads a photo File object to the shared GNSI Drive account, inside the
+ * "GNSI Admissions Photos" folder, named by GCC No. Makes the uploaded
+ * file link-viewable (anyone with the link can view, not edit) so the
+ * resulting URL works directly as an <img src> elsewhere in the app —
+ * same as any other photoUrl value today.
+ *
+ * Returns { url, fileId } on success. Throws on failure — callers should
+ * catch and show a clear error rather than silently leaving photoUrl blank.
+ */
+async function uploadPhotoToGoogleDrive(file, gccNo) {
+  const token = await ensureDriveAccessToken()
+  const folderId = await ensureGnsiPhotosFolder(token)
+
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const metadata = { name: `GCC-${gccNo}.${ext}`, parents: [folderId] }
+
+  const form = new FormData()
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+  form.append('file', file)
+
+  const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  const uploadData = await uploadRes.json()
+  if (!uploadData.id) throw new Error('Upload to Google Drive failed')
+
+  // Make the file link-viewable so it works as a direct image URL.
+  await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/permissions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  })
+
+  // Drive's direct-image-embed URL format (works in <img src>, unlike the
+  // normal "view" link which opens Drive's viewer page instead of the raw image).
+  const url = `https://drive.google.com/uc?export=view&id=${uploadData.id}`
+  return { url, fileId: uploadData.id }
+}
+
+
 // ─── CSV / Export Helpers ──────────────────────────────────────────────────────
 function toCSV(rows) {
   const headers = ['GCC No','Adm No','Name','DOB','Gender','Blood','Category','Religion','Mother Tongue','Course','Subtype','Class','House','Hostel Type','Session','Status','Father','Mother','Phone','WhatsApp','Prev School','Address','Quota','Referral','Scholarship %','Entrance Score','Interview Score','Remarks']
@@ -1923,6 +2060,25 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   }
 
   const [declared, setDeclared] = useState(false)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoUploadError, setPhotoUploadError] = useState('')
+
+  const handlePhotoFileSelect = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file later
+    if (!file) return
+    if (!form.gcc) { setPhotoUploadError('Enter GCC No. before uploading a photo — the file is named by GCC No.'); return }
+    setPhotoUploading(true)
+    setPhotoUploadError('')
+    try {
+      const { url } = await uploadPhotoToGoogleDrive(file, form.gcc)
+      set('photoUrl', url)
+    } catch (err) {
+      setPhotoUploadError(err.message || 'Upload failed — please try again.')
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
   const [step, setStep] = useState('form') // 'form' | 'preview'
   const [submitting, setSubmitting] = useState(false)
 
@@ -2050,8 +2206,28 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
         <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:18, padding:'16px 18px', border:`1.5px solid ${border}`, borderRadius:14, background:cardBg }}>
           <Avatar name={form.name} size={58} photoUrl={form.photoUrl} />
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:12, fontWeight:600, color:inkSub, marginBottom:5 }}>Passport Photo URL</div>
-            <input style={{ ...govInp, width:'100%', maxWidth:340 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https:// or Supabase Storage URL" />
+            <div style={{ fontSize:12, fontWeight:600, color:inkSub, marginBottom:5 }}>Passport Photo</div>
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+              <label style={{
+                padding:'8px 16px', borderRadius:9, border:`1.5px solid ${accent}`, background: photoUploading ? '#E4E2DC' : accentLt,
+                color: accent, fontSize:12.5, fontWeight:700, cursor: photoUploading ? 'not-allowed' : 'pointer', display:'inline-flex', alignItems:'center', gap:6,
+              }}>
+                {photoUploading ? '⏳ Uploading to Drive…' : '📤 Upload to Google Drive'}
+                <input type="file" accept="image/*" onChange={handlePhotoFileSelect} disabled={photoUploading} style={{ display:'none' }} />
+              </label>
+              {form.photoUrl && !photoUploading && (
+                <span style={{ fontSize:11, color:success, fontWeight:600 }}>✓ Photo on file</span>
+              )}
+            </div>
+            {photoUploadError && (
+              <div style={{ fontSize:11, color:danger, marginTop:6, fontWeight:600 }}>⚠ {photoUploadError}</div>
+            )}
+            {/* Fallback for a photo already hosted elsewhere (Supabase Storage, another URL) —
+                the Drive upload above is the primary path; this stays for flexibility. */}
+            <details style={{ marginTop:8 }}>
+              <summary style={{ fontSize:10.5, color:inkSub, cursor:'pointer' }}>Or paste an existing photo URL instead</summary>
+              <input style={{ ...govInp, width:'100%', maxWidth:340, marginTop:6 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https:// or Supabase Storage URL" />
+            </details>
           </div>
         </div>
 
