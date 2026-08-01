@@ -262,12 +262,21 @@ export const isCourseFeeMonth = (month) => !FLAT_FEE_MONTHS.includes(month)
 /**
  * Async — returns ONLY flat fee months (Feb & Mar) for the session.
  * Respects per-student override when gccNo is supplied.
+ *
+ * ✦ NEW: admissionDate (YYYY-MM-DD or Date) — when supplied, any flat-fee
+ *        month that ENDED before the student's admission date is excluded.
+ *        This stops repeaters/late admissions from being billed for months
+ *        that predate when they actually joined. When admissionDate is not
+ *        supplied (student record still missing it), behavior is unchanged
+ *        from before — every caller should be moving toward always passing
+ *        it now that admission_date is a required field going forward.
  */
-export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccNo = null) => {
+export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccNo = null, admissionDate = null) => {
   const amount = await getFlatFeeAmt(hostelType, course, batch, sessionYear, gccNo)
   const now = new Date()
   const currentCalYear  = now.getFullYear()
   const currentCalMonth = now.getMonth() + 1
+  const admDate = admissionDate ? new Date(admissionDate) : null
 
   return FLAT_FEE_MONTHS.map(month => {
     let year = currentCalYear
@@ -278,6 +287,13 @@ export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CU
       id: `flat_${month.slice(0, 3).toLowerCase()}_${year}`,
       month, year, amount, hostelType,
     }
+  }).filter(f => {
+    if (!admDate || isNaN(admDate.getTime())) return true
+    // Last calendar day of the fee month — student owes this month's fee
+    // only if they'd already joined by the time that month ended.
+    const feeMonthIdx = new Date(`${f.month} 1, ${f.year}`).getMonth()
+    const feeMonthEnd = new Date(f.year, feeMonthIdx + 1, 0)
+    return feeMonthEnd >= admDate
   })
 }
 

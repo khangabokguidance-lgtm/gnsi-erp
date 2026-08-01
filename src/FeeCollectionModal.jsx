@@ -107,6 +107,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [isRepeater,     setIsRepeater]     = useState(false)
   const [repeaterSaving, setRepeaterSaving] = useState(false)
 
+  // ── Admission date (compulsory — Fresher and Repeater both) ────────────────
+  const [admissionDate,     setAdmissionDate]     = useState('')
+  const [admDateSaving,     setAdmDateSaving]     = useState(false)
+
   // ── Rates from DB ─────────────────────────────────────────────────────────
   const [feeRates,     setFeeRates]     = useState({ flatFee: 0, courseFee: 0, admissionFee: 6000 })
   const [flatFees,     setFlatFees]     = useState([])
@@ -136,11 +140,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       .finally(() => setRatesLoading(false))
   }, [hostelType, course, batch])
 
-  // Load flat fee list (pass gcc so override is respected in amounts)
+  // Load flat fee list (pass gcc so override is respected in amounts, and
+  // admissionDate so months before the student actually joined are excluded)
   useEffect(() => {
-    getFlatFees(hostelType, course, batch, sessionYear, gcc || null)
+    getFlatFees(hostelType, course, batch, sessionYear, gcc || null, admissionDate || null)
       .then(setFlatFees)
-  }, [hostelType, course, batch, hasOverride])  // re-run when override changes
+  }, [hostelType, course, batch, hasOverride, admissionDate])  // re-run when override or admission date changes
 
   const [tab,         setTab]         = useState('admission')
   const [saving,      setSaving]      = useState(false)
@@ -193,15 +198,20 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   useEffect(() => { setSaved(null); setError(null) }, [hostelType])
 
-  // ── Load repeater flag ───────────────────────────────────────────────────
+  // ── Load repeater flag + admission date ─────────────────────────────────
   useEffect(() => {
     if (!gcc) return
     supabase
       .from('students')
-      .select('is_repeater')
+      .select('is_repeater, admission_date')
       .eq('gcc_no', parseInt(gcc))
       .maybeSingle()
-      .then(({ data }) => { if (data) setIsRepeater(!!data.is_repeater) })
+      .then(({ data }) => {
+        if (data) {
+          setIsRepeater(!!data.is_repeater)
+          setAdmissionDate(data.admission_date || '')
+        }
+      })
   }, [gcc])
 
   const toggleRepeater = async () => {
@@ -213,6 +223,20 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       .eq('gcc_no', parseInt(gcc))
     setIsRepeater(newVal)
     setRepeaterSaving(false)
+  }
+
+  // Admission date is compulsory for both Fresher and Repeater — this modal
+  // and the Admissions/Students form both write to the same column, so
+  // whichever is filled first "wins" and the other just confirms it.
+  const saveAdmissionDate = async (val) => {
+    setAdmissionDate(val)
+    if (!gcc || !val) return
+    setAdmDateSaving(true)
+    await supabase
+      .from('students')
+      .update({ admission_date: val })
+      .eq('gcc_no', parseInt(gcc))
+    setAdmDateSaving(false)
   }
 
   // ── Load paid admission items ─────────────────────────────────────────────
@@ -265,7 +289,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setFeeRates(rates)
       setHasOverride(true)
       // Reload flat fee list with new amount
-      const updated = await getFlatFees(hostelType, course, batch, sessionYear, parseInt(gcc))
+      const updated = await getFlatFees(hostelType, course, batch, sessionYear, parseInt(gcc), admissionDate || null)
       setFlatFees(updated)
       setOverrideMode(false)
       setOverrideFeedback({ type: 'ok', msg: `Flat fee set to ₹${amt.toLocaleString('en-IN')}/month for ${sessionYear}.` })
@@ -287,7 +311,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setHasOverride(false)
       setOverrideAmt('')
       setOverrideReason('')
-      const updated = await getFlatFees(hostelType, course, batch, sessionYear, null)
+      const updated = await getFlatFees(hostelType, course, batch, sessionYear, null, admissionDate || null)
       setFlatFees(updated)
       setOverrideMode(false)
       setOverrideFeedback({ type: 'ok', msg: 'Override removed. Standard rate restored.' })
@@ -308,6 +332,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const saveAdmission = async () => {
     if (saving) return
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
+    if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
+    if (isRepeater) return alert('This student is marked as a Repeater — Admission Fee, Dress Fee, and Prospectus Fee are waived. Use the Flat or Course tab instead.')
     const admFeeItems = FEE_ITEMS.filter(f => selected[f.id] && !paidAdmItems.includes(f.label))
     if (!admFeeItems.length) return alert('Select at least one unpaid fee item.')
     setSaving(true); setError(null)
@@ -336,6 +362,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const saveFlat = async () => {
     if (saving) return
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
+    if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     const unpaid = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f))
     if (!unpaid.length) return alert('Select at least one unpaid month.')
     setSaving(true); setError(null)
@@ -360,6 +387,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const saveCourse = async () => {
     if (saving) return
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
+    if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     const amt = Number(courseAmt)
     if (!amt || amt <= 0) return alert('Enter a valid amount.')
     if (isCourseMonthPaid()) { setError(`Course fee for ${courseMonth} ${courseYear} is already recorded.`); return }
@@ -427,6 +455,21 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   style={{ fontSize:10, fontWeight:700, padding:"2px 9px", borderRadius:4, border:`1px solid ${isRepeater ? "#fcd34d" : C.slate[200]}`, background: isRepeater ? "#fef3c7" : C.slate[50], color: isRepeater ? "#92400e" : C.slate[400], cursor: repeaterSaving ? "not-allowed" : "pointer", letterSpacing:".03em" }}>
                   {repeaterSaving ? "…" : isRepeater ? "✕ Remove" : "🔁 Mark Repeater"}
                 </button>
+              </div>
+              {/* Admission date — compulsory for both Fresher and Repeater. Fee
+                  collection is blocked (see saving guards below) until this is set. */}
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:8 }}>
+                <span style={{ fontSize:11, fontWeight:700, color: admissionDate ? C.slate[400] : C.red }}>
+                  Admission Date{!admissionDate && ' *required'}
+                </span>
+                <input
+                  type="date"
+                  value={admissionDate || ''}
+                  onChange={e => saveAdmissionDate(e.target.value)}
+                  disabled={admDateSaving}
+                  style={{ fontSize:12, padding:'3px 8px', borderRadius:5, border:`1.5px solid ${admissionDate ? C.slate[200] : '#fca5a5'}`, background: admissionDate ? 'white' : '#fef2f2', color: C.slate[900] }}
+                />
+                {admDateSaving && <span style={{ fontSize:11, color:C.slate[400] }}>saving…</span>}
               </div>
             </div>
             <button type="button" onClick={handleClose} style={{ width:30, height:30, borderRadius:8, border:`1px solid ${C.slate[200]}`, background:C.slate[50], cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
@@ -571,34 +614,47 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           {/* ── Admission tab ── */}
           {tab === 'admission' && (
             <div>
-              <PaidSummaryBar paid={admPaidCount} unpaid={FEE_ITEMS.length - admPaidCount} loading={loadingAdm} />
-              <div style={{ fontSize:11, fontWeight:700, color:C.slate[400], textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>Select fee items</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
-                {FEE_ITEMS.map(fee => {
-                  const paid = isAdmItemPaid(fee.label)
-                  return (
-                    <div key={fee.id} onClick={() => !paid && setSelected(p => ({ ...p, [fee.id]: !p[fee.id] }))}
-                      style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:10, cursor:paid?'default':'pointer', border:`1.5px solid ${paid?'#6ee7b7':selected[fee.id]?fee.color:C.slate[200]}`, background:paid?'#f0fdf4':selected[fee.id]?fee.color+'12':'white', opacity:paid?.8:1, transition:'all .15s' }}>
-                      <div style={{ fontSize:20 }}>{fee.icon}</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, fontSize:13, color:C.slate[900] }}>{fee.label}</div>
-                        <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid?'Already collected':`Standard: ₹${fmt(fee.amount).replace('₹','')}`}</div>
-                      </div>
-                      {!paid && (
-                        <input type="number" value={customAmts[fee.id] ?? fee.amount}
-                          onChange={e => { e.stopPropagation(); setCustomAmts(p => ({ ...p, [fee.id]: e.target.value })) }}
-                          onClick={e => e.stopPropagation()}
-                          style={{ ...inp, width:100, textAlign:'right', fontWeight:700, color:fee.color, borderColor:selected[fee.id]?fee.color:C.slate[200] }} />
-                      )}
-                      {paid ? <PaidBadge /> : (
-                        <div style={{ width:20, height:20, borderRadius:5, flexShrink:0, border:`2px solid ${selected[fee.id]?fee.color:C.slate[300]}`, background:selected[fee.id]?fee.color:'white', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          {selected[fee.id] && <span style={{ color:'white', fontSize:11, fontWeight:900 }}>✓</span>}
+              {isRepeater ? (
+                <div style={{ background:'#fef3c7', border:'1.5px solid #fcd34d', borderRadius:12, padding:'18px 20px', textAlign:'center' }}>
+                  <div style={{ fontSize:24, marginBottom:6 }}>🔁</div>
+                  <div style={{ fontWeight:800, color:'#92400e', fontSize:14, marginBottom:4 }}>Admission Fee Waived — Repeater</div>
+                  <div style={{ fontSize:12, color:'#92400e', opacity:.85 }}>
+                    This student is marked as a repeater, so Admission Fee, Dress Fee, and Prospectus Fee
+                    are not charged. Collect their dues from the <strong>Flat</strong> or <strong>Course</strong> tab instead.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <PaidSummaryBar paid={admPaidCount} unpaid={FEE_ITEMS.length - admPaidCount} loading={loadingAdm} />
+                  <div style={{ fontSize:11, fontWeight:700, color:C.slate[400], textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>Select fee items</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
+                    {FEE_ITEMS.map(fee => {
+                      const paid = isAdmItemPaid(fee.label)
+                      return (
+                        <div key={fee.id} onClick={() => !paid && setSelected(p => ({ ...p, [fee.id]: !p[fee.id] }))}
+                          style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:10, cursor:paid?'default':'pointer', border:`1.5px solid ${paid?'#6ee7b7':selected[fee.id]?fee.color:C.slate[200]}`, background:paid?'#f0fdf4':selected[fee.id]?fee.color+'12':'white', opacity:paid?.8:1, transition:'all .15s' }}>
+                          <div style={{ fontSize:20 }}>{fee.icon}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:700, fontSize:13, color:C.slate[900] }}>{fee.label}</div>
+                            <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid?'Already collected':`Standard: ₹${fmt(fee.amount).replace('₹','')}`}</div>
+                          </div>
+                          {!paid && (
+                            <input type="number" value={customAmts[fee.id] ?? fee.amount}
+                              onChange={e => { e.stopPropagation(); setCustomAmts(p => ({ ...p, [fee.id]: e.target.value })) }}
+                              onClick={e => e.stopPropagation()}
+                              style={{ ...inp, width:100, textAlign:'right', fontWeight:700, color:fee.color, borderColor:selected[fee.id]?fee.color:C.slate[200] }} />
+                          )}
+                          {paid ? <PaidBadge /> : (
+                            <div style={{ width:20, height:20, borderRadius:5, flexShrink:0, border:`2px solid ${selected[fee.id]?fee.color:C.slate[300]}`, background:selected[fee.id]?fee.color:'white', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                              {selected[fee.id] && <span style={{ color:'white', fontSize:11, fontWeight:900 }}>✓</span>}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
               {admTotal > 0 && (
                 <div style={{ background:C.slate[50], borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ fontSize:13, fontWeight:600, color:C.slate[500] }}>Total</span>
@@ -766,12 +822,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           <button type="button" onClick={handleClose} style={{ padding:'9px 20px', borderRadius:9, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>Close</button>
           <button type="button"
             onClick={tab==='admission'?saveAdmission:tab==='flat'?saveFlat:saveCourse}
-            disabled={saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading}
+            disabled={saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading}
             style={{ padding:'9px 24px', borderRadius:9, border:'none', fontSize:13, fontWeight:700,
-              cursor:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading)?'not-allowed':'pointer',
-              background:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading)?C.slate[400]:`linear-gradient(135deg,${C.navy},${C.indigo})`,
-              color:'white', opacity:(saving||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&allAdmPaid)||(tab==='course'&&courseMonthPaid)||ratesLoading)?.7:1 }}>
-            {saving?'⏳ Saving…':ratesLoading?'⏳ Loading…':'🖨️ Record & Print Receipt'}
+              cursor:(saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading)?'not-allowed':'pointer',
+              background:(saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading)?C.slate[400]:`linear-gradient(135deg,${C.navy},${C.indigo})`,
+              color:'white', opacity:(saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading)?.7:1 }}>
+            {saving?'⏳ Saving…':!admissionDate?'⚠️ Set Admission Date First':ratesLoading?'⏳ Loading…':'🖨️ Record & Print Receipt'}
           </button>
         </div>
       </div>
