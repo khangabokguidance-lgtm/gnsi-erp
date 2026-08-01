@@ -280,7 +280,14 @@ function useActiveHousemasters() {
       if (error) { console.error('useActiveHousemasters fetch error:', error); setLoading(false); return }
       const map = {}
       ;(data || []).forEach(hm => {
-        const key = (hm.house || '').trim()
+        // ✦ Bug fix: house names in `housemasters` aren't guaranteed to match
+        // the exact casing used elsewhere (e.g. "KOMBIREI" vs "Kombirei").
+        // Object keys are case-sensitive, so a housemaster genuinely
+        // assigned and Active could silently fail to match and show "No
+        // active housemaster on file" anyway. Keying by a normalized
+        // (trimmed, lowercased) form fixes this — see normalizeHouseKey(),
+        // which every lookup site below must also use for the match to work.
+        const key = normalizeHouseKey(hm.house)
         if (key) map[key] = hm   // one active housemaster per house, matching Hostel.jsx's .maybeSingle() assumption
       })
       setByHouse(map)
@@ -289,6 +296,12 @@ function useActiveHousemasters() {
     return () => { cancelled = true }
   }, [])
   return { housemastersByHouse: byHouse, housemastersLoading: loading }
+}
+// Case/whitespace-insensitive key for matching house names across tables
+// that don't consistently agree on casing (e.g. "KOMBIREI" vs "Kombirei").
+function normalizeHouseKey(house) { return (house || '').trim().toLowerCase() }
+function getHousemaster(housemastersByHouse, house) {
+  return housemastersByHouse[normalizeHouseKey(house)]
 }
 function useTablet() { return useWindowWidth() < 1024 }
 
@@ -928,39 +941,43 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
           style={{ padding:'9px 16px', borderRadius:8, background:T.slate[800], color:'#fff', border:'none', fontSize:12, fontWeight:700, cursor:'pointer' }}>Add</button>
       </div>
 
-      {a.house && housemastersByHouse[a.house] && checkPermission(role, 'viewContacts') && (
-        <>
-          <SectionDivider label="Warden Contact" />
-          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:T.sky[50], border:`1px solid ${T.sky[100]}`, borderRadius:8 }}>
-            <span style={{ fontSize:20 }}>👤</span>
-            <div>
-              <div style={{ fontSize:13, fontWeight:700, color:T.sky[700] }}>{housemastersByHouse[a.house].name}</div>
-              <div style={{ fontSize:11, color:T.sky[600] }}>
-                {a.house} {housemastersByHouse[a.house].designation || 'House Warden'} · {housemastersByHouse[a.house].phone || 'No phone on file'}
+      {(() => {
+        const warden = a.house ? getHousemaster(housemastersByHouse, a.house) : null
+        if (a.house && warden && checkPermission(role, 'viewContacts')) return (
+          <>
+            <SectionDivider label="Warden Contact" />
+            <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:T.sky[50], border:`1px solid ${T.sky[100]}`, borderRadius:8 }}>
+              <span style={{ fontSize:20 }}>👤</span>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:T.sky[700] }}>{warden.name}</div>
+                <div style={{ fontSize:11, color:T.sky[600] }}>
+                  {a.house} {warden.designation || 'House Warden'} · {warden.phone || 'No phone on file'}
+                </div>
               </div>
+              {warden.phone && (
+                <a href={`tel:${warden.phone}`} style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:7, background:T.sky[500], color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none' }}>Call</a>
+              )}
             </div>
-            {housemastersByHouse[a.house].phone && (
-              <a href={`tel:${housemastersByHouse[a.house].phone}`} style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:7, background:T.sky[500], color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none' }}>Call</a>
-            )}
-          </div>
-        </>
-      )}
-      {a.house && !housemastersByHouse[a.house] && checkPermission(role, 'viewContacts') && (
-        <>
-          <SectionDivider label="Warden Contact" />
-          <div style={{ fontSize:12, color:T.amber[600], padding:'8px 12px', background:T.amber[50], borderRadius:8, fontWeight:600 }}>
-            ⚠ No active housemaster assigned to {a.house} — add one in Hostel → Housemasters
-          </div>
-        </>
-      )}
-      {a.house && housemastersByHouse[a.house] && !checkPermission(role, 'viewContacts') && (
-        <>
-          <SectionDivider label="Warden Contact" />
-          <div style={{ fontSize:12, color:T.slate[500], padding:'8px 12px', background:T.slate[50], borderRadius:8 }}>
-            🔒 {a.house} House Warden — contact restricted to admission staff
-          </div>
-        </>
-      )}
+          </>
+        )
+        if (a.house && !warden && checkPermission(role, 'viewContacts')) return (
+          <>
+            <SectionDivider label="Warden Contact" />
+            <div style={{ fontSize:12, color:T.amber[600], padding:'8px 12px', background:T.amber[50], borderRadius:8, fontWeight:600 }}>
+              ⚠ No active housemaster assigned to {a.house} — add one in Hostel → Housemasters
+            </div>
+          </>
+        )
+        if (a.house && warden && !checkPermission(role, 'viewContacts')) return (
+          <>
+            <SectionDivider label="Warden Contact" />
+            <div style={{ fontSize:12, color:T.slate[500], padding:'8px 12px', background:T.slate[50], borderRadius:8 }}>
+              🔒 {a.house} House Warden — contact restricted to admission staff
+            </div>
+          </>
+        )
+        return null
+      })()}
 
       {a.emergencyName && (
         <>
@@ -1285,6 +1302,116 @@ function GovField({ label, required, children }) {
   )
 }
 
+// ─── Application Preview ────────────────────────────────────────────────────────
+// Read-only review screen shown before final submit. Top-level (not nested
+// inside AdmForm) for the same reason GovSection/GovField were hoisted
+// earlier — keeps its identity stable so it's never remounted mid-animation.
+function ApplicationPreview({ form, activeSession, editing, onEdit, onConfirm, submitting }) {
+  const Row = ({ label, value }) => (
+    value !== undefined && value !== null && value !== '' && value !== '--' && (
+      <div style={{ display:'flex', justifyContent:'space-between', gap:12, padding:'8px 0', borderBottom:`1px solid ${ADM_BORDER}` }}>
+        <span style={{ fontSize:12.5, color:ADM_INK_SUB, fontWeight:600 }}>{label}</span>
+        <span style={{ fontSize:13, color:ADM_INK, fontWeight:600, textAlign:'right' }}>{String(value)}</span>
+      </div>
+    )
+  )
+  const Block = ({ icon, title, children }) => (
+    <div style={{ background:ADM_CARD_BG, borderRadius:16, marginBottom:16, overflow:'hidden', border:`1px solid #EDEBE4`, boxShadow:'0 2px 12px rgba(26,29,41,.06)' }}>
+      <div style={{ padding:'16px 20px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+          <span style={{ fontSize:16 }}>{icon}</span>
+          <span style={{ fontWeight:700, fontSize:14, color:ADM_INK }}>{title}</span>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ padding:'26px 28px' }}>
+      <div style={{ textAlign:'center', marginBottom:22 }}>
+        <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+        <div style={{ fontWeight:700, fontSize:19, color:ADM_INK }}>Review Application</div>
+        <div style={{ fontSize:13, color:ADM_INK_SUB, marginTop:4 }}>Check every detail carefully — you can still go back and edit.</div>
+      </div>
+
+      <Block icon="👤" title="Applicant">
+        <Row label="Name" value={form.name} />
+        <Row label="GCC No." value={form.gcc} />
+        <Row label="Date of Birth" value={form.dob} />
+        <Row label="Gender" value={form.gender} />
+        <Row label="Blood Group" value={form.blood} />
+        <Row label="Category" value={form.category} />
+        <Row label="Religion" value={form.religion} />
+        <Row label="Mother Tongue" value={form.motherTongue} />
+        <Row label="Quota Type" value={form.quota} />
+        <Row label="Disability" value={form.disabilityFlag ? (form.disabilityNotes || 'Yes') : null} />
+        <Row label="Sibling GCC No." value={form.siblingGcc} />
+      </Block>
+
+      <Block icon="🎓" title="Course & Class">
+        <Row label="Course" value={form.course} />
+        <Row label="Subtype / Batch" value={form.subtype} />
+        <Row label="Class / Batch" value={form.cls} />
+        <Row label="Session" value={form.session} />
+        <Row label="House / Block" value={form.house} />
+        <Row label="Hostel Type" value={form.hostel_type} />
+        <Row label="Bed / Room No." value={form.bedNumber} />
+      </Block>
+
+      <Block icon="📝" title="Entrance & Interview">
+        <Row label="Entrance Score" value={form.entranceScore} />
+        <Row label="Interview Score" value={form.interviewScore} />
+        <Row label="Interview Date" value={form.interviewDate} />
+      </Block>
+
+      <Block icon="💰" title="Financial">
+        <Row label="Scholarship %" value={form.scholarshipPct} />
+        <Row label="Concession Amount ₹" value={form.concessionAmt} />
+        <Row label="Security Deposit ₹" value={form.securityDeposit} />
+        <Row label="Transport Fee ₹/mo" value={form.transportFee} />
+        <Row label="Instalment Plan" value={form.instalmentPlan} />
+      </Block>
+
+      <Block icon="👨‍👩‍👦" title="Family & Contact">
+        <Row label="Father's Name" value={form.father} />
+        <Row label="Mother's Name" value={form.mother} />
+        <Row label="Phone" value={form.phone} />
+        <Row label="WhatsApp" value={form.whatsapp} />
+        <Row label="Previous School" value={form.prevSchool} />
+        <Row label="Address" value={form.address} />
+      </Block>
+
+      <Block icon="🚨" title="Emergency Contact">
+        <Row label="Name" value={form.emergencyName} />
+        <Row label="Phone" value={form.emergencyPhone} />
+        <Row label="Relationship" value={form.emergencyRel} />
+      </Block>
+
+      <Block icon="📎" title="Enclosures">
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+          {form.docs.length === 0
+            ? <span style={{ fontSize:12.5, color:ADM_INK_SUB }}>None selected</span>
+            : form.docs.map(d => (
+                <span key={d} style={{ fontSize:12, fontWeight:600, color:ADM_SUCCESS, background:'#EAF7EF', padding:'5px 12px', borderRadius:9 }}>✓ {d}</span>
+              ))}
+        </div>
+      </Block>
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid ${ADM_BORDER}`, paddingTop:20 }}>
+        <button onClick={onConfirm} disabled={submitting}
+          style={{ padding:'12px 28px', borderRadius:11, background: submitting ? '#C7C5BD' : `linear-gradient(135deg,${ADM_ACCENT},#2E3D7A)`, color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor: submitting ? 'not-allowed' : 'pointer', boxShadow: submitting ? 'none' : '0 2px 10px rgba(30,42,94,.25)' }}>
+          {submitting ? 'Submitting…' : (editing ? '✓ Confirm Amendment' : '✓ Confirm & Submit')}
+        </button>
+        <button onClick={onEdit} disabled={submitting}
+          style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${ADM_BORDER}`, background:'#fff', fontSize:13.5, fontWeight:600, cursor: submitting ? 'not-allowed' : 'pointer', color:ADM_INK_SUB }}>
+          ← Back to Edit
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Application Form ──────────────────────────────────────────────────────────
 function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersByHouse={}, sessionOptions=[] }) {
   const def = (k, fb='') => editing ? (editing[k] ?? fb) : fb
@@ -1420,7 +1547,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   const hs       = HOSTEL_STYLES[derivedHostelType] || HOSTEL_STYLES['Day Scholar']
   const baseRate = getFlatFeeAmtSync(derivedHostelType, form.course)
   const discRate = form.scholarshipPct > 0 ? Math.round(baseRate*(1-form.scholarshipPct/100)) : baseRate
-  const warden   = housemastersByHouse[form.house]
+  const warden   = getHousemaster(housemastersByHouse, form.house)
 
   const [dirty, setDirty] = useState(false)
   useEffect(() => setDirty(true), [form])
@@ -1432,6 +1559,8 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   }
 
   const [declared, setDeclared] = useState(false)
+  const [step, setStep] = useState('form') // 'form' | 'preview'
+  const [submitting, setSubmitting] = useState(false)
 
   // ── Professional form design system — values sourced from module-level
   // constants (defined above AdmForm) so GovSection/GovField never get
@@ -1529,6 +1658,18 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
         </div>
       </div>
 
+      {/* ── Sliding step track — Instagram-style: both steps sit side by
+          side in a wider track; we translateX the whole track so the
+          active step slides fully into view while the other slides out.
+          overflow:hidden on the outer wrapper clips whichever step isn't
+          currently active. ── */}
+      <div style={{ overflow:'hidden' }}>
+        <div style={{
+          display:'flex', width:'200%',
+          transform: step === 'preview' ? 'translateX(-50%)' : 'translateX(0%)',
+          transition:'transform .38s cubic-bezier(.32,.72,0,1)',
+        }}>
+          <div style={{ width:'50%', flexShrink:0 }}>
       <div style={{ padding:'26px 28px' }}>
 
         {/* Photo + name */}
@@ -1832,9 +1973,9 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           )
         })()}
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid ${border}`, paddingTop:20 }}>
-          <button onClick={() => onSave(editing?.id||null, form)} disabled={gccDup || !declared}
+          <button onClick={() => setStep('preview')} disabled={gccDup || !declared}
             style={{ padding:'12px 28px', borderRadius:11, background:(gccDup||!declared)?'#C7C5BD':`linear-gradient(135deg,${accent},#2E3D7A)`, color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:(gccDup||!declared)?'not-allowed':'pointer', boxShadow: (gccDup||!declared) ? 'none' : '0 2px 10px rgba(30,42,94,.25)', transition:'all .15s' }}>
-            {editing ? 'Submit Amendment' : 'Submit Application'}
+            {editing ? 'Review Amendment →' : 'Review Application →'}
           </button>
           <button onClick={handleCancel} style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${border}`, background:'#fff', fontSize:13.5, fontWeight:600, cursor:'pointer', color:inkSub }}>Cancel</button>
           {editing && (
@@ -1847,6 +1988,24 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
             Please confirm the declaration above before submitting.
           </div>
         )}
+      </div>
+          </div>
+
+          <div style={{ width:'50%', flexShrink:0 }}>
+            <ApplicationPreview
+              form={form}
+              activeSession={activeSession}
+              editing={editing}
+              submitting={submitting}
+              onEdit={() => setStep('form')}
+              onConfirm={async () => {
+                setSubmitting(true)
+                try { await onSave(editing?.id||null, form) }
+                finally { setSubmitting(false) }
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
