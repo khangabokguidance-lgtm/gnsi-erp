@@ -201,6 +201,210 @@ const getSignedUrl = async (path, ttl=3600) => {
 
 const randomSuffix = () => Math.random().toString(36).slice(2,10)
 
+// ═════════════════════════════════════════════════════════════════════════
+// STUDENT → APPLICATION FIELD SYNC — mirror of the sync built in
+// Admissions.jsx, opposite direction. Self-contained copy since these two
+// files share no imports. Same exclusions apply: status is NEVER synced
+// (students.status and admissions.status are different vocabularies —
+// see Admissions.jsx's ADM_STUDENT_SYNC_FIELDS comment for the full
+// reasoning), and only fields confirmed to exist in BOTH tables' real
+// schemas are included.
+// ═════════════════════════════════════════════════════════════════════════
+const STUDENT_ADM_SYNC_FIELDS = [
+  // [students column, admissions column]
+  ['name', 'applicant_name'],
+  ['dob', 'dob'],
+  ['gender', 'gender'],
+  ['blood_group', 'blood_group'],
+  ['course', 'course'],
+  ['batch', 'batch'],
+  ['class_name', 'class_name'],
+  ['house', 'house'],
+  ['hostel_type', 'hostel_type'],
+  ['session', 'session'],
+  ['father_name', 'father_name'],
+  ['mother_name', 'mother_name'],
+  ['phone', 'phone'],
+  ['parent_phone', 'parent_phone'],
+  ['address', 'address'],
+  ['prev_school', 'prev_school'],
+  ['referral_source', 'referral_source'],
+  ['remarks', 'remarks'],
+  ['photo_url', 'photo_url'],
+]
+
+/**
+ * Pushes shared fields from a just-saved `students` row into the matching
+ * `admissions` row (same gcc_no), if the original application still
+ * exists. Never throws — a sync failure must not block the student save
+ * that triggered it; errors go to console only.
+ */
+async function syncStudentToAdmission(gccNo, studentsDbRow) {
+  try {
+    const { data: existing } = await supabase.from('admissions').select('gcc_no').eq('gcc_no', gccNo).maybeSingle()
+    if (!existing) return // no original application on file — nothing to sync to
+    const admUpdate = {}
+    for (const [stuCol, admCol] of STUDENT_ADM_SYNC_FIELDS) {
+      if (studentsDbRow[stuCol] !== undefined) admUpdate[admCol] = studentsDbRow[stuCol]
+    }
+    if (Object.keys(admUpdate).length === 0) return
+    const { error } = await supabase.from('admissions').update(admUpdate).eq('gcc_no', gccNo)
+    if (error) console.error('syncStudentToAdmission failed:', error.message)
+  } catch (err) {
+    console.error('syncStudentToAdmission failed:', err)
+  }
+}
+
+/**
+ * Read-only live lookup — returns the original application's status for
+ * this GCC No., or null if no admissions row exists (e.g. legacy student
+ * predating the admissions module). Never written to; purely for display.
+ */
+async function getLinkedApplicationStatus(gccNo) {
+  try {
+    const { data } = await supabase.from('admissions').select('status, created_at').eq('gcc_no', gccNo).maybeSingle()
+    return data || null
+  } catch (err) {
+    console.error('getLinkedApplicationStatus failed:', err)
+    return null
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// GOOGLE DRIVE PHOTO STORAGE — second option alongside the existing
+// Supabase Storage upload above (handlePhotoUpload). Does NOT replace or
+// touch that flow — staff choose either. Uses the SAME shared GNSI Drive
+// account, Client ID, and "GNSI Admissions Photos" folder as Admissions.jsx,
+// so photos uploaded from either module land in one place — but this is a
+// self-contained copy of that logic (Students.jsx has no import
+// relationship with Admissions.jsx), not a shared function.
+//
+// Uploaded photos are saved into students.photo_url directly (leaving
+// photo_path untouched/null) — the existing Avatar component already
+// renders photo_url when present, same as it does for a Supabase-hosted
+// photo, so no changes needed there.
+// ═════════════════════════════════════════════════════════════════════════
+const GOOGLE_DRIVE_CLIENT_ID = '683423605919-vt02fh84rnv4ai9o12qbbuitffvsh9ah.apps.googleusercontent.com'
+const GNSI_DRIVE_FOLDER_NAME = 'GNSI Admissions Photos'
+
+let _gisLoadedStudents = false
+let _driveAccessTokenStudents = null
+let _driveFolderIdStudents = null
+
+function loadGoogleIdentityScriptStudents() {
+  return new Promise((resolve, reject) => {
+    if (_gisLoadedStudents && window.google?.accounts?.oauth2) { resolve(); return }
+    const existing = document.getElementById('gis-script')
+    if (existing) { existing.addEventListener('load', () => { _gisLoadedStudents = true; resolve() }); return }
+    const script = document.createElement('script')
+    script.id = 'gis-script'
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.onload = () => { _gisLoadedStudents = true; resolve() }
+    script.onerror = () => reject(new Error('Failed to load Google Identity Services script'))
+    document.head.appendChild(script)
+  })
+}
+
+function requestDriveAccessTokenStudents() {
+  return new Promise((resolve, reject) => {
+    if (!window.google?.accounts?.oauth2) { reject(new Error('Google Identity Services not loaded')); return }
+    let settled = false
+    const timeoutId = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('Google sign-in timed out — the popup may have been blocked or closed. Please allow popups for this site and try again.'))
+    }, 45000)
+
+    const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_DRIVE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutId)
+        if (resp.error) { reject(new Error(resp.error)); return }
+        _driveAccessTokenStudents = resp.access_token
+        resolve(resp.access_token)
+      },
+      error_callback: (err) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutId)
+        reject(new Error(err?.type === 'popup_failed_to_open'
+          ? 'Google sign-in popup was blocked by your browser. Please allow popups for this site and try again.'
+          : 'Google sign-in was cancelled.'))
+      },
+    })
+    try {
+      tokenClient.requestAccessToken()
+    } catch (err) {
+      if (!settled) { settled = true; clearTimeout(timeoutId); reject(err) }
+    }
+  })
+}
+
+async function ensureDriveAccessTokenStudents() {
+  if (_driveAccessTokenStudents) return _driveAccessTokenStudents
+  await loadGoogleIdentityScriptStudents()
+  return requestDriveAccessTokenStudents()
+}
+
+async function ensureGnsiPhotosFolderStudents(token) {
+  if (_driveFolderIdStudents) return _driveFolderIdStudents
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`name='${GNSI_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`)}&fields=files(id,name)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  const searchData = await searchRes.json()
+  if (searchData.files?.length) { _driveFolderIdStudents = searchData.files[0].id; return _driveFolderIdStudents }
+
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: GNSI_DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }),
+  })
+  const createData = await createRes.json()
+  if (!createData.id) throw new Error('Failed to create GNSI Admissions Photos folder in Drive')
+  _driveFolderIdStudents = createData.id
+  return _driveFolderIdStudents
+}
+
+/**
+ * Uploads a photo File to the shared GNSI Drive account, named by GCC No.
+ * (falling back to student id if no GCC is on file). Returns the direct
+ * embeddable thumbnail URL — same format Admissions.jsx uses, confirmed
+ * to render reliably in <img src>, unlike Drive's uc?export=view links.
+ */
+async function uploadPhotoToGoogleDriveStudents(file, identifier) {
+  const token = await ensureDriveAccessTokenStudents()
+  const folderId = await ensureGnsiPhotosFolderStudents(token)
+
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const metadata = { name: `GCC-${identifier}.${ext}`, parents: [folderId] }
+
+  const form = new FormData()
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+  form.append('file', file)
+
+  const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  const uploadData = await uploadRes.json()
+  if (!uploadData.id) throw new Error('Upload to Google Drive failed')
+
+  await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/permissions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  })
+
+  const url = `https://drive.google.com/thumbnail?id=${uploadData.id}&sz=w1000`
+  return { url, fileId: uploadData.id }
+}
+
+
 const COURSE_STRUCTURE = {
   Navodaya:         { subtypes:['Lakshya','Umeed'],             color:'#2563EB', bg:'#EFF6FF' },
   Sainik:           { subtypes:['Achiever','Leader','Champion'], color:'#059669', bg:'#ECFDF5' },
@@ -2232,6 +2436,42 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
     await auditLog('photo_upload',{student_id:student.id});showToast('Photo updated',T.green)
   }
 
+  // ✦ Second upload option — Google Drive, alongside the Supabase Storage
+  // flow above. Does not touch photo_path (leaves it as-is); only writes
+  // photo_url, same field the existing Avatar already reads from.
+  const [driveUploading,setDriveUploading]=useState(false)
+  const handlePhotoUploadDrive=async e=>{
+    const file=e.target.files[0];if(!file)return
+    const err=validateFile(file,{mimes:ALLOWED_IMAGE_MIMES,exts:ALLOWED_IMAGE_EXTS,maxMB:MAX_IMG_SIZE_MB})
+    if(err){showToast(err,T.red);return}
+    setDriveUploading(true)
+    try{
+      const identifier=student.gcc_no||student.id
+      const uploadPromise=uploadPhotoToGoogleDriveStudents(file,identifier)
+      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Upload timed out. Please check your connection and try again.')),60000))
+      const{url}=await Promise.race([uploadPromise,timeoutPromise])
+      const{error:dbErr}=await supabase.from('students').update({photo_url:url}).eq('id',student.id)
+      if(dbErr){showToast('Save failed',T.red);return}
+      await auditLog('photo_upload_drive',{student_id:student.id})
+      showToast('Photo updated',T.green)
+    }catch(err){
+      showToast(err.message||'Upload failed',T.red)
+    }finally{
+      setDriveUploading(false)
+    }
+  }
+
+  // ✦ Read-only cross-reference — shows the ORIGINAL application's status
+  // if this student's GCC No. has a matching admissions row. Purely
+  // informational, never written to.
+  const [linkedApplication,setLinkedApplication]=useState(null)
+  useEffect(()=>{
+    let cancelled=false
+    if(!student.gcc_no)return
+    getLinkedApplicationStatus(student.gcc_no).then(res=>{if(!cancelled)setLinkedApplication(res)})
+    return()=>{cancelled=true}
+  },[student.gcc_no])
+
   const TABS=[{key:'profile',label:'Profile'},{key:'academic',label:'Academic'},{key:'attend',label:'Attendance'},{key:'fee',label:'Fees'},{key:'docs',label:'Documents'},{key:'notes',label:'Notes'}]
 
   const STAT_ITEMS=[
@@ -2258,8 +2498,11 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
             <div style={{position:'relative',flexShrink:0}}>
               <Avatar name={student.name} photoUrl={student.photo_url} size={48}/>
               <IfCan can={can.write}>
-                <label style={{position:'absolute',bottom:-2,right:-2,width:20,height:20,borderRadius:'50%',background:T.brand,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}}>
+                <label style={{position:'absolute',bottom:-2,right:-2,width:20,height:20,borderRadius:'50%',background:T.brand,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}} title="Upload photo (Supabase Storage)">
                   📷<input type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} style={{display:'none'}} onChange={handlePhotoUpload}/>
+                </label>
+                <label style={{position:'absolute',top:-2,right:-2,width:20,height:20,borderRadius:'50%',background:driveUploading?'#94A3B8':'#1E2A5E',display:'flex',alignItems:'center',justifyContent:'center',cursor:driveUploading?'not-allowed':'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}} title="Upload photo (Google Drive)">
+                  {driveUploading?'⏳':'📤'}<input type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} disabled={driveUploading} style={{display:'none'}} onChange={handlePhotoUploadDrive}/>
                 </label>
               </IfCan>
             </div>
@@ -2270,6 +2513,11 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
                 {student.course&&<CoursePill course={student.course}/>}
                 {student.house&&<HousePill house={student.house}/>}
               </div>
+              {linkedApplication&&(
+                <div style={{display:'inline-flex',alignItems:'center',gap:6,fontSize:10.5,fontWeight:700,color:'#4338CA',background:'#EEF2FF',border:'1px solid #C7D2FE',borderRadius:7,padding:'3px 10px',marginTop:6}}>
+                  📋 Original application: {linkedApplication.status}
+                </div>
+              )}
             </div>
             <div style={{display:'flex',gap:6,flexShrink:0}}>
               <IfCan can={can.write}>
@@ -3566,6 +3814,7 @@ const effectiveCols = visibleCols.filter(col => {
       setStudents(prev=>prev.map(s=>s.id===eid?{...s,...payload}:s))
       await auditLog('student_update',{student_id:eid});showToast('Student updated',T.amber)
       broadcastStudentsUpdate({type:'update',student_id:eid,course:payload.course,class_name:payload.class_name})
+      if(payload.gcc_no)syncStudentToAdmission(payload.gcc_no,payload)
     }else{
       const{data,error}=await supabase.from('students').insert(payload).select().single()
       if(error){showToast(error.code==='23505'?`GCC ${obj.gcc_no} already exists`:'Save failed: '+error.message,T.red);return}

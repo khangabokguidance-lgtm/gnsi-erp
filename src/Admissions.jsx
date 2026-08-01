@@ -482,6 +482,110 @@ function deriveHostelType(house, hostelType) {
 const DRAFT_KEY = 'gnsi_adm_draft'
 
 // ═════════════════════════════════════════════════════════════════════════
+// APPLICATION ↔ STUDENT TWO-WAY FIELD SYNC — keeps the genuinely shared
+// personal/academic fields consistent between `admissions` and `students`
+// for the same GCC No., in both directions. Deliberately excludes:
+//   • status — the two tables use entirely different, non-overlapping
+//     vocabularies (Applied/Admitted/Enrolled/Rejected/Waitlisted vs.
+//     Active/Inactive/Dropout/Passed Out). Forcing one into the other
+//     would silently corrupt real meaning (e.g. a student marked Dropout
+//     does not mean their original application should read "Rejected").
+//     Status connection instead uses a read-only live cross-reference —
+//     see getLinkedStudentStatus / getLinkedApplicationStatus below.
+//   • every field that only exists on one side (entrance_score,
+//     scholarship_pct, medical_conditions, admission_date, etc.) — these
+//     are lifecycle-specific and have no counterpart to sync with.
+// Column-name pairs below were confirmed directly against both tables'
+// real schemas, not assumed from either file's field-mapping helper.
+// ═════════════════════════════════════════════════════════════════════════
+const ADM_STUDENT_SYNC_FIELDS = [
+  // [admissions column, students column]
+  ['applicant_name', 'name'],
+  ['dob', 'dob'],
+  ['gender', 'gender'],
+  ['blood_group', 'blood_group'],
+  ['course', 'course'],
+  ['batch', 'batch'],
+  ['class_name', 'class_name'],
+  ['house', 'house'],
+  ['hostel_type', 'hostel_type'],
+  ['session', 'session'],
+  ['father_name', 'father_name'],
+  ['mother_name', 'mother_name'],
+  ['phone', 'phone'],
+  ['parent_phone', 'parent_phone'],
+  ['address', 'address'],
+  ['prev_school', 'prev_school'],
+  ['referral_source', 'referral_source'],
+  ['remarks', 'remarks'],
+  ['photo_url', 'photo_url'],
+]
+
+/**
+ * Pushes the shared fields from a just-saved `admissions` row into the
+ * matching `students` row (same gcc_no), if one exists. Silently does
+ * nothing if the applicant hasn't been enrolled yet — this is a sync
+ * between two EXISTING records, never a way to create one (that's still
+ * only promoteToStudent's job, unchanged). Never throws — a sync failure
+ * should not block the admissions save that triggered it; errors are
+ * logged to console for visibility instead.
+ */
+async function syncAdmissionToStudent(gccNo, admissionsDbRow) {
+  try {
+    const { data: existing } = await supabase.from('students').select('id').eq('gcc_no', gccNo).maybeSingle()
+    if (!existing) return // not enrolled yet — nothing to sync to
+    const studentUpdate = {}
+    for (const [admCol, stuCol] of ADM_STUDENT_SYNC_FIELDS) {
+      if (admissionsDbRow[admCol] !== undefined) studentUpdate[stuCol] = admissionsDbRow[admCol]
+    }
+    if (Object.keys(studentUpdate).length === 0) return
+    const { error } = await supabase.from('students').update(studentUpdate).eq('id', existing.id)
+    if (error) console.error('syncAdmissionToStudent failed:', error.message)
+  } catch (err) {
+    console.error('syncAdmissionToStudent failed:', err)
+  }
+}
+
+/**
+ * Pushes the shared fields from a just-saved `students` row into the
+ * matching `admissions` row (same gcc_no), if one exists. Mirror of
+ * syncAdmissionToStudent above, opposite direction. Same never-throws
+ * guarantee — a sync failure must never block the student save that
+ * triggered it.
+ */
+async function syncStudentToAdmission(gccNo, studentsDbRow) {
+  try {
+    const { data: existing } = await supabase.from('admissions').select('gcc_no').eq('gcc_no', gccNo).maybeSingle()
+    if (!existing) return // no original application on file — nothing to sync to
+    const admUpdate = {}
+    for (const [admCol, stuCol] of ADM_STUDENT_SYNC_FIELDS) {
+      if (studentsDbRow[stuCol] !== undefined) admUpdate[admCol] = studentsDbRow[stuCol]
+    }
+    if (Object.keys(admUpdate).length === 0) return
+    const { error } = await supabase.from('admissions').update(admUpdate).eq('gcc_no', gccNo)
+    if (error) console.error('syncStudentToAdmission failed:', error.message)
+  } catch (err) {
+    console.error('syncStudentToAdmission failed:', err)
+  }
+}
+
+/**
+ * Read-only live lookup — for a given GCC No., returns the CURRENT
+ * students.status if that person has been enrolled, or null if not.
+ * Never written to; purely for display (e.g. "Current student status:
+ * Active" shown on an already-enrolled application).
+ */
+async function getLinkedStudentStatus(gccNo) {
+  try {
+    const { data } = await supabase.from('students').select('status, admission_date').eq('gcc_no', gccNo).maybeSingle()
+    return data || null
+  } catch (err) {
+    console.error('getLinkedStudentStatus failed:', err)
+    return null
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 // GOOGLE DRIVE PHOTO STORAGE — one shared GNSI Drive account, every
 // student's photo uploaded into a single "GNSI Admissions Photos" folder,
 // named by GCC No. Uses Google Identity Services (GIS) for OAuth — no
@@ -1136,6 +1240,18 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
 
+  // ✦ Read-only cross-reference — shows the CURRENT student record's status
+  // if this applicant has since been enrolled. Purely informational, never
+  // written to; see getLinkedStudentStatus's comment for why status itself
+  // is never synced between the two tables.
+  const [linkedStudent, setLinkedStudent] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    if (!a.gcc) return
+    getLinkedStudentStatus(parseInt(a.gcc)).then(res => { if (!cancelled) setLinkedStudent(res) })
+    return () => { cancelled = true }
+  }, [a.gcc])
+
   const timelineItems = [
     { label:'Application Received', date:a.created_at, color:T.indigo[500] },
     a.status !== 'Applied' && { label:'Status: '+a.status, date:a.updated_at, color:STAT_META[a.status]?.color||T.slate[400] },
@@ -1153,6 +1269,12 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
           <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:`1px solid ${T.slate[200]}`, background:'#fff', cursor:'pointer', fontSize:14 }}>✕</button>
         </div>
       </div>
+      {linkedStudent && (
+        <div style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:11.5, fontWeight:700, color:T.emerald[700], background:T.emerald[50], border:`1px solid ${T.emerald[200]}`, borderRadius:8, padding:'5px 12px', marginBottom:14 }}>
+          🎓 Enrolled — current student status: {linkedStudent.status}
+          {linkedStudent.admission_date && ` · since ${linkedStudent.admission_date}`}
+        </div>
+      )}
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:16 }}>
         <div>
@@ -3852,6 +3974,7 @@ export default function Admissions() {
       } catch(_) {}
       setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...cleanObj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
       showToast('Application updated', T.amber[600])
+      syncAdmissionToStudent(parseInt(eid), dbRow)
     } else {
       const { data, error } = await supabase.from('admissions').insert(dbRow).select().single()
       if (error) {
