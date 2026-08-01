@@ -617,14 +617,21 @@ function useKeyboardShortcuts({ onNew, onSearch, onEscape, onToggleView, onToggl
 
 // ─── Shared UI ─────────────────────────────────────────────────────────────────
 function Avatar({ name, size=36, photoUrl }) {
-  const bg = avatarColor(name)
   if (photoUrl) return (
     <img src={photoUrl} alt={name}
       style={{ width:size, height:size, borderRadius:'50%', objectFit:'cover', flexShrink:0, border:`2px solid ${T.slate[200]}` }} />
   )
+  // Generic photo-placeholder icon (rounded square, mountain/sun graphic) —
+  // used as the default whenever no photo has been uploaded, instead of a
+  // colored circle with the person's initial.
   return (
-    <div style={{ width:size, height:size, borderRadius:'50%', background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:size*0.38, fontWeight:700, color:'#fff', flexShrink:0 }}>
-      {(name||'?').charAt(0).toUpperCase()}
+    <div style={{ width:size, height:size, borderRadius:size*0.28, background:'#F1F0EC', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+      <svg viewBox="0 0 24 24" width={size*0.62} height={size*0.62} fill="none">
+        <rect x="2" y="3" width="20" height="18" rx="3" stroke="#C9C6BC" strokeWidth="1.6"/>
+        <circle cx="8" cy="9" r="2" fill="#F2B84B"/>
+        <path d="M2 16.5L7.5 11L13 16.5" stroke="#8FBF6B" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M9 18.5L15.5 12L22 18.5" stroke="#8FBF6B" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
     </div>
   )
 }
@@ -1973,21 +1980,22 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 
         {(() => {
           const missing = validateApplicationData({ ...form, hasActiveSession: !!activeSession })
-          return missing && (
-            <div style={{ fontSize:12.5, color:danger, marginBottom:14, padding:'10px 14px', borderRadius:10, background:'#FDECEC', fontWeight:500 }}>
-              <strong>Incomplete:</strong> {Object.values(missing).join(' · ')}
-            </div>
-          )
-        })()}
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid ${border}`, paddingTop:20 }}>
-          <button onClick={() => setStep('preview')} disabled={gccDup || !declared}
-            style={{ padding:'12px 28px', borderRadius:11, background:(gccDup||!declared)?'#C7C5BD':`linear-gradient(135deg,${accent},#2E3D7A)`, color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:(gccDup||!declared)?'not-allowed':'pointer', boxShadow: (gccDup||!declared) ? 'none' : '0 2px 10px rgba(30,42,94,.25)', transition:'all .15s' }}>
-            {editing ? 'Review Amendment →' : 'Review Application →'}
-          </button>
-          <button onClick={handleCancel} style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${border}`, background:'#fff', fontSize:13.5, fontWeight:600, cursor:'pointer', color:inkSub }}>Cancel</button>
-          {editing && (
-            <button onClick={() => printAdmitCard(editing)}
-              style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${accent}30`, background:accentLt, color:accent, fontSize:13.5, fontWeight:600, cursor:'pointer' }}>Print Admit Card</button>
+          return (
+            <>
+              {missing && (
+                <div style={{ fontSize:12.5, color:danger, marginBottom:14, padding:'10px 14px', borderRadius:10, background:'#FDECEC', fontWeight:500 }}>
+                  <strong>Incomplete:</strong> {Object.values(missing).join(' · ')}
+                </div>
+              )}
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid ${border}`, paddingTop:20 }}>
+                <button onClick={() => setStep('preview')} disabled={gccDup || !declared || !!missing}
+                  style={{ padding:'12px 28px', borderRadius:11, background:(gccDup||!declared||missing)?'#C7C5BD':`linear-gradient(135deg,${accent},#2E3D7A)`, color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:(gccDup||!declared||missing)?'not-allowed':'pointer', boxShadow: (gccDup||!declared||missing) ? 'none' : '0 2px 10px rgba(30,42,94,.25)', transition:'all .15s' }}>
+                  {editing ? 'Review Amendment →' : 'Review Application →'}
+                </button>
+                <button onClick={handleCancel} style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${border}`, background:'#fff', fontSize:13.5, fontWeight:600, cursor:'pointer', color:inkSub }}>Cancel</button>
+                {editing && (
+                  <button onClick={() => printAdmitCard(editing)}
+                    style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${accent}30`, background:accentLt, color:accent, fontSize:13.5, fontWeight:600, cursor:'pointer' }}>Print Admit Card</button>
           )}
         </div>
         {!declared && (
@@ -1995,6 +2003,9 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
             Please confirm the declaration above before submitting.
           </div>
         )}
+            </>
+          )
+        })()}
       </div>
           </div>
 
@@ -3209,14 +3220,14 @@ export default function Admissions() {
   const handleSave = async (eid, obj) => {
     // 🔒 Authorization
     if (!checkPermission(userRole, eid ? 'update' : 'create')) {
-      showToast('🚫 You do not have permission to '+(eid?'edit':'create')+' applications', T.rose[600]); return
+      showToast('🚫 You do not have permission to '+(eid?'edit':'create')+' applications', T.rose[600]); return false
     }
     // 🔒 Validation
-    if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return }
-    if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return }
+    if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return false }
+    if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return false }
     const valErrors = validateApplicationData({ ...obj, hasActiveSession: !!activeSession })
-    if (valErrors) { showToast(Object.values(valErrors)[0], T.rose[600]); return }
-    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
+    if (valErrors) { showToast(Object.values(valErrors)[0], T.rose[600]); return false }
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return false }
 
     // 🔒 Sanitization (defense-in-depth — strips HTML brackets, caps length)
     const cleanObj = sanitizeApplicationData(obj)
@@ -3226,7 +3237,7 @@ export default function Admissions() {
 
     if (eid) {
       const { error } = await supabase.from('admissions').update(dbRow).eq('gcc_no', parseInt(eid))
-      if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
+      if (error) { showToast('Update failed: '+error.message, T.rose[600]); return false }
       logAudit('UPDATE', eid, dbRow, userRole)
       try {
         const log = JSON.parse(localStorage.getItem('gnsi_audit_'+eid)||'[]')
@@ -3240,7 +3251,7 @@ export default function Admissions() {
       if (error) {
         if (error.code==='23505') showToast(`GCC No. ${cleanObj.gcc} already exists`, T.rose[600])
         else showToast('Save failed: '+error.message, T.rose[600])
-        return
+        return false
       }
       const newApp = mapFromDB(data)
       logAudit('CREATE', newApp.id, dbRow, userRole)
@@ -3254,6 +3265,7 @@ export default function Admissions() {
     }
     try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
     setFormOpen(false); setEditing(null)
+    return true
   }
 
   const handleAdmit = async id => {
@@ -3533,7 +3545,7 @@ export default function Admissions() {
 
         {moduleView === 'newApplication' ? (
           <AdmForm
-            onSave={async (eid, data) => { await handleSave(eid, data); setModuleView('applications') }}
+            onSave={async (eid, data) => { const ok = await handleSave(eid, data); if (ok) setModuleView('applications') }}
             onCancel={()=>setModuleView('applications')}
             editing={null}
             activeSession={filterSession !== 'All' ? { ...activeSession, session_name: filterSession } : activeSession}
