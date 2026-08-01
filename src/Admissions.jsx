@@ -1204,6 +1204,26 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   const def = (k, fb='') => editing ? (editing[k] ?? fb) : fb
   const defaultSession = editing ? def('session') : (activeSession?.session_name || '')
 
+  // Suggest the next GCC No. (highest GCC on record + 1) for new
+  // applications only — fetched live from Supabase so it stays correct
+  // across every device/staff member, not just the one that last used this
+  // browser. Only fills in once the field is still empty when the query
+  // resolves, so it never clobbers something staff already typed.
+  const [suggestedGcc, setSuggestedGcc] = useState('')
+  useEffect(() => {
+    if (editing) return
+    let cancelled = false
+    supabase.from('admissions').select('gcc_no').order('gcc_no', { ascending:false }).limit(1).maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data?.gcc_no) return
+        const next = String(parseInt(data.gcc_no) + 1)
+        setSuggestedGcc(next)
+        setForm(f => f.gcc ? f : { ...f, gcc: next })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [editing])
+
   const [form, setForm] = useState({
     name:           def('name'),
     gcc:            def('gcc'),
@@ -1489,6 +1509,9 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
             <GovField label="GCC No." required>
               <input style={{ ...govInp, borderColor:gccDup?'#b91c1c':govInp.border }} value={form.gcc} onChange={e=>set('gcc',e.target.value)} placeholder="e.g. 729" type="number" />
               {gccDup && <div style={{ fontSize:11, color:'#b91c1c', marginTop:3, fontWeight:700 }}>⚠ GCC {form.gcc} already exists!</div>}
+              {!editing && !gccDup && form.gcc === suggestedGcc && suggestedGcc && (
+                <div style={{ fontSize:11, color:inkSub, marginTop:3 }}>Suggested next number — edit if different</div>
+              )}
             </GovField>
             <GovField label="Admission No.">
               <input style={{ ...govInp, background:'#F4F3EF', color:'#9CA0AC' }} value="Auto-generated on save" readOnly />
