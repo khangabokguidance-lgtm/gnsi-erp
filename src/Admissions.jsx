@@ -57,8 +57,15 @@ const ROLE_PERMISSIONS = {
   staff:             ['read','update'],
 }
 
+// ✦ Bug fix: the login/session system sends role as "Admin" (capitalized) —
+// ROLE_PERMISSIONS only had lowercase keys, so a genuine admin's role
+// silently failed to match, fell through to the 'staff' default, and lost
+// create/delete/bulk/export permission with no visible error explaining why.
+// Normalizing to lowercase here means this can't happen regardless of how
+// any future caller capitalizes the role string.
 function checkPermission(role, action) {
-  return (ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.staff).includes(action)
+  const key = (role || '').toLowerCase()
+  return (ROLE_PERMISSIONS[key] || ROLE_PERMISSIONS.staff).includes(action)
 }
 
 // Staff listed here are elevated to the role on the right — verified against
