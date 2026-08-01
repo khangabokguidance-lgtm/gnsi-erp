@@ -1314,56 +1314,213 @@ function printAdmitCard(a) {
 // admitted). Follows the same window.open + print pattern as
 // printAdmitCard/printBulkList above.
 function printApplicationReceipt(a) {
-  const win = window.open('','_blank','width=600,height=760')
-  const submittedAt = new Date().toLocaleString('en-IN', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })
-  win.document.write(`<!DOCTYPE html><html><head><title>Application Receipt \u2013 ${a.name}</title>
-  <style>body{font-family:Georgia,serif;padding:36px;max-width:560px;margin:auto;color:#1A1D29}
-  .header{text-align:center;border-bottom:3px double #1E2A5E;padding-bottom:14px;margin-bottom:18px}
-  .crest{width:52px;height:52px;border-radius:50%;border:2px solid #1E2A5E;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 8px}
-  .instName{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6B7080}
-  .title{font-size:19px;font-weight:700;color:#1E2A5E;margin-top:4px}
-  .sub{font-size:12px;color:#6B7080;margin-top:4px}
-  .refBox{background:#EEF0F8;border:1px solid #1E2A5E;border-radius:10px;padding:14px 18px;text-align:center;margin-bottom:20px}
-  .refLabel{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6B7080}
-  .refVal{font-size:22px;font-weight:700;color:#1E2A5E;margin-top:2px;font-family:monospace}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px}
-  td{padding:8px 10px;border-bottom:1px solid #E4E2DC}
-  td:first-child{font-weight:700;color:#6B7080;width:170px}
-  .note{background:#FEF3E2;border:1px solid #F2B84B;border-radius:8px;padding:12px 16px;font-size:12px;color:#8A6A1E;margin-bottom:18px}
-  .footer{margin-top:24px;text-align:center;font-size:11px;color:#94A3B8;border-top:1px solid #E4E2DC;padding-top:14px}
-  @media print{body{padding:16px}}</style></head><body>
-  <div class="header">
-    <div class="crest">\u{1F393}</div>
-    <div class="instName">Guidance Navodaya &amp; Sainik Institute</div>
-    <div class="title">Application Submission Receipt</div>
-    <div class="sub">Khangabok, Thoubal District, Manipur</div>
+  const win = window.open('','_blank','width=680,height=920')
+  const now = new Date()
+  const submittedAt = now.toLocaleString('en-IN', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })
+  const printedAt = now.toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })
+  // Official-looking receipt/serial number — deterministic from GCC + session,
+  // not random, so re-printing the same receipt always shows the same number.
+  const serialNo = `GNSI/${a.session || now.getFullYear()}/ADM/${String(a.gcc).padStart(5,'0')}`
+  const Row = (label, value) => `<tr><td class="lbl">${label}</td><td class="val">${(value ?? '').toString().trim() || '<span class="dash">—</span>'}</td></tr>`
+
+  // Status timeline — screen-only, shows real progress through the pipeline
+  const STAGES = ['Applied','Admitted','Fee Collected','Enrolled']
+  const currentIdx = Math.max(0, STAGES.indexOf(a.status || 'Applied'))
+  const stageHtml = STAGES.map((s, i) => `
+    <div class="stage ${i <= currentIdx ? 'done' : ''}">
+      <div class="stageDot">${i <= currentIdx ? '✓' : i+1}</div>
+      <div class="stageLabel">${s}</div>
+    </div>${i < STAGES.length-1 ? `<div class="stageLine ${i < currentIdx ? 'done' : ''}"></div>` : ''}`).join('')
+
+  win.document.write(`<!DOCTYPE html><html><head><title>Application Receipt – ${a.name}</title>
+  <style>
+    @page { margin: 14mm; }
+    * { box-sizing: border-box; }
+    body{font-family:'Georgia','Times New Roman',serif;margin:0;padding:24px;color:#1A1D29;background:#EDEBE4}
+    .sheet{max-width:600px;margin:auto;padding:8px;position:relative;background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(30,42,94,.14)}
+    .watermark{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:96px;font-weight:700;color:rgba(30,42,94,0.05);letter-spacing:6px;pointer-events:none;z-index:0;white-space:nowrap}
+    .content{position:relative;z-index:1;padding:16px}
+
+    .actionBar{display:flex;gap:8px;justify-content:flex-end;margin-bottom:16px}
+    .actionBtn{font-family:system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;padding:8px 16px;border-radius:8px;border:1.5px solid #1E2A5E;background:#fff;color:#1E2A5E;cursor:pointer;transition:background .15s,transform .1s}
+    .actionBtn:hover{background:#EEF0F8}
+    .actionBtn:active{transform:scale(.97)}
+    .actionBtn.primary{background:#1E2A5E;color:#fff}
+    .actionBtn.primary:hover{background:#263B7A}
+    .toast{font-family:system-ui,-apple-system,sans-serif;position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1A1D29;color:#fff;padding:10px 20px;border-radius:8px;font-size:12.5px;font-weight:600;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:10}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+    .timeline{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;margin-bottom:22px;padding:16px 8px;background:#FAFAF8;border-radius:10px}
+    .stage{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:64px}
+    .stageDot{width:26px;height:26px;border-radius:50%;background:#EDEBE4;color:#9CA0AC;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:1.5px solid #D9D6CC;transition:all .2s}
+    .stage.done .stageDot{background:#0F7A4C;color:#fff;border-color:#0F7A4C}
+    .stageLabel{font-size:9.5px;color:#9CA0AC;text-align:center;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+    .stage.done .stageLabel{color:#0F7A4C}
+    .stageLine{width:24px;height:2px;background:#D9D6CC;margin:0 2px 18px}
+    .stageLine.done{background:#0F7A4C}
+
+    .serial{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;color:#6B7080;letter-spacing:.03em;margin-bottom:10px;font-family:'Courier New',monospace}
+    .copyStamp{font-family:system-ui,-apple-system,sans-serif;font-size:9px;font-weight:700;letter-spacing:.12em;color:#0F7A4C;border:1px solid #0F7A4C;border-radius:4px;padding:2px 8px;transform:rotate(-3deg)}
+    .header{text-align:center;border-bottom:3px double #1E2A5E;padding-bottom:16px;margin-bottom:20px}
+    .crestRow{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:8px}
+    .crest{width:64px;height:64px;border-radius:50%;border:2.5px solid #1E2A5E;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;background:#fff}
+    .crestInner{width:52px;height:52px;border-radius:50%;border:1px solid #1E2A5E;display:flex;align-items:center;justify-content:center}
+    .crestMono{font-family:Georgia,serif;font-size:14px;font-weight:700;color:#1E2A5E;letter-spacing:.01em}
+    .instBlock{text-align:left}
+    .instName{font-size:15px;font-weight:700;color:#1E2A5E;letter-spacing:.04em}
+    .instSub{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6B7080;margin-top:2px}
+    .title{font-size:18px;font-weight:700;color:#1E2A5E;margin-top:10px;text-transform:uppercase;letter-spacing:.03em}
+    .addr{font-size:11.5px;color:#6B7080;margin-top:4px}
+    .topRow{display:flex;gap:18px;margin-bottom:20px}
+    .refBox{flex:1;background:#EEF0F8;border:1.5px solid #1E2A5E;border-radius:10px;padding:14px 16px;text-align:center;cursor:pointer;transition:background .15s}
+    .refBox:hover{background:#E2E6F5}
+    .refLabel{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:#6B7080;font-weight:700}
+    .refVal{font-size:24px;font-weight:700;color:#1E2A5E;margin-top:3px;font-family:'Courier New',monospace;letter-spacing:.02em}
+    .refHint{font-family:system-ui,-apple-system,sans-serif;font-size:9px;color:#9CA0AC;margin-top:4px}
+    .qrBox{width:88px;height:88px;border:1.5px solid #E4E2DC;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#fff;padding:6px}
+    .qrBox canvas, .qrBox img{width:100%;height:100%}
+    .qrPlaceholder{font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#C7C4BA;font-weight:700}
+    .photoBox{width:88px;height:104px;border:1.5px dashed #C7C4BA;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;background:#FAFAF8}
+    .photoBox img{width:100%;height:100%;object-fit:cover;border-radius:5px}
+    .photoLabel{font-size:8.5px;color:#9CA0AC;text-transform:uppercase;letter-spacing:.06em;margin-top:4px;text-align:center}
+    .sectionTitle{font-size:11px;font-weight:700;color:#1E2A5E;text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid #1E2A5E;padding-bottom:5px;margin:18px 0 10px}
+    table{width:100%;border-collapse:collapse;font-size:12.5px}
+    td{padding:7px 8px;border-bottom:1px solid #E4E2DC;vertical-align:top;transition:background .12s}
+    tr:hover td{background:#FAFAF8}
+    td.lbl{font-weight:700;color:#6B7080;width:150px;white-space:nowrap}
+    td.val{color:#1A1D29;font-weight:600}
+    .dash{color:#C7C4BA;font-weight:400}
+    .note{background:#FEF3E2;border:1.5px solid #F2B84B;border-radius:8px;padding:12px 16px;font-size:11.5px;color:#8A6A1E;margin:20px 0;line-height:1.5}
+    .sealRow{display:flex;justify-content:space-between;align-items:flex-end;margin-top:34px;padding-top:6px}
+    .sealBox{text-align:center;width:150px}
+    .sealCircle{width:70px;height:70px;border-radius:50%;border:1.5px dashed #C7C4BA;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#C7C4BA;text-transform:uppercase;letter-spacing:.05em;text-align:center;line-height:1.3}
+    .sealLine{border-top:1.3px solid #1A1D29;padding-top:5px;font-size:10.5px;color:#6B7080;font-weight:600}
+    .contactBar{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;font-size:10.5px;color:#6B7080;margin-top:16px;padding-top:14px;border-top:1px solid #E4E2DC}
+    .contactItem{display:flex;align-items:center;gap:5px}
+    .contactItem b{color:#1E2A5E;font-weight:700}
+    .footer{margin-top:10px;text-align:center;font-size:10px;color:#9CA0AC;letter-spacing:.02em}
+    @media print{
+      body{padding:0;background:#fff}
+      .sheet{box-shadow:none;border-radius:0}
+      .actionBar, .toast, .timeline{display:none}
+    }
+  </style></head><body>
+  <div class="sheet">
+    <div class="watermark">GNSI</div>
+    <div class="content">
+
+      <div class="actionBar">
+        <button class="actionBtn" onclick="navigator.clipboard.writeText('${a.gcc}');showToast('GCC No. copied')">Copy GCC No.</button>
+        <button class="actionBtn primary" onclick="window.print()">🖨 Print / Save PDF</button>
+      </div>
+
+      <div class="timeline">${stageHtml}</div>
+
+      <div class="serial">
+        <span>Ref: ${serialNo}</span>
+        <span class="copyStamp">ORIGINAL</span>
+        <span>Printed: ${printedAt}</span>
+      </div>
+
+      <div class="header">
+        <div class="crestRow">
+          <div class="crest"><div class="crestInner"><span class="crestMono">GNSI</span></div></div>
+          <div class="instBlock">
+            <div class="instName">Guidance Navodaya &amp; Sainik Institute</div>
+            <div class="instSub">Registered Residential Coaching Institution</div>
+          </div>
+        </div>
+        <div class="title">Application Submission Receipt</div>
+        <div class="addr">Khangabok, Thoubal District, Manipur — 795138</div>
+      </div>
+
+      <div class="topRow">
+        <div class="refBox" onclick="navigator.clipboard.writeText('${a.gcc}');showToast('GCC No. copied')">
+          <div class="refLabel">GCC Registration No.</div>
+          <div class="refVal">${a.gcc}</div>
+          <div class="refHint">Click to copy</div>
+        </div>
+        <div class="qrBox" id="qrBox">
+          <div class="qrPlaceholder">Loading…</div>
+        </div>
+        <div class="photoBox">
+          ${a.photoUrl ? `<img src="${a.photoUrl}" alt="Photo"/>` : `<div style="font-size:22px;color:#C7C4BA">🖼</div><div class="photoLabel">Photo not<br/>uploaded</div>`}
+        </div>
+      </div>
+
+      <div class="sectionTitle">Applicant Particulars</div>
+      <table>
+        ${Row('Applicant Name', a.name)}
+        ${Row('Admission No.', a.admNo || 'Pending')}
+        ${Row('Date of Birth', a.dob ? new Date(a.dob).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : null)}
+        ${Row('Gender', a.gender)}
+        ${Row("Father's Name", a.father)}
+        ${Row("Mother's Name", a.mother)}
+        ${Row('Phone', a.phone)}
+      </table>
+
+      <div class="sectionTitle">Admission Particulars</div>
+      <table>
+        ${Row('Course', a.course ? `${a.course}${a.subtype ? ' – ' + a.subtype : ''}` : null)}
+        ${Row('Class / Batch', a.cls)}
+        ${Row('Academic Session', a.session)}
+        ${Row('House / Block', a.house)}
+        ${Row('Hostel Type', a.hostel_type)}
+        ${Row('Application Status', a.status || 'Applied')}
+        ${Row('Submitted On', submittedAt)}
+      </table>
+
+      <div class="note">
+        <strong>This receipt confirms your application has been formally received by the Institute.</strong>
+        Please retain this document for your records and produce it, along with the GCC Registration No.
+        stated above, in all future correspondence, fee submissions, and enquiries at the admission office.
+      </div>
+
+      <div class="sealRow">
+        <div class="sealBox">
+          <div class="sealCircle">Office<br/>Seal</div>
+        </div>
+        <div class="sealBox">
+          <div class="sealLine">Admission Officer</div>
+        </div>
+      </div>
+
+      <div class="contactBar">
+        <div class="contactItem"><b>Phone</b> 89742 98074</div>
+        <div class="contactItem"><b>Email</b> khangabokguidance@gmail.com</div>
+        <div class="contactItem"><b>Web</b> www.guidancekhangabok.in</div>
+      </div>
+      <div class="footer">This is a system-generated receipt · Generated ${printedAt} · GNSI Admission Portal</div>
+    </div>
   </div>
-
-  <div class="refBox">
-    <div class="refLabel">GCC No.</div>
-    <div class="refVal">${a.gcc}</div>
-  </div>
-
-  <table>
-    <tr><td>Applicant Name</td><td><strong>${a.name}</strong></td></tr>
-    <tr><td>Admission No.</td><td>${a.admNo || 'Pending'}</td></tr>
-    <tr><td>Course</td><td>${a.course||'\u2014'}${a.subtype?' \u2013 '+a.subtype:''}</td></tr>
-    <tr><td>Class / Batch</td><td>${a.cls||'\u2014'}</td></tr>
-    <tr><td>Session</td><td>${a.session||'\u2014'}</td></tr>
-    <tr><td>Hostel Type</td><td>${a.hostel_type||'\u2014'}</td></tr>
-    <tr><td>Father's Name</td><td>${a.father||'\u2014'}</td></tr>
-    <tr><td>Phone</td><td>${a.phone||'\u2014'}</td></tr>
-    <tr><td>Submitted On</td><td>${submittedAt}</td></tr>
-    <tr><td>Status</td><td>Applied</td></tr>
-  </table>
-
-  <div class="note">
-    This receipt confirms your application has been received. Please retain this for your records
-    and quote the GCC No. above in all further correspondence with the Institute.
-  </div>
-
-  <div class="footer">Generated on ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})} \u00b7 GNSI Portal</div>
-  <script>window.onload=()=>window.print()</script></body></html>`)
+  <div class="toast" id="toast"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    function showToast(msg) {
+      const t = document.getElementById('toast')
+      t.textContent = msg
+      t.classList.add('show')
+      setTimeout(() => t.classList.remove('show'), 1600)
+    }
+    // Real scannable QR code encoding this receipt's reference number and
+    // GCC No. — generated entirely client-side (qrcodejs, no external
+    // service/API call, works offline once the script has loaded).
+    try {
+      const qrBox = document.getElementById('qrBox')
+      qrBox.innerHTML = ''
+      new QRCode(qrBox, {
+        text: 'GNSI Application Receipt | Ref: ${serialNo} | GCC: ${a.gcc} | ${a.name.replace(/'/g, "\\'")}',
+        width: 76, height: 76,
+        colorDark: '#1E2A5E', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      })
+    } catch (e) {
+      console.error('QR generation failed', e)
+      const qrBox = document.getElementById('qrBox')
+      qrBox.innerHTML = '<div class="qrPlaceholder" style="font-size:9px">Offline</div>'
+    }
+  </script>
+  </body></html>`)
   win.document.close()
 }
 
