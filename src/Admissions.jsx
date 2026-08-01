@@ -149,6 +149,46 @@ function validateApplicationData(obj) {
   if (obj.phone     && !ValidationRules.phone.test(obj.phone))     errors.phone = ValidationRules.phone.msg
   if (obj.whatsapp  && !ValidationRules.phone.test(obj.whatsapp))  errors.whatsapp = ValidationRules.phone.msg
   if (obj.emergencyPhone && !ValidationRules.phone.test(obj.emergencyPhone)) errors.emergencyPhone = ValidationRules.phone.msg
+
+  // ── GNSI-mandated fields — required for every application, regardless of
+  // which UI submits it (form, CSV import, API). Kept separate from the
+  // format checks above so a clearer "required" message shows rather than
+  // a format error when the field is simply empty.
+  if (!obj.dob)                                     errors.dob = 'Date of Birth is required'
+  if (!obj.gender)                                   errors.gender = 'Gender is required'
+  if (!obj.course)                                   errors.course = 'Course is required'
+  if (!obj.cls)                                      errors.cls = 'Class/Batch is required'
+  if (!obj.house)                                    errors.house = 'House is required'
+  if (!obj.father?.trim())                           errors.father = "Father's Name is required"
+  if (!obj.mother?.trim())                           errors.mother = "Mother's Name is required"
+  if (!obj.phone?.trim())                            errors.phone = errors.phone || 'Phone is required'
+  else if (!ValidationRules.phone.test(obj.phone))    errors.phone = ValidationRules.phone.msg
+  if (!obj.address?.trim())                          errors.address = 'Address is required'
+  if (!obj.prevSchool?.trim())                        errors.prevSchool = 'Previous School is required'
+  if (!obj.category || obj.category === '--')         errors.category = 'Category is required'
+  if (!obj.blood?.trim())                              errors.blood = 'Blood Group is required'
+  if (!obj.emergencyName?.trim())                     errors.emergencyName = 'Emergency Contact Name is required'
+  if (!obj.emergencyPhone?.trim())                    errors.emergencyPhone = errors.emergencyPhone || 'Emergency Contact Phone is required'
+  else if (!ValidationRules.phone.test(obj.emergencyPhone)) errors.emergencyPhone = ValidationRules.phone.msg
+  if (!obj.docs || obj.docs.length === 0)              errors.docs = 'At least one enclosure/document must be selected'
+
+  // ── Second round of mandatory fields ──
+  if (!obj.religion || obj.religion === '--')          errors.religion = 'Religion is required'
+  if (!obj.motherTongue || obj.motherTongue === '--')  errors.motherTongue = 'Mother Tongue is required'
+  if (!obj.quota || obj.quota === '--')                errors.quota = 'Quota Type is required'
+  if (!obj.hostel_type)                                errors.hostel_type = 'Hostel Type is required'
+  if (!obj.entranceScore && obj.entranceScore !== 0)    errors.entranceScore = 'Entrance Score is required'
+  if (!obj.concessionAmt && obj.concessionAmt !== 0)    errors.concessionAmt = 'Concession Amount is required'
+  if (!obj.whatsapp?.trim())                           errors.whatsapp = errors.whatsapp || 'WhatsApp is required'
+  else if (!ValidationRules.phone.test(obj.whatsapp))   errors.whatsapp = ValidationRules.phone.msg
+  // Subtype/Batch only required for courses that actually have subtypes
+  // (e.g. "Combined Course" has none, so it can't be required for that case)
+  const subtypesForCourse = COURSE_STRUCTURE[obj.course]?.subtypes || []
+  if (subtypesForCourse.length > 0 && !obj.subtype)     errors.subtype = 'Subtype / Batch is required'
+  // Session only required when there is no active session to auto-fill it —
+  // when an active session exists, the form field is auto-populated/read-only.
+  if (!obj.hasActiveSession && !obj.session?.trim())    errors.session = 'Session is required'
+
   return Object.keys(errors).length ? errors : null
 }
 
@@ -1260,242 +1300,330 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     onCancel()
   }
 
-  return (
-    <div style={{ background:'#fff', boxShadow:N.shadow('lg'), borderRadius:16, overflow:'hidden', marginBottom:16 }}>
-      <div style={{ background:`linear-gradient(135deg, ${N.navy} 0%, ${N.navyLight} 100%)`, padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <div>
-          <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{editing ? '✏️ Edit Application' : '➕ New Application'}</div>
-          {activeSession && !editing && (
-            <div style={{ fontSize:12, fontWeight:600, marginTop:3, color:activeSession.is_locked?'#FF8A8A':'#6FDB9A' }}>
-              📅 Session: {activeSession.session_name}{activeSession.is_locked && ' · 🔒 Locked'}
-            </div>
-          )}
+  const [declared, setDeclared] = useState(false)
+
+  // ── Formal ("government form") presentation helpers — local to this form
+  // only; FieldRow/SectionDivider elsewhere in the app are untouched. Every
+  // field below still uses the exact same form state/set() calls as before —
+  // this only changes how they're wrapped and labeled visually.
+  const ink    = '#1a1a1a'
+  const inkSub = '#4a4a4a'
+  const serif  = "'Georgia','Times New Roman',serif"
+  const govInp = { ...styles.inp, borderRadius:2, border:`1px solid #8a8a8a`, fontFamily:'system-ui,sans-serif', fontSize:13 }
+
+  let sectionNo = 0
+  const GovSection = ({ title, children }) => {
+    sectionNo += 1
+    return (
+      <div style={{ marginBottom:22 }}>
+        <div style={{ display:'flex', alignItems:'baseline', gap:8, borderBottom:`2px solid ${ink}`, paddingBottom:5, marginBottom:14 }}>
+          <span style={{ fontFamily:serif, fontWeight:700, fontSize:14, color:ink, minWidth:22 }}>{sectionNo}.</span>
+          <span style={{ fontFamily:serif, fontWeight:700, fontSize:14, color:ink, textTransform:'uppercase', letterSpacing:'.04em' }}>{title}</span>
         </div>
-        <button onClick={handleCancel} style={{ width:30, height:30, borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)', cursor:'pointer', fontSize:16, color:'#fff' }}>✕</button>
+        {children}
+      </div>
+    )
+  }
+  const GovField = ({ label, required, children }) => (
+    <div>
+      <label style={{ display:'block', fontSize:11, fontWeight:600, color:inkSub, marginBottom:5, fontFamily:serif }}>
+        {label}{required && <span style={{ color:'#b91c1c' }}> *</span>}
+      </label>
+      {children}
+    </div>
+  )
+
+  return (
+    <div style={{ background:'#fdfdfb', boxShadow:N.shadow('lg'), borderRadius:4, overflow:'hidden', marginBottom:16, border:'1px solid #c9c5ba' }}>
+
+      {/* ── Official header ── */}
+      <div style={{ background:'#fdfdfb', borderBottom:`3px double ${ink}`, padding:'22px 28px 16px', position:'relative' }}>
+        <button onClick={handleCancel} style={{ position:'absolute', top:16, right:20, width:28, height:28, borderRadius:4, border:`1px solid ${ink}`, background:'transparent', cursor:'pointer', fontSize:14, color:ink }}>✕</button>
+        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+          <div style={{ width:56, height:56, borderRadius:'50%', border:`2px solid ${ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, fontFamily:serif }}>🎓</div>
+          <div style={{ textAlign:'center', flex:1 }}>
+            <div style={{ fontFamily:serif, fontSize:11, letterSpacing:'.15em', color:inkSub, textTransform:'uppercase' }}>Guidance Navodaya &amp; Sainik Institute</div>
+            <div style={{ fontFamily:serif, fontWeight:700, fontSize:19, color:ink, marginTop:2 }}>{editing ? 'Application Amendment Form' : 'Application Form for Admission'}</div>
+            {activeSession && !editing && (
+              <div style={{ fontFamily:serif, fontSize:12, color:inkSub, marginTop:3 }}>
+                Academic Session {activeSession.session_name}{activeSession.is_locked && '  (Session Locked)'}
+              </div>
+            )}
+          </div>
+          <div style={{ width:56 }} />
+        </div>
+        <div style={{ textAlign:'center', fontSize:10, color:inkSub, marginTop:10, fontStyle:'italic' }}>
+          To be filled in BLOCK LETTERS by the applicant / parent / guardian
+        </div>
       </div>
 
-      <div style={{ padding:'20px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:16, padding:'12px 14px', background:T.slate[50], borderRadius:10, border:`1px solid ${T.slate[200]}` }}>
+      <div style={{ padding:'24px 28px' }}>
+
+        {/* Photo + name — kept as its own strip, mirrors a govt form's photo box */}
+        <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:20, padding:'12px 14px', border:`1px solid #c9c5ba`, background:'#fff' }}>
           <Avatar name={form.name} size={56} photoUrl={form.photoUrl} />
-          <div>
-            <div style={{ fontSize:12, fontWeight:700, color:T.slate[600], marginBottom:4 }}>Passport Photo URL</div>
-            <input style={{ ...styles.inp, width:'100%', maxWidth:280 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https://… or Supabase Storage URL" />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:inkSub, marginBottom:4, fontFamily:serif }}>Passport Photo URL</div>
+            <input style={{ ...govInp, width:'100%', maxWidth:320 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https:// or Supabase Storage URL" />
           </div>
         </div>
 
-        <FieldRow label="Applicant Name *">
-          <input style={styles.inp} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Full name as per certificate" />
-        </FieldRow>
+        <div style={{ marginBottom:22 }}>
+          <GovField label="Full Name of Applicant (as per certificate)" required>
+            <input style={govInp} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Full name as per certificate" />
+          </GovField>
+        </div>
 
-        <SectionDivider label="Identification" />
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:4 }}>
-          <FieldRow label="GCC No. *">
-            <input style={{ ...styles.inp, borderColor:gccDup?T.rose[500]:undefined }} value={form.gcc} onChange={e=>set('gcc',e.target.value)} placeholder="e.g. 729" type="number" />
-            {gccDup && <div style={{ fontSize:11, color:T.rose[600], marginTop:3, fontWeight:700 }}>⚠ GCC {form.gcc} already exists!</div>}
-          </FieldRow>
-          <FieldRow label="Adm. No.">
-            <input style={{ ...styles.inp, background:T.slate[50], color:T.slate[400] }} value="Auto-generated on save" readOnly />
-          </FieldRow>
-          <FieldRow label="Date of Birth">
-            <input type="date" style={styles.inp} value={form.dob} onChange={e=>set('dob',e.target.value)} />
-          </FieldRow>
-          <FieldRow label="Gender">
-            <select style={styles.inp} value={form.gender} onChange={e=>set('gender',e.target.value)}>
-              <option value="">—</option><option>Male</option><option>Female</option><option>Other</option>
-            </select>
-          </FieldRow>
-          <FieldRow label="Blood Group">
-            <input style={styles.inp} value={form.blood} onChange={e=>set('blood',e.target.value)} placeholder="e.g. O+" />
-          </FieldRow>
-          <FieldRow label="Category">
-            <select style={styles.inp} value={form.category} onChange={e=>set('category',e.target.value)}>
-              {CATEGORIES.map(c=><option key={c}>{c}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Religion">
-            <select style={styles.inp} value={form.religion} onChange={e=>set('religion',e.target.value)}>
-              {RELIGIONS.map(r=><option key={r}>{r}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Mother Tongue">
-            <select style={styles.inp} value={form.motherTongue} onChange={e=>set('motherTongue',e.target.value)}>
-              {MOTHER_TONGUES.map(m=><option key={m}>{m}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Quota Type">
-            <select style={styles.inp} value={form.quota} onChange={e=>set('quota',e.target.value)}>
-              {QUOTA_TYPES.map(q=><option key={q}>{q}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Referral Source">
-            <select style={styles.inp} value={form.referral} onChange={e=>set('referral',e.target.value)}>
-              {REFERRAL_SOURCES.map(r=><option key={r}>{r}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Disability / Special Needs">
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:4 }}>
-              <input type="checkbox" checked={form.disabilityFlag} onChange={e=>set('disabilityFlag',e.target.checked)} id="disCheck" style={{ width:16, height:16, cursor:'pointer' }} />
-              <label htmlFor="disCheck" style={{ fontSize:13, color:T.slate[700], cursor:'pointer' }}>Yes</label>
-              {form.disabilityFlag && <input style={{ ...styles.inp, flex:1 }} value={form.disabilityNotes} onChange={e=>set('disabilityNotes',e.target.value)} placeholder="Describe…" />}
+        <GovSection title="Identification Particulars">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <GovField label="GCC No." required>
+              <input style={{ ...govInp, borderColor:gccDup?'#b91c1c':govInp.border }} value={form.gcc} onChange={e=>set('gcc',e.target.value)} placeholder="e.g. 729" type="number" />
+              {gccDup && <div style={{ fontSize:11, color:'#b91c1c', marginTop:3, fontWeight:700 }}>⚠ GCC {form.gcc} already exists!</div>}
+            </GovField>
+            <GovField label="Admission No.">
+              <input style={{ ...govInp, background:'#f2f1ec', color:'#8a8a8a' }} value="Auto-generated on save" readOnly />
+            </GovField>
+            <GovField label="Date of Birth" required>
+              <input type="date" style={govInp} value={form.dob} onChange={e=>set('dob',e.target.value)} />
+            </GovField>
+            <GovField label="Gender" required>
+              <select style={govInp} value={form.gender} onChange={e=>set('gender',e.target.value)}>
+                <option value="">—</option><option>Male</option><option>Female</option><option>Other</option>
+              </select>
+            </GovField>
+            <GovField label="Blood Group" required>
+              <input style={govInp} value={form.blood} onChange={e=>set('blood',e.target.value)} placeholder="e.g. O+" />
+            </GovField>
+            <GovField label="Category" required>
+              <select style={govInp} value={form.category} onChange={e=>set('category',e.target.value)}>
+                {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Religion" required>
+              <select style={govInp} value={form.religion} onChange={e=>set('religion',e.target.value)}>
+                {RELIGIONS.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Mother Tongue" required>
+              <select style={govInp} value={form.motherTongue} onChange={e=>set('motherTongue',e.target.value)}>
+                {MOTHER_TONGUES.map(m=><option key={m}>{m}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Quota Type" required>
+              <select style={govInp} value={form.quota} onChange={e=>set('quota',e.target.value)}>
+                {QUOTA_TYPES.map(q=><option key={q}>{q}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Referral Source">
+              <select style={govInp} value={form.referral} onChange={e=>set('referral',e.target.value)}>
+                {REFERRAL_SOURCES.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Disability / Special Needs">
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:4 }}>
+                <input type="checkbox" checked={form.disabilityFlag} onChange={e=>set('disabilityFlag',e.target.checked)} id="disCheck" style={{ width:16, height:16, cursor:'pointer' }} />
+                <label htmlFor="disCheck" style={{ fontSize:13, color:inkSub, cursor:'pointer' }}>Yes</label>
+                {form.disabilityFlag && <input style={{ ...govInp, flex:1 }} value={form.disabilityNotes} onChange={e=>set('disabilityNotes',e.target.value)} placeholder="Describe…" />}
+              </div>
+            </GovField>
+            <GovField label="Sibling GCC No.">
+              <input style={govInp} value={form.siblingGcc} onChange={e=>set('siblingGcc',e.target.value)} placeholder="If sibling enrolled at GNSI" type="number" />
+            </GovField>
+          </div>
+        </GovSection>
+
+        <GovSection title="Course &amp; Class Particulars">
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:14 }}>
+            <GovField label="Course" required>
+              <select style={govInp} value={form.course} onChange={e=>set('course',e.target.value)}>
+                <option value="">— Course —</option>
+                {Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Subtype / Batch" required>
+              {subtypes.length > 0
+                ? <select style={govInp} value={form.subtype} onChange={e=>set('subtype',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}</select>
+                : <input style={govInp} value={form.subtype} onChange={e=>set('subtype',e.target.value)} placeholder="Subtype" />
+              }
+            </GovField>
+            <GovField label="Class / Batch" required>
+              <select style={govInp} value={form.cls} onChange={e=>set('cls',e.target.value)}>
+                <option value="">— Class —</option>
+                {CLASSES_LIST.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </GovField>
+            <GovField label={activeSession && !editing ? 'Session (auto)' : 'Session'} required={!activeSession}>
+              {activeSession && !editing
+                ? <input style={{ ...govInp, background:'#f2f1ec', color:ink, fontWeight:700 }} value={activeSession.session_name} readOnly />
+                : <input style={govInp} value={form.session} onChange={e=>set('session',e.target.value)} placeholder="e.g. 2025-2026" />
+              }
+            </GovField>
+            <GovField label="House / Block" required>
+              <select style={govInp} value={form.house} onChange={e=>set('house',e.target.value)}>
+                <option value="">— House —</option>
+                {HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
+              </select>
+              {houseCapacityWarning && (
+                <div style={{ fontSize:11, color:'#92400e', marginTop:3, fontWeight:700 }}>⚠ {houseCapacityWarning}</div>
+              )}
+            </GovField>
+            <GovField label="Hostel Type" required>
+              <select style={{ ...govInp, background:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#f2f1ec':'#fff', color:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#8a8a8a':ink }}
+                value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>
+                {HOSTEL_TYPES.map(h=><option key={h} value={h}>{h}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Bed / Room No.">
+              <input style={govInp} value={form.bedNumber} onChange={e=>set('bedNumber',e.target.value)} placeholder="e.g. K-12" />
+            </GovField>
+            <GovField label="Status">
+              <select style={govInp} value={form.status} onChange={e=>set('status',e.target.value)}>
+                {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
+              </select>
+            </GovField>
+            <GovField label="Follow-up Date">
+              <input type="date" style={govInp} value={form.followupDate} onChange={e=>set('followupDate',e.target.value)} />
+            </GovField>
+          </div>
+
+          {form.house && !warden && (
+            <div style={{ marginTop:12, fontSize:12, color:'#92400e', fontFamily:serif, fontStyle:'italic' }}>
+              Note: No active housemaster on file for {form.house}
             </div>
-          </FieldRow>
-          <FieldRow label="Sibling GCC No.">
-            <input style={styles.inp} value={form.siblingGcc} onChange={e=>set('siblingGcc',e.target.value)} placeholder="If sibling enrolled at GNSI" type="number" />
-          </FieldRow>
-        </div>
-
-        <SectionDivider label="Course & Class" />
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:12, marginBottom:4 }}>
-          <FieldRow label="Course">
-            <select style={styles.inp} value={form.course} onChange={e=>set('course',e.target.value)}>
-              <option value="">— Course —</option>
-              {Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Subtype / Batch">
-            {subtypes.length > 0
-              ? <select style={styles.inp} value={form.subtype} onChange={e=>set('subtype',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}</select>
-              : <input style={styles.inp} value={form.subtype} onChange={e=>set('subtype',e.target.value)} placeholder="Subtype" />
-            }
-          </FieldRow>
-          <FieldRow label="Class / Batch">
-            <select style={styles.inp} value={form.cls} onChange={e=>set('cls',e.target.value)}>
-              <option value="">— Class —</option>
-              {CLASSES_LIST.map(c=><option key={c}>{c}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label={activeSession && !editing ? 'Session (auto)' : 'Session'}>
-            {activeSession && !editing
-              ? <input style={{ ...styles.inp, background:T.emerald[50], color:T.emerald[700], fontWeight:700, border:`1.5px solid ${T.emerald[300]}` }} value={activeSession.session_name} readOnly />
-              : <input style={styles.inp} value={form.session} onChange={e=>set('session',e.target.value)} placeholder="e.g. 2025-26" />
-            }
-          </FieldRow>
-          <FieldRow label="House / Block">
-            <select style={styles.inp} value={form.house} onChange={e=>set('house',e.target.value)}>
-              <option value="">— House —</option>
-              {HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
-            </select>
-            {houseCapacityWarning && (
-              <div style={{ fontSize:11, color:T.amber[600], marginTop:3, fontWeight:700 }}>⚠ {houseCapacityWarning}</div>
-            )}
-          </FieldRow>
-          <FieldRow label="Hostel Type">
-            <select style={{ ...styles.inp, background:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?T.slate[50]:'#fff', color:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?T.slate[400]:T.slate[800] }}
-              value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>
-              {HOSTEL_TYPES.map(h=><option key={h} value={h}>{h}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Bed / Room No.">
-            <input style={styles.inp} value={form.bedNumber} onChange={e=>set('bedNumber',e.target.value)} placeholder="e.g. K-12" />
-          </FieldRow>
-          <FieldRow label="Status">
-            <select style={styles.inp} value={form.status} onChange={e=>set('status',e.target.value)}>
-              {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
-            </select>
-          </FieldRow>
-          <FieldRow label="Follow-up Date">
-            <input type="date" style={styles.inp} value={form.followupDate} onChange={e=>set('followupDate',e.target.value)} />
-          </FieldRow>
-        </div>
-
-        {form.house && !warden && (
-          <div style={{ display:'inline-flex', alignItems:'center', gap:7, marginBottom:12, padding:'6px 14px', borderRadius:8, background:T.amber[50], border:`1px solid ${T.amber[200]}`, fontSize:12, color:T.amber[700], fontWeight:600 }}>
-            ⚠ No active housemaster on file for {form.house}
+          )}
+          {warden && (
+            <div style={{ marginTop:12, fontSize:12, color:inkSub, fontFamily:serif }}>
+              Housemaster on record — {warden.designation || 'Warden'}: <strong>{warden.name}</strong>{warden.phone ? ` (${warden.phone})` : ''}
+            </div>
+          )}
+          <div style={{ marginTop:10, fontSize:12, color:inkSub, fontFamily:serif, borderTop:'1px solid #c9c5ba', paddingTop:8 }}>
+            Classification: <strong>{derivedHostelType}</strong> &nbsp;|&nbsp; Base Fee: <strong>₹{fmt(baseRate)}/month</strong>
+            {form.scholarshipPct > 0 && <> &nbsp;|&nbsp; After Scholarship: <strong>₹{fmt(discRate)}/month</strong></>}
           </div>
-        )}
-        {warden && (
-          <div style={{ display:'inline-flex', alignItems:'center', gap:7, marginBottom:12, padding:'6px 14px', borderRadius:8, background:T.sky[50], border:`1px solid ${T.sky[100]}`, fontSize:12, color:T.sky[700] }}>
-            👤 {warden.designation || 'Warden'}: <strong>{warden.name}</strong>{warden.phone ? ` · ${warden.phone}` : ''}
+        </GovSection>
+
+        <GovSection title="Entrance &amp; Interview">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
+            <GovField label="Entrance Score" required>
+              <input style={govInp} type="number" value={form.entranceScore} onChange={e=>set('entranceScore',e.target.value)} placeholder="Out of 100" />
+            </GovField>
+            <GovField label="Interview Score">
+              <input style={govInp} type="number" value={form.interviewScore} onChange={e=>set('interviewScore',e.target.value)} placeholder="Out of 50" />
+            </GovField>
+            <GovField label="Interview Date">
+              <input type="date" style={govInp} value={form.interviewDate} onChange={e=>set('interviewDate',e.target.value)} />
+            </GovField>
           </div>
-        )}
+        </GovSection>
 
-        <div style={{ display:'inline-flex', alignItems:'center', gap:7, marginBottom:12, marginLeft:8, padding:'6px 14px', borderRadius:8, background:hs.bg, border:`1px solid ${hs.border}`, fontSize:12, fontWeight:700, color:hs.color }}>
-          {hs.icon} <strong>{derivedHostelType}</strong>
-          <span style={{ fontWeight:400, color:T.slate[400] }}>·</span>
-          Base: <strong>₹{fmt(baseRate)}/mo</strong>
-          {form.scholarshipPct > 0 && <><span style={{ color:T.slate[400] }}>·</span> After scholarship: <strong style={{ color:T.emerald[600] }}>₹{fmt(discRate)}/mo</strong></>}
-        </div>
-
-        <SectionDivider label="Entrance & Interview" />
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
-          <FieldRow label="Entrance Score">
-            <input style={styles.inp} type="number" value={form.entranceScore} onChange={e=>set('entranceScore',e.target.value)} placeholder="Out of 100" />
-          </FieldRow>
-          <FieldRow label="Interview Score">
-            <input style={styles.inp} type="number" value={form.interviewScore} onChange={e=>set('interviewScore',e.target.value)} placeholder="Out of 50" />
-          </FieldRow>
-          <FieldRow label="Interview Date">
-            <input type="date" style={styles.inp} value={form.interviewDate} onChange={e=>set('interviewDate',e.target.value)} />
-          </FieldRow>
-        </div>
-
-        <SectionDivider label="Financial" />
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
-          <FieldRow label="Scholarship %">
-            <input style={styles.inp} type="number" min="0" max="100" value={form.scholarshipPct} onChange={e=>set('scholarshipPct',e.target.value)} placeholder="e.g. 25" />
-          </FieldRow>
-          <FieldRow label="Concession Amount ₹">
-            <input style={styles.inp} type="number" value={form.concessionAmt} onChange={e=>set('concessionAmt',e.target.value)} placeholder="Fixed ₹ off/mo" />
-          </FieldRow>
-          <FieldRow label="Security Deposit ₹">
-            <input style={styles.inp} type="number" value={form.securityDeposit} onChange={e=>set('securityDeposit',e.target.value)} placeholder="Refundable" />
-          </FieldRow>
-          <FieldRow label="Transport Fee ₹/mo">
-            <input style={styles.inp} type="number" value={form.transportFee} onChange={e=>set('transportFee',e.target.value)} placeholder="Day scholars" />
-          </FieldRow>
-          <FieldRow label="Instalment Plan">
-            <select style={styles.inp} value={form.instalmentPlan} onChange={e=>set('instalmentPlan',e.target.value)}>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="annual">Annual</option>
-            </select>
-          </FieldRow>
-        </div>
-
-        <SectionDivider label="Family & Contact" />
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:4 }}>
-          <FieldRow label="Father's Name"><input style={styles.inp} value={form.father} onChange={e=>set('father',e.target.value)} /></FieldRow>
-          <FieldRow label="Mother's Name"><input style={styles.inp} value={form.mother} onChange={e=>set('mother',e.target.value)} /></FieldRow>
-          <FieldRow label="Phone"><input style={styles.inp} value={form.phone} onChange={e=>set('phone',e.target.value)} /></FieldRow>
-          <FieldRow label="WhatsApp"><input style={styles.inp} value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} /></FieldRow>
-          <FieldRow label="Previous School"><input style={styles.inp} value={form.prevSchool} onChange={e=>set('prevSchool',e.target.value)} /></FieldRow>
-          <div style={{ gridColumn:'1/-1' }}>
-            <FieldRow label="Address"><input style={styles.inp} value={form.address} onChange={e=>set('address',e.target.value)} /></FieldRow>
+        <GovSection title="Financial Particulars">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
+            <GovField label="Scholarship %">
+              <input style={govInp} type="number" min="0" max="100" value={form.scholarshipPct} onChange={e=>set('scholarshipPct',e.target.value)} placeholder="e.g. 25" />
+            </GovField>
+            <GovField label="Concession Amount ₹" required>
+              <input style={govInp} type="number" value={form.concessionAmt} onChange={e=>set('concessionAmt',e.target.value)} placeholder="Fixed ₹ off/mo" />
+            </GovField>
+            <GovField label="Security Deposit ₹">
+              <input style={govInp} type="number" value={form.securityDeposit} onChange={e=>set('securityDeposit',e.target.value)} placeholder="Refundable" />
+            </GovField>
+            <GovField label="Transport Fee ₹/mo">
+              <input style={govInp} type="number" value={form.transportFee} onChange={e=>set('transportFee',e.target.value)} placeholder="Day scholars" />
+            </GovField>
+            <GovField label="Instalment Plan">
+              <select style={govInp} value={form.instalmentPlan} onChange={e=>set('instalmentPlan',e.target.value)}>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="annual">Annual</option>
+              </select>
+            </GovField>
           </div>
-          <div style={{ gridColumn:'1/-1' }}>
-            <FieldRow label="Remarks"><textarea style={{ ...styles.inp, resize:'vertical' }} rows={2} value={form.remarks} onChange={e=>set('remarks',e.target.value)} /></FieldRow>
+        </GovSection>
+
+        <GovSection title="Family &amp; Contact Particulars">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <GovField label="Father's Name" required><input style={govInp} value={form.father} onChange={e=>set('father',e.target.value)} /></GovField>
+            <GovField label="Mother's Name" required><input style={govInp} value={form.mother} onChange={e=>set('mother',e.target.value)} /></GovField>
+            <GovField label="Phone" required><input style={govInp} value={form.phone} onChange={e=>set('phone',e.target.value)} /></GovField>
+            <GovField label="WhatsApp" required><input style={govInp} value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} /></GovField>
+            <GovField label="Previous School" required><input style={govInp} value={form.prevSchool} onChange={e=>set('prevSchool',e.target.value)} /></GovField>
+            <div style={{ gridColumn:'1/-1' }}>
+              <GovField label="Address" required><input style={govInp} value={form.address} onChange={e=>set('address',e.target.value)} /></GovField>
+            </div>
+            <div style={{ gridColumn:'1/-1' }}>
+              <GovField label="Remarks"><textarea style={{ ...govInp, resize:'vertical' }} rows={2} value={form.remarks} onChange={e=>set('remarks',e.target.value)} /></GovField>
+            </div>
+          </div>
+        </GovSection>
+
+        <GovSection title="Emergency Contact">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
+            <GovField label="Name" required><input style={govInp} value={form.emergencyName} onChange={e=>set('emergencyName',e.target.value)} placeholder="Contact name" /></GovField>
+            <GovField label="Phone" required><input style={govInp} value={form.emergencyPhone} onChange={e=>set('emergencyPhone',e.target.value)} /></GovField>
+            <GovField label="Relationship"><input style={govInp} value={form.emergencyRel} onChange={e=>set('emergencyRel',e.target.value)} placeholder="e.g. Uncle" /></GovField>
+          </div>
+        </GovSection>
+
+        <GovSection title={`Enclosures — at least 1 required (${form.docs.length} of ${ADM_DOCS.length} attached)`}>
+          {form.docs.length === 0 && (
+            <div style={{ fontSize:11, color:'#b91c1c', fontFamily:serif, marginBottom:8, fontWeight:600 }}>⚠ Select at least one document</div>
+          )}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+            {ADM_DOCS.map(d => (
+              <button key={d} onClick={() => toggleDoc(d)}
+                style={{ padding:'5px 12px', borderRadius:2, border:`1px solid ${form.docs.includes(d)?ink:'#8a8a8a'}`, background:form.docs.includes(d)?'#f2f1ec':'#fff', cursor:'pointer', fontSize:12, fontFamily:serif, color:ink, display:'flex', alignItems:'center', gap:5 }}>
+                {form.docs.includes(d) ? '☑' : '☐'} {d}
+              </button>
+            ))}
+          </div>
+        </GovSection>
+
+        {/* ── Declaration ── */}
+        <div style={{ border:`1px solid ${ink}`, padding:'16px 18px', marginBottom:22, background:'#fff' }}>
+          <div style={{ fontFamily:serif, fontWeight:700, fontSize:13, color:ink, marginBottom:8, textTransform:'uppercase', letterSpacing:'.04em' }}>Declaration</div>
+          <p style={{ fontFamily:serif, fontSize:12.5, color:inkSub, lineHeight:1.6, marginBottom:12 }}>
+            I hereby declare that the particulars furnished above are true and correct to the best of my knowledge and belief.
+            I understand that any false statement or suppression of material fact may lead to cancellation of admission at any stage.
+            I agree to abide by the rules and regulations of the Institute as applicable from time to time.
+          </p>
+          <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+            <input type="checkbox" checked={declared} onChange={e=>setDeclared(e.target.checked)} style={{ width:16, height:16, cursor:'pointer' }} />
+            <span style={{ fontSize:12.5, fontFamily:serif, color:ink, fontWeight:600 }}>I confirm the above declaration</span>
+          </label>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginTop:22 }}>
+            <div style={{ borderTop:`1px solid ${ink}`, paddingTop:6, textAlign:'center', fontSize:11, fontFamily:serif, color:inkSub }}>
+              Signature of Parent / Guardian
+            </div>
+            <div style={{ borderTop:`1px solid ${ink}`, paddingTop:6, textAlign:'center', fontSize:11, fontFamily:serif, color:inkSub }}>
+              Date: {form.followupDate || new Date().toISOString().slice(0,10)}
+            </div>
           </div>
         </div>
 
-        <SectionDivider label="Emergency Contact" />
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
-          <FieldRow label="Name"><input style={styles.inp} value={form.emergencyName} onChange={e=>set('emergencyName',e.target.value)} placeholder="Contact name" /></FieldRow>
-          <FieldRow label="Phone"><input style={styles.inp} value={form.emergencyPhone} onChange={e=>set('emergencyPhone',e.target.value)} /></FieldRow>
-          <FieldRow label="Relationship"><input style={styles.inp} value={form.emergencyRel} onChange={e=>set('emergencyRel',e.target.value)} placeholder="e.g. Uncle" /></FieldRow>
-        </div>
-
-        <SectionDivider label={`Documents (${form.docs.length}/${ADM_DOCS.length})`} />
-        <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:20 }}>
-          {ADM_DOCS.map(d => (
-            <button key={d} onClick={() => toggleDoc(d)}
-              style={{ padding:'5px 12px', borderRadius:7, border:`1.5px solid ${form.docs.includes(d)?T.emerald[500]:T.slate[200]}`, background:form.docs.includes(d)?T.emerald[50]:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, color:form.docs.includes(d)?T.emerald[700]:T.slate[600], display:'flex', alignItems:'center', gap:5 }}>
-              {form.docs.includes(d) && <span style={{ fontSize:10, color:T.emerald[600] }}>✓</span>}
-              {d}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-          <button onClick={() => onSave(editing?.id||null, form)} disabled={gccDup}
-            style={{ padding:'10px 24px', borderRadius:9, background:gccDup?T.slate[300]:`linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:gccDup?'not-allowed':'pointer' }}>
-            {editing ? 'Update Application' : 'Save Application'}
+        {(() => {
+          const missing = validateApplicationData({ ...form, hasActiveSession: !!activeSession })
+          return missing && (
+            <div style={{ fontSize:11, color:'#b91c1c', fontFamily:serif, marginBottom:10, padding:'8px 12px', border:'1px solid #b91c1c', background:'#fef2f2' }}>
+              <strong>Incomplete:</strong> {Object.values(missing).join(' · ')}
+            </div>
+          )
+        })()}
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid #c9c5ba`, paddingTop:18 }}>
+          <button onClick={() => onSave(editing?.id||null, form)} disabled={gccDup || !declared}
+            style={{ padding:'11px 26px', borderRadius:2, background:(gccDup||!declared)?'#b8b4a8':ink, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:(gccDup||!declared)?'not-allowed':'pointer', fontFamily:serif, letterSpacing:'.03em' }}>
+            {editing ? 'SUBMIT AMENDMENT' : 'SUBMIT APPLICATION'}
           </button>
-          <button onClick={handleCancel} style={{ padding:'10px 16px', borderRadius:9, border:`1px solid ${T.slate[200]}`, background:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', color:T.slate[600] }}>Cancel</button>
+          <button onClick={handleCancel} style={{ padding:'11px 18px', borderRadius:2, border:`1px solid ${ink}`, background:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', color:ink, fontFamily:serif }}>Cancel</button>
           {editing && (
             <button onClick={() => printAdmitCard(editing)}
-              style={{ padding:'10px 16px', borderRadius:9, border:`1px solid ${T.indigo[200]}`, background:T.indigo[50], color:T.indigo[700], fontSize:13, fontWeight:700, cursor:'pointer' }}>🖨 Admit Card</button>
+              style={{ padding:'11px 18px', borderRadius:2, border:`1px solid ${ink}`, background:'#f2f1ec', color:ink, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:serif }}>Print Admit Card</button>
           )}
         </div>
+        {!declared && (
+          <div style={{ fontSize:11, color:'#92400e', marginTop:8, fontFamily:serif, fontStyle:'italic' }}>
+            Please confirm the declaration above before submitting.
+          </div>
+        )}
       </div>
     </div>
   )
@@ -2499,7 +2627,7 @@ export default function Admissions() {
     // 🔒 Validation
     if (!obj.name?.trim())           { showToast('Name is required', T.rose[600]); return }
     if (!obj.gcc?.toString().trim()) { showToast('GCC No. is required', T.rose[600]); return }
-    const valErrors = validateApplicationData(obj)
+    const valErrors = validateApplicationData({ ...obj, hasActiveSession: !!activeSession })
     if (valErrors) { showToast(Object.values(valErrors)[0], T.rose[600]); return }
     if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
 
