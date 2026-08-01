@@ -187,6 +187,16 @@ export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOver
  *
  * ✦ NEW: if gccNo is supplied, checks student_fee_overrides first and
  *        substitutes flatFee with the override value when present.
+ *
+ * ✦ Bug fix #4: previously this fell back to hardcoded legacy rates with
+ *   zero indication anything unusual happened — a newly-added course/batch/
+ *   hostel combo not yet configured in Fee Setup would silently bill the
+ *   old hardcoded amount. Now returns `usingFallbackRates: true` and logs a
+ *   console.warn whenever fee_structures has no row for this combo, so
+ *   callers (and anyone watching the console) can tell the amount shown
+ *   isn't actually configured yet. Existing callers that only destructure
+ *   { flatFee, courseFee, admissionFee } are unaffected — this is an
+ *   additive field, not a shape change.
  */
 export const getFeeRates = async (
   sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
@@ -208,10 +218,20 @@ export const getFeeRates = async (
       .eq('hostel_type',  hostelType)
       .maybeSingle()
 
+    const usingFallbackRates = !data
+    if (usingFallbackRates) {
+      console.warn(
+        `getFeeRates: no fee_structures row for session=${sessionYear} course=${course} ` +
+        `batch=${batch} hostelType=${hostelType} — falling back to legacy hardcoded rates. ` +
+        `Configure this combination in Fee Setup to avoid billing stale amounts.`
+      )
+    }
+
     _rateCache[structKey] = {
       flatFee:      data?.flat_fee      ?? FLAT_RATES[hostelType]             ?? 0,
       courseFee:    data?.course_fee    ?? COURSE_RATES[course]?.[hostelType] ?? 0,
       admissionFee: data?.admission_fee ?? ADM_FEE_BASE,
+      usingFallbackRates,
     }
   }
 
@@ -324,6 +344,7 @@ export const checkFlatFeeExists = async (gcc, month, year) => {
     .eq('month', month)
     .eq('year', year)
     .eq('paid', true)
+    .eq('reverted', false)
     .maybeSingle()
   return !!data
 }
@@ -335,6 +356,25 @@ export const checkCourseFeeExists = async (gcc, forMonth, year) => {
     .eq('adm_app_id', gcc)
     .eq('for_month', forMonth)
     .eq('year', year)
+    .eq('reverted', false)
+    .maybeSingle()
+  return !!data
+}
+
+/**
+ * Fix #2 — Admission Fee and item (dress/prospectus) lines had no
+ * server-side duplicate guard; only the modal's client-side "already paid"
+ * filter stopped a double-charge, which fails under concurrent staff use or
+ * a stale client cache. This mirrors checkFlatFeeExists/checkCourseFeeExists
+ * for the admission-side items, keyed the same way collectFee derives rowId
+ * so it catches the exact same row a second attempt would try to (re)write.
+ */
+export const checkAdmItemExists = async (gcc, label) => {
+  const { data } = await supabase
+    .from(TABLES.admFeeCollections)
+    .select('id')
+    .eq('adm_app_id', gcc)
+    .eq('description', label)
     .eq('reverted', false)
     .maybeSingle()
   return !!data
@@ -496,7 +536,28 @@ export const revertFeeCollection = async ({
 //   { kind: 'course',    course, subtype, month, year, amount }
 //   { kind: 'advance',   label, amount }
 //
-// Returns { sections, total } ready for printReceipt().
+// Returns { sections, total, skipped } ready for printReceipt(). `skipped`
+// lists any items that were not charged because they were already paid
+// (server-side check, not just the client's cache) — callers can surface
+// this to staff instead of silently under-charging or double-charging.
+//
+// ── Bug fix #1 (data-integrity): the collection-table write (adm_fee_
+//    collections / adm_flat_fees / adm_course_fees) and the accounts-ledger
+//    write (upsertAccount) are two separate Supabase calls — Supabase's JS
+//    client has no cross-table transaction. Previously, if the accounts
+//    write failed after the collection write succeeded, the fee was
+//    recorded as paid in the collection table but silently missing from
+//    the books — exactly the ₹86,300 gap found in an earlier session.
+//    Fix: every write below is now wrapped so that if upsertAccount throws,
+//    the just-written collection row is deleted again (rolled back) before
+//    the error propagates — so a failure always leaves BOTH tables in their
+//    pre-call state, never one-written-one-missing. Nothing is left
+//    half-saved either way.
+//
+// ── Bug fix #2 (duplicate charge): admission/item kinds previously had no
+//    server-side "already paid" check — only the modal's client-side cache
+//    stopped a double-charge. Now uses checkAdmItemExists the same way
+//    flat/course already used checkFlatFeeExists/checkCourseFeeExists.
 // =============================================================================
 export const collectFee = async ({
   gcc, studentName, admNo = '--', className = '', course = '',
@@ -510,15 +571,37 @@ export const collectFee = async ({
   if (!items.length) throw new Error('collectFee: at least one item is required')
 
   const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
-  const invoiceMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-  const admItems = [], flatItems = [], crsfItems = [], sections = []
+  const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = []
+
+  // Runs an upsertAccount call; if it throws, deletes the collection-table
+  // row just written (by table+id) so nothing is left half-saved, then
+  // re-throws so the caller sees the original failure.
+  const upsertAccountOrRollback = async (accountPayload, rollbackTable, rollbackId) => {
+    try {
+      await upsertAccount(accountPayload)
+    } catch (err) {
+      try {
+        await supabase.from(rollbackTable).delete().eq('id', rollbackId)
+      } catch (rollbackErr) {
+        console.error(`collectFee: rollback of ${rollbackTable} id=${rollbackId} also failed after accounts write failed`, rollbackErr)
+        throw new Error(
+          `Payment save failed AND rollback failed — ${rollbackTable} row "${rollbackId}" may be ` +
+          `recorded as paid without a matching accounts entry. Please check manually. Original error: ${err.message}`
+        )
+      }
+      throw err
+    }
+  }
 
   for (const item of items) {
 
     // 1. ADMISSION FEE
     if (item.kind === 'admission') {
+      const already = await checkAdmItemExists(gcc, 'Admission Fee')
+      if (already) { skipped.push('Admission Fee'); continue }
+      const rowId = `${receiptNo}-adm`
       const { error } = await supabase.from(TABLES.admFeeCollections).upsert({
-        id: `${receiptNo}-adm`, adm_app_id: gcc, fee_type: 'admission',
+        id: rowId, adm_app_id: gcc, fee_type: 'admission',
         amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
         txn_ref: txnRef || null, description: 'Admission Fee',
         receipt_no: receiptNo, student_name: studentName,
@@ -526,18 +609,20 @@ export const collectFee = async ({
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error('Admission fee save failed: ' + error.message)
-      await upsertAccount({
+      await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
         amount: item.amount, payment_mode: payMode,
         note: `${studentName} · Admission Fee · ${receiptNo}`,
         source_ref: sourceRef.admission(gcc), source_type: 'adm_fee',
-      })
+      }, TABLES.admFeeCollections, rowId)
       admItems.push({ label: 'Admission Fee', amount: item.amount })
     }
 
     // 2. DRESS / ITEM
     else if (item.kind === 'item') {
-      const lbl     = item.label || 'Item'
+      const lbl = item.label || 'Item'
+      const already = await checkAdmItemExists(gcc, lbl)
+      if (already) { skipped.push(lbl); continue }
       const itemKey = lbl.replace(/^Dress Kit — /, '').toLowerCase().replace(/\s+/g, '_')
       const rowId   = `${receiptNo}-item-${itemKey}`
       const sRef    = lbl.toLowerCase().includes('prospectus')
@@ -552,21 +637,25 @@ export const collectFee = async ({
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Item (${lbl}) save failed: ` + error.message)
-      await upsertAccount({
+      await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
         amount: item.amount, payment_mode: payMode,
         note: `${studentName} · ${lbl} · ${receiptNo}`,
         source_ref: sRef, source_type: 'adm_fee',
-      })
+      }, TABLES.admFeeCollections, rowId)
       admItems.push({ label: lbl, amount: item.amount })
     }
 
     // 3. FLAT FEE
     else if (item.kind === 'flat') {
       const alreadyPaid = await checkFlatFeeExists(gcc, item.month, item.year)
-      if (alreadyPaid) { console.warn(`collectFee: flat ${item.month} ${item.year} already paid for GCC-${gcc}`); continue }
+      if (alreadyPaid) { skipped.push(`${item.month} ${item.year} Flat Fee`); console.warn(`collectFee: flat ${item.month} ${item.year} already paid for GCC-${gcc}`); continue }
       const flatId = `${gcc}_flat_${item.month.slice(0, 3).toLowerCase()}_${item.year}`
       const sRef   = sourceRef.flatFee(gcc, item.month, item.year)
+      // Fee-period month (e.g. "2026-02"), not the entry/pay date's month —
+      // so mirrorToFeeInvoice files a backdated Feb payment under Feb, not
+      // under whatever month it was actually keyed in.
+      const invoiceMonth = `${item.year}-${String(new Date(`${item.month} 1, ${item.year}`).getMonth() + 1).padStart(2, '0')}`
       const { error } = await supabase.from(TABLES.admFlatFees).upsert({
         id: flatId, adm_app_id: gcc, month: item.month, year: item.year,
         amount: item.amount, hostel_type: hostelType, paid: true,
@@ -575,12 +664,12 @@ export const collectFee = async ({
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
-      await upsertAccount({
+      await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
         amount: item.amount, payment_mode: payMode,
         note: `${studentName} · ${item.month} ${item.year} Flat Fee [${hostelType}] · ${receiptNo}`,
         source_ref: sRef, source_type: 'flat_fee',
-      })
+      }, TABLES.admFlatFees, flatId)
       await mirrorToFeeInvoice({
         gcc, studentId, studentName, course, hostelType, className,
         feeType: 'Monthly Flat Fee', amount: item.amount, payDate, invoiceMonth,
@@ -594,9 +683,11 @@ export const collectFee = async ({
       const crs = item.course || course
       const sub = item.subtype || ''
       const alreadyPaid = await checkCourseFeeExists(gcc, item.month, yr)
-      if (alreadyPaid) { console.warn(`collectFee: course ${item.month} ${yr} already paid for GCC-${gcc}`); continue }
+      if (alreadyPaid) { skipped.push(`${item.month} ${yr} Course Fee`); console.warn(`collectFee: course ${item.month} ${yr} already paid for GCC-${gcc}`); continue }
       const recId = `${gcc}_course_${item.month.slice(0, 3).toLowerCase()}_${yr}`
       const sRef  = sourceRef.courseFee(gcc, item.month, yr)
+      // Fee-period month, same reasoning as the flat-fee branch above.
+      const invoiceMonth = `${yr}-${String(new Date(`${item.month} 1, ${yr}`).getMonth() + 1).padStart(2, '0')}`
       const { error } = await supabase.from(TABLES.admCourseFees).upsert({
         id: recId, adm_app_id: gcc, course: crs, subtype: sub,
         hostel_type: hostelType, for_month: item.month, year: yr,
@@ -606,12 +697,12 @@ export const collectFee = async ({
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
-      await upsertAccount({
+      await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
         amount: item.amount, payment_mode: payMode,
         note: `${studentName} · ${crs}${sub ? ' ' + sub : ''} ${item.month} · ${receiptNo}`,
         source_ref: sRef, source_type: 'course_fee',
-      })
+      }, TABLES.admCourseFees, recId)
       await mirrorToFeeInvoice({
         gcc, studentId, studentName, course: crs, hostelType, className,
         feeType: 'Course Fee', amount: item.amount, payDate, invoiceMonth,
@@ -632,12 +723,12 @@ export const collectFee = async ({
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error('Advance fee save failed: ' + error.message)
-      await upsertAccount({
+      await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Advance',
         amount: item.amount, payment_mode: payMode,
         note: `${studentName} · Advance (${item.label || ''}) · ${receiptNo}`,
         source_ref: advId, source_type: 'advance_fee',
-      })
+      }, TABLES.admFeeCollections, advId)
       sections.push({ title: 'Advance', color: '#b45309',
         items: [{ label: item.label || 'Advance', amount: item.amount }],
         subtotal: item.amount })
@@ -650,7 +741,7 @@ export const collectFee = async ({
   if (crsfItems.length) sections.push(   { title: 'Course Fees',                 color: '#7c3aed', items: crsfItems, subtotal: crsfItems.reduce((s, i) => s + i.amount, 0) })
 
   const total = sections.reduce((s, sec) => s + sec.subtotal, 0)
-  return { sections, total }
+  return { sections, total, skipped }
 }
 
 // deleteLegacyFeeRecord — admin hard-delete for the legacy `fees` table only.
@@ -706,6 +797,16 @@ export const getStudentFeeSummary = async (studentId, sessionYear) => {
 // 10. RECORD PAYMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * ✦ Bug fix #7: this was the one fee-write path in the file that never
+ *   touched `accounts` at all — every payment recorded here (fee_invoices +
+ *   fee_payments) was completely invisible to the books, with no equivalent
+ *   of the rollback-guarded upsertAccount used everywhere else in collectFee.
+ *   Now inserts a matching Income row the same way collectFee does. If that
+ *   accounts write fails, the fee_payments insert and the fee_invoices
+ *   balance update are rolled back so this path has the same all-or-nothing
+ *   guarantee as collectFee, rather than a silent books gap.
+ */
 export const recordPayment = async ({ invoiceId, amount, method }) => {
   const amt = parseFloat(amount)
   if (!amt || amt <= 0) throw new Error('Invalid payment amount')
@@ -714,10 +815,34 @@ export const recordPayment = async ({ invoiceId, amount, method }) => {
   const newPaid = parseFloat(inv.amount_paid || 0) + amt
   const newDue  = Math.max(0, parseFloat(inv.total_amount || 0) - newPaid)
   const status  = newDue <= 0 ? INVOICE_STATUS.PAID : INVOICE_STATUS.PARTIAL
-  const { error: payErr } = await supabase.from(TABLES.feePayments).insert({ invoice_id: invoiceId, student_id: inv.student_id, amount: amt, method: method || 'Cash', paid_at: new Date().toISOString() })
+
+  const { data: payment, error: payErr } = await supabase.from(TABLES.feePayments)
+    .insert({ invoice_id: invoiceId, student_id: inv.student_id, amount: amt, method: method || 'Cash', paid_at: new Date().toISOString() })
+    .select().single()
   if (payErr) throw payErr
+
   const { error: updErr } = await supabase.from(TABLES.feeInvoices).update({ amount_paid: newPaid, amount_due: newDue, status, last_payment_at: new Date().toISOString() }).eq('id', invoiceId)
-  if (updErr) throw updErr
+  if (updErr) {
+    await supabase.from(TABLES.feePayments).delete().eq('id', payment.id)
+    throw updErr
+  }
+
+  const payDate = new Date().toLocaleDateString('en-CA')
+  try {
+    await upsertAccount({
+      entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
+      amount: amt, payment_mode: method || 'Cash',
+      note: `${inv.student_name || 'Student'} · ${inv.fee_type || 'Fee'} (${inv.invoice_month || ''}) · Payment ${payment.id}`,
+      source_ref: `fee_payment_${payment.id}`, source_type: 'fee_payment',
+    })
+  } catch (err) {
+    // Roll back both writes above so this stays all-or-nothing, same as collectFee.
+    await supabase.from(TABLES.feePayments).delete().eq('id', payment.id)
+    await supabase.from(TABLES.feeInvoices).update({
+      amount_paid: inv.amount_paid, amount_due: inv.amount_due, status: inv.status, last_payment_at: inv.last_payment_at,
+    }).eq('id', invoiceId)
+    throw new Error('Payment save failed while updating accounts: ' + err.message)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

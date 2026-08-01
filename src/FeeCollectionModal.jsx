@@ -344,13 +344,14 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         label: f.label,
         amount: Number(customAmts[f.id]) || f.amount,
       }))
-      const { sections, total } = await collectFee({
+      const { sections, total, skipped } = await collectFee({
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
         collectedBy: collectedBy || null, receiptNo: rNo, items,
       })
-      printReceipt({ ...commonReceiptFields(rNo), sections, total })
+      if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
+      if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setSaved({ rcpt: rNo, items: admFeeItems.map(i => i.label).join(', '), total })
       setPaidAdmItems(p => [...new Set([...p, ...admFeeItems.map(i => i.label)])])
       setSelected({})
@@ -369,13 +370,14 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     try {
       const rNo = rcptNo()
       const items = unpaid.map(f => ({ kind: 'flat', month: f.month, year: f.year, amount: f.amount }))
-      const { sections, total } = await collectFee({
+      const { sections, total, skipped } = await collectFee({
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
         collectedBy: collectedBy || null, receiptNo: rNo, items,
       })
-      printReceipt({ ...commonReceiptFields(rNo), sections, total })
+      if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
+      if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setSaved({ rcpt: rNo, items: unpaid.map(i => `${i.month} ${i.year}`).join(', '), total })
       setPaidMonths(p => [...new Set([...p, ...unpaid.map(i => `${i.month}_${i.year}`)])])
       setFlatSel({})
