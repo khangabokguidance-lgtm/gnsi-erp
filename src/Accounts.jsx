@@ -438,35 +438,15 @@ function Accounts({role,userId}){
   },[staffLoaded,currentStaff,userId])
 
   // ── recurring ─────────────────────────────────────────────────────────
-  // PHASE 2 FIX: DB-level unique constraint handles dupes; error code 23505 caught gracefully
+  // DISABLED: auto-insertion of recurring entries caused duplicate expenditure
+  // rows (the localStorage-based "already ran today" guard doesn't work across
+  // devices/browsers, so the same recurring entry could get inserted twice on
+  // the same day from two different sessions). The "Mark as recurring" flag
+  // and the Recurring tab still work for tracking/reference, but nothing is
+  // auto-inserted into the accounts table anymore — recurring expenses must
+  // now be added manually each month.
   useEffect(()=>{
-    const lastRun=localStorage.getItem('acc_recurring_run')
-    if(lastRun===today)return
-    const recurring=entries.filter(e=>e.is_recurring)
-    if(!recurring.length)return
-    const thisMonth=today.slice(0,7)
-    const existing=entries.map(e=>`${e.category}-${monthKey(e.entry_date)}-${e.amount}`)
-    const toInsert=recurring
-      .filter(e=>monthKey(e.entry_date)!==thisMonth)
-      .filter(e=>!existing.includes(`${e.category}-${thisMonth}-${e.amount}`))
-      .map(({id,created_at,entry_date,...rest})=>({
-        ...rest,
-        entry_date:`${thisMonth}-${entry_date.slice(8)}`,
-        added_by:'auto-recurring',
-      }))
-    if(toInsert.length){
-      supabase.from('accounts').insert(toInsert).then(({error})=>{
-        if(!error){
-          fetchEntries()
-          localStorage.setItem('acc_recurring_run',today)
-        }else if(error.code==='23505'){
-          // unique constraint — already inserted this month
-          localStorage.setItem('acc_recurring_run',today)
-        }else{
-          console.error('Recurring insert failed:',error.message)
-        }
-      })
-    }
+    return
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[entries.length, today])
 
