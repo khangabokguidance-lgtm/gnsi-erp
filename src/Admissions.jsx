@@ -1507,7 +1507,16 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
         <GovSection title="Identification Particulars">
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <GovField label="GCC No." required>
-              <input style={{ ...govInp, borderColor:gccDup?'#b91c1c':govInp.border }} value={form.gcc} onChange={e=>set('gcc',e.target.value)} placeholder="e.g. 729" type="number" />
+              <input
+                style={{ ...govInp, borderColor:gccDup?'#b91c1c':govInp.border }}
+                value={form.gcc}
+                onChange={e => set('gcc', e.target.value.replace(/[^0-9]/g,''))}
+                placeholder="e.g. 729"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+              />
               {gccDup && <div style={{ fontSize:11, color:'#b91c1c', marginTop:3, fontWeight:700 }}>⚠ GCC {form.gcc} already exists!</div>}
               {!editing && !gccDup && form.gcc === suggestedGcc && suggestedGcc && (
                 <div style={{ fontSize:11, color:inkSub, marginTop:3 }}>Suggested next number — edit if different</div>
@@ -1560,7 +1569,16 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               </div>
             </GovField>
             <GovField label="Sibling GCC No.">
-              <input style={govInp} value={form.siblingGcc} onChange={e=>set('siblingGcc',e.target.value)} placeholder="If sibling enrolled at GNSI" type="number" />
+              <input
+                style={govInp}
+                value={form.siblingGcc}
+                onChange={e => set('siblingGcc', e.target.value.replace(/[^0-9]/g,''))}
+                placeholder="If sibling enrolled at GNSI"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+              />
             </GovField>
           </div>
         </GovSection>
