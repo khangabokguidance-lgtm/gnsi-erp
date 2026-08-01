@@ -526,6 +526,14 @@ function loadGoogleIdentityScript() {
 // the "Connect Google Drive" step. Scope is deliberately narrow
 // (drive.file — only files this app creates, not the whole Drive) so the
 // shared account isn't granting broad access to everything in its Drive.
+//
+// ✦ Bug fix: if the OAuth popup is blocked by the browser, or the person
+// closes it without finishing sign-in, or denies the request in a way
+// Google's client doesn't surface as an error, initTokenClient's callback
+// is never invoked at all — the Promise then hangs forever with no error
+// and no success, which is exactly what showed as "Uploading to Drive…"
+// getting permanently stuck. A hard timeout guarantees this always
+// resolves one way or another.
 function requestDriveAccessToken() {
   return new Promise((resolve, reject) => {
     if (!window.google?.accounts?.oauth2) { reject(new Error('Google Identity Services not loaded')); return }
@@ -533,16 +541,40 @@ function requestDriveAccessToken() {
       reject(new Error('Google Drive Client ID not configured yet — see GOOGLE_DRIVE_CLIENT_ID at the top of Admissions.jsx'))
       return
     }
+    let settled = false
+    const timeoutId = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('Google sign-in timed out — the popup may have been blocked or closed. Please allow popups for this site and try again.'))
+    }, 45000) // 45s — generous enough for a real sign-in, short enough to not feel "stuck"
+
     const tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_DRIVE_CLIENT_ID,
       scope: 'https://www.googleapis.com/auth/drive.file',
       callback: (resp) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutId)
         if (resp.error) { reject(new Error(resp.error)); return }
         _driveAccessToken = resp.access_token
         resolve(resp.access_token)
       },
+      error_callback: (err) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutId)
+        // Covers the case Google's client CAN detect and report — e.g.
+        // popup_closed, popup_failed_to_open (blocked by browser).
+        reject(new Error(err?.type === 'popup_failed_to_open'
+          ? 'Google sign-in popup was blocked by your browser. Please allow popups for this site and try again.'
+          : 'Google sign-in was cancelled.'))
+      },
     })
-    tokenClient.requestAccessToken()
+    try {
+      tokenClient.requestAccessToken()
+    } catch (err) {
+      if (!settled) { settled = true; clearTimeout(timeoutId); reject(err) }
+    }
   })
 }
 
@@ -2071,7 +2103,14 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     setPhotoUploading(true)
     setPhotoUploadError('')
     try {
-      const { url } = await uploadPhotoToGoogleDrive(file, form.gcc)
+      // Overall safety net on top of requestDriveAccessToken's own internal
+      // timeout — covers a hang anywhere in the chain (folder lookup, the
+      // actual file upload, permission update), not just the OAuth step.
+      const uploadPromise = uploadPhotoToGoogleDrive(file, form.gcc)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Upload timed out. Please check your connection and try again.')), 60000)
+      )
+      const { url } = await Promise.race([uploadPromise, timeoutPromise])
       set('photoUrl', url)
     } catch (err) {
       setPhotoUploadError(err.message || 'Upload failed — please try again.')
