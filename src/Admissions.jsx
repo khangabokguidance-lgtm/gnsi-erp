@@ -645,7 +645,12 @@ async function uploadPhotoToGoogleDrive(file, gccNo) {
 
   // Drive's direct-image-embed URL format (works in <img src>, unlike the
   // normal "view" link which opens Drive's viewer page instead of the raw image).
-  const url = `https://drive.google.com/uc?export=view&id=${uploadData.id}`
+  // ✦ Bug fix: drive.google.com/uc?export=view is meant for browser
+  // navigation, not hotlinking — it often fails to render in a plain
+  // <img src> (shows broken-image icon) due to Drive's redirect/permission
+  // handling, especially right after upload. The thumbnail endpoint is
+  // specifically designed for embedding and renders reliably.
+  const url = `https://drive.google.com/thumbnail?id=${uploadData.id}&sz=w1000`
   return { url, fileId: uploadData.id }
 }
 
