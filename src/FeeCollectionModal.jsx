@@ -91,7 +91,21 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const batch  = app?.cls        ?? app?.batch          ?? student?.batch      ?? ''
   const admNo  = app?.admNo      ?? app?.adm_no         ?? student?.admission_no ?? ''
 
-  const sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+  // ── SESSION-WISE FEE LOOKUP ────────────────────────────────────────────────
+  // Fee rates must come from the SESSION THE STUDENT WAS ADMITTED IN, not
+  // whatever session happens to be "current" today — a student admitted in
+  // 2025-2026 keeps being billed at 2025-2026 rates even while a later
+  // 2026-2027 session is active, so past-session fee_structures rows stay
+  // meaningful and nobody's dues silently jump to this year's rate.
+  //
+  // Preference order: app.session (set at application time) → student.session
+  // (set at enrollment via promoteToStudent) → today's computed session as a
+  // last-resort fallback for any record that predates session tracking.
+  //
+  // NOTE: this depends on admission_sessions / admissions / students all
+  // using the same "YYYY-YYYY" string format as fee_structures.session_year
+  // (e.g. "2026-2027") — confirmed and standardized across all three tables.
+  const sessionYear = app?.session || student?.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
 
   const resolveInitialHostel = () => {
     if (app?.hostel === 'Yes' || app?.hostel_type === 'Boarder') return 'Boarder'
@@ -334,6 +348,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     if (isRepeater) return alert('This student is marked as a Repeater — Admission Fee, Dress Fee, and Prospectus Fee are waived. Use the Flat or Course tab instead.')
+    if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
     const admFeeItems = FEE_ITEMS.filter(f => selected[f.id] && !paidAdmItems.includes(f.label))
     if (!admFeeItems.length) return alert('Select at least one unpaid fee item.')
     setSaving(true); setError(null)
@@ -364,6 +379,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (saving) return
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
+    if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
     const unpaid = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f))
     if (!unpaid.length) return alert('Select at least one unpaid month.')
     setSaving(true); setError(null)
@@ -390,6 +406,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (saving) return
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
+    if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
     const amt = Number(courseAmt)
     if (!amt || amt <= 0) return alert('Enter a valid amount.')
     if (isCourseMonthPaid()) { setError(`Course fee for ${courseMonth} ${courseYear} is already recorded.`); return }
@@ -443,6 +460,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 {batch  && <span>· {batch}</span>}
                 {admNo  && <span style={{ color:C.indigo, fontWeight:600 }}>{admNo}</span>}
                 <HostelBadge type={hostelType} />
+                <span style={{ fontSize:10, fontWeight:700, color:C.slate[500], background:C.slate[100], padding:'2px 8px', borderRadius:4 }} title="Fee rates are locked to the session this student was admitted in">
+                  📅 {sessionYear}
+                </span>
                 {hostelAutoFixed && <span style={{ fontSize:10, fontWeight:700, color:C.red, background:'#fef2f2', padding:'2px 7px', borderRadius:4, border:'1px solid #fca5a5' }}>⚠ AUTO-CORRECTED</span>}
                 {isRepeater && (
                   <span style={{ fontSize:10, fontWeight:800, color:"#92400e", background:"#fef3c7", padding:"2px 9px", borderRadius:4, border:"1px solid #fcd34d", letterSpacing:".04em" }}>
@@ -796,20 +816,44 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           {/* ── Payment details ── */}
           <div style={{ borderTop:`1px solid ${C.slate[100]}`, paddingTop:16 }}>
             <div style={{ fontSize:11, fontWeight:700, color:C.slate[400], textTransform:'uppercase', letterSpacing:'.08em', marginBottom:10 }}>Payment details</div>
+
+            {/* Cash / UPI quick toggle — the two modes staff actually use for
+                in-person collection get a dedicated, clearly distinct look.
+                Cheque / Bank Transfer / DD / Other remain available via the
+                dropdown below for the less common cases. */}
+            <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+              {['Cash','UPI'].map(m => (
+                <button key={m} type="button" onClick={() => setPayMode(m)}
+                  style={{
+                    flex:1, padding:'10px 14px', borderRadius:10, cursor:'pointer',
+                    border: payMode===m ? `2px solid ${m==='Cash'?C.emerald:C.violet}` : `1.5px solid ${C.slate[200]}`,
+                    background: payMode===m ? (m==='Cash'?'#ecfdf5':'#f5f3ff') : 'white',
+                    color: payMode===m ? (m==='Cash'?C.emerald:C.violet) : C.slate[500],
+                    fontWeight:700, fontSize:13, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                  }}>
+                  {m==='Cash' ? '💵' : '📲'} {m}
+                </button>
+              ))}
+              <select value={PAY_MODES.includes(payMode) && !['Cash','UPI'].includes(payMode) ? payMode : ''} onChange={e => e.target.value && setPayMode(e.target.value)}
+                style={{ ...inp, width:120, color: !['Cash','UPI'].includes(payMode) ? C.slate[900] : C.slate[400] }}>
+                <option value="">Other mode…</option>
+                {PAY_MODES.filter(m => !['Cash','UPI'].includes(m)).map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div>
-                <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Payment mode</label>
-                <select value={payMode} onChange={e => setPayMode(e.target.value)} style={inp}>
-                  {PAY_MODES.map(m => <option key={m}>{m}</option>)}
-                </select>
-              </div>
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Payment date</label>
                 <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp} />
               </div>
               <div>
-                <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Txn ref</label>
-                <input value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder="Optional" style={inp} />
+                <label style={{ fontSize:12, fontWeight:600, color: payMode==='UPI' && !txnRef ? C.red : C.slate[500], display:'block', marginBottom:5 }}>
+                  {payMode==='UPI' ? 'UPI Txn / UTR No.' : payMode==='Cash' ? 'Reference (optional)' : 'Txn ref'}
+                  {payMode==='UPI' && ' *required'}
+                </label>
+                <input value={txnRef} onChange={e => setTxnRef(e.target.value)}
+                  placeholder={payMode==='UPI' ? 'e.g. 402812345678' : 'Optional'}
+                  style={{ ...inp, border: payMode==='UPI' && !txnRef ? `1.5px solid ${C.red}` : inp.border }} />
               </div>
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Collected by</label>
@@ -820,18 +864,31 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         </div>
 
         {/* Footer */}
+        {(() => {
+          const upiMissingRef = payMode === 'UPI' && !txnRef.trim()
+          const blocked = saving || !admissionDate || upiMissingRef
+            || (tab==='flat' && allFlatPaid) || (tab==='admission' && (allAdmPaid||isRepeater))
+            || (tab==='course' && courseMonthPaid) || ratesLoading
+          const label = saving ? '⏳ Saving…'
+            : !admissionDate ? '⚠️ Set Admission Date First'
+            : upiMissingRef ? '⚠️ Enter UPI Txn / UTR No.'
+            : ratesLoading ? '⏳ Loading…'
+            : '🖨️ Record & Print Receipt'
+          return (
         <div style={{ padding:'14px 22px', borderTop:`1px solid ${C.slate[100]}`, background:C.slate[50], display:'flex', gap:10, justifyContent:'flex-end' }}>
           <button type="button" onClick={handleClose} style={{ padding:'9px 20px', borderRadius:9, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>Close</button>
           <button type="button"
             onClick={tab==='admission'?saveAdmission:tab==='flat'?saveFlat:saveCourse}
-            disabled={saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading}
+            disabled={blocked}
             style={{ padding:'9px 24px', borderRadius:9, border:'none', fontSize:13, fontWeight:700,
-              cursor:(saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading)?'not-allowed':'pointer',
-              background:(saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading)?C.slate[400]:`linear-gradient(135deg,${C.navy},${C.indigo})`,
-              color:'white', opacity:(saving||!admissionDate||(tab==='flat'&&allFlatPaid)||(tab==='admission'&&(allAdmPaid||isRepeater))||(tab==='course'&&courseMonthPaid)||ratesLoading)?.7:1 }}>
-            {saving?'⏳ Saving…':!admissionDate?'⚠️ Set Admission Date First':ratesLoading?'⏳ Loading…':'🖨️ Record & Print Receipt'}
+              cursor: blocked ? 'not-allowed' : 'pointer',
+              background: blocked ? C.slate[400] : `linear-gradient(135deg,${C.navy},${C.indigo})`,
+              color:'white', opacity: blocked ? .7 : 1 }}>
+            {label}
           </button>
         </div>
+          )
+        })()}
       </div>
     </div>,
     document.body

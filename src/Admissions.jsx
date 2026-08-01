@@ -2531,6 +2531,11 @@ export default function Admissions() {
       logAudit('CREATE', newApp.id, dbRow, userRole)
       setApps(prev => [newApp, ...prev])
       showToast(`Saved! Adm. No: ${newApp.admNo} · ${newApp.hostel_type} · ₹${fmt(getFlatFeeAmtSync(newApp.hostel_type, newApp.course))}/mo`, T.violet[600])
+      // Jump straight into fee collection after submission — status stays
+      // "Applied" (Admit is still a separate manual step later); this only
+      // opens the real payment screen immediately so admission fee can be
+      // collected on the spot, without a second click to "Admit" first.
+      setFeePanel(newApp)
     }
     try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
     setFormOpen(false); setEditing(null)
