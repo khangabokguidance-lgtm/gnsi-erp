@@ -1207,9 +1207,12 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   // Suggest the next GCC No. (highest GCC on record + 1) for new
   // applications only — fetched live from Supabase so it stays correct
   // across every device/staff member, not just the one that last used this
-  // browser. Only fills in once the field is still empty when the query
-  // resolves, so it never clobbers something staff already typed.
+  // browser. Guarded by a ref (not just checking form.gcc) so a slow network
+  // response can never land after the user has started typing and overwrite
+  // their keystroke — the fill applies at most once, ever, for this form.
   const [suggestedGcc, setSuggestedGcc] = useState('')
+  const gccAutofilledRef = useRef(false)
+  const gccTouchedRef = useRef(false)
   useEffect(() => {
     if (editing) return
     let cancelled = false
@@ -1218,7 +1221,10 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
         if (cancelled || !data?.gcc_no) return
         const next = String(parseInt(data.gcc_no) + 1)
         setSuggestedGcc(next)
-        setForm(f => f.gcc ? f : { ...f, gcc: next })
+        if (!gccAutofilledRef.current && !gccTouchedRef.current) {
+          gccAutofilledRef.current = true
+          setForm(f => ({ ...f, gcc: next }))
+        }
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -1510,7 +1516,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               <input
                 style={{ ...govInp, borderColor:gccDup?'#b91c1c':govInp.border }}
                 value={form.gcc}
-                onChange={e => set('gcc', e.target.value.replace(/[^0-9]/g,''))}
+                onChange={e => { gccTouchedRef.current = true; set('gcc', e.target.value.replace(/[^0-9]/g,'')) }}
                 placeholder="e.g. 729"
                 type="text"
                 inputMode="numeric"
