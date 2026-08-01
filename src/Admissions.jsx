@@ -1216,10 +1216,22 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   useEffect(() => {
     if (editing) return
     let cancelled = false
-    supabase.from('admissions').select('gcc_no').order('gcc_no', { ascending:false }).limit(1).maybeSingle()
-      .then(({ data }) => {
-        if (cancelled || !data?.gcc_no) return
-        const next = String(parseInt(data.gcc_no) + 1)
+    // Fetch all GCC numbers (paginated via fetchAllRows, so this can't be
+    // silently truncated by Supabase's default row cap on a large table)
+    // and compute the true numeric max ourselves — relying on the database
+    // to ORDER BY gcc_no is unsafe if that column is stored as text (very
+    // likely here), since text sorting is lexicographic ("999" sorts above
+    // "1035"), which was suggesting already-used numbers instead of the
+    // real highest one.
+    fetchAllRows('admissions', { select: 'gcc_no' })
+      .then(data => {
+        if (cancelled || !data?.length) return
+        const maxGcc = data.reduce((max, r) => {
+          const n = parseInt(r.gcc_no)
+          return Number.isFinite(n) && n > max ? n : max
+        }, 0)
+        if (maxGcc <= 0) return
+        const next = String(maxGcc + 1)
         setSuggestedGcc(next)
         if (!gccAutofilledRef.current && !gccTouchedRef.current) {
           gccAutofilledRef.current = true
