@@ -168,7 +168,13 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [payMode,     setPayMode]     = useState('Cash')
   const [txnRef,      setTxnRef]      = useState('')
   const [payDate,     setPayDate]     = useState(today())
-  const [collectedBy, setCollectedBy] = useState('')
+  // ✦ Fix: currentUser was passed in as a prop but never actually used —
+  // "Collected By" was a blank free-text field every time, letting staff
+  // type any name (including someone else's), with no real audit trail.
+  // Now auto-fills from the authenticated session's username. Still
+  // editable (not locked) in case session data is ever missing or a
+  // different staff member genuinely collected the payment in person.
+  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
 
   // Admission tab
   const [selected,     setSelected]     = useState({})
@@ -856,7 +862,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   style={{ ...inp, border: payMode==='UPI' && !txnRef ? `1.5px solid ${C.red}` : inp.border }} />
               </div>
               <div>
-                <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Collected by</label>
+                <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>
+                  Collected by
+                  {(currentUser?.userName || currentUser?.name) && collectedBy === (currentUser?.userName || currentUser?.name) && (
+                    <span style={{ color:C.emerald, fontWeight:700 }}> ✓ verified</span>
+                  )}
+                </label>
                 <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={inp} />
               </div>
             </div>
