@@ -543,7 +543,13 @@ function Accounts({role,userId}){
   }
 
   const handleSubmit=async(e)=>{
-    e.preventDefault();setSaving(true)
+    e.preventDefault()
+    const hasFutureDate=rows.some(r=>(r.entry_date&&r.entry_date>today)||(r.payment_date&&r.payment_date>today))
+    if(hasFutureDate){
+      alert('Transaction date cannot be in the future. Please check the date entered.')
+      return
+    }
+    setSaving(true)
     const enteredByName = currentStaff?.name || role
     if(editEntry){
       let editReason=''
@@ -1964,8 +1970,8 @@ function Accounts({role,userId}){
             <div key={i} style={{border:rows.length>1?'1px solid #e2e8f0':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
               {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a5f'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
               <div style={{display:'grid',gridTemplateColumns:formCols,gap:14}}>
-                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
-                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
+                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} max={today} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
+                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
                 <div><label style={lStyle}>Type <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#f8fafc':'white'}}>
                     {canAddIncome&&<option>Income</option>}<option>Expense</option>
