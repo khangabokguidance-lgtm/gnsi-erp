@@ -1978,9 +1978,334 @@ function Dashboard({ apps, cols, darkMode }) {
   )
 }
 // ─── Main Page ─────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// STUDENT LEDGER — connects Application (admissions) ↔ Student (students) ↔
+// Fee History (adm_fee_collections / adm_flat_fees / adm_course_fees) in one
+// searchable view, so staff can see one person's whole journey — applied,
+// admitted, enrolled, every fee collected — without switching modules.
+//
+// Read-only: this view never writes anything. It reuses the exact fee source
+// tables the Fees module's own "Student Ledger" screen reads from, so the
+// numbers always agree between the two — no separate aggregate to drift out
+// of sync. Revert/adjust actions still live in Fees.jsx; this is for staff
+// working from the Admissions side who need the same picture without
+// switching modules.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ═════════════════════════════════════════════════════════════════════════════
+// KANBAN BOARD — applicants grouped into columns by status, so staff can see
+// the whole pipeline at a glance and drag-free-click a status change instead
+// of hunting through a flat list. Read/write via the same onAdmit/onEnroll/
+// onDetail handlers the grid already uses — no separate data path.
+// ═════════════════════════════════════════════════════════════════════════════
+
+function KanbanBoard({ apps, cols, onAdmit, onEnroll, onOpenFee, onDetail, isMobile }) {
+  const STATUSES = ['Applied','Under Review','Admitted','Enrolled','Waitlisted','Rejected']
+  const byStatus = useMemo(() => {
+    const g = {}
+    STATUSES.forEach(s => g[s] = [])
+    apps.forEach(a => { (g[a.status] ??= []).push(a) })
+    return g
+  }, [apps])
+
+  return (
+    <div style={{ display:'flex', gap:14, overflowX:'auto', paddingBottom:8, WebkitOverflowScrolling:'touch' }}>
+      {STATUSES.map(status => {
+        const meta = STAT_META[status] || { color:T.slate[500], bg:T.slate[100], icon:'◌' }
+        const list = byStatus[status] || []
+        return (
+          <div key={status} style={{ minWidth: isMobile?260:300, width: isMobile?260:300, flexShrink:0, display:'flex', flexDirection:'column' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:meta.bg, borderRadius:'12px 12px 0 0', borderBottom:`2px solid ${meta.color}` }}>
+              <span style={{ fontSize:13 }}>{meta.icon}</span>
+              <span style={{ fontSize:12, fontWeight:800, color:meta.color, flex:1 }}>{status}</span>
+              <span style={{ fontSize:11, fontWeight:700, color:meta.color, background:'#fff', padding:'1px 8px', borderRadius:999 }}>{list.length}</span>
+            </div>
+            <div style={{ background:N.bg2, borderRadius:'0 0 12px 12px', padding:8, display:'flex', flexDirection:'column', gap:8, minHeight:120, maxHeight:'calc(100vh - 340px)', overflowY:'auto' }}>
+              {list.length === 0 && (
+                <div style={{ textAlign:'center', padding:'20px 8px', fontSize:11, color:N.muted }}>Nothing here</div>
+              )}
+              {list.map(a => {
+                const admPaid = cols.some(c => String(parseInt(c.adm_app_id))===String(parseInt(a.gcc)) && c.fee_type==='admission')
+                return (
+                  <div key={a.id} onClick={()=>onDetail(a)}
+                    style={{ background:N.bg, borderRadius:10, padding:'10px 12px', boxShadow:N.shadow('sm'), cursor:'pointer', transition:'box-shadow .15s' }}
+                    onMouseEnter={e=>e.currentTarget.style.boxShadow=N.shadow('md')}
+                    onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                      <Avatar name={a.name} size={28} photoUrl={a.photoUrl} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:T.slate[900], whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{a.name}</div>
+                        <div style={{ fontSize:10, color:T.slate[400] }}>GCC-{a.gcc} · {a.course}{a.subtype?` · ${a.subtype}`:''}</div>
+                      </div>
+                    </div>
+                    {(status==='Applied' || status==='Under Review') && (
+                      <button onClick={e=>{e.stopPropagation();onAdmit(a.id)}}
+                        style={{ width:'100%', padding:'5px', borderRadius:6, background:T.violet[600], color:'#fff', border:'none', fontSize:10, fontWeight:700, cursor:'pointer' }}>
+                        Admit
+                      </button>
+                    )}
+                    {status==='Admitted' && !admPaid && (
+                      <button onClick={e=>{e.stopPropagation();onOpenFee(a)}}
+                        style={{ width:'100%', padding:'5px', borderRadius:6, background:T.amber[500], color:'#fff', border:'none', fontSize:10, fontWeight:700, cursor:'pointer' }}>
+                        Collect Fee
+                      </button>
+                    )}
+                    {status==='Admitted' && admPaid && (
+                      <button onClick={e=>{e.stopPropagation();onEnroll(a.id)}}
+                        style={{ width:'100%', padding:'5px', borderRadius:6, background:T.emerald[600], color:'#fff', border:'none', fontSize:10, fontWeight:700, cursor:'pointer' }}>
+                        Enroll →
+                      </button>
+                    )}
+                    {status==='Enrolled' && (
+                      <div style={{ textAlign:'center', fontSize:10, color:T.emerald[600], fontWeight:700 }}>✓ Enrolled</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GALLERY GRID — photo-forward profile cards. Bigger avatar/photo, minimal
+// text, meant for quickly scanning faces (e.g. verifying a batch at a glance)
+// rather than reading data-dense fields. Same underlying handlers as AppCard.
+// ═════════════════════════════════════════════════════════════════════════════
+
+function GalleryCard({ a, onDetail, onSelect, selected }) {
+  const meta = STAT_META[a.status] || { color:T.slate[500], bg:T.slate[100], icon:'◌' }
+  return (
+    <div onClick={()=>onDetail(a)}
+      style={{ background:N.bg, borderRadius:18, overflow:'hidden', boxShadow: selected?N.inset('md'):N.shadow('lg'), cursor:'pointer', transition:'box-shadow .2s, transform .2s', textAlign:'center' }}
+      onMouseEnter={e=>{ e.currentTarget.style.boxShadow=N.shadow('lg'); e.currentTarget.style.transform='translateY(-3px)' }}
+      onMouseLeave={e=>{ e.currentTarget.style.boxShadow=selected?N.inset('md'):N.shadow('lg'); e.currentTarget.style.transform='translateY(0)' }}>
+      <div style={{ position:'relative', paddingTop:'100%', background:`linear-gradient(135deg,${meta.color}15,${meta.color}05)` }}>
+        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <Avatar name={a.name} size={72} photoUrl={a.photoUrl} />
+        </div>
+        <input type="checkbox" checked={!!selected} onChange={e=>{e.stopPropagation();onSelect(a.id)}} onClick={e=>e.stopPropagation()}
+          style={{ position:'absolute', top:8, left:8, cursor:'pointer' }} />
+        <span style={{ position:'absolute', top:8, right:8, fontSize:14 }}>{meta.icon}</span>
+      </div>
+      <div style={{ padding:'10px 10px 12px' }}>
+        <div style={{ fontSize:13, fontWeight:800, color:T.slate[900], whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{a.name}</div>
+        <div style={{ fontSize:10, color:T.slate[400], marginTop:2 }}>GCC-{a.gcc}</div>
+        <div style={{ fontSize:10, color:T.slate[500], marginTop:2 }}>{a.course}{a.subtype?` · ${a.subtype}`:''}</div>
+        <div style={{ marginTop:6 }}><StatusBadge status={a.status} /></div>
+      </div>
+    </div>
+  )
+}
+
+function GalleryGrid({ apps, onDetail, onSelect, selectedIds, isMobile, isTablet }) {
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(auto-fill,minmax(160px,1fr))', gap:isMobile?10:14 }}>
+      {apps.map(a => (
+        <GalleryCard key={a.id} a={a} onDetail={onDetail} onSelect={onSelect} selected={selectedIds.has(a.id)} />
+      ))}
+    </div>
+  )
+}
+
+
+function StudentLedgerView({ apps, darkMode }) {
+  const [query,      setQuery]      = useState('')
+  const [selectedGcc,setSelectedGcc]= useState(null)
+  const [student,    setStudent]    = useState(null)
+  const [feeRows,    setFeeRows]    = useState(null) // null = not loaded yet
+  const [loadingFee, setLoadingFee] = useState(false)
+
+  const tx = darkMode ? '#F5F5F7' : N.text
+
+  // Application list filtered by search — this is the same `apps` data the
+  // main list view already has loaded, so no extra admissions fetch needed.
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    return apps
+      .filter(a => (a.name||'').toLowerCase().includes(q) || String(a.gcc||'').includes(q))
+      .slice(0, 20)
+  }, [apps, query])
+
+  const selectedApp = useMemo(
+    () => apps.find(a => String(a.gcc) === String(selectedGcc)) || null,
+    [apps, selectedGcc]
+  )
+
+  // Load the connected student row + full fee history whenever selection changes.
+  useEffect(() => {
+    if (!selectedGcc) { setStudent(null); setFeeRows(null); return }
+    let cancelled = false
+    setLoadingFee(true)
+    ;(async () => {
+      const gccInt = parseInt(selectedGcc)
+
+      const [{ data: stu }, admRes, flatRes, crsfRes] = await Promise.all([
+        supabase.from('students').select('*').eq('gcc_no', String(gccInt)).maybeSingle(),
+        supabase.from('adm_fee_collections').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
+        supabase.from('adm_flat_fees').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
+        supabase.from('adm_course_fees').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
+      ])
+      if (cancelled) return
+
+      const rows = [
+        ...(admRes.data||[]).map(r => ({
+          type: r.fee_type === 'admission' ? 'Admission Fee' : r.fee_type === 'advance' ? 'Advance' : 'Admission Fee',
+          label: r.description || r.fee_type, amount: Number(r.amount_paid)||0,
+          date: r.pay_date, mode: r.pay_mode, ref: r.receipt_no, by: r.collected_by || '—',
+        })),
+        ...(flatRes.data||[]).map(r => ({
+          type: 'Flat Fee', label: `${r.month} ${r.year}`, amount: Number(r.amount)||0,
+          date: r.pay_date, mode: r.pay_mode, ref: r.receipt_no, by: '—',
+        })),
+        ...(crsfRes.data||[]).map(r => ({
+          type: 'Course Fee', label: `${r.course||''}${r.subtype?' '+r.subtype:''} — ${r.for_month}`, amount: Number(r.amount_paid)||0,
+          date: r.pay_date, mode: r.pay_mode, ref: r.receipt_no, by: '—',
+        })),
+      ].sort((a,b) => (b.date||'').localeCompare(a.date||''))
+
+      setStudent(stu || null)
+      setFeeRows(rows)
+      setLoadingFee(false)
+    })()
+    return () => { cancelled = true }
+  }, [selectedGcc])
+
+  const totalPaid = useMemo(() => (feeRows||[]).reduce((s,r) => s + r.amount, 0), [feeRows])
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      {/* ── Search ── */}
+      <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), padding:16 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:N.muted2, marginBottom:8, textTransform:'uppercase', letterSpacing:'.05em' }}>
+          🔗 Student Ledger — search by name or GCC No.
+        </div>
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); setSelectedGcc(null) }}
+          placeholder="Type a student name or GCC number…"
+          style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:`1px solid ${N.border}`, fontSize:14, outline:'none' }}
+        />
+        {results.length > 0 && !selectedGcc && (
+          <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:4, maxHeight:280, overflowY:'auto' }}>
+            {results.map(a => (
+              <div key={a.id} onClick={() => setSelectedGcc(a.gcc)}
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px', borderRadius:8, cursor:'pointer', background:N.bg2 }}
+                onMouseEnter={e=>e.currentTarget.style.background=T.slate[100]}
+                onMouseLeave={e=>e.currentTarget.style.background=N.bg2}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:tx }}>{a.name}</div>
+                  <div style={{ fontSize:11, color:N.muted }}>GCC-{a.gcc} · {a.course}{a.subtype?` · ${a.subtype}`:''} · {a.hostel_type}</div>
+                </div>
+                <span style={{ fontSize:11, fontWeight:700, padding:'2px 9px', borderRadius:999,
+                  color: a.status==='Enrolled'?T.emerald[700]:a.status==='Admitted'?T.violet[700]:T.slate[500],
+                  background: a.status==='Enrolled'?T.emerald[50]:a.status==='Admitted'?T.violet[50]:T.slate[50] }}>
+                  {a.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {query.trim() && results.length === 0 && !selectedGcc && (
+          <div style={{ marginTop:10, fontSize:13, color:N.muted, textAlign:'center', padding:12 }}>No matching applications found.</div>
+        )}
+      </div>
+
+      {/* ── Selected student's connected ledger ── */}
+      {selectedApp && (
+        <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), overflow:'hidden' }}>
+          <div style={{ padding:20, background:'linear-gradient(135deg,#1D1D1F 0%,#2C2C2E 50%,#1D1D1F 100%)', color:'#fff' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, flexWrap:'wrap' }}>
+              <div>
+                <div style={{ fontSize:18, fontWeight:800 }}>{selectedApp.name}</div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,.7)', marginTop:2 }}>
+                  GCC-{selectedApp.gcc} · {selectedApp.course}{selectedApp.subtype?` · ${selectedApp.subtype}`:''} · {selectedApp.hostel_type}
+                </div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontSize:22, fontWeight:800, fontFamily:"'Courier New',monospace" }}>₹{totalPaid.toLocaleString('en-IN')}</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.6)', textTransform:'uppercase', letterSpacing:'.05em' }}>Total paid</div>
+              </div>
+            </div>
+            <button onClick={() => { setSelectedGcc(null); setQuery('') }}
+              style={{ marginTop:12, fontSize:11, fontWeight:700, color:'rgba(255,255,255,.8)', background:'rgba(255,255,255,.12)', border:'none', borderRadius:6, padding:'4px 10px', cursor:'pointer' }}>
+              ← Back to search
+            </button>
+          </div>
+
+          {/* Application → Student status trail */}
+          <div style={{ display:'flex', gap:0, borderBottom:`1px solid ${N.border}` }}>
+            {[
+              { label:'Application', done:true, sub: selectedApp.status },
+              { label:'Admitted',    done: ['Admitted','Enrolled'].includes(selectedApp.status) },
+              { label:'Enrolled',    done: selectedApp.status==='Enrolled' },
+              { label:'Student Record', done: !!student, sub: student ? `since ${student.admission_date || 'date not set'}` : 'not yet created' },
+            ].map((step,i) => (
+              <div key={i} style={{ flex:1, padding:'12px 14px', textAlign:'center', borderRight: i<3?`1px solid ${N.border}`:'none' }}>
+                <div style={{ fontSize:16, marginBottom:2 }}>{step.done ? '✅' : '⬜'}</div>
+                <div style={{ fontSize:11, fontWeight:700, color: step.done?T.emerald[700]:N.muted }}>{step.label}</div>
+                {step.sub && <div style={{ fontSize:10, color:N.muted, marginTop:2 }}>{step.sub}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Fee history */}
+          <div style={{ padding:16 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:N.muted2, marginBottom:10, textTransform:'uppercase', letterSpacing:'.05em' }}>
+              Fee History
+            </div>
+            {loadingFee ? (
+              <div style={{ textAlign:'center', padding:24, color:N.muted, fontSize:13 }}>Loading…</div>
+            ) : !feeRows || feeRows.length === 0 ? (
+              <div style={{ textAlign:'center', padding:24, color:N.muted, fontSize:13 }}>No fees recorded yet for this student.</div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ background:N.bg2 }}>
+                      {['Type','Description','Amount','Date','Mode','Ref','By'].map(h => (
+                        <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontWeight:700, color:N.muted2, fontSize:10, textTransform:'uppercase', letterSpacing:'.04em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feeRows.map((r,i) => (
+                      <tr key={i} style={{ borderBottom:`1px solid ${N.border}` }}>
+                        <td style={{ padding:'8px 10px' }}>
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:999,
+                            color: r.type==='Flat Fee'?T.teal[700]:r.type==='Course Fee'?T.violet[700]:T.indigo[600],
+                            background: r.type==='Flat Fee'?T.teal[50]:r.type==='Course Fee'?T.violet[50]:T.indigo[50] }}>
+                            {r.type}
+                          </span>
+                        </td>
+                        <td style={{ padding:'8px 10px', color:tx }}>{r.label}</td>
+                        <td style={{ padding:'8px 10px', fontWeight:700, color:T.emerald[700] }}>₹{r.amount.toLocaleString('en-IN')}</td>
+                        <td style={{ padding:'8px 10px', color:N.muted }}>{r.date || '—'}</td>
+                        <td style={{ padding:'8px 10px', color:N.muted }}>{r.mode || '—'}</td>
+                        <td style={{ padding:'8px 10px', color:N.muted, fontSize:11 }}>{r.ref || '—'}</td>
+                        <td style={{ padding:'8px 10px', color:N.muted }}>{r.by}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function Admissions() {
   const isMobile = useMobile()
   const isTablet = useTablet()
+  const [moduleView,     setModuleView]    = useState('newApplication') // 'newApplication' | 'applications' | 'ledger'
   const [apps,           setApps]          = useState([])
   const [cols,           setCols]          = useState([])
   const [loading,        setLoading]       = useState(true)
@@ -2007,6 +2332,8 @@ export default function Admissions() {
   const [waBlastApps,    setWABlastApps]   = useState(null)
   const [showCSVImport,  setShowCSVImport] = useState(false)
   const [tableMode,      setTableMode]     = useState(false)
+  const [layoutMode,     setLayoutMode]    = useState('card') // 'card' | 'table' | 'kanban' | 'gallery'
+  useEffect(() => { setTableMode(layoutMode === 'table') }, [layoutMode])
   const [darkMode,       setDarkMode]      = useState(false)
   const [showPresets,    setShowPresets]   = useState(false)
   const searchRef = useRef(null)
@@ -2030,7 +2357,10 @@ export default function Admissions() {
     onNew:        () => { setEditing(null); setFormOpen(true) },
     onSearch:     () => searchRef.current?.focus(),
     onEscape:     () => { setFormOpen(false); setEditing(null); setDetailApp(null); setQuickEditApp(null); setShowAdvSearch(false) },
-    onToggleView: () => setTableMode(v => !v),
+    onToggleView: () => setLayoutMode(m => {
+      const order = ['card','table','kanban','gallery']
+      return order[(order.indexOf(m) + 1) % order.length]
+    }),
     onToggleDark: () => setDarkMode(v => !v),
   })
 
@@ -2448,22 +2778,51 @@ export default function Admissions() {
         {toast && <Toast msg={toast.msg} color={toast.color} onUndo={toast.undoFn} />}
 
         {/* ── Identity header (matches Accounts module banking style) ── */}
-        <div style={{ paddingTop: isMobile?'14px':'20px', marginBottom:'12px', display:'flex', alignItems:'center', gap:'12px' }}>
-          <div style={{
-            width:40, height:40, borderRadius:'10px',
-            background:'linear-gradient(135deg, #1D1D1F 0%, #3A3A3C 100%)',
-            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-          }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" style={{ width:20, height:20 }}>
-              <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+        <div style={{ paddingTop: isMobile?'14px':'20px', marginBottom:'12px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+            <div style={{
+              width:40, height:40, borderRadius:'10px',
+              background:'linear-gradient(135deg, #1D1D1F 0%, #3A3A3C 100%)',
+              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+            }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" style={{ width:20, height:20 }}>
+                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div>
+              <p style={{ fontSize:16, fontWeight:600, lineHeight:1.3, margin:0, color:tx }}>GNSI Admissions</p>
+              <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>
+                {moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
+                  : moduleView==='newApplication' ? 'New applicant admission form'
+                  : 'Application management & enrollment'}
+              </p>
+            </div>
           </div>
-          <div>
-            <p style={{ fontSize:16, fontWeight:600, lineHeight:1.3, margin:0, color:tx }}>GNSI Admissions</p>
-            <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>Application management &amp; enrollment</p>
+          <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
+            {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger']].map(([key,label]) => (
+              <button key={key} onClick={()=>setModuleView(key)}
+                style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
+                  background: moduleView===key ? N.bg : 'transparent',
+                  color: moduleView===key ? N.text : N.muted,
+                  boxShadow: moduleView===key ? N.shadow('sm') : 'none' }}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
+        {moduleView === 'newApplication' ? (
+          <AdmForm
+            onSave={async (eid, data) => { await handleSave(eid, data); setModuleView('applications') }}
+            onCancel={()=>setModuleView('applications')}
+            editing={null}
+            activeSession={activeSession}
+            housemastersByHouse={housemastersByHouse}
+          />
+        ) : moduleView === 'ledger' ? (
+          <StudentLedgerView apps={apps} darkMode={darkMode} />
+        ) : (
+        <>
         {/* ── Dark gradient stats card (Accounts-style treasury card) ── */}
         <div style={{
           position:'relative', borderRadius:16, padding:isMobile?'16px':'20px 24px', marginBottom:18,
@@ -2541,9 +2900,15 @@ export default function Admissions() {
   onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
 >{darkMode?'☀️':'🌙'}</button>
 
-<button onClick={()=>setTableMode(v=>!v)} title="Toggle view (V)"
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:tableMode?N.inset('sm'):N.shadow('sm'), fontSize:14, cursor:'pointer', color:N.text2, transition:'box-shadow .15s' }}
->{tableMode?'🃏':'📋'}</button>
+<div style={{ display:'flex', gap:2, background:N.bg2, borderRadius:12, padding:3 }} title="Toggle view (V)">
+  {[['card','🃏'],['table','📋'],['kanban','🗂️'],['gallery','🖼️']].map(([key,icon]) => (
+    <button key={key} onClick={()=>setLayoutMode(key)}
+      style={{ padding:'7px 10px', borderRadius:9, border:'none', background: layoutMode===key?N.bg:'transparent',
+        boxShadow: layoutMode===key?N.shadow('sm'):'none', fontSize:14, cursor:'pointer', color:N.text2, transition:'all .15s' }}>
+      {icon}
+    </button>
+  ))}
+</div>
 
 
 <button onClick={()=>setShowAnalytics(v=>!v)}
@@ -2771,7 +3136,7 @@ export default function Admissions() {
 
         {/* List / Table */}
         {filtered.length > 0 ? (
-          tableMode ? (
+          layoutMode === 'table' ? (
             <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead>
@@ -2794,6 +3159,12 @@ export default function Admissions() {
                 </tbody>
               </table>
             </div>
+          ) : layoutMode === 'kanban' ? (
+            <KanbanBoard apps={filtered} cols={cols} onAdmit={handleAdmit} onEnroll={handleEnroll}
+              onOpenFee={setFeePanel} onDetail={setDetailApp} isMobile={isMobile} />
+          ) : layoutMode === 'gallery' ? (
+            <GalleryGrid apps={filtered} onDetail={setDetailApp} onSelect={toggleSelect}
+              selectedIds={selectedIds} isMobile={isMobile} isTablet={isTablet} />
           ) : (
             <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':isTablet?'repeat(2,1fr)':'repeat(auto-fill,minmax(340px,1fr))', gap:isMobile?12:14, alignItems:'start', minWidth:0, width:'100%' }}>
               {filtered.map(a => (
@@ -2830,6 +3201,8 @@ export default function Admissions() {
           <div style={{ marginTop:12, textAlign:'center', fontSize:12, color:T.slate[400] }}>
             Showing all {filtered.length} records · Switch to Table View for better performance with large lists
           </div>
+        )}
+        </>
         )}
       </div>
     </>
