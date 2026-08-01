@@ -437,14 +437,15 @@ function Accounts({role,userId}){
     })()
   },[staffLoaded,currentStaff,userId])
 
-  // ── recurring ─────────────────────────────────────────────────────────
-  // DISABLED: auto-insertion of recurring entries caused duplicate expenditure
-  // rows (the localStorage-based "already ran today" guard doesn't work across
-  // devices/browsers, so the same recurring entry could get inserted twice on
-  // the same day from two different sessions). The "Mark as recurring" flag
-  // and the Recurring tab still work for tracking/reference, but nothing is
-  // auto-inserted into the accounts table anymore — recurring expenses must
-  // now be added manually each month.
+  // ── recurring (REMOVED) ──────────────────────────────────────────────
+  // The auto-recurring feature has been fully removed: it caused duplicate
+  // and future-dated expenditure rows (the localStorage-based "already ran
+  // today" guard didn't work across devices/browsers, and the day-of-month
+  // reused from the template could land after today's date with no check).
+  // The "Mark as recurring" checkbox and the Recurring tab have been removed
+  // from the UI. This effect is now a permanent no-op — nothing auto-inserts
+  // into the accounts table. Recurring expenses must be entered manually
+  // each month.
   useEffect(()=>{
     return
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1861,8 +1862,6 @@ function Accounts({role,userId}){
   const dailyCashAmt=dailyFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)
   const dailyBankAmt=dailyFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)
 
-  const recurringEntries=entries.filter(e=>e.is_recurring)
-
   // ── responsive style helpers ───────────────────────────────────────────
   const tabStyle=(t)=>({
     padding: isMobile ? '7px 12px' : '8px 18px',
@@ -1999,10 +1998,6 @@ function Accounts({role,userId}){
                 </div>
                 <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>Description / Note <span style={{color:'#dc2626'}}>*</span></label><input type="text" placeholder="Transaction description" value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/></div>
               </div>
-              <label style={{display:'flex',alignItems:'center',gap:8,marginTop:12,cursor:'pointer',fontSize:14,color:'#374151'}}>
-                <input type="checkbox" checked={row.is_recurring} onChange={e=>updateRow(i,'is_recurring',e.target.checked)}/>
-                🔁 Mark as recurring
-              </label>
             </div>
           ))}
           <div style={{marginTop:16}}>
@@ -2029,7 +2024,6 @@ function Accounts({role,userId}){
         ['transactions','🧾 Transactions'],
         ['analytics','📊 Analytics'],
         ['budgets','💰 Budgets'],
-        ['recurring','🔁 Recurring'],
         ['daily','📋 Daily'],
         ['expenditure','💵 Expenditure'],
         ['reports','📑 Reports'],
@@ -2486,56 +2480,6 @@ function Accounts({role,userId}){
           <ResponsiveContainer width="100%" height={isMobile?200:280}><BarChart data={budgetChartData} barCategoryGap="20%"><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Legend/>{EXPENSE_CATEGORIES.filter(cat=>Number(budgets[cat])>0).map((cat,idx)=><Bar key={cat} dataKey={cat} fill={CHART_COLORS[idx%CHART_COLORS.length]} radius={[3,3,0,0]}/>)}</BarChart></ResponsiveContainer>
           {EXPENSE_CATEGORIES.filter(cat=>Number(budgets[cat])>0).length===0&&<p style={{textAlign:'center',color:'#94a3b8',fontSize:14,padding:32}}>Set budget limits above to see this chart</p>}
         </div>
-      </div>
-    )}
-
-    {/* ══ TAB: RECURRING ══ */}
-    {activeTab==='recurring'&&(
-      <div>
-        <p style={{color:'#64748b',fontSize:14,marginBottom:20}}>Auto-added every month. Edit to remove the recurring flag.</p>
-        {recurringEntries.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No recurring entries yet.</div>:(
-          isMobile ? (
-            <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              {recurringEntries.map(item=>(
-                <div key={item.id} style={{backgroundColor:'white',borderRadius:10,padding:14,boxShadow:'0 1px 4px rgba(0,0,0,0.08)',borderLeft:`4px solid ${item.type==='Income'?'#16a34a':'#dc2626'}`}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                    <span style={{fontWeight:700,color:'#1e293b'}}>{item.category}</span>
-                    <span style={{fontWeight:700,color:item.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(item.amount)}</span>
-                  </div>
-                  <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
-                    <span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:item.type==='Income'?'#dcfce7':'#fee2e2',color:item.type==='Income'?'#16a34a':'#dc2626'}}>{item.type}</span>
-                    <span style={{fontSize:12,color:'#7c3aed'}}>{item.voucher_head||''}</span>
-                    <span style={{fontSize:12,color:'#64748b'}}>{item.payment_mode}</span>
-                  </div>
-                  <div style={{display:'flex',gap:8}}>
-                    {(canWrite||(canEditExpenditure&&item.type==='Expense'))&&<button onClick={()=>openEdit(item)} style={{...smallBtn('#eff6ff','#1e3a5f'),padding:'6px 12px',fontSize:12}}>✏️ Edit</button>}
-                    <button onClick={()=>printReceiptMemo(item)} style={{...smallBtn('#f0fdf4','#16a34a'),padding:'6px 12px',fontSize:12}}>🧾 Memo</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{backgroundColor:'white',borderRadius:12,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',overflow:'hidden'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
-                <thead><tr style={{backgroundColor:'#f8fafc',borderBottom:'1px solid #e2e8f0'}}>{['Type','Category','Amount','Mode','Account','Voucher Head','Note','Actions'].map(h=><th key={h} style={{padding:'12px 16px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:13}}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {recurringEntries.map(item=>(
-                    <tr key={item.id} style={{borderBottom:'1px solid #f1f5f9'}}>
-                      <td style={tdS}><span style={{padding:'3px 10px',borderRadius:999,fontSize:12,fontWeight:600,backgroundColor:item.type==='Income'?'#dcfce7':'#fee2e2',color:item.type==='Income'?'#16a34a':'#dc2626'}}>{item.type}</span></td>
-                      <td style={{...tdS,fontWeight:500,color:'#1e293b'}}>{item.category}</td>
-                      <td style={{...tdS,fontWeight:600,color:item.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(item.amount)}</td>
-                      <td style={tdS}>{item.payment_mode}</td>
-                      <td style={tdS}><span style={{fontSize:11,padding:'2px 7px',borderRadius:4,backgroundColor:'#e8f0fa',color:'#1e3a5f',fontWeight:700}}>{item.account_type||'Cash A/c'}</span></td>
-                      <td style={{...tdS,color:'#7c3aed'}}>{item.voucher_head||'—'}</td>
-                      <td style={tdS}>{item.note||'—'}</td>
-                      <td style={tdS}><div style={{display:'flex',gap:6}}>{(canWrite||(canEditExpenditure&&item.type==='Expense'))&&<button onClick={()=>openEdit(item)} style={smallBtn('#eff6ff','#1e3a5f')}>✏️ Edit</button>}<button onClick={()=>printReceiptMemo(item)} style={smallBtn('#f0fdf4','#16a34a')}>🧾 Memo</button></div></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
       </div>
     )}
 
