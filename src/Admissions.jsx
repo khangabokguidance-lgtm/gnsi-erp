@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
@@ -849,8 +850,9 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
     a.followupDate  && { label:'Follow-up Due',       date:a.followupDate,  color:T.rose[500]  },
   ].filter(Boolean)
 
-  return (
-    <div style={{ background:bg, border:`1.5px solid ${bd}`, borderRadius:12, padding:'18px 20px', marginBottom:12 }}>
+  return createPortal(
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:99998, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'40px 16px', overflowY:'auto' }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:bg, border:`1.5px solid ${bd}`, borderRadius:12, padding:'18px 20px', marginBottom:12, maxWidth:900, width:'100%' }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
         <div style={{ fontSize:14, fontWeight:800, color:T.slate[800] }}>📋 {a.name} — Full Detail</div>
         <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:`1px solid ${T.slate[200]}`, background:'#fff', cursor:'pointer', fontSize:14 }}>✕</button>
@@ -968,7 +970,9 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
           </div>
         </>
       )}
-    </div>
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -980,9 +984,10 @@ function QuickEditRow({ a, onSave, onCancel }) {
   const [followup,  setFollowup]  = useState(a.followupDate||'')
   const [bedNum,    setBedNum]    = useState(a.bedNumber||'')
 
-  return (
-    <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', padding:'10px 16px', background:T.amber[50], border:`1px solid ${T.amber[200]}`, borderRadius:10, marginBottom:4 }}>
-      <span style={{ fontSize:11, fontWeight:700, color:T.amber[700], marginRight:4 }}>Quick Edit: {a.name}</span>
+  return createPortal(
+    <div onClick={onCancel} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:99998, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', padding:'14px 18px', background:T.amber[50], border:`1px solid ${T.amber[200]}`, borderRadius:12, maxWidth:640, boxShadow:'0 12px 40px rgba(0,0,0,.2)' }}>
+      <span style={{ fontSize:11, fontWeight:700, color:T.amber[700], marginRight:4, width:'100%' }}>Quick Edit: {a.name}</span>
       <select value={status}   onChange={e=>setStatus(e.target.value)}   style={{ ...styles.inp, width:'auto', fontSize:11, padding:'5px 8px' }}>{ADM_STATUSES.map(s=><option key={s}>{s}</option>)}</select>
       <select value={house}    onChange={e=>setHouse(e.target.value)}    style={{ ...styles.inp, width:'auto', fontSize:11, padding:'5px 8px' }}><option value="">— House —</option>{HOUSES_LIST.map(h=><option key={h}>{h}</option>)}</select>
       <select value={hostel}   onChange={e=>setHostel(e.target.value)}   style={{ ...styles.inp, width:'auto', fontSize:11, padding:'5px 8px' }}>{HOSTEL_TYPES.map(h=><option key={h}>{h}</option>)}</select>
@@ -992,7 +997,9 @@ function QuickEditRow({ a, onSave, onCancel }) {
         style={{ padding:'5px 14px', borderRadius:7, background:T.emerald[600], color:'#fff', border:'none', fontSize:11, fontWeight:700, cursor:'pointer' }}>Save</button>
       <button onClick={onCancel}
         style={{ padding:'5px 10px', borderRadius:7, background:'#fff', color:T.slate[600], border:`1px solid ${T.slate[200]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>✕</button>
-    </div>
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -1302,69 +1309,172 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 
   const [declared, setDeclared] = useState(false)
 
-  // ── Formal ("government form") presentation helpers — local to this form
-  // only; FieldRow/SectionDivider elsewhere in the app are untouched. Every
-  // field below still uses the exact same form state/set() calls as before —
-  // this only changes how they're wrapped and labeled visually.
-  const ink    = '#1a1a1a'
-  const inkSub = '#4a4a4a'
-  const serif  = "'Georgia','Times New Roman',serif"
-  const govInp = { ...styles.inp, borderRadius:2, border:`1px solid #8a8a8a`, fontFamily:'system-ui,sans-serif', fontSize:13 }
+  // ── Professional form design system — local to this form only.
+  // Palette: deep indigo-navy accent (institute/exam-prep register, not
+  // generic SaaS purple), warm-neutral surfaces, emerald for "complete".
+  const accent    = '#1E2A5E'
+  const accentLt  = '#EEF0F8'
+  const ink       = '#1A1D29'
+  const inkSub    = '#6B7080'
+  const cardBg    = '#FFFFFF'
+  const pageBg    = '#F3F1EC'
+  const border    = '#E4E2DC'
+  const danger    = '#B91C1C'
+  const success   = '#0F7A4C'
+  const serif     = "'Georgia','Times New Roman',serif"
+  const govInp = {
+    ...styles.inp, borderRadius:10, border:`1.5px solid ${border}`,
+    fontFamily:'system-ui,-apple-system,sans-serif', fontSize:13.5,
+    padding:'10px 13px', background:'#fff', transition:'border-color .15s, box-shadow .15s',
+  }
 
-  let sectionNo = 0
+  // Each section gets a distinct icon + accent color — real category
+  // encoding, not arbitrary decoration, so the eye can jump straight to
+  // the right part of a long form.
+  const SECTION_META = {
+    'Identification Particulars':   { icon:'🪪', color:'#4C5FD5' },
+    'Course & Class Particulars':   { icon:'🎓', color:'#1E2A5E' },
+    'Entrance & Interview':         { icon:'📝', color:'#B5651D' },
+    'Financial Particulars':        { icon:'💰', color:'#0F7A4C' },
+    'Family & Contact Particulars': { icon:'👨‍👩‍👦', color:'#A6335C' },
+    'Emergency Contact':            { icon:'🚨', color:'#B91C1C' },
+    'Enclosures':                   { icon:'📎', color:'#6B5B95' },
+  }
+
+  // Required-field keys per section, so each card can show real completion —
+  // not decorative numbering, an actual signal of what's left to do.
+  const SECTION_FIELDS = {
+    'Identification Particulars':  ['dob','gender','blood','category','religion','motherTongue','quota'],
+    'Course & Class Particulars':  ['course','cls','house','hostel_type','subtype','session'],
+    'Financial Particulars':       ['entranceScore','concessionAmt'],
+    'Family & Contact Particulars':['father','mother','phone','whatsapp','address','prevSchool'],
+    'Emergency Contact':           ['emergencyName','emergencyPhone'],
+    'Enclosures':                  ['docs'],
+  }
+  const sectionComplete = (title) => {
+    const keys = SECTION_FIELDS[title]
+    if (!keys) return true
+    return keys.every(k => {
+      if (k === 'docs') return form.docs.length > 0
+      if (k === 'subtype') return (COURSE_STRUCTURE[form.course]?.subtypes||[]).length === 0 || !!form.subtype
+      if (k === 'session') return !!activeSession || !!form.session?.trim()
+      if (k === 'category' || k === 'religion' || k === 'motherTongue' || k === 'quota') return form[k] && form[k] !== '--'
+      const v = form[k]
+      return v !== '' && v !== null && v !== undefined && !(typeof v === 'string' && !v.trim())
+    })
+  }
+
   const GovSection = ({ title, children }) => {
-    sectionNo += 1
+    const done = sectionComplete(title)
+    const meta = SECTION_META[title] || { icon:'▪', color:accent }
     return (
-      <div style={{ marginBottom:22 }}>
-        <div style={{ display:'flex', alignItems:'baseline', gap:8, borderBottom:`2px solid ${ink}`, paddingBottom:5, marginBottom:14 }}>
-          <span style={{ fontFamily:serif, fontWeight:700, fontSize:14, color:ink, minWidth:22 }}>{sectionNo}.</span>
-          <span style={{ fontFamily:serif, fontWeight:700, fontSize:14, color:ink, textTransform:'uppercase', letterSpacing:'.04em' }}>{title}</span>
+      <div style={{
+        background:cardBg, borderRadius:16, marginBottom:18, overflow:'hidden',
+        boxShadow: done ? '0 2px 12px rgba(15,122,76,.10)' : '0 2px 12px rgba(26,29,41,.06)',
+        border: `1px solid ${done ? '#CDE8D8' : '#EDEBE4'}`,
+        transition:'box-shadow .2s, transform .15s',
+      }}
+        onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+        onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+        <div style={{ height:4, background: done ? success : meta.color }} />
+        <div style={{ padding:'18px 22px 20px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
+            <div style={{
+              width:38, height:38, borderRadius:11, flexShrink:0,
+              background: done ? '#E8F6EE' : meta.color+'14',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:17,
+              transition:'background .2s',
+            }}>
+              {done ? <span style={{ color:success, fontWeight:900 }}>✓</span> : meta.icon}
+            </div>
+            <span style={{ fontWeight:700, fontSize:15, color:ink, letterSpacing:'-.01em' }}>{title}</span>
+            {done && <span style={{ marginLeft:'auto', fontSize:10.5, fontWeight:700, color:success, background:'#E8F6EE', padding:'3px 10px', borderRadius:99 }}>COMPLETE</span>}
+          </div>
+          {children}
         </div>
-        {children}
       </div>
     )
   }
   const GovField = ({ label, required, children }) => (
     <div>
-      <label style={{ display:'block', fontSize:11, fontWeight:600, color:inkSub, marginBottom:5, fontFamily:serif }}>
-        {label}{required && <span style={{ color:'#b91c1c' }}> *</span>}
+      <label style={{ display:'block', fontSize:11, fontWeight:700, color:inkSub, marginBottom:7, textTransform:'uppercase', letterSpacing:'.04em' }}>
+        {label}{required && <span style={{ color:danger }}> *</span>}
       </label>
       {children}
     </div>
   )
 
-  return (
-    <div style={{ background:'#fdfdfb', boxShadow:N.shadow('lg'), borderRadius:4, overflow:'hidden', marginBottom:16, border:'1px solid #c9c5ba' }}>
+  const [activeSectionIdx, setActiveSectionIdx] = useState(0)
+  const SECTION_NAMES = ['Identification Particulars','Course & Class Particulars','Entrance & Interview','Financial Particulars','Family & Contact Particulars','Emergency Contact','Enclosures']
+  const completedCount = SECTION_NAMES.filter(sectionComplete).length
 
-      {/* ── Official header ── */}
-      <div style={{ background:'#fdfdfb', borderBottom:`3px double ${ink}`, padding:'22px 28px 16px', position:'relative' }}>
-        <button onClick={handleCancel} style={{ position:'absolute', top:16, right:20, width:28, height:28, borderRadius:4, border:`1px solid ${ink}`, background:'transparent', cursor:'pointer', fontSize:14, color:ink }}>✕</button>
-        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-          <div style={{ width:56, height:56, borderRadius:'50%', border:`2px solid ${ink}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, fontFamily:serif }}>🎓</div>
-          <div style={{ textAlign:'center', flex:1 }}>
-            <div style={{ fontFamily:serif, fontSize:11, letterSpacing:'.15em', color:inkSub, textTransform:'uppercase' }}>Guidance Navodaya &amp; Sainik Institute</div>
-            <div style={{ fontFamily:serif, fontWeight:700, fontSize:19, color:ink, marginTop:2 }}>{editing ? 'Application Amendment Form' : 'Application Form for Admission'}</div>
+  const progressPct = (completedCount/SECTION_NAMES.length)*100
+  const ringR = 26, ringC = 2*Math.PI*ringR
+
+  return (
+    <div className="gnsi-adm-form" style={{ background:pageBg, boxShadow:'0 8px 40px rgba(26,29,41,.14)', borderRadius:22, overflow:'hidden', marginBottom:16, border:`1px solid ${border}` }}>
+      <style>{`
+        .gnsi-adm-form input, .gnsi-adm-form select, .gnsi-adm-form textarea {
+          outline: none;
+        }
+        .gnsi-adm-form input:focus, .gnsi-adm-form select:focus, .gnsi-adm-form textarea:focus {
+          border-color: ${accent} !important;
+          box-shadow: 0 0 0 3px ${accent}1F;
+        }
+        .gnsi-adm-form input:hover:not(:focus), .gnsi-adm-form select:hover:not(:focus) {
+          border-color: #C7C4BA;
+        }
+      `}</style>
+
+      {/* ── Hero header — layered geometric backdrop + circular progress ── */}
+      <div style={{ background:`linear-gradient(120deg, ${accent} 0%, #263B7A 55%, #2E3D7A 100%)`, padding:'28px 30px 24px', position:'relative', overflow:'hidden' }}>
+        {/* Decorative layered peaks — evokes ascent/achievement, fitting an exam-prep institute, not arbitrary shapes */}
+        <svg viewBox="0 0 400 120" preserveAspectRatio="none" style={{ position:'absolute', bottom:0, left:0, width:'100%', height:70, opacity:.5 }}>
+          <path d="M0,120 L0,70 L80,30 L160,60 L240,15 L320,50 L400,25 L400,120 Z" fill="rgba(255,255,255,.06)" />
+          <path d="M0,120 L0,90 L100,55 L200,80 L300,40 L400,65 L400,120 Z" fill="rgba(255,255,255,.05)" />
+        </svg>
+
+        <button onClick={handleCancel} style={{ position:'absolute', top:20, right:24, width:32, height:32, borderRadius:9, border:'1px solid rgba(255,255,255,.25)', background:'rgba(255,255,255,.1)', cursor:'pointer', fontSize:15, color:'#fff', zIndex:1 }}>✕</button>
+
+        <div style={{ display:'flex', alignItems:'center', gap:20, position:'relative', zIndex:1 }}>
+          <div style={{ width:56, height:56, borderRadius:16, background:'rgba(255,255,255,.14)', border:'1px solid rgba(255,255,255,.22)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, boxShadow:'0 4px 14px rgba(0,0,0,.15)' }}>🎓</div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:11, letterSpacing:'.14em', color:'rgba(255,255,255,.65)', textTransform:'uppercase', fontWeight:600 }}>Guidance Navodaya &amp; Sainik Institute</div>
+            <div style={{ fontFamily:serif, fontWeight:700, fontSize:21, color:'#fff', marginTop:3 }}>{editing ? 'Application Amendment' : 'Application for Admission'}</div>
             {activeSession && !editing && (
-              <div style={{ fontFamily:serif, fontSize:12, color:inkSub, marginTop:3 }}>
-                Academic Session {activeSession.session_name}{activeSession.is_locked && '  (Session Locked)'}
+              <div style={{ fontSize:12, color:'rgba(255,255,255,.72)', marginTop:5, fontWeight:500 }}>
+                {activeSession.session_name} Session {activeSession.is_locked && '· Locked'}
               </div>
             )}
           </div>
-          <div style={{ width:56 }} />
+
+          {/* Circular progress ring — same completion signal, more premium execution */}
+          <div style={{ position:'relative', width:64, height:64, flexShrink:0 }}>
+            <svg width="64" height="64" style={{ transform:'rotate(-90deg)' }}>
+              <circle cx="32" cy="32" r={ringR} fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="5" />
+              <circle cx="32" cy="32" r={ringR} fill="none" stroke="#5FE0A0" strokeWidth="5" strokeLinecap="round"
+                strokeDasharray={ringC} strokeDashoffset={ringC - (progressPct/100)*ringC}
+                style={{ transition:'stroke-dashoffset .4s ease' }} />
+            </svg>
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#fff' }}>
+              {Math.round(progressPct)}%
+            </div>
+          </div>
         </div>
-        <div style={{ textAlign:'center', fontSize:10, color:inkSub, marginTop:10, fontStyle:'italic' }}>
-          To be filled in BLOCK LETTERS by the applicant / parent / guardian
+
+        <div style={{ fontSize:11.5, color:'rgba(255,255,255,.7)', marginTop:16, fontWeight:600, position:'relative', zIndex:1 }}>
+          {completedCount} of {SECTION_NAMES.length} sections complete
         </div>
       </div>
 
-      <div style={{ padding:'24px 28px' }}>
+      <div style={{ padding:'26px 28px' }}>
 
-        {/* Photo + name — kept as its own strip, mirrors a govt form's photo box */}
-        <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:20, padding:'12px 14px', border:`1px solid #c9c5ba`, background:'#fff' }}>
-          <Avatar name={form.name} size={56} photoUrl={form.photoUrl} />
+        {/* Photo + name */}
+        <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:18, padding:'16px 18px', border:`1.5px solid ${border}`, borderRadius:14, background:cardBg }}>
+          <Avatar name={form.name} size={58} photoUrl={form.photoUrl} />
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:11, fontWeight:600, color:inkSub, marginBottom:4, fontFamily:serif }}>Passport Photo URL</div>
-            <input style={{ ...govInp, width:'100%', maxWidth:320 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https:// or Supabase Storage URL" />
+            <div style={{ fontSize:12, fontWeight:600, color:inkSub, marginBottom:5 }}>Passport Photo URL</div>
+            <input style={{ ...govInp, width:'100%', maxWidth:340 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https:// or Supabase Storage URL" />
           </div>
         </div>
 
@@ -1381,7 +1491,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               {gccDup && <div style={{ fontSize:11, color:'#b91c1c', marginTop:3, fontWeight:700 }}>⚠ GCC {form.gcc} already exists!</div>}
             </GovField>
             <GovField label="Admission No.">
-              <input style={{ ...govInp, background:'#f2f1ec', color:'#8a8a8a' }} value="Auto-generated on save" readOnly />
+              <input style={{ ...govInp, background:'#F4F3EF', color:'#9CA0AC' }} value="Auto-generated on save" readOnly />
             </GovField>
             <GovField label="Date of Birth" required>
               <input type="date" style={govInp} value={form.dob} onChange={e=>set('dob',e.target.value)} />
@@ -1454,7 +1564,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
             </GovField>
             <GovField label={activeSession && !editing ? 'Session (auto)' : 'Session'} required={!activeSession}>
               {activeSession && !editing
-                ? <input style={{ ...govInp, background:'#f2f1ec', color:ink, fontWeight:700 }} value={activeSession.session_name} readOnly />
+                ? <input style={{ ...govInp, background:accentLt, color:accent, fontWeight:700 }} value={activeSession.session_name} readOnly />
                 : <input style={govInp} value={form.session} onChange={e=>set('session',e.target.value)} placeholder="e.g. 2025-2026" />
               }
             </GovField>
@@ -1468,7 +1578,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               )}
             </GovField>
             <GovField label="Hostel Type" required>
-              <select style={{ ...govInp, background:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#f2f1ec':'#fff', color:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#8a8a8a':ink }}
+              <select style={{ ...govInp, background:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#F4F3EF':'#fff', color:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#9CA0AC':ink }}
                 value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>
                 {HOSTEL_TYPES.map(h=><option key={h} value={h}>{h}</option>)}
               </select>
@@ -1487,18 +1597,18 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </div>
 
           {form.house && !warden && (
-            <div style={{ marginTop:12, fontSize:12, color:'#92400e', fontFamily:serif, fontStyle:'italic' }}>
-              Note: No active housemaster on file for {form.house}
+            <div style={{ marginTop:14, display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:'#92400e', background:'#FEF3E2', padding:'6px 12px', borderRadius:8, fontWeight:600 }}>
+              ⚠ No active housemaster on file for {form.house}
             </div>
           )}
           {warden && (
-            <div style={{ marginTop:12, fontSize:12, color:inkSub, fontFamily:serif }}>
-              Housemaster on record — {warden.designation || 'Warden'}: <strong>{warden.name}</strong>{warden.phone ? ` (${warden.phone})` : ''}
+            <div style={{ marginTop:14, display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:inkSub, background:accentLt, padding:'6px 12px', borderRadius:8 }}>
+              👤 {warden.designation || 'Warden'}: <strong style={{ color:ink }}>{warden.name}</strong>{warden.phone ? ` (${warden.phone})` : ''}
             </div>
           )}
-          <div style={{ marginTop:10, fontSize:12, color:inkSub, fontFamily:serif, borderTop:'1px solid #c9c5ba', paddingTop:8 }}>
-            Classification: <strong>{derivedHostelType}</strong> &nbsp;|&nbsp; Base Fee: <strong>₹{fmt(baseRate)}/month</strong>
-            {form.scholarshipPct > 0 && <> &nbsp;|&nbsp; After Scholarship: <strong>₹{fmt(discRate)}/month</strong></>}
+          <div style={{ marginTop:14, fontSize:12.5, color:inkSub, borderTop:`1px solid ${border}`, paddingTop:12, fontWeight:500 }}>
+            Classification: <strong style={{ color:ink }}>{derivedHostelType}</strong> &nbsp;·&nbsp; Base Fee: <strong style={{ color:ink }}>₹{fmt(baseRate)}/month</strong>
+            {form.scholarshipPct > 0 && <> &nbsp;·&nbsp; After Scholarship: <strong style={{ color:success }}>₹{fmt(discRate)}/month</strong></>}
           </div>
         </GovSection>
 
@@ -1566,35 +1676,35 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 
         <GovSection title={`Enclosures — at least 1 required (${form.docs.length} of ${ADM_DOCS.length} attached)`}>
           {form.docs.length === 0 && (
-            <div style={{ fontSize:11, color:'#b91c1c', fontFamily:serif, marginBottom:8, fontWeight:600 }}>⚠ Select at least one document</div>
+            <div style={{ fontSize:12, color:danger, marginBottom:10, fontWeight:600 }}>⚠ Select at least one document</div>
           )}
           <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
             {ADM_DOCS.map(d => (
               <button key={d} onClick={() => toggleDoc(d)}
-                style={{ padding:'5px 12px', borderRadius:2, border:`1px solid ${form.docs.includes(d)?ink:'#8a8a8a'}`, background:form.docs.includes(d)?'#f2f1ec':'#fff', cursor:'pointer', fontSize:12, fontFamily:serif, color:ink, display:'flex', alignItems:'center', gap:5 }}>
-                {form.docs.includes(d) ? '☑' : '☐'} {d}
+                style={{ padding:'7px 14px', borderRadius:9, border:`1.5px solid ${form.docs.includes(d)?success:border}`, background:form.docs.includes(d)?'#EAF7EF':'#fff', cursor:'pointer', fontSize:12.5, fontWeight:600, color:form.docs.includes(d)?success:inkSub, display:'flex', alignItems:'center', gap:6, transition:'all .15s' }}>
+                {form.docs.includes(d) ? '✓' : '○'} {d}
               </button>
             ))}
           </div>
         </GovSection>
 
         {/* ── Declaration ── */}
-        <div style={{ border:`1px solid ${ink}`, padding:'16px 18px', marginBottom:22, background:'#fff' }}>
-          <div style={{ fontFamily:serif, fontWeight:700, fontSize:13, color:ink, marginBottom:8, textTransform:'uppercase', letterSpacing:'.04em' }}>Declaration</div>
-          <p style={{ fontFamily:serif, fontSize:12.5, color:inkSub, lineHeight:1.6, marginBottom:12 }}>
+        <div style={{ border:`1.5px solid ${accent}`, borderRadius:14, padding:'20px 22px', marginBottom:18, background:accentLt }}>
+          <div style={{ fontWeight:700, fontSize:14, color:accent, marginBottom:10 }}>Declaration</div>
+          <p style={{ fontSize:13, color:inkSub, lineHeight:1.65, marginBottom:14 }}>
             I hereby declare that the particulars furnished above are true and correct to the best of my knowledge and belief.
             I understand that any false statement or suppression of material fact may lead to cancellation of admission at any stage.
             I agree to abide by the rules and regulations of the Institute as applicable from time to time.
           </p>
           <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
-            <input type="checkbox" checked={declared} onChange={e=>setDeclared(e.target.checked)} style={{ width:16, height:16, cursor:'pointer' }} />
-            <span style={{ fontSize:12.5, fontFamily:serif, color:ink, fontWeight:600 }}>I confirm the above declaration</span>
+            <input type="checkbox" checked={declared} onChange={e=>setDeclared(e.target.checked)} style={{ width:17, height:17, cursor:'pointer', accentColor:accent }} />
+            <span style={{ fontSize:13, color:ink, fontWeight:600 }}>I confirm the above declaration</span>
           </label>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginTop:22 }}>
-            <div style={{ borderTop:`1px solid ${ink}`, paddingTop:6, textAlign:'center', fontSize:11, fontFamily:serif, color:inkSub }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginTop:24 }}>
+            <div style={{ borderTop:`1.5px solid ${accent}`, paddingTop:7, textAlign:'center', fontSize:11.5, color:inkSub, fontWeight:500 }}>
               Signature of Parent / Guardian
             </div>
-            <div style={{ borderTop:`1px solid ${ink}`, paddingTop:6, textAlign:'center', fontSize:11, fontFamily:serif, color:inkSub }}>
+            <div style={{ borderTop:`1.5px solid ${accent}`, paddingTop:7, textAlign:'center', fontSize:11.5, color:inkSub, fontWeight:500 }}>
               Date: {form.followupDate || new Date().toISOString().slice(0,10)}
             </div>
           </div>
@@ -1603,24 +1713,24 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
         {(() => {
           const missing = validateApplicationData({ ...form, hasActiveSession: !!activeSession })
           return missing && (
-            <div style={{ fontSize:11, color:'#b91c1c', fontFamily:serif, marginBottom:10, padding:'8px 12px', border:'1px solid #b91c1c', background:'#fef2f2' }}>
+            <div style={{ fontSize:12.5, color:danger, marginBottom:14, padding:'10px 14px', borderRadius:10, background:'#FDECEC', fontWeight:500 }}>
               <strong>Incomplete:</strong> {Object.values(missing).join(' · ')}
             </div>
           )
         })()}
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid #c9c5ba`, paddingTop:18 }}>
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid ${border}`, paddingTop:20 }}>
           <button onClick={() => onSave(editing?.id||null, form)} disabled={gccDup || !declared}
-            style={{ padding:'11px 26px', borderRadius:2, background:(gccDup||!declared)?'#b8b4a8':ink, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:(gccDup||!declared)?'not-allowed':'pointer', fontFamily:serif, letterSpacing:'.03em' }}>
-            {editing ? 'SUBMIT AMENDMENT' : 'SUBMIT APPLICATION'}
+            style={{ padding:'12px 28px', borderRadius:11, background:(gccDup||!declared)?'#C7C5BD':`linear-gradient(135deg,${accent},#2E3D7A)`, color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:(gccDup||!declared)?'not-allowed':'pointer', boxShadow: (gccDup||!declared) ? 'none' : '0 2px 10px rgba(30,42,94,.25)', transition:'all .15s' }}>
+            {editing ? 'Submit Amendment' : 'Submit Application'}
           </button>
-          <button onClick={handleCancel} style={{ padding:'11px 18px', borderRadius:2, border:`1px solid ${ink}`, background:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', color:ink, fontFamily:serif }}>Cancel</button>
+          <button onClick={handleCancel} style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${border}`, background:'#fff', fontSize:13.5, fontWeight:600, cursor:'pointer', color:inkSub }}>Cancel</button>
           {editing && (
             <button onClick={() => printAdmitCard(editing)}
-              style={{ padding:'11px 18px', borderRadius:2, border:`1px solid ${ink}`, background:'#f2f1ec', color:ink, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:serif }}>Print Admit Card</button>
+              style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${accent}30`, background:accentLt, color:accent, fontSize:13.5, fontWeight:600, cursor:'pointer' }}>Print Admit Card</button>
           )}
         </div>
         {!declared && (
-          <div style={{ fontSize:11, color:'#92400e', marginTop:8, fontFamily:serif, fontStyle:'italic' }}>
+          <div style={{ fontSize:12, color:'#92400e', marginTop:10, fontWeight:500 }}>
             Please confirm the declaration above before submitting.
           </div>
         )}
