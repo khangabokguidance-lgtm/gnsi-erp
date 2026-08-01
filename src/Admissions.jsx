@@ -3287,7 +3287,7 @@ export default function Admissions() {
   const [waBlastApps,    setWABlastApps]   = useState(null)
   const [showCSVImport,  setShowCSVImport] = useState(false)
   const [tableMode,      setTableMode]     = useState(false)
-  const [layoutMode,     setLayoutMode]    = useState('card') // 'card' | 'table' | 'kanban' | 'gallery'
+  const [layoutMode,     setLayoutMode]    = useState('gallery') // 'card' | 'table' | 'kanban' | 'gallery'
   useEffect(() => { setTableMode(layoutMode === 'table') }, [layoutMode])
   const [darkMode,       setDarkMode]      = useState(false)
   const [showPresets,    setShowPresets]   = useState(false)
