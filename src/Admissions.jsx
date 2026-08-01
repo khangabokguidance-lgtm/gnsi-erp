@@ -1199,8 +1199,94 @@ function printBulkList(apps) {
   win.document.close()
 }
 
+// ── Application form design system — module-level so these never get
+// redefined on re-render. (Previously GovSection/GovField were defined as
+// `const` INSIDE AdmForm's function body — every keystroke triggered a
+// re-render, which created brand-new function references for them each
+// time. React then treated every <GovSection>/<GovField> as a completely
+// different component type than the previous render, so it unmounted and
+// remounted the entire form body on every keystroke — resetting scroll
+// position to the top and disrupting focus. Moving them out here means
+// their identity is stable across every re-render.)
+const ADM_ACCENT   = '#1E2A5E'
+const ADM_ACCENT_LT= '#EEF0F8'
+const ADM_INK      = '#1A1D29'
+const ADM_INK_SUB  = '#6B7080'
+const ADM_CARD_BG  = '#FFFFFF'
+const ADM_PAGE_BG  = '#F3F1EC'
+const ADM_BORDER   = '#E4E2DC'
+const ADM_DANGER   = '#B91C1C'
+const ADM_SUCCESS  = '#0F7A4C'
+const ADM_SERIF    = "'Georgia','Times New Roman',serif"
+
+// Each section gets a distinct icon + accent color — real category
+// encoding, not arbitrary decoration, so the eye can jump straight to
+// the right part of a long form.
+const SECTION_META = {
+  'Identification Particulars':   { icon:'🪪', color:'#4C5FD5' },
+  'Course & Class Particulars':   { icon:'🎓', color:'#1E2A5E' },
+  'Entrance & Interview':         { icon:'📝', color:'#B5651D' },
+  'Financial Particulars':        { icon:'💰', color:'#0F7A4C' },
+  'Family & Contact Particulars': { icon:'👨‍👩‍👦', color:'#A6335C' },
+  'Emergency Contact':            { icon:'🚨', color:'#B91C1C' },
+  'Enclosures':                   { icon:'📎', color:'#6B5B95' },
+}
+
+// Required-field keys per section, so each card can show real completion —
+// not decorative numbering, an actual signal of what's left to do.
+const SECTION_FIELDS = {
+  'Identification Particulars':  ['dob','gender','blood','category','religion','motherTongue','quota'],
+  'Course & Class Particulars':  ['course','cls','house','hostel_type','subtype','session'],
+  'Financial Particulars':       ['entranceScore','concessionAmt'],
+  'Family & Contact Particulars':['father','mother','phone','whatsapp','address','prevSchool'],
+  'Emergency Contact':           ['emergencyName','emergencyPhone'],
+  'Enclosures':                  ['docs'],
+}
+
+function GovSection({ title, done, metaKey, children }) {
+  const meta = SECTION_META[metaKey || title] || { icon:'▪', color:ADM_ACCENT }
+  return (
+    <div style={{
+      background:ADM_CARD_BG, borderRadius:16, marginBottom:18, overflow:'hidden',
+      boxShadow: done ? '0 2px 12px rgba(15,122,76,.10)' : '0 2px 12px rgba(26,29,41,.06)',
+      border: `1px solid ${done ? '#CDE8D8' : '#EDEBE4'}`,
+      transition:'box-shadow .2s, transform .15s',
+    }}
+      onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+      onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+      <div style={{ height:4, background: done ? ADM_SUCCESS : meta.color }} />
+      <div style={{ padding:'18px 22px 20px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
+          <div style={{
+            width:38, height:38, borderRadius:11, flexShrink:0,
+            background: done ? '#E8F6EE' : meta.color+'14',
+            display:'flex', alignItems:'center', justifyContent:'center', fontSize:17,
+            transition:'background .2s',
+          }}>
+            {done ? <span style={{ color:ADM_SUCCESS, fontWeight:900 }}>✓</span> : meta.icon}
+          </div>
+          <span style={{ fontWeight:700, fontSize:15, color:ADM_INK, letterSpacing:'-.01em' }}>{title}</span>
+          {done && <span style={{ marginLeft:'auto', fontSize:10.5, fontWeight:700, color:ADM_SUCCESS, background:'#E8F6EE', padding:'3px 10px', borderRadius:99 }}>COMPLETE</span>}
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function GovField({ label, required, children }) {
+  return (
+    <div>
+      <label style={{ display:'block', fontSize:11, fontWeight:700, color:ADM_INK_SUB, marginBottom:7, textTransform:'uppercase', letterSpacing:'.04em' }}>
+        {label}{required && <span style={{ color:ADM_DANGER }}> *</span>}
+      </label>
+      {children}
+    </div>
+  )
+}
+
 // ─── Application Form ──────────────────────────────────────────────────────────
-function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersByHouse={} }) {
+function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersByHouse={}, sessionOptions=[] }) {
   const def = (k, fb='') => editing ? (editing[k] ?? fb) : fb
   const defaultSession = editing ? def('session') : (activeSession?.session_name || '')
 
@@ -1347,48 +1433,26 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 
   const [declared, setDeclared] = useState(false)
 
-  // ── Professional form design system — local to this form only.
-  // Palette: deep indigo-navy accent (institute/exam-prep register, not
-  // generic SaaS purple), warm-neutral surfaces, emerald for "complete".
-  const accent    = '#1E2A5E'
-  const accentLt  = '#EEF0F8'
-  const ink       = '#1A1D29'
-  const inkSub    = '#6B7080'
-  const cardBg    = '#FFFFFF'
-  const pageBg    = '#F3F1EC'
-  const border    = '#E4E2DC'
-  const danger    = '#B91C1C'
-  const success   = '#0F7A4C'
-  const serif     = "'Georgia','Times New Roman',serif"
+  // ── Professional form design system — values sourced from module-level
+  // constants (defined above AdmForm) so GovSection/GovField never get
+  // redefined here; these local aliases just keep the shorter names used
+  // throughout the rest of this component's JSX.
+  const accent    = ADM_ACCENT
+  const accentLt  = ADM_ACCENT_LT
+  const ink       = ADM_INK
+  const inkSub    = ADM_INK_SUB
+  const cardBg    = ADM_CARD_BG
+  const pageBg    = ADM_PAGE_BG
+  const border    = ADM_BORDER
+  const danger    = ADM_DANGER
+  const success   = ADM_SUCCESS
+  const serif     = ADM_SERIF
   const govInp = {
     ...styles.inp, borderRadius:10, border:`1.5px solid ${border}`,
     fontFamily:'system-ui,-apple-system,sans-serif', fontSize:13.5,
     padding:'10px 13px', background:'#fff', transition:'border-color .15s, box-shadow .15s',
   }
 
-  // Each section gets a distinct icon + accent color — real category
-  // encoding, not arbitrary decoration, so the eye can jump straight to
-  // the right part of a long form.
-  const SECTION_META = {
-    'Identification Particulars':   { icon:'🪪', color:'#4C5FD5' },
-    'Course & Class Particulars':   { icon:'🎓', color:'#1E2A5E' },
-    'Entrance & Interview':         { icon:'📝', color:'#B5651D' },
-    'Financial Particulars':        { icon:'💰', color:'#0F7A4C' },
-    'Family & Contact Particulars': { icon:'👨‍👩‍👦', color:'#A6335C' },
-    'Emergency Contact':            { icon:'🚨', color:'#B91C1C' },
-    'Enclosures':                   { icon:'📎', color:'#6B5B95' },
-  }
-
-  // Required-field keys per section, so each card can show real completion —
-  // not decorative numbering, an actual signal of what's left to do.
-  const SECTION_FIELDS = {
-    'Identification Particulars':  ['dob','gender','blood','category','religion','motherTongue','quota'],
-    'Course & Class Particulars':  ['course','cls','house','hostel_type','subtype','session'],
-    'Financial Particulars':       ['entranceScore','concessionAmt'],
-    'Family & Contact Particulars':['father','mother','phone','whatsapp','address','prevSchool'],
-    'Emergency Contact':           ['emergencyName','emergencyPhone'],
-    'Enclosures':                  ['docs'],
-  }
   const sectionComplete = (title) => {
     const keys = SECTION_FIELDS[title]
     if (!keys) return true
@@ -1401,46 +1465,6 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
       return v !== '' && v !== null && v !== undefined && !(typeof v === 'string' && !v.trim())
     })
   }
-
-  const GovSection = ({ title, children }) => {
-    const done = sectionComplete(title)
-    const meta = SECTION_META[title] || { icon:'▪', color:accent }
-    return (
-      <div style={{
-        background:cardBg, borderRadius:16, marginBottom:18, overflow:'hidden',
-        boxShadow: done ? '0 2px 12px rgba(15,122,76,.10)' : '0 2px 12px rgba(26,29,41,.06)',
-        border: `1px solid ${done ? '#CDE8D8' : '#EDEBE4'}`,
-        transition:'box-shadow .2s, transform .15s',
-      }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
-        <div style={{ height:4, background: done ? success : meta.color }} />
-        <div style={{ padding:'18px 22px 20px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
-            <div style={{
-              width:38, height:38, borderRadius:11, flexShrink:0,
-              background: done ? '#E8F6EE' : meta.color+'14',
-              display:'flex', alignItems:'center', justifyContent:'center', fontSize:17,
-              transition:'background .2s',
-            }}>
-              {done ? <span style={{ color:success, fontWeight:900 }}>✓</span> : meta.icon}
-            </div>
-            <span style={{ fontWeight:700, fontSize:15, color:ink, letterSpacing:'-.01em' }}>{title}</span>
-            {done && <span style={{ marginLeft:'auto', fontSize:10.5, fontWeight:700, color:success, background:'#E8F6EE', padding:'3px 10px', borderRadius:99 }}>COMPLETE</span>}
-          </div>
-          {children}
-        </div>
-      </div>
-    )
-  }
-  const GovField = ({ label, required, children }) => (
-    <div>
-      <label style={{ display:'block', fontSize:11, fontWeight:700, color:inkSub, marginBottom:7, textTransform:'uppercase', letterSpacing:'.04em' }}>
-        {label}{required && <span style={{ color:danger }}> *</span>}
-      </label>
-      {children}
-    </div>
-  )
 
   const [activeSectionIdx, setActiveSectionIdx] = useState(0)
   const SECTION_NAMES = ['Identification Particulars','Course & Class Particulars','Entrance & Interview','Financial Particulars','Family & Contact Particulars','Emergency Contact','Enclosures']
@@ -1522,7 +1546,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </GovField>
         </div>
 
-        <GovSection title="Identification Particulars">
+        <GovSection title="Identification Particulars" done={sectionComplete("Identification Particulars")}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <GovField label="GCC No." required>
               <input
@@ -1601,7 +1625,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </div>
         </GovSection>
 
-        <GovSection title="Course &amp; Class Particulars">
+        <GovSection title="Course &amp; Class Particulars" done={sectionComplete("Course & Class Particulars")}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:14 }}>
             <GovField label="Course" required>
               <select style={govInp} value={form.course} onChange={e=>set('course',e.target.value)}>
@@ -1621,11 +1645,41 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                 {CLASSES_LIST.map(c=><option key={c}>{c}</option>)}
               </select>
             </GovField>
-            <GovField label={activeSession && !editing ? 'Session (auto)' : 'Session'} required={!activeSession}>
-              {activeSession && !editing
-                ? <input style={{ ...govInp, background:accentLt, color:accent, fontWeight:700 }} value={activeSession.session_name} readOnly />
-                : <input style={govInp} value={form.session} onChange={e=>set('session',e.target.value)} placeholder="e.g. 2025-2026" />
-              }
+            <GovField label="Session" required>
+              {(() => {
+                // Combine known sessions (from real applications) with the
+                // current active session, in case it has zero applications
+                // yet (e.g. a session just created in admin). De-duplicated,
+                // newest first.
+                const allSessions = [...new Set([
+                  ...(activeSession ? [activeSession.session_name] : []),
+                  ...sessionOptions,
+                ])]
+                return (
+                  <>
+                    <select
+                      style={{ ...govInp, fontWeight:600 }}
+                      value={allSessions.includes(form.session) ? form.session : '__other__'}
+                      onChange={e => {
+                        if (e.target.value === '__other__') { set('session', '') }
+                        else set('session', e.target.value)
+                      }}
+                    >
+                      {allSessions.map(s => <option key={s} value={s}>{s}</option>)}
+                      <option value="__other__">Other / type manually…</option>
+                    </select>
+                    {(!allSessions.includes(form.session)) && (
+                      <input
+                        style={{ ...govInp, marginTop:8 }}
+                        value={form.session}
+                        onChange={e => set('session', e.target.value)}
+                        placeholder="e.g. 2027-2028"
+                        autoFocus
+                      />
+                    )}
+                  </>
+                )
+              })()}
             </GovField>
             <GovField label="House / Block" required>
               <select style={govInp} value={form.house} onChange={e=>set('house',e.target.value)}>
@@ -1671,7 +1725,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </div>
         </GovSection>
 
-        <GovSection title="Entrance &amp; Interview">
+        <GovSection title="Entrance &amp; Interview" done={sectionComplete("Entrance & Interview")}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <GovField label="Entrance Score" required>
               <input style={govInp} type="number" value={form.entranceScore} onChange={e=>set('entranceScore',e.target.value)} placeholder="Out of 100" />
@@ -1685,7 +1739,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </div>
         </GovSection>
 
-        <GovSection title="Financial Particulars">
+        <GovSection title="Financial Particulars" done={sectionComplete("Financial Particulars")}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <GovField label="Scholarship %">
               <input style={govInp} type="number" min="0" max="100" value={form.scholarshipPct} onChange={e=>set('scholarshipPct',e.target.value)} placeholder="e.g. 25" />
@@ -1709,7 +1763,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </div>
         </GovSection>
 
-        <GovSection title="Family &amp; Contact Particulars">
+        <GovSection title="Family &amp; Contact Particulars" done={sectionComplete("Family & Contact Particulars")}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <GovField label="Father's Name" required><input style={govInp} value={form.father} onChange={e=>set('father',e.target.value)} /></GovField>
             <GovField label="Mother's Name" required><input style={govInp} value={form.mother} onChange={e=>set('mother',e.target.value)} /></GovField>
@@ -1725,7 +1779,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </div>
         </GovSection>
 
-        <GovSection title="Emergency Contact">
+        <GovSection title="Emergency Contact" done={sectionComplete("Emergency Contact")}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <GovField label="Name" required><input style={govInp} value={form.emergencyName} onChange={e=>set('emergencyName',e.target.value)} placeholder="Contact name" /></GovField>
             <GovField label="Phone" required><input style={govInp} value={form.emergencyPhone} onChange={e=>set('emergencyPhone',e.target.value)} /></GovField>
@@ -1733,7 +1787,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           </div>
         </GovSection>
 
-        <GovSection title={`Enclosures — at least 1 required (${form.docs.length} of ${ADM_DOCS.length} attached)`}>
+        <GovSection title={`Enclosures — at least 1 required (${form.docs.length} of ${ADM_DOCS.length} attached)`} done={sectionComplete("Enclosures")} metaKey="Enclosures">
           {form.docs.length === 0 && (
             <div style={{ fontSize:12, color:danger, marginBottom:10, fontWeight:600 }}>⚠ Select at least one document</div>
           )}
@@ -2404,6 +2458,204 @@ function GalleryGrid({ apps, onDetail, onSelect, selectedIds, isMobile, isTablet
       {apps.map(a => (
         <GalleryCard key={a.id} a={a} onDetail={onDetail} onSelect={onSelect} selected={selectedIds.has(a.id)} />
       ))}
+    </div>
+  )
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SESSION MANAGER — list, create, lock/unlock, and set the active
+// admission_sessions row. Only ONE session may be is_active=true at a time
+// (confirmed invariant on the live data), so "Set Active" always deactivates
+// whichever other session currently holds it, in the same transaction-like
+// sequence (deactivate old, then activate new) so there's never a moment
+// with zero or two active sessions from a normal click.
+// ═════════════════════════════════════════════════════════════════════════════
+
+function SessionManager({ onChanged, darkMode }) {
+  const [sessions, setSessions] = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName]   = useState('')
+  const [newLabel, setNewLabel] = useState('')
+  const [newStart, setNewStart] = useState('')
+  const [newEnd, setNewEnd]     = useState('')
+  const [newSeats, setNewSeats] = useState('')
+  const [busyId, setBusyId]     = useState(null)
+  const [err, setErr]           = useState('')
+
+  const tx = darkMode ? '#F5F5F7' : N.text
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase.from('admission_sessions').select('*').order('session_name', { ascending:false })
+    if (!error) setSessions(data || [])
+    setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const validateSessionName = (name) => /^\d{4}-\d{4}$/.test(name.trim())
+
+  const handleCreate = async () => {
+    setErr('')
+    const name = newName.trim()
+    if (!validateSessionName(name)) { setErr('Session name must be in the form YYYY-YYYY, e.g. 2027-2028'); return }
+    if (sessions.some(s => s.session_name === name)) { setErr(`Session "${name}" already exists`); return }
+    setBusyId('new')
+    const { error } = await supabase.from('admission_sessions').insert({
+      session_name: name,
+      label: newLabel.trim() || null,
+      start_date: newStart || null,
+      end_date: newEnd || null,
+      total_seats: newSeats ? parseInt(newSeats) : null,
+      is_active: false,
+      is_locked: false,
+    })
+    setBusyId(null)
+    if (error) { setErr('Create failed: ' + error.message); return }
+    setNewName(''); setNewLabel(''); setNewStart(''); setNewEnd(''); setNewSeats('')
+    setCreating(false)
+    await load()
+    onChanged?.()
+  }
+
+  const handleSetActive = async (session) => {
+    if (session.is_active) return
+    if (!confirm(`Make "${session.session_name}" the active session? This affects the whole app, not just Admissions.`)) return
+    setBusyId(session.id)
+    // Deactivate whichever session currently holds is_active, then activate
+    // the chosen one — kept as two sequential calls (not a single bulk
+    // update) so a failure on the second step leaves at most the OLD
+        // session active rather than none, never leaving zero active sessions
+    // silently.
+    const currentActive = sessions.find(s => s.is_active)
+    if (currentActive && currentActive.id !== session.id) {
+      const { error: deactErr } = await supabase.from('admission_sessions').update({ is_active: false }).eq('id', currentActive.id)
+      if (deactErr) { setBusyId(null); setErr('Failed to deactivate current session: ' + deactErr.message); return }
+    }
+    const { error: actErr } = await supabase.from('admission_sessions').update({ is_active: true }).eq('id', session.id)
+    setBusyId(null)
+    if (actErr) { setErr('Failed to activate session: ' + actErr.message); return }
+    await load()
+    onChanged?.()
+  }
+
+  const handleToggleLock = async (session) => {
+    setBusyId(session.id)
+    const { error } = await supabase.from('admission_sessions').update({ is_locked: !session.is_locked }).eq('id', session.id)
+    setBusyId(null)
+    if (error) { setErr('Failed to update lock: ' + error.message); return }
+    await load()
+    onChanged?.()
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), padding:16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:creating?14:0 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:N.muted2, textTransform:'uppercase', letterSpacing:'.05em' }}>
+            📅 Session Management
+          </div>
+          <button onClick={()=>{ setCreating(v=>!v); setErr('') }}
+            style={{ padding:'7px 14px', borderRadius:8, border:'none', background: creating?T.slate[100]:N.indigo, color: creating?T.slate[600]:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+            {creating ? 'Cancel' : '+ New Session'}
+          </button>
+        </div>
+
+        {creating && (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:10, marginTop:4 }}>
+            <div>
+              <label style={{ fontSize:11, fontWeight:600, color:N.muted, display:'block', marginBottom:4 }}>Session Name *</label>
+              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="e.g. 2027-2028"
+                style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${N.border}`, fontSize:13 }} />
+            </div>
+            <div>
+              <label style={{ fontSize:11, fontWeight:600, color:N.muted, display:'block', marginBottom:4 }}>Label</label>
+              <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Academic Year 2027-28"
+                style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${N.border}`, fontSize:13 }} />
+            </div>
+            <div>
+              <label style={{ fontSize:11, fontWeight:600, color:N.muted, display:'block', marginBottom:4 }}>Start Date</label>
+              <input type="date" value={newStart} onChange={e=>setNewStart(e.target.value)}
+                style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${N.border}`, fontSize:13 }} />
+            </div>
+            <div>
+              <label style={{ fontSize:11, fontWeight:600, color:N.muted, display:'block', marginBottom:4 }}>End Date</label>
+              <input type="date" value={newEnd} onChange={e=>setNewEnd(e.target.value)}
+                style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${N.border}`, fontSize:13 }} />
+            </div>
+            <div>
+              <label style={{ fontSize:11, fontWeight:600, color:N.muted, display:'block', marginBottom:4 }}>Total Seats</label>
+              <input type="number" value={newSeats} onChange={e=>setNewSeats(e.target.value)} placeholder="Optional"
+                style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:`1px solid ${N.border}`, fontSize:13 }} />
+            </div>
+            <div style={{ display:'flex', alignItems:'flex-end' }}>
+              <button onClick={handleCreate} disabled={busyId==='new'}
+                style={{ width:'100%', padding:'9px', borderRadius:8, border:'none', background:T.emerald[600], color:'#fff', fontSize:12, fontWeight:700, cursor:busyId==='new'?'not-allowed':'pointer', opacity:busyId==='new'?.7:1 }}>
+                {busyId==='new' ? 'Creating…' : 'Create Session'}
+              </button>
+            </div>
+          </div>
+        )}
+        {err && <div style={{ marginTop:10, fontSize:12, color:T.rose[600], fontWeight:600 }}>⚠ {err}</div>}
+      </div>
+
+      <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), overflow:'hidden' }}>
+        {loading ? (
+          <div style={{ padding:40, textAlign:'center', color:N.muted, fontSize:13 }}>Loading sessions…</div>
+        ) : sessions.length === 0 ? (
+          <div style={{ padding:40, textAlign:'center', color:N.muted, fontSize:13 }}>No sessions yet — create one above.</div>
+        ) : (
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <thead>
+              <tr style={{ background:N.bg2 }}>
+                {['Session','Label','Dates','Seats','Status','Actions'].map(h => (
+                  <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontWeight:700, color:N.muted2, fontSize:11, textTransform:'uppercase', letterSpacing:'.04em' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map(s => (
+                <tr key={s.id} style={{ borderBottom:`1px solid ${N.border}` }}>
+                  <td style={{ padding:'12px 14px', fontWeight:700, color:tx }}>{s.session_name}</td>
+                  <td style={{ padding:'12px 14px', color:N.muted }}>{s.label || '—'}</td>
+                  <td style={{ padding:'12px 14px', color:N.muted, fontSize:12 }}>
+                    {s.start_date || s.end_date ? `${s.start_date||'?'} → ${s.end_date||'?'}` : '—'}
+                  </td>
+                  <td style={{ padding:'12px 14px', color:N.muted }}>{s.total_seats ?? '—'}</td>
+                  <td style={{ padding:'12px 14px' }}>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      {s.is_active && (
+                        <span style={{ fontSize:10.5, fontWeight:700, color:T.emerald[700], background:T.emerald[50], padding:'3px 10px', borderRadius:99 }}>● ACTIVE</span>
+                      )}
+                      {s.is_locked && (
+                        <span style={{ fontSize:10.5, fontWeight:700, color:T.rose[700], background:T.rose[50], padding:'3px 10px', borderRadius:99 }}>🔒 LOCKED</span>
+                      )}
+                      {!s.is_active && !s.is_locked && (
+                        <span style={{ fontSize:10.5, color:N.muted }}>—</span>
+                      )}
+                    </div>
+                  </td>
+                  <td style={{ padding:'12px 14px' }}>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      <button onClick={()=>handleSetActive(s)} disabled={s.is_active || busyId===s.id}
+                        style={{ padding:'5px 11px', borderRadius:7, border:'none', fontSize:11, fontWeight:700, cursor:(s.is_active||busyId===s.id)?'not-allowed':'pointer',
+                          background: s.is_active ? T.slate[100] : T.indigo[50], color: s.is_active ? T.slate[400] : T.indigo[700], opacity: busyId===s.id?.6:1 }}>
+                        {s.is_active ? 'Active' : 'Set Active'}
+                      </button>
+                      <button onClick={()=>handleToggleLock(s)} disabled={busyId===s.id}
+                        style={{ padding:'5px 11px', borderRadius:7, border:'none', fontSize:11, fontWeight:700, cursor:'pointer',
+                          background: s.is_locked ? T.emerald[50] : T.rose[50], color: s.is_locked ? T.emerald[700] : T.rose[700], opacity: busyId===s.id?.6:1 }}>
+                        {s.is_locked ? '🔓 Unlock' : '🔒 Lock'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
@@ -3101,7 +3353,7 @@ export default function Admissions() {
             </div>
           </div>
           <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
-            {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger']].map(([key,label]) => (
+            {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['sessions','📅 Sessions']].map(([key,label]) => (
               <button key={key} onClick={()=>setModuleView(key)}
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
                   background: moduleView===key ? N.bg : 'transparent',
@@ -3118,11 +3370,14 @@ export default function Admissions() {
             onSave={async (eid, data) => { await handleSave(eid, data); setModuleView('applications') }}
             onCancel={()=>setModuleView('applications')}
             editing={null}
-            activeSession={activeSession}
+            activeSession={filterSession !== 'All' ? { ...activeSession, session_name: filterSession } : activeSession}
             housemastersByHouse={housemastersByHouse}
+            sessionOptions={sessionOptions}
           />
         ) : moduleView === 'ledger' ? (
           <StudentLedgerView apps={apps} darkMode={darkMode} />
+        ) : moduleView === 'sessions' ? (
+          <SessionManager darkMode={darkMode} onChanged={loadAll} />
         ) : (
         <>
         {/* ── Dark gradient stats card (Accounts-style treasury card) ── */}
@@ -3261,12 +3516,33 @@ export default function Admissions() {
 
         {/* Active session banner */}
        {activeSession && (
-  <div style={{ marginBottom:18, padding:'12px 20px', borderRadius:16, background:N.bg, boxShadow:N.shadow('sm'), display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
-    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+  <div style={{ marginBottom:18, padding:'12px 20px', borderRadius:16, background:N.bg, boxShadow:N.shadow('sm'), display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+    <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
       <div style={{ width:9, height:9, borderRadius:'50%', background:activeSession.is_locked?N.rose:N.emerald, boxShadow:`0 0 0 3px ${activeSession.is_locked?'rgba(225,29,72,.18)':'rgba(5,150,105,.18)'}`, animation:'pulse 2s ease-in-out infinite', flexShrink:0 }} />
       <span style={{ fontSize:13, fontWeight:700, color:activeSession.is_locked?N.rose:N.emerald }}>
         {activeSession.is_locked?'Session Locked':'Active Session'}: <strong>{activeSession.session_name}</strong>
       </span>
+
+      {/* Session changer — switches which session THIS view (Admissions
+          module only) is filtered to and defaults new applications into.
+          Does not touch the global active session used by other modules. */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:4 }}>
+        <span style={{ fontSize:11, color:N.muted }}>Viewing:</span>
+        <select
+          value={filterSession}
+          onChange={e => setSession(e.target.value)}
+          title="Change which session this view is filtered to (Admissions only — does not affect other modules)"
+          style={{ fontSize:12, fontWeight:700, padding:'4px 10px', borderRadius:8, border:`1px solid ${N.border}`, background:'#fff', color:N.text, cursor:'pointer' }}
+        >
+          <option value="All">All sessions</option>
+          {sessionOptions.includes(activeSession.session_name)
+            ? null
+            : <option value={activeSession.session_name}>{activeSession.session_name} (active)</option>}
+          {sessionOptions.map(s => (
+            <option key={s} value={s}>{s}{s === activeSession.session_name ? ' (active)' : ''}</option>
+          ))}
+        </select>
+      </div>
     </div>
     {activeSession.is_locked
       ? <span style={{ fontSize:12, color:N.rose, fontWeight:600 }}>New applications are blocked. Go to Sessions to unlock.</span>
@@ -3313,7 +3589,7 @@ export default function Admissions() {
 
         {/* Form */}
         {formOpen && (
-          <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} housemastersByHouse={housemastersByHouse} />
+          <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} housemastersByHouse={housemastersByHouse} sessionOptions={sessionOptions} />
         )}
 
         {/* Detail panel */}
