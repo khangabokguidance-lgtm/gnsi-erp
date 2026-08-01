@@ -879,7 +879,16 @@ export const clearHouseCapacityCache = () => {
  *                     ALREADY assigned to, so they don't count against
  *                     their own seat)
  */
-export const getHouseOccupancy = async (houseName = null, excludeGcc = null) => {
+/**
+ * ✦ Bug fix: house names are reused every session (e.g. "Kombirei" exists
+ *   as a separate cohort in 2024-2025, 2025-2026, 2026-2027...). This
+ *   previously summed EVERY student and admission ever assigned to that
+ *   house name across ALL sessions combined — so occupancy could read
+ *   wildly over capacity (e.g. 91/43) once a house name had been reused
+ *   for a few years. Now scoped to a single session — pass the session
+ *   whose occupancy you actually want to check.
+ */
+export const getHouseOccupancy = async (houseName = null, excludeGcc = null, sessionName = null) => {
   const { data: houses, error: housesErr } = await supabase
     .from('houses')
     .select('name, capacity')
@@ -893,9 +902,15 @@ export const getHouseOccupancy = async (houseName = null, excludeGcc = null) => 
     throw new Error(`getHouseOccupancy: no house named "${houseName}" found in houses table`)
   }
 
+  let studentsQuery = supabase.from(TABLES.students).select('house, session').not('house', 'is', null)
+  let admissionsQuery = supabase.from(TABLES.admissions).select('gcc_no, house, session').not('house', 'is', null).in('status', ['Admitted', 'Enrolled'])
+  if (sessionName) {
+    studentsQuery = studentsQuery.eq('session', sessionName)
+    admissionsQuery = admissionsQuery.eq('session', sessionName)
+  }
+
   const [{ data: students, error: studentsErr }, { data: admissions, error: admissionsErr }] = await Promise.all([
-    supabase.from(TABLES.students).select('house').not('house', 'is', null),
-    supabase.from(TABLES.admissions).select('gcc_no, house').not('house', 'is', null).in('status', ['Admitted', 'Enrolled']),
+    studentsQuery, admissionsQuery,
   ])
   if (studentsErr) throw studentsErr
   if (admissionsErr) throw admissionsErr
@@ -928,10 +943,10 @@ export const getHouseOccupancy = async (houseName = null, excludeGcc = null) => 
  * the "house is full" case, only for actual lookup errors, so callers can
  * show a clean toast instead of catching exceptions for normal business logic.
  */
-export const checkHouseCapacity = async (houseName, excludeGcc = null) => {
+export const checkHouseCapacity = async (houseName, excludeGcc = null, sessionName = null) => {
   if (!houseName) return { ok: true }  // unassigning / no house selected is always fine
   try {
-    const occ = await getHouseOccupancy(houseName, excludeGcc)
+    const occ = await getHouseOccupancy(houseName, excludeGcc, sessionName)
     if (!occ) return { ok: false, reason: `House "${houseName}" not found` }
     if (occ.isFull) {
       return { ok: false, reason: `${houseName} is full (${occ.occupied}/${occ.capacity}) — choose another house or increase capacity in Hostel → Houses` }
@@ -962,7 +977,7 @@ export const promoteToStudent = async (admission) => {
   // want them double-counted against their own seat.
   let houseWarning = null
   if (admission.house) {
-    const check = await checkHouseCapacity(admission.house, gccNo)
+    const check = await checkHouseCapacity(admission.house, gccNo, admission.session)
     if (!check.ok) {
       // Don't silently drop the house — don't silently keep it either.
       // Surface this back to the caller (Admissions.jsx's handleEnroll) so

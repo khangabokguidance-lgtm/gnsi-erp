@@ -1410,11 +1410,11 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   useEffect(() => {
     if (!form.house) { setHouseCapacityWarning(''); return }
     const timer = setTimeout(async () => {
-      const check = await checkHouseCapacity(form.house, editing ? parseInt(form.gcc) : null)
+      const check = await checkHouseCapacity(form.house, editing ? parseInt(form.gcc) : null, form.session)
       setHouseCapacityWarning(check.ok ? (check.warning || '') : check.reason)
     }, 400)
     return () => clearTimeout(timer)
-  }, [form.house, form.gcc, editing])
+  }, [form.house, form.gcc, form.session, editing])
 
   const derivedHostelType = deriveHostelType(form.house, form.hostel_type)
   const hs       = HOSTEL_STYLES[derivedHostelType] || HOSTEL_STYLES['Day Scholar']

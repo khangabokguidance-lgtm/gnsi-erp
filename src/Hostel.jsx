@@ -8,6 +8,7 @@ import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
+import { useActiveSession } from './shared/useActiveSession'
 
 // ── Live-refresh listener for student record changes ──────────────────────
 // Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
@@ -6695,6 +6696,7 @@ const emptyHouse = {
 
 function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const { session: activeSession } = useActiveSession()
   const [houses, setHouses] = useState([])
   const [students, setStudents] = useState(propStudents || [])
   // keep setStudents only for local optimistic house assignment updates
@@ -6758,12 +6760,26 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   // now reads via feeEngine.js's getHouseOccupancy(). Computed locally here
   // since HouseTab already has both `houses` (with capacity) and `students`
   // loaded in memory — no need to re-fetch.
+  //
+  // ✦ Bug fix: house names are reused as a separate cohort every admission
+  //   session (e.g. "Kombirei" 2024-2025, 2025-2026, 2026-2027 are distinct
+  //   groups of students, not one ever-growing group). This previously
+  //   counted every student EVER assigned to that house name regardless of
+  //   which session they were admitted in, so occupancy could read wildly
+  //   over capacity once a house name had been reused across a few years —
+  //   the exact same bug already found and fixed in Admissions.jsx's
+  //   getHouseOccupancy(). Now scoped to the current active admission
+  //   session. A student with no session on record (older data predating
+  //   session tracking) is still counted rather than silently dropped, so
+  //   this can't under-count and hide a real capacity problem.
   const getHouseRemaining = (houseName, excludeStudentId = null) => {
     const h = houses.find(h => normalizeHouse(h.name) === normalizeHouse(houseName))
     if (!h) return null
     const capacity = h.capacity ?? 40
     const occupied = students.filter(s =>
-      normalizeHouse(s.house) === normalizeHouse(houseName) && s.id !== excludeStudentId
+      normalizeHouse(s.house) === normalizeHouse(houseName) &&
+      s.id !== excludeStudentId &&
+      (!activeSession || !s.session || s.session === activeSession.session_name)
     ).length
     return { capacity, occupied, available: capacity - occupied, isFull: occupied >= capacity }
   }
@@ -7773,7 +7789,7 @@ function Hostel() {
   const fetchShared = useCallback(async () => {
     setDataLoading(true)
     const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
-      supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender').order('name'),
+      supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender,session').order('name'),
       supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
       supabase.from('housemasters').select('*')
         .eq('status', 'Active')
