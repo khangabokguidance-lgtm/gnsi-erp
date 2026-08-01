@@ -144,10 +144,50 @@ function useUserRole() {
 }
 
 // ─── Input Validation ────────────────────────────────────────────────────────
+// ✦ JNVST (Navodaya Vidyalaya) Class 6 date-of-birth eligibility window is
+// derived from the admission session itself, not hardcoded — NVS's real
+// rule is "born between 1 May and 31 July, exactly 10 to 12 years before
+// the admission year" (verified against both the 2026-2027 session: born
+// 1 May 2014 – 31 July 2016, and the 2027-2028 session: born 1 May 2015 –
+// 31 July 2017 — both match startYear-12 to startYear-10). Applied
+// uniformly to every course at GNSI, not just Navodaya, per instruction.
+// Parses the leading 4-digit year from a "YYYY-YYYY" session name; returns
+// null if no valid session name is available, in which case the DOB check
+// is skipped entirely rather than guessing a window.
+function getDobWindowForSession(sessionName) {
+  const match = /^(\d{4})-\d{4}$/.exec((sessionName || '').trim())
+  if (!match) return null
+  const startYear = parseInt(match[1])
+  return {
+    min: new Date(`${startYear - 12}-05-01`),
+    max: new Date(`${startYear - 10}-07-31`),
+    minLabel: `1 May ${startYear - 12}`,
+    maxLabel: `31 July ${startYear - 10}`,
+  }
+}
+
 const ValidationRules = {
   phone: { test: v => !v || /^[0-9]{10}$/.test(String(v).replace(/\D/g,'')), msg: 'Phone must be 10 digits' },
   gcc:   { test: v => !v || /^[0-9]{1,10}$/.test(String(v).trim()),          msg: 'GCC No. must be numeric' },
   name:  { test: v => v && v.trim().length >= 2 && v.trim().length <= 100,   msg: 'Name must be 2–100 characters' },
+  blood: { test: v => !v || /^(A|B|AB|O)[+-]$/i.test(String(v).trim()),      msg: 'Blood group must be A+, A-, B+, B-, AB+, AB-, O+, or O-' },
+  // Session-aware — call ValidationRules.dob.test(value, sessionName).
+  // sessionName is optional; if omitted or unparseable, the DOB check
+  // passes (no window to enforce) rather than falling back to a stale
+  // hardcoded guess.
+  dob:   { test: (v, sessionName) => {
+    if (!v) return true
+    const d = new Date(v)
+    if (isNaN(d.getTime())) return false
+    const win = getDobWindowForSession(sessionName)
+    if (!win) return true
+    return d >= win.min && d <= win.max
+  }, msg: (sessionName) => {
+    const win = getDobWindowForSession(sessionName)
+    return win
+      ? `Date of Birth must be between ${win.minLabel} and ${win.maxLabel} (JNVST ${sessionName} eligibility window)`
+      : 'Date of Birth must be a valid date'
+  } },
 }
 
 function validateApplicationData(obj) {
@@ -163,6 +203,7 @@ function validateApplicationData(obj) {
   // format checks above so a clearer "required" message shows rather than
   // a format error when the field is simply empty.
   if (!obj.dob)                                     errors.dob = 'Date of Birth is required'
+  else if (!ValidationRules.dob.test(obj.dob, obj.session)) errors.dob = ValidationRules.dob.msg(obj.session)
   if (!obj.gender)                                   errors.gender = 'Gender is required'
   if (!obj.course)                                   errors.course = 'Course is required'
   if (!obj.cls)                                      errors.cls = 'Class/Batch is required'
@@ -175,6 +216,7 @@ function validateApplicationData(obj) {
   if (!obj.prevSchool?.trim())                        errors.prevSchool = 'Previous School is required'
   if (!obj.category || obj.category === '--')         errors.category = 'Category is required'
   if (!obj.blood?.trim())                              errors.blood = 'Blood Group is required'
+  else if (!ValidationRules.blood.test(obj.blood))     errors.blood = ValidationRules.blood.msg
   if (!obj.emergencyName?.trim())                     errors.emergencyName = 'Emergency Contact Name is required'
   if (!obj.emergencyPhone?.trim())                    errors.emergencyPhone = errors.emergencyPhone || 'Emergency Contact Phone is required'
   else if (!ValidationRules.phone.test(obj.emergencyPhone)) errors.emergencyPhone = ValidationRules.phone.msg
@@ -459,6 +501,56 @@ function downloadCSV(content, filename) {
   const a    = document.createElement('a')
   a.href     = url; a.download = filename; a.click()
   URL.revokeObjectURL(url)
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ✦ NEW FEATURE (placeholder — needs real edge function wiring):
+// Auto-fire WhatsApp + SMS status update to parents on every admission
+// status change (Applied → Admitted → Fee collected → Enrolled), via the
+// existing MSG91-backed Supabase Edge Function already set up elsewhere in
+// the project. This file does NOT know that function's real name or
+// parameter shape yet — sendStatusNotification() below is the ONE place
+// to fill that in once it's found. Everything that CALLS this function
+// (the trigger points, in handleAdmit/handleEnroll/handleSave/fee-collect)
+// is already wired correctly and does not need to change.
+// ═════════════════════════════════════════════════════════════════════════
+
+// Message text per status — reuses the same tone/format as buildWAMsg's
+// existing templates above, just triggered automatically instead of via
+// manual WhatsApp blast.
+function buildStatusNotification(a, status) {
+  const texts = {
+    Applied:   `Dear Parent of ${a.name}, your application (GCC: ${a.gcc}) has been received by GNSI. We will contact you with further updates. – GNSI, Khangabok`,
+    Admitted:  `Dear Parent of ${a.name}, your ward has been Admitted to GNSI (GCC: ${a.gcc}). Please report to the office to complete fee formalities. – GNSI, Khangabok`,
+    'Fee Collected': `Dear Parent of ${a.name}, admission fee for GCC ${a.gcc} has been received. Thank you. – GNSI, Khangabok`,
+    Enrolled:  `Dear Parent of ${a.name}, your ward is now Enrolled at GNSI (Adm No: ${a.admNo||'—'}). Welcome to the GNSI family! – GNSI, Khangabok`,
+  }
+  return texts[status] || null
+}
+
+/**
+ * Auto-opens a wa.me chat pre-filled with the status-update message, to the
+ * parent's WhatsApp (falls back to phone if no separate WhatsApp number is
+ * on file). This is the same wa.me mechanism WABlastModal already uses for
+ * manual blasts — wa.me can't send silently, so this still requires staff
+ * to click "Send" in the opened tab; what's new is that the tab now opens
+ * automatically the moment a status actually changes, instead of only via
+ * a manual blast action.
+ *
+ * SMS (MSG91) is NOT wired yet — that still needs the real edge function
+ * name/parameters before it can be added here. Never throws — a
+ * notification failure should never block the actual status change or
+ * admission workflow it's attached to.
+ */
+async function sendStatusNotification(a, status) {
+  const text = buildStatusNotification(a, status)
+  const phone = (a.whatsapp || a.phone || '').replace(/\D/g, '')
+  if (!text || !phone) return
+  try {
+    window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(text)}`, '_blank')
+  } catch (err) {
+    console.error('[sendStatusNotification] failed (non-blocking):', err)
+  }
 }
 
 function buildWAMsg(a, template='admission') {
@@ -882,7 +974,10 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
       <div onClick={e=>e.stopPropagation()} style={{ background:bg, border:`1.5px solid ${bd}`, borderRadius:12, padding:'18px 20px', marginBottom:12, maxWidth:900, width:'100%' }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
         <div style={{ fontSize:14, fontWeight:800, color:T.slate[800] }}>📋 {a.name} — Full Detail</div>
-        <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:`1px solid ${T.slate[200]}`, background:'#fff', cursor:'pointer', fontSize:14 }}>✕</button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => printApplicationReceipt(a)} style={{ padding:'6px 12px', borderRadius:7, border:`1px solid ${T.indigo[200]}`, background:T.indigo[50], color:T.indigo[700], cursor:'pointer', fontSize:11, fontWeight:700 }}>🧾 Print Receipt</button>
+          <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:`1px solid ${T.slate[200]}`, background:'#fff', cursor:'pointer', fontSize:14 }}>✕</button>
+        </div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:16 }}>
@@ -1209,6 +1304,65 @@ function printAdmitCard(a) {
     <tr><td>Status</td><td>${a.status}</td></tr>
   </table>
   <div class="footer">Generated on ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})} · GNSI Portal v2.0</div>
+  <script>window.onload=()=>window.print()</script></body></html>`)
+  win.document.close()
+}
+
+// ✦ New feature: professional application submission receipt — a formal,
+// printable/downloadable acknowledgment shown right after a successful
+// submission, distinct from the Admit Card (which is generated later once
+// admitted). Follows the same window.open + print pattern as
+// printAdmitCard/printBulkList above.
+function printApplicationReceipt(a) {
+  const win = window.open('','_blank','width=600,height=760')
+  const submittedAt = new Date().toLocaleString('en-IN', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })
+  win.document.write(`<!DOCTYPE html><html><head><title>Application Receipt \u2013 ${a.name}</title>
+  <style>body{font-family:Georgia,serif;padding:36px;max-width:560px;margin:auto;color:#1A1D29}
+  .header{text-align:center;border-bottom:3px double #1E2A5E;padding-bottom:14px;margin-bottom:18px}
+  .crest{width:52px;height:52px;border-radius:50%;border:2px solid #1E2A5E;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 8px}
+  .instName{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6B7080}
+  .title{font-size:19px;font-weight:700;color:#1E2A5E;margin-top:4px}
+  .sub{font-size:12px;color:#6B7080;margin-top:4px}
+  .refBox{background:#EEF0F8;border:1px solid #1E2A5E;border-radius:10px;padding:14px 18px;text-align:center;margin-bottom:20px}
+  .refLabel{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6B7080}
+  .refVal{font-size:22px;font-weight:700;color:#1E2A5E;margin-top:2px;font-family:monospace}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px}
+  td{padding:8px 10px;border-bottom:1px solid #E4E2DC}
+  td:first-child{font-weight:700;color:#6B7080;width:170px}
+  .note{background:#FEF3E2;border:1px solid #F2B84B;border-radius:8px;padding:12px 16px;font-size:12px;color:#8A6A1E;margin-bottom:18px}
+  .footer{margin-top:24px;text-align:center;font-size:11px;color:#94A3B8;border-top:1px solid #E4E2DC;padding-top:14px}
+  @media print{body{padding:16px}}</style></head><body>
+  <div class="header">
+    <div class="crest">\u{1F393}</div>
+    <div class="instName">Guidance Navodaya &amp; Sainik Institute</div>
+    <div class="title">Application Submission Receipt</div>
+    <div class="sub">Khangabok, Thoubal District, Manipur</div>
+  </div>
+
+  <div class="refBox">
+    <div class="refLabel">GCC No.</div>
+    <div class="refVal">${a.gcc}</div>
+  </div>
+
+  <table>
+    <tr><td>Applicant Name</td><td><strong>${a.name}</strong></td></tr>
+    <tr><td>Admission No.</td><td>${a.admNo || 'Pending'}</td></tr>
+    <tr><td>Course</td><td>${a.course||'\u2014'}${a.subtype?' \u2013 '+a.subtype:''}</td></tr>
+    <tr><td>Class / Batch</td><td>${a.cls||'\u2014'}</td></tr>
+    <tr><td>Session</td><td>${a.session||'\u2014'}</td></tr>
+    <tr><td>Hostel Type</td><td>${a.hostel_type||'\u2014'}</td></tr>
+    <tr><td>Father's Name</td><td>${a.father||'\u2014'}</td></tr>
+    <tr><td>Phone</td><td>${a.phone||'\u2014'}</td></tr>
+    <tr><td>Submitted On</td><td>${submittedAt}</td></tr>
+    <tr><td>Status</td><td>Applied</td></tr>
+  </table>
+
+  <div class="note">
+    This receipt confirms your application has been received. Please retain this for your records
+    and quote the GCC No. above in all further correspondence with the Institute.
+  </div>
+
+  <div class="footer">Generated on ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})} \u00b7 GNSI Portal</div>
   <script>window.onload=()=>window.print()</script></body></html>`)
   win.document.close()
 }
@@ -1540,6 +1694,45 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     return () => clearTimeout(timer)
   }, [form.gcc, editing])
 
+  // ✦ New feature: live "possible duplicate person" check — same name+DOB
+  // or same phone number already on file under a DIFFERENT GCC. This is a
+  // WARNING only (staff decides), matching the existing duplicateGCCs
+  // warning already shown in the grid — this just surfaces it earlier,
+  // inside the form itself, before submission rather than only after.
+  const [possibleDup, setPossibleDup] = useState(null)
+  useEffect(() => {
+    const nameVal = form.name?.trim()
+    const dobVal = form.dob
+    const phoneVal = form.phone?.trim()
+    if ((!nameVal || !dobVal) && !phoneVal) { setPossibleDup(null); return }
+    const timer = setTimeout(async () => {
+      let query = supabase.from('admissions').select('gcc_no, name, dob, phone')
+      if (form.gcc) query = query.neq('gcc_no', parseInt(form.gcc))
+      const { data } = await query
+      if (!data) { setPossibleDup(null); return }
+      const match = data.find(a =>
+        (nameVal && dobVal && a.name?.trim().toLowerCase() === nameVal.toLowerCase() && a.dob === dobVal) ||
+        (phoneVal && a.phone?.trim() === phoneVal)
+      )
+      setPossibleDup(match || null)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [form.name, form.dob, form.phone, form.gcc])
+
+  // ✦ New feature: sibling linking — resolves the entered Sibling GCC No.
+  // to the actual record on file (name, course, status), so staff can see
+  // who they're linking to instead of a bare number. Visibility only, per
+  // instruction — no automatic fee discount is applied from this lookup.
+  const [siblingRecord, setSiblingRecord] = useState(null)
+  useEffect(() => {
+    if (!form.siblingGcc) { setSiblingRecord(null); return }
+    const timer = setTimeout(async () => {
+      const { data } = await supabase.from('admissions').select('gcc_no, name, course, subtype, status').eq('gcc_no', parseInt(form.siblingGcc)).maybeSingle()
+      setSiblingRecord(data || 'not_found')
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [form.siblingGcc])
+
   // 🔗 Live house capacity check — sourced from the real `houses` table +
   // actual student/admission counts (feeEngine.js's getHouseOccupancy),
   // not the old hardcoded HOUSE_CAPACITIES guess. This is a WARNING, not a
@@ -1596,10 +1789,20 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     padding:'10px 13px', background:'#fff', transition:'border-color .15s, box-shadow .15s',
   }
 
+  // ✦ Bug fix: sectionComplete previously only checked fields were non-empty
+  // — it never checked they were actually VALID (e.g. Emergency Phone with
+  // non-10-digit input showed a green "COMPLETE" badge while the real
+  // validateApplicationData() check still correctly blocked submission with
+  // "Phone must be 10 digits"). Now delegates to validateApplicationData —
+  // the same single source of truth used for the actual submit-blocking
+  // check — so a section can never show complete while a real error exists
+  // for one of its fields.
   const sectionComplete = (title) => {
     const keys = SECTION_FIELDS[title]
     if (!keys) return true
+    const errors = validateApplicationData({ ...form, hasActiveSession: !!activeSession }) || {}
     return keys.every(k => {
+      if (errors[k]) return false
       if (k === 'docs') return form.docs.length > 0
       if (k === 'subtype') return (COURSE_STRUCTURE[form.course]?.subtypes||[]).length === 0 || !!form.subtype
       if (k === 'session') return !!activeSession || !!form.session?.trim()
@@ -1699,6 +1902,11 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           <GovField label="Full Name of Applicant (as per certificate)" required>
             <input style={govInp} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Full name as per certificate" />
           </GovField>
+          {possibleDup && (
+            <div style={{ fontSize:12, color:'#92400e', background:'#FEF3E2', padding:'8px 12px', borderRadius:8, marginTop:8, fontWeight:600 }}>
+              ⚠ Possible duplicate — GCC-{possibleDup.gcc_no} ({possibleDup.name}) has the same {possibleDup.dob === form.dob ? 'name and date of birth' : 'phone number'} on file. Please confirm this isn't a repeat application.
+            </div>
+          )}
         </div>
 
         <GovSection title="Identification Particulars" done={sectionComplete("Identification Particulars")}>
@@ -1723,7 +1931,17 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               <input style={{ ...govInp, background:'#F4F3EF', color:'#9CA0AC' }} value="Auto-generated on save" readOnly />
             </GovField>
             <GovField label="Date of Birth" required>
-              <input type="date" style={govInp} value={form.dob} onChange={e=>set('dob',e.target.value)} />
+              <input type="date" style={govInp} value={form.dob} onChange={e=>set('dob',e.target.value)}
+                min={getDobWindowForSession(form.session)?.min?.toISOString().slice(0,10)}
+                max={getDobWindowForSession(form.session)?.max?.toISOString().slice(0,10)} />
+              {(() => {
+                const win = getDobWindowForSession(form.session)
+                return win && (
+                  <div style={{ fontSize:11, color:inkSub, marginTop:3 }}>
+                    Eligible: {win.minLabel} – {win.maxLabel} ({form.session} session)
+                  </div>
+                )
+              })()}
             </GovField>
             <GovField label="Gender" required>
               <select style={govInp} value={form.gender} onChange={e=>set('gender',e.target.value)}>
@@ -1731,7 +1949,10 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               </select>
             </GovField>
             <GovField label="Blood Group" required>
-              <input style={govInp} value={form.blood} onChange={e=>set('blood',e.target.value)} placeholder="e.g. O+" />
+              <select style={govInp} value={form.blood} onChange={e=>set('blood',e.target.value)}>
+                <option value="">— Blood Group —</option>
+                {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b}>{b}</option>)}
+              </select>
             </GovField>
             <GovField label="Category" required>
               <select style={govInp} value={form.category} onChange={e=>set('category',e.target.value)}>
@@ -1776,6 +1997,14 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                 pattern="[0-9]*"
                 autoComplete="off"
               />
+              {siblingRecord === 'not_found' && (
+                <div style={{ fontSize:11, color:danger, marginTop:3, fontWeight:600 }}>⚠ No record found for GCC-{form.siblingGcc}</div>
+              )}
+              {siblingRecord && siblingRecord !== 'not_found' && (
+                <div style={{ fontSize:11, color:T.violet[700], marginTop:3, fontWeight:600 }}>
+                  👫 {siblingRecord.name} — {siblingRecord.course}{siblingRecord.subtype?` · ${siblingRecord.subtype}`:''} ({siblingRecord.status})
+                </div>
+              )}
             </GovField>
           </div>
         </GovSection>
@@ -3257,6 +3486,7 @@ export default function Admissions() {
       logAudit('CREATE', newApp.id, dbRow, userRole)
       setApps(prev => [newApp, ...prev])
       showToast(`Saved! Adm. No: ${newApp.admNo} · ${newApp.hostel_type} · ₹${fmt(getFlatFeeAmtSync(newApp.hostel_type, newApp.course))}/mo`, T.violet[600])
+      sendStatusNotification(newApp, 'Applied')
       // Jump straight into fee collection after submission — status stays
       // "Applied" (Admit is still a separate manual step later); this only
       // opens the real payment screen immediately so admission fee can be
@@ -3272,8 +3502,10 @@ export default function Admissions() {
     if (!confirm('Mark as Admitted?')) return
     const { error } = await supabase.from('admissions').update({ status:'Admitted' }).eq('gcc_no', parseInt(id))
     if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
+    const admittedApp = apps.find(a => String(a.id)===String(id))
     setApps(prev => prev.map(a => String(a.id)===String(id) ? { ...a, status:'Admitted' } : a))
     showToast('Marked as Admitted', T.violet[600])
+    if (admittedApp) sendStatusNotification({ ...admittedApp, status:'Admitted' }, 'Admitted')
   }
 
   const handleEnroll = async id => {
@@ -3300,6 +3532,7 @@ export default function Admissions() {
       setApps(prev => prev.map(x => String(x.id)===String(id) ? { ...x, status:'Enrolled' } : x))
       showToast(created ? `✅ ${a.name} enrolled & student record created!` : `✅ ${a.name} enrolled (student already existed)`, T.emerald[600])
       if (houseWarning) showToast(`⚠ ${houseWarning}`, T.amber[600])
+      sendStatusNotification({ ...a, status:'Enrolled' }, 'Enrolled')
     } catch(err) { showToast('Enroll failed: '+err.message, T.rose[600]) }
   }
 
@@ -3487,7 +3720,7 @@ export default function Admissions() {
   return (
     <>
       {feePanel && (
-        <FeeCollectionModal app={feePanel} isAdmin={checkPermission(userRole,'delete')} currentUser={getSessionInfo()} onClose={()=>setFeePanel(null)} onSaved={()=>{ setFeePanel(null); loadAll(); showToast('Payment recorded!','#059669') }} />
+        <FeeCollectionModal app={feePanel} isAdmin={checkPermission(userRole,'delete')} currentUser={getSessionInfo()} onClose={()=>setFeePanel(null)} onSaved={()=>{ if (feePanel) sendStatusNotification(feePanel, 'Fee Collected'); setFeePanel(null); loadAll(); showToast('Payment recorded!','#059669') }} />
       )}
       {waBlastApps && <WABlastModal apps={waBlastApps} onClose={()=>setWABlastApps(null)} />}
       {showCSVImport && <CSVImportModal onClose={()=>setShowCSVImport(false)} onImport={handleCSVImport} />}
