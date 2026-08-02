@@ -267,10 +267,10 @@ function Input({ value, onChange, placeholder, style = {}, list, type = 'text' }
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />
   )
 }
-function Select({ value, onChange, children, style = {} }) {
+function Select({ value, onChange, children, style = {}, disabled = false }) {
   return (
-    <select value={value} onChange={onChange}
-      style={{ ...S.inp, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235B6472' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32, ...style }}>
+    <select value={value} onChange={onChange} disabled={disabled}
+      style={{ ...S.inp, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235B6472' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32, ...(disabled ? { backgroundColor: C.navy50, cursor: 'not-allowed', color: C.inkFaint } : {}), ...style }}>
       {children}
     </select>
   )
@@ -481,7 +481,7 @@ function SubstitutePanel({ entries, staffList, subs, onRefresh, showToast, isAdm
   const periodsForBatch = entries
     .filter(e => e.class_name === batch && e.day_name === dayName)
     .map(e => e.period_name)
-  const uniquePeriods = [...new Set(periodsForBatch)]
+  const uniquePeriods = [...new Set(periodsForBatch)].sort((a, b) => periodStartMinutes(a) - periodStartMinutes(b))
 
   const matchedEntry = entries.find(e => e.class_name === batch && e.day_name === dayName && e.period_name === period)
 
@@ -537,10 +537,17 @@ function SubstitutePanel({ entries, staffList, subs, onRefresh, showToast, isAdm
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
           <div>
             <label style={S.lbl}>Period *</label>
-            <Select value={period} onChange={e => setPeriod(e.target.value)}>
-              <option value="">— Select —</option>
+            <Select value={period} onChange={e => setPeriod(e.target.value)} disabled={!batch || uniquePeriods.length === 0}>
+              <option value="">
+                {!batch ? '— Select a batch first —' : uniquePeriods.length === 0 ? `No classes on ${dayName}` : '— Select —'}
+              </option>
               {uniquePeriods.map(p => <option key={p} value={p}>{p}</option>)}
             </Select>
+            {batch && uniquePeriods.length === 0 && (
+              <div style={{ fontSize: 11, color: C.rose, marginTop: 4 }}>
+                {batch} has no timetable entries for {dayName}. Choose a different date or batch.
+              </div>
+            )}
           </div>
           <div>
             <label style={S.lbl}>Original Teacher</label>
