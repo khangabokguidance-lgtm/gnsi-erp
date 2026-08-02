@@ -119,6 +119,22 @@ function getStudentClass(s) {
 
 const today = () => new Date().toISOString().split('T')[0]
 
+// ── Save the parent's WhatsApp number onto the student record so it
+// auto-fills on every future leave request instead of being re-typed,
+// and so the gate pass "Send" button always has a number to reach.
+// Best-effort: a failure here shouldn't block leave submission.
+async function persistParentWhatsApp(studentId, parentContact) {
+  if (!studentId || !parentContact?.trim()) return
+  try {
+    await supabase
+      .from('students')
+      .update({ parent_whatsapp: parentContact.trim() })
+      .eq('id', studentId)
+  } catch (e) {
+    console.error('persistParentWhatsApp failed:', e)
+  }
+}
+
 // ── Status style pill
 // ── Approval level → display label + style
 //   level 0 + Pending  = ⏳ Pending HM
@@ -689,6 +705,10 @@ function LeaveForm({ form, setForm, students, onSave, onCancel, saving, isEdit }
       gcc_no: s.gcc_no || '',
       class_name: getStudentClass(s),
       house: s.house || '',
+      // Auto-fill from the student's saved parent WhatsApp number, if one
+      // was recorded on a previous leave request — saves re-typing it
+      // every time and keeps the gate pass going to the right number.
+      parent_contact: f.parent_contact || s.parent_whatsapp || '',
     }))
   }
 
@@ -1453,21 +1473,37 @@ async function voidGatePass(leaveId) {
     .eq('leave_id', leaveId)
 }
 
+// ── Deterministic short verification hash (not cryptographic — a
+// human-checkable code printed on the pass so a guard can visually
+// confirm it matches the QR/verify page without scanning, and so a
+// photocopied/edited pass is detectable at a glance if the code and
+// GP number don't match what's on file).
+function shortVerifyHash(gpNo, leaveId) {
+  const s = `${gpNo}|${leaveId}`
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0
+  }
+  return h.toString(16).toUpperCase().padStart(8, '0').slice(0, 8)
+}
+
 // ── Core PDF generator
 async function generateGatePassPDF(record, gpData) {
   const { gp_no, is_voided } = gpData
   const schoolPhone = await getSchoolContact()
+  const verifyHash  = shortVerifyHash(gp_no, record.id)
 
   // ── Build QR code data URL
   const qrUrl   = `${VERIFY_BASE}?gp=${gp_no}&id=${record.id}`
   const qrDataUrl = await QRCode.toDataURL(qrUrl, {
-    width: 120, margin: 1,
+    width: 160, margin: 1,
     color: { dark: '#1a2f4d', light: '#ffffff' },
   })
 
   // ── Create A5 PDF (148 x 210 mm)
   const doc    = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' })
   const W      = 148
+  const H      = 210
   const navy   = [30, 58, 95]
   const gold   = [202, 138, 4]
   const red    = [220, 38, 38]
@@ -1478,32 +1514,51 @@ async function generateGatePassPDF(record, gpData) {
 
   let y = 0
 
+  // ══ OUTER SECURITY BORDER ══
+  // A fine double-rule border around the whole pass, like a certificate/
+  // security document, rather than the content floating on a blank page.
+  doc.setDrawColor(...navy)
+  doc.setLineWidth(0.6)
+  doc.rect(3, 3, W - 6, H - 6, 'S')
+  doc.setLineWidth(0.15)
+  doc.rect(4.3, 4.3, W - 8.6, H - 8.6, 'S')
+
+  // ══ MICRO-PRINT SECURITY STRIP ══
+  // Tiny repeated text along the top inner edge — mimics the micro-print
+  // line found on real passes/certificates, hard to reproduce cleanly on
+  // a photocopier at normal resolution.
+  doc.setFontSize(3.2)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(150, 160, 175)
+  const microUnit = `GNSI • ${gp_no} • AUTHENTIC • `
+  doc.text(microUnit.repeat(6), W / 2, 5.6, { align: 'center' })
+
   // ══ HEADER BAND ══
   doc.setFillColor(...navy)
-  doc.rect(0, 0, W, 28, 'F')
+  doc.rect(4.3, 4.3, W - 8.6, 26, 'F')
 
   // Institute name
   doc.setTextColor(...white)
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
-  doc.text(GNSI_NAME, W / 2, 9, { align: 'center' })
+  doc.text(GNSI_NAME, W / 2, 11.5, { align: 'center' })
 
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
-  doc.text(GNSI_ADDRESS, W / 2, 14.5, { align: 'center' })
-  doc.text(schoolPhone,  W / 2, 19,   { align: 'center' })
+  doc.text(GNSI_ADDRESS, W / 2, 16.5, { align: 'center' })
+  doc.text(schoolPhone,  W / 2, 20.5, { align: 'center' })
 
   // GATE PASS title
   doc.setFontSize(13)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...gold)
-  doc.text('GATE PASS', W / 2, 26, { align: 'center' })
+  doc.text('OFFICIAL GATE PASS', W / 2, 27, { align: 'center' })
 
-  y = 32
+  y = 34
 
   // ══ GP NUMBER + DATE ROW ══
   doc.setFillColor(...light)
-  doc.rect(0, y, W, 8, 'F')
+  doc.rect(4.3, y, W - 8.6, 8, 'F')
   doc.setTextColor(...navy)
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
@@ -1513,7 +1568,7 @@ async function generateGatePassPDF(record, gpData) {
   const issuedStr = `Issued: ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`
   doc.text(issuedStr, W - 8, y + 5.5, { align: 'right' })
 
-  y = 44
+  y = 46
 
   // ══ STUDENT INFO BOX ══
   doc.setDrawColor(...navy)
@@ -1543,7 +1598,7 @@ async function generateGatePassPDF(record, gpData) {
     sy += 6
   }
 
-  y = 84
+  y = 86
 
   // ══ LEAVE DETAILS BOX ══
   doc.roundedRect(6, y, W - 12, 40, 2, 2, 'S')
@@ -1576,11 +1631,11 @@ async function generateGatePassPDF(record, gpData) {
     ly += 6.5
   }
 
-  y = 128
+  y = 130
 
   // ══ APPROVAL + QR ROW ══
   // Left: approval details
-  doc.roundedRect(6, y, 86, 30, 2, 2, 'S')
+  doc.roundedRect(6, y, 86, 34, 2, 2, 'S')
   doc.setFontSize(7.5)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...navy)
@@ -1603,26 +1658,66 @@ async function generateGatePassPDF(record, gpData) {
   doc.setTextColor(...black)
   doc.text(suptName, 40, y + 17)
 
-  // Signature lines
+  // ── Signature strip — cursive-style rendered "signature" per
+  // approver name (so the pass doesn't read as a blank form with
+  // handwriting expected later, but as something already signed),
+  // plus the plain signature-line/label beneath for a wet-ink
+  // countersignature if the institute wants one on top.
+  doc.setFont('times', 'italic')
+  doc.setFontSize(11)
+  doc.setTextColor(...navy)
+  if (hmName !== '—')   doc.text(hmName,   12, y + 23)
+  if (suptName !== '—') doc.text(suptName, 54, y + 23)
+
   doc.setDrawColor(...grey)
-  doc.setLineWidth(0.3)
-  doc.line(10, y + 26, 50, y + 26)
-  doc.line(52, y + 26, 90, y + 26)
-  doc.setFontSize(6.5)
+  doc.setLineWidth(0.25)
+  doc.line(10, y + 26, 49, y + 26)
+  doc.line(51, y + 26, 90, y + 26)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.2)
   doc.setTextColor(...grey)
   doc.text('HM Signature', 10, y + 29.5)
-  doc.text('Supt Signature', 52, y + 29.5)
+  doc.text('Supt Signature', 51, y + 29.5)
 
-  // Right: QR code
-  doc.roundedRect(96, y, 46, 30, 2, 2, 'S')
-  doc.addImage(qrDataUrl, 'PNG', 99, y + 2, 26, 26)
+  // Verification code — human-checkable at the gate without scanning
+  doc.setFontSize(6)
+  doc.setFont('courier', 'normal')
+  doc.setTextColor(...navy)
+  doc.text(`VERIFY CODE: ${verifyHash}`, 10, y + 33.5)
+
+  // Right: QR code + circular office seal overlapping its corner
+  doc.roundedRect(96, y, 46, 34, 2, 2, 'S')
+  doc.addImage(qrDataUrl, 'PNG', 100, y + 2, 24, 24)
   doc.setFontSize(6.5)
   doc.setTextColor(...grey)
-  doc.text('Scan to verify', 127, y + 15, { align: 'center' })
-  doc.setFontSize(6)
-  doc.text(gp_no, 127, y + 19, { align: 'center' })
+  doc.setFont('helvetica', 'normal')
+  doc.text('Scan to verify', 119, y + 29, { align: 'center' })
+  doc.setFontSize(5.5)
+  doc.text(gp_no, 119, y + 32.5, { align: 'center' })
 
-  y = 162
+  // ── Office seal — a circular double-ring stamp with the institute
+  // initials and "OFFICIAL SEAL", rotated slightly off-axis so it reads
+  // as stamped rather than printed straight, sitting over the QR box
+  // corner the way a real ink stamp overlaps whatever's beneath it.
+  const sealCX = 96, sealCY = y + 2, sealR = 9
+  doc.saveGraphicsState()
+  doc.setGState(doc.GState({ opacity: 0.85 }))
+  doc.setDrawColor(...red)
+  doc.setLineWidth(0.5)
+  doc.circle(sealCX, sealCY, sealR, 'S')
+  doc.setLineWidth(0.25)
+  doc.circle(sealCX, sealCY, sealR - 1.6, 'S')
+  doc.setTextColor(...red)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(5.2)
+  doc.text('GNSI', sealCX, sealCY - 1, { align: 'center', angle: -8 })
+  doc.setFontSize(3.1)
+  doc.setFont('helvetica', 'normal')
+  doc.text('OFFICIAL SEAL', sealCX, sealCY + 2.3, { align: 'center', angle: -8 })
+  doc.text('KHANGABOK', sealCX, sealCY + 4.6, { align: 'center', angle: -8 })
+  doc.restoreGraphicsState()
+
+  y = 170
 
   // ══ FOOTER NOTICE ══
   doc.setFillColor(254, 242, 242)
@@ -1630,9 +1725,18 @@ async function generateGatePassPDF(record, gpData) {
   doc.setFontSize(7)
   doc.setTextColor(...red)
   doc.setFont('helvetica', 'bold')
-  doc.text('⚠ This pass must be carried at all times and surrendered at the gate on return.', W / 2, y + 5, { align: 'center' })
+  doc.text('This pass must be carried at all times and surrendered at the gate on return.', W / 2, y + 5, { align: 'center' })
   doc.setFont('helvetica', 'normal')
   doc.text(`Valid from ${record.from_date} to ${record.to_date}. Unauthorised use is a disciplinary offence.`, W / 2, y + 10, { align: 'center' })
+
+  // ══ BOTTOM MICRO-PRINT STRIP ══
+  doc.setFontSize(3.2)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(150, 160, 175)
+  doc.text(microUnit.repeat(6), W / 2, H - 6.5, { align: 'center' })
+  doc.setFontSize(5.5)
+  doc.setTextColor(...grey)
+  doc.text(`This is a system-generated pass · verify code ${verifyHash} at ${VERIFY_BASE}`, W / 2, H - 4.5, { align: 'center' })
 
   // ══ RETURNED WATERMARK (Feature 29) ══
   if (is_voided || record.status === 'Returned') {
@@ -1645,7 +1749,79 @@ async function generateGatePassPDF(record, gpData) {
   }
 
   // ── Save
-  doc.save(`${gp_no}_${(record.student_name || 'student').replace(/\s+/g, '_')}.pdf`)
+  const fileName = `${gp_no}_${(record.student_name || 'student').replace(/\s+/g, '_')}.pdf`
+  doc.save(fileName)
+  return { fileName, blob: doc.output('blob') }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SHARE GATE PASS TO WHATSAPP
+//  No browser or the WhatsApp app itself allows a webpage to silently
+//  push a file into a WhatsApp group with zero user interaction — that
+//  gesture requirement is a platform security boundary, not something
+//  a client-side app can route around. The closest real equivalent:
+//    1. Generate the gate pass PDF (as a File, not just triggering a
+//       download) so it can be attached to a native share sheet.
+//    2. Call navigator.share() with that file. On a phone this opens
+//       the OS share sheet with WhatsApp listed as a target — tapping
+//       WhatsApp there lets the user pick the destination group in
+//       one more tap, then the PDF goes through as a real WhatsApp
+//       file attachment (not a wa.me text link, which can't carry a
+//       file at all).
+//    3. If the browser/device doesn't support file sharing (most
+//       desktop browsers don't), fall back to opening a wa.me link
+//       pre-filled with the gate pass summary as text — no attachment,
+//       but at least the pass details reach the group without retyping.
+// ══════════════════════════════════════════════════════════════
+async function shareGatePassToWhatsApp(record, gpData) {
+  const { fileName, blob } = await generateGatePassPDF(record, gpData)
+
+  const parentPhone = record.parent_contact?.trim()
+  if (!parentPhone) {
+    return { shared: false, method: 'no-number' }
+  }
+
+  const summaryText =
+    `🎫 *GATE PASS ISSUED*\n` +
+    `${gpData.gp_no}\n\n` +
+    `Student: ${record.student_name}\n` +
+    `House: ${record.house || '—'}\n` +
+    `Leave: ${record.leave_type} (${record.from_date} → ${record.to_date})\n` +
+    `Return by: ${record.expected_return ? new Date(record.expected_return).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}\n\n` +
+    `Verify: ${VERIFY_BASE}?gp=${gpData.gp_no}&id=${record.id}`
+
+  // Try native file share first (works on most mobile browsers). The
+  // OS share sheet still requires the user to pick WhatsApp and then
+  // the parent's chat themselves — no browser lets a page pre-select
+  // a specific WhatsApp contact for a file share — but the summary
+  // text carries the parent's number so it's a one-tap match on their
+  // end once WhatsApp opens.
+  if (navigator.canShare && blob) {
+    try {
+      const file = new File([blob], fileName, { type: 'application/pdf' })
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `Gate Pass ${gpData.gp_no} — send to ${record.student_name}'s parent`,
+          text: summaryText,
+        })
+        return { shared: true, method: 'file', parentPhone }
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return { shared: false, method: 'cancelled' }
+      console.warn('navigator.share (file) failed, falling back to wa.me:', err)
+    }
+  }
+
+  // Fallback — wa.me opened directly to the parent's own number (not an
+  // open picker), pre-filled with the gate pass summary. wa.me can't
+  // attach the PDF, so the already-downloaded file needs one manual
+  // attach on the parent's chat once it opens.
+  const cleanPhone = String(parentPhone).replace(/\D/g, '')
+  const target = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone
+  const waUrl = `https://wa.me/${target}?text=${encodeURIComponent(summaryText)}`
+  window.open(waUrl, '_blank')
+  return { shared: true, method: 'text-fallback', parentPhone }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1667,6 +1843,8 @@ function GatePassButton({ record, compact = false }) {
       .then(({ data }) => { setGpData(data); setLoaded(true) })
   }, [record?.id])
 
+  const [sharing, setSharing] = useState(false)
+
   const handleGenerate = async () => {
     setGenerating(true)
     try {
@@ -1680,6 +1858,24 @@ function GatePassButton({ record, compact = false }) {
     setGenerating(false)
   }
 
+  const handleShareWhatsApp = async () => {
+    setSharing(true)
+    try {
+      const gp = await getOrCreateGPNo(record.id)
+      setGpData(gp)
+      const result = await shareGatePassToWhatsApp(record, gp)
+      if (result.method === 'no-number') {
+        alert('No parent WhatsApp number on file for this student. Add it in the leave request form (Parent Contact field) — it will be saved automatically for next time.')
+      } else if (result.method === 'text-fallback') {
+        alert(`Your device doesn\u2019t support direct file sharing. The gate pass PDF has been downloaded — WhatsApp is opening to the parent\u2019s number (${result.parentPhone}) with the details prefilled; attach the downloaded PDF to that chat manually.`)
+      }
+    } catch (err) {
+      console.error('WhatsApp share error:', err)
+      alert('Error sharing gate pass: ' + err.message)
+    }
+    setSharing(false)
+  }
+
   // Only show for fully approved or returned records
   const level    = record.approval_level ?? 0
   const eligible = (record.status === 'Approved' && level >= 2) || record.status === 'Returned' || record.status === 'Overdue'
@@ -1691,20 +1887,36 @@ function GatePassButton({ record, compact = false }) {
   if (compact) {
     // Compact version for table rows
     return (
-      <button
-        onClick={handleGenerate}
-        disabled={generating}
-        title={hasPass ? `Reprint ${gpData.gp_no}` : 'Generate Gate Pass'}
-        style={{
-          background: isVoided ? '#fee2e2' : hasPass ? '#dcfce7' : '#eff6ff',
-          color:      isVoided ? '#dc2626' : hasPass ? '#16a34a' : '#1a2f4d',
-          border: 'none', borderRadius: '6px', padding: '5px 9px',
-          fontSize: '11px', cursor: 'pointer', fontWeight: '700',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {generating ? '⏳' : isVoided ? '🖨 RETURNED' : hasPass ? `🖨 ${gpData.gp_no}` : '🖨 Gate Pass'}
-      </button>
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          title={hasPass ? `Reprint ${gpData.gp_no}` : 'Generate Gate Pass'}
+          style={{
+            background: isVoided ? '#fee2e2' : hasPass ? '#dcfce7' : '#eff6ff',
+            color:      isVoided ? '#dc2626' : hasPass ? '#16a34a' : '#1a2f4d',
+            border: 'none', borderRadius: '6px', padding: '5px 9px',
+            fontSize: '11px', cursor: 'pointer', fontWeight: '700',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {generating ? '⏳' : isVoided ? '🖨 RETURNED' : hasPass ? `🖨 ${gpData.gp_no}` : '🖨 Gate Pass'}
+        </button>
+        {!isVoided && (
+          <button
+            onClick={handleShareWhatsApp}
+            disabled={sharing}
+            title={record.parent_contact ? `Send Gate Pass to parent (${record.parent_contact})` : 'No parent number on file'}
+            style={{
+              background: '#dcfce7', color: '#16a34a', border: 'none',
+              borderRadius: '6px', padding: '5px 9px', fontSize: '11px',
+              cursor: 'pointer', fontWeight: '700', whiteSpace: 'nowrap',
+            }}
+          >
+            {sharing ? '⏳' : '📲'}
+          </button>
+        )}
+      </div>
     )
   }
 
@@ -1727,18 +1939,34 @@ function GatePassButton({ record, compact = false }) {
             </div>
           )}
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          style={{
-            background: isVoided ? '#dc2626' : '#1a2f4d',
-            color: 'white', border: 'none', borderRadius: '8px',
-            padding: '8px 14px', fontSize: '12px', fontWeight: '700',
-            cursor: 'pointer',
-          }}
-        >
-          {generating ? '⏳ Generating...' : isVoided ? '🖨 Print (Returned)' : hasPass ? '🖨 Reprint' : '🖨 Print Pass'}
-        </button>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            style={{
+              background: isVoided ? '#dc2626' : '#1a2f4d',
+              color: 'white', border: 'none', borderRadius: '8px',
+              padding: '8px 14px', fontSize: '12px', fontWeight: '700',
+              cursor: 'pointer',
+            }}
+          >
+            {generating ? '⏳ Generating...' : isVoided ? '🖨 Print (Returned)' : hasPass ? '🖨 Reprint' : '🖨 Print Pass'}
+          </button>
+          {!isVoided && (
+            <button
+              onClick={handleShareWhatsApp}
+              disabled={sharing}
+              title={record.parent_contact ? `Send Gate Pass to parent (${record.parent_contact})` : 'No parent number on file'}
+              style={{
+                background: '#25D366', color: 'white', border: 'none',
+                borderRadius: '8px', padding: '8px 12px', fontSize: '12px',
+                fontWeight: '700', cursor: 'pointer',
+              }}
+            >
+              {sharing ? '⏳' : '📲 Send to Parent'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -3276,7 +3504,7 @@ function StudentLoginScreen({ onLogin }) {
     // Look up student by GCC no + DOB
     const { data, error: e } = await supabase
       .from('students')
-      .select('id, name, gcc_no, class_name, batch, house, hostel_type, dob, status')
+      .select('id, name, gcc_no, class_name, batch, house, hostel_type, dob, status, parent_whatsapp')
       .eq('gcc_no', gccNo.trim())
       .eq('dob', dob)
       .single()
@@ -3377,7 +3605,7 @@ function StudentSelfServicePortal({ student, onLogout }) {
     to_date:         today(),
     expected_return: '',
     purpose:         '',
-    parent_contact:  '',
+    parent_contact:  student.parent_whatsapp || '',
   })
 
   const load = async () => {
@@ -3415,7 +3643,7 @@ function StudentSelfServicePortal({ student, onLogout }) {
       from_date:       form.from_date,
       to_date:         form.to_date,
       expected_return: form.expected_return || null,
-      purpose:         form.purpose,
+      purpose:         form.purpose.trim(),
       parent_contact:  form.parent_contact || '',
       status:          'Pending',
       approval_level:  0,
@@ -3427,8 +3655,11 @@ function StudentSelfServicePortal({ student, onLogout }) {
     const { error } = await supabase.from('leave_records').insert([payload])
     if (error) { alert('Error submitting: ' + error.message); setSaving(false); return }
 
+    // Keep the parent's WhatsApp number on the student record for next time.
+    await persistParentWhatsApp(student.id, payload.parent_contact)
+
     // Reset form
-    setForm({ leave_type: 'Home Leave', from_date: today(), to_date: today(), expected_return: '', purpose: '', parent_contact: '' })
+    setForm({ leave_type: 'Home Leave', from_date: today(), to_date: today(), expected_return: '', purpose: '', parent_contact: student.parent_whatsapp || form.parent_contact || '' })
     setSaving(false)
     setActiveView('status')
     load()
@@ -4127,6 +4358,14 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
   const handleSave = async e => {
     e.preventDefault()
     if (!form.student_name) { alert('Please select a student first'); return }
+    // Reason for leave is compulsory for every House Master/Mistress
+    // submission — this is the main signal used to detect patterns
+    // (repeat "stomachache" leaves, clustering before tests, etc.), so
+    // it can't be left blank or saved as whitespace-only text.
+    if (!form.purpose?.trim()) {
+      alert('Reason for leave is compulsory. Please enter the actual reason before saving.')
+      return
+    }
     setSaving(true)
 
     const payload = {
@@ -4140,7 +4379,7 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
       to_date:         form.to_date,
       expected_return: form.expected_return || null,
       actual_return:   form.actual_return   || null,
-      purpose:         form.purpose,
+      purpose:         form.purpose.trim(),
       parent_contact:  form.parent_contact  || '',
       parent_approved: form.parent_approved,
       status:          editRec ? form.status : 'Pending',
@@ -4161,6 +4400,9 @@ function LeaveTab({ students, currentHousemaster, currentUser }) {
     if (error) {
       alert('Error saving: ' + error.message)
     } else {
+      // Keep the parent's WhatsApp number on the student record for
+      // next time, so future requests don't need it re-typed.
+      await persistParentWhatsApp(payload.student_id, payload.parent_contact)
       cancelForm()
       load()
     }
