@@ -6776,7 +6776,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     const h = houses.find(h => normalizeHouse(h.name) === normalizeHouse(houseName))
     if (!h) return null
     const capacity = h.capacity ?? 40
-    const occupied = students.filter(s =>
+    const occupied = activeStudents.filter(s =>
       normalizeHouse(s.house) === normalizeHouse(houseName) &&
       s.id !== excludeStudentId &&
       (!activeSession || !s.session || s.session === activeSession.session_name)
@@ -6799,7 +6799,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
   const handleBulkAssign = async houseName => {
     if (!isAdmin) { showToast('Only admins can bulk assign', '#dc2626'); return }
-    const unassigned = students.filter(s => !isAssigned(s))
+    const unassigned = activeStudents.filter(s => !isAssigned(s))
     if (!unassigned.length) { showToast('No unassigned students', '#a8842f'); return }
     const remaining = getHouseRemaining(houseName)
     if (remaining && unassigned.length > remaining.available) {
@@ -6807,8 +6807,9 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     } else {
       if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
     }
-    await supabase.from('students').update({ house: houseName }).in('id', unassigned.map(s => s.id))
-    setStudents(prev => prev.map(s => !isAssigned(s) ? { ...s, house: houseName } : s))
+    const ids = unassigned.map(s => s.id)
+    await supabase.from('students').update({ house: houseName }).in('id', ids)
+    setStudents(prev => prev.map(s => ids.includes(s.id) ? { ...s, house: houseName } : s))
     showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
   }
 
@@ -6818,13 +6819,40 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     return typeof c === 'string' ? { color: c, bg: `${c}10`, border: `${c}40` } : c
   }
 
+  // Same status filter Hostel.jsx's own roll-call roster (activeStudents,
+  // top of file) and Attendance.jsx's TabMark roster both already use to
+  // drop dropout/inactive students out of daily attendance. HouseTab had
+  // never applied it, so a student marked Dropout — whose `house` field is
+  // a status change only and is never cleared — kept counting as a live
+  // resident here: occupying a bed against house.capacity, appearing in
+  // the roster table, and showing "Assigned" instead of being flagged.
+  // This keeps house occupancy/rosters consistent with the rest of the app.
+  const activeStudents = useMemo(() =>
+    students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout'),
+    [students]
+  )
+
   const activeHouseObj = houses.find(h => h.id === activeHouse)
-  const houseStudents = activeHouseObj ? students.filter(s => normalizeHouse(s.house) === normalizeHouse(activeHouseObj.name)) : []
+  const houseStudents = activeHouseObj ? activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(activeHouseObj.name)) : []
+  // Dropout students still carrying this house's name in their stale `house`
+  // field — not real residents, but surfaced separately so an admin can see
+  // and clear the leftover assignment instead of it silently occupying a bed.
+  const houseDropouts = activeHouseObj ? students.filter(s => s.status === 'Dropout' && normalizeHouse(s.house) === normalizeHouse(activeHouseObj.name)) : []
   const houseMasters = activeHouseObj ? masters.filter(m => normalizeHouse(m.house) === normalizeHouse(activeHouseObj.name)) : []
-  const unassignedCount = students.filter(s => !isAssigned(s)).length
+  const unassignedCount = activeStudents.filter(s => !isAssigned(s)).length
+  // Dropout students anywhere in the system who still carry a stale house
+  // value — these should never be swept into "Unassigned" (they're not
+  // waiting for a house, they've left) nor bulk-assigned into a new one.
+  const dropoutWithHouseCount = students.filter(s => s.status === 'Dropout' && isAssigned(s)).length
+
+  // House-field label used everywhere a student's current house is shown —
+  // dropout students always read "Unassigned/Dropout" regardless of what
+  // stale value lingers in their `house` column, so a leftover assignment
+  // never gets displayed (or exported in a report) as if they still live there.
+  const houseLabel = (s) => s.status === 'Dropout' ? 'Unassigned/Dropout' : (isAssigned(s) ? s.house : 'Unassigned')
 
   const assignHits = assignSearch.length > 0
-    ? students.filter(s =>
+    ? activeStudents.filter(s =>
       !isAssigned(s) && (
         (s.name || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
         String(s.gcc_no || '').includes(assignSearch) ||
@@ -6837,7 +6865,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     const q = search.toLowerCase()
     return students.filter(s => {
       const matchesSearch = [s.name, s.gcc_no, s.batch, s.course].some(v => (v || '').toString().toLowerCase().includes(q))
-      const matchesFilter = assignFilter === 'All' ? true : assignFilter === 'Unassigned' ? !isAssigned(s) : normalizeHouse(s.house) === normalizeHouse(assignFilter).toLowerCase()
+      const matchesFilter = assignFilter === 'All' ? true
+        : assignFilter === 'Unassigned' ? (!isAssigned(s) && s.status !== 'Dropout')
+        : assignFilter === 'Dropout' ? s.status === 'Dropout'
+        : s.status !== 'Dropout' && normalizeHouse(s.house) === normalizeHouse(assignFilter).toLowerCase()
       return matchesSearch && matchesFilter
     })
   }, [students, search, assignFilter])
@@ -6960,6 +6991,28 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 )
               }
             </div>
+
+            {houseDropouts.length > 0 && (
+              <div style={{ background: 'white', border: '1.5px solid #fecdd3', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+                <div style={{ background: '#fff8f8', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 700, color: '#b45309', fontSize: 13 }}>🚪 {houseDropouts.length} Dropout — Unassigned/Dropout signature (house left over from before they dropped out)</span>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
+                  <tbody>
+                    {houseDropouts.map(s => (
+                      <tr key={s.id} style={{ borderBottom: '1px solid #fef2f2' }}>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontWeight: 600, color: '#7c2d12' }}>{s.name}</td>
+                        <td style={{ padding: '9px 14px', color: '#b45309', fontSize: 12, fontWeight: 700 }}>🚪 Unassigned/Dropout</td>
+                        <td style={{ padding: '9px 14px' }}>
+                          {isAdmin && <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Clear House</button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )
       })()}
@@ -7013,8 +7066,9 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
           {/* FIXED: was repeat(4,1fr) */}
           <div style={statGrid(130)}>
             <StatCard icon="🏠" label="Total Houses" value={houses.length} color="#1a2f4d" bg="#eff6ff" />
-            <StatCard icon="👥" label="Assigned" value={students.filter(s => s.house).length} color="#16a34a" bg="#dcfce7" />
+            <StatCard icon="👥" label="Assigned" value={activeStudents.filter(s => isAssigned(s)).length} color="#16a34a" bg="#dcfce7" />
             <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" />
+            <StatCard icon="🚪" label="Dropout (house pending clear)" value={dropoutWithHouseCount} color="#b45309" bg="#fef3c7" />
             <StatCard icon="👨‍🏫" label="Housemasters" value={masters.length} color="#7c3aed" bg="#f5f3ff" />
           </div>
 
@@ -7024,6 +7078,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <select value={assignFilter} onChange={e => setAssignFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
                 <option value="All">All Students</option>
                 <option value="Unassigned">Unassigned Only</option>
+                <option value="Dropout">Dropout Only</option>
                 {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
               </select>
             </div>
@@ -7035,7 +7090,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 { key: 'name', label: 'Student', width: 1.4 },
                 { key: 'batch', label: 'Batch', width: 1 },
                 { key: 'course', label: 'Course', width: 1 },
-                { key: 'house', label: 'House', width: 1 },
+                { key: 'house', label: 'House', width: 1, value: houseLabel },
+                { key: 'status', label: 'Status', width: 0.8, value: s => s.status || 'Active' },
                 { key: 'hostel_type', label: 'Hostel Type', width: 1 },
               ]}
               rows={filteredStudents}
@@ -7060,7 +7116,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, marginBottom: 24 }}>
                 {houses.map(h => {
                   const hs = getHouseStyle(h)
-                  const houseStudents = students.filter(s => normalizeHouse(s.house) === normalizeHouse(h.name))
+                  const houseStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(h.name))
                   const cnt = houseStudents.length
                   const maleCnt = houseStudents.filter(s => s.gender === 'Male').length
                   const femaleCnt = houseStudents.filter(s => s.gender === 'Female').length
@@ -7154,13 +7210,21 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.course || '—'}</td>
                         <td style={{ padding: '9px 14px' }}>
-                          {s.house && hs
+                          {s.status === 'Dropout'
+                            ? <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#fef2f2', color: '#b45309' }}>🚪 Unassigned/Dropout</span>
+                            : s.house && hs
                             ? <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: hs.bg, color: hs.color }}>● {s.house}</span>
                             : <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>⚠ Not assigned</span>
                           }
                         </td>
                         <td style={{ padding: '9px 14px' }}>
-                          {isAdmin ? (
+                          {s.status === 'Dropout' ? (
+                            isAdmin && s.house ? (
+                              <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Clear House</button>
+                            ) : (
+                              <span style={{ fontSize: 12, color: '#94a3b8' }}>— Dropout —</span>
+                            )
+                          ) : isAdmin ? (
                             <select value={s.house || ''} onChange={e => handleAssign(s.id, e.target.value)} style={{ ...inp, minWidth: 120, width: 'auto', maxWidth: 200, padding: '6px 10px', fontSize: 12 }}>
                               <option value="">— Remove / None —</option>
                               {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
