@@ -65,6 +65,20 @@ function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// Parses the start time out of a period_name like "10:25 AM–11:20 AM" (en dash or hyphen)
+// and returns minutes since midnight, for chronological sorting of the grid.
+function periodStartMinutes(periodName) {
+  const first = (periodName || '').split(/[–-]/)[0].trim()
+  const m = first.match(/(\d{1,2}):(\d{2})\s*([AaPp][Mm])/)
+  if (!m) return 0
+  let [, hh, mm, ap] = m
+  hh = parseInt(hh, 10)
+  mm = parseInt(mm, 10)
+  if (/pm/i.test(ap) && hh !== 12) hh += 12
+  if (/am/i.test(ap) && hh === 12) hh = 0
+  return hh * 60 + mm
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // SEED DATA — 2026 Academic Time Table (Mon–Sat, repeats weekly)
 // Source: GNSI_Time_Table_2026.docx
@@ -344,7 +358,7 @@ function WeeklyGrid({ entries, batches, activeBatch, setActiveBatch, subMap, isA
     entries.filter(e => e.class_name === activeBatch || e.class_name === 'ALL').forEach(e => {
       if (!seen.has(e.period_name)) seen.set(e.period_name, true)
     })
-    return [...seen.keys()]
+    return [...seen.keys()].sort((a, b) => periodStartMinutes(a) - periodStartMinutes(b))
   }, [entries, activeBatch])
 
   const grid = useMemo(() => {
