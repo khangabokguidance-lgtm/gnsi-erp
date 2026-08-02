@@ -360,28 +360,78 @@ function Cell({ entry, subMap, isAdmin, onEdit }) {
 // WEEKLY GRID VIEW
 // ══════════════════════════════════════════════════════════════════════════════
 function WeeklyGrid({ entries, batches, activeBatch, setActiveBatch, subMap, isAdmin, onEdit }) {
-  const periods = useMemo(() => {
+  const showAll = activeBatch === 'ALL_BATCHES'
+
+  const periodsForBatch = useMemo(() => (b) => {
     const seen = new Map()
-    entries.filter(e => e.class_name === activeBatch || e.class_name === 'ALL').forEach(e => {
+    entries.filter(e => e.class_name === b || e.class_name === 'ALL').forEach(e => {
       if (!seen.has(e.period_name)) seen.set(e.period_name, true)
     })
-    return [...seen.keys()].sort((a, b) => periodStartMinutes(a) - periodStartMinutes(b))
-  }, [entries, activeBatch])
+    return [...seen.keys()].sort((a, c) => periodStartMinutes(a) - periodStartMinutes(c))
+  }, [entries])
 
-  const grid = useMemo(() => {
+  const gridForBatch = useMemo(() => (b, periods) => {
     const m = {}
     for (const p of periods) {
       m[p] = {}
       for (const d of DAYS) {
-        m[p][d] = entries.find(e => e.period_name === p && e.day_name === d && (e.class_name === activeBatch || e.class_name === 'ALL'))
+        m[p][d] = entries.find(e => e.period_name === p && e.day_name === d && (e.class_name === b || e.class_name === 'ALL'))
       }
     }
     return m
-  }, [entries, periods, activeBatch])
+  }, [entries])
+
+  const periods = useMemo(() => showAll ? [] : periodsForBatch(activeBatch), [showAll, activeBatch, periodsForBatch])
+  const grid = useMemo(() => showAll ? {} : gridForBatch(activeBatch, periods), [showAll, activeBatch, periods, gridForBatch])
+
+  function BatchTable({ b }) {
+    const p = periodsForBatch(b)
+    const g = gridForBatch(b, p)
+    return (
+      <div style={{ background: 'white', borderRadius: 10, border: `1px solid ${C.line}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(11,30,61,.06)', marginBottom: 18 }}>
+        <div style={{ padding: '14px 18px', background: C.navy900, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Crest size={22} />
+          <div style={{ fontFamily: SERIF, fontSize: 14, fontWeight: 700, color: 'white' }}>{b} Batch</div>
+          <div style={{ fontFamily: SANS, fontSize: 11, color: C.navy100, marginLeft: 'auto' }}>Monday – Saturday</div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: SANS }}>
+            <thead>
+              <tr style={{ background: C.navy50 }}>
+                <th style={{ padding: '10px 12px', textAlign: 'left', color: C.navy700, fontWeight: 700, fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', borderBottom: `2px solid ${C.gold}` }}>Time</th>
+                {DAYS.map(d => (
+                  <th key={d} style={{ padding: '10px 12px', textAlign: 'left', color: C.navy900, fontWeight: 700, fontSize: 12, minWidth: 130, borderBottom: `2px solid ${C.gold}` }}>{d}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {p.map((pd, i) => (
+                <tr key={pd} style={{ borderBottom: `1px solid ${C.line}`, background: i % 2 === 0 ? 'white' : C.navy50 }}>
+                  <td style={{ padding: '9px 12px', fontWeight: 700, fontSize: 11.5, color: C.navy700, whiteSpace: 'nowrap' }}>{pd}</td>
+                  {DAYS.map(d => <Cell key={d} entry={g[pd][d]} subMap={subMap} isAdmin={isAdmin} onEdit={onEdit} />)}
+                </tr>
+              ))}
+              {!p.length && (
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: C.inkFaint }}>No periods found for this batch</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+        <button onClick={() => setActiveBatch('ALL_BATCHES')}
+          style={{
+            padding: '8px 18px', borderRadius: 7, border: `1px solid ${showAll ? C.navy900 : C.line}`,
+            background: showAll ? C.navy900 : 'white', color: showAll ? C.gold : C.navy700,
+            fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: SANS, letterSpacing: '.02em',
+          }}>
+          All Batches
+        </button>
         {batches.map(b => {
           const active = activeBatch === b
           return (
@@ -397,36 +447,40 @@ function WeeklyGrid({ entries, batches, activeBatch, setActiveBatch, subMap, isA
         })}
       </div>
 
-      <div style={{ background: 'white', borderRadius: 10, border: `1px solid ${C.line}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(11,30,61,.06)' }}>
-        <div style={{ padding: '14px 18px', background: C.navy900, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Crest size={26} />
-          <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 700, color: 'white' }}>{activeBatch} Batch</div>
-          <div style={{ fontFamily: SANS, fontSize: 11, color: C.navy100, marginLeft: 'auto' }}>Monday – Saturday</div>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: SANS }}>
-            <thead>
-              <tr style={{ background: C.navy50 }}>
-                <th style={{ padding: '11px 14px', textAlign: 'left', color: C.navy700, fontWeight: 700, fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', borderBottom: `2px solid ${C.gold}` }}>Time</th>
-                {DAYS.map(d => (
-                  <th key={d} style={{ padding: '11px 14px', textAlign: 'left', color: C.navy900, fontWeight: 700, fontSize: 12.5, minWidth: 150, borderBottom: `2px solid ${C.gold}` }}>{d}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {periods.map((p, i) => (
-                <tr key={p} style={{ borderBottom: `1px solid ${C.line}`, background: i % 2 === 0 ? 'white' : C.navy50 }}>
-                  <td style={{ padding: '10px 14px', fontWeight: 700, fontSize: 12, color: C.navy700, whiteSpace: 'nowrap' }}>{p}</td>
-                  {DAYS.map(d => <Cell key={d} entry={grid[p][d]} subMap={subMap} isAdmin={isAdmin} onEdit={onEdit} />)}
+      {showAll ? (
+        batches.map(b => <BatchTable key={b} b={b} />)
+      ) : (
+        <div style={{ background: 'white', borderRadius: 10, border: `1px solid ${C.line}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(11,30,61,.06)' }}>
+          <div style={{ padding: '14px 18px', background: C.navy900, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Crest size={26} />
+            <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 700, color: 'white' }}>{activeBatch} Batch</div>
+            <div style={{ fontFamily: SANS, fontSize: 11, color: C.navy100, marginLeft: 'auto' }}>Monday – Saturday</div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: SANS }}>
+              <thead>
+                <tr style={{ background: C.navy50 }}>
+                  <th style={{ padding: '11px 14px', textAlign: 'left', color: C.navy700, fontWeight: 700, fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', borderBottom: `2px solid ${C.gold}` }}>Time</th>
+                  {DAYS.map(d => (
+                    <th key={d} style={{ padding: '11px 14px', textAlign: 'left', color: C.navy900, fontWeight: 700, fontSize: 12.5, minWidth: 150, borderBottom: `2px solid ${C.gold}` }}>{d}</th>
+                  ))}
                 </tr>
-              ))}
-              {!periods.length && (
-                <tr><td colSpan={7} style={{ padding: 48, textAlign: 'center', color: C.inkFaint }}>No periods found for this batch</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {periods.map((p, i) => (
+                  <tr key={p} style={{ borderBottom: `1px solid ${C.line}`, background: i % 2 === 0 ? 'white' : C.navy50 }}>
+                    <td style={{ padding: '10px 14px', fontWeight: 700, fontSize: 12, color: C.navy700, whiteSpace: 'nowrap' }}>{p}</td>
+                    {DAYS.map(d => <Cell key={d} entry={grid[p][d]} subMap={subMap} isAdmin={isAdmin} onEdit={onEdit} />)}
+                  </tr>
+                ))}
+                {!periods.length && (
+                  <tr><td colSpan={7} style={{ padding: 48, textAlign: 'center', color: C.inkFaint }}>No periods found for this batch</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -626,7 +680,7 @@ const REPORT_KINDS = [
 ]
 
 function ReportGenerator({ entries, subs, batches }) {
-  const [kind, setKind] = useState('batch')
+  const [kind, setKind] = useState('master')
   const [batch, setBatch] = useState(batches[0] || '')
   const [dateFrom, setDateFrom] = useState(todayISO())
   const [dateTo, setDateTo] = useState(todayISO())
@@ -864,7 +918,7 @@ export default function Timetable({ currentUser }) {
   const [staffList, setStaffList] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('grid')
-  const [activeBatch, setActiveBatch] = useState('Achiever')
+  const [activeBatch, setActiveBatch] = useState('ALL_BATCHES')
   const [editingEntry, setEditingEntry] = useState(null)
   const [toast, setToast] = useState(null)
   const [adminUnlocked, setAdminUnlocked] = useState(false)
