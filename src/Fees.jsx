@@ -209,46 +209,152 @@ const SEV_ICON={CRITICAL:'🔴',HIGH:'🟠',MEDIUM:'🟡',LOW:'🟢'}
 function runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows}){
   const flags=[],push=(id,sev,cat,title,detail,records=[])=>flags.push({id,sev,cat,title,detail,records})
   const now=new Date(),todayStr=now.toLocaleDateString('en-CA'),thisMonth=now.toLocaleString('default',{month:'long'}),thisYearStr=String(now.getFullYear())
+  // Tag every row with which table it actually came from BEFORE merging
+  // arrays together below, so full-detail lookups can always resolve the
+  // exact source table + id for an "Investigate" panel — several anomaly
+  // types merge all three fee tables into one filtered list, and once
+  // merged there's no other way to tell them apart.
+  const flatTagged=adm_flat_fees.map(r=>({...r,_table:'adm_flat_fees'}))
+  const crsfTagged=adm_course_fees.map(r=>({...r,_table:'adm_course_fees'}))
+  const admTagged=adm_fee_collections.map(r=>({...r,_table:'adm_fee_collections'}))
+  const allTagged=[...flatTagged,...crsfTagged,...admTagged]
   const flatKey={};adm_flat_fees.forEach(r=>{const k=`${r.adm_app_id}|${r.month}|${r.year}`;if(!flatKey[k])flatKey[k]=[];flatKey[k].push(r)})
-  Object.entries(flatKey).filter(([,v])=>v.length>1).forEach(([,recs])=>{const stu=students.find(s=>String(s.gcc_no)===String(recs[0].adm_app_id));push('dup_flat_'+recs[0].adm_app_id+'_'+recs[0].month,'CRITICAL','Duplicate',`Duplicate flat fee: ${recs[0].month} ${recs[0].year}`,`${stu?.name||'GCC-'+recs[0].adm_app_id} has ${recs.length} flat fee entries for the same month.`,recs.map(r=>({label:`₹${_inr(r.amount)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`})))})
+  Object.entries(flatKey).filter(([,v])=>v.length>1).forEach(([,recs])=>{const stu=students.find(s=>String(s.gcc_no)===String(recs[0].adm_app_id));push('dup_flat_'+recs[0].adm_app_id+'_'+recs[0].month,'CRITICAL','Duplicate',`Duplicate flat fee: ${recs[0].month} ${recs[0].year}`,`${stu?.name||'GCC-'+recs[0].adm_app_id} has ${recs.length} flat fee entries for the same month.`,recs.map(r=>({label:`₹${_inr(r.amount)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`,raw:r,_table:'adm_flat_fees'})))})
   const crsfKey={};adm_course_fees.forEach(r=>{const k=`${r.adm_app_id}|${r.for_month}|${r.year}|${r.course}`;if(!crsfKey[k])crsfKey[k]=[];crsfKey[k].push(r)})
-  Object.entries(crsfKey).filter(([,v])=>v.length>1).forEach(([,recs])=>{const stu=students.find(s=>String(s.gcc_no)===String(recs[0].adm_app_id));push('dup_crsf_'+recs[0].adm_app_id+'_'+recs[0].for_month,'CRITICAL','Duplicate',`Duplicate course fee: ${recs[0].course} ${recs[0].for_month}`,`${stu?.name||'GCC-'+recs[0].adm_app_id} has ${recs.length} course fee entries for same month.`,recs.map(r=>({label:`₹${_inr(r.amount_paid)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`})))})
+  Object.entries(crsfKey).filter(([,v])=>v.length>1).forEach(([,recs])=>{const stu=students.find(s=>String(s.gcc_no)===String(recs[0].adm_app_id));push('dup_crsf_'+recs[0].adm_app_id+'_'+recs[0].for_month,'CRITICAL','Duplicate',`Duplicate course fee: ${recs[0].course} ${recs[0].for_month}`,`${stu?.name||'GCC-'+recs[0].adm_app_id} has ${recs.length} course fee entries for same month.`,recs.map(r=>({label:`₹${_inr(r.amount_paid)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`,raw:r,_table:'adm_course_fees'})))})
   const admByGCC={};adm_fee_collections.filter(r=>r.fee_type==='admission').forEach(r=>{const g=String(r.adm_app_id);if(!admByGCC[g])admByGCC[g]=[];admByGCC[g].push(r)})
-  Object.entries(admByGCC).filter(([,v])=>v.length>1).forEach(([g,recs])=>{const stu=students.find(s=>String(s.gcc_no)===g);push('dup_adm_'+g,'CRITICAL','Duplicate',`Double admission fee: ${stu?.name||'GCC-'+g}`,`${stu?.name||'GCC-'+g} has ${recs.length} admission fee records. Total: ₹${_inr(recs.reduce((s,r)=>s+(Number(r.amount_paid)||0),0))}.`,recs.map(r=>({label:`₹${_inr(r.amount_paid)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`})))})
-  const futureAll=[...adm_flat_fees,...adm_course_fees,...adm_fee_collections].filter(r=>r.pay_date>todayStr)
-  if(futureAll.length>0)push('future_date','CRITICAL','Date',`${futureAll.length} future-dated payment${futureAll.length!==1?'s':''}`,`${futureAll.length} record${futureAll.length!==1?'s':''} have payment dates after today (${todayStr}).`,futureAll.map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)} · ${r.pay_date}`}}))
-  const validGCC=new Set(students.map(s=>String(s.gcc_no)));const orphanAll=[...adm_flat_fees,...adm_course_fees,...adm_fee_collections].filter(r=>!validGCC.has(String(r.adm_app_id)))
-  if(orphanAll.length>0){const og=[...new Set(orphanAll.map(r=>String(r.adm_app_id)))];push('orphan_gcc','HIGH','Integrity',`${orphanAll.length} fee record${orphanAll.length!==1?'s':''} with no matching student`,`Fee records linked to GCC numbers not found in the students table.`,og.map(g=>({label:`GCC-${g}: ${orphanAll.filter(r=>String(r.adm_app_id)===g).length} record(s)`})))}
-  const zeroAll=[...adm_flat_fees,...adm_course_fees,...adm_fee_collections].filter(r=>!Number(r.amount||r.amount_paid)||Number(r.amount||r.amount_paid)<=0)
-  if(zeroAll.length>0)push('zero_amt','HIGH','Amount',`${zeroAll.length} record${zeroAll.length!==1?'s':''} with zero or missing amount`,`${zeroAll.length} fee record${zeroAll.length!==1?'s':''} have ₹0 or null amounts.`,zeroAll.slice(0,10).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${r.amount||r.amount_paid||0} · ${r.pay_date||'no date'}`}}))
-  const HIGH_AMT=50000;[...adm_flat_fees,...adm_course_fees,...adm_fee_collections].filter(r=>Number(r.amount||r.amount_paid)>HIGH_AMT).forEach(r=>{const amt=Number(r.amount||r.amount_paid),stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id)),ft=r.month?'Flat Fee':r.for_month?'Course Fee':'Adm Fee';push('high_'+r.id,'HIGH','Amount',`Unusually high payment: ₹${_inr(amt)}`,`${stu?.name||'GCC-'+r.adm_app_id} paid ₹${_inr(amt)} as ${ft} on ${r.pay_date||'unknown'}.`,[{label:`${ft} · ₹${_inr(amt)} · ${r.pay_date||'?'} · ${r.pay_mode||'?'}`}])})
-  const noDateAll=[...adm_flat_fees,...adm_course_fees,...adm_fee_collections].filter(r=>!r.pay_date)
-  if(noDateAll.length>0)push('no_date','MEDIUM','Integrity',`${noDateAll.length} record${noDateAll.length!==1?'s':''} missing payment date`,`${noDateAll.length} fee record${noDateAll.length!==1?'s':''} have no pay_date. Breaks daily reports and audit trails.`,noDateAll.slice(0,8).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)}`}}))
+  Object.entries(admByGCC).filter(([,v])=>v.length>1).forEach(([g,recs])=>{const stu=students.find(s=>String(s.gcc_no)===g);push('dup_adm_'+g,'CRITICAL','Duplicate',`Double admission fee: ${stu?.name||'GCC-'+g}`,`${stu?.name||'GCC-'+g} has ${recs.length} admission fee records. Total: ₹${_inr(recs.reduce((s,r)=>s+(Number(r.amount_paid)||0),0))}.`,recs.map(r=>({label:`₹${_inr(r.amount_paid)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`,raw:r,_table:'adm_fee_collections'})))})
+  const futureAll=allTagged.filter(r=>r.pay_date>todayStr)
+  if(futureAll.length>0)push('future_date','CRITICAL','Date',`${futureAll.length} future-dated payment${futureAll.length!==1?'s':''}`,`${futureAll.length} record${futureAll.length!==1?'s':''} have payment dates after today (${todayStr}).`,futureAll.map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)} · ${r.pay_date}`,raw:r,_table:r._table}}))
+  const validGCC=new Set(students.map(s=>String(s.gcc_no)));const orphanAll=allTagged.filter(r=>!validGCC.has(String(r.adm_app_id)))
+  if(orphanAll.length>0){const og=[...new Set(orphanAll.map(r=>String(r.adm_app_id)))];push('orphan_gcc','HIGH','Integrity',`${orphanAll.length} fee record${orphanAll.length!==1?'s':''} with no matching student`,`Fee records linked to GCC numbers not found in the students table.`,og.map(g=>{const recsForG=orphanAll.filter(r=>String(r.adm_app_id)===g);return{label:`GCC-${g}: ${recsForG.length} record(s)`,raw:recsForG[0],_table:recsForG[0]._table,_group:recsForG}}))}
+  const zeroAll=allTagged.filter(r=>!Number(r.amount||r.amount_paid)||Number(r.amount||r.amount_paid)<=0)
+  if(zeroAll.length>0)push('zero_amt','HIGH','Amount',`${zeroAll.length} record${zeroAll.length!==1?'s':''} with zero or missing amount`,`${zeroAll.length} fee record${zeroAll.length!==1?'s':''} have ₹0 or null amounts.`,zeroAll.slice(0,10).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${r.amount||r.amount_paid||0} · ${r.pay_date||'no date'}`,raw:r,_table:r._table}}))
+  const HIGH_AMT=50000;allTagged.filter(r=>Number(r.amount||r.amount_paid)>HIGH_AMT).forEach(r=>{const amt=Number(r.amount||r.amount_paid),stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id)),ft=r.month?'Flat Fee':r.for_month?'Course Fee':'Adm Fee';push('high_'+r.id,'HIGH','Amount',`Unusually high payment: ₹${_inr(amt)}`,`${stu?.name||'GCC-'+r.adm_app_id} paid ₹${_inr(amt)} as ${ft} on ${r.pay_date||'unknown'}.`,[{label:`${ft} · ₹${_inr(amt)} · ${r.pay_date||'?'} · ${r.pay_mode||'?'}`,raw:r,_table:r._table}])})
+  const noDateAll=allTagged.filter(r=>!r.pay_date)
+  if(noDateAll.length>0)push('no_date','MEDIUM','Integrity',`${noDateAll.length} record${noDateAll.length!==1?'s':''} missing payment date`,`${noDateAll.length} fee record${noDateAll.length!==1?'s':''} have no pay_date. Breaks daily reports and audit trails.`,noDateAll.slice(0,8).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)}`,raw:r,_table:r._table}}))
   const rateAnom=adm_course_fees.filter(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));if(!stu||!r.course||!r.amount_paid)return false;const std=COURSE_RATES[r.course]?.[stu.hostel_type]||0;return std>0&&Math.abs(Number(r.amount_paid)-std)/std>0.25})
-  if(rateAnom.length>0)push('rate_dev','MEDIUM','Rate',`${rateAnom.length} course fee${rateAnom.length!==1?'s':''} with >25% rate deviation`,`These payments deviate more than 25% from the standard rate.`,rateAnom.slice(0,10).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id)),std=COURSE_RATES[r.course]?.[stu?.hostel_type]||0;return{label:`${stu?.name||'GCC-'+r.adm_app_id} · paid ₹${_inr(r.amount_paid)} vs std ₹${_inr(std)} (${r.course}, ${r.for_month} ${r.year})`}}))
-  const dayTotals={};[...adm_flat_fees,...adm_course_fees,...adm_fee_collections].forEach(r=>{const d=r.pay_date;if(!d)return;dayTotals[d]=(dayTotals[d]||0)+(Number(r.amount||r.amount_paid)||0)})
+  if(rateAnom.length>0)push('rate_dev','MEDIUM','Rate',`${rateAnom.length} course fee${rateAnom.length!==1?'s':''} with >25% rate deviation`,`These payments deviate more than 25% from the standard rate.`,rateAnom.slice(0,10).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id)),std=COURSE_RATES[r.course]?.[stu?.hostel_type]||0;return{label:`${stu?.name||'GCC-'+r.adm_app_id} · paid ₹${_inr(r.amount_paid)} vs std ₹${_inr(std)} (${r.course}, ${r.for_month} ${r.year})`,raw:r,_table:'adm_course_fees'}}))
+  const dayTotals={};allTagged.forEach(r=>{const d=r.pay_date;if(!d)return;dayTotals[d]=(dayTotals[d]||0)+(Number(r.amount||r.amount_paid)||0)})
   const last30=Object.entries(dayTotals).filter(([d])=>d>=new Date(now-30*86400000).toLocaleDateString('en-CA')&&d<=todayStr)
-  if(last30.length>=5){const avg30=last30.reduce((s,[,v])=>s+v,0)/last30.length;last30.filter(([,v])=>v>avg30*3&&avg30>0).forEach(([d,v])=>push('spike_'+d,'MEDIUM','Spike',`Collection spike: ${_fdate(d)}`,`₹${_inr(v)} collected — ${Math.round(v/avg30)}x the 30-day average of ₹${_inr(Math.round(avg30))}.`,[]))}
-  const d90Str=new Date(now-90*86400000).toLocaleDateString('en-CA');const oldNoRef=[...adm_flat_fees,...adm_course_fees,...adm_fee_collections].filter(r=>r.pay_date&&r.pay_date<d90Str&&!r.txn_ref)
-  if(oldNoRef.length>0)push('old_no_ref','LOW','Integrity',`${oldNoRef.length} old payment${oldNoRef.length!==1?'s':''} without transaction reference`,`${oldNoRef.length} record${oldNoRef.length!==1?'s':''} older than 90 days have no UPI/cheque reference.`,oldNoRef.slice(0,8).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)} · ${r.pay_date}`}}))
+  if(last30.length>=5){const avg30=last30.reduce((s,[,v])=>s+v,0)/last30.length;last30.filter(([,v])=>v>avg30*3&&avg30>0).forEach(([d,v])=>push('spike_'+d,'MEDIUM','Spike',`Collection spike: ${_fdate(d)}`,`₹${_inr(v)} collected — ${Math.round(v/avg30)}x the 30-day average of ₹${_inr(Math.round(avg30))}.`,allTagged.filter(r=>r.pay_date===d).map(r=>({label:`₹${_inr(r.amount||r.amount_paid||0)} · ${r.pay_mode||'?'}`,raw:r,_table:r._table}))))}
+  const d90Str=new Date(now-90*86400000).toLocaleDateString('en-CA');const oldNoRef=allTagged.filter(r=>r.pay_date&&r.pay_date<d90Str&&!r.txn_ref)
+  if(oldNoRef.length>0)push('old_no_ref','LOW','Integrity',`${oldNoRef.length} old payment${oldNoRef.length!==1?'s':''} without transaction reference`,`${oldNoRef.length} record${oldNoRef.length!==1?'s':''} older than 90 days have no UPI/cheque reference.`,oldNoRef.slice(0,8).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)} · ${r.pay_date}`,raw:r,_table:r._table}}))
   const zeroPayStudents=liveRows.filter(s=>s.grandTotal===0)
-  if(zeroPayStudents.length>10)push('zero_pay','LOW','Collection',`${zeroPayStudents.length} enrolled students with zero payment`,`${zeroPayStudents.length} students have ₹0 across all fee types.`,zeroPayStudents.slice(0,10).map(s=>({label:`${s.name} · GCC-${s.gcc_no} · ${s.course||'—'} · ${s.hostel_type||'—'}`})))
+  if(zeroPayStudents.length>10)push('zero_pay','LOW','Collection',`${zeroPayStudents.length} enrolled students with zero payment`,`${zeroPayStudents.length} students have ₹0 across all fee types.`,zeroPayStudents.slice(0,10).map(s=>({label:`${s.name} · GCC-${s.gcc_no} · ${s.course||'—'} · ${s.hostel_type||'—'}`,raw:s,_table:'students'})))
   const order={CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3};return flags.sort((a,b)=>order[a.sev]-order[b.sev])
 }
-function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows,isAdmin}){
+// ── Anomaly record row — summary label + expandable full raw detail ──────────
+// The `raw` object is the actual database row for this anomaly entry (tagged
+// with `_table` in runAnomalyEngine above), not a fabricated summary — every
+// field shown here is real data pulled straight from adm_flat_fees /
+// adm_course_fees / adm_fee_collections / students, whichever it came from.
+const FIELD_LABELS={
+  id:'Record ID', adm_app_id:'GCC No.', gcc_no:'GCC No.',
+  amount:'Amount', amount_paid:'Amount Paid',
+  pay_date:'Payment Date', pay_mode:'Payment Mode', txn_ref:'Txn Reference',
+  receipt_no:'Receipt No.', collected_by:'Collected By',
+  month:'Month', for_month:'For Month', year:'Year',
+  course:'Course', subtype:'Subtype', hostel_type:'Hostel Type',
+  fee_type:'Fee Type', description:'Description',
+  student_name:'Student Name', adm_no:'Admission No.',
+  reverted:'Reverted', reverted_by:'Reverted By', reverted_at:'Reverted At', revert_reason:'Revert Reason',
+  created_at:'Created At', updated_at:'Updated At',
+}
+function AnomalyRecordRow({record,borderColor}){
+  const [expanded,setExpanded]=useState(false)
+  const raw=record.raw
+  return(
+    <div style={{background:'white',borderRadius:6,border:`1px solid ${borderColor}`,overflow:'hidden'}}>
+      <div onClick={()=>raw&&setExpanded(e=>!e)} style={{fontSize:11,color:'#475569',padding:'6px 10px',display:'flex',justifyContent:'space-between',alignItems:'center',cursor:raw?'pointer':'default',gap:8}}>
+        <span>• {record.label}</span>
+        {raw&&<span style={{fontSize:10,color:'#94a3b8',flexShrink:0}}>{expanded?'▲ hide details':'🔍 full details'}</span>}
+      </div>
+      {expanded&&raw&&(
+        <div style={{borderTop:`1px dashed ${borderColor}`,padding:'8px 10px',background:'#f8fafc'}}>
+          <div style={{fontSize:9,fontWeight:800,color:'#64748b',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:6}}>
+            Source: {record._table||'unknown table'}{record._group?` · ${record._group.length} records grouped`:''}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'4px 12px'}}>
+            {Object.entries(raw).filter(([k])=>!k.startsWith('_')&&raw[k]!==null&&raw[k]!==undefined&&raw[k]!=='').map(([k,v])=>(
+              <div key={k} style={{fontSize:10.5}}>
+                <span style={{color:'#94a3b8',fontWeight:600}}>{FIELD_LABELS[k]||k}: </span>
+                <span style={{color:'#1e293b',fontWeight:600}}>{typeof v==='boolean'?(v?'Yes':'No'):String(v)}</span>
+              </div>
+            ))}
+          </div>
+          {record._group&&record._group.length>1&&(
+            <div style={{marginTop:8,fontSize:9,color:'#94a3b8',fontStyle:'italic'}}>Showing first of {record._group.length} grouped records.</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows,isAdmin,currentUser}){
   const [open,setOpen]=useState(null),[sevFilter,setSevFilter]=useState('ALL'),[catFilter,setCatFilter]=useState('ALL')
   const flags=useMemo(()=>runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows}),[adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows])
+
+  // ✦ New: review state — persisted via the existing fraud_alerts table
+  // (entry_id holds the anomaly's own id string, flag_type its category).
+  // Loaded once per flags-list change; reviewSaving tracks per-anomaly-id
+  // saving state so only the button just clicked shows a spinner.
+  const [reviews,setReviews]=useState({}) // { [anomalyId]: { verdict, resolved_by, resolved_at } }
+  const [reviewSaving,setReviewSaving]=useState(null)
+  const [reviewLoading,setReviewLoading]=useState(true)
+
+  useEffect(()=>{
+    if(!isAdmin||flags.length===0){setReviewLoading(false);return}
+    let cancelled=false
+    ;(async()=>{
+      // entry_id in fraud_alerts is bigint elsewhere in the schema, but our
+      // anomaly ids are strings (e.g. "dup_flat_1129_July") — fraud_alerts
+      // is being reused here as a generic flag/verdict store rather than
+      // its original narrower purpose, so we match on the label text
+      // instead of entry_id to keep this working without a schema change
+      // beyond the verdict column already added.
+      const {data,error}=await supabase.from('fraud_alerts').select('label,verdict,resolved_by,resolved_at').in('label',flags.map(f=>f.id))
+      if(cancelled)return
+      if(error){console.error('AnomalyMonitor: failed to load reviews',error.message);setReviewLoading(false);return}
+      const map={}
+      ;(data||[]).forEach(r=>{map[r.label]={verdict:r.verdict||'pending',resolved_by:r.resolved_by,resolved_at:r.resolved_at}})
+      setReviews(map)
+      setReviewLoading(false)
+    })()
+    return()=>{cancelled=true}
+  },[flags,isAdmin])
+
+  const saveVerdict=async(flag,verdict)=>{
+    setReviewSaving(flag.id)
+    try{
+      const reviewerName=currentUser?.name||currentUser?.userName||'Admin'
+      const {error}=await supabase.from('fraud_alerts').upsert({
+        label:flag.id, flag_type:flag.cat, severity:flag.sev,
+        detected_at:new Date().toISOString(),
+        resolved:verdict!=='pending', resolved_by:verdict==='pending'?null:reviewerName,
+        resolved_at:verdict==='pending'?null:new Date().toISOString(),
+        verdict,
+      },{onConflict:'label'})
+      if(error){console.error('AnomalyMonitor: save verdict failed',error.message);return}
+      setReviews(prev=>({...prev,[flag.id]:{verdict,resolved_by:verdict==='pending'?null:reviewerName,resolved_at:verdict==='pending'?null:new Date().toISOString()}}))
+    }finally{
+      setReviewSaving(null)
+    }
+  }
+
   if(!isAdmin)return(<div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:12,padding:32,textAlign:'center',color:'#dc2626'}}><div style={{fontSize:36,marginBottom:8}}>🔒</div><div style={{fontWeight:800,fontSize:16}}>Admin Access Only</div><div style={{fontSize:13,marginTop:6,opacity:.8}}>Anomaly monitoring is restricted to administrators.</div></div>)
   const cats=['ALL',...new Set(flags.map(f=>f.cat))],sevs=['ALL','CRITICAL','HIGH','MEDIUM','LOW']
   const visible=flags.filter(f=>(sevFilter==='ALL'||f.sev===sevFilter)&&(catFilter==='ALL'||f.cat===catFilter))
   const cnt=sev=>flags.filter(f=>f.sev===sev).length
   const critCount=cnt('CRITICAL'),highCount=cnt('HIGH'),medCount=cnt('MEDIUM'),lowCount=cnt('LOW')
+  const pendingCount=flags.filter(f=>(reviews[f.id]?.verdict||'pending')==='pending').length
   return(
     <div style={{fontFamily:'system-ui,sans-serif'}}>
       <div style={{background:critCount>0?'linear-gradient(135deg,#7f1d1d,#991b1b)':highCount>0?'linear-gradient(135deg,#7c2d12,#9a3412)':'linear-gradient(135deg,#1e3a5f,#1e40af)',borderRadius:14,padding:'20px 24px',marginBottom:20,color:'white'}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:40}}>{critCount>0?'🚨':highCount>0?'⚠️':'✅'}</div>
-          <div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>Fee Collection Anomaly Monitor</div><div style={{fontSize:12,opacity:.8,marginTop:3}}>{flags.length===0?'No anomalies detected — all fee records look clean.':`${flags.length} anomal${flags.length!==1?'ies':'y'} detected · Admin eyes only`}</div></div>
+          <div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>Fee Collection Anomaly Monitor</div><div style={{fontSize:12,opacity:.8,marginTop:3}}>{flags.length===0?'No anomalies detected — all fee records look clean.':`${flags.length} anomal${flags.length!==1?'ies':'y'} detected · ${pendingCount} pending review · Admin eyes only`}</div></div>
           <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{l:'Critical',c:critCount},{l:'High',c:highCount},{l:'Medium',c:medCount},{l:'Low',c:lowCount}].map(b=>(<div key={b.l} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:72}}><div style={{fontSize:22,fontWeight:900}}>{b.c}</div><div style={{fontSize:10,opacity:.85}}>{b.l}</div></div>))}</div>
         </div>
       </div>
@@ -261,20 +367,65 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
       </div>
       {flags.length===0&&(<div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:12,padding:40,textAlign:'center'}}><div style={{fontSize:48,marginBottom:12}}>✅</div><div style={{fontSize:18,fontWeight:800,color:'#16a34a',marginBottom:6}}>All Clear</div><div style={{fontSize:13,color:'#16a34a',opacity:.7}}>No anomalies detected.</div></div>)}
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
-        {visible.map(f=>{const c=SEV_COLOR[f.sev]||SEV_COLOR.LOW,isOpen=open===f.id;return(
-          <div key={f.id} style={{background:c.bg,border:`1.5px solid ${c.border}`,borderRadius:12,overflow:'hidden'}}>
+        {visible.map(f=>{const c=SEV_COLOR[f.sev]||SEV_COLOR.LOW,isOpen=open===f.id
+          const review=reviews[f.id]||{verdict:'pending'}
+          const verdict=review.verdict||'pending'
+          const saving=reviewSaving===f.id
+          return(
+          <div key={f.id} style={{background:c.bg,border:`1.5px solid ${verdict==='fraud'?'#dc2626':verdict==='legitimate'?'#16a34a':c.border}`,borderRadius:12,overflow:'hidden'}}>
             <div onClick={()=>setOpen(isOpen?null:f.id)} style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:12}}>
               <span style={{fontSize:20}}>{SEV_ICON[f.sev]}</span>
-              <div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><span style={{fontWeight:800,fontSize:13,color:c.text}}>{f.title}</span><span style={{fontSize:10,fontWeight:800,padding:'1px 7px',borderRadius:99,background:c.badge,color:'white'}}>{f.sev}</span><span style={{fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:4,background:'rgba(0,0,0,.07)',color:c.text}}>{f.cat}</span></div><div style={{fontSize:11,color:c.text,opacity:.85,marginTop:3,lineHeight:1.45}}>{f.detail}</div></div>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                  <span style={{fontWeight:800,fontSize:13,color:c.text}}>{f.title}</span>
+                  <span style={{fontSize:10,fontWeight:800,padding:'1px 7px',borderRadius:99,background:c.badge,color:'white'}}>{f.sev}</span>
+                  <span style={{fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:4,background:'rgba(0,0,0,.07)',color:c.text}}>{f.cat}</span>
+                  {!reviewLoading&&verdict==='fraud'&&<span style={{fontSize:10,fontWeight:800,padding:'1px 7px',borderRadius:4,background:'#dc2626',color:'white'}}>🚩 FRAUD</span>}
+                  {!reviewLoading&&verdict==='legitimate'&&<span style={{fontSize:10,fontWeight:800,padding:'1px 7px',borderRadius:4,background:'#16a34a',color:'white'}}>✓ VERIFIED LEGITIMATE</span>}
+                </div>
+                <div style={{fontSize:11,color:c.text,opacity:.85,marginTop:3,lineHeight:1.45}}>{f.detail}</div>
+                {verdict!=='pending'&&review.resolved_by&&(
+                  <div style={{fontSize:10,color:c.text,opacity:.65,marginTop:3}}>Reviewed by {review.resolved_by}{review.resolved_at?` · ${new Date(review.resolved_at).toLocaleDateString('en-IN')}`:''}</div>
+                )}
+              </div>
               <span style={{fontSize:16,color:c.text,flexShrink:0,opacity:.6}}>{isOpen?'▲':'▼'}</span>
             </div>
-            {isOpen&&f.records.length>0&&(<div style={{borderTop:`1px dashed ${c.border}`,padding:'10px 16px',background:'rgba(255,255,255,.65)'}}><div style={{fontSize:10,fontWeight:800,color:c.text,textTransform:'uppercase',letterSpacing:'.4px',marginBottom:8}}>Affected Records ({f.records.length})</div><div style={{display:'flex',flexDirection:'column',gap:4}}>{f.records.map((r,i)=>(<div key={i} style={{fontSize:11,color:'#475569',background:'white',borderRadius:6,padding:'6px 10px',border:`1px solid ${c.border}`}}>• {r.label}</div>))}</div></div>)}
-            {isOpen&&f.records.length===0&&(<div style={{borderTop:`1px dashed ${c.border}`,padding:'10px 16px',background:'rgba(255,255,255,.5)',fontSize:11,color:'#94a3b8',fontStyle:'italic'}}>Investigate via Admin View tab.</div>)}
+            {isOpen&&(
+              <div style={{borderTop:`1px dashed ${c.border}`,padding:'10px 16px',background:'rgba(255,255,255,.65)'}}>
+                {f.records.length>0?(
+                  <>
+                    <div style={{fontSize:10,fontWeight:800,color:c.text,textTransform:'uppercase',letterSpacing:'.4px',marginBottom:8}}>Affected Records ({f.records.length})</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:14}}>{f.records.map((r,i)=>(<AnomalyRecordRow key={i} record={r} borderColor={c.border} />))}</div>
+                  </>
+                ):(
+                  <div style={{fontSize:11,color:'#94a3b8',fontStyle:'italic',marginBottom:14}}>Investigate via Admin View tab.</div>
+                )}
+                {/* ── Real fix option: verify and record a verdict, persisted in fraud_alerts ── */}
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  <span style={{fontSize:10,fontWeight:700,color:c.text,textTransform:'uppercase',letterSpacing:'.3px'}}>Verdict:</span>
+                  <button disabled={saving} onClick={e=>{e.stopPropagation();saveVerdict(f,'legitimate')}}
+                    style={{padding:'5px 12px',borderRadius:6,border:'1.5px solid #16a34a',background:verdict==='legitimate'?'#16a34a':'white',color:verdict==='legitimate'?'white':'#16a34a',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',opacity:saving?.6:1}}>
+                    ✓ Verify — Legitimate
+                  </button>
+                  <button disabled={saving} onClick={e=>{e.stopPropagation();saveVerdict(f,'fraud')}}
+                    style={{padding:'5px 12px',borderRadius:6,border:'1.5px solid #dc2626',background:verdict==='fraud'?'#dc2626':'white',color:verdict==='fraud'?'white':'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',opacity:saving?.6:1}}>
+                    🚩 Flag as Fraud
+                  </button>
+                  {verdict!=='pending'&&(
+                    <button disabled={saving} onClick={e=>{e.stopPropagation();saveVerdict(f,'pending')}}
+                      style={{padding:'5px 12px',borderRadius:6,border:'1.5px solid #e2e8f0',background:'white',color:'#64748b',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',opacity:saving?.6:1}}>
+                      Reset to Pending
+                    </button>
+                  )}
+                  {saving&&<span style={{fontSize:10,color:'#94a3b8'}}>saving…</span>}
+                </div>
+              </div>
+            )}
           </div>
         )})}
       </div>
       {visible.length===0&&flags.length>0&&(<div style={{textAlign:'center',padding:32,color:'#94a3b8',fontSize:13}}>No anomalies match the current filters.</div>)}
-      {flags.length>0&&(<div style={{marginTop:20,background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:10,padding:'12px 16px',fontSize:11,color:'#64748b',lineHeight:1.6}}><strong style={{color:'#1e3a5f'}}>Action guide —</strong> <strong>CRITICAL</strong>: fix immediately using Revert in Fee Payment. <strong>HIGH</strong>: verify against physical receipts before end of day. <strong>MEDIUM</strong>: review at next audit. <strong>LOW</strong>: address during month-end reconciliation.</div>)}
+      {flags.length>0&&(<div style={{marginTop:20,background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:10,padding:'12px 16px',fontSize:11,color:'#64748b',lineHeight:1.6}}><strong style={{color:'#1e3a5f'}}>Action guide —</strong> <strong>CRITICAL</strong>: fix immediately using Revert in Fee Payment. <strong>HIGH</strong>: verify against physical receipts before end of day. <strong>MEDIUM</strong>: review at next audit. <strong>LOW</strong>: address during month-end reconciliation. Use the <strong>Verdict</strong> buttons above to record whether each anomaly was checked and found legitimate, or flagged as suspected fraud — this is saved and visible to all admins.</div>)}
     </div>
   )
 }
@@ -2473,6 +2624,7 @@ export default function Fees() {
           students={students}
           liveRows={liveRows}
           isAdmin={isAdmin}
+          currentUser={currentUser}
         />
       )}
     </div>
