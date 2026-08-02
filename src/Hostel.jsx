@@ -6710,6 +6710,11 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const [search, setSearch] = useState('')
   const [assignSearch, setAssignSearch] = useState('')
   const [assignFilter, setAssignFilter] = useState('All')
+  const [showAdvFilters, setShowAdvFilters] = useState(false)
+  const [advBatch, setAdvBatch] = useState('All')
+  const [advCourse, setAdvCourse] = useState('All')
+  const [advGender, setAdvGender] = useState('All')
+  const [advHostelType, setAdvHostelType] = useState('All')
   const [toast, setToast] = useState(null)
 
   const showToast = (msg, color = '#16a34a') => {
@@ -6861,6 +6866,18 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     ).slice(0, 10)
     : []
 
+  // Option lists for the advanced-filter selects — drawn from every student
+  // on record (not just activeStudents) so a filter can still be used to,
+  // say, find dropout students of a particular batch.
+  const advBatchOptions = useMemo(() => [...new Set(students.map(s => s.batch).filter(Boolean))].sort(), [students])
+  const advCourseOptions = useMemo(() => [...new Set(students.map(s => s.course).filter(Boolean))].sort(), [students])
+  const advGenderOptions = useMemo(() => [...new Set(students.map(s => s.gender).filter(Boolean))].sort(), [students])
+  const advHostelTypeOptions = useMemo(() => [...new Set(students.map(s => s.hostel_type).filter(Boolean))].sort(), [students])
+
+  const advFilterCount = [advBatch, advCourse, advGender, advHostelType].filter(v => v !== 'All').length
+
+  const clearAdvFilters = () => { setAdvBatch('All'); setAdvCourse('All'); setAdvGender('All'); setAdvHostelType('All') }
+
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase()
     return students.filter(s => {
@@ -6869,9 +6886,14 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
         : assignFilter === 'Unassigned' ? (!isAssigned(s) && s.status !== 'Dropout')
         : assignFilter === 'Dropout' ? s.status === 'Dropout'
         : s.status !== 'Dropout' && normalizeHouse(s.house) === normalizeHouse(assignFilter).toLowerCase()
-      return matchesSearch && matchesFilter
+      const matchesAdv =
+        (advBatch === 'All' || s.batch === advBatch) &&
+        (advCourse === 'All' || s.course === advCourse) &&
+        (advGender === 'All' || s.gender === advGender) &&
+        (advHostelType === 'All' || s.hostel_type === advHostelType)
+      return matchesSearch && matchesFilter && matchesAdv
     })
-  }, [students, search, assignFilter])
+  }, [students, search, assignFilter, advBatch, advCourse, advGender, advHostelType])
 
   if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
 
@@ -7072,7 +7094,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
             <StatCard icon="👨‍🏫" label="Housemasters" value={masters.length} color="#7c3aed" bg="#f5f3ff" />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
               <input placeholder="🔍 Search students..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, maxWidth: 260 }} />
               <select value={assignFilter} onChange={e => setAssignFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
@@ -7081,10 +7103,19 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 <option value="Dropout">Dropout Only</option>
                 {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
               </select>
+              <button
+                onClick={() => setShowAdvFilters(v => !v)}
+                style={{
+                  ...btn(showAdvFilters || advFilterCount > 0 ? '#eff6ff' : '#f1f5f9', showAdvFilters || advFilterCount > 0 ? '#1a2f4d' : '#374151'),
+                  fontSize: 12, padding: '7px 14px',
+                }}
+              >
+                🎛 Advanced Filters{advFilterCount > 0 ? ` (${advFilterCount})` : ''} {showAdvFilters ? '▴' : '▾'}
+              </button>
             </div>
             <ReportExportButtons
               title="House Assignment Report"
-              subtitle={`${filteredStudents.length} of ${students.length} students${assignFilter !== 'All' ? ` · Filter: ${assignFilter}` : ''}`}
+              subtitle={`${filteredStudents.length} of ${students.length} students${assignFilter !== 'All' ? ` · Filter: ${assignFilter}` : ''}${advFilterCount > 0 ? ` · ${advFilterCount} advanced filter${advFilterCount === 1 ? '' : 's'}` : ''}`}
               columns={[
                 { key: 'gcc_no', label: 'GCC', width: 0.8 },
                 { key: 'name', label: 'Student', width: 1.4 },
@@ -7103,6 +7134,42 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               </button>
             )}
           </div>
+
+          {showAdvFilters && (
+            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div>
+                <label style={lbl}>Batch</label>
+                <select value={advBatch} onChange={e => setAdvBatch(e.target.value)} style={{ ...inp, width: 'auto' }}>
+                  <option value="All">All Batches</option>
+                  {advBatchOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Course</label>
+                <select value={advCourse} onChange={e => setAdvCourse(e.target.value)} style={{ ...inp, width: 'auto' }}>
+                  <option value="All">All Courses</option>
+                  {advCourseOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Gender</label>
+                <select value={advGender} onChange={e => setAdvGender(e.target.value)} style={{ ...inp, width: 'auto' }}>
+                  <option value="All">All Genders</option>
+                  {advGenderOptions.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Hostel Type</label>
+                <select value={advHostelType} onChange={e => setAdvHostelType(e.target.value)} style={{ ...inp, width: 'auto' }}>
+                  <option value="All">All Types</option>
+                  {advHostelTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              {advFilterCount > 0 && (
+                <button onClick={clearAdvFilters} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: 12, padding: '7px 14px' }}>✕ Clear Advanced Filters</button>
+              )}
+            </div>
+          )}
 
           {houses.length === 0
             ? (
