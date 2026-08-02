@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import TeacherAttendance from './TeacherAttendance'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -815,6 +816,7 @@ function HRDocuments() {
     { key: 'expiry',    label: '📅', full: 'Expiry' },
     { key: 'statutory', label: '⚖️', full: 'Statutory' },
     { key: 'warning',   label: '📝', full: 'Letters' },
+    { key: 'attendance',label: '🧑‍🏫', full: 'Attendance' },
   ]
 
   const show = (key) => activeSection === 'all' || activeSection === key
@@ -857,6 +859,7 @@ function HRDocuments() {
       {show('expiry')    && <ExpiryTracker />}
       {show('statutory') && staff.length > 0 && <StatutoryCompliance staff={staff} records={records} />}
       {show('warning')   && staff.length > 0 && <WarningLetterGenerator staff={staff} records={records} />}
+      {show('attendance')&& staff.length > 0 && <TeacherAttendance staff={staff} />}
     </div>
   )
 }
