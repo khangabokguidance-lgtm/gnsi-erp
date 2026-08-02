@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
-import { BATCHES, TIMETABLE_ROWS, flattenPeriods } from './timetableData'
 
 // ─── shared styles (mirrors HR.jsx conventions) ───────────────────────────
 
@@ -93,18 +92,75 @@ const STATUS_META = {
   substitute:  { label: 'Substitute', bg: '#eff6ff', color: '#2563eb', icon: '🔁' },
 }
 
-// ─── 1. Teacher Attendance (period-level, from the timetable grid) ────────
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const dayNameFor = (isoDate) => DAY_NAMES[new Date(isoDate + 'T00:00:00').getDay()]
+
+// Deterministic color per batch name so the UI stays consistent without a hardcoded list
+const BATCH_COLOR_POOL = [
+  { color: '#1F4E79', light: '#D9E6F2' }, { color: '#2E5E4E', light: '#DCEDE7' },
+  { color: '#6A2C70', light: '#E8DCEB' }, { color: '#A05A00', light: '#F5E3CC' },
+  { color: '#8C5F00', light: '#F2E6CC' }, { color: '#B23A48', light: '#F5DADE' },
+  { color: '#1B5E5E', light: '#D6EDED' }, { color: '#4A4A00', light: '#EFEFCC' },
+]
+function batchColor(name) {
+  let hash = 0
+  for (let i = 0; i < (name || '').length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  return BATCH_COLOR_POOL[hash % BATCH_COLOR_POOL.length]
+}
+
+// Shared: live list of batch names currently in the timetable (used by Doubt Log tab too)
+function useLiveBatches() {
+  const [batches, setBatches] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('timetable_master').select('class_name').then(({ data, error }) => {
+      if (cancelled || error) return
+      const unique = [...new Set((data || []).map(r => r.class_name).filter(c => c && c !== 'ALL'))].sort()
+      setBatches(unique)
+    })
+    return () => { cancelled = true }
+  }, [])
+  return batches
+}
+
+// ─── 1. Teacher Attendance (period-level, live from timetable_master) ─────
 
 function PeriodAttendance({ staff, showToast }) {
   const [date, setDate] = useState(todayISO())
   const [batchFilter, setBatchFilter] = useState('all')
-  const [records, setRecords] = useState({}) // key: batch|from|to|teacher -> row
+  const [periods, setPeriods] = useState([])       // today's timetable_master rows (excluding breaks)
+  const [records, setRecords] = useState({})       // key: batch|from|to|teacher -> row
+  const [loadingTT, setLoadingTT] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
 
-  const periods = useMemo(() => flattenPeriods(), [])
+  const dayName = useMemo(() => dayNameFor(date), [date])
 
   const keyOf = (p) => `${p.batch}|${p.period_from}|${p.period_to}|${p.teacher_name}`
+
+  const fetchTimetable = useCallback(async () => {
+    setLoadingTT(true)
+    const { data, error } = await supabase
+      .from('timetable_master')
+      .select('class_name, period_name, subject_name, teacher_name')
+      .eq('day_name', dayName)
+    if (!error) {
+      const rows = (data || [])
+        .filter(r => r.class_name && r.class_name !== 'ALL' && r.teacher_name && !/BREAK/i.test(r.subject_name || '') && !/DOUBT SESSION/i.test(r.subject_name || ''))
+        .map(r => {
+          const [period_from, period_to] = (r.period_name || '').split(/[–-]/).map(s => s.trim())
+          return { batch: r.class_name, period_from: period_from || r.period_name, period_to: period_to || '', subject: r.subject_name, teacher_name: r.teacher_name }
+        })
+      setPeriods(rows)
+    } else {
+      showToast('Could not load timetable: ' + error.message)
+    }
+    setLoadingTT(false)
+  }, [dayName])
+
+  useEffect(() => { fetchTimetable() }, [fetchTimetable])
+
+  const batches = useMemo(() => [...new Set(periods.map(p => p.batch))].sort(), [periods])
 
   const fetchAttendance = useCallback(async () => {
     setLoading(true)
@@ -125,8 +181,7 @@ function PeriodAttendance({ staff, showToast }) {
   useEffect(() => { fetchAttendance() }, [fetchAttendance])
 
   const matchStaff = (teacherName) => {
-    // Best-effort match "Sir Himan" / "Madam Sandhya" -> staff_profiles.name containing that token
-    const token = teacherName.replace(/^(Sir|Madam)\s+/i, '').trim().toLowerCase()
+    const token = (teacherName || '').replace(/^(Sir|Madam|Miss)\s+/i, '').trim().toLowerCase()
     return staff.find(s => s.name?.toLowerCase().includes(token))
   }
 
@@ -194,7 +249,7 @@ function PeriodAttendance({ staff, showToast }) {
       <SectionHeader
         icon="🧑‍🏫"
         title="Teacher Attendance"
-        subtitle="Mark attendance against each timetable period"
+        subtitle={`Mark attendance against ${dayName}'s timetable`}
         action={
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             style={{ ...styles.input, width: 'auto', fontSize: '12px', padding: '7px 10px' }} />
@@ -206,12 +261,15 @@ function PeriodAttendance({ staff, showToast }) {
           style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${batchFilter === 'all' ? '#1e3a5f' : 'transparent'}`, backgroundColor: batchFilter === 'all' ? '#f8fafc' : 'transparent', color: '#1e3a5f', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           All Batches
         </button>
-        {BATCHES.map(b => (
-          <button key={b.name} onClick={() => setBatchFilter(b.name)}
-            style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${batchFilter === b.name ? b.color : 'transparent'}`, backgroundColor: batchFilter === b.name ? '#f8fafc' : 'transparent', color: b.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            {b.name}
-          </button>
-        ))}
+        {batches.map(b => {
+          const meta = batchColor(b)
+          return (
+            <button key={b} onClick={() => setBatchFilter(b)}
+              style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${batchFilter === b ? meta.color : 'transparent'}`, backgroundColor: batchFilter === b ? '#f8fafc' : 'transparent', color: meta.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {b}
+            </button>
+          )
+        })}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '14px' }}>
@@ -228,21 +286,21 @@ function PeriodAttendance({ staff, showToast }) {
         ))}
       </div>
 
-      {loading ? (
+      {loadingTT || loading ? (
         <p style={{ color: '#94a3b8', textAlign: 'center', padding: '16px' }}>Loading...</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {filteredPeriods.map(p => {
             const k = keyOf(p)
             const rec = records[k]
-            const batchMeta = BATCHES.find(b => b.name === p.batch)
+            const batchMeta = batchColor(p.batch)
             return (
-              <div key={k} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: batchMeta?.light || '#f8fafc', overflow: 'hidden' }}>
+              <div key={k} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: batchMeta.light, overflow: 'hidden' }}>
                 <div style={{ padding: '10px 12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                     <div style={{ minWidth: 0 }}>
                       <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{p.subject}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#374151' }}>{p.teacher_name} · <span style={{ fontWeight: '700', color: batchMeta?.color }}>{p.batch}</span></p>
+                      <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#374151' }}>{p.teacher_name} · <span style={{ fontWeight: '700', color: batchMeta.color }}>{p.batch}</span></p>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{p.period_from} – {p.period_to}</p>
                     </div>
                     {rec && (
@@ -310,12 +368,17 @@ function DoubtSessions({ staff, showToast }) {
   const [batchFilter, setBatchFilter] = useState('all')
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
+  const batches = useLiveBatches()
   const [form, setForm] = useState({
-    student_name: '', batch_name: BATCHES[0].name, subject: '', topic: '',
+    student_name: '', batch_name: '', subject: '', topic: '',
     staff_id: '', doubt_time_slot: '', teacher_instructions: '',
   })
   const [saving, setSaving] = useState(false)
   const [resolveNote, setResolveNote] = useState({}) // id -> note text
+
+  useEffect(() => {
+    if (batches.length && !form.batch_name) setForm(f => ({ ...f, batch_name: batches[0] }))
+  }, [batches]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)
@@ -356,7 +419,7 @@ function DoubtSessions({ staff, showToast }) {
       showToast('Could not log doubt: ' + error.message)
     } else {
       showToast('Doubt logged!', 'success')
-      setForm({ student_name: '', batch_name: BATCHES[0].name, subject: '', topic: '', staff_id: '', doubt_time_slot: '', teacher_instructions: '' })
+      setForm({ student_name: '', batch_name: batches[0] || '', subject: '', topic: '', staff_id: '', doubt_time_slot: '', teacher_instructions: '' })
       fetchEntries()
     }
     setSaving(false)
@@ -391,7 +454,8 @@ function DoubtSessions({ staff, showToast }) {
           <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))}
             placeholder="Student name *" style={styles.input} />
           <select value={form.batch_name} onChange={e => setForm(f => ({ ...f, batch_name: e.target.value }))} style={styles.select}>
-            {BATCHES.map(b => <option key={b.name} value={b.name}>{b.name} ({b.sub})</option>)}
+            {batches.length === 0 && <option value="">No batches found in timetable</option>}
+            {batches.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
@@ -418,12 +482,15 @@ function DoubtSessions({ staff, showToast }) {
           style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${batchFilter === 'all' ? '#1e3a5f' : 'transparent'}`, backgroundColor: batchFilter === 'all' ? '#f8fafc' : 'transparent', color: '#1e3a5f', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           All Batches
         </button>
-        {BATCHES.map(b => (
-          <button key={b.name} onClick={() => setBatchFilter(b.name)}
-            style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${batchFilter === b.name ? b.color : 'transparent'}`, backgroundColor: batchFilter === b.name ? '#f8fafc' : 'transparent', color: b.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            {b.name}
-          </button>
-        ))}
+        {batches.map(b => {
+          const meta = batchColor(b)
+          return (
+            <button key={b} onClick={() => setBatchFilter(b)}
+              style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${batchFilter === b ? meta.color : 'transparent'}`, backgroundColor: batchFilter === b ? '#f8fafc' : 'transparent', color: meta.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {b}
+            </button>
+          )
+        })}
       </div>
 
       {loading ? (
@@ -431,14 +498,14 @@ function DoubtSessions({ staff, showToast }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {filtered.map(e => {
-            const batchMeta = BATCHES.find(b => b.name === e.batch_name)
+            const batchMeta = batchColor(e.batch_name)
             const status = DOUBT_STATUS_META[e.status] || DOUBT_STATUS_META.open
             return (
-              <div key={e.id} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: batchMeta?.light || '#f8fafc', padding: '12px 14px' }}>
+              <div key={e.id} style={{ borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: batchMeta.light, padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                   <div style={{ minWidth: 0 }}>
                     <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>
-                      {e.student_name} · <span style={{ color: batchMeta?.color }}>{e.batch_name}</span>
+                      {e.student_name} · <span style={{ color: batchMeta.color }}>{e.batch_name}</span>
                     </p>
                     <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#374151' }}>{e.subject ? `${e.subject} — ` : ''}{e.topic}</p>
                     {e.doubt_time_slot && <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>🕐 {e.doubt_time_slot}</p>}
