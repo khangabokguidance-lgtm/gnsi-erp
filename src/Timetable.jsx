@@ -38,7 +38,7 @@ const INSTITUTE = {
   short: 'GNSI',
   tagline: 'NVS · Sainik School · RMS Entrance Coaching',
   address: 'Khangabok, Thoubal District, Manipur — 795138',
-  phone: '+91 XXXXX XXXXX',
+  phone: '+91 89742 98074',
   email: 'admissions@guidancekhangabok.in',
   website: 'guidancekhangabok.in',
   founded: '2016',
@@ -187,32 +187,39 @@ function Crest({ size = 46 }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // LETTERHEAD
 // ══════════════════════════════════════════════════════════════════════════════
+function docRef() {
+  const d = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  return `GNSI/TT/${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
+}
+
 function Letterhead({ reportTitle, reportMeta }) {
   return (
-    <div style={{ borderBottom: `3px double ${C.navy900}`, paddingBottom: 14, marginBottom: 18 }}>
+    <div style={{ borderBottom: `3px double ${C.navy900}`, paddingBottom: 12, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <Crest size={54} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: SERIF, fontSize: 21, fontWeight: 700, color: C.navy900, letterSpacing: '0.3px', lineHeight: 1.15 }}>
+        <Crest size={52} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: SERIF, fontSize: 20, fontWeight: 700, color: C.navy900, letterSpacing: '0.3px', lineHeight: 1.15 }}>
             {INSTITUTE.name}
           </div>
-          <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.goldDim, fontWeight: 600, letterSpacing: '.04em', marginTop: 2 }}>
+          <div style={{ fontFamily: SANS, fontSize: 11, color: C.goldDim, fontWeight: 600, letterSpacing: '.04em', marginTop: 2 }}>
             {INSTITUTE.tagline}
           </div>
-          <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.inkSoft, marginTop: 4 }}>
+          <div style={{ fontFamily: SANS, fontSize: 10, color: C.inkSoft, marginTop: 4 }}>
             {INSTITUTE.address} &nbsp;·&nbsp; {INSTITUTE.phone} &nbsp;·&nbsp; {INSTITUTE.email} &nbsp;·&nbsp; {INSTITUTE.website}
           </div>
         </div>
-        <div style={{ textAlign: 'right', fontFamily: SANS }}>
-          <div style={{ fontSize: 9.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Est. {INSTITUTE.founded}</div>
+        <div style={{ textAlign: 'right', fontFamily: SANS, flexShrink: 0 }}>
+          <div style={{ fontSize: 9, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: '.08em' }}>Est. {INSTITUTE.founded}</div>
+          <div style={{ fontSize: 9, color: C.inkFaint, marginTop: 3 }}>Ref: {docRef()}</div>
         </div>
       </div>
       {reportTitle && (
-        <div style={{ marginTop: 14, textAlign: 'center' }}>
-          <div style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: C.navy900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+        <div style={{ marginTop: 12, textAlign: 'center' }}>
+          <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 700, color: C.navy900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
             {reportTitle}
           </div>
-          {reportMeta && <div style={{ fontFamily: SANS, fontSize: 11, color: C.inkSoft, marginTop: 3 }}>{reportMeta}</div>}
+          {reportMeta && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.inkSoft, marginTop: 3 }}>{reportMeta}</div>}
         </div>
       )}
     </div>
@@ -221,15 +228,15 @@ function Letterhead({ reportTitle, reportMeta }) {
 
 function ReportFooter({ generatedAt }) {
   return (
-    <div style={{ marginTop: 28, paddingTop: 14, borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', fontFamily: SANS, fontSize: 10, color: C.inkFaint }}>
+    <div style={{ marginTop: 24, paddingTop: 12, borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', fontFamily: SANS, fontSize: 9.5, color: C.inkFaint }}>
       <div>Generated {generatedAt} · {INSTITUTE.short} Timetable System</div>
-      <div style={{ display: 'flex', gap: 40 }}>
+      <div style={{ display: 'flex', gap: 36 }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 140, borderTop: `1px solid ${C.inkFaint}`, marginBottom: 4 }} />
+          <div style={{ width: 130, borderTop: `1px solid ${C.inkFaint}`, marginBottom: 4 }} />
           Prepared By
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 140, borderTop: `1px solid ${C.inkFaint}`, marginBottom: 4 }} />
+          <div style={{ width: 130, borderTop: `1px solid ${C.inkFaint}`, marginBottom: 4 }} />
           Authorized Signature
         </div>
       </div>
@@ -631,11 +638,16 @@ function ReportGenerator({ entries, subs, batches }) {
     win.document.write(`
       <html><head><title>${INSTITUTE.short} Report</title>
       <style>
-        @page { size: A4 landscape; margin: 14mm; }
-        * { box-sizing: border-box; }
+        @page { size: A4 landscape; margin: 12mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         body { font-family: ${SANS}; margin: 0; background: white; color: ${C.ink}; }
         table { width: 100%; border-collapse: collapse; }
         th, td { font-size: 11px; }
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; break-inside: avoid; }
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
       </style>
       </head><body>${printContents}</body></html>
     `)
@@ -646,7 +658,7 @@ function ReportGenerator({ entries, subs, batches }) {
   const periodsFor = b => {
     const seen = new Map()
     entries.filter(e => e.class_name === b || e.class_name === 'ALL').forEach(e => { if (!seen.has(e.period_name)) seen.set(e.period_name, true) })
-    return [...seen.keys()]
+    return [...seen.keys()].sort((a, b2) => periodStartMinutes(a) - periodStartMinutes(b2))
   }
 
   const filteredSubs = subs.filter(s => s.date >= dateFrom && s.date <= dateTo).sort((a, b) => a.date.localeCompare(b.date) || a.class_name.localeCompare(b.class_name))
