@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   fmt, today, gccStr, rcptNo,
   collectFee, deleteLegacyFeeRecord,
-  upsertAccount, checkCourseFeeExists, checkFlatFeeExists,
+  upsertAccount,
   printReceipt, sourceRef,
   getFlatFees, getFeeRates,
   saveStudentFlatFeeOverride, clearFeeRateCache,
@@ -978,6 +978,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const hostelType = student?.hostel_type || 'Day Scholar'
 
+  // ✦ Bug fix: every fee rate lookup below previously used
+  // `${CURRENT_YEAR}-${CURRENT_YEAR + 1}` (today's computed session)
+  // regardless of which session the student was actually admitted in. A
+  // student admitted in 2024-2025 was being billed at whatever the
+  // CURRENT session's rates were, not their own. Now uses the student's
+  // own `session` field first, falling back to today's session only when
+  // that's missing (legacy records predating session tracking).
+  const sessionYear = student?.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+
   // ── Async flat fees + rates ───────────────────────────────────────────────
   const [flatFees,  setFlatFees]  = useState([])
   const [feeRates,  setFeeRates]  = useState({ flatFee: 0, courseFee: 0, admissionFee: ADM_FEE_BASE })
@@ -985,10 +994,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   useEffect(() => {
     if (!student) return
     const gccInt = parseInt(gccStr(student.gcc_no)) || null
-    getFlatFees(hostelType, student.course || '', student.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccInt)
+    getFlatFees(hostelType, student.course || '', student.batch || '', sessionYear, gccInt)
       .then(setFlatFees)
     getFeeRates(
-      `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
+      sessionYear,
       student.course || '', student.batch || '', hostelType, gccInt
     ).then(rates => {
       setFeeRates(rates)
@@ -1001,13 +1010,19 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         setOverrideReason('')
       }
     })
-  }, [student, hostelType])
+  }, [student, hostelType, sessionYear])
 
   const [flatChecked, setFlatChecked] = useState([])
 
   // ── Repeater state ────────────────────────────────────────────────────────
   const [isRepeater,     setIsRepeater]     = useState(false)
   const [repeaterSaving, setRepeaterSaving] = useState(false)
+
+  // ── Admission date state — required before any fee can be collected,
+  // matching the same requirement already enforced in FeeCollectionModal.jsx.
+  // Fees.jsx previously never fetched or displayed this field at all.
+  const [admissionDate,   setAdmissionDate]   = useState('')
+  const [admDateSaving,   setAdmDateSaving]   = useState(false)
 
   // ── Flat fee override state ───────────────────────────────────────────────
   const [hasOverride,      setHasOverride]      = useState(false)
@@ -1021,10 +1036,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (!student?.gcc_no) return
     supabase
       .from('students')
-      .select('is_repeater')
+      .select('is_repeater, admission_date')
       .eq('gcc_no', parseInt(student.gcc_no))
       .maybeSingle()
-      .then(({ data }) => { if (data) setIsRepeater(!!data.is_repeater) })
+      .then(({ data }) => {
+        if (data) {
+          setIsRepeater(!!data.is_repeater)
+          setAdmissionDate(data.admission_date || '')
+        }
+      })
   }, [student?.gcc_no])
 
   const toggleRepeater = async () => {
@@ -1039,6 +1059,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setRepeaterSaving(false)
   }
 
+  const saveAdmissionDate = async (val) => {
+    if (!student?.gcc_no) return
+    setAdmissionDate(val)
+    if (!val) return
+    setAdmDateSaving(true)
+    await supabase
+      .from('students')
+      .update({ admission_date: val })
+      .eq('gcc_no', parseInt(student.gcc_no))
+    setAdmDateSaving(false)
+  }
+
   const saveOverrideInline = async () => {
     const amt = parseFloat(overrideAmt)
     if (isNaN(amt) || amt < 0) { setOverrideFeedback({ type: 'err', msg: 'Enter a valid amount.' }); return }
@@ -1046,12 +1078,12 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (!gccInt) return
     setOverrideSaving(true)
     try {
-      await saveStudentFlatFeeOverride(gccInt, `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, amt, overrideReason, 'admin')
+      await saveStudentFlatFeeOverride(gccInt, sessionYear, amt, overrideReason, 'admin')
       clearFeeRateCache()
-      const rates = await getFeeRates(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, student.course || '', student.batch || '', hostelType, gccInt)
+      const rates = await getFeeRates(sessionYear, student.course || '', student.batch || '', hostelType, gccInt)
       setFeeRates(rates)
       setHasOverride(true)
-      const updated = await getFlatFees(hostelType, student.course || '', student.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccInt)
+      const updated = await getFlatFees(hostelType, student.course || '', student.batch || '', sessionYear, gccInt)
       setFlatFees(updated)
       setOverrideMode(false)
       setOverrideFeedback({ type: 'ok', msg: `Flat fee set to ₹${amt.toLocaleString('en-IN')}/month.` })
@@ -1066,14 +1098,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (!gccInt) return
     setOverrideSaving(true)
     try {
-      await saveStudentFlatFeeOverride(gccInt, `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, null)
+      await saveStudentFlatFeeOverride(gccInt, sessionYear, null)
       clearFeeRateCache()
-      const rates = await getFeeRates(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, student.course || '', student.batch || '', hostelType, null)
+      const rates = await getFeeRates(sessionYear, student.course || '', student.batch || '', hostelType, null)
       setFeeRates(rates)
       setHasOverride(false)
       setOverrideAmt('')
       setOverrideReason('')
-      const updated = await getFlatFees(hostelType, student.course || '', student.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, null)
+      const updated = await getFlatFees(hostelType, student.course || '', student.batch || '', sessionYear, null)
       setFlatFees(updated)
       setOverrideMode(false)
       setOverrideFeedback({ type: 'ok', msg: 'Override removed. Standard rate restored.' })
@@ -1165,11 +1197,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const handleSave = async () => {
     if (!student || !admRec || grandThis === 0 || saving) return
+    // ✦ Bug fix: Fees.jsx had no admission_date requirement at all, unlike
+    // FeeCollectionModal.jsx (fixed earlier this session) — without a real
+    // admission date on file, the fee engine can't correctly determine
+    // which months a student actually owes, which was the root cause of a
+    // real wrong-charge bug found earlier for a repeater student.
+    if (!admissionDate) {
+      showToast('Admission Date is required before collecting fees — set it below.', '#dc2626')
+      return
+    }
     setSaving(true)
     try {
       const items = []
 
-      if (admPkgThis > 0 && !admPaid) {
+      // Defense-in-depth: even if admPkgThis somehow computes non-zero for
+      // a repeater (stale state, etc.), never actually charge these items —
+      // matches the UI gate above.
+      if (admPkgThis > 0 && !admPaid && !isRepeater) {
         items.push({ kind: 'admission', amount: admFeeAmt })
         DRESS_ITEMS.forEach((d, idx) => {
           if (dressChecked[idx]) items.push({ kind: 'item', label: `Dress Kit — ${d.name}`, amount: d.price })
@@ -1239,7 +1283,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const totalEverPaid = admEverPaid + flatEverPaid + crsfEverPaid
 
   const dressTotal = DRESS_ITEMS.reduce((s, i, idx) => s + (dressChecked[idx] ? i.price : 0), 0)
-  const admPkgThis = admPaid ? 0 : (admFeeAmt + dressTotal + (prospChecked ? PROSPECTUS_FEE : 0))
+  const admPkgThis = (admPaid || isRepeater) ? 0 : (admFeeAmt + dressTotal + (prospChecked ? PROSPECTUS_FEE : 0))
 
   const selFlat  = flatFees.filter((_, i) => flatChecked[i] && !paidMonths.includes(flatFees[i]?.month))
   const flatThis = selFlat.reduce((s, f) => s + f.amount, 0)
@@ -1253,7 +1297,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     const rec = admissions.find(a => gccStr(a.gcc_no) === gccStr(s.gcc_no)) || null
     setAdmRec(rec)
 
-    const studentFlatFees = await getFlatFees(s.hostel_type || 'Day Scholar', s.course || '', s.batch || '', `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, parseInt(gccStr(s.gcc_no)) || null)
+    // Same session-derivation as sessionYear above — use this student's own
+    // admission session, not today's computed one.
+    const sSessionYear = s.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+
+    const studentFlatFees = await getFlatFees(s.hostel_type || 'Day Scholar', s.course || '', s.batch || '', sSessionYear, parseInt(gccStr(s.gcc_no)) || null)
     const paid = adm_flat_fees
       .filter(r => gccStr(r.adm_app_id) === gccStr(s.gcc_no) && r.paid)
       .map(r => r.month)
@@ -1267,7 +1315,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (defaultCourse && defaultHostelType) {
       try {
         const rates = await getFeeRates(
-          `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
+          sSessionYear,
           defaultCourse, defaultBatch, defaultHostelType, parseInt(gccStr(s.gcc_no)) || null
         )
         defaultAmt = rates.courseFee || syncCourseFeeAmt(defaultCourse, defaultHostelType)
@@ -1320,7 +1368,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       const batch      = field === 'subtype'    ? value : (field === 'course' ? '' : currentRow.subtype || '')
       if (course && ht) {
         try {
-          const rates = await getFeeRates(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, course, batch, ht)
+          const rates = await getFeeRates(sessionYear, course, batch, ht)
           const amt = rates.courseFee || syncCourseFeeAmt(course, ht)
           setCrsfRows(rows => {
             const updated = [...rows]
@@ -1393,6 +1441,20 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               </button>
             </span>
             {totalEverPaid > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>₹{totalEverPaid.toLocaleString('en-IN')} prev. paid</span>}
+            {/* ── Admission Date — required before any fee can be collected ── */}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: admissionDate ? '#64748b' : '#dc2626' }}>
+                Admission Date{!admissionDate && ' *required'}
+              </span>
+              <input
+                type="date"
+                value={admissionDate || ''}
+                onChange={e => saveAdmissionDate(e.target.value)}
+                disabled={admDateSaving}
+                style={{ fontSize: 11, padding: '2px 6px', borderRadius: 5, border: `1.5px solid ${admissionDate ? '#e2e8f0' : '#fca5a5'}`, background: admissionDate ? 'white' : '#fef2f2' }}
+              />
+              {admDateSaving && <span style={{ fontSize: 10, color: '#94a3b8' }}>saving…</span>}
+            </span>
             {/* ── REPEATER toggle ── */}
             <button
               type="button"
@@ -1411,7 +1473,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       {overrideMode && (
         <div style={{ background: '#faf5ff', border: '1.5px solid #c4b5fd', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-            ✏️ Custom flat fee for {student.name} — {`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`}
+            ✏️ Custom flat fee for {student.name} — {sessionYear}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
@@ -1476,7 +1538,20 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               <div style={{ flex: 1, fontWeight: 800, fontSize: 14, color: '#3730a3' }}>Admission package</div>
               {admPaid && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#dcfce7', color: '#16a34a', fontWeight: 700 }}>✓ Already paid</span>}
             </div>
-            {admPaid ? (
+            {/* ✦ Bug fix: this branch previously let staff charge Admission
+                Fee + Dress + Prospectus to a known repeater — the same gap
+                already found and fixed in FeeCollectionModal.jsx earlier.
+                Repeaters don't owe these one-time admission-side fees. */}
+            {isRepeater && !admPaid ? (
+              <div style={{ padding: '16px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, margin: 12, textAlign: 'center' }}>
+                <div style={{ fontSize: 20, marginBottom: 4 }}>🔁</div>
+                <div style={{ fontWeight: 800, color: '#92400e', fontSize: 13 }}>Admission Fee Waived — Repeater</div>
+                <div style={{ fontSize: 11.5, color: '#92400e', opacity: .85, marginTop: 4 }}>
+                  This student is marked as a repeater, so Admission Fee, Dress Fee, and Prospectus Fee
+                  are not charged. Collect their dues from Flat or Course Fees instead.
+                </div>
+              </div>
+            ) : admPaid ? (
               <div style={{ padding: '12px 16px' }}>
                 {myAdmCols.map((c, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '4px 0', color: '#475569' }}>
@@ -1760,9 +1835,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             </div>
           )}
 
-          <button onClick={handleSave} disabled={saving || grandThis === 0 || !admRec}
-            style={{ width: '100%', padding: 14, borderRadius: 12, background: saving || grandThis === 0 || !admRec ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: 'white', border: 'none', fontSize: 15, fontWeight: 800, cursor: saving || grandThis === 0 || !admRec ? 'not-allowed' : 'pointer', boxShadow: grandThis > 0 && admRec ? '0 4px 16px rgba(55,48,163,.3)' : 'none' }}>
-            {saving ? '⏳ Processing…' : `🖨️ Save & print invoice · ₹${grandThis.toLocaleString('en-IN')}`}
+          <button onClick={handleSave} disabled={saving || grandThis === 0 || !admRec || !admissionDate}
+            style={{ width: '100%', padding: 14, borderRadius: 12, background: (saving || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: 'white', border: 'none', fontSize: 15, fontWeight: 800, cursor: (saving || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', boxShadow: grandThis > 0 && admRec && admissionDate ? '0 4px 16px rgba(55,48,163,.3)' : 'none' }}>
+            {saving ? '⏳ Processing…' : !admissionDate ? '⚠️ Set Admission Date First' : `🖨️ Save & print invoice · ₹${grandThis.toLocaleString('en-IN')}`}
           </button>
           {!admRec && <div style={{ fontSize: 11, color: '#dc2626', textAlign: 'center', marginTop: -6 }}>⚠ No admission record — create one in Admissions first</div>}
         </div>
