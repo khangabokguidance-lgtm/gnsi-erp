@@ -392,6 +392,11 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
                 <span style={{ fontWeight:700, marginRight:5, color:C.slate }}>{l}.</span>
                 {q[`option_${l.toLowerCase()}`] || '—'}
                 {reveal && q.correct_option===l && ' ✓'}
+                {q[`option_${l.toLowerCase()}_mayek`] && (
+                  <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif", fontWeight:400, marginTop:2 }}>
+                    {q[`option_${l.toLowerCase()}_mayek`]}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -751,6 +756,10 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
               value={row[`option_${l.toLowerCase()}`] || ''}
               onChange={e => onChange(index, `option_${l.toLowerCase()}`, e.target.value)}
               placeholder={`Option ${l}`} />
+            <input style={{ ...iS, marginTop:4, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}
+              value={row[`option_${l.toLowerCase()}_mayek`] || ''}
+              onChange={e => onChange(index, `option_${l.toLowerCase()}_mayek`, e.target.value)}
+              placeholder={`Option ${l} (Meitei Mayek, optional)`} />
           </div>
         ))}
       </div>
@@ -803,8 +812,9 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
 // Patch: StudyMaterialsRefPanel + emit QUESTION_SAVED after save
 // ══════════════════════════════════════════════════════════════════════════════
 const emptyRow = () => ({
-  subject:'', chapter:'', subsection:'', question:'',
+  subject:'', chapter:'', subsection:'', question:'', question_mayek:'',
   option_a:'', option_b:'', option_c:'', option_d:'',
+  option_a_mayek:'', option_b_mayek:'', option_c_mayek:'', option_d_mayek:'',
   correct_option:'', difficulty:'Medium', marks:1, diagram_url:'',
 })
 
@@ -1065,6 +1075,11 @@ Answer: B`} />
                     <span style={{ fontWeight:700, marginRight:5 }}>{l}.</span>
                     {q[`option_${l.toLowerCase()}`] || '—'}
                     {q.correct_option===l && ' ✓'}
+                    {q[`option_${l.toLowerCase()}_mayek`] && (
+                      <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif", marginTop:2 }}>
+                        {q[`option_${l.toLowerCase()}_mayek`]}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1204,6 +1219,16 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
       const optText = `  ${l}. ${q[`option_${l.toLowerCase()}`]||'—'}${isCorrect?' ✓':''}`
       const optLines = doc.splitTextToSize(optText, W-margin*2-12)
       doc.text(optLines, margin+5, y); y+=optLines.length*5+1
+
+      const optMayek = q[`option_${l.toLowerCase()}_mayek`]
+      if (optMayek) {
+        checkPage(6)
+        doc.setFontSize(10); doc.setFont('NotoMayek','normal')
+        doc.setTextColor(isCorrect?21:55, isCorrect?128:65, isCorrect?61:81)
+        const optMayekLines = doc.splitTextToSize(`  ${optMayek}`, W-margin*2-12)
+        doc.text(optMayekLines, margin+5, y); y+=optMayekLines.length*5+1
+        doc.setFont('helvetica','normal')
+      }
     })
     y+=5; doc.setDrawColor(226,232,240); doc.setLineWidth(.2)
     doc.line(margin,y,W-margin,y); y+=5
@@ -1415,6 +1440,11 @@ function TabPaper({ questions, showToast }) {
                       <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
                       {q[`option_${l.toLowerCase()}`]||'—'}
                       {withAnswers && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
+                      {q[`option_${l.toLowerCase()}_mayek`] && (
+                        <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                          {q[`option_${l.toLowerCase()}_mayek`]}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1593,7 +1623,14 @@ function TabTest({ questions, showToast }) {
                     display:'flex', alignItems:'center', justifyContent:'center' }}>
                     <span style={{ fontSize:11, fontWeight:700, color: answers[q._testIdx]===l?'#fff':C.slate }}>{l}</span>
                   </div>
-                  {q[`option_${l.toLowerCase()}`]||'—'}
+                  <div>
+                    {q[`option_${l.toLowerCase()}`]||'—'}
+                    {q[`option_${l.toLowerCase()}_mayek`] && (
+                      <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif", fontSize:12 }}>
+                        {q[`option_${l.toLowerCase()}_mayek`]}
+                      </div>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
