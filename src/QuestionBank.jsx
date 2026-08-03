@@ -1783,9 +1783,35 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
 
   const refetch = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('qbank_questions').select('*').order('created_at', { ascending:false })
-    if (error) showToast('Failed to load questions', C.rose)
-    else setQuestions(data || [])
+    const PAGE_SIZE = 1000
+    let all = []
+    let from = 0
+    let keepGoing = true
+    let hadError = false
+
+    while (keepGoing) {
+      const { data, error } = await supabase
+        .from('qbank_questions')
+        .select('*')
+        .order('created_at', { ascending:false })
+        .range(from, from + PAGE_SIZE - 1)
+
+      if (error) {
+        hadError = true
+        break
+      }
+
+      all = all.concat(data || [])
+
+      if (!data || data.length < PAGE_SIZE) {
+        keepGoing = false
+      } else {
+        from += PAGE_SIZE
+      }
+    }
+
+    if (hadError) showToast('Failed to load questions', C.rose)
+    else setQuestions(all)
     setLoading(false)
   }, [])
 
