@@ -369,9 +369,14 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
             {q._needsDiagram && <Badge text="⚠️ Needs Diagram" color="#92400e" bg="#fef3c7" />}
             {q.diagram_url && <Badge text="🖼 Has Diagram" color="#065f46" bg="#d1fae5" />}
           </div>
-          <div style={{ fontSize:14, color:'#1e293b', fontWeight:500, lineHeight:1.6, marginBottom:8 }}>
+          <div style={{ fontSize:14, color:'#1e293b', fontWeight:500, lineHeight:1.6, marginBottom:q.question_mayek ? 4 : 8 }}>
             {q.question}
           </div>
+          {q.question_mayek && (
+            <div style={{ fontSize:15, color:'#374151', lineHeight:1.7, marginBottom:8, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+              {q.question_mayek}
+            </div>
+          )}
           {q.diagram_url && (
             <img src={q.diagram_url} alt="Question diagram"
               style={{ maxWidth:280, maxHeight:180, borderRadius:8, border:`1px solid ${C.border}`, marginBottom:8, display:'block' }} />
@@ -1043,9 +1048,14 @@ Answer: B`} />
                   <Badge text={`Section: ${q._subsectionHint}`} color="#0369a1" bg="#e0f2fe" />
                 )}
               </div>
-              <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:10, lineHeight:1.6 }}>
+              <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:q.question_mayek ? 4 : 10, lineHeight:1.6 }}>
                 {q.question}
               </div>
+              {q.question_mayek && (
+                <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.7, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                  {q.question_mayek}
+                </div>
+              )}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:10 }}>
                 {['A','B','C','D'].map(l => (
                   <div key={l} style={{ padding:'5px 10px', borderRadius:6, fontSize:12,
@@ -1114,6 +1124,27 @@ Answer: B`} />
 }
 
 // ── PDF GENERATOR ─────────────────────────────────────────────────────────────
+// Meitei Mayek font (base64, embedded once per file load) — needed because
+// jsPDF's built-in fonts (Helvetica/Times/Courier) contain no Mayek glyphs.
+// Source: Noto Sans Meetei Mayek Regular, SIL Open Font License 1.1
+// https://github.com/notofonts/meetei-mayek
+import { NotoSansMeeteiMayek } from './fonts/NotoSansMeeteiMayek-normal.js'
+
+let mayekFontRegistered = false
+function ensureMayekFont(doc) {
+  if (!mayekFontRegistered) {
+    doc.addFileToVFS('NotoSansMeeteiMayek.ttf', NotoSansMeeteiMayek)
+    doc.addFont('NotoSansMeeteiMayek.ttf', 'NotoMayek', 'normal')
+    mayekFontRegistered = true
+  } else {
+    // Font data is per-instance in some jsPDF versions — re-register safely if needed
+    try {
+      doc.addFileToVFS('NotoSansMeeteiMayek.ttf', NotoSansMeeteiMayek)
+      doc.addFont('NotoSansMeeteiMayek.ttf', 'NotoMayek', 'normal')
+    } catch (e) { /* already registered on this doc instance */ }
+  }
+}
+
 async function generatePDF({ title, subject, chapter, questions, withAnswers }) {
   if (!window.jspdf) {
     await new Promise((res, rej) => {
@@ -1124,6 +1155,7 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
   }
   const { jsPDF } = window.jspdf
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
+  ensureMayekFont(doc)
   const W = 210, margin = 15
   let y = margin
 
@@ -1152,6 +1184,16 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
     const lines = doc.splitTextToSize(qText, W-margin*2-6)
     checkPage(lines.length*5+22)
     doc.text(lines, margin, y); y+=lines.length*5.5+2
+
+    if (q.question_mayek) {
+      checkPage(10)
+      doc.setFontSize(11); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
+      const mayekLines = doc.splitTextToSize(q.question_mayek, W-margin*2-6)
+      checkPage(mayekLines.length*5+10)
+      doc.text(mayekLines, margin, y); y+=mayekLines.length*5.5+2
+      doc.setFont('helvetica','normal') // switch back for options below
+    }
+
     ;['A','B','C','D'].forEach(l => {
       checkPage(7)
       const isCorrect = withAnswers && q.correct_option===l
@@ -1353,10 +1395,15 @@ function TabPaper({ questions, showToast }) {
             </div>
             {preview.map((q,i) => (
               <div key={q.id||i} style={{ marginBottom:14 }}>
-                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b', marginBottom:6 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b', marginBottom:q.question_mayek ? 2 : 6 }}>
                   <span style={{ color:C.slate, marginRight:6 }}>Q{i+1}.</span>{q.question}
                   <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
                 </div>
+                {q.question_mayek && (
+                  <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                    {q.question_mayek}
+                  </div>
+                )}
                 {q.diagram_url && (
                   <img src={q.diagram_url} alt="diagram"
                     style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />
@@ -1475,9 +1522,14 @@ function TabTest({ questions, showToast }) {
               border:`1px solid ${ok?'#86efac':wr?'#fca5a5':C.border}`,
               borderLeft:`4px solid ${ok?C.green:wr?C.rose:C.slate}`,
               background:ok?'#f0fdf4':wr?'#fff1f2':'#f8fafc' }}>
-              <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:5 }}>
+              <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:q.question_mayek ? 2 : 5 }}>
                 <span style={{ color:C.slate, marginRight:6 }}>Q{i+1}.</span>{q.question}
               </div>
+              {q.question_mayek && (
+                <div style={{ fontSize:13, color:'#374151', marginBottom:5, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                  {q.question_mayek}
+                </div>
+              )}
               <div style={{ fontSize:12 }}>
                 Your answer: <strong style={{ color:ok?C.green:wr?C.rose:C.slate }}>{ua||'—'}</strong>
                 {ok && ' ✅'}
@@ -1514,10 +1566,15 @@ function TabTest({ questions, showToast }) {
         </div>
         {testQs.map((q,i) => (
           <div key={i} style={{ ...cardS, marginBottom:12 }}>
-            <div style={{ fontSize:14, fontWeight:600, color:'#1e293b', marginBottom:10, lineHeight:1.6 }}>
+            <div style={{ fontSize:14, fontWeight:600, color:'#1e293b', marginBottom:q.question_mayek ? 4 : 10, lineHeight:1.6 }}>
               <span style={{ color:C.slate, marginRight:8 }}>Q{i+1}.</span>{q.question}
               <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
             </div>
+            {q.question_mayek && (
+              <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.6, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                {q.question_mayek}
+              </div>
+            )}
             {q.diagram_url && (
               <img src={q.diagram_url} alt="diagram"
                 style={{ maxWidth:240, maxHeight:160, borderRadius:8, marginBottom:8, display:'block' }} />
