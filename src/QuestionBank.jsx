@@ -27,6 +27,7 @@ const SUBJECTS = {
     'Prime and Composite Numbers','Roman Numerals','Simplification',
     'Conversion of Units','Operation on Numbers','Temperature',
     'Plane Figures','Arranging of Fractions','Complementary and Supplementary Angles',
+    'Rounding Off Numbers','Measurement','Squares, Cubes and Roots','Data Handling','Time and Work',
   ],
   Intelligence: [
     'Analogies','Venn Diagram','Paper Folding','Embedded Figure',
@@ -1793,7 +1794,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       const { data, error } = await supabase
         .from('qbank_questions')
         .select('*')
-        .order('created_at', { ascending:false })
+        .order('created_at', { ascending:true })
         .range(from, from + PAGE_SIZE - 1)
 
       if (error) {
