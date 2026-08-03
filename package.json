@@ -34,7 +34,7 @@
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
-    "@supabase/supabase-js": "^2.110.8",
+    "@supabase/supabase-js": "^2.112.0",
     "docx": "^9.7.1",
     "exceljs": "^3.4.0",
     "jspdf": "^4.2.1",
