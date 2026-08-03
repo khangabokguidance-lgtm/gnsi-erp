@@ -1128,7 +1128,7 @@ Answer: B`} />
 // jsPDF's built-in fonts (Helvetica/Times/Courier) contain no Mayek glyphs.
 // Source: Noto Sans Meetei Mayek Regular, SIL Open Font License 1.1
 // https://github.com/notofonts/meetei-mayek
-import { NotoSansMeeteiMayek } from './fonts/NotoSansMeeteiMayek-normal.js'
+import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
 
 let mayekFontRegistered = false
 function ensureMayekFont(doc) {
