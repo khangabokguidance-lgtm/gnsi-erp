@@ -4451,6 +4451,11 @@ function CommandCentreTab({ students, currentUser }) {
   const [todayRecords, setTodayRecords] = useState([])
   const [weekRecords, setWeekRecords] = useState([])
   const [autoSendStatus, setAutoSendStatus] = useState(null) // 'sent' | 'already' | null
+  // ── Cross-tab house issues ──
+  const [openDiscipline, setOpenDiscipline] = useState([]) // [{student_id, status}]
+  const [openSickbay, setOpenSickbay] = useState([])       // [{student_id, status}]
+  const [openMaintenance, setOpenMaintenance] = useState([]) // [{house, status, priority}]
+  const [neglectThisWeek, setNeglectThisWeek] = useState([]) // hm_neglect_log rows this week
 
   const today = new Date().toISOString().split('T')[0]
   const weekStart = mondayOfWeek(new Date())
@@ -4459,6 +4464,7 @@ function CommandCentreTab({ students, currentUser }) {
   const fmt = d => d.toISOString().split('T')[0]
   const lastWeekStartStr = fmt(lastWeekStart)
   const lastWeekEndStr = fmt(lastWeekEnd)
+  const weekStartStr = fmt(weekStart)
 
   const activeStudents = useMemo(() =>
     (students || []).filter(s => s.status !== 'Inactive' && s.status !== 'Dropout'), [students])
@@ -4470,25 +4476,79 @@ function CommandCentreTab({ students, currentUser }) {
     })
     return counts
   }, [activeStudents])
+  // studentId → house, for joining discipline/sickbay records (which only
+  // store student_id) back to a house.
+  const houseByStudentId = useMemo(() => {
+    const map = {}
+    activeStudents.forEach(s => { map[s.id] = normalizeHouse(s.house) })
+    return map
+  }, [activeStudents])
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       setLoading(true)
-      const [{ data: houseRows }, todayRows, weekRows] = await Promise.all([
+      const [
+        { data: houseRows }, todayRows, weekRows,
+        { data: discRows }, { data: sickRows }, { data: maintRows }, { data: neglectRows },
+      ] = await Promise.all([
         supabase.from('houses').select('name'),
         fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at, marked_by').eq('date', today)),
         fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at, marked_by').gte('date', lastWeekStartStr).lte('date', lastWeekEndStr)),
+        supabase.from('discipline_records').select('student_id, status').in('status', ['Open', 'In Progress']),
+        supabase.from('sickbay_records').select('student_id, status').eq('status', 'Admitted'),
+        supabase.from('maintenance_records').select('house, status, priority').in('status', ['Raised', 'Assigned', 'In Progress']),
+        supabase.from('hm_neglect_log').select('house, date, check_type, missing_tabs').gte('date', weekStartStr),
       ])
       if (cancelled) return
       setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
       setTodayRecords(todayRows || [])
       setWeekRecords(weekRows || [])
+      setOpenDiscipline(discRows || [])
+      setOpenSickbay(sickRows || [])
+      setOpenMaintenance(maintRows || [])
+      setNeglectThisWeek(neglectRows || [])
       setLoading(false)
     }
     load()
     return () => { cancelled = true }
-  }, [today, lastWeekStartStr, lastWeekEndStr])
+  }, [today, lastWeekStartStr, lastWeekEndStr, weekStartStr])
+
+  // ── Per-house issue rollup across ALL tabs ──
+  const houseIssues = useMemo(() => {
+    const result = {}
+    houses.forEach(h => {
+      result[normalizeHouse(h)] = {
+        houseName: h, discipline: 0, sickbay: 0, maintenance: 0, maintenanceUrgent: 0,
+        lateRollCalls: 0, complianceGaps: 0, rushedRollCalls: 0,
+      }
+    })
+    openDiscipline.forEach(r => {
+      const h = houseByStudentId[r.student_id]
+      if (h && result[h]) result[h].discipline++
+    })
+    openSickbay.forEach(r => {
+      const h = houseByStudentId[r.student_id]
+      if (h && result[h]) result[h].sickbay++
+    })
+    openMaintenance.forEach(r => {
+      const h = normalizeHouse(r.house)
+      if (h && result[h]) {
+        result[h].maintenance++
+        if (r.priority === 'Urgent') result[h].maintenanceUrgent++
+      }
+    })
+    neglectThisWeek.forEach(r => {
+      const h = normalizeHouse(r.house)
+      if (!h || !result[h]) return
+      if (r.check_type === 'late_rollcall') result[h].lateRollCalls++
+      else if (r.check_type === 'rushed_rollcall') result[h].rushedRollCalls++
+      else result[h].complianceGaps++
+    })
+    return Object.values(result)
+      .map(h => ({ ...h, totalIssues: h.discipline + h.sickbay + h.maintenance + h.lateRollCalls + h.complianceGaps + h.rushedRollCalls }))
+      .sort((a, b) => b.totalIssues - a.totalIssues)
+  }, [houses, openDiscipline, openSickbay, openMaintenance, neglectThisWeek, houseByStudentId])
 
   // ── Today's live status per house ──
   const todayHouseStatus = (houseName) => {
@@ -4640,6 +4700,67 @@ function CommandCentreTab({ students, currentUser }) {
           })}
           {houses.length === 0 && (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px', color: MD.color.onSurfaceVariant, fontSize: '13px' }}>No houses found.</div>
+          )}
+        </div>
+      </div>
+
+      {/* ── House-Wise Issues — pulls from every other tab ── */}
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '800', color: MD.color.primary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+          🧭 House-Wise Issues — Across All Tabs
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {houseIssues.map(h => {
+            const flags = [
+              h.discipline > 0 && { label: `${h.discipline} open discipline`, icon: '⚠️', color: MD.color.error, tab: 'discipline' },
+              h.sickbay > 0 && { label: `${h.sickbay} in sickbay`, icon: '🏥', color: MD.color.error, tab: 'sickbay' },
+              h.maintenance > 0 && { label: `${h.maintenance} repair${h.maintenanceUrgent > 0 ? ` (${h.maintenanceUrgent} urgent)` : ''}`, icon: '🔧', color: h.maintenanceUrgent > 0 ? MD.color.error : MD.color.secondary, tab: 'maintenance' },
+              h.lateRollCalls > 0 && { label: `${h.lateRollCalls} late roll call${h.lateRollCalls > 1 ? 's' : ''} this week`, icon: '⏰', color: MD.color.error, tab: 'hmrollreport' },
+              h.rushedRollCalls > 0 && { label: `${h.rushedRollCalls} rushed roll call${h.rushedRollCalls > 1 ? 's' : ''}`, icon: '🏃', color: MD.color.secondary, tab: 'hmrollreport' },
+              h.complianceGaps > 0 && { label: `${h.complianceGaps} compliance gap${h.complianceGaps > 1 ? 's' : ''}`, icon: '📋', color: MD.color.error, tab: 'neglectreport' },
+            ].filter(Boolean)
+            const isClean = flags.length === 0
+            return (
+              <div key={h.houseName} style={{
+                background: MD.color.surfaceContainer, borderRadius: MD.radius.card,
+                border: `1px solid ${isClean ? MD.color.outlineVariant : MD.color.error + '44'}`,
+                boxShadow: MD.elevation[1], padding: '12px 16px', position: 'relative', overflow: 'hidden',
+              }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px', background: isClean ? MD.color.success : MD.color.error }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, minWidth: '110px' }}>
+                    🏠 {h.houseName}
+                  </span>
+                  {isClean ? (
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: MD.color.success }}>✅ No open issues</span>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                      {flags.map((f, i) => (
+                        <span key={i} style={{
+                          fontSize: '10px', fontWeight: '700', color: f.color,
+                          background: f.color + '15', border: `1px solid ${f.color}33`,
+                          padding: '3px 9px', borderRadius: MD.radius.pill,
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                        }}>
+                          {f.icon} {f.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {h.totalIssues > 0 && (
+                    <span style={{
+                      marginLeft: 'auto', fontSize: '16px', fontWeight: '800', color: MD.color.error,
+                      fontFamily: FONT_DISPLAY,
+                    }}>
+                      {h.totalIssues}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {houseIssues.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '20px', color: MD.color.onSurfaceVariant, fontSize: '13px' }}>No houses found.</div>
           )}
         </div>
       </div>
