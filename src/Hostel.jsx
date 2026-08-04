@@ -1839,6 +1839,40 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // causing "rendered more hooks than during previous render" (#310)
   // whenever `view` changed away from 'rollcall').
   const [cardLeavePrompt, setCardLeavePrompt] = useState(null) // the pending leave_records row, or null
+
+  // ── Absentee streak flag ────────────────────────────────────────────
+  // When a student is marked Absent, checks how many of the last 3
+  // calendar days (both sessions) they were also Absent. 2+ prior Absent
+  // days (so 3 in a row including today) surfaces a "Call parent" warning
+  // on the card. Cached per student so it only queries once per roll call.
+  const [absenceStreaks, setAbsenceStreaks] = useState({}) // studentId → { count, parentPhone, parentName } | 'none'
+  const checkAbsenceStreak = useCallback(async (studentId) => {
+    if (absenceStreaks[studentId] !== undefined) return
+    try {
+      const d = new Date(date)
+      const since = new Date(d); since.setDate(since.getDate() - 2) // today + 2 prior days = 3-day window
+      const sinceStr = since.toISOString().split('T')[0]
+      const { data } = await supabase
+        .from('attendance_records')
+        .select('date, status')
+        .eq('student_id', studentId)
+        .eq('status', 'Absent')
+        .gte('date', sinceStr)
+        .lt('date', date)
+      const priorAbsentDays = new Set((data || []).map(r => r.date)).size
+      let parentPhone = null, parentName = null
+      if (priorAbsentDays >= 2) {
+        const { data: studentRow } = await supabase
+          .from('students').select('parent_name, parent_phone').eq('id', studentId).maybeSingle()
+        parentPhone = studentRow?.parent_phone || null
+        parentName = studentRow?.parent_name || null
+      }
+      setAbsenceStreaks(prev => ({ ...prev, [studentId]: priorAbsentDays >= 2 ? { count: priorAbsentDays + 1, parentPhone, parentName } : 'none' }))
+    } catch (e) {
+      console.error('checkAbsenceStreak failed:', e)
+      setAbsenceStreaks(prev => ({ ...prev, [studentId]: 'none' }))
+    }
+  }, [date, absenceStreaks])
   useEffect(() => { setCardLeavePrompt(null) }, [rollCallIndex])
 
   const handleInlineApprove = async (record) => {
@@ -2836,6 +2870,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const currentStatus = currentStudent ? getStatus(currentStudent.id) : null
 
     const markAndAdvance = async (studentId, status) => {
+      if (status === 'Absent') {
+        checkAbsenceStreak(studentId) // fire-and-forget; surfaces on the card once resolved
+      }
       if (status === 'On Leave') {
         const { data: pendingLeave } = await supabase
           .from('leave_records')
@@ -3037,6 +3074,60 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   : `On time — within ${lateStatus.deadlineLabel} deadline (15-min grace)`}
               </span>
             </div>
+
+            {/* ── Warning: unresolved leave approvals for this house ──
+                Reuses rollCallPendingLeave (already fetched by
+                notifyPendingLeaveForHouse when roll call opened) so no
+                extra query is needed here — surfaces any leave requests
+                still Pending after this house's roll call is complete. */}
+            {rollCallPendingLeave.length > 0 && (
+              <div style={{
+                textAlign: 'left', marginBottom: '20px', background: '#fff7ed',
+                border: '1.5px solid #fdba74', borderRadius: '12px', padding: '14px 16px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '18px' }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#9a3412' }}>
+                      Housemaster action needed — {rollCallPendingLeave.length} leave request{rollCallPendingLeave.length > 1 ? 's' : ''} still pending
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#c2410c' }}>
+                      Roll call is complete, but {rollCallPendingLeave.length > 1 ? 'these students are' : 'this student is'} not yet approved for leave. Please review before submitting.
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {rollCallPendingLeave.map(r => {
+                    const level = r.approval_level ?? 0
+                    const canApproveHere = canApproveLeaveLevel(level)
+                    const justApproved = approvedLeaveIds[r.id]
+                    return (
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: 'white', borderRadius: '8px', padding: '6px 10px', border: '1px solid #fed7aa' }}>
+                        <div style={{ flex: 1, minWidth: '140px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#1e293b' }}>{r.student_name}</div>
+                          <div style={{ fontSize: '10px', color: '#64748b' }}>
+                            {r.leave_type} · {r.from_date} → {r.to_date} · needs {level === 0 ? 'HM' : 'Superintendent'} approval
+                          </div>
+                        </div>
+                        {justApproved ? (
+                          <span style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a' }}>✅ Approved</span>
+                        ) : canApproveHere ? (
+                          <button
+                            onClick={() => handleInlineApprove(r)}
+                            disabled={approvingLeaveId === r.id}
+                            style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: '#16a34a', color: 'white', fontSize: '11px', fontWeight: '700', cursor: approvingLeaveId === r.id ? 'wait' : 'pointer' }}
+                          >
+                            {approvingLeaveId === r.id ? '⏳' : '✓ Approve'}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>Needs {level === 0 ? 'HM' : 'Superintendent'}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Six-Tab Compliance house switcher — lets the housemaster check
                 another house's compliance status without leaving this screen
@@ -3266,6 +3357,39 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   {statusConfig[currentStatus]?.icon} Marked as {currentStatus}
                 </div>
               )}
+
+              {/* ── Absentee streak warning — repeated Absent days, call parent ── */}
+              {currentStatus === 'Absent' && (() => {
+                const streak = absenceStreaks[currentStudent.id]
+                if (!streak || streak === 'none') return null
+                return (
+                  <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '18px' }}>📞</span>
+                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#991b1b' }}>
+                        Call warning — absent {streak.count} days in a row
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#b91c1c', marginBottom: streak.parentPhone ? '10px' : 0 }}>
+                      {currentStudent.name} has been marked Absent {streak.count} consecutive days. Please call the parent/guardian to confirm.
+                    </div>
+                    {streak.parentPhone ? (
+                      <a
+                        href={`tel:${streak.parentPhone}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          padding: '7px 14px', borderRadius: '8px', background: '#dc2626', color: 'white',
+                          fontSize: '12px', fontWeight: '700', textDecoration: 'none',
+                        }}
+                      >
+                        📞 Call {streak.parentName || 'Parent'} — {streak.parentPhone}
+                      </a>
+                    ) : (
+                      <div style={{ fontSize: '10px', color: '#9a3412' }}>No parent phone on file — update the student's record.</div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Marked On Leave but the leave itself isn't approved yet */}
               {cardLeavePrompt && cardLeavePrompt.student_id === currentStudent.id && (
