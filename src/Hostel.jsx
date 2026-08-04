@@ -225,6 +225,7 @@ const TABS = [
   { id: 'classtimetable', label: '📚 Classes' },
   { id: 'neglectreport', label: '🚨 Neglect Report' },
   { id: 'hmrollreport', label: '📑 Roll Call Report' },
+  { id: 'commandcentre', label: '🚨 Command Centre' },
 ]
 
 const MONTHS = [
@@ -4410,6 +4411,291 @@ function HMRollCallReportTab() {
 }
 
 
+// ══════════════════════════════════════════════════════════════
+//  ADVANCED COMMAND CENTRE
+//  Single-screen live overview across all houses (today's roll call
+//  status) plus a weekly "Most On-Time Housemaster" leaderboard
+//  computed from attendance_records.marked_by + marked_at vs the
+//  mandatory deadlines (see getRollCallLateStatus). No new tables
+//  required — everything is derived from data already logged by the
+//  existing roll-call flow.
+//
+//  Weekly WhatsApp auto-send: since this is a client-side app with no
+//  server/cron, "automatically every Monday" means checked on first
+//  load after Monday 00:00 — the first person to open this tab that
+//  week triggers it once, guarded by localStorage so it never resends
+//  the same week twice.
+// ══════════════════════════════════════════════════════════════
+const CC_AUTOSEND_KEY = 'gnsi_command_centre_weekly_sent' // localStorage: ISO week-start date last sent
+
+function mondayOfWeek(d) {
+  const date = new Date(d)
+  const day = date.getDay() // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day // shift back to Monday
+  date.setDate(date.getDate() + diff)
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+function buildOnTimeLeaderboardMessage(rows, weekStartStr, weekEndStr) {
+  const lines = rows.slice(0, 5).map((r, i) =>
+    `${i + 1}. ${r.name} — ${r.onTimePct}% on-time (${r.onTimeCount}/${r.totalSessions})`
+  ).join('\n')
+  return `🏆 Weekly On-Time Roll Call Report\n${weekStartStr} → ${weekEndStr}\n\n${lines || 'No completed roll calls logged this week.'}\n\nKeep it up! 💪`
+}
+
+function CommandCentreTab({ students, currentUser }) {
+  const mobile = useMobileView()
+  const [loading, setLoading] = useState(true)
+  const [houses, setHouses] = useState([])
+  const [todayRecords, setTodayRecords] = useState([])
+  const [weekRecords, setWeekRecords] = useState([])
+  const [autoSendStatus, setAutoSendStatus] = useState(null) // 'sent' | 'already' | null
+
+  const today = new Date().toISOString().split('T')[0]
+  const weekStart = mondayOfWeek(new Date())
+  const lastWeekEnd = new Date(weekStart); lastWeekEnd.setDate(lastWeekEnd.getDate() - 1) // Sunday just gone
+  const lastWeekStart = new Date(lastWeekEnd); lastWeekStart.setDate(lastWeekStart.getDate() - 6) // Monday before that
+  const fmt = d => d.toISOString().split('T')[0]
+  const lastWeekStartStr = fmt(lastWeekStart)
+  const lastWeekEndStr = fmt(lastWeekEnd)
+
+  const activeStudents = useMemo(() =>
+    (students || []).filter(s => s.status !== 'Inactive' && s.status !== 'Dropout'), [students])
+  const studentsByHouse = useMemo(() => {
+    const counts = {}
+    activeStudents.forEach(s => {
+      const h = normalizeHouse(s.house)
+      if (h) counts[h] = (counts[h] || 0) + 1
+    })
+    return counts
+  }, [activeStudents])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      const [{ data: houseRows }, todayRows, weekRows] = await Promise.all([
+        supabase.from('houses').select('name'),
+        fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at, marked_by').eq('date', today)),
+        fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at, marked_by').gte('date', lastWeekStartStr).lte('date', lastWeekEndStr)),
+      ])
+      if (cancelled) return
+      setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
+      setTodayRecords(todayRows || [])
+      setWeekRecords(weekRows || [])
+      setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [today, lastWeekStartStr, lastWeekEndStr])
+
+  // ── Today's live status per house ──
+  const todayHouseStatus = (houseName) => {
+    const total = studentsByHouse[normalizeHouse(houseName)] || 0
+    const results = ['morning', 'night'].map(session => {
+      const recs = todayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === session)
+      const marked = recs.length
+      const complete = total > 0 && marked >= total
+      let isLate = false, minutesLate = null
+      if (complete) {
+        const lastMark = recs.reduce((latest, r) => r.marked_at && (!latest || new Date(r.marked_at) > new Date(latest)) ? r.marked_at : latest, null)
+        const status = getRollCallLateStatus(today, session, lastMark)
+        isLate = status.isLate
+        minutesLate = status.minutesLate
+      }
+      return { session, total, marked, complete, isLate, minutesLate }
+    })
+    return results
+  }
+
+  // ── Weekly on-time leaderboard, grouped by marked_by (the housemaster
+  //    who actually ran the session) ──
+  const leaderboard = useMemo(() => {
+    const byPerson = {} // name → { totalSessions, onTimeCount }
+    const groups = {}
+    weekRecords.forEach(r => {
+      const key = `${normalizeHouse(r.house)}_${r.date}_${r.session}`
+      if (!groups[key]) groups[key] = []
+      groups[key].push(r)
+    })
+    Object.entries(groups).forEach(([key, recs]) => {
+      const [houseKey, dateStr, session] = key.split('_')
+      const total = studentsByHouse[houseKey] || 0
+      if (total === 0 || recs.length < total) return // only count fully completed sessions
+      const lastMark = recs.reduce((latest, r) => r.marked_at && (!latest || new Date(r.marked_at) > new Date(latest)) ? r.marked_at : latest, null)
+      const status = getRollCallLateStatus(dateStr, session, lastMark)
+      // Attribute to whoever marked the last (completing) record — the
+      // person who finished the roll call for this session.
+      const finisher = recs.find(r => r.marked_at === lastMark)?.marked_by || 'Unknown'
+      if (finisher === 'Unknown') return
+      if (!byPerson[finisher]) byPerson[finisher] = { totalSessions: 0, onTimeCount: 0 }
+      byPerson[finisher].totalSessions++
+      if (!status.isLate) byPerson[finisher].onTimeCount++
+    })
+    return Object.entries(byPerson)
+      .map(([name, v]) => ({
+        name,
+        totalSessions: v.totalSessions,
+        onTimeCount: v.onTimeCount,
+        onTimePct: v.totalSessions > 0 ? Math.round((v.onTimeCount / v.totalSessions) * 100) : 0,
+      }))
+      .filter(r => r.totalSessions > 0)
+      .sort((a, b) => b.onTimePct - a.onTimePct || b.onTimeCount - a.onTimeCount)
+  }, [weekRecords, studentsByHouse])
+
+  // ── Auto-send once per week, first load after Monday ──
+  useEffect(() => {
+    if (loading) return
+    if (leaderboard.length === 0) return
+    let lastSent = null
+    try { lastSent = localStorage.getItem(CC_AUTOSEND_KEY) } catch { /* ignore */ }
+    const weekStartStr = fmt(weekStart)
+    if (lastSent === weekStartStr) {
+      setAutoSendStatus('already')
+      return
+    }
+    try { localStorage.setItem(CC_AUTOSEND_KEY, weekStartStr) } catch { /* ignore */ }
+    const message = buildOnTimeLeaderboardMessage(leaderboard, lastWeekStartStr, lastWeekEndStr)
+    autoSendComplianceWa(message)
+    setAutoSendStatus('sent')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, leaderboard])
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '48px', color: MD.color.onSurfaceVariant }}>⏳ Loading command centre...</div>
+  }
+
+  return (
+    <div>
+      <style>{`
+        @keyframes cc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .cc-live-dot { animation: cc-pulse 1.6s ease-in-out infinite; }
+      `}</style>
+
+      {/* ── Header ── */}
+      <div style={{
+        background: MD.color.primary, borderRadius: MD.radius.card,
+        padding: mobile ? '16px 18px' : '20px 24px', marginBottom: '20px', position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 75%)` }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="cc-live-dot" style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: MD.color.secondary }}>
+              GNSI · Live Operations
+            </div>
+            <h1 style={{ ...MD.type.headline, fontSize: mobile ? '19px' : '24px', color: 'white', margin: '2px 0 0' }}>
+              Advanced Command Centre
+            </h1>
+          </div>
+        </div>
+        {autoSendStatus === 'sent' && (
+          <div style={{ marginTop: '10px', fontSize: '11px', fontWeight: '700', color: '#4ade80' }}>
+            📲 Weekly on-time report auto-sent to WhatsApp for {lastWeekStartStr} → {lastWeekEndStr}
+          </div>
+        )}
+      </div>
+
+      {/* ── Today's live house grid ── */}
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '800', color: MD.color.primary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+          🏠 Today — Live Roll Call Status
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+          {houses.map(houseName => {
+            const statuses = todayHouseStatus(houseName)
+            const anyLate = statuses.some(s => s.isLate)
+            const anyIncomplete = statuses.some(s => !s.complete)
+            const accent = anyLate ? MD.color.error : anyIncomplete ? MD.color.secondary : MD.color.success
+            return (
+              <div key={houseName} style={{
+                background: MD.color.surfaceContainer, borderRadius: MD.radius.card,
+                border: `1px solid ${MD.color.outlineVariant}`, boxShadow: MD.elevation[1],
+                padding: '14px 16px', position: 'relative', overflow: 'hidden',
+              }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px', background: accent }} />
+                <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, marginBottom: '8px' }}>
+                  🏠 {houseName}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {statuses.map(s => (
+                    <div key={s.session} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+                      <span style={{ width: '54px', fontWeight: '700', color: MD.color.onSurfaceVariant }}>
+                        {s.session === 'morning' ? '🌅 AM' : '🌙 PM'}
+                      </span>
+                      <span style={{
+                        fontWeight: '700',
+                        color: s.complete ? (s.isLate ? MD.color.error : MD.color.success) : MD.color.onSurfaceVariant,
+                      }}>
+                        {s.complete
+                          ? (s.isLate ? `⏰ Late (${s.minutesLate}m)` : '✓ On time')
+                          : s.total === 0 ? '—' : `${s.marked}/${s.total} marked`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+          {houses.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px', color: MD.color.onSurfaceVariant, fontSize: '13px' }}>No houses found.</div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Weekly On-Time Leaderboard ── */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+          <div style={{ fontSize: '13px', fontWeight: '800', color: MD.color.primary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            🏆 Weekly Most On-Time — {lastWeekStartStr} → {lastWeekEndStr}
+          </div>
+          <button
+            onClick={() => autoSendComplianceWa(buildOnTimeLeaderboardMessage(leaderboard, lastWeekStartStr, lastWeekEndStr))}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: MD.radius.control,
+              border: 'none', background: '#25D366', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer',
+            }}
+          >
+            📲 Resend to WhatsApp
+          </button>
+        </div>
+        <div style={{ background: MD.color.surfaceContainer, borderRadius: MD.radius.card, border: `1px solid ${MD.color.outlineVariant}`, boxShadow: MD.elevation[1], overflow: 'hidden' }}>
+          {leaderboard.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px', color: MD.color.onSurfaceVariant, fontSize: '13px' }}>
+              No completed roll calls logged last week yet.
+            </div>
+          ) : (
+            leaderboard.map((r, i) => (
+              <div key={r.name} style={{
+                display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px',
+                borderBottom: i < leaderboard.length - 1 ? `1px solid ${MD.color.outlineVariant}` : 'none',
+                background: i === 0 ? MD.color.secondaryContainer : 'transparent',
+              }}>
+                <div style={{
+                  width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '13px', fontWeight: '800',
+                  background: i === 0 ? MD.color.secondary : MD.color.surfaceVariant,
+                  color: i === 0 ? 'white' : MD.color.onSurfaceVariant,
+                }}>
+                  {i === 0 ? '🏆' : i + 1}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '700', fontSize: '13px', color: MD.color.onSurface }}>{r.name}</div>
+                  <div style={{ fontSize: '10px', color: MD.color.onSurfaceVariant }}>{r.onTimeCount}/{r.totalSessions} sessions on time</div>
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '800', color: MD.color.primary, fontFamily: FONT_DISPLAY }}>{r.onTimePct}%</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function HMPerformanceRanking() {
   const [loading, setLoading] = useState(true)
   const [rankings, setRankings] = useState([])
@@ -8312,6 +8598,7 @@ function Hostel() {
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} />,
     hmrollreport: <HMRollCallReportTab />,
+    commandcentre: <CommandCentreTab students={students} currentUser={currentUser} />,
   }
 
   return (
