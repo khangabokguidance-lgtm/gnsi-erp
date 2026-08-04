@@ -317,6 +317,44 @@ const DAILY_SLOTS = [
   { key: 'night', label: '🌙 Night', startHour: 16, endHour: 24, rollCallGate: 'night' },
 ]
 
+// ── Housemaster compliance WhatsApp group ──────────────────────────
+// Group invite links (chat.whatsapp.com/...) can't carry a prefilled
+// message the way a wa.me/<number> link can — WhatsApp only supports
+// message prefill for a direct number. So the flow here is: copy a
+// ready-made compliance message to the clipboard, then open the group
+// so the housemaster can paste it in.
+const HM_COMPLIANCE_WA_GROUP = 'https://chat.whatsapp.com/E9cvzlHOcaEECMMNe45sgJ?s=cl&p=a&ilr=1'
+
+function buildComplianceWaMessage(houseName, slotLabel, dateStr, missingLabels, housemasterName) {
+  const who = housemasterName ? `${housemasterName} (${houseName})` : houseName
+  return `⚠️ Compliance Alert — ${who}\n${slotLabel} · ${dateStr}\nMissing: ${missingLabels}\n\nPlease log the above and confirm here.`
+}
+
+// Roll-call-completion report (separate from the compliance-gap message
+// above) — sent whenever a house's roll call hits 100% marked.
+function buildRollCallReportMessage(houseName, sessionLabel, dateStr, marked, total, housemasterName) {
+  const who = housemasterName ? `${housemasterName} (${houseName})` : houseName
+  return `✅ Roll Call Report — ${who}\n${sessionLabel} · ${dateStr}\nMarked: ${marked}/${total}\n\nRoll call completed and submitted.`
+}
+
+// Mandatory recipient — every roll call completion and every compliance
+// gap is sent here in addition to the group, no button required.
+const HM_COMPLIANCE_WA_NUMBER = '918974298074'
+
+// Opens a wa.me chat (prefilled text) to the mandatory number, and the
+// group invite link, automatically — no click needed. Both windows open
+// with the message prefilled where supported; the group link can't carry
+// prefilled text (WhatsApp limitation), so the same text is copied to
+// the clipboard first so it can be pasted there.
+async function autoSendComplianceWa(message) {
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(message)
+  } catch { /* clipboard may be blocked; still open both chats */ }
+  const encoded = encodeURIComponent(message)
+  window.open(`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encoded}`, '_blank', 'noopener,noreferrer')
+  window.open(HM_COMPLIANCE_WA_GROUP, '_blank', 'noopener,noreferrer')
+}
+
 function dailySlotWindow(dateStr, slotKey) {
   const slot = DAILY_SLOTS.find(s => s.key === slotKey)
   const start = new Date(`${dateStr}T00:00:00`)
@@ -1575,6 +1613,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     if (missing.length > 0) {
       const logId = await logNeglect(houseName, date, session, currentHousemaster?.name, missing, 'rollcall')
       if (logId) setComplianceLogId(prev => ({ ...prev, [key]: logId }))
+      const sessionLabel = session === 'morning' ? '🌅 Morning' : '🌙 Night'
+      const missingLabels = SIX_TABS.filter(t => missing.includes(t.key)).map(t => t.label).join(', ')
+      autoSendComplianceWa(buildComplianceWaMessage(houseName, sessionLabel, date, missingLabels, currentHousemaster?.name))
     }
   }
 
@@ -1684,6 +1725,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // confirmed logged, so it plays on the transition into "all clear"
   // rather than replaying on every re-render of an already-clear house.
   const [complianceCelebrated, setComplianceCelebrated] = useState({}) // key: complianceKey → true once played
+  const [rollCallReportSent, setRollCallReportSent] = useState({}) // key: `${house}_${date}_${session}` → true once WA report auto-sent
   const [complianceCelebrating, setComplianceCelebrating] = useState(null) // complianceKey currently animating
   // Manual fallback for daily-slot "✓ Complete", mirroring the roll-call
   // linked version — lets the housemaster force a recheck in place.
@@ -1703,6 +1745,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     if (missing.length > 0) {
       const logId = await logNeglect(houseName, date, slotKey, currentHousemaster?.name, missing, 'standalone')
       if (logId) setDailyCheckLogId(prev => ({ ...prev, [key]: logId }))
+      const slotLabel = DAILY_SLOTS.find(s => s.key === slotKey)?.label || slotKey
+      const missingLabels = SIX_TABS.filter(t => missing.includes(t.key)).map(t => t.label).join(', ')
+      autoSendComplianceWa(buildComplianceWaMessage(houseName, slotLabel, date, missingLabels, currentHousemaster?.name))
     } else {
       // Fully compliant — trigger the short animated confirmation
       setCelebratingSlot(key)
@@ -1923,47 +1968,168 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
         ) : (
           <>
-            {/* ── Standalone 3x-Daily Compliance Check ── */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                📋 Mandatory 3x-Daily Compliance Check
+            {/* ══════════════════════════════════════════════════════════
+                MANDATORY 3X-DAILY COMPLIANCE — Futuristic grid dashboard
+                Same data hooks as before (dailyCheckResults, DAILY_SLOTS,
+                runDailySlotCheck, isRollCallSessionComplete,
+                autoSendComplianceWa, skip/recheck handlers) — only the
+                layout changes: houses render as a responsive grid of
+                status cards instead of a stacked list, with a live
+                flagged-issues strip summarizing gaps across all houses.
+               ══════════════════════════════════════════════════════════ */}
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '800', color: MD.color.primary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  📋 Mandatory 3x-Daily Compliance
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: '700', color: MD.color.onSurfaceVariant, background: MD.color.surfaceVariant, padding: '2px 8px', borderRadius: MD.radius.pill }}>
+                  LIVE
+                </span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+
+              {/* ── Flagged-issues summary strip ── */}
+              {(() => {
+                const nowSlot = currentDailySlot()
+                let gapsCount = 0, clearCount = 0, lockedCount = 0, pendingCount = 0
+                const flaggedHouses = []
+                houses.forEach(houseName => {
+                  let houseHasGap = false
+                  DAILY_SLOTS.forEach(slot => {
+                    const key = `${houseName}_${date}_${slot.key}`
+                    const result = dailyCheckResults[key]
+                    const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
+                    const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
+                    const done = result?.checked && remaining.length === 0
+                    const gaps = result?.checked && remaining.length > 0
+                    const locked = !result?.checked && !isRollCallSessionComplete(houseName, slot.rollCallGate)
+                    if (gaps) { gapsCount++; houseHasGap = true }
+                    else if (done) clearCount++
+                    else if (locked) lockedCount++
+                    else pendingCount++
+                  })
+                  if (houseHasGap) flaggedHouses.push(houseName)
+                })
+                return (
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px',
+                    marginBottom: '16px',
+                  }}>
+                    {[
+                      { label: 'Flagged Gaps', value: gapsCount, color: MD.color.error, bg: MD.color.errorContainer, icon: '🚨' },
+                      { label: 'All Clear', value: clearCount, color: MD.color.success, bg: MD.color.successContainer, icon: '✅' },
+                      { label: 'Awaiting Check', value: pendingCount, color: MD.color.secondary, bg: MD.color.secondaryContainer, icon: '⏱️' },
+                      { label: 'Locked', value: lockedCount, color: MD.color.onSurfaceVariant, bg: MD.color.surfaceVariant, icon: '🔒' },
+                    ].map(s => (
+                      <div key={s.label} style={{
+                        background: s.bg, borderRadius: MD.radius.card, padding: '12px 14px',
+                        border: `1px solid ${MD.color.outlineVariant}`,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '13px' }}>{s.icon}</span>
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: s.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</span>
+                        </div>
+                        <div style={{ fontSize: mobile ? '20px' : '26px', fontWeight: '800', color: s.color, fontFamily: FONT_DISPLAY }}>{s.value}</div>
+                      </div>
+                    ))}
+                    {flaggedHouses.length > 0 && (
+                      <div style={{
+                        gridColumn: mobile ? '1 / -1' : '1 / -1',
+                        display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+                        background: MD.color.errorContainer, border: `1px solid ${MD.color.error}33`,
+                        borderRadius: MD.radius.field, padding: '8px 12px',
+                      }}>
+                        <span style={{ fontSize: '11px', fontWeight: '800', color: MD.color.error }}>⚠️ Needs attention:</span>
+                        {flaggedHouses.map(h => (
+                          <span key={h} style={{ fontSize: '10px', fontWeight: '700', color: MD.color.error, background: 'white', padding: '2px 8px', borderRadius: MD.radius.pill, border: `1px solid ${MD.color.error}33` }}>
+                            🏠 {h}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* ── House grid ── */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '12px',
+              }}>
                 {houses.map(houseName => {
                   const isExpanded = dailyCheckHouse === houseName
                   const nowSlot = currentDailySlot()
+                  // Aggregate this house's status across all 3 slots for the card header ring
+                  let houseGaps = 0, houseDone = 0
+                  DAILY_SLOTS.forEach(slot => {
+                    const key = `${houseName}_${date}_${slot.key}`
+                    const result = dailyCheckResults[key]
+                    const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
+                    const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
+                    if (result?.checked && remaining.length === 0) houseDone++
+                    else if (result?.checked && remaining.length > 0) houseGaps++
+                  })
+                  const cardAccent = houseGaps > 0 ? MD.color.error : houseDone === DAILY_SLOTS.length ? MD.color.success : MD.color.secondary
                   return (
-                    <div key={houseName} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                    <div key={houseName} style={{
+                      background: MD.color.surfaceContainer, borderRadius: MD.radius.card,
+                      border: `1px solid ${houseGaps > 0 ? MD.color.error + '55' : MD.color.outlineVariant}`,
+                      boxShadow: houseGaps > 0 ? `0 0 0 1px ${MD.color.error}22, ${MD.elevation[2]}` : MD.elevation[1],
+                      overflow: 'hidden', position: 'relative',
+                      transition: 'box-shadow 0.2s ease',
+                    }}>
+                      {/* Accent rail — status color, reads as a live indicator strip */}
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px', background: cardAccent }} />
+
                       <div
                         onClick={() => setDailyCheckHouse(isExpanded ? null : houseName)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', cursor: 'pointer' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px 14px 18px', cursor: 'pointer' }}
                       >
-                        <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b', flex: 1 }}>🏠 {houseName}</span>
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            🏠 {houseName}
+                          </div>
+                          <div style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, marginTop: '2px', fontWeight: '600' }}>
+                            {houseGaps > 0 ? `${houseGaps} slot${houseGaps > 1 ? 's' : ''} flagged` : houseDone === DAILY_SLOTS.length ? 'Fully compliant today' : 'Checks pending'}
+                          </div>
+                        </div>
+                        {/* Slot status rings — one ring per daily slot, filled progressively */}
+                        <div style={{ display: 'flex', gap: '5px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
                             const result = dailyCheckResults[key]
-                            const done = result?.checked && result.missing.length === 0
-                            const gaps = result?.checked && result.missing.length > 0
+                            const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
+                            const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
+                            const done = result?.checked && remaining.length === 0
+                            const gaps = result?.checked && remaining.length > 0
                             const isCurrent = slot.key === nowSlot
                             const locked = !result?.checked && !isRollCallSessionComplete(houseName, slot.rollCallGate)
+                            const ringColor = done ? MD.color.success : gaps ? MD.color.error : locked ? MD.color.outline : isCurrent ? MD.color.secondary : MD.color.outlineVariant
                             return (
-                              <span
+                              <div
                                 key={slot.key}
+                                title={`${slot.label}: ${done ? 'Complete' : gaps ? 'Gaps found' : locked ? 'Locked — roll call pending' : isCurrent ? 'Current slot' : 'Not checked'}`}
                                 style={{
-                                  width: '10px', height: '10px', borderRadius: '50%',
-                                  background: done ? '#16a34a' : gaps ? '#dc2626' : locked ? '#94a3b8' : isCurrent ? '#a8842f' : '#e2e8f0',
-                                  boxShadow: isCurrent && !result?.checked && !locked ? '0 0 0 3px rgba(202,138,4,0.2)' : 'none',
+                                  width: '22px', height: '22px', borderRadius: '50%',
+                                  border: `2px solid ${ringColor}`,
+                                  background: done ? ringColor : gaps ? ringColor + '22' : 'transparent',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '10px', fontWeight: '800',
+                                  color: done ? 'white' : ringColor,
+                                  boxShadow: isCurrent && !result?.checked && !locked ? `0 0 0 3px ${MD.color.secondary}22` : 'none',
+                                  flexShrink: 0,
                                 }}
-                                title={`${slot.label}: ${done ? 'Complete' : gaps ? 'Gaps found' : locked ? 'Locked — matching roll call not done yet' : isCurrent ? 'Current slot — not checked yet' : 'Not checked'}`}
-                              />
+                              >
+                                {done ? '✓' : gaps ? '!' : locked ? '🔒' : ''}
+                              </div>
                             )
                           })}
                         </div>
-                        <span style={{ fontSize: '14px', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                        <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                       </div>
+
                       {isExpanded && (
-                        <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ padding: '0 16px 16px 18px', display: 'flex', flexDirection: 'column', gap: '10px', borderTop: `1px solid ${MD.color.outlineVariant}`, paddingTop: '12px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
                             const result = dailyCheckResults[key]
@@ -1972,10 +2138,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             const gateComplete = isRollCallSessionComplete(houseName, slot.rollCallGate)
                             const gateLabel = slot.rollCallGate === 'morning' ? '🌅 Morning' : '🌙 Night'
                             return (
-                              <div key={slot.key} style={{ background: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
+                              <div key={slot.key} style={{ background: MD.color.surfaceVariant, borderRadius: MD.radius.field, padding: '10px 12px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: (result?.checked && result.missing.length > 0) || !gateComplete ? '8px' : 0 }}>
-                                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#374151', flex: 1 }}>
-                                    {slot.label} {isCurrent && <span style={{ color: '#a8842f' }}>(current)</span>}
+                                  <span style={{ fontSize: '12px', fontWeight: '700', color: MD.color.onSurface, flex: 1 }}>
+                                    {slot.label} {isCurrent && <span style={{ color: MD.color.secondary }}>(current)</span>}
                                   </span>
                                   {isCelebrating && (
                                     <span className="hr-pop-in-anim" style={{ fontSize: '16px' }}>✅🎉</span>
@@ -1983,18 +2149,18 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                   {!result?.checked && gateComplete && (
                                     <button
                                       onClick={() => runDailySlotCheck(houseName, slot.key)}
-                                      style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                                      style={{ padding: '5px 12px', borderRadius: MD.radius.control, border: 'none', background: MD.color.primary, color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                                     >
                                       Run Check
                                     </button>
                                   )}
                                   {!result?.checked && !gateComplete && (
-                                    <span style={{ padding: '5px 12px', borderRadius: '7px', background: '#e2e8f0', color: '#94a3b8', fontSize: '11px', fontWeight: '700' }}>
+                                    <span style={{ padding: '5px 12px', borderRadius: MD.radius.control, background: MD.color.outlineVariant, color: MD.color.onSurfaceVariant, fontSize: '11px', fontWeight: '700' }}>
                                       🔒 Locked
                                     </span>
                                   )}
                                   {result?.checked && result.missing.length === 0 && !isCelebrating && (
-                                    <span style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a' }}>✓ All clear</span>
+                                    <span style={{ fontSize: '11px', fontWeight: '700', color: MD.color.success }}>✓ All clear</span>
                                   )}
                                 </div>
                                 {!result?.checked && !gateComplete && (
@@ -2007,29 +2173,60 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                   const remainingMissing = result.missing.filter(k => !dailyResolvedSet[k])
                                   if (remainingMissing.length === 0) {
                                     return (
-                                      <div style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a' }}>
+                                      <div style={{ fontSize: '11px', fontWeight: '700', color: MD.color.success }}>
                                         ✅ All caught up for this slot!
                                       </div>
                                     )
                                   }
+                                  const missingLabels = SIX_TABS.filter(t => remainingMissing.includes(t.key)).map(t => t.label).join(', ')
                                   return (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '700' }}>🚨 Missing for this slot:</div>
+                                    {/* ── Hard warning banner — informational only, does not block navigation ── */}
+                                    <div style={{
+                                      display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                                      background: MD.color.errorContainer, border: `1px solid ${MD.color.error}55`, borderRadius: '8px',
+                                      padding: '10px 12px',
+                                    }}>
+                                      <span style={{ fontSize: '18px' }}>🚫</span>
+                                      <div style={{ flex: 1, minWidth: '160px' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: '800', color: MD.color.error }}>
+                                          Compliance not met — {slot.label}
+                                        </div>
+                                        <div style={{ fontSize: '10px', color: MD.color.error, marginTop: '2px' }}>
+                                          {missingLabels} still pending for {houseName}.
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => autoSendComplianceWa(
+                                          buildComplianceWaMessage(houseName, slot.label, date, missingLabels, currentHousemaster?.name)
+                                        )}
+                                        title="Sends to the mandatory number and the compliance WhatsApp group"
+                                        style={{
+                                          display: 'flex', alignItems: 'center', gap: '6px',
+                                          padding: '6px 12px', borderRadius: MD.radius.control, border: 'none',
+                                          background: '#25D366', color: 'white', fontSize: '11px', fontWeight: '700',
+                                          cursor: 'pointer', whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        📲 Notify on WhatsApp
+                                      </button>
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: MD.color.error, fontWeight: '700' }}>🚨 Missing for this slot:</div>
                                     {SIX_TABS.filter(t => remainingMissing.includes(t.key)).map(t => {
                                       const reasonGiven = dailySkippedWithReason[key]?.[t.key]
                                       const showingPrompt = dailySkipPromptTab === `${key}_${t.key}`
                                       const recheckKey = `${key}_${t.key}`
                                       return (
-                                        <div key={t.key} style={{ background: 'white', border: '1px solid #fecaca', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div key={t.key} style={{ background: MD.color.surface, border: `1px solid ${MD.color.error}44`, borderRadius: '8px', padding: '8px 10px' }}>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                            <span style={{ padding: '3px 8px', borderRadius: '99px', background: '#fee2e2', color: '#dc2626', fontSize: '11px', fontWeight: '700' }}>{t.label}</span>
+                                            <span style={{ padding: '3px 8px', borderRadius: MD.radius.pill, background: MD.color.errorContainer, color: MD.color.error, fontSize: '11px', fontWeight: '700' }}>{t.label}</span>
                                             {reasonGiven ? (
-                                              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', flex: 1 }}>✅ "{reasonGiven}"</span>
+                                              <span style={{ fontSize: '10px', color: MD.color.success, fontWeight: '700', flex: 1 }}>✅ "{reasonGiven}"</span>
                                             ) : (
                                               <div style={{ display: 'flex', gap: '5px', marginLeft: 'auto', flexWrap: 'wrap' }}>
                                                 <button
                                                   onClick={() => { if (onCompleteTab) onCompleteTab(t.rootTabId, houseName); else onTabChange?.(t.rootTabId) }}
-                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
+                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: MD.color.primary, color: 'white', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
                                                 >
                                                   ✓ Complete
                                                 </button>
@@ -2037,13 +2234,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                                   onClick={() => handleDailyRecheckTab(key, t.key, houseName, slot.key)}
                                                   disabled={dailyRecheckingTab === recheckKey}
                                                   title="Use this if you already filled it in but it's still showing as missing"
-                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#f0fdf4', color: '#16a34a', fontSize: '10px', fontWeight: '700', cursor: dailyRecheckingTab === recheckKey ? 'wait' : 'pointer' }}
+                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: MD.color.successContainer, color: MD.color.success, fontSize: '10px', fontWeight: '700', cursor: dailyRecheckingTab === recheckKey ? 'wait' : 'pointer' }}
                                                 >
                                                   {dailyRecheckingTab === recheckKey ? '⏳' : '✓ Filled in'}
                                                 </button>
                                                 <button
                                                   onClick={() => { setDailySkipPromptTab(showingPrompt ? null : `${key}_${t.key}`); setDailySkipDraft(''); setDailySkipReasonError('') }}
-                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#374151', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
+                                                  style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: MD.color.surfaceVariant, color: MD.color.onSurface, fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}
                                                 >
                                                   ⏭ Skip
                                                 </button>
@@ -2064,13 +2261,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                                 <button
                                                   onClick={() => handleDailySkipWithReason(key, t.key)}
                                                   disabled={!isValidSkipReason(dailySkipDraft)}
-                                                  style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: isValidSkipReason(dailySkipDraft) ? '#dc2626' : '#e2e8f0', color: isValidSkipReason(dailySkipDraft) ? 'white' : '#94a3b8', fontSize: '10px', fontWeight: '700', cursor: isValidSkipReason(dailySkipDraft) ? 'pointer' : 'not-allowed' }}
+                                                  style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: isValidSkipReason(dailySkipDraft) ? MD.color.error : MD.color.outlineVariant, color: isValidSkipReason(dailySkipDraft) ? 'white' : MD.color.onSurfaceVariant, fontSize: '10px', fontWeight: '700', cursor: isValidSkipReason(dailySkipDraft) ? 'pointer' : 'not-allowed' }}
                                                 >
                                                   OK
                                                 </button>
                                               </div>
                                               {dailySkipReasonError && (
-                                                <div style={{ fontSize: '10px', color: '#dc2626', marginTop: '4px' }}>{dailySkipReasonError}</div>
+                                                <div style={{ fontSize: '10px', color: MD.color.error, marginTop: '4px' }}>{dailySkipReasonError}</div>
                                               )}
                                             </div>
                                           )}
@@ -2089,7 +2286,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   )
                 })}
                 {houses.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '13px' }}>No houses to check.</div>
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px', color: '#94a3b8', fontSize: '13px' }}>No houses to check.</div>
                 )}
               </div>
             </div>
@@ -2758,6 +2955,16 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             // Fire the six-tab compliance check the moment this screen renders complete
             const complianceKey = `${complianceHouse}_${date}_${session}`
             if (!complianceChecked[complianceKey]) runComplianceCheck(complianceHouse)
+            // Auto-send the roll-call-completion report (mandatory number +
+            // WhatsApp group) exactly once per house/date/session — fires on
+            // THIS house's own completed roll call, independent of whichever
+            // house the compliance switcher above is currently showing.
+            const rollCallReportKey = `${selectedHouse}_${date}_${session}`
+            if (!rollCallReportSent[rollCallReportKey]) {
+              setRollCallReportSent(prev => ({ ...prev, [rollCallReportKey]: true }))
+              const sessionLabel = session === 'morning' ? '🌅 Morning' : '🌙 Night'
+              autoSendComplianceWa(buildRollCallReportMessage(selectedHouse, sessionLabel, date, marked, total, currentHousemaster?.name))
+            }
             const rawMissing = complianceMissing[complianceKey] || []
             const resolvedSet = resolvedByRecheck[complianceKey] || {}
             const missingTabs = rawMissing.filter(k => !resolvedSet[k])
