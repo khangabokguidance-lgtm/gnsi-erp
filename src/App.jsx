@@ -45,6 +45,7 @@ import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachingAids       from './TeachingAids'
 import CastReceiver       from './CastReceiver'
+import Awards             from './Awards'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -99,6 +100,7 @@ const ALL_GROUPS = [
       { id: 'hr',      label: 'HR',      icon: '🗂️' },
       { id: 'leave',   label: 'Leave',   icon: '🏖️' },
       { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
+      { id: 'awards',  label: 'Awards',  icon: '🏅' },
     ],
   },
   {
@@ -683,6 +685,7 @@ export default function App() {
     hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} />,
     leave:             <Leave             currentUser={currentUser} perms={perms('leave')}             />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
+    awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
