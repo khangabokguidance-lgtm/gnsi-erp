@@ -267,6 +267,31 @@ async function saveTicks(categoryKey, nomineeId, nomineeName, dateStr, bulletTic
   if (error) throw error
 }
 
+/** Builds the default "normal day" tick set for one nominee in a given category: all bullets yes, present, and — for Best House — full marks. Shared by DailyTickScreen and MasterTickScreen so the "mark all good" behavior is identical everywhere. */
+function buildDefaultGoodTicks(category) {
+  const base = {}
+  category.bullets.filter(b => b.type === 'tick').forEach(b => { base[b.key] = true })
+  base.present = true
+  if (category.hasTotalMark) base.totalMark = _settingsCache.totalMarkMax
+  return base
+}
+
+/** Validates and saves one nominee's ticks for a category/date, same rules everywhere: compulsory attendance (unless auto), compulsory total mark for Best House, and any mandatory bullets. Throws a user-facing message on failure. */
+async function validateAndSaveTicks(categoryKey, category, nominee, nomineeTicks, nomineeUsesAutoAttendance, dateStr) {
+  const { present, totalMark, ...bulletTicks } = nomineeTicks
+  if (!nomineeUsesAutoAttendance && present === undefined) {
+    throw new Error('Attendance is compulsory — mark present or absent before saving.')
+  }
+  if (category.hasTotalMark && (totalMark === undefined || totalMark === null || isNaN(totalMark))) {
+    throw new Error('Total mark is compulsory — enter today\u2019s inspection mark before saving.')
+  }
+  const missingMandatory = category.bullets.filter(b => b.mandatory && bulletTicks[b.key] === undefined)
+  if (missingMandatory.length > 0) {
+    throw new Error(`Mandatory: "${missingMandatory[0].text}" must be ticked yes or no before saving.`)
+  }
+  await saveTicks(categoryKey, nominee.id, nominee.name, dateStr, bulletTicks, nomineeUsesAutoAttendance ? null : !!present, category.hasTotalMark ? totalMark : null)
+}
+
 /** All ticks for a nominee across the month, for computing the % score. */
 async function fetchMonthTicks(categoryKey, nomineeId, monthStr) {
   const { data } = await supabase
@@ -548,6 +573,233 @@ const S = {
   rankRow: (isWinner) => ({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 6, marginBottom: 6, background: isWinner ? '#FFF8E7' : '#fafafa', border: isWinner ? '2px solid #C9A24B' : '1px solid #eee' }),
   btn: { background: '#0B1E3D', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 18px', cursor: 'pointer', fontWeight: 600, fontSize: 13 },
   badge: (kind) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: kind === 'ok' ? '#e6f4ea' : kind === 'warn' ? '#fdecea' : '#eef0f5', color: kind === 'ok' ? '#1e7e34' : kind === 'warn' ? '#b3261e' : '#333' }),
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MASTER TICK SCREEN — every nominee, every category, one scroll.
+//  Each nominee's row still shows only their own category's bullets
+//  (House Master bullets differ from Faculty bullets) — this screen
+//  just removes the need to switch category tabs to move between them.
+// ══════════════════════════════════════════════════════════════
+
+/** One category's block within the master screen — mirrors DailyTickScreen's per-category logic but scoped to a single category passed in as a prop, so five of these render stacked on one page. */
+function MasterCategoryBlock({ categoryKey, selectedDate, isToday }) {
+  const category = CATEGORIES[categoryKey]
+  const [nominees, setNominees] = useState([])
+  const [ticks, setTicks] = useState({})
+  const [savedIds, setSavedIds] = useState(new Set())
+  const [expandedIds, setExpandedIds] = useState(new Set())
+  const [hasAutoAttendance, setHasAutoAttendance] = useState({})
+  const [onLeave, setOnLeave] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [savingId, setSavingId] = useState(null)
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const categoryHasAutoAttendance = !!category.attendanceKey
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    ;(async () => {
+      const [list, todayMap, leaveMap] = await Promise.all([
+        fetchNominees(category),
+        fetchTodayTicks(categoryKey, selectedDate),
+        fetchLeaveForDate(categoryKey, selectedDate),
+      ])
+
+      let autoMap = {}
+      if (categoryKey === 'non_teaching' || categoryKey === 'faculty') {
+        const monthStr = selectedDate.slice(0, 7)
+        const { data } = await supabase.from('staff_monthly_scores').select('staff_id').eq('month', monthStr)
+        const idsWithScores = new Set((data || []).map(r => r.staff_id))
+        list.forEach(n => { autoMap[n.id] = idsWithScores.has(n.id) })
+      }
+
+      const alreadySaved = new Set(Object.keys(todayMap).map(String))
+
+      if (!cancelled) {
+        setNominees(list)
+        setTicks(todayMap)
+        setHasAutoAttendance(autoMap)
+        setSavedIds(alreadySaved)
+        setExpandedIds(new Set())
+        setOnLeave(leaveMap)
+        setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [categoryKey, selectedDate])
+
+  const handleToggle = (nomineeId, bulletKey) => {
+    setTicks(prev => ({ ...prev, [nomineeId]: { ...(prev[nomineeId] || {}), [bulletKey]: !(prev[nomineeId]?.[bulletKey]) } }))
+  }
+  const handlePresentToggle = (nomineeId, value) => {
+    setTicks(prev => ({ ...prev, [nomineeId]: { ...(prev[nomineeId] || {}), present: value } }))
+  }
+  const handleMarkChange = (nomineeId, value) => {
+    setTicks(prev => ({ ...prev, [nomineeId]: { ...(prev[nomineeId] || {}), totalMark: value === '' ? undefined : Number(value) } }))
+  }
+  const toggleExpanded = (nomineeId) => {
+    setExpandedIds(prev => { const next = new Set(prev); if (next.has(nomineeId)) next.delete(nomineeId); else next.add(nomineeId); return next })
+  }
+
+  const handleSave = async (nominee) => {
+    setSavingId(nominee.id)
+    try {
+      const nomineeUsesAutoAttendance = categoryHasAutoAttendance || hasAutoAttendance[nominee.id]
+      await validateAndSaveTicks(categoryKey, category, nominee, ticks[nominee.id] || {}, nomineeUsesAutoAttendance, selectedDate)
+      setSavedIds(prev => new Set(prev).add(String(nominee.id)))
+      setExpandedIds(prev => { const next = new Set(prev); next.delete(nominee.id); return next })
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const handleMarkAllGood = async () => {
+    const remaining = nominees.filter(n => !savedIds.has(String(n.id)))
+    if (remaining.length === 0) return
+    if (!window.confirm(`Mark all ${remaining.length} remaining ${category.label} nominee(s) as present with every bullet ticked yes?`)) return
+    setBulkSaving(true)
+    const newlySaved = new Set(savedIds)
+    const failures = []
+    for (const n of remaining) {
+      const goodTicks = buildDefaultGoodTicks(category)
+      try {
+        const nomineeUsesAutoAttendance = categoryHasAutoAttendance || hasAutoAttendance[n.id]
+        await validateAndSaveTicks(categoryKey, category, n, goodTicks, nomineeUsesAutoAttendance, selectedDate)
+        setTicks(prev => ({ ...prev, [n.id]: goodTicks }))
+        newlySaved.add(String(n.id))
+      } catch (err) {
+        failures.push(n.name)
+      }
+    }
+    setSavedIds(newlySaved)
+    setBulkSaving(false)
+    if (failures.length > 0) alert(`Saved ${remaining.length - failures.length} of ${remaining.length}. Could not save: ${failures.join(', ')}`)
+  }
+
+  const tickBullets = category.bullets.filter(b => b.type === 'tick')
+  const savedCount = nominees.filter(n => savedIds.has(String(n.id))).length
+  const remainingCount = nominees.length - savedCount
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ ...S.card, background: '#FFF8E7', border: '1px solid #C9A24B', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <strong>{category.icon} {category.label}</strong>
+          {!loading && nominees.length > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 600 }}>
+              {savedCount}/{nominees.length} done
+              {remainingCount > 0 && <span style={{ color: '#b3261e' }}> · {remainingCount} left</span>}
+            </span>
+          )}
+        </div>
+        {!loading && remainingCount > 0 && (
+          <button style={{ ...S.btn, marginTop: 8, padding: '6px 12px', fontSize: 12 }} onClick={handleMarkAllGood} disabled={bulkSaving}>
+            {bulkSaving ? 'Marking…' : `Mark all ${remainingCount} remaining as normal day`}
+          </button>
+        )}
+      </div>
+
+      {loading ? <p style={{ fontSize: 13, color: '#999' }}>Loading…</p> : nominees.length === 0 ? (
+        <p style={{ fontSize: 13, color: '#999' }}>No nominees in this category.</p>
+      ) : nominees.map(n => {
+        const leaveRecord = onLeave[String(n.id)]
+        if (leaveRecord) {
+          return (
+            <div key={n.id} style={{ ...S.card, background: '#f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px' }}>
+              <span><span style={{ ...S.badge('neutral'), marginRight: 8 }}>ON LEAVE</span><strong>{n.name}</strong>{leaveRecord.reason && <span style={{ marginLeft: 8, fontSize: 12, color: '#888' }}>{leaveRecord.reason}</span>}</span>
+            </div>
+          )
+        }
+
+        const nomineeUsesAutoAttendance = categoryHasAutoAttendance || hasAutoAttendance[n.id]
+        const isSaved = savedIds.has(String(n.id))
+        const isExpanded = expandedIds.has(n.id) || !isSaved
+
+        if (isSaved && !isExpanded) {
+          return (
+            <div key={n.id} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px' }}>
+              <span><span style={{ color: '#1e7e34', marginRight: 8 }}>✓</span><strong>{n.name}</strong></span>
+              <button style={{ ...S.btnGhost, padding: '4px 12px', fontSize: 12 }} onClick={() => toggleExpanded(n.id)}>Edit</button>
+            </div>
+          )
+        }
+
+        return (
+          <div key={n.id} style={S.card}>
+            <div style={{ ...S.nomineeRow, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>{n.name}</strong>
+              {isSaved && <button style={{ ...S.btnGhost, padding: '2px 10px', fontSize: 11 }} onClick={() => toggleExpanded(n.id)}>Collapse</button>}
+            </div>
+
+            {!nomineeUsesAutoAttendance && (
+              <div style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid #f0eee6', marginBottom: 6 }}>
+                <label style={{ ...S.checkRow, fontWeight: 600 }}>
+                  <input type="radio" name={`present-${categoryKey}-${n.id}`} checked={ticks[n.id]?.present === true} onChange={() => handlePresentToggle(n.id, true)} />
+                  Present
+                </label>
+                <label style={{ ...S.checkRow, fontWeight: 600 }}>
+                  <input type="radio" name={`present-${categoryKey}-${n.id}`} checked={ticks[n.id]?.present === false} onChange={() => handlePresentToggle(n.id, false)} />
+                  Absent
+                </label>
+              </div>
+            )}
+
+            {category.hasTotalMark && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f0eee6', marginBottom: 6 }}>
+                <label style={{ fontSize: 13, fontWeight: 600 }}>{`Mark (out of ${_settingsCache.totalMarkMax})`}</label>
+                <input
+                  type="number" min={0} max={_settingsCache.totalMarkMax}
+                  value={ticks[n.id]?.totalMark ?? ''}
+                  onChange={(e) => handleMarkChange(n.id, e.target.value)}
+                  style={{ width: 70, padding: 6, border: '1px solid #ccc', borderRadius: 4 }}
+                />
+                <span style={{ ...S.badge('warn') }}>Mandatory</span>
+              </div>
+            )}
+
+            {tickBullets.map(b => (
+              <label key={b.key} style={{ ...S.checkRow, fontWeight: b.mandatory ? 600 : 400 }}>
+                <input type="checkbox" checked={!!ticks[n.id]?.[b.key]} onChange={() => handleToggle(n.id, b.key)} />
+                {b.text}{b.mandatory && <span style={{ ...S.badge('warn'), marginLeft: 6 }}>Mandatory</span>}
+              </label>
+            ))}
+            <button style={{ ...S.btn, marginTop: 10 }} onClick={() => handleSave(n)} disabled={savingId === n.id}>
+              {savingId === n.id ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function MasterTickScreen() {
+  const [selectedDate, setSelectedDate] = useState(todayStr())
+  const isToday = selectedDate === todayStr()
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <label style={{ fontSize: 13, fontWeight: 600 }}>Editing:</label>
+        <input type="date" value={selectedDate} max={todayStr()} onChange={e => setSelectedDate(e.target.value)} style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4 }} />
+        {!isToday && <span style={{ ...S.badge('warn') }}>Editing a past day</span>}
+        {!isToday && <button style={{ ...S.btnGhost, padding: '4px 10px', fontSize: 12 }} onClick={() => setSelectedDate(todayStr())}>Back to today</button>}
+      </div>
+
+      <div style={{ ...S.card, background: '#e8eef5', border: '1px solid #0B1E3D33', marginBottom: 16 }}>
+        <p style={{ margin: 0, fontSize: 13 }}>
+          <strong>All categories, one scroll.</strong> Each nominee still shows only their own category's bullets — House Master and Faculty are judged on different criteria, so their forms aren't merged, just listed together here instead of behind separate tabs.
+        </p>
+      </div>
+
+      {Object.keys(CATEGORIES).map(key => (
+        <MasterCategoryBlock key={key} categoryKey={key} selectedDate={selectedDate} isToday={isToday} />
+      ))}
+    </div>
+  )
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1252,7 +1504,7 @@ function SettingsScreen() {
 }
 
 export default function Awards() {
-  const [mode, setMode] = useState('tick') // 'tick' | 'leaderboard' | 'settings'
+  const [mode, setMode] = useState('tick') // 'tick' | 'master' | 'leaderboard' | 'settings'
 
   return (
     <div style={S.page}>
@@ -1263,11 +1515,12 @@ export default function Awards() {
 
       <div style={S.modeToggle}>
         <button style={S.modeBtn(mode === 'tick')} onClick={() => setMode('tick')}>Today's ticks</button>
+        <button style={S.modeBtn(mode === 'master')} onClick={() => setMode('master')}>📋 Master table</button>
         <button style={S.modeBtn(mode === 'leaderboard')} onClick={() => setMode('leaderboard')}>Leaderboard</button>
         <button style={S.modeBtn(mode === 'settings')} onClick={() => setMode('settings')}>⚙ Settings</button>
       </div>
 
-      {mode === 'tick' ? <DailyTickScreen /> : mode === 'leaderboard' ? <LeaderboardScreen /> : <SettingsScreen />}
+      {mode === 'tick' ? <DailyTickScreen /> : mode === 'master' ? <MasterTickScreen /> : mode === 'leaderboard' ? <LeaderboardScreen /> : <SettingsScreen />}
     </div>
   )
 }
