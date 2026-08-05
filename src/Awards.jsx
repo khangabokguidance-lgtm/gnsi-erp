@@ -156,15 +156,11 @@ const ATTENDANCE_GATE_PERCENT = 90 // % of recorded days present, minimum to be 
 //  DATA LAYER
 // ══════════════════════════════════════════════════════════════
 
-// Designations that count as "House Master" for award purposes, regardless
-// of the staff.role value — your actual staff data has House Masters filed
-// under role='Non-Teaching' (and one under role='Teaching'), so designation
-// is the real signal here, not role. Hostel Supervisor (Superintendent) is
-// deliberately excluded — that role sits outside the House Master award pool.
-const HOUSE_MASTER_DESIGNATIONS = ['House Master', 'House Mistress', 'Asst. House Mistress']
-
-const isHouseMasterDesignation = (designation) =>
-  HOUSE_MASTER_DESIGNATIONS.some(d => (designation || '').toLowerCase().includes(d.toLowerCase()))
+// House Master identity now comes directly from the `housemasters` table
+// (confirmed real schema: staff.designation does not exist). See
+// fetchNominees() below — it queries `housemasters` and uses staff_profile_id
+// to exclude those people from Faculty/Non-Teaching, instead of filtering
+// on a designation string.
 
 /** Active student count per house name, computed live from `students` — matches the counting logic Hostel.jsx already uses, not a stale stored number on `houses`. */
 async function fetchStudentCountsByHouse() {
@@ -184,36 +180,54 @@ async function fetchNominees(category) {
     return (data || []).map(h => ({ id: h.id, name: h.name }))
   }
 
-  const { data } = await supabase.from('staff').select('id, name, role, designation').eq('status', 'Active')
-  const staff = data || []
-
-  // House Master pool: by designation, any role.
-  const houseMasterPool = staff.filter(s => isHouseMasterDesignation(s.designation))
+  // Real schema confirmed: `staff` has NO designation column — it only has
+  // id, name, role, username, password, dept, phone, email, status,
+  // user_id, is_system. House Master identity lives in the SEPARATE
+  // `housemasters` table, joined back to staff via staff_profile_id.
+  // designation spelling is inconsistent in real data ("House Master" vs
+  // "Housemaster") so match with .includes(), not exact equality.
+  const { data: hmRows } = await supabase
+    .from('housemasters')
+    .select('id, name, house, designation, status, staff_profile_id')
+    .eq('status', 'Active')
+  const houseMasterPool = (hmRows || []).map(h => ({
+    id: h.staff_profile_id, // staff.id — keeps this consistent with Faculty/Non-Teaching nomineeIds for tick storage
+    name: h.name,
+    house: h.house,
+    designation: h.designation,
+  }))
+  // staff.id values of everyone already counted as a House Master, so
+  // Faculty/Non-Teaching queries below can exclude them and avoid
+  // double-counting the same person into two categories.
+  const houseMasterStaffIds = new Set(houseMasterPool.map(h => h.id))
 
   if (category.nomineeSource === 'housemasters') {
-    return houseMasterPool.map(s => ({ id: s.id, name: `${s.name} — ${s.designation}` }))
+    return houseMasterPool.map(h => ({ id: h.id, name: `${h.name} — ${h.designation}` }))
   }
 
   // Doubt Session Staff: selected FROM the House Master pool, per instruction —
   // hostel-side staff run doubt sessions, not classroom faculty.
   if (category.nomineeSource === 'doubt_session_pool') {
-    return houseMasterPool.map(s => ({ id: s.id, name: s.name }))
+    return houseMasterPool.map(h => ({ id: h.id, name: h.name }))
   }
 
+  const { data: staffRows } = await supabase.from('staff').select('id, name, role, status').eq('status', 'Active')
+  const staff = staffRows || []
+
   // Faculty: role Teaching, excluding anyone already counted as House Master
-  // (e.g. Laishram Bidyachandra is role=Teaching but designation=House Master —
-  // they belong to the House Master category, not a second Faculty entry).
+  // (e.g. Laishram Bidyachandra is role=Teaching in `staff` but also has a
+  // housemasters row — they belong to House Master, not a second Faculty entry).
   if (category.role === 'Teaching') {
     return staff
-      .filter(s => s.role === 'Teaching' && !isHouseMasterDesignation(s.designation))
+      .filter(s => s.role === 'Teaching' && !houseMasterStaffIds.has(s.id))
       .map(s => ({ id: s.id, name: s.name }))
   }
 
-  // Non-Teaching: role Non-Teaching, excluding House Master/Mistress/Supervisor
-  // designations — those are judged in the House Master category instead.
+  // Non-Teaching: role Non-Teaching, excluding anyone already counted as
+  // House Master — those are judged in the House Master category instead.
   if (category.role === 'Non-Teaching') {
     return staff
-      .filter(s => s.role === 'Non-Teaching' && !isHouseMasterDesignation(s.designation))
+      .filter(s => s.role === 'Non-Teaching' && !houseMasterStaffIds.has(s.id))
       .map(s => ({ id: s.id, name: s.name }))
   }
 
