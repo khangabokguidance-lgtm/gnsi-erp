@@ -180,24 +180,22 @@ async function fetchNominees(category) {
     return (data || []).map(h => ({ id: h.id, name: h.name }))
   }
 
-  // Real schema confirmed: `staff` has NO designation column — it only has
-  // id, name, role, username, password, dept, phone, email, status,
-  // user_id, is_system. House Master identity lives in the SEPARATE
-  // `housemasters` table, joined back to staff via staff_profile_id.
-  // designation spelling is inconsistent in real data ("House Master" vs
-  // "Housemaster") so match with .includes(), not exact equality.
+  // Real schema confirmed: the HR roster with role/designation/department
+  // is `staff_profiles`, NOT `staff` (staff is a separate login/auth table
+  // with only 13 rows and role mostly null — querying it returned nothing).
+  // housemasters.staff_profile_id joins to staff_profiles.id.
   const { data: hmRows } = await supabase
     .from('housemasters')
     .select('id, name, house, designation, status, staff_profile_id')
     .eq('status', 'Active')
   const houseMasterPool = (hmRows || []).map(h => ({
-    id: h.staff_profile_id, // staff.id — keeps this consistent with Faculty/Non-Teaching nomineeIds for tick storage
+    id: h.staff_profile_id, // staff_profiles.id — keeps this consistent with Faculty/Non-Teaching nomineeIds for tick storage
     name: h.name,
     house: h.house,
     designation: h.designation,
   }))
-  // staff.id values of everyone already counted as a House Master, so
-  // Faculty/Non-Teaching queries below can exclude them and avoid
+  // staff_profiles.id values of everyone already counted as a House Master,
+  // so Faculty/Non-Teaching queries below can exclude them and avoid
   // double-counting the same person into two categories.
   const houseMasterStaffIds = new Set(houseMasterPool.map(h => h.id))
 
@@ -211,12 +209,14 @@ async function fetchNominees(category) {
     return houseMasterPool.map(h => ({ id: h.id, name: h.name }))
   }
 
-  const { data: staffRows } = await supabase.from('staff').select('id, name, role, status').eq('status', 'Active')
+  const { data: staffRows } = await supabase.from('staff_profiles').select('id, name, role, status').eq('status', 'Active')
   const staff = staffRows || []
 
   // Faculty: role Teaching, excluding anyone already counted as House Master
-  // (e.g. Laishram Bidyachandra is role=Teaching in `staff` but also has a
-  // housemasters row — they belong to House Master, not a second Faculty entry).
+  // (e.g. Laishram Bidyachandra is role=Teaching in `staff_profiles` but also
+  // has a housemasters row — they belong to House Master, not a second
+  // Faculty entry). role='Teaching + Admin' (Himan's own record) is
+  // deliberately excluded by the exact match below — confirmed intentional.
   if (category.role === 'Teaching') {
     return staff
       .filter(s => s.role === 'Teaching' && !houseMasterStaffIds.has(s.id))
@@ -423,14 +423,17 @@ function DailyTickScreen() {
   const [activeKey, setActiveKey] = useState('faculty')
   const [nominees, setNominees] = useState([])
   const [ticks, setTicks] = useState({}) // { nomineeId: { bulletKey: bool, present: bool|null } }
+  const [hasAutoAttendance, setHasAutoAttendance] = useState({}) // { nomineeId: bool } — true only if staff_monthly_scores actually has a row for them this month
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState(null)
   const category = CATEGORIES[activeKey]
   const date = todayStr()
-  // No manual attendance toggle needed when the category has its own
-  // attendance source: Faculty/Non-Teaching pull from staff_monthly_scores,
-  // House Master derives it silently from the roll-call bullet below.
-  const usesAutoAttendance = activeKey === 'non_teaching' || activeKey === 'faculty' || !!category.attendanceKey
+  // House Master has no separate manual toggle at all: the roll_call
+  // bullet IS the attendance signal. Faculty/Non-Teaching's toggle
+  // visibility is per-nominee (see hasAutoAttendance) — staff_monthly_scores
+  // is currently empty, so nobody has real auto data yet and the manual
+  // toggle correctly shows for everyone until that table gets populated.
+  const categoryHasAutoAttendance = !!category.attendanceKey
 
   useEffect(() => {
     let cancelled = false
@@ -438,7 +441,16 @@ function DailyTickScreen() {
     ;(async () => {
       const list = await fetchNominees(category)
       const todayMap = await fetchTodayTicks(activeKey, date)
-      if (!cancelled) { setNominees(list); setTicks(todayMap); setLoading(false) }
+
+      let autoMap = {}
+      if (activeKey === 'non_teaching' || activeKey === 'faculty') {
+        const monthStr = date.slice(0, 7)
+        const { data } = await supabase.from('staff_monthly_scores').select('staff_id').eq('month', monthStr)
+        const idsWithScores = new Set((data || []).map(r => r.staff_id))
+        list.forEach(n => { autoMap[n.id] = idsWithScores.has(n.id) })
+      }
+
+      if (!cancelled) { setNominees(list); setTicks(todayMap); setHasAutoAttendance(autoMap); setLoading(false) }
     })()
     return () => { cancelled = true }
   }, [activeKey])
@@ -467,7 +479,8 @@ function DailyTickScreen() {
   const handleSave = async (nominee) => {
     const nomineeTicks = ticks[nominee.id] || {}
     const { present, totalMark, ...bulletTicks } = nomineeTicks
-    if (!usesAutoAttendance && present === undefined) {
+    const nomineeUsesAutoAttendance = categoryHasAutoAttendance || hasAutoAttendance[nominee.id]
+    if (!nomineeUsesAutoAttendance && present === undefined) {
       alert('Attendance is compulsory — mark present or absent before saving.')
       return
     }
@@ -482,7 +495,7 @@ function DailyTickScreen() {
     }
     setSavingId(nominee.id)
     try {
-      await saveTicks(activeKey, nominee.id, nominee.name, date, bulletTicks, usesAutoAttendance ? null : !!present, category.hasTotalMark ? totalMark : null)
+      await saveTicks(activeKey, nominee.id, nominee.name, date, bulletTicks, nomineeUsesAutoAttendance ? null : !!present, category.hasTotalMark ? totalMark : null)
     } catch (err) {
       alert('Could not save: ' + err.message)
     } finally {
@@ -506,21 +519,23 @@ function DailyTickScreen() {
         <strong>{category.icon} {category.label}</strong>
         <p style={{ margin: '4px 0 0', fontSize: 13 }}>
           Today: {date}. Tick what you observed. Attendance is compulsory
-          {activeKey === 'non_teaching' || activeKey === 'faculty'
-            ? ' and pulled automatically from the Staff module — no need to mark it here.'
-            : category.attendanceKey
-              ? ' — derived automatically from the roll-call tick below, no separate mark needed.'
+          {category.attendanceKey
+            ? ' — derived automatically from the roll-call tick below, no separate mark needed.'
+            : activeKey === 'non_teaching' || activeKey === 'faculty'
+              ? ' — pulled automatically from the Staff module when available, otherwise mark present/absent below.'
               : ' — mark present/absent for every nominee.'}
         </p>
       </div>
 
-      {loading ? <p>Loading…</p> : nominees.map(n => (
+      {loading ? <p>Loading…</p> : nominees.map(n => {
+        const nomineeUsesAutoAttendance = categoryHasAutoAttendance || hasAutoAttendance[n.id]
+        return (
         <div key={n.id} style={S.card}>
           <div style={S.nomineeRow}>
             <strong>{n.name}</strong>
           </div>
 
-          {!usesAutoAttendance && (
+          {!nomineeUsesAutoAttendance && (
             <div style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid #f0eee6', marginBottom: 6 }}>
               <label style={{ ...S.checkRow, fontWeight: 600 }}>
                 <input type="radio" name={`present-${n.id}`} checked={ticks[n.id]?.present === true} onChange={() => handlePresentToggle(n.id, true)} />
@@ -558,7 +573,8 @@ function DailyTickScreen() {
             {savingId === n.id ? 'Saving…' : 'Save today\u2019s ticks'}
           </button>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
