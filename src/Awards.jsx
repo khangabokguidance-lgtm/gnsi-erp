@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import jsPDF from 'jspdf'
 import { supabase } from './supabase'
 import { calcScores } from './Staff'
 import { generateAwardCertificate } from './AwardCertificate'
@@ -146,11 +147,32 @@ const CATEGORIES = {
 }
 
 // Every category also has a compulsory attendance gate, separate from the
-// qualitative bullets above. This is asked and ticked every day alongside
-// the bullets, but it is NOT averaged in like the others — it's a pass/fail
-// requirement. A nominee with excellent bullet scores who fails the
-// attendance gate is still excluded from ranking. See computeCategoryRanking.
-const ATTENDANCE_GATE_PERCENT = 90 // % of recorded days present, minimum to be eligible
+// Defaults — overridden at runtime by award_settings (see fetchSettings
+// below) whenever a Settings screen value has been saved. These constants
+// remain the fallback if the settings table has no row yet.
+const DEFAULT_ATTENDANCE_GATE_PERCENT = 90
+const DEFAULT_TOTAL_MARK_MAX = 6
+
+// Simple in-memory cache so every component reads the same live settings
+// without a separate fetch per component mount. Refreshed by
+// SettingsScreen after a save (see refreshSettingsCache).
+let _settingsCache = { attendanceGatePercent: DEFAULT_ATTENDANCE_GATE_PERCENT, totalMarkMax: DEFAULT_TOTAL_MARK_MAX }
+
+async function fetchSettings() {
+  const { data } = await supabase.from('award_settings').select('key, value')
+  const map = {}
+  ;(data || []).forEach(row => { map[row.key] = row.value })
+  _settingsCache = {
+    attendanceGatePercent: map.attendance_gate_percent ?? DEFAULT_ATTENDANCE_GATE_PERCENT,
+    totalMarkMax: map.total_mark_max ?? DEFAULT_TOTAL_MARK_MAX,
+  }
+  return _settingsCache
+}
+
+async function saveSetting(key, value, updatedBy) {
+  const { error } = await supabase.from('award_settings').upsert({ key, value, updated_at: new Date().toISOString(), updated_by: updatedBy || null }, { onConflict: 'key' })
+  if (error) throw error
+}
 
 // ══════════════════════════════════════════════════════════════
 //  DATA LAYER
@@ -161,18 +183,6 @@ const ATTENDANCE_GATE_PERCENT = 90 // % of recorded days present, minimum to be 
 // fetchNominees() below — it queries `housemasters` and uses staff_profile_id
 // to exclude those people from Faculty/Non-Teaching, instead of filtering
 // on a designation string.
-
-/** Active student count per house name, computed live from `students` — matches the counting logic Hostel.jsx already uses, not a stale stored number on `houses`. */
-async function fetchStudentCountsByHouse() {
-  const { data } = await supabase.from('students').select('house').neq('status', 'Inactive').neq('status', 'Dropout')
-  const counts = {}
-  ;(data || []).forEach(s => {
-    const key = (s.house || '').trim().toLowerCase()
-    if (!key) return
-    counts[key] = (counts[key] || 0) + 1
-  })
-  return counts
-}
 
 async function fetchNominees(category) {
   if (category.nomineeSource === 'houses') {
@@ -269,6 +279,48 @@ async function fetchMonthTicks(categoryKey, nomineeId, monthStr) {
   return data || []
 }
 
+/** Leave records covering a specific date, keyed by nominee id — so a nominee on leave shows a clear "On leave" state instead of silently failing the attendance gate. */
+async function fetchLeaveForDate(categoryKey, dateStr) {
+  const { data } = await supabase
+    .from('award_nominee_leave')
+    .select('*')
+    .eq('category_key', categoryKey)
+    .lte('start_date', dateStr)
+    .gte('end_date', dateStr)
+  const map = {}
+  ;(data || []).forEach(row => { map[row.nominee_id] = row })
+  return map
+}
+
+/** All leave records for a category (any date), used by computeCategoryRanking to exclude leave days from the attendance denominator for the whole month. */
+async function fetchLeaveForMonth(categoryKey, monthStr) {
+  const { data } = await supabase
+    .from('award_nominee_leave')
+    .select('*')
+    .eq('category_key', categoryKey)
+    .lte('start_date', `${monthStr}-31`)
+    .gte('end_date', `${monthStr}-01`)
+  return data || []
+}
+
+async function saveLeave(categoryKey, nomineeId, nomineeName, startDate, endDate, reason, createdBy) {
+  const { error } = await supabase.from('award_nominee_leave').insert({
+    category_key: categoryKey,
+    nominee_id: String(nomineeId),
+    nominee_name: nomineeName,
+    start_date: startDate,
+    end_date: endDate,
+    reason: reason || null,
+    created_by: createdBy || null,
+  })
+  if (error) throw error
+}
+
+async function deleteLeave(leaveId) {
+  const { error } = await supabase.from('award_nominee_leave').delete().eq('id', leaveId)
+  if (error) throw error
+}
+
 // ══════════════════════════════════════════════════════════════
 //  SCORING — % of days ticked yes, per bullet, averaged with auto bullets
 // ══════════════════════════════════════════════════════════════
@@ -289,7 +341,42 @@ function attendancePercent(monthTickRows) {
   return Math.round((presentCount / recorded.length) * 100)
 }
 
-async function computeCategoryRanking(categoryKey, monthStr) {
+/** Previous calendar month, as 'YYYY-MM', given a 'YYYY-MM' string. */
+function previousMonthStr(monthStr) {
+  const [y, m] = monthStr.split('-').map(Number)
+  const d = new Date(y, m - 2, 1) // m-1 is this month (0-indexed), -1 more for previous
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** Longest run of consecutive days (by tick_date) where every tick-bullet was YES and attendance passed. Used for streak tracking. */
+function longestGoodStreak(monthRows, tickBulletKeys, attendanceKey) {
+  const sorted = [...monthRows].sort((a, b) => a.tick_date.localeCompare(b.tick_date))
+  let longest = 0
+  let current = 0
+  let prevDate = null
+  for (const row of sorted) {
+    const allBulletsYes = tickBulletKeys.every(k => row.bullet_ticks?.[k] === true)
+    const attendanceOk = attendanceKey ? row.bullet_ticks?.[attendanceKey] === true : row.present !== false
+    const isGoodDay = allBulletsYes && attendanceOk
+    const isConsecutive = prevDate && daysBetween(prevDate, row.tick_date) === 1
+    if (isGoodDay) {
+      current = isConsecutive ? current + 1 : 1
+      longest = Math.max(longest, current)
+    } else {
+      current = 0
+    }
+    prevDate = row.tick_date
+  }
+  return longest
+}
+
+function daysBetween(dateStr1, dateStr2) {
+  const d1 = new Date(dateStr1)
+  const d2 = new Date(dateStr2)
+  return Math.round((d2 - d1) / 86400000)
+}
+
+async function computeCategoryRanking(categoryKey, monthStr, { includeTrendAndStreak = false } = {}) {
   const category = CATEGORIES[categoryKey]
   const nominees = await fetchNominees(category)
 
@@ -305,18 +392,40 @@ async function computeCategoryRanking(categoryKey, monthStr) {
     ;(data || []).forEach(r => { staffScores[r.staff_id] = r })
   }
 
-  // Best House only: active student count per house, for dividing the
-  // manual total mark — computed live from `students`, same counting
-  // logic Hostel.jsx already uses.
-  let studentCounts = null
-  if (category.hasTotalMark) {
-    studentCounts = await fetchStudentCountsByHouse()
+  // Leave records for the month — a nominee whose leave covers EVERY
+  // ticked/recorded day gets a clear "On leave" reason instead of
+  // silently failing the attendance gate, which looks identical to poor
+  // attendance from someone nobody ever excused.
+  const leaveRows = await fetchLeaveForMonth(categoryKey, monthStr)
+  const leaveByNominee = {}
+  leaveRows.forEach(row => {
+    if (!leaveByNominee[row.nominee_id]) leaveByNominee[row.nominee_id] = []
+    leaveByNominee[row.nominee_id].push(row)
+  })
+  const isDateCoveredByLeave = (nomineeId, dateStr) => {
+    const records = leaveByNominee[String(nomineeId)] || []
+    return records.some(r => dateStr >= r.start_date && dateStr <= r.end_date)
   }
 
   const results = await Promise.all(nominees.map(async (n) => {
     const monthRows = await fetchMonthTicks(categoryKey, n.id, monthStr)
     const tickBullets = category.bullets.filter(b => b.type === 'tick' && b.key !== category.attendanceKey)
     const tickPercents = tickBullets.map(b => bulletTickPercent(monthRows, b.key)).filter(v => v !== null)
+
+    // Leave check — if this nominee has a leave record covering EVERY day
+    // in this month that would otherwise be judged (i.e. no ticks exist
+    // outside their leave range), they're shown as "On leave" instead of
+    // failing the attendance gate. This is a labeled exclusion, not a
+    // silent one — distinguishes "excused" from "poor attendance nobody
+    // ever accounted for."
+    const leaveRecordsThisNominee = leaveByNominee[String(n.id)] || []
+    if (leaveRecordsThisNominee.length > 0) {
+      const unexcusedTickDays = monthRows.filter(r => !isDateCoveredByLeave(n.id, r.tick_date))
+      if (unexcusedTickDays.length === 0 && monthRows.length > 0) {
+        const leaveReason = leaveRecordsThisNominee[0].reason
+        return { nomineeId: n.id, name: n.name, score: null, attPct: null, daysTicked: monthRows.length, eligible: false, onLeave: true, reason: leaveReason ? `On leave — ${leaveReason}` : 'On leave this period' }
+      }
+    }
 
     // Compulsory attendance gate — checked for every category, no exceptions.
     // House Master has no separate manual toggle: the roll_call bullet IS
@@ -335,44 +444,70 @@ async function computeCategoryRanking(categoryKey, monthStr) {
     if (attPct === null) {
       return { nomineeId: n.id, name: n.name, score: null, attPct: null, daysTicked: monthRows.length, eligible: false, reason: 'No attendance recorded this month' }
     }
-    if (attPct < ATTENDANCE_GATE_PERCENT) {
-      return { nomineeId: n.id, name: n.name, score: null, attPct, daysTicked: monthRows.length, eligible: false, reason: `Below ${ATTENDANCE_GATE_PERCENT}% attendance gate` }
+    if (attPct < _settingsCache.attendanceGatePercent) {
+      return { nomineeId: n.id, name: n.name, score: null, attPct, daysTicked: monthRows.length, eligible: false, reason: `Below ${_settingsCache.attendanceGatePercent}% attendance gate` }
     }
 
     const bulletScore = tickPercents.length > 0
       ? Math.round(tickPercents.reduce((a, b) => a + b, 0) / tickPercents.length)
       : null
 
-    // Best House: "Overall Total Mark Average" — mandatory manual total
-    // mark entered per day, divided by the house's active student count,
-    // averaged across every day a mark was recorded this month.
-    let markAverage = null
+    // Best House: fixed-scale mark, same maximum for every house
+    // (settings-configurable, default 6 — one point per checklist bullet).
+    // Each day's mark is scaled to a 0-100 percentage —
+    // mark_earned_% = (mark / max) x 100 — the same scale as the
+    // checklist, so the two can be fairly averaged.
+    let markPercent = null
     if (category.hasTotalMark) {
-      const houseKey = (n.name || '').trim().toLowerCase()
-      const studentCount = studentCounts?.[houseKey] || 0
       const daysWithMark = monthRows.filter(r => r.total_mark !== null && r.total_mark !== undefined)
-      if (daysWithMark.length > 0 && studentCount > 0) {
-        const dailyAverages = daysWithMark.map(r => r.total_mark / studentCount)
-        markAverage = parseFloat((dailyAverages.reduce((a, b) => a + b, 0) / dailyAverages.length).toFixed(2))
+      if (daysWithMark.length > 0) {
+        const dailyPercents = daysWithMark.map(r => (r.total_mark / _settingsCache.totalMarkMax) * 100)
+        markPercent = parseFloat((dailyPercents.reduce((a, b) => a + b, 0) / dailyPercents.length).toFixed(2))
       }
     }
 
-    // Ranking score stays the checklist average — the 0-100 scale that's
-    // fairly comparable across houses. The total-mark average is NOT
-    // blended in: it has no fixed maximum (students can be marked out of
-    // different scales), so "marks / students" produces a raw number with
-    // no natural ceiling that can't be forced onto the same 0-100 scale
-    // without distorting it. It's shown as its own figure instead — see
-    // markAverage on the leaderboard row.
-    const score = bulletScore
+    // Final score: for Best House, the checklist % and the mark % are
+    // both 0-100 scale, so they're averaged together into one ranking
+    // score. Other categories are unaffected — score stays bulletScore.
+    let score = bulletScore
+    if (category.hasTotalMark) {
+      const parts = [bulletScore, markPercent].filter(v => v !== null)
+      score = parts.length > 0 ? parseFloat((parts.reduce((a, b) => a + b, 0) / parts.length).toFixed(2)) : null
+    }
 
-    return { nomineeId: n.id, name: n.name, score, attPct, bulletScore, markAverage, daysTicked: monthRows.length, eligible: score !== null }
+    const base = { nomineeId: n.id, name: n.name, score, attPct, bulletScore, markPercent, daysTicked: monthRows.length, eligible: score !== null }
+
+    if (!includeTrendAndStreak) return base
+
+    // Streak: longest run of consecutive days this month where every
+    // bullet was ticked yes AND attendance passed that day.
+    const streak = longestGoodStreak(monthRows, tickBullets.map(b => b.key), category.attendanceKey)
+
+    return { ...base, streak }
   }))
 
   const eligible = results.filter(r => r.eligible)
   const ineligible = results.filter(r => !r.eligible)
   eligible.sort((a, b) => b.score - a.score)
-  return [...eligible, ...ineligible]
+  const ranked = [...eligible, ...ineligible]
+
+  if (!includeTrendAndStreak) return ranked
+
+  // Month-over-month trend: re-score everyone against last month (no
+  // trend/streak needed for that inner call — avoids infinite recursion
+  // and extra work) and diff the scores.
+  const prevMonthStr = previousMonthStr(monthStr)
+  const prevRanking = await computeCategoryRanking(categoryKey, prevMonthStr, { includeTrendAndStreak: false })
+  const prevScoreByNominee = {}
+  prevRanking.forEach(r => { prevScoreByNominee[r.nomineeId] = r.score })
+
+  return ranked.map(r => {
+    const prevScore = prevScoreByNominee[r.nomineeId]
+    const trend = (r.score !== null && prevScore !== null && prevScore !== undefined)
+      ? parseFloat((r.score - prevScore).toFixed(2))
+      : null
+    return { ...r, prevScore: prevScore ?? null, trend }
+  })
 }
 
 async function fetchPublishedWinner(categoryKey, monthStr) {
@@ -423,11 +558,21 @@ function DailyTickScreen() {
   const [activeKey, setActiveKey] = useState('faculty')
   const [nominees, setNominees] = useState([])
   const [ticks, setTicks] = useState({}) // { nomineeId: { bulletKey: bool, present: bool|null } }
+  const [savedIds, setSavedIds] = useState(new Set()) // nominee ids confirmed saved to the DB for the selected date
+  const [expandedIds, setExpandedIds] = useState(new Set()) // nominee ids manually expanded despite being saved
   const [hasAutoAttendance, setHasAutoAttendance] = useState({}) // { nomineeId: bool } — true only if staff_monthly_scores actually has a row for them this month
+  const [onLeave, setOnLeave] = useState({}) // { nomineeId: leaveRecord } — nominees excused for the selected date
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState(null)
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [settings, setSettings] = useState({ attendanceGatePercent: DEFAULT_ATTENDANCE_GATE_PERCENT, totalMarkMax: DEFAULT_TOTAL_MARK_MAX })
+  // Editable past days: defaults to today, but can be changed via the date
+  // picker in the header — lets the supervisor go back and fix a mistake
+  // from an earlier day instead of only ever being able to edit "today."
+  const [selectedDate, setSelectedDate] = useState(todayStr())
   const category = CATEGORIES[activeKey]
-  const date = todayStr()
+  const date = selectedDate
+  const isToday = selectedDate === todayStr()
   // House Master has no separate manual toggle at all: the roll_call
   // bullet IS the attendance signal. Faculty/Non-Teaching's toggle
   // visibility is per-nominee (see hasAutoAttendance) — staff_monthly_scores
@@ -439,8 +584,12 @@ function DailyTickScreen() {
     let cancelled = false
     setLoading(true)
     ;(async () => {
-      const list = await fetchNominees(category)
-      const todayMap = await fetchTodayTicks(activeKey, date)
+      const [list, todayMap, settingsResult, leaveMap] = await Promise.all([
+        fetchNominees(category),
+        fetchTodayTicks(activeKey, date),
+        fetchSettings(),
+        fetchLeaveForDate(activeKey, date),
+      ])
 
       let autoMap = {}
       if (activeKey === 'non_teaching' || activeKey === 'faculty') {
@@ -450,10 +599,24 @@ function DailyTickScreen() {
         list.forEach(n => { autoMap[n.id] = idsWithScores.has(n.id) })
       }
 
-      if (!cancelled) { setNominees(list); setTicks(todayMap); setHasAutoAttendance(autoMap); setLoading(false) }
+      // Anyone already present in todayMap has a real saved row for the
+      // selected date — start them collapsed and marked done, so the list
+      // only demands attention for people who genuinely haven't been ticked.
+      const alreadySaved = new Set(Object.keys(todayMap).map(String))
+
+      if (!cancelled) {
+        setNominees(list)
+        setTicks(todayMap)
+        setHasAutoAttendance(autoMap)
+        setSavedIds(alreadySaved)
+        setExpandedIds(new Set())
+        setSettings(settingsResult)
+        setOnLeave(leaveMap)
+        setLoading(false)
+      }
     })()
     return () => { cancelled = true }
-  }, [activeKey])
+  }, [activeKey, selectedDate])
 
   const handleToggle = (nomineeId, bulletKey) => {
     setTicks(prev => ({
@@ -469,6 +632,15 @@ function DailyTickScreen() {
     }))
   }
 
+  const toggleExpanded = (nomineeId) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(nomineeId)) next.delete(nomineeId)
+      else next.add(nomineeId)
+      return next
+    })
+  }
+
   const handleMarkChange = (nomineeId, value) => {
     setTicks(prev => ({
       ...prev,
@@ -476,34 +648,73 @@ function DailyTickScreen() {
     }))
   }
 
-  const handleSave = async (nominee) => {
-    const nomineeTicks = ticks[nominee.id] || {}
+  /** Builds the default "normal day" tick set for one nominee: all bullets yes, present, and — for Best House — full marks. Used by both single-save defaults and Mark All. */
+  const defaultGoodTicks = (nomineeId) => {
+    const base = {}
+    category.bullets.filter(b => b.type === 'tick').forEach(b => { base[b.key] = true })
+    base.present = true
+    if (category.hasTotalMark) base.totalMark = _settingsCache.totalMarkMax
+    return base
+  }
+
+  const saveOneNominee = async (nominee, nomineeTicksOverride) => {
+    const nomineeTicks = nomineeTicksOverride || ticks[nominee.id] || {}
     const { present, totalMark, ...bulletTicks } = nomineeTicks
     const nomineeUsesAutoAttendance = categoryHasAutoAttendance || hasAutoAttendance[nominee.id]
     if (!nomineeUsesAutoAttendance && present === undefined) {
-      alert('Attendance is compulsory — mark present or absent before saving.')
-      return
+      throw new Error('Attendance is compulsory — mark present or absent before saving.')
     }
     if (category.hasTotalMark && (totalMark === undefined || totalMark === null || isNaN(totalMark))) {
-      alert('Total mark is compulsory — enter today\u2019s inspection mark before saving.')
-      return
+      throw new Error('Total mark is compulsory — enter today\u2019s inspection mark before saving.')
     }
     const missingMandatory = category.bullets.filter(b => b.mandatory && bulletTicks[b.key] === undefined)
     if (missingMandatory.length > 0) {
-      alert(`Mandatory: "${missingMandatory[0].text}" must be ticked yes or no before saving.`)
-      return
+      throw new Error(`Mandatory: "${missingMandatory[0].text}" must be ticked yes or no before saving.`)
     }
+    await saveTicks(activeKey, nominee.id, nominee.name, date, bulletTicks, nomineeUsesAutoAttendance ? null : !!present, category.hasTotalMark ? totalMark : null)
+  }
+
+  const handleSave = async (nominee) => {
     setSavingId(nominee.id)
     try {
-      await saveTicks(activeKey, nominee.id, nominee.name, date, bulletTicks, nomineeUsesAutoAttendance ? null : !!present, category.hasTotalMark ? totalMark : null)
+      await saveOneNominee(nominee)
+      setSavedIds(prev => new Set(prev).add(String(nominee.id)))
+      setExpandedIds(prev => { const next = new Set(prev); next.delete(nominee.id); return next })
     } catch (err) {
-      alert('Could not save: ' + err.message)
+      alert(err.message.startsWith('Attendance') || err.message.startsWith('Total mark') || err.message.startsWith('Mandatory') ? err.message : 'Could not save: ' + err.message)
     } finally {
       setSavingId(null)
     }
   }
 
+  /** Advanced: mark everyone not yet saved today as a normal day (present, all bullets yes) in one action. Anyone already saved, or manually expanded to edit, is left untouched — this only fills the gap, it never overwrites an exception someone already recorded. */
+  const handleMarkAllGood = async () => {
+    const remaining = nominees.filter(n => !savedIds.has(String(n.id)))
+    if (remaining.length === 0) return
+    if (!window.confirm(`Mark all ${remaining.length} remaining nominee(s) as present with every bullet ticked yes for today? You can still open and adjust any individual entry afterward.`)) return
+    setBulkSaving(true)
+    const newlySaved = new Set(savedIds)
+    const failures = []
+    for (const n of remaining) {
+      const goodTicks = defaultGoodTicks(n.id)
+      try {
+        await saveOneNominee(n, goodTicks)
+        setTicks(prev => ({ ...prev, [n.id]: goodTicks }))
+        newlySaved.add(String(n.id))
+      } catch (err) {
+        failures.push(n.name)
+      }
+    }
+    setSavedIds(newlySaved)
+    setBulkSaving(false)
+    if (failures.length > 0) {
+      alert(`Saved ${remaining.length - failures.length} of ${remaining.length}. Could not save: ${failures.join(', ')}`)
+    }
+  }
+
   const tickBullets = category.bullets.filter(b => b.type === 'tick')
+  const savedCount = nominees.filter(n => savedIds.has(String(n.id))).length
+  const remainingCount = nominees.length - savedCount
 
   return (
     <div>
@@ -515,24 +726,66 @@ function DailyTickScreen() {
         ))}
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <label style={{ fontSize: 13, fontWeight: 600 }}>Editing:</label>
+        <input type="date" value={selectedDate} max={todayStr()} onChange={e => setSelectedDate(e.target.value)} style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4 }} />
+        {!isToday && <span style={{ ...S.badge('warn') }}>Editing a past day</span>}
+        {!isToday && <button style={{ ...S.btnGhost, padding: '4px 10px', fontSize: 12 }} onClick={() => setSelectedDate(todayStr())}>Back to today</button>}
+      </div>
+
       <div style={{ ...S.card, background: '#FFF8E7', border: '1px solid #C9A24B' }}>
         <strong>{category.icon} {category.label}</strong>
         <p style={{ margin: '4px 0 0', fontSize: 13 }}>
-          Today: {date}. Tick what you observed. Attendance is compulsory
+          {isToday ? 'Today' : 'Date'}: {date}. Tick what you observed. Attendance is compulsory
           {category.attendanceKey
             ? ' — derived automatically from the roll-call tick below, no separate mark needed.'
             : activeKey === 'non_teaching' || activeKey === 'faculty'
               ? ' — pulled automatically from the Staff module when available, otherwise mark present/absent below.'
               : ' — mark present/absent for every nominee.'}
         </p>
+        {!loading && nominees.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(201,162,75,0.3)' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#0B1E3D' }}>
+              {savedCount} of {nominees.length} done {isToday ? 'today' : 'for this date'}
+              {remainingCount > 0 && <span style={{ color: '#b3261e' }}> · {remainingCount} remaining</span>}
+            </span>
+            {remainingCount > 0 && (
+              <button style={{ ...S.btn, padding: '6px 14px', fontSize: 12 }} onClick={handleMarkAllGood} disabled={bulkSaving}>
+                {bulkSaving ? 'Marking…' : `Mark all ${remainingCount} remaining as normal day`}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {loading ? <p>Loading…</p> : nominees.map(n => {
+        const leaveRecord = onLeave[String(n.id)]
+        if (leaveRecord) {
+          return (
+            <div key={n.id} style={{ ...S.card, background: '#f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px' }}>
+              <span><span style={{ ...S.badge('neutral'), marginRight: 8 }}>ON LEAVE</span><strong>{n.name}</strong>{leaveRecord.reason && <span style={{ marginLeft: 8, fontSize: 12, color: '#888' }}>{leaveRecord.reason}</span>}</span>
+            </div>
+          )
+        }
+
         const nomineeUsesAutoAttendance = categoryHasAutoAttendance || hasAutoAttendance[n.id]
+        const isSaved = savedIds.has(String(n.id))
+        const isExpanded = expandedIds.has(n.id) || !isSaved
+
+        if (isSaved && !isExpanded) {
+          return (
+            <div key={n.id} style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px' }}>
+              <span><span style={{ color: '#1e7e34', marginRight: 8 }}>✓</span><strong>{n.name}</strong></span>
+              <button style={{ ...S.btnGhost, padding: '4px 12px', fontSize: 12 }} onClick={() => toggleExpanded(n.id)}>Edit</button>
+            </div>
+          )
+        }
+
         return (
         <div key={n.id} style={S.card}>
-          <div style={S.nomineeRow}>
+          <div style={{ ...S.nomineeRow, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>{n.name}</strong>
+            {isSaved && <button style={{ ...S.btnGhost, padding: '2px 10px', fontSize: 11 }} onClick={() => toggleExpanded(n.id)}>Collapse</button>}
           </div>
 
           {!nomineeUsesAutoAttendance && (
@@ -550,16 +803,17 @@ function DailyTickScreen() {
 
           {category.hasTotalMark && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f0eee6', marginBottom: 6 }}>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>Today's total mark</label>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>{`Today's mark (out of ${settings.totalMarkMax})`}</label>
               <input
                 type="number"
                 min={0}
+                max={settings.totalMarkMax}
                 value={ticks[n.id]?.totalMark ?? ''}
                 onChange={(e) => handleMarkChange(n.id, e.target.value)}
                 style={{ width: 80, padding: 6, border: '1px solid #ccc', borderRadius: 4 }}
               />
               <span style={{ ...S.badge('warn') }}>Mandatory</span>
-              <span style={{ fontSize: 11, color: '#888' }}>Divided by student count at scoring time</span>
+              <span style={{ fontSize: 11, color: '#888' }}>Same {settings.totalMarkMax}-point scale for every house — averaged with the checklist into the final score</span>
             </div>
           )}
 
@@ -590,24 +844,49 @@ function LeaderboardScreen() {
   const [loading, setLoading] = useState(true)
   const [published, setPublished] = useState(null)
   const [publishing, setPublishing] = useState(false)
+  const [missedToday, setMissedToday] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [settings, setSettings] = useState({ attendanceGatePercent: DEFAULT_ATTENDANCE_GATE_PERCENT, totalMarkMax: DEFAULT_TOTAL_MARK_MAX })
   const category = CATEGORIES[activeKey]
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     ;(async () => {
-      const results = await computeCategoryRanking(activeKey, monthStr)
+      const settingsResult = await fetchSettings()
+      const results = await computeCategoryRanking(activeKey, monthStr, { includeTrendAndStreak: true })
       const win = await fetchPublishedWinner(activeKey, monthStr)
-      if (!cancelled) { setRanking(results); setPublished(win); setLoading(false) }
+
+      // "Missed today" check — only meaningful when viewing the current
+      // month, since checking today's ticks against a past month makes
+      // no sense.
+      let missed = []
+      if (monthStr === monthStrOf(todayStr())) {
+        const [nomineeList, todayTicks] = await Promise.all([
+          fetchNominees(category),
+          fetchTodayTicks(activeKey, todayStr()),
+        ])
+        const tickedIds = new Set(Object.keys(todayTicks))
+        missed = nomineeList.filter(n => !tickedIds.has(String(n.id))).map(n => n.name)
+      }
+
+      if (!cancelled) { setRanking(results); setPublished(win); setMissedToday(missed); setSettings(settingsResult); setLoading(false) }
     })()
     return () => { cancelled = true }
   }, [activeKey, monthStr])
+
 
   const ranked = useMemo(() => {
     const eligible = ranking.filter(r => r.eligible)
     const rest = ranking.filter(r => !r.eligible)
     return [...eligible.map((r, i) => ({ ...r, rank: i + 1, isWinner: i === 0 })), ...rest.map(r => ({ ...r, rank: null, isWinner: false }))]
   }, [ranking])
+
+  const filteredRanked = useMemo(() => {
+    if (!searchQuery.trim()) return ranked
+    const q = searchQuery.trim().toLowerCase()
+    return ranked.filter(r => r.name.toLowerCase().includes(q))
+  }, [ranked, searchQuery])
 
   const topPick = ranked.find(r => r.isWinner)
   const publishDate = getPublishDate(monthStr)
@@ -636,6 +915,80 @@ function LeaderboardScreen() {
     })
   }
 
+  /** Export the current leaderboard (whatever's in `ranked`, ignoring search filter) as a CSV file — opens directly in Excel. */
+  const handleExportCSV = () => {
+    const headers = ['Rank', 'Name', 'Score %', 'Attendance %', 'Streak (days)', 'Trend vs last month', 'Days ticked']
+    const rows = ranked.map(r => [
+      r.rank ?? '',
+      r.name,
+      r.score ?? '',
+      r.attPct ?? '',
+      r.streak ?? '',
+      r.trend !== null && r.trend !== undefined ? (r.trend > 0 ? `+${r.trend}` : r.trend) : '',
+      r.daysTicked,
+    ])
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n')
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${category.label.replace(/\s+/g, '_')}_${monthStr}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  /** Export the current leaderboard as a simple printable PDF table — jsPDF is already a dependency (used by the certificate generator). */
+  const handleExportPDF = () => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const navy = [11, 30, 61]
+    const gold = [201, 162, 75]
+
+    doc.setFont('times', 'bold')
+    doc.setFontSize(16)
+    doc.setTextColor(...navy)
+    doc.text(category.label, 14, 18)
+    doc.setFont('times', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(100, 100, 100)
+    doc.text(`${monthLabelOf(monthStr)} — generated ${new Date().toLocaleDateString('en-IN', { dateStyle: 'medium' })}`, 14, 25)
+
+    doc.setDrawColor(...gold)
+    doc.line(14, 29, 196, 29)
+
+    let y = 38
+    doc.setFont('times', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(...navy)
+    doc.text('Rank', 14, y)
+    doc.text('Name', 30, y)
+    doc.text('Score', 110, y)
+    doc.text('Attendance', 130, y)
+    doc.text('Streak', 160, y)
+    doc.text('Trend', 178, y)
+    y += 6
+    doc.setDrawColor(200, 200, 200)
+    doc.line(14, y - 4, 196, y - 4)
+
+    doc.setFont('times', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(40, 40, 40)
+    ranked.forEach(r => {
+      if (y > 280) { doc.addPage(); y = 20 }
+      doc.text(r.rank ? String(r.rank) : '—', 14, y)
+      doc.text(r.name, 30, y)
+      doc.text(r.score !== null ? `${r.score}%` : '—', 110, y)
+      doc.text(r.attPct !== null && r.attPct !== undefined ? `${r.attPct}%` : '—', 130, y)
+      doc.text(r.streak !== undefined ? `${r.streak}d` : '—', 160, y)
+      const trendText = r.trend !== null && r.trend !== undefined ? (r.trend > 0 ? `+${r.trend}` : `${r.trend}`) : '—'
+      doc.text(trendText, 178, y)
+      y += 6
+    })
+
+    doc.save(`${category.label.replace(/\s+/g, '_')}_${monthStr}.pdf`)
+  }
+
   return (
     <div>
       <div style={S.catTabRow}>
@@ -646,26 +999,48 @@ function LeaderboardScreen() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
         <input type="month" value={monthStr} onChange={e => setMonthStr(e.target.value)} style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4 }} />
         <span style={{ fontSize: 13, color: '#666' }}>Publishes {publishDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+        <input
+          type="text"
+          placeholder="Search name…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4, marginLeft: 'auto', minWidth: 160 }}
+        />
+        <button style={{ ...S.btnGhost, padding: '6px 12px', fontSize: 12 }} onClick={handleExportCSV} disabled={ranked.length === 0}>⬇ Excel (CSV)</button>
+        <button style={{ ...S.btnGhost, padding: '6px 12px', fontSize: 12 }} onClick={handleExportPDF} disabled={ranked.length === 0}>⬇ PDF</button>
       </div>
+
+      {!loading && missedToday.length > 0 && (
+        <div style={{ ...S.card, background: '#fdecea', border: '1px solid #f3b4ae' }}>
+          <strong style={{ color: '#b3261e' }}>⚠ {missedToday.length} not ticked today</strong>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#7a2320' }}>{missedToday.join(', ')}</p>
+        </div>
+      )}
 
       <div style={S.card}>
         <h3 style={{ margin: '0 0 4px', color: '#0B1E3D' }}>Rankings — average of ticked days</h3>
-        <p style={{ fontSize: 12, color: '#888', fontStyle: 'italic', margin: '4px 0 12px' }}>Attendance below {ATTENDANCE_GATE_PERCENT}% excludes a nominee from ranking, regardless of bullet scores.</p>
-        {loading ? <p>Loading…</p> : ranked.length === 0 ? (
-          <p style={{ color: '#999' }}>No ticks recorded yet this month.</p>
-        ) : ranked.map(r => (
+        <p style={{ fontSize: 12, color: '#888', fontStyle: 'italic', margin: '4px 0 12px' }}>Attendance below {settings.attendanceGatePercent}% excludes a nominee from ranking, regardless of bullet scores.</p>
+        {loading ? <p>Loading…</p> : filteredRanked.length === 0 ? (
+          <p style={{ color: '#999' }}>{searchQuery ? 'No match for that name.' : 'No ticks recorded yet this month.'}</p>
+        ) : filteredRanked.map(r => (
           <div key={r.nomineeId} style={S.rankRow(r.isWinner)}>
             <div>
               <strong>{r.rank ? `#${r.rank} ` : ''}{r.name}</strong>
               {r.isWinner && <span style={{ marginLeft: 8, ...S.badge('ok') }}>LEADING</span>}
               {r.reason && <span style={{ marginLeft: 8, ...S.badge('warn') }}>{r.reason}</span>}
+              {r.streak > 0 && <span style={{ marginLeft: 8, ...S.badge('ok') }}>🔥 {r.streak}-day streak</span>}
+              {r.trend !== null && r.trend !== undefined && r.trend !== 0 && (
+                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: r.trend > 0 ? '#1e7e34' : '#b3261e' }}>
+                  {r.trend > 0 ? '▲' : '▼'} {Math.abs(r.trend)} vs last month
+                </span>
+              )}
               <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                 {r.daysTicked} day{r.daysTicked === 1 ? '' : 's'} recorded
                 {r.attPct !== null && r.attPct !== undefined && ` · ${r.attPct}% attendance`}
-                {r.markAverage !== null && r.markAverage !== undefined && ` · total mark avg ${r.markAverage}/student (reference only, not part of ranking score)`}
+                {r.bulletScore !== null && r.bulletScore !== undefined && r.markPercent !== null && r.markPercent !== undefined && ` · checklist ${r.bulletScore}% + mark ${r.markPercent}% (averaged into final score)`}
               </div>
             </div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{r.score !== null ? `${r.score}%` : '—'}</div>
@@ -696,8 +1071,188 @@ function LeaderboardScreen() {
 //  ROOT — two modes: tick today, or view the leaderboard
 // ══════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════
+//  SETTINGS SCREEN — configurable gate/scale, leave management,
+//  and co-housemaster assignment. Everything here was previously
+//  a hardcoded constant or entirely absent.
+// ══════════════════════════════════════════════════════════════
+
+function SettingsScreen() {
+  const [settings, setSettings] = useState({ attendanceGatePercent: DEFAULT_ATTENDANCE_GATE_PERCENT, totalMarkMax: DEFAULT_TOTAL_MARK_MAX })
+  const [gateInput, setGateInput] = useState('')
+  const [markInput, setMarkInput] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Leave management
+  const [leaveCategoryKey, setLeaveCategoryKey] = useState('faculty')
+  const [leaveNominees, setLeaveNominees] = useState([])
+  const [leaveList, setLeaveList] = useState([])
+  const [leaveForm, setLeaveForm] = useState({ nomineeId: '', startDate: todayStr(), endDate: todayStr(), reason: '' })
+  const [savingLeave, setSavingLeave] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const s = await fetchSettings()
+      if (!cancelled) {
+        setSettings(s)
+        setGateInput(String(s.attendanceGatePercent))
+        setMarkInput(String(s.totalMarkMax))
+        setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const category = CATEGORIES[leaveCategoryKey]
+      const [nomineeList, { data: leaveRows }] = await Promise.all([
+        fetchNominees(category),
+        supabase.from('award_nominee_leave').select('*').eq('category_key', leaveCategoryKey).order('start_date', { ascending: false }),
+      ])
+      if (!cancelled) {
+        setLeaveNominees(nomineeList)
+        setLeaveList(leaveRows || [])
+        setLeaveForm(f => ({ ...f, nomineeId: nomineeList[0]?.id || '' }))
+      }
+    })()
+    return () => { cancelled = true }
+  }, [leaveCategoryKey])
+
+  const handleSaveSettings = async () => {
+    const gate = Number(gateInput)
+    const mark = Number(markInput)
+    if (isNaN(gate) || gate < 0 || gate > 100) { alert('Attendance gate must be a number between 0 and 100.'); return }
+    if (isNaN(mark) || mark <= 0) { alert('Mark scale must be a positive number.'); return }
+    setSavingSettings(true)
+    try {
+      await saveSetting('attendance_gate_percent', gate)
+      await saveSetting('total_mark_max', mark)
+      const refreshed = await fetchSettings()
+      setSettings(refreshed)
+      alert('Settings saved. New values apply the next time a screen loads.')
+    } catch (err) {
+      alert('Could not save settings: ' + err.message)
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  const handleAddLeave = async () => {
+    const nominee = leaveNominees.find(n => String(n.id) === String(leaveForm.nomineeId))
+    if (!nominee) { alert('Select a nominee.'); return }
+    if (leaveForm.endDate < leaveForm.startDate) { alert('End date must be on or after the start date.'); return }
+    setSavingLeave(true)
+    try {
+      await saveLeave(leaveCategoryKey, nominee.id, nominee.name, leaveForm.startDate, leaveForm.endDate, leaveForm.reason)
+      const { data } = await supabase.from('award_nominee_leave').select('*').eq('category_key', leaveCategoryKey).order('start_date', { ascending: false })
+      setLeaveList(data || [])
+      setLeaveForm(f => ({ ...f, reason: '' }))
+    } catch (err) {
+      alert('Could not save leave: ' + err.message)
+    } finally {
+      setSavingLeave(false)
+    }
+  }
+
+  const handleDeleteLeave = async (leaveId) => {
+    if (!window.confirm('Remove this leave record?')) return
+    try {
+      await deleteLeave(leaveId)
+      setLeaveList(prev => prev.filter(l => l.id !== leaveId))
+    } catch (err) {
+      alert('Could not remove: ' + err.message)
+    }
+  }
+
+  if (loading) return <div style={S.card}>Loading settings…</div>
+
+  return (
+    <div>
+      <div style={S.card}>
+        <h3 style={{ margin: '0 0 4px', color: '#0B1E3D' }}>Scoring thresholds</h3>
+        <p style={{ fontSize: 12, color: '#888', fontStyle: 'italic', margin: '4px 0 12px' }}>
+          Changes apply the next time a screen loads — no code deploy needed.
+        </p>
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Attendance gate (%)</label>
+            <input type="number" min={0} max={100} value={gateInput} onChange={e => setGateInput(e.target.value)} style={{ width: 90, padding: 6, border: '1px solid #ccc', borderRadius: 4 }} />
+            <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0', maxWidth: 220 }}>Below this, a nominee is excluded from ranking regardless of bullet scores. Currently {settings.attendanceGatePercent}%.</p>
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Best House mark scale (out of)</label>
+            <input type="number" min={1} value={markInput} onChange={e => setMarkInput(e.target.value)} style={{ width: 90, padding: 6, border: '1px solid #ccc', borderRadius: 4 }} />
+            <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0', maxWidth: 220 }}>Same fixed scale for every house. Currently /{settings.totalMarkMax}.</p>
+          </div>
+        </div>
+        <button style={{ ...S.btn, marginTop: 14 }} onClick={handleSaveSettings} disabled={savingSettings}>{savingSettings ? 'Saving…' : 'Save settings'}</button>
+      </div>
+
+      <div style={S.card}>
+        <h3 style={{ margin: '0 0 4px', color: '#0B1E3D' }}>Leave management</h3>
+        <p style={{ fontSize: 12, color: '#888', fontStyle: 'italic', margin: '4px 0 12px' }}>
+          A nominee on leave for a date range is excluded from ranking with a clear "On leave" label, instead of silently failing the attendance gate.
+        </p>
+
+        <div style={S.catTabRow}>
+          {Object.entries(CATEGORIES).map(([key, c]) => (
+            <button key={key} style={S.catTab(leaveCategoryKey === key)} onClick={() => setLeaveCategoryKey(key)}>
+              {c.icon} {c.label.replace('Best ', '').replace(' of the Month', '')}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
+          <div>
+            <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Nominee</label>
+            <select value={leaveForm.nomineeId} onChange={e => setLeaveForm(f => ({ ...f, nomineeId: e.target.value }))} style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4, minWidth: 180 }}>
+              {leaveNominees.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Start</label>
+            <input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm(f => ({ ...f, startDate: e.target.value }))} style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4 }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>End</label>
+            <input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm(f => ({ ...f, endDate: e.target.value }))} style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4 }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Reason (optional)</label>
+            <input type="text" value={leaveForm.reason} onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))} placeholder="e.g. Medical leave" style={{ padding: 6, border: '1px solid #ccc', borderRadius: 4, width: '100%' }} />
+          </div>
+          <button style={S.btn} onClick={handleAddLeave} disabled={savingLeave || leaveNominees.length === 0}>{savingLeave ? 'Saving…' : 'Add leave'}</button>
+        </div>
+
+        {leaveList.length === 0 ? (
+          <p style={{ color: '#999', fontSize: 13 }}>No leave records for this category.</p>
+        ) : leaveList.map(l => (
+          <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#fafafa', borderRadius: 6, marginBottom: 6, fontSize: 13 }}>
+            <span><strong>{l.nominee_name}</strong> — {l.start_date} to {l.end_date}{l.reason && ` (${l.reason})`}</span>
+            <button style={{ ...S.btnGhost, padding: '2px 10px', fontSize: 11 }} onClick={() => handleDeleteLeave(l.id)}>Remove</button>
+          </div>
+        ))}
+      </div>
+
+      <div style={S.card}>
+        <h3 style={{ margin: '0 0 4px', color: '#0B1E3D' }}>Multi-housemaster houses</h3>
+        <p style={{ fontSize: 12, color: '#888', fontStyle: 'italic', margin: '4px 0 12px' }}>
+          For a house jointly run by more than one housemaster (e.g. a House Master and an Asst. House Mistress), link them here via the
+          {' '}<code>award_house_co_masters</code> table — run the migration, then assign co-masters directly in Supabase Table Editor
+          (house_id, housemaster_id, role_label). This is a linking table only; it doesn't change how House Master nominees are scored
+          individually — it's for Best House reporting context when a house has joint leadership.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function Awards() {
-  const [mode, setMode] = useState('tick') // 'tick' | 'leaderboard'
+  const [mode, setMode] = useState('tick') // 'tick' | 'leaderboard' | 'settings'
 
   return (
     <div style={S.page}>
@@ -709,9 +1264,10 @@ export default function Awards() {
       <div style={S.modeToggle}>
         <button style={S.modeBtn(mode === 'tick')} onClick={() => setMode('tick')}>Today's ticks</button>
         <button style={S.modeBtn(mode === 'leaderboard')} onClick={() => setMode('leaderboard')}>Leaderboard</button>
+        <button style={S.modeBtn(mode === 'settings')} onClick={() => setMode('settings')}>⚙ Settings</button>
       </div>
 
-      {mode === 'tick' ? <DailyTickScreen /> : <LeaderboardScreen />}
+      {mode === 'tick' ? <DailyTickScreen /> : mode === 'leaderboard' ? <LeaderboardScreen /> : <SettingsScreen />}
     </div>
   )
 }
