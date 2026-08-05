@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import jsPDF from 'jspdf'
+import { generateAwardCertificate, CERT_SCHOOL_NAME } from './AwardCertificate'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
@@ -3941,12 +3942,11 @@ export async function computeHMPerformance(startDateStr, endDateStr) {
 //  CERTIFICATE OF APPRECIATION — monthly top-performing housemaster
 //  Auto-computes the winner for the current calendar month (using the
 //  same 3-factor score as the 7-day ranking) and generates a
-//  professional A4-landscape PDF certificate via jsPDF, matching the
-//  navy/gold styling used elsewhere (Gate Pass, reports).
+//  professional A4-landscape PDF certificate. The PDF layout itself
+//  now lives in the shared AwardCertificate.js module (used by both
+//  this file and Awards.jsx) — this is a thin wrapper that maps the
+//  Housemaster-specific field names onto that shared function.
 // ══════════════════════════════════════════════════════════════
-
-const CERT_SCHOOL_NAME = 'Guidance Navodaya & Sainik Institute'
-const CERT_SCHOOL_ADDRESS = 'Khangabok, Thoubal, Manipur — 795134'
 
 function currentMonthRange() {
   const now = new Date()
@@ -3958,103 +3958,15 @@ function currentMonthRange() {
 }
 
 function generateCertificatePDF({ hmName, house, monthLabel, score }) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  const W = 297, H = 210
-  const navy = [30, 58, 95]
-  const gold = [202, 138, 4]
-  const grey = [100, 116, 139]
-
-  // Decorative border
-  doc.setDrawColor(...gold)
-  doc.setLineWidth(1.2)
-  doc.rect(8, 8, W - 16, H - 16)
-  doc.setLineWidth(0.4)
-  doc.rect(11, 11, W - 22, H - 22)
-
-  // Header
-  doc.setTextColor(...navy)
-  doc.setFont('times', 'bold')
-  doc.setFontSize(13)
-  doc.text(CERT_SCHOOL_NAME, W / 2, 28, { align: 'center' })
-  doc.setFont('times', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(...grey)
-  doc.text(CERT_SCHOOL_ADDRESS, W / 2, 34, { align: 'center' })
-
-  // Gold rule
-  doc.setDrawColor(...gold)
-  doc.setLineWidth(0.6)
-  doc.line(W / 2 - 30, 40, W / 2 + 30, 40)
-
-  // Title
-  doc.setTextColor(...gold)
-  doc.setFont('times', 'bold')
-  doc.setFontSize(30)
-  doc.text('Certificate of Appreciation', W / 2, 62, { align: 'center' })
-
-  doc.setTextColor(...grey)
-  doc.setFont('times', 'italic')
-  doc.setFontSize(12)
-  doc.text('Presented for Outstanding Housemaster Performance', W / 2, 72, { align: 'center' })
-
-  // "This is presented to"
-  doc.setFont('times', 'normal')
-  doc.setFontSize(12)
-  doc.setTextColor(...navy)
-  doc.text('This certificate is proudly presented to', W / 2, 92, { align: 'center' })
-
-  // Name — large, centered
-  doc.setFont('times', 'bold')
-  doc.setFontSize(28)
-  doc.setTextColor(...navy)
-  doc.text(hmName, W / 2, 108, { align: 'center' })
-
-  // Underline beneath name
-  const nameWidth = doc.getTextWidth(hmName)
-  doc.setDrawColor(...gold)
-  doc.setLineWidth(0.4)
-  doc.line(W / 2 - nameWidth / 2 - 6, 112, W / 2 + nameWidth / 2 + 6, 112)
-
-  // Body text
-  doc.setFont('times', 'normal')
-  doc.setFontSize(12)
-  doc.setTextColor(...grey)
-  const bodyLines = [
-    `Housemaster of ${house} House`,
-    `in recognition of exemplary dedication, punctual roll-call completion,`,
-    `and consistent compliance during ${monthLabel}.`,
-  ]
-  bodyLines.forEach((line, i) => {
-    doc.text(line, W / 2, 122 + i * 6, { align: 'center' })
+  generateAwardCertificate({
+    categoryKey: 'house_master',
+    name: hmName,
+    monthLabel,
+    score,
+    nomineeMeta: { house },
   })
-
-  // Score badge
-  doc.setFont('times', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(...navy)
-  doc.text(`Performance Score: ${score}%`, W / 2, 148, { align: 'center' })
-
-  // Signature lines
-  const sigY = 178
-  doc.setDrawColor(...grey)
-  doc.setLineWidth(0.3)
-  doc.line(50, sigY, 110, sigY)
-  doc.line(W - 110, sigY, W - 50, sigY)
-  doc.setFont('times', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(...grey)
-  doc.text('Principal', 80, sigY + 6, { align: 'center' })
-  doc.text('Superintendent', W - 80, sigY + 6, { align: 'center' })
-
-  // Footer date
-  doc.setFontSize(8)
-  doc.text(
-    `Issued: ${new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })}`,
-    W / 2, H - 16, { align: 'center' }
-  )
-
-  doc.save(`Certificate_${hmName.replace(/\s+/g, '_')}_${monthLabel.replace(/\s+/g, '_')}.pdf`)
 }
+
 
 // ── Monthly winner card — auto-computes the top performer for the
 //    current calendar month (no admin selection needed) and offers
