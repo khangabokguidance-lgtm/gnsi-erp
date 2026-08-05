@@ -295,7 +295,7 @@ const SIX_TABS = [
   { key: 'activities', label: '📌 Activities', rootTabId: 'hmactivities' },
 ]
 
-function sessionWindow(dateStr, session) {
+export function sessionWindow(dateStr, session) {
   // Morning: 00:00–12:00, Night: 12:00–24:00, both on the given calendar date
   // (used by the roll-call-linked compliance check only)
   const start = new Date(`${dateStr}T00:00:00`)
@@ -872,7 +872,7 @@ function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name
 //  MOBILE TABLE / CARD SWITCHER
 // ══════════════════════════════════════════════════════════════
 // ── Helpers ──
-const normalizeHouse = (h) => (h || '').toString().trim().toLowerCase()
+export const normalizeHouse = (h) => (h || '').toString().trim().toLowerCase()
 const isAssigned = (s) => {
   const h = s.house
   return h !== null && h !== undefined && String(h).trim() !== ''
@@ -3803,7 +3803,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
 // from aggregate reports with no error. This helper pages through with
 // .range() until a page comes back short, guaranteeing every matching
 // row is fetched regardless of table size.
-async function fetchAllRows(buildQuery) {
+export async function fetchAllRows(buildQuery) {
   const pageSize = 1000
   let allRows = []
   let from = 0
@@ -3817,7 +3817,7 @@ async function fetchAllRows(buildQuery) {
   return allRows
 }
 
-async function computeHMPerformance(startDateStr, endDateStr) {
+export async function computeHMPerformance(startDateStr, endDateStr) {
   const [attendance, neglect, { data: housemasters }, { data: studentsForCount }] = await Promise.all([
     fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr)),
     fetchAllRows(() => supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr)),

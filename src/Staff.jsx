@@ -48,7 +48,7 @@ const getLevel = score => {
   return LEVELS.find(l => score >= l.min && score <= l.max) || LEVELS[4]
 }
 
-const calcScores = row => {
+export const calcScores = row => {
   const wd       = row.working_days || 26
   const attRatio = wd > 0 ? Math.min(1, (row.days_present || 0) / wd) : 0
   const p1 = wd > 0 ? Math.min(30, attRatio * 30) : 0
