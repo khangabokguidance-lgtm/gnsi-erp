@@ -1711,7 +1711,7 @@ function TabMark({ staff, prefill }) {
             <ConsoleInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or GCC number…" />
           </div>
           <div style={{
-            padding: '0 20px 16px', display: 'grid',
+            padding: isMobile ? '0 20px 96px' : '0 20px 16px', display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 8,
           }}>
             {filteredStudents.map(s => {
@@ -1728,13 +1728,37 @@ function TabMark({ staff, prefill }) {
             )}
           </div>
           <div style={{
-            padding: '14px 20px', borderTop: `1px solid ${C.border}`, background: C.bg,
-            ...(isMobile ? { position: 'sticky', bottom: 76, zIndex: 20, borderRadius: '0 0 12px 12px', boxShadow: '0 -4px 12px rgba(15,23,42,.06)' } : {}),
+            padding: isMobile ? '14px 20px' : '14px 20px', borderTop: `1px solid ${C.border}`, background: C.bg,
+            ...(isMobile ? { display: 'none' } : {}),
           }}>
             <ConsoleBtn variant="primary" disabled={saving} onClick={handleSave} style={{ width: '100%', justifyContent: 'center', minHeight: 46 }}>
               {saving ? 'Saving…' : `Save attendance · ${students.length} students`}
             </ConsoleBtn>
           </div>
+          {isMobile && (
+            // ConsoleCard sets overflow:hidden for its rounded corners, which
+            // silently breaks position:sticky (a sticky element needs every
+            // ancestor to allow overflow on that axis, or it just behaves like
+            // `relative` and gets clipped with the rest of the card). That's
+            // why the old sticky bar in this same spot ended up hiding the
+            // last few students underneath it with no way to scroll past —
+            // there was nothing to scroll past, the card had already clipped
+            // them. Rendering the button as position:fixed on the viewport
+            // instead (same technique MobileBottomNav below already uses)
+            // means it floats above the content rather than inside the
+            // clipped card, so the student grid's own bottom padding is real
+            // scrollable space and every row, including the last one, is
+            // reachable above this bar.
+            <div style={{
+              position: 'fixed', left: 0, right: 0, bottom: 76, zIndex: 90,
+              padding: '10px 20px', background: C.bg, borderTop: `1px solid ${C.border}`,
+              boxShadow: '0 -4px 12px rgba(15,23,42,.08)',
+            }}>
+              <ConsoleBtn variant="primary" disabled={saving} onClick={handleSave} style={{ width: '100%', justifyContent: 'center', minHeight: 46 }}>
+                {saving ? 'Saving…' : `Save attendance · ${students.length} students`}
+              </ConsoleBtn>
+            </div>
+          )}
         </ConsoleCard>
       )}
 
@@ -4651,6 +4675,41 @@ function TabStudentDB({ isAdmin }) {
     load()
   }
 
+  // Bulk-assign for unassigned students — "unassigned" means missing course,
+  // missing batch, or both (the ⚠️ per-row badge already flags these
+  // individually, but fixing 68 of them one edit-form at a time isn't
+  // practical). Selection is checkbox-based and only meaningful in Active
+  // view; switching course/batch filters or view mode clears it so a stale
+  // selection can't silently apply to students the fixer never showed.
+  const unassignedStudents = useMemo(() =>
+    visibleStudents.filter(s => !s.course || !s.batch)
+  , [visibleStudents])
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkCourse, setBulkCourse] = useState('')
+  const [bulkBatch, setBulkBatch] = useState('')
+  const [bulkAssigning, setBulkAssigning] = useState(false)
+  const toggleSelected = (id) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+  const selectAllUnassigned = () => setSelectedIds(new Set(unassignedStudents.map(s => s.id)))
+  const clearSelection = () => setSelectedIds(new Set())
+  const handleBulkAssign = async () => {
+    if (!bulkCourse || !bulkBatch) { setToast({ type: 'warn', msg: 'Pick a course and batch first.' }); return }
+    if (selectedIds.size === 0) { setToast({ type: 'warn', msg: 'Select at least one student.' }); return }
+    setBulkAssigning(true)
+    const ids = [...selectedIds]
+    const { error } = await supabase.from('students').update({ course: bulkCourse, batch: bulkBatch }).in('id', ids)
+    setBulkAssigning(false)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: `Assigned ${ids.length} student(s) to ${bulkCourse} · ${bulkBatch}.` })
+    clearSelection()
+    setBulkCourse('')
+    setBulkBatch('')
+    load()
+  }
+
   const openAdd = () => { setEditingId(null); setForm(emptyStudentForm); setShowForm(true) }
   const openEdit = (s) => {
     setEditingId(s.id)
@@ -4813,6 +4872,46 @@ function TabStudentDB({ isAdmin }) {
       <div style={{ padding: isMobile ? '12px 16px' : '16px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
+        {isAdmin && viewMode === 'active' && unassignedStudents.length > 0 && selectedIds.size === 0 && (
+          <div style={{ background: T.blueSoft, border: `1.5px solid #bfdbfe`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e40af' }}>
+              📋 {unassignedStudents.length} student(s) have no course/batch — not in any Mark roll call.
+            </span>
+            <Btn small variant="ghost" onClick={selectAllUnassigned}>Select all {unassignedStudents.length}</Btn>
+          </div>
+        )}
+
+        {/* General bulk-assign bar — appears as soon as any student is
+            ticked, whether they're unassigned or already have a batch.
+            Tick boxes now sit on every active-view row (not just
+            unassigned ones) so this also covers moving a group of
+            already-assigned students to a different batch in one go,
+            same as the earlier per-row "↔ Move batch" but for many
+            students at once instead of one at a time. */}
+        {isAdmin && viewMode === 'active' && selectedIds.size > 0 && (
+          <div style={{ background: T.indigoSoft ?? '#EEF2FF', border: `1.5px solid #c7d2fe`, borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#3730a3', marginBottom: 8 }}>
+              ✓ {selectedIds.size} student{selectedIds.size===1?'':'s'} selected
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+              <Btn small variant="ghost" onClick={clearSelection}>Clear</Btn>
+              <Btn small variant="ghost" onClick={selectAllUnassigned}>Select all unassigned ({unassignedStudents.length})</Btn>
+              <span style={{ fontSize: 11.5, color: T.gray400 }}>→</span>
+              <Select value={bulkCourse} onChange={e => { setBulkCourse(e.target.value); setBulkBatch('') }} style={{ maxWidth: 150 }}>
+                <option value="">Course…</option>
+                {COURSES.map(c => <option key={c}>{c}</option>)}
+              </Select>
+              <Select value={bulkBatch} onChange={e => setBulkBatch(e.target.value)} disabled={!bulkCourse} style={{ maxWidth: 150 }}>
+                <option value="">Batch…</option>
+                {(bulkCourse ? COURSE_STRUCTURE[bulkCourse] || [] : []).map(b => <option key={b}>{b}</option>)}
+              </Select>
+              <Btn small onClick={handleBulkAssign} disabled={bulkAssigning || !bulkCourse || !bulkBatch}>
+                {bulkAssigning ? 'Assigning…' : `Assign ${selectedIds.size} student${selectedIds.size===1?'':'s'}`}
+              </Btn>
+            </div>
+          </div>
+        )}
+
         {isAdmin && viewMode === 'active' && badBatchGroups.length > 0 && (
           <div style={{ background: T.amberSoft, border: `1.5px solid #fde68a`, borderRadius: 10, padding: '12px 14px' }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>
@@ -4906,7 +5005,7 @@ function TabStudentDB({ isAdmin }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             value={search} onChange={e => setSearch(e.target.value)}
             placeholder={isAdmin ? "🔍 Search name, GCC no, class, phone…" : "🔍 Search name, GCC no, class…"}
@@ -4920,6 +5019,11 @@ function TabStudentDB({ isAdmin }) {
             <option value="all">All Batches</option>
             {batchOptions.map(b => <option key={b}>{b}</option>)}
           </Select>
+          {isAdmin && viewMode === 'active' && filtered.length > 0 && (
+            <Btn small variant="ghost" onClick={() => setSelectedIds(new Set(filtered.map(s => s.id)))}>
+              Select all {filtered.length} shown
+            </Btn>
+          )}
         </div>
 
         {loading ? (
@@ -4937,6 +5041,15 @@ function TabStudentDB({ isAdmin }) {
                 border: `1.5px solid ${s.deleted_at ? '#fecaca' : s.status === 'Dropout' ? '#fecdd3' : T.gray150}`,
                 background: s.deleted_at ? '#fff8f8' : s.status === 'Dropout' ? '#fffbfb' : T.white,
               }}>
+                {isAdmin && viewMode === 'active' && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(s.id)}
+                    onChange={() => toggleSelected(s.id)}
+                    style={{ width: 17, height: 17, cursor: 'pointer', flexShrink: 0 }}
+                    title="Select for bulk assign"
+                  />
+                )}
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>
                     {s.name}
