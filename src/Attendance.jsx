@@ -2,7 +2,7 @@
 //  GNSI Portal — Attendance Module (Premium v4 · Redesigned)
 // ============================================================
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1554,6 +1554,34 @@ function TabMark({ staff, prefill }) {
     setForm(prev => ({ ...prev, subject_name:'', teacher_name:'', staff_id:'', period_number:'', remarks:'' }))
   }
 
+  const [quickGcc, setQuickGcc] = useState('')
+  const [quickMsg, setQuickMsg] = useState(null)
+  const quickInputRef = useRef(null)
+
+  // Quick mark by GCC number — types or scans (a USB/Bluetooth barcode
+  // scanner behaves like a keyboard: it types the code then sends Enter
+  // automatically) a GCC number and instantly marks that student Present,
+  // no scrolling/tapping through the roster needed. Falls back to fuzzy
+  // name match only if no GCC match is found, since GCC numbers are meant
+  // to be exact.
+  const handleQuickMark = (e) => {
+    if (e.key !== 'Enter') return
+    const q = quickGcc.trim()
+    if (!q) return
+    const match = students.find(s => String(s.gcc_no||'') === q)
+      || students.find(s => String(s.gcc_no||'').includes(q))
+    if (!match) {
+      setQuickMsg({ type: 'error', text: `No student found for GCC ${q}` })
+      setQuickGcc('')
+      return
+    }
+    const key = match.student_id || match.student_name
+    setRecords(prev => ({ ...prev, [key]: 'Present' }))
+    setQuickMsg({ type: 'success', text: `✓ ${match.student_name} marked Present` })
+    setQuickGcc('')
+    quickInputRef.current?.focus()
+  }
+
   const filteredStudents = useMemo(() =>
     search.trim()
       ? students.filter(s => s.student_name.toLowerCase().includes(search.toLowerCase()) || (s.gcc_no||'').includes(search))
@@ -1706,6 +1734,33 @@ function TabMark({ staff, prefill }) {
           </div>
           <div style={{ padding: '12px 20px 0' }}>
             <AttendBar records={records} />
+          </div>
+          <div style={{ padding: '12px 20px 0' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+              ⚡ Quick mark — scan or type GCC number, press Enter
+            </div>
+            <input
+              ref={quickInputRef}
+              value={quickGcc}
+              onChange={e => setQuickGcc(e.target.value)}
+              onKeyDown={handleQuickMark}
+              inputMode="numeric"
+              placeholder="GCC number…"
+              autoFocus={!isMobile}
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 9,
+                border: `1.5px solid ${C.indigo}`, fontSize: 14, fontFamily: fontMono,
+                fontWeight: 600, outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+            {quickMsg && (
+              <div style={{
+                marginTop: 6, fontSize: 12.5, fontWeight: 600,
+                color: quickMsg.type === 'success' ? '#16a34a' : '#e11d48',
+              }}>
+                {quickMsg.text}
+              </div>
+            )}
           </div>
           <div style={{ padding: '12px 20px' }}>
             <ConsoleInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or GCC number…" />
@@ -2271,12 +2326,35 @@ function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, c
 function NotifyPanel({ students, records, sessionInfo, onClose }) {
   const isMobile = useIsMobile()
   const [sent,    setSent]    = useState({})
-  const [channel, setChannel] = useState('sms')
+  // Default to WhatsApp when at least one absentee has a phone on file —
+  // it's what staff actually use; SMS was previously the default even
+  // though most schools here run parent contact entirely through WhatsApp.
+  const [channel, setChannel] = useState(() => students.some(s => s.phone) ? 'whatsapp' : 'sms')
   const [sending, setSending] = useState(false)
 
   const msgFor = (s) => {
     const status = records[s.student_id || s.student_name]
     return `Dear Parent, your ward ${s.student_name} was marked ${status} on ${fmtDate(sessionInfo.session_date)}${sessionInfo.subject_name ? ' in ' + sessionInfo.subject_name : ''}. Please ensure regular attendance. — GNSI`
+  }
+
+  // "Send next" — true one-click-per-student auto-send isn't possible from
+  // a browser: wa.me needs a fresh user gesture for each tab it opens, or
+  // popup blockers kill everything after the first. This is the fastest
+  // legal alternative — one tap advances straight to the next unsent
+  // student's WhatsApp chat, pre-filled, instead of scrolling the list to
+  // find and click each row's own button individually.
+  const unsent = students.filter(s => s.phone && !sent[s.student_id || s.student_name])
+  const sendNext = async () => {
+    const next = unsent[0]
+    if (!next) return
+    openWhatsApp(next.phone, msgFor(next))
+    const key = next.student_id || next.student_name
+    setSent(prev => ({ ...prev, [key]: true }))
+    await supabase.from('parent_notifications').insert([{
+      student_name: next.student_name, student_id: next.student_id || null,
+      phone: next.phone, channel: 'whatsapp', message: msgFor(next),
+      status: 'sent', sent_at: new Date().toISOString(),
+    }])
   }
 
   const sendAll = async () => {
@@ -2388,6 +2466,11 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
           ) : (
             <>
               <Btn variant="ghost" onClick={onClose}>Skip</Btn>
+              {(channel === 'whatsapp' || channel === 'both') && unsent.length > 0 && (
+                <Btn variant="whatsapp" onClick={sendNext}>
+                  📲 Send next ({unsent.length} left)
+                </Btn>
+              )}
               <Btn
                 variant={channel === 'whatsapp' ? 'whatsapp' : 'primary'}
                 disabled={sending} onClick={sendAll}
@@ -2577,8 +2660,48 @@ function TabReport() {
   const [month,     setMonth]     = useState(() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` })
   const [course,    setCourse]    = useState('All')
   const [data,      setData]      = useState([])
+  const [batchTrend, setBatchTrend] = useState([])
   const [loading,   setLoading]   = useState(false)
   const [sort,      setSort]      = useState({ by:'pct', asc:true })
+
+  const batchGroups = useMemo(() => {
+    const g = {}
+    batchTrend.forEach(b => {
+      const key = `${b.course}||${b.batch}`
+      if (!g[key]) g[key] = { course: b.course, batch: b.batch, days: [] }
+      g[key].days.push({ date: b.date, pct: b.pct, Present: b.Present, total: b.total })
+    })
+    return Object.values(g).map(grp => ({
+      ...grp,
+      avgPct: grp.days.length ? Math.round(grp.days.reduce((s,d)=>s+d.pct,0) / grp.days.length) : 0,
+    })).sort((a,b) => a.avgPct - b.avgPct) // worst-performing batches first
+  }, [batchTrend])
+
+  // CSV export — chosen over a PDF library since it needs no new dependency,
+  // opens directly in Excel (which is what gets asked for in practice), and
+  // every report sub-tab's underlying row shape already fits a flat table.
+  const exportCSV = () => {
+    let rows, filename
+    if (reportTab === 'batch') {
+      rows = [['Course','Batch','Avg %', ...batchGroups[0]?.days.map(d=>d.date) || []]]
+      batchGroups.forEach(g => {
+        const byDate = Object.fromEntries(g.days.map(d => [d.date, `${d.pct}%`]))
+        rows.push([g.course, g.batch, `${g.avgPct}%`, ...(rows[0].slice(3).map(d => byDate[d] || ''))])
+      })
+      filename = `batch-trend-${month}.csv`
+    } else {
+      rows = [['Student','GCC','Present','Absent','Late','Leave','Total','%']]
+      sorted.forEach(r => rows.push([r.name, r.gcc||'', r.Present, r.Absent, r.Late, r.Leave, r.total, `${r.pct}%`]))
+      filename = `attendance-${month}${course!=='All'?'-'+course:''}.csv`
+    }
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = filename
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
@@ -2587,11 +2710,16 @@ function TabReport() {
       .gte('session_date',`${month}-01`).lte('session_date',`${month}-31`)
     if (course !== 'All') q = q.eq('course', course)
     const { data: sessions } = await q
-    if (!sessions?.length) { setData([]); setLoading(false); return }
+    if (!sessions?.length) { setData([]); setBatchTrend([]); setLoading(false); return }
     const ids = sessions.map(s=>s.id)
     const { data: recs } = await supabase.from('attendance_records')
       .select('session_id,student_name,gcc_no,status').in('session_id', ids)
     const map = {}
+    // Batch trend: one bucket per (course, batch, date), so staff can see
+    // whether a whole batch's attendance is slipping on particular days —
+    // the per-student monthly table doesn't surface that shape, it's only
+    // readable one row/student at a time.
+    const batchMap = {}
     recs?.forEach(r => {
       if (!map[r.student_name]) map[r.student_name] = {
         name:r.student_name, gcc:r.gcc_no,
@@ -2608,9 +2736,16 @@ function TabReport() {
         sb[sess.subject_name].total++
       }
       if (sess?.session_date) map[r.student_name].byDate[sess.session_date] = r.status
+      if (sess) {
+        const bkey = `${sess.course}||${sess.subtype||'—'}||${sess.session_date}`
+        if (!batchMap[bkey]) batchMap[bkey] = { course: sess.course, batch: sess.subtype||'—', date: sess.session_date, Present:0, total:0 }
+        if (r.status==='Present') batchMap[bkey].Present++
+        batchMap[bkey].total++
+      }
     })
     const rows = Object.values(map).map(r => ({ ...r, pct: r.total>0?Math.round((r.Present/r.total)*100):0 }))
     setData(rows)
+    setBatchTrend(Object.values(batchMap).map(b => ({ ...b, pct: b.total>0?Math.round((b.Present/b.total)*100):0 })).sort((a,b)=>a.date.localeCompare(b.date)))
     setLoading(false)
   }, [month, course])
 
@@ -2635,6 +2770,7 @@ function TabReport() {
 
   const REPORT_TABS = [
     { key:'monthly', label:'Monthly' },
+    { key:'batch',   label:'Batch trend' },
     { key:'heatmap', label:'Heatmap' },
     { key:'subject', label:'By subject' },
     { key:'teacher', label:'Staff log' },
@@ -2670,6 +2806,7 @@ function TabReport() {
               {COURSES.map(c=><option key={c}>{c}</option>)}
             </Select>
             {!isMobile && <Btn small variant="ghost" onClick={() => window.print()}>🖨️ Print</Btn>}
+            {data.length > 0 && <Btn small variant="ghost" onClick={exportCSV}>⬇️ Export CSV</Btn>}
           </div>
         }
       />
@@ -2766,6 +2903,44 @@ function TabReport() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {reportTab === 'batch' && (
+            <div style={{ padding: isMobile ? '12px 16px' : '18px 22px', display:'flex', flexDirection:'column', gap:12 }}>
+              {batchGroups.length === 0 ? (
+                <div style={{ textAlign:'center', padding:'32px', color:T.gray400, fontSize:13 }}>
+                  No batch sessions recorded for this period.
+                </div>
+              ) : batchGroups.map(g => (
+                <div key={`${g.course}||${g.batch}`} style={{
+                  border: `1.5px solid ${T.gray150}`, borderRadius: 10, padding: '12px 14px',
+                }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 8 }}>
+                    <div>
+                      <span style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>{g.course} · {g.batch}</span>
+                      <span style={{ fontSize: 11.5, color: T.gray400, marginLeft: 8 }}>{g.days.length} session day{g.days.length===1?'':'s'}</span>
+                    </div>
+                    <span style={{
+                      fontWeight: 800, fontSize: 15,
+                      color: g.avgPct>=75 ? '#16a34a' : g.avgPct>=50 ? '#d97706' : '#e11d48',
+                    }}>
+                      {g.avgPct}% avg
+                    </span>
+                  </div>
+                  <div style={{ display:'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {g.days.map(d => (
+                      <div key={d.date} title={`${d.date}: ${d.Present}/${d.total} present (${d.pct}%)`} style={{
+                        width: 30, height: 30, borderRadius: 6, display:'flex', alignItems:'center', justifyContent:'center',
+                        fontSize: 9.5, fontWeight: 700, color: '#fff',
+                        background: d.pct>=75 ? '#22c55e' : d.pct>=50 ? '#f59e0b' : '#ef4444',
+                      }}>
+                        {d.pct}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -3737,14 +3912,18 @@ function RiskBadge({ level }) {
   )
 }
 
-function StudentRiskCard({ s }) {
+function StudentRiskCard({ s, onOpen }) {
   const isMobile = useIsMobile()
   const initials = s.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-      borderBottom: `1px solid ${C.border}`, flexWrap: isMobile ? 'wrap' : 'nowrap',
-    }}>
+    <div
+      onClick={() => onOpen?.(s)}
+      className="gnsi-row-hover"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+        borderBottom: `1px solid ${C.border}`, flexWrap: isMobile ? 'wrap' : 'nowrap',
+        cursor: onOpen ? 'pointer' : 'default',
+      }}>
       <div style={{
         width: 36, height: 36, borderRadius: 10, background: C.indigoSoft, color: C.indigo,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -3758,6 +3937,183 @@ function StudentRiskCard({ s }) {
         <SignalRow attendancePct={s.attendancePct} disciplineOpen={s.disciplineOpen} feeOverdueDays={s.feeOverdueDays} hostelStatus={s.hostelStatus} size="sm" />
       </div>
       <RiskBadge level={s.risk} />
+      {onOpen && <Icon.chevron size={14} />}
+    </div>
+  )
+}
+
+// ─── Student 360 profile drawer ────────────────────────────────
+// Full drill-down for one student — the risk card only ever showed a
+// one-line summary of the same four signals every other student gets;
+// this pulls that student's actual attendance/fee/discipline/hostel rows
+// so staff can see WHY a student is flagged, not just that they are.
+function Student360Profile({ student, month, onClose }) {
+  const isMobile = useIsMobile()
+  const [loading, setLoading] = useState(true)
+  const [attendance, setAttendance] = useState([]) // [{date, status, subject}]
+  const [feeHistory, setFeeHistory] = useState([])
+  const [disciplineHistory, setDisciplineHistory] = useState([])
+  const [hostelHistory, setHostelHistory] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      const monthStart = `${month}-01`
+      const endDate = new Date(month.split('-')[0], Number(month.split('-')[1]), 0).toISOString().split('T')[0]
+
+      // Attendance: join records for this student against sessions in the
+      // selected month, matched by GCC (falls back to name if GCC missing —
+      // same key logic useStudentSignals already uses).
+      const sessions = await safeQuery(() => supabase.from('attendance_sessions')
+        .select('id,session_date,subject_name,course').gte('session_date', monthStart).lte('session_date', endDate)) || []
+      const sessById = Object.fromEntries(sessions.map(s => [s.id, s]))
+      const ids = sessions.map(s => s.id)
+      let recs = []
+      if (ids.length) {
+        const q = student.gcc != null
+          ? supabase.from('attendance_records').select('session_id,status,student_name,gcc_no').in('session_id', ids).eq('gcc_no', student.gcc)
+          : supabase.from('attendance_records').select('session_id,status,student_name,gcc_no').in('session_id', ids).eq('student_name', student.name)
+        recs = await safeQuery(() => q) || []
+      }
+      const attRows = recs.map(r => ({
+        date: sessById[r.session_id]?.session_date, status: r.status,
+        subject: sessById[r.session_id]?.subject_name,
+      })).filter(r => r.date).sort((a,b) => b.date.localeCompare(a.date))
+
+      const feeRows = await safeQueryAll(SCHEMA.fees.table)
+      const feeMine = (feeRows || []).filter(f => String(f[SCHEMA.fees.studentKey]) === String(student.gcc))
+        .sort((a,b) => String(b[SCHEMA.fees.dueDate]).localeCompare(String(a[SCHEMA.fees.dueDate])))
+
+      const discRows = await safeQueryAll(SCHEMA.discipline.table)
+      const discMine = (discRows || []).filter(d => String(d[SCHEMA.discipline.studentKey]) === String(student.gcc))
+        .sort((a,b) => String(b[SCHEMA.discipline.date]).localeCompare(String(a[SCHEMA.discipline.date])))
+
+      const hostelRows = await safeQuery(() => supabase.from(SCHEMA.hostel.table).select('*')) || []
+      const hostelMine = hostelRows.filter(h => String(h[SCHEMA.hostel.studentKey]) === String(student.gcc))
+        .sort((a,b) => String(b[SCHEMA.hostel.admittedDate]).localeCompare(String(a[SCHEMA.hostel.admittedDate])))
+
+      if (!cancelled) {
+        setAttendance(attRows); setFeeHistory(feeMine)
+        setDisciplineHistory(discMine); setHostelHistory(hostelMine)
+        setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [student, month])
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(15,23,42,.5)',
+      display: 'flex', justifyContent: isMobile ? 'stretch' : 'flex-end',
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: isMobile ? '100%' : 460, background: C.bg, height: '100%',
+        overflowY: 'auto', boxShadow: '-8px 0 24px rgba(15,23,42,.15)',
+      }}>
+        <div style={{ position: 'sticky', top: 0, background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 2 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{student.name}</div>
+            <div style={{ fontSize: 12, color: C.inkMuted }}>{student.course}{student.className ? ` · ${student.className}` : ''}{student.gcc ? ` · GCC-${student.gcc}` : ''}</div>
+          </div>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer', color: C.inkMuted }}>✕</button>
+        </div>
+
+        <div style={{ padding: '14px 20px' }}>
+          <RiskBadge level={student.risk} />
+        </div>
+
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: C.inkFaint, fontSize: 13 }}>Loading profile…</div>
+        ) : (
+          <div style={{ padding: '0 20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                Attendance this month ({attendance.length} sessions)
+              </div>
+              {attendance.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: C.inkFaint }}>No attendance records this month.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {attendance.slice(0, 20).map((a, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '6px 10px', borderRadius: 7, background: C.surface, border: `1px solid ${C.border}` }}>
+                      <span style={{ color: C.ink }}>{a.date}{a.subject ? ` · ${a.subject}` : ''}</span>
+                      <span style={{
+                        fontWeight: 700,
+                        color: a.status === 'Present' ? '#16a34a' : a.status === 'Absent' ? '#e11d48' : '#d97706',
+                      }}>{a.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                Fee payments ({feeHistory.length})
+              </div>
+              {feeHistory.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: C.inkFaint }}>No fee records found.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {feeHistory.slice(0, 10).map((f, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '6px 10px', borderRadius: 7, background: C.surface, border: `1px solid ${C.border}` }}>
+                      <span style={{ color: C.ink }}>{f[SCHEMA.fees.dueDate] || '—'}</span>
+                      <span style={{ color: f[SCHEMA.fees.status] ? '#e11d48' : '#16a34a', fontWeight: 700 }}>
+                        {f[SCHEMA.fees.status] ? 'Reverted' : 'Paid'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                Discipline records ({disciplineHistory.length})
+              </div>
+              {disciplineHistory.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: C.inkFaint }}>No discipline records.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {disciplineHistory.map((d, i) => (
+                    <div key={i} style={{ padding: '8px 10px', borderRadius: 7, background: C.surface, border: `1px solid ${C.border}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                        <span style={{ fontWeight: 600, color: C.ink }}>{d[SCHEMA.discipline.category] || 'Incident'}</span>
+                        <span style={{ color: d[SCHEMA.discipline.status] === 'resolved' ? '#16a34a' : '#e11d48', fontWeight: 700 }}>
+                          {d[SCHEMA.discipline.status] || 'open'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: C.inkMuted, marginTop: 2 }}>{d[SCHEMA.discipline.date] || '—'}{d[SCHEMA.discipline.remark] ? ` · ${d[SCHEMA.discipline.remark]}` : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                Hostel / sickbay ({hostelHistory.length})
+              </div>
+              {hostelHistory.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: C.inkFaint }}>No hostel/sickbay records.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {hostelHistory.map((h, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '6px 10px', borderRadius: 7, background: C.surface, border: `1px solid ${C.border}` }}>
+                      <span style={{ color: C.ink }}>{h[SCHEMA.hostel.admittedDate] || '—'}{h[SCHEMA.hostel.note] ? ` · ${h[SCHEMA.hostel.note]}` : ''}</span>
+                      <span style={{ fontWeight: 700, color: h[SCHEMA.hostel.status] === 'active' ? '#d97706' : C.inkMuted }}>
+                        {h[SCHEMA.hostel.status] || '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -3768,6 +4124,8 @@ function Student360Page() {
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const { rows, loading, degraded } = useStudentSignals(month)
+  const [openStudent, setOpenStudent] = useState(null)
+  const [waSent, setWaSent] = useState({})
 
   const filtered = rows.filter(r => {
     if (filter !== 'all' && r.risk !== filter) return false
@@ -3777,6 +4135,58 @@ function Student360Page() {
 
   const counts = { high: rows.filter(r=>r.risk==='high').length, medium: rows.filter(r=>r.risk==='medium').length, low: rows.filter(r=>r.risk==='low').length }
 
+  // Bulk WhatsApp for high-risk parents — needs each student's phone, which
+  // useStudentSignals doesn't fetch (it only pulls attendance/fee/discipline/
+  // hostel signals, not contact info), so look it up from `students` by GCC
+  // just for the currently visible high-risk group rather than joining phone
+  // into every row of a hook other views also depend on.
+  const [phoneMap, setPhoneMap] = useState({})
+  const highRiskRows = filtered.filter(r => r.risk === 'high')
+  useEffect(() => {
+    let cancelled = false
+    const gccs = highRiskRows.map(r => r.gcc).filter(g => g != null)
+    if (!gccs.length) { setPhoneMap({}); return }
+    supabase.from('students').select('gcc_no,phone').in('gcc_no', gccs).then(({ data }) => {
+      if (cancelled) return
+      const m = {}
+      ;(data || []).forEach(s => { m[String(s.gcc_no)] = s.phone })
+      setPhoneMap(m)
+    })
+    return () => { cancelled = true }
+  }, [JSON.stringify(highRiskRows.map(r=>r.gcc))])
+
+  const waMsgFor = (r) => {
+    const bits = []
+    if (r.attendancePct != null && r.attendancePct < 75) bits.push(`attendance is at ${r.attendancePct}%`)
+    if (r.feeOverdueDays > 15) bits.push(`fee payment is overdue`)
+    if (r.disciplineOpen > 0) bits.push(`there ${r.disciplineOpen===1?'is an':'are'} open discipline matter${r.disciplineOpen===1?'':'s'}`)
+    const reason = bits.length ? bits.join(', and ') : 'their overall progress needs attention'
+    return `Dear Parent, this is a note from GNSI regarding ${r.name}: ${reason}. Please reach out to the office at your convenience. — GNSI`
+  }
+
+  const unsentHighRisk = highRiskRows.filter(r => r.gcc != null && phoneMap[String(r.gcc)] && !waSent[r.key])
+  const sendNextHighRisk = () => {
+    const next = unsentHighRisk[0]
+    if (!next) return
+    openWhatsApp(phoneMap[String(next.gcc)], waMsgFor(next))
+    setWaSent(prev => ({ ...prev, [next.key]: true }))
+  }
+
+  const exportCSV = () => {
+    const rowsOut = [['Name','GCC','Course','Class','Attendance %','Discipline open','Fee overdue days','Hostel status','Risk']]
+    filtered.forEach(r => rowsOut.push([
+      r.name, r.gcc||'', r.course||'', r.className||'',
+      r.attendancePct ?? '', r.disciplineOpen ?? '', r.feeOverdueDays ?? '', r.hostelStatus||'', r.risk,
+    ]))
+    const csv = rowsOut.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `student360-${month}${filter!=='all'?'-'+filter:''}.csv`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
@@ -3784,9 +4194,17 @@ function Student360Page() {
           <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-.02em' }}>Student 360</div>
           <div style={{ fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>Attendance, discipline, fees, and hostel status in one view</div>
         </div>
-        <Select value={month} onChange={e => setMonth(e.target.value)} style={{ width: 160 }}>
-          {monthOptions().map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
-        </Select>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Select value={month} onChange={e => setMonth(e.target.value)} style={{ width: 160 }}>
+            {monthOptions().map(m => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+          </Select>
+          {filtered.length > 0 && <ConsoleBtn small variant="subtle" onClick={exportCSV}>⬇️ Export CSV</ConsoleBtn>}
+          {unsentHighRisk.length > 0 && (
+            <ConsoleBtn small variant="danger" onClick={sendNextHighRisk}>
+              📲 Notify next high-risk ({unsentHighRisk.length})
+            </ConsoleBtn>
+          )}
+        </div>
       </div>
 
       {(degraded.fees || degraded.discipline || degraded.hostel) && (
@@ -3826,9 +4244,13 @@ function Student360Page() {
         ) : filtered.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: C.inkFaint, fontSize: 13 }}>No students match this view.</div>
         ) : (
-          <div>{filtered.map(s => <StudentRiskCard key={s.key} s={s} />)}</div>
+          <div>{filtered.map(s => <StudentRiskCard key={s.key} s={s} onOpen={setOpenStudent} />)}</div>
         )}
       </ConsoleCard>
+
+      {openStudent && (
+        <Student360Profile student={openStudent} month={month} onClose={() => setOpenStudent(null)} />
+      )}
     </div>
   )
 }
