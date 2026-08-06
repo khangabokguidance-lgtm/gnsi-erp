@@ -5076,8 +5076,9 @@ function TabStudentDB({ isAdmin }) {
       const valid = COURSE_STRUCTURE[s.course] || []
       if (valid.includes(s.batch)) return
       const key = `${s.course}||${s.batch}`
-      if (!groups[key]) groups[key] = { course: s.course, batch: s.batch, count: 0 }
+      if (!groups[key]) groups[key] = { course: s.course, batch: s.batch, count: 0, students: [] }
       groups[key].count++
+      groups[key].students.push(s)
     })
     return Object.values(groups).sort((a, b) => b.count - a.count)
   }, [visibleStudents])
@@ -5096,6 +5097,31 @@ function TabStudentDB({ isAdmin }) {
     setToast({ type: 'success', msg: `Moved all "${badBatch}" students in ${course} to ${target}.` })
     load()
   }
+
+  // Duplicate detector — groups active students sharing the same GCC number
+  // (should be impossible but CSV imports/typos can produce it), or the
+  // same name + phone (a likely re-entry of the same student under a new
+  // row rather than an edit of the old one). Two separate match types since
+  // a shared GCC is a hard data error while a shared name+phone is a softer
+  // signal — same-name siblings could share a household phone.
+  const duplicateGroups = useMemo(() => {
+    const byGcc = {}, byNamePhone = {}
+    visibleStudents.forEach(s => {
+      if (s.gcc_no != null) {
+        const k = String(s.gcc_no)
+        if (!byGcc[k]) byGcc[k] = []
+        byGcc[k].push(s)
+      }
+      if (s.name && s.phone) {
+        const k = `${s.name.trim().toLowerCase()}||${s.phone.trim()}`
+        if (!byNamePhone[k]) byNamePhone[k] = []
+        byNamePhone[k].push(s)
+      }
+    })
+    const gccDupes = Object.values(byGcc).filter(g => g.length > 1).map(g => ({ type: 'gcc', label: `GCC-${g[0].gcc_no}`, students: g }))
+    const namePhoneDupes = Object.values(byNamePhone).filter(g => g.length > 1).map(g => ({ type: 'name', label: `${g[0].name} (${g[0].phone})`, students: g }))
+    return [...gccDupes, ...namePhoneDupes]
+  }, [visibleStudents])
 
   // Bulk-assign for unassigned students — "unassigned" means missing course,
   // missing batch, or both (the ⚠️ per-row badge already flags these
@@ -5129,6 +5155,111 @@ function TabStudentDB({ isAdmin }) {
     clearSelection()
     setBulkCourse('')
     setBulkBatch('')
+    load()
+  }
+
+  const selectedStudents = useMemo(() => students.filter(s => selectedIds.has(s.id)), [students, selectedIds])
+  const [waSentIds, setWaSentIds] = useState({})
+  const unsentSelectedWithPhone = selectedStudents.filter(s => s.phone && !waSentIds[s.id])
+  const sendNextSelected = () => {
+    const next = unsentSelectedWithPhone[0]
+    if (!next) return
+    const msg = `Dear Parent, this is a message from GNSI regarding ${next.name}${next.batch ? ` (${next.course} · ${next.batch})` : ''}. Please contact the office for details. — GNSI`
+    openWhatsApp(next.phone, msg)
+    setWaSentIds(prev => ({ ...prev, [next.id]: true }))
+  }
+  const exportSelectedCSV = () => {
+    const rowsOut = [['Name','GCC','Course','Batch','Class','Phone','Hostel type','Status']]
+    selectedStudents.forEach(s => rowsOut.push([
+      s.name, s.gcc_no ?? '', s.course || '', s.batch || '', s.class_name || '', s.phone || '', s.hostel_type || '', s.status || 'Active',
+    ]))
+    const csv = rowsOut.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `students-selected-${today()}.csv`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // CSV bulk import — expects a header row with any of:
+  // name, gcc_no, course, batch, class_name, phone, hostel_type (case-
+  // insensitive, order-independent; extra columns are ignored). Only
+  // `name` is required per row. Shows a preview before writing anything,
+  // since a bad column mapping on 60+ rows is expensive to undo by hand.
+  const [importRows, setImportRows] = useState(null) // parsed preview, or null when closed
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef(null)
+
+  const parseCSV = (text) => {
+    const lines = text.split(/\r?\n/).filter(l => l.trim())
+    if (!lines.length) return []
+    const splitLine = (line) => {
+      // Minimal quoted-field CSV split — handles "quoted, commas" but not
+      // embedded newlines inside a field, which is fine for a flat student
+      // roster export/import.
+      const out = []; let cur = ''; let inQuotes = false
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i]
+        if (c === '"') { inQuotes = !inQuotes }
+        else if (c === ',' && !inQuotes) { out.push(cur); cur = '' }
+        else cur += c
+      }
+      out.push(cur)
+      return out.map(v => v.trim())
+    }
+    const header = splitLine(lines[0]).map(h => h.toLowerCase())
+    const idx = {
+      name: header.findIndex(h => h.includes('name') && !h.includes('class')),
+      gcc_no: header.findIndex(h => h.includes('gcc')),
+      course: header.findIndex(h => h === 'course'),
+      batch: header.findIndex(h => h === 'batch'),
+      class_name: header.findIndex(h => h.includes('class')),
+      phone: header.findIndex(h => h.includes('phone')),
+      hostel_type: header.findIndex(h => h.includes('hostel')),
+    }
+    return lines.slice(1).map(line => {
+      const cells = splitLine(line)
+      const get = k => idx[k] >= 0 ? (cells[idx[k]] || '').trim() : ''
+      return {
+        name: get('name'), gcc_no: get('gcc_no'), course: get('course'),
+        batch: get('batch'), class_name: get('class_name'), phone: get('phone'),
+        hostel_type: get('hostel_type'),
+      }
+    }).filter(r => r.name)
+  }
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const rows = parseCSV(String(ev.target.result))
+      if (!rows.length) { setToast({ type: 'warn', msg: 'No valid rows found — check the CSV has a "name" column.' }); return }
+      setImportRows(rows)
+    }
+    reader.readAsText(file)
+    e.target.value = '' // allow re-selecting the same file later
+  }
+
+  const handleImportConfirm = async () => {
+    if (!importRows?.length) return
+    setImporting(true)
+    const payload = importRows.map(r => ({
+      name: r.name,
+      gcc_no: r.gcc_no ? (Number.isNaN(parseInt(r.gcc_no,10)) ? null : parseInt(r.gcc_no,10)) : null,
+      course: r.course || null,
+      batch: r.batch || null,
+      class_name: r.class_name || null,
+      phone: r.phone || null,
+      hostel_type: r.hostel_type || 'Day Scholar',
+      status: 'Active',
+    }))
+    const { error } = await supabase.from('students').insert(payload)
+    setImporting(false)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: `Imported ${payload.length} students.` })
+    setImportRows(null)
     load()
   }
 
@@ -5287,6 +5418,12 @@ function TabStudentDB({ isAdmin }) {
                 </button>
               ))}
             </div>
+            {viewMode === 'active' && isAdmin && (
+              <>
+                <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileSelect} style={{ display: 'none' }} />
+                <Btn small variant="ghost" onClick={() => fileInputRef.current?.click()}>⬆️ Import CSV</Btn>
+              </>
+            )}
             {viewMode === 'active' && <Btn small onClick={openAdd}>{showForm && !editingId ? '✕ Cancel' : '+ Add Student'}</Btn>}
           </div>
         }
@@ -5331,6 +5468,14 @@ function TabStudentDB({ isAdmin }) {
                 {bulkAssigning ? 'Assigning…' : `Assign ${selectedIds.size} student${selectedIds.size===1?'':'s'}`}
               </Btn>
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 10px', marginTop: 8 }}>
+              {unsentSelectedWithPhone.length > 0 && (
+                <Btn small variant="whatsapp" onClick={sendNextSelected}>
+                  📲 Message next ({unsentSelectedWithPhone.length} left)
+                </Btn>
+              )}
+              <Btn small variant="ghost" onClick={exportSelectedCSV}>⬇️ Export selected CSV</Btn>
+            </div>
           </div>
         )}
 
@@ -5344,21 +5489,72 @@ function TabStudentDB({ isAdmin }) {
                 const key = `${g.course}||${g.batch}`
                 const options = COURSE_STRUCTURE[g.course] || []
                 return (
-                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: T.ink, minWidth: 0 }}>
-                      {g.count} × {g.course} · <span style={{ fontFamily: fontMono }}>"{g.batch}"</span>
-                    </span>
-                    <span style={{ fontSize: 11.5, color: T.gray400 }}>→</span>
-                    <Select value={fixTargets[key] || ''} onChange={e => setFixTargets(prev => ({ ...prev, [key]: e.target.value }))} style={{ maxWidth: 160 }}>
-                      <option value="">Correct batch…</option>
-                      {options.map(o => <option key={o}>{o}</option>)}
-                    </Select>
-                    <Btn small onClick={() => handleFixBatch(g.course, g.batch)} disabled={fixingKey === key || !fixTargets[key]}>
-                      {fixingKey === key ? 'Fixing…' : `Fix all ${g.count}`}
-                    </Btn>
+                  <div key={key} style={{ background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: T.ink, minWidth: 0 }}>
+                        {g.count} × {g.course} · <span style={{ fontFamily: fontMono }}>"{g.batch}"</span>
+                      </span>
+                      <span style={{ fontSize: 11.5, color: T.gray400 }}>→ if they all belong in the same batch:</span>
+                      <Select value={fixTargets[key] || ''} onChange={e => setFixTargets(prev => ({ ...prev, [key]: e.target.value }))} style={{ maxWidth: 160 }}>
+                        <option value="">Correct batch…</option>
+                        {options.map(o => <option key={o}>{o}</option>)}
+                      </Select>
+                      <Btn small onClick={() => handleFixBatch(g.course, g.batch)} disabled={fixingKey === key || !fixTargets[key]}>
+                        {fixingKey === key ? 'Fixing…' : `Fix all ${g.count}`}
+                      </Btn>
+                    </div>
+                    {/* Per-student — use this instead when the group is a MIX
+                        (e.g. some really Lakshya, some really Umeed) rather
+                        than one batch for everyone. */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.gray100}` }}>
+                      {g.students.map(s => (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12.5, color: T.ink }}>
+                            {s.name}{s.gcc_no ? <span style={{ color: T.gray400, fontFamily: fontMono }}> · GCC-{s.gcc_no}</span> : ''}
+                          </span>
+                          <select
+                            value=""
+                            disabled={quickFixingId === s.id}
+                            onChange={e => handleQuickBatchChange(s.id, e.target.value)}
+                            style={{
+                              fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueSoft,
+                              border: `1px solid #bfdbfe`, borderRadius: 6, padding: '3px 6px', cursor: 'pointer',
+                            }}
+                          >
+                            <option value="">{quickFixingId === s.id ? 'Moving…' : 'Move to…'}</option>
+                            {options.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )
               })}
+            </div>
+          </div>
+        )}
+
+        {isAdmin && viewMode === 'active' && duplicateGroups.length > 0 && (
+          <div style={{ background: '#fff1f2', border: `1.5px solid #fecdd3`, borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#be123c', marginBottom: 8 }}>
+              🔁 {duplicateGroups.length} possible duplicate{duplicateGroups.length===1?'':'s'} found — review and remove the extra row(s).
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {duplicateGroups.map((g, i) => (
+                <div key={i} style={{ background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: T.ink }}>
+                      {g.type === 'gcc' ? 'Same GCC no.' : 'Same name + phone'} — <span style={{ fontFamily: fontMono }}>{g.label}</span>
+                    </span>
+                    <Btn small variant="ghost" onClick={() => setSelectedIds(new Set(g.students.map(s => s.id)))}>
+                      Select these {g.students.length}
+                    </Btn>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: T.gray400, marginTop: 4 }}>
+                    {g.students.map(s => `${s.name}${s.batch ? ` · ${s.batch}` : ''}`).join('  ·  ')}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -5561,6 +5757,58 @@ function TabStudentDB({ isAdmin }) {
           </div>
         )}
       </div>
+
+      {importRows && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(15,23,42,.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }} onClick={() => !importing && setImportRows(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#fff', borderRadius: 12, maxWidth: 560, width: '100%',
+            maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.gray150}` }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Import preview — {importRows.length} student{importRows.length===1?'':'s'}</div>
+              <div style={{ fontSize: 12, color: T.gray400, marginTop: 2 }}>Review before importing. Missing course/batch can be bulk-assigned afterward.</div>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '10px 20px', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: `1.5px solid ${T.gray150}` }}>
+                    <th style={{ textAlign: 'left', padding: '6px 4px', color: T.gray400 }}>Name</th>
+                    <th style={{ textAlign: 'left', padding: '6px 4px', color: T.gray400 }}>GCC</th>
+                    <th style={{ textAlign: 'left', padding: '6px 4px', color: T.gray400 }}>Course</th>
+                    <th style={{ textAlign: 'left', padding: '6px 4px', color: T.gray400 }}>Batch</th>
+                    <th style={{ textAlign: 'left', padding: '6px 4px', color: T.gray400 }}>Phone</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importRows.slice(0, 50).map((r, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.gray100}` }}>
+                      <td style={{ padding: '5px 4px', color: T.ink }}>{r.name}</td>
+                      <td style={{ padding: '5px 4px', color: T.ink }}>{r.gcc_no || '—'}</td>
+                      <td style={{ padding: '5px 4px', color: r.course ? T.ink : '#d97706' }}>{r.course || 'missing'}</td>
+                      <td style={{ padding: '5px 4px', color: r.batch ? T.ink : '#d97706' }}>{r.batch || 'missing'}</td>
+                      <td style={{ padding: '5px 4px', color: T.ink }}>{r.phone || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {importRows.length > 50 && (
+                <div style={{ textAlign: 'center', fontSize: 11.5, color: T.gray400, padding: '8px 0' }}>
+                  +{importRows.length - 50} more row(s) not shown, will still be imported.
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '14px 20px', borderTop: `1px solid ${T.gray150}`, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Btn variant="ghost" onClick={() => setImportRows(null)} disabled={importing}>Cancel</Btn>
+              <Btn onClick={handleImportConfirm} disabled={importing}>
+                {importing ? 'Importing…' : `Import ${importRows.length} students`}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
