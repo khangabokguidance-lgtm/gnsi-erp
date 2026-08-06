@@ -14,7 +14,7 @@ import {
 
 const COURSE_STRUCTURE = {
   Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya'],
+  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
   Foundation:        ['Prime', 'Elite'],
   'Combined Course': ['—'],
 }
@@ -4702,6 +4702,24 @@ function TabStudentDB({ isAdmin }) {
     load()
   }
 
+  // Quick batch fix — for cases where a mismatched/incorrect group contains
+  // students who actually belong in DIFFERENT correct batches (e.g. some
+  // Lakshya and some Umeed students both wrongly saved as "Lakshya B").
+  // The bulk "Fix all" tool above can't split a group like that since it
+  // sends everyone to one target; this updates a single student's batch
+  // in place instead, no need to open the full edit form.
+  const [quickFixingId, setQuickFixingId] = useState(null)
+  const handleQuickBatchChange = async (id, newBatch) => {
+    if (!newBatch) return
+    setQuickFixingId(id)
+    const { error } = await supabase.from('students').update({ batch: newBatch }).eq('id', id)
+    setQuickFixingId(null)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: 'Batch updated.' })
+    broadcastStudentsUpdate({ type: 'batch_change', student_id: id })
+    load()
+  }
+
   // Mark as Dropout — a status change (students.status = 'Dropout'), not a
   // delete. Row and history stay intact; the student simply stops appearing
   // in TabMark's roll call (which filters status='Active') and in the
@@ -4925,9 +4943,28 @@ function TabStudentDB({ isAdmin }) {
                     {s.deleted_at && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: T.red }}>DELETED {fmtDate(s.deleted_at.split('T')[0])}</span>}
                     {!s.deleted_at && s.status === 'Dropout' && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: T.red }}>🚪 DROPOUT</span>}
                   </div>
-                  <div style={{ fontSize: 11.5, color: T.gray400, marginTop: 2 }}>
-                    {s.gcc_no ? `GCC-${s.gcc_no}` : '—'} · {s.course || '—'}{s.batch ? ` · ${s.batch}` : ''}{s.class_name ? ` · ${s.class_name}` : ''}
-                    {s.course && !s.batch && <span style={{ marginLeft: 6, fontWeight: 700, color: T.amber }}>⚠️ no batch — won't appear in Mark</span>}
+                  <div style={{ fontSize: 11.5, color: T.gray400, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span>
+                      {s.gcc_no ? `GCC-${s.gcc_no}` : '—'} · {s.course || '—'}{s.batch ? ` · ${s.batch}` : ''}{s.class_name ? ` · ${s.class_name}` : ''}
+                    </span>
+                    {s.course && !s.batch && <span style={{ fontWeight: 700, color: T.amber }}>⚠️ no batch — won't appear in Mark</span>}
+                    {s.course && !s.deleted_at && (viewMode === 'active' || viewMode === 'dropout') && (
+                      <select
+                        value=""
+                        disabled={quickFixingId === s.id}
+                        onChange={e => handleQuickBatchChange(s.id, e.target.value)}
+                        title="Move this student to a different batch"
+                        style={{
+                          fontSize: 10.5, fontWeight: 600, color: T.blue, background: T.blueSoft,
+                          border: `1px solid #bfdbfe`, borderRadius: 6, padding: '2px 5px', cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">{quickFixingId === s.id ? 'Moving…' : '↔ Move batch'}</option>
+                        {(COURSE_STRUCTURE[s.course] || []).filter(b => b !== s.batch).map(b => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div style={{ fontSize: 11.5, color: s.phone ? T.gray500 : T.red, marginTop: 2 }}>
                     {isAdmin
