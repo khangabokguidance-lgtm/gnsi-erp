@@ -218,7 +218,12 @@ function TrendChart({ data, dataKey = 'pct', color = CHART_TONE.indigo, height =
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={{ stroke: C.border }} tickLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: C.inkFaint }} axisLine={false} tickLine={false} width={32} />
+        <YAxis
+          domain={[0, 100]}
+          tickFormatter={v => `${v}%`}
+          tick={{ fontSize: 11, fill: C.inkFaint }}
+          axisLine={false} tickLine={false} width={34}
+        />
         <Tooltip content={<ConsoleTooltip />} />
         <Area type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.2} fill="url(#gnsi-trend-fill)" dot={{ r: 2.5, fill: color, strokeWidth: 0 }} />
       </AreaChart>
@@ -426,7 +431,17 @@ const SUBJECTS = [
   'Environmental Studies',
 ]
 
-const today    = () => new Date().toISOString().split('T')[0]
+// toISOString() converts to UTC before formatting — for IST (UTC+5:30),
+// any local time between midnight and 5:30 AM rolls this back to
+// "yesterday", which silently pulled the previous day's sessions into
+// every today()-based query (Mark's default date, Today's status donut,
+// the Period-1 no-roll-call check, etc.) during those early hours. Build
+// the date string from local getFullYear/getMonth/getDate instead, which
+// always reflects the browser's local calendar day.
+const today    = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
 const fmtDate  = d  => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'
 const fmtMonth = m  => { const [y,mo] = m.split('-'); return new Date(y, mo-1).toLocaleDateString('en-IN',{month:'long',year:'numeric'}) }
 const todayDay = () => new Date().toLocaleDateString('en-US', { weekday:'long' })
@@ -4463,6 +4478,25 @@ function HomeV2({ onNavigate, isAdmin }) {
   const { rows, loading } = useStudentSignals(month)
   const { data: trendData, loading: trendLoading } = useAttendanceTrend(6)
   const { counts: todayCounts, loading: todayLoading } = useTodayStatusCounts()
+
+  // `rows` (from useStudentSignals) only contains students who have at
+  // least one attendance record THIS MONTH — it's built by grouping
+  // attendance_records, not by querying `students` directly. That means
+  // "Students tracked" using rows.length was actually showing "students
+  // marked at least once this month," silently excluding any active
+  // student who simply hasn't been in a roll call yet (new admissions,
+  // a batch not yet marked this month, etc.) — a materially different
+  // and smaller number than the school's real enrolled total. Fetch the
+  // actual count from `students` separately so the two numbers can't be
+  // confused for each other.
+  const [enrolledCount, setEnrolledCount] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('students').select('id', { count: 'exact', head: true })
+      .is('deleted_at', null).eq('status', 'Active')
+      .then(({ count }) => { if (!cancelled) setEnrolledCount(count) })
+    return () => { cancelled = true }
+  }, [])
   const { missing: period1Missing } = usePeriod1Check()
   const batchHealth = useBatchHealth()
 
@@ -4533,7 +4567,7 @@ function HomeV2({ onNavigate, isAdmin }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
         {loading ? [0,1,2,3].map(i => <SkeletonStatCard key={i} />) : [
-          { label: 'Students tracked', value: rows.length, icon: Icon.users, color: '#4F46E5', bg: '#EEF2FF' },
+          { label: 'Students enrolled', value: enrolledCount ?? '…', icon: Icon.users, color: '#4F46E5', bg: '#EEF2FF' },
           { label: 'Avg. attendance', value: `${avgAttendance}%`, icon: Icon.check, color: avgAttendance>=75?'#059669':'#D97706', bg: avgAttendance>=75?'#ECFDF5':'#FFFBEB' },
           { label: 'High risk', value: highRiskCount, icon: Icon.bell, color: '#DC2626', bg: '#FEF2F2' },
           { label: 'On track', value: rows.filter(r=>r.risk==='low').length, icon: Icon.award, color: '#7C3AED', bg: '#F5F3FF' },
@@ -5002,6 +5036,41 @@ function DashboardPage() {
 // Students.jsx module; this stays a quick lookup/edit console.
 const emptyStudentForm = { name: '', gcc_no: '', course: '', batch: '', class_name: '', phone: '', hostel_type: '' }
 
+// Compact one-row course+batch picker for a single unassigned student —
+// used when there are only a few (≤3) unassigned students, where "select
+// all" + the general bulk-assign bar below is more clicking than just
+// fixing them right here in the warning banner.
+function UnassignedQuickFix({ student, onDone, setToast }) {
+  const [course, setCourse] = useState('')
+  const [batch, setBatch] = useState('')
+  const [saving, setSaving] = useState(false)
+  const save = async () => {
+    if (!course || !batch) return
+    setSaving(true)
+    const { error } = await supabase.from('students').update({ course, batch }).eq('id', student.id)
+    setSaving(false)
+    if (error) { setToast({ type: 'error', msg: error.message }); return }
+    setToast({ type: 'success', msg: `${student.name} assigned to ${course} · ${batch}.` })
+    onDone?.()
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: T.ink, minWidth: 0 }}>{student.name}</span>
+      <Select value={course} onChange={e => { setCourse(e.target.value); setBatch('') }} style={{ maxWidth: 150 }}>
+        <option value="">Course…</option>
+        {COURSES.map(c => <option key={c}>{c}</option>)}
+      </Select>
+      <Select value={batch} onChange={e => setBatch(e.target.value)} disabled={!course} style={{ maxWidth: 150 }}>
+        <option value="">Batch…</option>
+        {(course ? COURSE_STRUCTURE[course] || [] : []).map(b => <option key={b}>{b}</option>)}
+      </Select>
+      <Btn small onClick={save} disabled={saving || !course || !batch}>
+        {saving ? 'Saving…' : 'Assign'}
+      </Btn>
+    </div>
+  )
+}
+
 function TabStudentDB({ isAdmin }) {
   const isMobile = useIsMobile()
   const [students, setStudents] = useState([])
@@ -5432,11 +5501,23 @@ function TabStudentDB({ isAdmin }) {
         {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
         {isAdmin && viewMode === 'active' && unassignedStudents.length > 0 && selectedIds.size === 0 && (
-          <div style={{ background: T.blueSoft, border: `1.5px solid #bfdbfe`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e40af' }}>
+          <div style={{ background: T.blueSoft, border: `1.5px solid #bfdbfe`, borderRadius: 10, padding: '10px 14px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e40af', marginBottom: unassignedStudents.length <= 3 ? 8 : 0 }}>
               📋 {unassignedStudents.length} student(s) have no course/batch — not in any Mark roll call.
-            </span>
-            <Btn small variant="ghost" onClick={selectAllUnassigned}>Select all {unassignedStudents.length}</Btn>
+              {unassignedStudents.length > 3 && (
+                <Btn small variant="ghost" onClick={selectAllUnassigned} style={{ marginLeft: 8 }}>Select all {unassignedStudents.length}</Btn>
+              )}
+            </div>
+            {/* Inline single-student assign — for a small handful this beats
+                "Select all" + scroll to the assign bar below; for a bigger
+                batch, "Select all" above is faster instead. */}
+            {unassignedStudents.length <= 3 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {unassignedStudents.map(s => (
+                  <UnassignedQuickFix key={s.id} student={s} onDone={load} setToast={setToast} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
