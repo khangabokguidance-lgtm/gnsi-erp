@@ -465,7 +465,7 @@ function StudyMaterialsRefPanel({ subject, chapter, onNavigate }) {
 // TAB 1: QUESTION BANK
 // Patch: applies initialFilter on mount + listens for NAVIGATE_TO event
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBank({ questions, loading, refetch, showToast, initialFilter }) {
+function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin }) {
   const [filterSubject,    setFilterSubject]    = useState('All')
   const [filterChapter,    setFilterChapter]    = useState('All')
   const [filterSubsection, setFilterSubsection] = useState('All')
@@ -619,14 +619,14 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter }) {
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
         <span style={{ fontSize:12, color:C.slate }}>{filtered.length} questions found</span>
         <div style={{ display:'flex', gap:8 }}>
-          {selected.size > 0 && (
+          {isAdmin && selected.size > 0 && (
             <button onClick={handleBulkDelete} style={btn(C.rose)}>🗑 Delete {selected.size} selected</button>
           )}
         </div>
       </div>
 
-      {/* Edit inline modal */}
-      {editQ && (
+      {/* Edit inline modal — admin only */}
+      {isAdmin && editQ && (
         <div style={{ ...cardS, border:`2px solid ${C.indigo}`, marginBottom:16 }}>
           <div style={{ fontWeight:700, color:C.navy, marginBottom:12 }}>✏️ Edit Question</div>
           <QuestionRowForm row={editQ} index={0} onChange={(i,k,v) => setEditQ(q=>({...q,[k]:v}))}
@@ -646,15 +646,19 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter }) {
             </div>
           : (
             <>
-              <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
-                <input type="checkbox" checked={selected.size===paginated.length && paginated.length>0}
-                  onChange={toggleAll} />
-                <span style={{ fontSize:12, color:C.slate }}>Select all on page</span>
-              </div>
+              {isAdmin && (
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                  <input type="checkbox" checked={selected.size===paginated.length && paginated.length>0}
+                    onChange={toggleAll} />
+                  <span style={{ fontSize:12, color:C.slate }}>Select all on page</span>
+                </div>
+              )}
               {paginated.map((q, i) => (
                 <QCard key={q.id} q={q} index={(page-1)*PAGE+i}
-                  selectable selected={selected.has(q.id)}
-                  onToggle={toggleSelect} onEdit={setEditQ} onDelete={handleDelete} />
+                  selectable={isAdmin} selected={selected.has(q.id)}
+                  onToggle={isAdmin ? toggleSelect : undefined}
+                  onEdit={isAdmin ? setEditQ : undefined}
+                  onDelete={isAdmin ? handleDelete : undefined} />
               ))}
             </>
           )
@@ -1807,6 +1811,8 @@ function TabStats({ questions }) {
 // Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
+  const isAdmin = currentUser?.role === 'admin'
+
   const [tab,           setTab]           = useState('bank')
   const [questions,     setQuestions]     = useState([])
   const [loading,       setLoading]       = useState(true)
@@ -1868,14 +1874,26 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     return unsub
   }, [])
 
-  const TABS = [
+  // ── ACCESS GUARD ─────────────────────────────────────────────────────────
+  // Non-admins get view (Bank, read-only) + upload (Manual Add, Bulk Paste)
+  // only. Create Paper / Online Test / Stats are admin-only.
+  const ADMIN_ONLY_TABS = ['paper', 'test', 'stats']
+
+  useEffect(() => {
+    if (!isAdmin && ADMIN_ONLY_TABS.includes(tab)) {
+      setTab('bank')
+    }
+  }, [isAdmin, tab])
+
+  const ALL_TABS = [
     { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length },
     { key:'manual',  icon:'✏️', label:'Manual Add',    count: null },
     { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null },
-    { key:'paper',   icon:'📄', label:'Create Paper',  count: null },
-    { key:'test',    icon:'📝', label:'Online Test',   count: null },
-    { key:'stats',   icon:'📊', label:'Stats',         count: null },
+    { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true },
+    { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true },
+    { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true },
   ]
+  const TABS = isAdmin ? ALL_TABS : ALL_TABS.filter(t => !t.adminOnly)
 
   return (
     <div style={{ padding:24, fontFamily:'system-ui,sans-serif', background:C.bg, minHeight:'100vh' }}>
@@ -1911,12 +1929,12 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
         ))}
       </div>
 
-      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} />}
+      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} />}
       {tab === 'manual' && <TabManualAdd refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
-      {tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
-      {tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
-      {tab === 'stats'  && <TabStats  questions={questions} />}
+      {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
+      {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
+      {isAdmin && tab === 'stats'  && <TabStats  questions={questions} />}
     </div>
   )
 }

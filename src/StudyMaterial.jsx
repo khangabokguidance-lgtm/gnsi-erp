@@ -100,6 +100,37 @@ function MaterialTypeBadge({ typeKey }) {
   return <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, color: t.color, background: t.bg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{t.icon} {t.label}</span>
 }
 
+// ── VIEW-ONLY MODAL (non-admin file access) ────────────────────────────────
+// Renders the file inline via iframe with no download link exposed by the UI.
+// Note: this deters casual download/print through the app but cannot fully
+// block a browser's native PDF viewer controls (Ctrl+P, save) — true
+// prevention needs a server-side watermark or signed streaming viewer.
+function ViewOnlyModal({ mat, onClose }) {
+  useEffect(() => {
+    const onKeyDown = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div onContextMenu={e => e.preventDefault()}
+      style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(15,23,42,.82)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', background: C.navy, color: '#fff' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>👁 View Only — {mat.title}</span>
+        <span style={{ fontSize: 11, opacity: .75 }}>Download & print are disabled for this account</span>
+        <button onClick={onClose} style={{ ...btnSm('rgba(255,255,255,.15)', '#fff'), padding: '6px 14px' }}>✕ Close</button>
+      </div>
+      <div style={{ flex: 1, padding: 12 }}>
+        <iframe
+          src={`${mat.file_url}#toolbar=0&navpanes=0`}
+          title={mat.title}
+          style={{ width: '100%', height: '100%', border: 'none', borderRadius: 8, background: '#fff' }}
+        />
+      </div>
+    </div>
+  )
+}
+
 // ── ADD SUBJECT MODAL ─────────────────────────────────────────────────────────
 function AddSubjectModal({ course, courseData, existingSubjects, onClose, onSaved, showToast }) {
   const [name, setName]   = useState('')
@@ -381,8 +412,9 @@ Return ONLY a valid JSON array, no fences.`
 }
 
 // ── MATERIAL CARD ─────────────────────────────────────────────────────────────
-function MaterialCard({ mat, onDelete, showToast }) {
+function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
   const [deleting, setDeleting] = useState(false)
+  const [viewingOnly, setViewingOnly] = useState(false)
   const courseData = BASE_COURSES[mat.course]
   const bucket = courseData?.FILE_BUCKET || 'study-materials'
 
@@ -397,6 +429,16 @@ function MaterialCard({ mat, onDelete, showToast }) {
 
   const isLink  = !mat.file_name && mat.file_url
   const isVideo = mat.material_type === 'video' || mat.file_url?.includes('youtube') || mat.file_url?.includes('youtu.be')
+  // BUG FIX: file_name is never set by any upload path in this component
+  // (BulkPasteModal always writes file_name:'' — there is no direct file
+  // upload here), so the old `!isLink` check was permanently false and the
+  // View Only gate below never actually applied to anything. Classify by
+  // URL shape instead: a direct PDF/doc link (Supabase storage or a raw
+  // file URL) is restrictable; a Drive/Docs share page has its own
+  // print/download UI we can't suppress via iframe, so treat it like a
+  // link rather than falsely promising view-only protection.
+  const isDirectFileUrl = !!mat.file_url && /\.(pdf|docx?|pptx?|xlsx?)(\?|#|$)/i.test(mat.file_url)
+  const isDownloadableFile = !isVideo && (mat.file_name || isDirectFileUrl)
 
   return (
     <div style={{ background: C.white, borderRadius: 10, border: `1px solid ${C.border}`, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -413,22 +455,28 @@ function MaterialCard({ mat, onDelete, showToast }) {
           {mat.created_at && <span style={{ marginLeft: 8 }}>· {new Date(mat.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          {mat.file_url && (
+          {mat.file_url && !isAdmin && isDownloadableFile && (
+            <button onClick={() => setViewingOnly(true)} style={btnSm('#eff6ff', C.navy)}>👁 View Only</button>
+          )}
+          {mat.file_url && (isAdmin || !isDownloadableFile) && (
             <a href={mat.file_url} target="_blank" rel="noreferrer" style={btnSm(isVideo ? '#fee2e2' : '#eff6ff', isVideo ? C.rose : C.navy)}>
               {isVideo ? '▶ Watch' : isLink ? '🔗 Open Link' : '📥 Download'}
             </a>
           )}
-          <button onClick={handleDelete} disabled={deleting} style={btnSm('#fee2e2', C.rose)}>
-            {deleting ? '…' : '🗑 Delete'}
-          </button>
+          {isAdmin && (
+            <button onClick={handleDelete} disabled={deleting} style={btnSm('#fee2e2', C.rose)}>
+              {deleting ? '…' : '🗑 Delete'}
+            </button>
+          )}
         </div>
+        {viewingOnly && <ViewOnlyModal mat={mat} onClose={() => setViewingOnly(false)} />}
       </div>
     </div>
   )
 }
 
 // ── SUBJECT PANEL ─────────────────────────────────────────────────────────────
-function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate }) {
+function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate, isAdmin }) {
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [showUpload,      setShowUpload]      = useState(false)
   const [uploadChapter,   setUploadChapter]   = useState('')
@@ -476,7 +524,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {isCustomSubject && (
+            {isAdmin && isCustomSubject && (
               <button onClick={() => deleteCustomSubject(course, subjectName, showToast, onStructureChange)}
                 style={btnSm('#fee2e2', C.rose)}>🗑 Delete subject</button>
             )}
@@ -532,7 +580,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
   </span>
 )}
               <button onClick={e => { e.stopPropagation(); handleUploadForChapter(ch) }} style={btnSm(courseData.bg, courseData.text)}>+ Add</button>
-              {isCustomCh && (
+              {isAdmin && isCustomCh && (
                 <button onClick={e => { e.stopPropagation(); deleteCustomChapter(course, subjectName, ch, showToast, onStructureChange) }}
                   style={btnSm('#fee2e2', C.rose)}>🗑</button>
               )}
@@ -545,7 +593,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
                       No materials yet.
                       <button onClick={() => handleUploadForChapter(ch)} style={{ ...btnSm(courseData.bg, courseData.text), marginLeft: 10 }}>📋 Paste now</button>
                     </div>
-                  : <div style={{ display: 'grid', gap: 8 }}>{chMats.map(m => <MaterialCard key={m.id} mat={m} onDelete={onRefetch} showToast={showToast} />)}</div>
+                  : <div style={{ display: 'grid', gap: 8 }}>{chMats.map(m => <MaterialCard key={m.id} mat={m} onDelete={onRefetch} showToast={showToast} isAdmin={isAdmin} />)}</div>
                 }
               </div>
             )}
@@ -553,11 +601,13 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
         )
       })}
 
-      {/* Add chapter inline */}
-      <AddChapterInline
-        course={course} subject={subjectName} courseData={courseData}
-        existingChapters={allChapters} onSaved={onStructureChange} showToast={showToast}
-      />
+      {/* Add chapter inline — admin only (structural change) */}
+      {isAdmin && (
+        <AddChapterInline
+          course={course} subject={subjectName} courseData={courseData}
+          existingChapters={allChapters} onSaved={onStructureChange} showToast={showToast}
+        />
+      )}
     </div>
   )
 }
@@ -658,6 +708,8 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StudyMaterial({ currentUser, perms, onNavigate }) {
+  const isAdmin = currentUser?.role === 'admin'
+
   const [activeCourse,   setActiveCourse]   = useState('sainik')
   const [activeSubject,  setActiveSubject]  = useState(null)
   const [activeView,     setActiveView]     = useState('subjects')
@@ -770,7 +822,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
     <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
-      {showAddSubject && (
+      {isAdmin && showAddSubject && (
         <AddSubjectModal
           course={activeCourse}
           courseData={BASE_COURSES[activeCourse]}
@@ -808,9 +860,11 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
           <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>{courseData.label}</div>
           <div style={{ fontSize: 11, color: C.slate, marginTop: 2 }}>{courseData.exam} · {subjectList.length} subjects</div>
         </div>
-        <button onClick={() => setShowAddSubject(true)} style={btn(courseData.color)}>
-          ➕ Add Subject
-        </button>
+        {isAdmin && (
+          <button onClick={() => setShowAddSubject(true)} style={btn(courseData.color)}>
+            ➕ Add Subject
+          </button>
+        )}
         <button onClick={() => setActiveView(activeView === 'stats' ? 'subjects' : 'stats')} style={btn(activeView === 'stats' ? courseData.color : C.slate)}>
           {activeView === 'stats' ? '📚 Subjects' : '📊 Stats'}
         </button>
@@ -846,7 +900,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
               materials={search.trim() ? filteredMaterials : courseMaterials}
               customChapters={customChaptersBySubject[activeSubject] || []}
               onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
-              onNavigate={onNavigate}
+              onNavigate={onNavigate} isAdmin={isAdmin}
             />
           ) : (
             <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Select a subject above</div>
@@ -893,7 +947,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
                 materials={search.trim() ? filteredMaterials : courseMaterials}
                 customChapters={customChaptersBySubject[activeSubject] || []}
                 onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
-                onNavigate={onNavigate}
+                onNavigate={onNavigate} isAdmin={isAdmin}
               />
             ) : (
               <div style={{ ...cardS, textAlign: 'center', padding: 48, color: '#94a3b8' }}>Select a subject from the sidebar</div>
