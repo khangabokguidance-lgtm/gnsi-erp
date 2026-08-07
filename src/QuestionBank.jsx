@@ -2743,6 +2743,13 @@ function TabStats({ questions }) {
 // Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
+  // TEMP DEBUG — remove once the correct role field/value is confirmed.
+  // Open browser devtools console, reload this module, and paste what gets
+  // logged here back so the isAdmin/isStaffAllowed check can be fixed to
+  // match your actual data shape instead of guessing at it.
+  console.log('[QBank debug] currentUser:', JSON.stringify(currentUser, null, 2))
+  console.log('[QBank debug] perms:', JSON.stringify(perms, null, 2))
+
   const isAdmin = currentUser?.role === 'admin'
   // Question Bank is restricted to admin + computer staff only — teachers
   // (and any other role) get no access at all, not even read-only viewing.
