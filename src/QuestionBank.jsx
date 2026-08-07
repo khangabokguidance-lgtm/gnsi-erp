@@ -2743,17 +2743,14 @@ function TabStats({ questions }) {
 // Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
-  // TEMP DEBUG — remove once the correct role field/value is confirmed.
-  // Open browser devtools console, reload this module, and paste what gets
-  // logged here back so the isAdmin/isStaffAllowed check can be fixed to
-  // match your actual data shape instead of guessing at it.
-  console.log('[QBank debug] currentUser:', JSON.stringify(currentUser, null, 2))
-  console.log('[QBank debug] perms:', JSON.stringify(perms, null, 2))
-
-  const isAdmin = currentUser?.role === 'admin'
-  // Question Bank is restricted to admin + computer staff only — teachers
-  // (and any other role) get no access at all, not even read-only viewing.
-  const isStaffAllowed = currentUser?.role === 'admin' || currentUser?.role === 'computer_staff'
+  // Confirmed via SQL against portal_users.role — the real values are
+  // "Teaching + Admin", "Teaching", "Non-Teaching". There is no separate
+  // admin/computer-staff role: "Teaching + Admin" IS the admin role.
+  const roleLower = (currentUser?.role || '').toLowerCase()
+  const isAdmin = roleLower === 'teaching + admin'
+  // Question Bank is restricted to the admin role only — "Teaching" and
+  // "Non-Teaching" get no access at all, not even read-only viewing.
+  const isStaffAllowed = isAdmin
 
   const [tab,           setTab]           = useState('bank')
   const [questions,     setQuestions]     = useState([])
@@ -2832,7 +2829,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     }
   }, [isAdmin, tab])
 
-  // Module-level gate — computer staff and admin only. This is a UI-layer
+  // Module-level gate — Teaching + Admin role only. This is a UI-layer
   // convenience; Supabase RLS or an equivalent server-side check should also
   // enforce this so the restriction doesn't depend solely on the client.
   if (!isStaffAllowed) {
@@ -2842,7 +2839,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
           <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
           <div style={{ fontSize:17, fontWeight:800, color:C.navy, marginBottom:8 }}>Question Bank is restricted</div>
           <div style={{ fontSize:13, color:C.slate, lineHeight:1.6 }}>
-            This module is only available to admin and computer staff accounts.
+            This module is only available to Teaching + Admin accounts.
             If you need access to questions or papers for a class, please ask
             an admin to prepare it or check <strong>Study Materials</strong> for
             teaching content.

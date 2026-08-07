@@ -1304,13 +1304,15 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StudyMaterial({ currentUser, perms, onNavigate }) {
-  const isAdmin = currentUser?.role === 'admin'
-  // Question Bank is admin + computer_staff only. StudyMaterial itself stays
-  // open to teachers, but any UI that links across to Question Bank (the
-  // "N Q" badges, cross-nav buttons) needs to respect that boundary too —
-  // otherwise a teacher sees a live question count and a button that dead-
-  // ends on QuestionBank's access-denied screen.
-  const isStaffAllowed = currentUser?.role === 'admin' || currentUser?.role === 'computer_staff'
+  // Confirmed via SQL against portal_users.role — the real values are
+  // "Teaching + Admin", "Teaching", "Non-Teaching". There is no separate
+  // admin/computer-staff role: "Teaching + Admin" IS the admin role.
+  const roleLower = (currentUser?.role || '').toLowerCase()
+  const isAdmin = roleLower === 'teaching + admin'
+  // Question Bank access (used to gate the "N Q" badges and cross-nav
+  // buttons in this file that link over to it) matches QuestionBank.jsx's
+  // own gate exactly — admin role only.
+  const isStaffAllowed = isAdmin
 
   const [activeCourse,   setActiveCourse]   = useState('sainik')
   const [activeSubject,  setActiveSubject]  = useState(null)
