@@ -5,7 +5,7 @@ import {
   collectFee, deleteLegacyFeeRecord,
   upsertAccount,
   printReceipt, sourceRef,
-  getFlatFees, getFeeRates,
+  getFlatFees, getFeeRates, getFlatFeeAmtSync,
   saveStudentFlatFeeOverride, clearFeeRateCache,
   revertFeeCollection, correctFeeCollectionDate,
   COURSE_RATES, FLAT_RATES,
@@ -544,13 +544,13 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginTop:8}}>
               <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}</select>
               <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Hostel</option>{['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}</select>
-              <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Pending</option></select>
+              <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option></select>
             </div>
             <div style={{fontSize:11,color:'#94a3b8',marginTop:6}}>{filtered.length} of {students.length} students</div>
           </div>
           <div style={{maxHeight:520,overflowY:'auto'}}>
             {filtered.length===0&&<div style={{padding:24,textAlign:'center',color:'#94a3b8',fontSize:12}}>No students found</div>}
-            {filtered.map(s=>{const isSel=selected?.id===s.id,sc=s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':'#dc2626',sb=s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':'#fee2e2';return(
+            {filtered.map(s=>{const isSel=selected?.id===s.id,sc=s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':s.liveStatus==='Underpaid'?'#c2410c':'#dc2626',sb=s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':s.liveStatus==='Underpaid'?'#ffedd5':'#fee2e2';return(
               <div key={s.id} onClick={()=>setSelected(s)} style={{padding:'11px 14px',cursor:'pointer',borderBottom:'1px solid #f8fafc',background:isSel?'#eff6ff':'white',borderLeft:isSel?'3px solid #1e3a5f':'3px solid transparent'}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#f8fafc'}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='white'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
                   <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#1e293b',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#94a3b8',marginTop:1}}>{s.hostel_type||'—'}</div></div>
@@ -635,7 +635,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr 1fr':'repeat(5,1fr)',gap:10}}>
           <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Course</div><select value={courseF} onChange={e=>setCourseF(e.target.value)} style={inp3}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}</select></div>
           <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Hostel Type</div><select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={inp3}><option value="All">All Types</option>{['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}</select></div>
-          <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Status</div><select value={statusF} onChange={e=>setStatusF(e.target.value)} style={inp3}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Pending</option></select></div>
+          <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Status</div><select value={statusF} onChange={e=>setStatusF(e.target.value)} style={inp3}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option></select></div>
           <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Date From</div><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp3}/></div>
           <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Date To</div><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp3}/></div>
         </div>
@@ -686,8 +686,8 @@ const lbl = {
 
 const sStyle = status => ({
   padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '600',
-  backgroundColor: status === 'Paid' ? '#dcfce7' : status === 'Partial' ? '#fef9c3' : '#fee2e2',
-  color:           status === 'Paid' ? '#16a34a' : status === 'Partial' ? '#ca8a04' : '#dc2626',
+  backgroundColor: status === 'Paid' ? '#dcfce7' : status === 'Partial' ? '#fef9c3' : status === 'Underpaid' ? '#ffedd5' : '#fee2e2',
+  color:           status === 'Paid' ? '#16a34a' : status === 'Partial' ? '#ca8a04' : status === 'Underpaid' ? '#c2410c' : '#dc2626',
 })
 
 function HostelBadge({ type }) {
@@ -2056,11 +2056,32 @@ export default function Fees() {
 
   const getAdmRec = s => admissions.find(a => gccStr(a.gcc_no) === gccStr(s.gcc_no)) || null
 
+  // BUG FIX: liveStatus previously only checked "has any payment been made
+  // at all" (grandTotal > 0), completely ignoring hostel_type and course —
+  // a Boarder who paid a token ₹500 against a real ₹5000+/month due showed
+  // the exact same "Partial"/"Paid" status as a Day Scholar who fully paid
+  // their much smaller due. The "Fee Dues" count only ever caught students
+  // with literally zero payments, never students genuinely underpaid
+  // relative to what their hostel_type actually requires.
+  //
+  // Now computes an expected flat-fee benchmark from getFlatFeeAmtSync
+  // (hostel_type + course — the same fee engine already used for receipts
+  // and rate-anomaly detection elsewhere in this file) and compares actual
+  // payment against it. This is a lightweight sync estimate (course-level
+  // rate, not the full per-batch/session DB-backed rate from getFeeRates)
+  // — good enough for a dashboard-wide dues signal without an async call
+  // per student on every render; billing/receipts still correctly use the
+  // async getFeeRates path elsewhere in this file.
   const liveRows = useMemo(() => students.map(s => {
     const live   = getLiveFees(s)
     const admRec = getAdmRec(s)
-    const status = live.grandTotal > 0 ? (admRec?.status === 'Enrolled' ? 'Paid' : 'Partial') : 'Pending'
-    return { ...s, ...live, admRec, liveStatus: status }
+    const expectedFlat = getFlatFeeAmtSync(s.hostel_type || 'Day Scholar', s.course || '')
+    const status = live.grandTotal === 0
+      ? 'Pending'
+      : expectedFlat > 0 && live.grandTotal < expectedFlat
+        ? 'Underpaid'
+        : (admRec?.status === 'Enrolled' ? 'Paid' : 'Partial')
+    return { ...s, ...live, admRec, expectedFlat, liveStatus: status }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees])
 
@@ -2068,6 +2089,9 @@ export default function Fees() {
   const liveTtl = liveRows.reduce((a, s) => a + s.grandTotal, 0)
   const liveP   = liveRows.filter(s => s.liveStatus === 'Pending').length
   const liveP2  = liveRows.filter(s => s.liveStatus === 'Paid').length
+  // Genuinely underpaid relative to their hostel_type's expected flat fee —
+  // this is the count that was previously invisible entirely.
+  const liveUnderpaid = liveRows.filter(s => s.liveStatus === 'Underpaid').length
 
   const handleAdd = async e => {
     e.preventDefault(); setSaving(true)
@@ -2237,11 +2261,12 @@ export default function Fees() {
 
       {tab === 'live' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
             {[
               { label: 'Total students',  value: students.length,  color: '#1e3a5f', bg: '#eff6ff', icon: '👨‍🎓' },
               { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅' },
               { label: 'Fees pending',    value: liveP,            color: '#dc2626', bg: '#fee2e2', icon: '⚠️' },
+              { label: 'Underpaid (hostel)', value: liveUnderpaid, color: '#c2410c', bg: '#ffedd5', icon: '🏠' },
               { label: 'Fully paid',      value: liveP2,           color: '#7c3aed', bg: '#f5f3ff', icon: '🎉' },
             ].map(c => (
               <div key={c.label} style={{ backgroundColor: c.bg, borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderLeft: `4px solid ${c.color}` }}>
@@ -2254,7 +2279,7 @@ export default function Fees() {
           <div style={{ display: 'flex', gap: 10, marginBottom: afShowFilters ? 8 : 16, flexWrap: 'wrap', alignItems: 'center' }}>
             <input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 200 }} />
             <select value={afStatus} onChange={e => setAfStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
-              <option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Pending</option>
+              <option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option>
             </select>
             <button onClick={() => setAfShowFilters(f => !f)}
               style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: afShowFilters ? '#1e3a5f' : 'white', color: afShowFilters ? 'white' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>

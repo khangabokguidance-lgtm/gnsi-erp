@@ -417,7 +417,10 @@ const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
 
 // Houses will be loaded dynamically from DB
-let HOUSES_LIST  = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
+// Fallback only — used before the live `houses` table fetch completes (see
+// houseOptions state + loadAll). Kept in sync with the real houses table as
+// of this fix; the actual source of truth is always houseOptions once loaded.
+let HOUSES_LIST  = ['Dayscholar','Kangla','Kombirei','Koubru','Loktak','Nongin','Sangai','Shiroi','Singgarei','Takhelei']
 let HOUSE_COLORS = {
   Kombirei:'#2563EB', Kangla:'#DC2626',  Sangai:'#059669',   Singgarei:'#D97706',
   Loktak:'#7C3AED',   Koubru:'#0284C7',  Shiroi:'#DB2777',   Takhelei:'#EA580C',
@@ -1777,7 +1780,7 @@ function MergeDuplicatesModal({ students, can, onClose, onRefresh, showToast }) 
 }
 
 // ─── House Reassignment Modal ─────────────────────────────────────────────────
-function HouseReassignmentModal({ students, selectedIds, can, onClose, onRefresh, showToast }) {
+function HouseReassignmentModal({ students, selectedIds, can, onClose, onRefresh, showToast, houseOptions }) {
   const [newHouse,setNewHouse]=useState('')
   const [processing,setProcessing]=useState(false)
   const handleReassign=async()=>{
@@ -1791,7 +1794,7 @@ function HouseReassignmentModal({ students, selectedIds, can, onClose, onRefresh
   return (
     <Modal onClose={onClose} width={360} title="Bulk House Reassignment" subtitle={`${selectedIds.size} students`}>
       <FieldRow label="New House" style={{marginBottom:16}}>
-        <Select value={newHouse} onChange={e=>setNewHouse(e.target.value)} style={{width:'100%'}}><option value="">— Select House —</option>{HOUSES_LIST.map(h=><option key={h}>{h}</option>)}</Select>
+        <Select value={newHouse} onChange={e=>setNewHouse(e.target.value)} style={{width:'100%'}}><option value="">— Select House —</option>{(houseOptions?.length?houseOptions:HOUSES_LIST).map(h=><option key={h}>{h}</option>)}</Select>
       </FieldRow>
       <div style={{display:'flex',gap:10,marginTop:16}}>
         <Btn onClick={handleReassign} disabled={processing||!can.write} variant='primary' style={{flex:1,justifyContent:'center'}}>Reassign</Btn>
@@ -1802,8 +1805,9 @@ function HouseReassignmentModal({ students, selectedIds, can, onClose, onRefresh
 }
 
 // ─── Analytics Panel ──────────────────────────────────────────────────────────
-function AnalyticsPanel({ students }) {
-  const byHouse=HOUSES_LIST.reduce((a,h)=>{a[h]=students.filter(s=>s.house===h).length;return a},{})
+function AnalyticsPanel({ students, houseOptions }) {
+  const houseList = houseOptions?.length ? houseOptions : HOUSES_LIST
+  const byHouse=houseList.reduce((a,h)=>{a[h]=students.filter(s=>s.house===h).length;return a},{})
   const maxHouse=Math.max(...Object.values(byHouse),1)
   const byCourse=Object.keys(COURSE_STRUCTURE).reduce((a,c)=>{a[c]=students.filter(s=>s.course===c).length;return a},{})
   const male=students.filter(s=>s.gender==='Male').length
@@ -1818,7 +1822,7 @@ function AnalyticsPanel({ students }) {
       <Card>
         <div style={{padding:'16px'}}>
           <div style={{fontSize:11,fontWeight:600,color:T.text4,marginBottom:14,textTransform:'uppercase',letterSpacing:'.08em'}}>House Census</div>
-          {HOUSES_LIST.map(h=>{
+          {houseList.map(h=>{
             const c=HOUSE_COLORS[h]||T.text3,n=byHouse[h]||0
             return (
               <div key={h} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
@@ -2697,7 +2701,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
 }
 
 // ─── Student Form ─────────────────────────────────────────────────────────────
-function StudentForm({ onSave, onCancel, editing, allStudents }) {
+function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const blank={name:'',gcc_no:'',dob:'',gender:'Male',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
   const loadDraft=()=>{if(editing)return null;try{const r=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(!r)return null;DRAFT_PII_FIELDS.forEach(k=>delete r[k]);return r}catch{return null}}
   const savedDraft=loadDraft()
@@ -2792,7 +2796,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents }) {
             {subtypes.length>0?<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}</select>:<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{CLASSES_LIST.map(c=><option key={c}>{c}</option>)}</select>}
           </FieldRow>
           <FieldRow label="Session"><select style={SEL} value={form.session} onChange={e=>set('session',e.target.value)}><option value="">—</option>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></FieldRow>
-          <FieldRow label="House / Block"><select style={SEL} value={form.house} onChange={e=>set('house',e.target.value)}><option value="">— House —</option>{HOUSES_LIST.map(h=><option key={h}>{h}</option>)}</select></FieldRow>
+          <FieldRow label="House / Block"><select style={SEL} value={form.house} onChange={e=>set('house',e.target.value)}><option value="">— House —</option>{(houseOptions?.length?houseOptions:HOUSES_LIST).map(h=><option key={h}>{h}</option>)}</select></FieldRow>
           <FieldRow label="Hostel Type"><select style={{...SEL,opacity:DAY_SCHOLAR_HOUSES.includes(form.house) ? .6 : 1}} value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>{['Boarder','Day Scholar','Day Boarder'].map(h=><option key={h}>{h}</option>)}</select></FieldRow>
         </div>
         <div style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'8px 14px',borderRadius:T.r8,background:hostelCfg.bg,border:`1px solid ${hostelCfg.border}`,fontSize:12,fontWeight:600,color:hostelCfg.color}}>
@@ -3045,7 +3049,13 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
   const maxCourse = Math.max(...courseData.map(c => c.count), 1)
 
   // ── House census ───────────────────────────────────────────────────────────
-  const houseData = HOUSES_LIST
+  // House census — built from houses actually present among these students
+  // rather than a separate hardcoded list, so it can never drift out of
+  // sync with what's really in the data (see HOUSES_LIST bug: it was
+  // missing 'Nongin' entirely and had two houses, 'Block-B'/'Day Scholar',
+  // that don't exist in the real houses table).
+  const presentHouses = [...new Set(students.map(s => s.house).filter(Boolean))]
+  const houseData = presentHouses
     .map(h => ({ house: h, count: students.filter(s => s.house === h).length, color: HOUSE_COLORS[h] || T.text3 }))
     .filter(h => h.count > 0)
     .sort((a, b) => b.count - a.count)
@@ -4046,7 +4056,7 @@ const effectiveCols = visibleCols.filter(col => {
       {showBulkOps&&<BulkOperationsModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkOps(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showRollover&&<SessionRolloverWizard students={students} can={can} onClose={()=>setShowRollover(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showBulkFee&&<BulkFeeModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkFee(false)} onSaved={loadAll} showToast={showToast}/>}
-      {showHouseReassign&&<HouseReassignmentModal students={students} selectedIds={selected} can={can} onClose={()=>setShowHouseReassign(false)} onRefresh={loadAll} showToast={showToast}/>}
+      {showHouseReassign&&<HouseReassignmentModal students={students} selectedIds={selected} can={can} onClose={()=>setShowHouseReassign(false)} onRefresh={loadAll} showToast={showToast} houseOptions={houseOptions}/>}
       {showMergeDups&&<MergeDuplicatesModal students={students} can={can} onClose={()=>setShowMergeDups(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showReportGen&&<ReportGeneratorModal students={students} feeData={feeData} attData={attData} examData={examData} houseOptions={houseOptions} can={can} role={role} onClose={()=>setShowReportGen(false)} showToast={showToast}/>}
 
@@ -4202,7 +4212,7 @@ const effectiveCols = visibleCols.filter(col => {
         </div>
 
         {/* Form */}
-        {formOpen&&can.write&&<StudentForm onSave={handleSave} onCancel={()=>{setFormOpen(false);setEditing(null)}} editing={editing} allStudents={students}/>}
+        {formOpen&&can.write&&<StudentForm onSave={handleSave} onCancel={()=>{setFormOpen(false);setEditing(null)}} editing={editing} allStudents={students} houseOptions={houseOptions}/>}
 
         {/* Selection bar */}
         {selected.size>0&&(
