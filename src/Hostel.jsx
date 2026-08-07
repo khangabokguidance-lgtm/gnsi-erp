@@ -8533,7 +8533,21 @@ function NeglectReportTab({ currentUser }) {
 }
 
 function Hostel() {
-  const [activeTab, setActiveTab] = useState('hmdashboard')
+  // BUG FIX: activeTab previously only ever initialized to 'hmdashboard' —
+  // any link built with a `?tab=...` query string (e.g. the "🏠↗" open-HM
+  // arrow linking to /hostel?tab=doubtsession&hm=Sir%20James) was silently
+  // ignored on load, since nothing here ever read window.location.search.
+  // Read `tab` and `hm` from the URL once on initial mount so deep-links
+  // land on the correct tab (and, for doubtsession, pre-filtered to the
+  // requested housemaster) instead of always resetting to the dashboard.
+  const initialParams = useMemo(() => {
+    try { return new URLSearchParams(window.location.search) } catch { return null }
+  }, [])
+  const VALID_TABS = ['allotments','schedule','nightduty','discipline','sickbay','house','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = initialParams?.get('tab')
+    return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
+  })
   const [students, setStudents] = useState([])
   const [staffProfiles, setStaffProfiles] = useState([])
   const [dataLoading, setDataLoading] = useState(true)
@@ -8547,6 +8561,21 @@ function Hostel() {
   const navigateAndOpenForm = (tabId, house) => {
     setAutoOpenForm({ tabId, house, nonce: Date.now() })
     setActiveTab(tabId)
+  }
+  // Wraps setActiveTab and keeps the URL's ?tab= param in sync, so
+  // deep-links, refreshes, and copy-pasted URLs stay consistent with
+  // whichever tab is actually showing. HMDoubtSessionsTab reads ?hm=
+  // directly from the URL itself, so nothing extra is needed here for it —
+  // this only has to keep ?tab= correct and drop ?hm= once you leave that
+  // tab, so a stale hm= doesn't silently linger into an unrelated tab.
+  const changeTab = tabId => {
+    setActiveTab(tabId)
+    try {
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', tabId)
+      if (tabId !== 'doubtsession') url.searchParams.delete('hm')
+      window.history.replaceState({}, '', url)
+    } catch { /* URL API unavailable — non-fatal, tab still switches */ }
   }
   const currentUser = useMemo(() => {
     try {
@@ -8622,9 +8651,9 @@ function Hostel() {
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
-    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={setActiveTab} onCompleteTab={navigateAndOpenForm} />,
+    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={changeTab} onCompleteTab={navigateAndOpenForm} />,
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={setActiveTab} currentUser={currentUser} />,
+    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={changeTab} currentUser={currentUser} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
     journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
@@ -8684,7 +8713,7 @@ function Hostel() {
           {TABS.map(t => {
             const isActive = activeTab === t.id
             return (
-              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              <button key={t.id} onClick={() => changeTab(t.id)} style={{
                 padding: '9px 14px 10px',
                 border: 'none',
                 borderBottom: isActive ? `2px solid ${MD.color.secondary}` : '2px solid transparent',
@@ -8724,7 +8753,7 @@ function Hostel() {
             return (
               <button
                 key={t.id}
-                onClick={() => setActiveTab(t.id)}
+                onClick={() => changeTab(t.id)}
                 style={{
                   padding: '9px 6px',
                   borderRadius: MD.radius.field,

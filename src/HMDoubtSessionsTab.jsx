@@ -34,20 +34,25 @@ export default function HMDoubtSessionsTab({ currentHousemaster, currentUser }) 
   const [statusFilter, setStatusFilter] = useState('open')
   const [search, setSearch] = useState('')
 
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
-
   // Cross-app deep link support: Teaching.jsx's HM Dashboard links here as
-  // /hostel?tab=doubtsession&hm=<name> so an admin clicking a specific HM's
-  // card/row lands on that HM's queue instead of their own. Only admins get
-  // this override — a non-admin's own name always wins, so one housemaster
-  // can't view another's doubt sessions just by editing the URL.
+  // /hostel?tab=doubtsession&hm=<name> so someone with visibility into that
+  // dashboard can jump straight to a specific HM's queue instead of their
+  // own. BUG FIX: this used to require role==='admin' exactly, so a
+  // manager, hostel-role, or another housemaster clicking a card's 🏠↗
+  // arrow would silently fall back to their OWN queue instead of the one
+  // they clicked — the link appeared to "not work" even though it landed
+  // on the right tab. Now matches the same roles that can actually see the
+  // HM Dashboard (and therefore the arrow) in Teaching.jsx's TAB_ROLES —
+  // a non-privileged role still can't view another HM's queue by hand-
+  // editing the URL, since they wouldn't be in this list either.
+  const canViewOtherHm = ['admin', 'manager', 'hostel', 'house master', 'superintendent'].includes((currentUser?.role || '').toLowerCase())
   const hmParam = (() => {
     try { return new URLSearchParams(window.location.search).get('hm') || '' } catch { return '' }
   })()
 
   const ownName = (currentHousemaster?.name || '').trim()
-  const hmName = (isAdmin && hmParam.trim()) ? hmParam.trim() : ownName
-  const viewingOther = isAdmin && hmParam.trim() && hmParam.trim() !== ownName
+  const hmName = (canViewOtherHm && hmParam.trim()) ? hmParam.trim() : ownName
+  const viewingOther = canViewOtherHm && hmParam.trim() && hmParam.trim() !== ownName
 
   const load = async () => {
     setLoading(true)
