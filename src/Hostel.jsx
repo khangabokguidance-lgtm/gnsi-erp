@@ -5113,7 +5113,14 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 
   const presentCount = attendanceToday.filter(r => r.status === 'Present').length
   const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
-  const unmarkedCount = students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout').length - attendanceToday.length
+  // Shared active-only count — students.length alone includes Dropout/
+  // Inactive students, which previously made the Roll Call quick-action's
+  // "X/Y marked" ratio permanently short (a dropout is never getting
+  // marked present, so it dragged the denominator up with no way to
+  // reach 100%). unmarkedCount already excluded them correctly below;
+  // reusing the same count for the Roll Call card fixes the mismatch.
+  const activeStudentCount = students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout').length
+  const unmarkedCount = activeStudentCount - attendanceToday.length
 
   // One-row-per-metric summary, for the dashboard's Generate Report button.
   const snapshotRows = [
@@ -5128,7 +5135,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   ]
 
   const quickActions = [
-    { id: 'attendance', label: '✓ Roll Call', icon: '✓', color: '#16a34a', bg: '#dcfce7', desc: `${presentCount}/${students.length} marked` },
+    { id: 'attendance', label: '✓ Roll Call', icon: '✓', color: '#16a34a', bg: '#dcfce7', desc: `${presentCount}/${activeStudentCount} marked` },
     { id: 'leave', label: '🚪 Leave', icon: '🚪', color: '#1d4ed8', bg: '#dbeafe', desc: `${leaveToday.length} requests` },
     { id: 'sickbay', label: '🏥 Sickbay', icon: '🏥', color: '#7c3aed', bg: '#f5f3ff', desc: `${sickbayToday.length} admitted` },
     { id: 'discipline', label: '⚠️ Discipline', icon: '⚠️', color: '#dc2626', bg: '#fee2e2', desc: `${disciplineOpen.length} open` },
@@ -5237,7 +5244,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
                   <span style={{ fontSize: '32px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: 'Georgia, serif' }}>
                     {attendedPct === null ? '—' : `${attendedPct}%`}
                   </span>
-                  <span style={{ fontSize: '12px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || students.length} marked</span>
+                  <span style={{ fontSize: '12px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || activeStudentCount} marked</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', border: `1px solid ${MD.color.outlineVariant}`, borderRadius: MD.radius.control, overflow: 'hidden' }}>
                   {tallyItems.map((s, idx) => (
@@ -5374,7 +5381,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
                   <span style={{ fontSize: '40px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: 'Georgia, serif' }}>
                     {attendedPct === null ? '—' : `${attendedPct}%`}
                   </span>
-                  <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || students.length} marked</span>
+                  <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || activeStudentCount} marked</span>
                 </div>
                 {/* Ledger tally row — a single ruled strip, entries separated by hairline dividers like a register page, instead of four competing colored blocks */}
                 <div style={{ display: 'flex', borderTop: `1px solid ${MD.color.outlineVariant}`, borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
@@ -8599,6 +8606,13 @@ function Hostel() {
   const fetchShared = useCallback(async () => {
     setDataLoading(true)
     const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
+      // NOTE: intentionally unfiltered — several screens in this file (house
+      // allotment's dropout-tracking view, admin monitor) need to see
+      // Dropout/Inactive students too. Each screen that needs an
+      // active-only view applies students.filter(s => s.status !== 'Inactive'
+      // && s.status !== 'Dropout') itself — see line ~1238 for the existing
+      // pattern. HMDashboard's roll-call ratio below was missing that filter;
+      // fixed there instead of narrowing this shared fetch.
       supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender,session').order('name'),
       supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
       supabase.from('housemasters').select('*')

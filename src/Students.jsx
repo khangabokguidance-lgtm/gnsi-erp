@@ -2708,7 +2708,33 @@ function StudentForm({ onSave, onCancel, editing, allStudents }) {
   const set=(k,v)=>setForm(f=>({...f,[k]:v}))
 
   useEffect(()=>{if(editing)return;const t=setTimeout(()=>{localStorage.setItem(DRAFT_KEY,JSON.stringify(sanitiseDraftForStorage(form)));setDraftSaved(true);setTimeout(()=>setDraftSaved(false),1500)},1000);return()=>clearTimeout(t)},[form,editing])
-  useEffect(()=>{if(!form.house)return;if(DAY_SCHOLAR_HOUSES.includes(form.house))set('hostel_type','Day Scholar');else if(form.hostel_type==='Day Scholar')set('hostel_type','Boarder')},[form.house])
+  // BUG FIX: this previously ran on every mount (including when opening an
+  // existing student's edit form), and its "else if" branch only handled
+  // hostel_type==='Day Scholar' — never 'Day Boarder'. The combined effect:
+  // opening ANY student whose house wasn't in DAY_SCHOLAR_HOUSES and whose
+  // hostel_type happened to be 'Day Scholar' silently flipped them to
+  // 'Boarder' the instant the form loaded, even if the editor never
+  // touched Hostel Type and even if 'Day Boarder' was the correct value.
+  // Saving the form then wrote that wrong value permanently. This is the
+  // root cause of Day Boarder counts collapsing to near-zero over time
+  // while Boarders grew artificially inflated.
+  //
+  // Fix: only auto-correct when `house` actually CHANGES after the form is
+  // already mounted (skip the very first run), and only force a value when
+  // the house genuinely requires it (a Day Scholar house forces Day
+  // Scholar). Otherwise leave whatever hostel_type is already set —
+  // editing a student should never silently rewrite a field the person
+  // didn't touch.
+  const houseMountedRef = useRef(false)
+  useEffect(() => {
+    if (!houseMountedRef.current) { houseMountedRef.current = true; return }
+    if (!form.house) return
+    if (DAY_SCHOLAR_HOUSES.includes(form.house)) set('hostel_type', 'Day Scholar')
+    // else: leave hostel_type as whatever the person already has selected —
+    // moving OUT of a Day Scholar house no longer force-overwrites to
+    // 'Boarder'; the person picks Boarder or Day Boarder explicitly via
+    // the Hostel Type dropdown.
+  }, [form.house])
 
   const derived=deriveHostelType(form.house,form.hostel_type)
   const subtypes=COURSE_STRUCTURE[form.course]?.subtypes??[]
