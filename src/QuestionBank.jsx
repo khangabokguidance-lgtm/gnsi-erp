@@ -210,17 +210,104 @@ function Toast({ msg, color }) {
   )
 }
 
-// ── CAST TO SCREEN ──────────────────────────────────────────────────────────
-// Browsers cannot invoke the Miracast protocol directly — there is no web API
-// for that OS-level wireless-display standard. What the browser CAN offer:
-// 1) The Presentation API, which opens the OS's native device picker. On
-//    Windows this picker includes Miracast receivers alongside Chromecast/
-//    DLNA targets, so triggering it is the closest a web app gets to
-//    "cast via Miracast" — the actual protocol handoff happens in the OS.
-// 2) A fallback for machines with no wireless receiver: a chrome-free
-//    full-screen window/mode, for teachers presenting via HDMI/physical
-//    mirroring instead of a wireless receiver.
-//
+// ── SMART PPT / SLIDE CAST ENGINE ───────────────────────────────────────────
+// Builds an in-app slide deck from a chapter's questions, presents it full
+// screen locally, and offers two real casting paths:
+//   1. LOCAL DUAL-SCREEN — BroadcastChannel. Only works between two tabs on
+//      the SAME machine/browser profile (e.g. a second tab dragged to a
+//      projector-connected monitor). Cannot reach a separate wireless TV.
+//   2. WIRELESS CAST — Presentation API + a real /cast-receiver route. The
+//      receiver is a genuinely separate device; it fetches its own slide
+//      content from Supabase and polls a `qbank_cast_sessions` row for the
+//      live slide index, which this hook writes on every navigation.
+// Both are offered together since they solve different physical setups.
+const CAST_CHANNEL_NAME = 'gnsi-cast-v1'
+
+function buildQuestionSlides(questions) {
+  return questions.map(q => ({
+    kind: 'question',
+    id: q.id,
+    title: q.question,
+    title_mayek: q.question_mayek || '',
+    options: ['A','B','C','D'].map(l => ({ letter: l, text: q[`option_${l.toLowerCase()}`] || '' })),
+    correct_option: q.correct_option,
+    diagram_url: q.diagram_url || '',
+  }))
+}
+
+function useSlideCast({ subject, chapter, source = 'qbank' }) {
+  const [localCasting, setLocalCasting] = useState(false)
+  const [wirelessCasting, setWirelessCasting] = useState(false)
+  const [sessionId, setSessionId] = useState(null)
+  const channelRef = useRef(null)
+  const connectionRef = useRef(null)
+  const wirelessAvailable = typeof window !== 'undefined' && 'PresentationRequest' in window
+  const localAvailable = typeof window !== 'undefined' && 'BroadcastChannel' in window
+
+  useEffect(() => {
+    if (localAvailable) channelRef.current = new BroadcastChannel(CAST_CHANNEL_NAME)
+    return () => channelRef.current?.close()
+  }, [localAvailable])
+
+  const postLocal = useCallback((index, showAnswers) => {
+    channelRef.current?.postMessage({ subject, chapter, source, index, showAnswers, ts: Date.now() })
+  }, [subject, chapter, source])
+
+  const postWireless = useCallback(async (index) => {
+    if (!sessionId) return
+    await supabase.from('qbank_cast_sessions').update({ slide_index: index }).eq('id', sessionId)
+  }, [sessionId])
+
+  const startLocalCast = useCallback((showToast) => {
+    if (!localAvailable) { showToast?.('This browser does not support same-machine casting', C.amber); return }
+    setLocalCasting(true)
+    showToast?.('Open a second tab on this display and it will follow along', C.navy)
+  }, [localAvailable])
+
+  const stopLocalCast = useCallback(() => setLocalCasting(false), [])
+
+  const startWirelessCast = useCallback(async (showToast) => {
+    if (!wirelessAvailable) { showToast?.('This browser does not support wireless casting', C.amber); return }
+    try {
+      const newSession = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const { error: insertErr } = await supabase.from('qbank_cast_sessions').insert({ id: newSession, slide_index: 0 })
+      if (insertErr) { showToast?.('Could not start cast session — see console', C.rose); console.error(insertErr); return }
+      const url = `${window.location.origin}/cast-receiver?course=&subject=${encodeURIComponent(subject)}&chapter=${encodeURIComponent(chapter)}&source=${source}&session=${newSession}`
+      const request = new window.PresentationRequest([url])
+      const connection = await request.start()
+      connectionRef.current = connection
+      setSessionId(newSession)
+      setWirelessCasting(true)
+      connection.addEventListener('close', () => setWirelessCasting(false))
+      connection.addEventListener('terminate', () => setWirelessCasting(false))
+    } catch (err) {
+      if (err?.name !== 'NotFoundError' && err?.name !== 'AbortError') {
+        showToast?.('Cast failed to start', C.rose)
+      }
+    }
+  }, [subject, chapter, source, wirelessAvailable])
+
+  const stopWirelessCast = useCallback(() => {
+    connectionRef.current?.terminate?.()
+    setWirelessCasting(false)
+    setSessionId(null)
+  }, [])
+
+  const broadcastIndex = useCallback((index, showAnswers) => {
+    if (localCasting) postLocal(index, showAnswers)
+    if (wirelessCasting) postWireless(index)
+  }, [localCasting, wirelessCasting, postLocal, postWireless])
+
+  return {
+    localAvailable, wirelessAvailable, localCasting, wirelessCasting,
+    startLocalCast, stopLocalCast, startWirelessCast, stopWirelessCast,
+    broadcastIndex,
+  }
+}
+
+
+// The simpler single-URL cast helper below (useCast/CastButton) still backs
+// the paper-preview and full-screen-fallback buttons elsewhere in this file.
 // ROUTE CONTRACT for real casting: PresentationRequest needs a real,
 // independently-navigable URL — it hands that URL to the receiving screen,
 // it does not stream the current tab. QBank's paper preview and live test
@@ -302,7 +389,177 @@ function CastButton({ url, presentTargetId, title, showToast, small }) {
   )
 }
 
-// ── AUTO DETECT SUBSECTION ────────────────────────────────────────────────────
+// ── SMART PPT: .pptx EXPORT ─────────────────────────────────────────────────
+// Uses PptxGenJS (lazy-loaded from CDN, same pattern as jsPDF above) to
+// generate a real, downloadable .pptx that opens in PowerPoint/Keynote/
+// Google Slides/LibreOffice — not an HTML mockup.
+async function ensurePptxGenLoaded() {
+  if (window.PptxGenJS) return
+  await new Promise((res, rej) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
+    s.onload = res; s.onerror = rej; document.head.appendChild(s)
+  })
+}
+
+async function generateQuestionPPTX({ title, subject, chapter, slides, withAnswers }) {
+  await ensurePptxGenLoaded()
+  const pres = new window.PptxGenJS()
+  pres.defineLayout({ name: 'GNSI16x9', width: 10, height: 5.63 })
+  pres.layout = 'GNSI16x9'
+
+  const NAVY = '1E3A5F', GOLD = 'C9A24B', GREEN = '15803D', GREEN_BG = 'DCFCE7', SLATE = '64748B'
+
+  // Title slide
+  const titleSlide = pres.addSlide()
+  titleSlide.background = { color: NAVY }
+  titleSlide.addText('Guidance Navodaya & Sainik Institute', { x:0.5, y:1.6, w:9, h:0.6, fontSize:24, bold:true, color:'FFFFFF', align:'center' })
+  titleSlide.addText(title, { x:0.5, y:2.4, w:9, h:0.8, fontSize:32, bold:true, color:GOLD, align:'center' })
+  titleSlide.addText(`${subject}  ·  ${chapter}`, { x:0.5, y:3.2, w:9, h:0.5, fontSize:16, color:'CBD5E1', align:'center' })
+
+  slides.forEach((q, i) => {
+    const slide = pres.addSlide()
+    slide.background = { color: 'FFFFFF' }
+    slide.addText(`Q${i+1}`, { x:0.4, y:0.3, w:1.2, h:0.5, fontSize:14, bold:true, color:GOLD })
+    slide.addText(q.title, { x:0.4, y:0.75, w:9.2, h:1.6, fontSize:20, bold:true, color:NAVY, valign:'top' })
+
+    if (q.title_mayek) {
+      slide.addText(q.title_mayek, { x:0.4, y:2.15, w:9.2, h:0.6, fontSize:14, color:'374151' })
+    }
+
+    const optY = q.title_mayek ? 2.85 : 2.35
+    const optionRows = [['A','B'], ['C','D']]
+    optionRows.forEach((pair, rowIdx) => {
+      pair.forEach((letter, colIdx) => {
+        const opt = q.options.find(o => o.letter === letter)
+        const isCorrect = withAnswers && q.correct_option === letter
+        slide.addText(`${letter}.  ${opt?.text || '—'}`, {
+          x: 0.4 + colIdx * 4.7, y: optY + rowIdx * 0.75, w: 4.4, h: 0.65,
+          fontSize: 13, color: isCorrect ? GREEN : '374151', bold: isCorrect,
+          fill: isCorrect ? { color: GREEN_BG } : undefined,
+          align:'left', valign:'middle',
+        })
+      })
+    })
+  })
+
+  // Answer key slide, only when answers weren't shown inline
+  if (!withAnswers) {
+    const keySlide = pres.addSlide()
+    keySlide.background = { color: NAVY }
+    keySlide.addText('Answer Key', { x:0.5, y:0.4, w:9, h:0.6, fontSize:22, bold:true, color:'FFFFFF', align:'center' })
+    const cols = 5
+    slides.forEach((q, i) => {
+      const col = i % cols, row = Math.floor(i / cols)
+      keySlide.addText(`Q${i+1}: ${q.correct_option || '—'}`, {
+        x: 0.5 + col*1.85, y: 1.3 + row*0.5, w:1.75, h:0.4,
+        fontSize:12, color:'FFFFFF', align:'left',
+      })
+    })
+  }
+
+  await pres.writeFile({ fileName: `${title.replace(/\s+/g,'_')}.pptx` })
+}
+
+// ── SMART PPT: IN-APP SLIDE VIEWER ──────────────────────────────────────────
+// Click-through presenter view, full-screen capable, drives both cast paths
+// (local BroadcastChannel + wireless session) as the presenter navigates.
+function SlideViewer({ slides, title, subject, chapter, onClose, showToast }) {
+  const [index, setIndex] = useState(0)
+  const [showAnswers, setShowAnswers] = useState(false)
+  const containerRef = useRef(null)
+  const cast = useSlideCast({ subject, chapter, source: 'qbank' })
+
+  const slide = slides[index]
+  const go = (delta) => setIndex(i => Math.max(0, Math.min(slides.length - 1, i + delta)))
+
+  useEffect(() => {
+    cast.broadcastIndex(index, showAnswers)
+  }, [index, showAnswers]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight' || e.key === ' ') go(1)
+      if (e.key === 'ArrowLeft') go(-1)
+      if (e.key.toLowerCase() === 'a') setShowAnswers(s => !s)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enterFullscreen = () => {
+    const el = containerRef.current
+    const req = el?.requestFullscreen || el?.webkitRequestFullscreen
+    req?.call(el).catch(() => showToast?.('Full-screen blocked by browser', C.amber))
+  }
+
+  if (!slide) return null
+
+  return (
+    <div ref={containerRef} style={{ position:'fixed', inset:0, zIndex:100000, background:C.navy, display:'flex', flexDirection:'column' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 18px', background:'rgba(0,0,0,.25)', flexWrap:'wrap' }}>
+        <span style={{ color:'#fff', fontSize:12, fontWeight:700, flex:1 }}>
+          🎬 {title} — Slide {index+1} of {slides.length}
+        </span>
+        <button onClick={() => setShowAnswers(s => !s)} style={btnSm(showAnswers ? '#dcfce7' : 'rgba(255,255,255,.15)', showAnswers ? '#15803d' : '#fff')}>
+          {showAnswers ? '🙈 Hide Answers' : '👁 Show Answers'}
+        </button>
+        <button onClick={enterFullscreen} style={btnSm('rgba(255,255,255,.15)', '#fff')}>⛶ Full-Screen</button>
+        {cast.localAvailable && (
+          <button onClick={() => cast.localCasting ? cast.stopLocalCast() : cast.startLocalCast(showToast)}
+            style={btnSm(cast.localCasting ? '#dcfce7' : 'rgba(255,255,255,.15)', cast.localCasting ? '#15803d' : '#fff')}>
+            {cast.localCasting ? '🖥 Local Cast ON' : '🖥 Cast (Same Machine)'}
+          </button>
+        )}
+        {cast.wirelessAvailable && (
+          <button onClick={() => cast.wirelessCasting ? cast.stopWirelessCast() : cast.startWirelessCast(showToast)}
+            style={btnSm(cast.wirelessCasting ? '#dcfce7' : 'rgba(255,255,255,.15)', cast.wirelessCasting ? '#15803d' : '#fff')}>
+            {cast.wirelessCasting ? '📡 Wireless Cast ON' : '📡 Cast Wirelessly'}
+          </button>
+        )}
+        <button onClick={onClose} style={{ ...btnSm('rgba(255,255,255,.15)', '#fff'), padding:'6px 14px' }}>✕ Close</button>
+      </div>
+
+      <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'40px 60px', textAlign:'center', overflow:'auto' }}>
+        <div style={{ fontSize:'clamp(20px,2.6vw,36px)', fontWeight:700, color:'#fff', maxWidth:1000, lineHeight:1.5 }}>
+          {slide.title}
+        </div>
+        {slide.title_mayek && (
+          <div style={{ fontSize:'clamp(16px,1.9vw,24px)', color:'#cbd5e1', maxWidth:1000, marginTop:16, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+            {slide.title_mayek}
+          </div>
+        )}
+        {slide.diagram_url && (
+          <img src={slide.diagram_url} alt="diagram" style={{ maxWidth:'50%', maxHeight:260, marginTop:20, borderRadius:10 }} />
+        )}
+        {showAnswers && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:28, maxWidth:760, width:'100%' }}>
+            {slide.options.map(o => (
+              <div key={o.letter} style={{
+                padding:'11px 16px', borderRadius:10, fontSize:15, textAlign:'left',
+                background: o.letter===slide.correct_option ? 'rgba(34,197,94,.25)' : 'rgba(255,255,255,.08)',
+                border: `1px solid ${o.letter===slide.correct_option ? '#4ade80' : 'rgba(255,255,255,.15)'}`,
+                color:'#fff', fontWeight: o.letter===slide.correct_option ? 700 : 400,
+              }}>
+                <strong style={{ marginRight:8 }}>{o.letter}.</strong>{o.text}
+                {o.letter===slide.correct_option && ' ✓'}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display:'flex', justifyContent:'center', gap:16, padding:'18px 0 26px' }}>
+        <button onClick={() => go(-1)} disabled={index===0} style={btn('#334155', index===0)}>← Previous</button>
+        <span style={{ color:'#fff', alignSelf:'center', fontSize:13, opacity:.7 }}>Space/→ next · A toggle answers · Esc close</span>
+        <button onClick={() => go(1)} disabled={index===slides.length-1} style={btn(C.green, index===slides.length-1)}>Next →</button>
+      </div>
+    </div>
+  )
+}
+
+
 function detectSubsection(questionText, subject) {
   const q = questionText.toLowerCase()
   const map = SUBSECTION_KEYWORDS[subject] || {}
@@ -2254,6 +2511,112 @@ function TabTest({ questions, showToast }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 6: STATS (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB: SMART PPT MAKER
+// Builds a slide deck from a chapter's questions: present in-app (with cast),
+// or export a real .pptx.
+// ══════════════════════════════════════════════════════════════════════════════
+function TabSmartPPT({ questions, showToast }) {
+  const [subject,     setSubject]     = useState('')
+  const [chapter,     setChapter]     = useState('')
+  const [difficulty,  setDifficulty]  = useState('All')
+  const [title,       setTitle]       = useState('')
+  const [withAnswers, setWithAnswers] = useState(true)
+  const [viewing,     setViewing]     = useState(false)
+  const [exporting,   setExporting]   = useState(false)
+  const chapters = subject ? SUBJECTS[subject] : []
+
+  const chapterQs = useMemo(() => {
+    if (!subject || !chapter) return []
+    return questions.filter(q => q.subject===subject && q.chapter===chapter &&
+      (difficulty==='All' || q.difficulty===difficulty))
+  }, [questions, subject, chapter, difficulty])
+
+  const slides = useMemo(() => buildQuestionSlides(chapterQs), [chapterQs])
+
+  const handleExport = async () => {
+    if (!slides.length) { showToast('No questions to export', C.amber); return }
+    setExporting(true)
+    try {
+      await generateQuestionPPTX({ title: title||'Chapter Slides', subject, chapter, slides, withAnswers })
+      showToast('🎬 PPTX downloaded!', C.green)
+    } catch (e) { showToast('Export failed: ' + e.message, C.rose) }
+    setExporting(false)
+  }
+
+  return (
+    <>
+      <div style={cardS}>
+        <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:4 }}>🎬 Smart PPT Maker</div>
+        <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
+          Pick a chapter — every question becomes a slide automatically. Present live (with cast) or export a real .pptx.
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+          <div>
+            <label style={lS}>Subject *</label>
+            <select style={iS} value={subject} onChange={e => { setSubject(e.target.value); setChapter('') }}>
+              <option value="">Select</option>
+              {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lS}>Chapter *</label>
+            <select style={{ ...iS, opacity:subject?1:.5 }} value={chapter} onChange={e => setChapter(e.target.value)} disabled={!subject}>
+              <option value="">Select</option>
+              {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lS}>Difficulty Filter</label>
+            <select style={iS} value={difficulty} onChange={e => setDifficulty(e.target.value)}>
+              <option value="All">All Difficulties</option>
+              {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div style={{ gridColumn:'1/-1' }}>
+            <label style={lS}>Deck Title</label>
+            <input style={iS} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Fractions — Revision Slides" />
+          </div>
+        </div>
+
+        {subject && chapter && (
+          <div style={{ padding:'10px 14px', borderRadius:8, background: slides.length ? '#f0f9ff' : '#fef3c7',
+            border:`1px solid ${slides.length ? '#bae6fd' : '#fde68a'}`, fontSize:12,
+            color: slides.length ? '#0369a1' : '#92400e', marginBottom:14 }}>
+            {slides.length
+              ? `📊 ${slides.length} question${slides.length!==1?'s':''} will become ${slides.length} slide${slides.length!==1?'s':''} (+ title & answer key)`
+              : '⚠️ No questions found for this chapter — add some via Manual Add or Bulk Paste first'}
+          </div>
+        )}
+
+        <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap', marginBottom:14 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:C.navy, fontWeight:600 }}>
+            <input type="checkbox" checked={withAnswers} onChange={e => setWithAnswers(e.target.checked)} />
+            Show correct answers on slides
+          </label>
+        </div>
+
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <button onClick={() => setViewing(true)} disabled={!slides.length} style={btn(C.navy, !slides.length)}>
+            ▶ Present Now
+          </button>
+          <button onClick={handleExport} disabled={!slides.length || exporting} style={btn(C.green, !slides.length || exporting)}>
+            {exporting ? '⏳ Building .pptx…' : '⬇ Export .pptx'}
+          </button>
+        </div>
+      </div>
+
+      {viewing && (
+        <SlideViewer
+          slides={slides} title={title||'Chapter Slides'} subject={subject} chapter={chapter}
+          onClose={() => setViewing(false)} showToast={showToast}
+        />
+      )}
+    </>
+  )
+}
+
+
 function TabStats({ questions }) {
   const [filterSubject, setFilterSubject] = useState('All')
 
@@ -2446,7 +2809,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
   // ── ACCESS GUARD ─────────────────────────────────────────────────────────
   // Non-admins get view (Bank, read-only) + upload (Manual Add, Bulk Paste)
   // only. Create Paper / Online Test / Stats are admin-only.
-  const ADMIN_ONLY_TABS = ['paper', 'test', 'stats']
+  const ADMIN_ONLY_TABS = ['paper', 'test', 'stats', 'smartppt']
 
   useEffect(() => {
     if (!isAdmin && ADMIN_ONLY_TABS.includes(tab)) {
@@ -2460,6 +2823,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null },
     { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true },
     { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true },
+    { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true },
     { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true },
   ]
   const TABS = isAdmin ? ALL_TABS : ALL_TABS.filter(t => !t.adminOnly)
@@ -2503,6 +2867,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
+      {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'stats'  && <TabStats  questions={questions} />}
     </div>
   )
