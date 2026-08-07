@@ -1304,11 +1304,11 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StudyMaterial({ currentUser, perms, onNavigate }) {
-  // Confirmed via SQL against portal_users.role — the real values are
-  // "Teaching + Admin", "Teaching", "Non-Teaching". There is no separate
-  // admin/computer-staff role: "Teaching + Admin" IS the admin role.
+  // Confirmed via SQL against portal_users.role: "Teaching + Admin",
+  // "Teaching", "Non-Teaching" are the staff roles, and "Administrator" is
+  // a separate top-level role — both grant admin access.
   const roleLower = (currentUser?.role || '').toLowerCase()
-  const isAdmin = roleLower === 'teaching + admin'
+  const isAdmin = roleLower === 'teaching + admin' || roleLower === 'administrator'
   // Question Bank access (used to gate the "N Q" badges and cross-nav
   // buttons in this file that link over to it) matches QuestionBank.jsx's
   // own gate exactly — admin role only.

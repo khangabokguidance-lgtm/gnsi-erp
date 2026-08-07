@@ -2743,11 +2743,11 @@ function TabStats({ questions }) {
 // Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
-  // Confirmed via SQL against portal_users.role — the real values are
-  // "Teaching + Admin", "Teaching", "Non-Teaching". There is no separate
-  // admin/computer-staff role: "Teaching + Admin" IS the admin role.
+  // Confirmed via SQL against portal_users.role: "Teaching + Admin",
+  // "Teaching", "Non-Teaching" are the staff roles, and "Administrator" is
+  // a separate top-level role — both grant admin access.
   const roleLower = (currentUser?.role || '').toLowerCase()
-  const isAdmin = roleLower === 'teaching + admin'
+  const isAdmin = roleLower === 'teaching + admin' || roleLower === 'administrator'
   // Question Bank is restricted to the admin role only — "Teaching" and
   // "Non-Teaching" get no access at all, not even read-only viewing.
   const isStaffAllowed = isAdmin
@@ -2839,7 +2839,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
           <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
           <div style={{ fontSize:17, fontWeight:800, color:C.navy, marginBottom:8 }}>Question Bank is restricted</div>
           <div style={{ fontSize:13, color:C.slate, lineHeight:1.6 }}>
-            This module is only available to Teaching + Admin accounts.
+            This module is only available to Administrator and Teaching + Admin accounts.
             If you need access to questions or papers for a class, please ask
             an admin to prepare it or check <strong>Study Materials</strong> for
             teaching content.
