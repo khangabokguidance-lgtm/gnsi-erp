@@ -91,6 +91,96 @@ function Toast({ msg, color }) {
   )
 }
 
+// ── CAST TO SCREEN ──────────────────────────────────────────────────────────
+// Browsers cannot invoke the Miracast protocol directly — there is no web API
+// for that OS-level wireless-display standard. What the browser CAN offer:
+// 1) The Presentation API, which opens the OS's native device picker. On
+//    Windows this picker includes Miracast receivers alongside Chromecast/
+//    DLNA targets, so triggering it is the closest a web app gets to
+//    "cast via Miracast" — the actual protocol handoff happens in the OS,
+//    outside the page's control.
+// 2) A fallback for machines with no wireless receiver available: open the
+//    content in a dedicated full-screen window, so a teacher can still
+//    present via an HDMI/physical mirroring setup with a clean, chrome-free
+//    view instead of the whole app UI.
+function useCast() {
+  const [available, setAvailable] = useState(false)
+  const [casting, setCasting] = useState(false)
+  const connectionRef = useRef(null)
+
+  useEffect(() => {
+    setAvailable(typeof window !== 'undefined' && 'PresentationRequest' in window)
+  }, [])
+
+  const startCast = useCallback(async (url, { onFallback, showToast } = {}) => {
+    if (available) {
+      try {
+        const request = new window.PresentationRequest([url])
+        const connection = await request.start()
+        connectionRef.current = connection
+        setCasting(true)
+        connection.addEventListener('close', () => setCasting(false))
+        connection.addEventListener('terminate', () => setCasting(false))
+        return
+      } catch (err) {
+        // User cancelled the device picker, or no receiver responded —
+        // fall through to the full-screen fallback rather than dead-ending.
+        if (err?.name !== 'NotFoundError' && err?.name !== 'AbortError') {
+          showToast?.('Cast failed — opening full-screen instead', C.amber)
+        }
+      }
+    }
+    onFallback?.()
+  }, [available])
+
+  const stopCast = useCallback(() => {
+    connectionRef.current?.terminate?.()
+    setCasting(false)
+  }, [])
+
+  return { castAvailable: available, casting, startCast, stopCast }
+}
+
+// Opens a chrome-free full-screen window showing the material — the practical
+// fallback for teachers with a physically mirrored/HDMI-connected display and
+// no wireless receiver for the Presentation API to find.
+function openFullscreenPresentation(url, title) {
+  const win = window.open('', '_blank', 'noopener,noreferrer')
+  if (!win) return false
+  win.document.write(`<!DOCTYPE html><html><head><title>${title || 'GNSI Presentation'}</title>
+    <style>html,body{margin:0;height:100%;background:#000;}
+    iframe{width:100%;height:100%;border:none;}</style></head>
+    <body><iframe src="${url}#toolbar=0&navpanes=0" allowfullscreen></iframe></body></html>`)
+  win.document.close()
+  try { win.document.documentElement.requestFullscreen?.() } catch (e) { /* fullscreen may be blocked by browser policy — window still opens */ }
+  return true
+}
+
+function CastButton({ url, title, showToast, small }) {
+  const { castAvailable, casting, startCast, stopCast } = useCast()
+
+  const handleClick = () => {
+    if (casting) { stopCast(); return }
+    startCast(url, {
+      showToast,
+      onFallback: () => {
+        const opened = openFullscreenPresentation(url, title)
+        if (!opened) showToast?.('Pop-up blocked — allow pop-ups to present full-screen', C.amber)
+      },
+    })
+  }
+
+  const style = small
+    ? btnSm(casting ? '#dcfce7' : '#eff6ff', casting ? '#15803d' : C.navy)
+    : btn(casting ? C.green : C.navy)
+
+  return (
+    <button onClick={handleClick} style={style} title={castAvailable ? 'Cast to a TV or wireless display' : 'Present full-screen'}>
+      {casting ? '📡 Casting — tap to stop' : castAvailable ? '📡 Cast to Screen' : '🖥 Present Full-Screen'}
+    </button>
+  )
+}
+
 function Badge({ text, color, bg }) {
   return <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700, color, background: bg, whiteSpace: 'nowrap' }}>{text}</span>
 }
@@ -105,7 +195,7 @@ function MaterialTypeBadge({ typeKey }) {
 // Note: this deters casual download/print through the app but cannot fully
 // block a browser's native PDF viewer controls (Ctrl+P, save) — true
 // prevention needs a server-side watermark or signed streaming viewer.
-function ViewOnlyModal({ mat, onClose }) {
+function ViewOnlyModal({ mat, onClose, showToast }) {
   useEffect(() => {
     const onKeyDown = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKeyDown)
@@ -118,6 +208,7 @@ function ViewOnlyModal({ mat, onClose }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', background: C.navy, color: '#fff' }}>
         <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>👁 View Only — {mat.title}</span>
         <span style={{ fontSize: 11, opacity: .75 }}>Download & print are disabled for this account</span>
+        <CastButton url={mat.file_url} title={mat.title} showToast={showToast} small />
         <button onClick={onClose} style={{ ...btnSm('rgba(255,255,255,.15)', '#fff'), padding: '6px 14px' }}>✕ Close</button>
       </div>
       <div style={{ flex: 1, padding: 12 }}>
@@ -463,13 +554,16 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
               {isVideo ? '▶ Watch' : isLink ? '🔗 Open Link' : '📥 Download'}
             </a>
           )}
+          {mat.file_url && isAdmin && !isVideo && (
+            <CastButton url={mat.file_url} title={mat.title} showToast={showToast} small />
+          )}
           {isAdmin && (
             <button onClick={handleDelete} disabled={deleting} style={btnSm('#fee2e2', C.rose)}>
               {deleting ? '…' : '🗑 Delete'}
             </button>
           )}
         </div>
-        {viewingOnly && <ViewOnlyModal mat={mat} onClose={() => setViewingOnly(false)} />}
+        {viewingOnly && <ViewOnlyModal mat={mat} onClose={() => setViewingOnly(false)} showToast={showToast} />}
       </div>
     </div>
   )
@@ -674,6 +768,156 @@ function CourseStats({ course, materials, mergedCourses }) {
   )
 }
 
+// ── LESSON PREP ────────────────────────────────────────────────────────────
+// A teacher opens this before class: pick a chapter, see materials AND
+// QBank question count side by side, with a clear warning when there's
+// practice content but nothing to teach from first (or vice versa).
+function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials, onNavigate, qCounts, qLoading }) {
+  const qCount = qCounts?.[chapter] || 0
+
+  const chapterMats = useMemo(
+    () => materials.filter(m => m.subject === subject && m.chapter === chapter),
+    [materials, subject, chapter]
+  )
+  const hasMaterials = chapterMats.length > 0
+  const hasQuestions  = qCount > 0
+
+  // Gap logic — the actual "teacher helper" insight:
+  // - Questions exist but nothing to study from first → students drilling blind
+  // - Materials exist but no practice questions → no way to test understanding
+  // - Neither exists → chapter is completely unprepared
+  let gapLevel = null, gapMsg = ''
+  if (!hasMaterials && hasQuestions) {
+    gapLevel = 'warn'
+    gapMsg = `${qCount} practice question${qCount!==1?'s':''} but no notes/materials — students have nothing to study from first`
+  } else if (hasMaterials && !hasQuestions) {
+    gapLevel = 'info'
+    gapMsg = `Materials ready but no practice questions yet — add some via Question Bank`
+  } else if (!hasMaterials && !hasQuestions) {
+    gapLevel = 'empty'
+    gapMsg = `Nothing prepared for this chapter yet`
+  }
+
+  const TYPE_ICON = { notes:'📄', formula:'🔣', practice:'✏️', solved:'✅', mindmap:'🗂️', video:'🎥', currentaffairs:'📰' }
+
+  return (
+    <div style={{ borderRadius: 10, border: `1px solid ${C.border}`, marginBottom: 8, overflow: 'hidden', background: C.white }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.navy, flex: 1, minWidth: 140 }}>{chapter}</span>
+        <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+          color: hasMaterials ? '#15803d' : '#94a3b8', background: hasMaterials ? '#dcfce7' : '#f1f5f9' }}>
+          📄 {chapterMats.length} material{chapterMats.length!==1?'s':''}
+        </span>
+        <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+          color: hasQuestions ? '#4f46e5' : '#94a3b8', background: hasQuestions ? '#eef2ff' : '#f1f5f9' }}>
+          {qLoading ? '⏳ …' : `📚 ${qCount} question${qCount!==1?'s':''}`}
+        </span>
+        {gapLevel && (
+          <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+            color: gapLevel==='warn' ? '#92400e' : gapLevel==='empty' ? '#991b1b' : '#0369a1',
+            background: gapLevel==='warn' ? '#fef3c7' : gapLevel==='empty' ? '#fee2e2' : '#e0f2fe' }}>
+            {gapLevel==='warn' ? '⚠️' : gapLevel==='empty' ? '❌' : 'ℹ️'} Gap
+          </span>
+        )}
+        {hasQuestions && (
+          <button
+            onClick={() => {
+              onNavigate?.('questionbank')
+              EventBus.emit(GNSI_EVENTS.NAVIGATE_TO, { module: 'questionbank', params: { subject, chapter } })
+            }}
+            style={{ ...btnSm('#ede9fe', '#7c3aed'), whiteSpace: 'nowrap' }}>
+            Open in QBank →
+          </button>
+        )}
+      </div>
+      {gapMsg && (
+        <div style={{ padding: '8px 14px', fontSize: 11.5, color: gapLevel==='warn' ? '#92400e' : gapLevel==='empty' ? '#991b1b' : '#0369a1',
+          background: gapLevel==='warn' ? '#fffbeb' : gapLevel==='empty' ? '#fef2f2' : '#f0f9ff',
+          borderTop: `1px solid ${gapLevel==='warn' ? '#fde68a' : gapLevel==='empty' ? '#fecaca' : '#bae6fd'}` }}>
+          {gapMsg}
+        </div>
+      )}
+      {hasMaterials && (
+        <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {chapterMats.map(m => (
+            <span key={m.id} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, background: '#f8fafc', border: `1px solid ${C.border}`, color: '#374151' }}>
+              {TYPE_ICON[m.material_type] || '📄'} {m.title}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LessonPrep({ course, courseData, materials, onNavigate }) {
+  const subjectList = Object.keys(courseData.subjects)
+  const [subject, setSubject] = useState(subjectList[0] || '')
+  const [gapFilter, setGapFilter] = useState('all') // all | warn | empty
+
+  useEffect(() => {
+    if (!subjectList.includes(subject)) setSubject(subjectList[0] || '')
+  }, [course]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const subjectData = courseData.subjects[subject]
+  const chapters = subjectData?.chapters || []
+
+  // Called once per subject — every chapter row reads from this shared map
+  // instead of each row independently re-subscribing to the same query.
+  const { counts: qCounts, loading: qLoading } = useQBankCountsByChapter(subject)
+
+  const visibleChapters = useMemo(() => {
+    if (gapFilter === 'all') return chapters
+    return chapters.filter(ch => {
+      const qCount = qCounts?.[ch] || 0
+      const hasMaterials = materials.some(m => m.subject === subject && m.chapter === ch)
+      const hasQuestions = qCount > 0
+      if (gapFilter === 'warn')  return hasQuestions && !hasMaterials
+      if (gapFilter === 'empty') return !hasQuestions && !hasMaterials
+      return true
+    })
+  }, [chapters, gapFilter, qCounts, materials, subject])
+
+  return (
+    <div>
+      <div style={{ ...cardS, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>🧑‍🏫 Lesson Prep</div>
+          <div style={{ fontSize: 11.5, color: C.slate, marginTop: 2 }}>
+            See materials and Question Bank coverage together, chapter by chapter — spot what's missing before class.
+          </div>
+        </div>
+        <select style={{ ...iS, width: 'auto', minWidth: 180 }} value={subject} onChange={e => setSubject(e.target.value)}>
+          {subjectList.map(s => <option key={s} value={s}>{courseData.subjects[s].icon} {s}</option>)}
+        </select>
+        <select style={{ ...iS, width: 'auto' }} value={gapFilter} onChange={e => setGapFilter(e.target.value)}>
+          <option value="all">All chapters</option>
+          <option value="warn">⚠️ Questions but no materials</option>
+          <option value="empty">❌ Nothing prepared</option>
+        </select>
+      </div>
+
+      {chapters.length === 0 ? (
+        <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>No chapters in this subject yet.</div>
+      ) : visibleChapters.length === 0 ? (
+        <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>
+          No chapters match this filter — nice, coverage looks solid here.
+        </div>
+      ) : (
+        <div style={cardS}>
+          {visibleChapters.map(ch => (
+            <LessonPrepChapterRow
+              key={ch} course={course} subject={subject} subjectData={subjectData}
+              chapter={ch} materials={materials} onNavigate={onNavigate}
+              qCounts={qCounts} qLoading={qLoading}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── MOBILE SUBJECT DRAWER ─────────────────────────────────────────────────────
 function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, courseMaterials, activeSubject, onSelect }) {
   const courseData = BASE_COURSES[course]
@@ -865,13 +1109,23 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
             ➕ Add Subject
           </button>
         )}
-        <button onClick={() => setActiveView(activeView === 'stats' ? 'subjects' : 'stats')} style={btn(activeView === 'stats' ? courseData.color : C.slate)}>
-          {activeView === 'stats' ? '📚 Subjects' : '📊 Stats'}
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setActiveView('subjects')} style={btn(activeView === 'subjects' ? courseData.color : C.slate)}>
+            📚 Subjects
+          </button>
+          <button onClick={() => setActiveView('lessonprep')} style={btn(activeView === 'lessonprep' ? courseData.color : C.slate)}>
+            🧑‍🏫 Lesson Prep
+          </button>
+          <button onClick={() => setActiveView('stats')} style={btn(activeView === 'stats' ? courseData.color : C.slate)}>
+            📊 Stats
+          </button>
+        </div>
       </div>
 
       {activeView === 'stats' ? (
         <CourseStats course={activeCourse} materials={materials} mergedCourses={mergedCourses} />
+      ) : activeView === 'lessonprep' ? (
+        <LessonPrep course={activeCourse} courseData={courseData} materials={courseMaterials} onNavigate={onNavigate} />
       ) : isMobile ? (
         <div>
           <div style={{ ...cardS, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>

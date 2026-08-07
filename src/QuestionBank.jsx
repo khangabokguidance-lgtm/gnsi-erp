@@ -210,6 +210,98 @@ function Toast({ msg, color }) {
   )
 }
 
+// ── CAST TO SCREEN ──────────────────────────────────────────────────────────
+// Browsers cannot invoke the Miracast protocol directly — there is no web API
+// for that OS-level wireless-display standard. What the browser CAN offer:
+// 1) The Presentation API, which opens the OS's native device picker. On
+//    Windows this picker includes Miracast receivers alongside Chromecast/
+//    DLNA targets, so triggering it is the closest a web app gets to
+//    "cast via Miracast" — the actual protocol handoff happens in the OS.
+// 2) A fallback for machines with no wireless receiver: a chrome-free
+//    full-screen window/mode, for teachers presenting via HDMI/physical
+//    mirroring instead of a wireless receiver.
+//
+// ROUTE CONTRACT for real casting: PresentationRequest needs a real,
+// independently-navigable URL — it hands that URL to the receiving screen,
+// it does not stream the current tab. QBank's paper preview and live test
+// are React state, not URLs, so casting them for real requires a small
+// receiver route (e.g. /cast-receiver?type=paper&id=... or ?type=test&id=...)
+// that server-renders (or Supabase-fetches) the same content standalone —
+// mirroring the pattern TeachingAids.jsx already uses with its
+// CastReceiver.jsx route. Once that route exists, pass its URL as `url` below
+// and real wireless casting works immediately; until then, CastButton uses
+// the full-screen fallback, which works today with no new route required.
+function useCast() {
+  const [available, setAvailable] = useState(false)
+  const [casting, setCasting] = useState(false)
+  const connectionRef = useRef(null)
+
+  useEffect(() => {
+    setAvailable(typeof window !== 'undefined' && 'PresentationRequest' in window)
+  }, [])
+
+  const startCast = useCallback(async (url, { onFallback, showToast } = {}) => {
+    if (available && url) {
+      try {
+        const request = new window.PresentationRequest([url])
+        const connection = await request.start()
+        connectionRef.current = connection
+        setCasting(true)
+        connection.addEventListener('close', () => setCasting(false))
+        connection.addEventListener('terminate', () => setCasting(false))
+        return
+      } catch (err) {
+        if (err?.name !== 'NotFoundError' && err?.name !== 'AbortError') {
+          showToast?.('Cast failed — opening full-screen instead', C.amber)
+        }
+      }
+    }
+    onFallback?.()
+  }, [available])
+
+  const stopCast = useCallback(() => {
+    connectionRef.current?.terminate?.()
+    setCasting(false)
+  }, [])
+
+  return { castAvailable: available, casting, startCast, stopCast }
+}
+
+// Puts a DOM element into true full-screen presentation mode — the practical
+// fallback for a teacher on a physically mirrored/HDMI-connected display.
+function presentElementFullscreen(elementId, showToast) {
+  const el = document.getElementById(elementId)
+  if (!el) { showToast?.('Nothing to present yet', C.amber); return }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen
+  if (!req) { showToast?.('Full-screen not supported on this browser', C.amber); return }
+  req.call(el).catch(() => showToast?.('Could not enter full-screen — check browser permissions', C.amber))
+}
+
+// `url`: pass the /cast-receiver URL once that route exists, for real wireless
+// casting via the Presentation API. `presentTargetId`: DOM id of the element
+// to full-screen as the fallback (works today with no new route).
+function CastButton({ url, presentTargetId, title, showToast, small }) {
+  const { castAvailable, casting, startCast, stopCast } = useCast()
+
+  const handleClick = () => {
+    if (casting) { stopCast(); return }
+    startCast(url, {
+      showToast,
+      onFallback: () => presentElementFullscreen(presentTargetId, showToast),
+    })
+  }
+
+  const style = small
+    ? btnSm(casting ? '#dcfce7' : '#eff6ff', casting ? '#15803d' : C.navy)
+    : btn(casting ? C.green : C.navy)
+
+  return (
+    <button onClick={handleClick} style={style} title={url ? 'Cast to a TV or wireless display' : 'Present full-screen'}>
+      {casting ? '📡 Casting — tap to stop' : (castAvailable && url) ? '📡 Cast to Screen' : '🖥 Present Full-Screen'}
+    </button>
+  )
+}
+
 // ── AUTO DETECT SUBSECTION ────────────────────────────────────────────────────
 function detectSubsection(questionText, subject) {
   const q = questionText.toLowerCase()
@@ -343,6 +435,76 @@ function parseAnswerKey(keyText) {
   return map
 }
 
+// ── DUPLICATE DETECTION ───────────────────────────────────────────────────────
+// Normalizes question text for comparison: lowercase, strip punctuation/whitespace
+// differences so near-identical pastes (extra spaces, different casing) still match.
+function normalizeQuestionText(text) {
+  return (text || '').toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function findDuplicates(candidateRows, existingQuestions) {
+  const existingSet = new Set(existingQuestions.map(q => normalizeQuestionText(q.question)))
+  return candidateRows.map((r, i) => ({
+    index: i,
+    isDuplicate: existingSet.has(normalizeQuestionText(r.question)),
+  })).filter(r => r.isDuplicate)
+}
+
+// ── CSV IMPORT ─────────────────────────────────────────────────────────────
+// Expected header row (case-insensitive, order-independent):
+// question, option_a, option_b, option_c, option_d, correct_option, subject, chapter, subsection, difficulty, marks
+function parseCSVLine(line) {
+  const cells = []
+  let cur = '', inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"' && line[i+1] === '"') { cur += '"'; i++ }
+      else if (ch === '"') inQuotes = false
+      else cur += ch
+    } else {
+      if (ch === '"') inQuotes = true
+      else if (ch === ',') { cells.push(cur); cur = '' }
+      else cur += ch
+    }
+  }
+  cells.push(cur)
+  return cells.map(c => c.trim())
+}
+
+function parseCSVQuestions(csvText, defaultSubject, defaultChapter) {
+  const lines = csvText.split(/\r?\n/).filter(l => l.trim())
+  if (lines.length < 2) return []
+  const header = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g,'_'))
+  const colIdx = (name) => header.indexOf(name)
+  const qi = colIdx('question')
+  if (qi === -1) return []
+
+  return lines.slice(1).map((line, i) => {
+    const cells = parseCSVLine(line)
+    const get = (name) => { const idx = colIdx(name); return idx>=0 ? (cells[idx]||'').trim() : '' }
+    const question = get('question')
+    if (!question) return null
+    const correctRaw = get('correct_option').toUpperCase()
+    return {
+      _id: i,
+      _qNum: i + 1,
+      question,
+      option_a: get('option_a'), option_b: get('option_b'),
+      option_c: get('option_c'), option_d: get('option_d'),
+      correct_option: ['A','B','C','D'].includes(correctRaw) ? correctRaw : '',
+      subject: get('subject') || defaultSubject || '',
+      chapter: get('chapter') || defaultChapter || '',
+      subsection: get('subsection') || '',
+      difficulty: ['Easy','Medium','Hard'].includes(get('difficulty')) ? get('difficulty') : 'Medium',
+      marks: parseInt(get('marks')) || 1,
+      diagram_url: '',
+      _subsectionHint: '',
+      _needsDiagram: needsDiagram(question),
+    }
+  }).filter(Boolean)
+}
+
 // ── QUESTION CARD ─────────────────────────────────────────────────────────────
 function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onDelete, onEdit }) {
   const [reveal, setReveal] = useState(showAnswer)
@@ -470,6 +632,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
   const [filterChapter,    setFilterChapter]    = useState('All')
   const [filterSubsection, setFilterSubsection] = useState('All')
   const [filterDiff,       setFilterDiff]       = useState('All')
+  const [filterDiagram,    setFilterDiagram]    = useState('All')
   const [search,           setSearch]           = useState('')
   const [page,             setPage]             = useState(1)
   const [selected,         setSelected]         = useState(new Set())
@@ -508,10 +671,12 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
       if (filterChapter    !== 'All' && item.chapter    !== filterChapter)    return false
       if (filterSubsection !== 'All' && item.subsection !== filterSubsection) return false
       if (filterDiff       !== 'All' && item.difficulty !== filterDiff)       return false
+      if (filterDiagram === 'missing' && !(needsDiagram(item.question||'') && !item.diagram_url)) return false
+      if (filterDiagram === 'has'     && !item.diagram_url)                   return false
       if (q && !item.question?.toLowerCase().includes(q))                    return false
       return true
     })
-  }, [questions, filterSubject, filterChapter, filterSubsection, filterDiff, search])
+  }, [questions, filterSubject, filterChapter, filterSubsection, filterDiff, filterDiagram, search])
 
   const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE))
   const paginated    = filtered.slice((page-1)*PAGE, page*PAGE)
@@ -588,7 +753,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
       </div>
 
       {/* Filters */}
-      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr', gap:8, marginBottom:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr', gap:8, marginBottom:10 }}>
         <input style={iS} placeholder="🔍 Search questions…" value={search}
           onChange={e => { setSearch(e.target.value); setPage(1) }} />
         <select style={iS} value={filterSubject}
@@ -612,6 +777,12 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
           onChange={e => { setFilterDiff(e.target.value); setPage(1) }}>
           <option value="All">All Difficulties</option>
           {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select style={iS} value={filterDiagram}
+          onChange={e => { setFilterDiagram(e.target.value); setPage(1) }}>
+          <option value="All">All Diagrams</option>
+          <option value="missing">⚠️ Needs diagram</option>
+          <option value="has">🖼 Has diagram</option>
         </select>
       </div>
 
@@ -822,7 +993,7 @@ const emptyRow = () => ({
   correct_option:'', difficulty:'Medium', marks:1, diagram_url:'',
 })
 
-function TabManualAdd({ refetch, showToast, onNavigate }) {
+function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
   const [rows,   setRows]   = useState([emptyRow()])
   const [saving, setSaving] = useState(false)
 
@@ -838,6 +1009,14 @@ function TabManualAdd({ refetch, showToast, onNavigate }) {
   const handleSave = async () => {
     const invalid = rows.filter(r => !r.subject || !r.chapter || !r.question || !r.option_a || !r.option_b || !r.correct_option)
     if (invalid.length) { showToast(`${invalid.length} row(s) incomplete — fill all required fields`, C.amber); return }
+
+    // ── Duplicate check — feature #6 ──
+    const dupes = findDuplicates(rows, questions || [])
+    if (dupes.length) {
+      const go = confirm(`${dupes.length} question(s) look identical to ones already in the bank (Q${dupes.map(d=>d.index+1).join(', Q')}). Save anyway?`)
+      if (!go) return
+    }
+
     setSaving(true)
     const payload = rows.map(r => ({
       ...r,
@@ -887,7 +1066,7 @@ function TabManualAdd({ refetch, showToast, onNavigate }) {
 // TAB 3: BULK PASTE
 // Patch: StudyMaterialsRefPanel + emit QUESTION_SAVED after save
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBulkPaste({ refetch, showToast, onNavigate }) {
+function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   const [rawText,       setRawText]       = useState('')
   const [answerKeyText, setAnswerKeyText] = useState('')
   const [bulkSubject,   setBulkSubject]   = useState('')
@@ -897,6 +1076,11 @@ function TabBulkPaste({ refetch, showToast, onNavigate }) {
   const [saving,        setSaving]        = useState(false)
   const [step,          setStep]          = useState(1)
   const chapters = SUBJECTS[bulkSubject] || []
+
+  const dupeIndexSet = useMemo(() => {
+    if (!extracted.length) return new Set()
+    return new Set(findDuplicates(extracted, questions || []).map(d => d.index))
+  }, [extracted, questions])
 
   const handleExtract = () => {
     if (!rawText.trim()) { showToast('Paste some text first', C.amber); return }
@@ -915,14 +1099,43 @@ function TabBulkPaste({ refetch, showToast, onNavigate }) {
     showToast(`✨ ${tagged.length} questions extracted!`, C.green)
   }
 
+  // ── CSV import — feature #5 ──
+  const csvFileRef = useRef()
+  const handleCSVFile = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const parsed = parseCSVQuestions(ev.target.result, bulkSubject, bulkChapter)
+      if (!parsed.length) { showToast('No valid rows found — check your CSV has a "question" column', C.rose); return }
+      const tagged = parsed.map(q => ({
+        ...q,
+        subsection: q.subsection || (q.subject ? detectSubsection(q.question, q.subject) : ''),
+      }))
+      setExtracted(tagged)
+      setStep(2)
+      showToast(`✨ ${tagged.length} questions imported from CSV!`, C.green)
+    }
+    reader.onerror = () => showToast('Failed to read file', C.rose)
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
   const applyAnswerKey = () => {
     if (!answerKeyText.trim()) return
     const keyMap = parseAnswerKey(answerKeyText)
+    const matchedCount = extracted.filter(q => keyMap[q._qNum] !== undefined).length
+    if (!matchedCount) { showToast('No matching question numbers found in answer key', C.amber); return }
+    const overwriteCount = extracted.filter(q => keyMap[q._qNum] !== undefined && q.correct_option && q.correct_option !== keyMap[q._qNum]).length
+    const proceed = overwriteCount > 0
+      ? confirm(`This will set answers for ${matchedCount} question(s), overwriting ${overwriteCount} that already have a different answer marked. Continue?`)
+      : confirm(`Apply this answer key to ${matchedCount} question(s)?`)
+    if (!proceed) return
     setExtracted(prev => prev.map(q => ({
       ...q,
-      correct_option: keyMap[q._qNum] || q.correct_option || '',
+      correct_option: keyMap[q._qNum] !== undefined ? keyMap[q._qNum] : (q.correct_option || ''),
     })))
-    showToast(`Answer key applied to ${Object.keys(keyMap).length} questions`, C.green)
+    showToast(`Answer key applied to ${matchedCount} questions`, C.green)
     setShowAnswerKey(false)
   }
 
@@ -937,6 +1150,11 @@ function TabBulkPaste({ refetch, showToast, onNavigate }) {
     const noAnswer = extracted.filter(q => !q.correct_option)
     if (noAnswer.length > 0) {
       const go = confirm(`${noAnswer.length} questions have no answer marked. Save anyway?`)
+      if (!go) return
+    }
+    // ── Duplicate check — feature #6 ──
+    if (dupeIndexSet.size) {
+      const go = confirm(`${dupeIndexSet.size} question(s) look identical to ones already in the bank (highlighted below). Save anyway?`)
       if (!go) return
     }
     setSaving(true)
@@ -998,11 +1216,19 @@ Q2. What is 1/2 + 1/3?
 A) 2/5   B) 5/6   C) 1/6   D) 3/5
 Answer: B`} />
 
-          <div style={{ display:'flex', gap:10 }}>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
             <button onClick={handleExtract} disabled={!rawText.trim()} style={btn(C.navy, !rawText.trim())}>
               🔍 Extract Questions
             </button>
             <button onClick={() => setRawText('')} style={btn(C.slate)}>Clear</button>
+            <span style={{ alignSelf:'center', fontSize:11, color:C.slate }}>or</span>
+            <button onClick={() => csvFileRef.current?.click()} style={btn(C.teal)}>
+              📊 Import CSV
+            </button>
+            <input ref={csvFileRef} type="file" accept=".csv,text/csv" style={{ display:'none' }} onChange={handleCSVFile} />
+          </div>
+          <div style={{ fontSize:11, color:C.slate }}>
+            CSV columns: question, option_a, option_b, option_c, option_d, correct_option, subject, chapter, subsection, difficulty, marks — only "question" is required.
           </div>
         </div>
       )}
@@ -1052,10 +1278,13 @@ Answer: B`} />
 
           {extracted.map((q, i) => (
             <div key={i} style={{ ...cardS, marginBottom:10, padding:'14px 16px',
-              border: q.correct_option ? `1px solid #86efac` : `1px solid ${C.rose}44`,
+              border: dupeIndexSet.has(i) ? `1px solid ${C.amber}` : q.correct_option ? `1px solid #86efac` : `1px solid ${C.rose}44`,
               background: q._needsDiagram ? '#fffbeb' : '#fff' }}>
               <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
                 <span style={{ fontSize:12, fontWeight:700, color:C.slate }}>Q{q._qNum || i+1}</span>
+                {dupeIndexSet.has(i) && (
+                  <Badge text="⚠️ Possible duplicate — already in bank" color="#92400e" bg="#fef3c7" />
+                )}
                 {q._needsDiagram && (
                   <Badge text="⚠️ Needs Diagram — add image later via Bank tab" color="#92400e" bg="#fef3c7" />
                 )}
@@ -1151,7 +1380,7 @@ Answer: B`} />
 import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
 
 let mayekFontRegistered = false
-function ensureMayekFont(doc) {
+async function ensureMayekFont(doc) {
   if (!mayekFontRegistered) {
     doc.addFileToVFS('NotoSansMeeteiMayek.ttf', NotoSansMeeteiMayek)
     doc.addFont('NotoSansMeeteiMayek.ttf', 'NotoMayek', 'normal')
@@ -1165,7 +1394,24 @@ function ensureMayekFont(doc) {
   }
 }
 
-async function generatePDF({ title, subject, chapter, questions, withAnswers }) {
+// Fetches a diagram image URL and converts it to a base64 data URL so jsPDF's
+// addImage() can embed it (addImage cannot fetch remote URLs itself). Returns
+// null on any failure so the caller can skip the image without breaking the PDF.
+async function fetchImageAsDataURL(url) {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch (e) { return null }
+}
+
+async function generatePDF({ title, subject, chapter, questions, withAnswers, timeMinutes, instructions }) {
   if (!window.jspdf) {
     await new Promise((res, rej) => {
       const s = document.createElement('script')
@@ -1175,88 +1421,213 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers }) 
   }
   const { jsPDF } = window.jspdf
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
-  ensureMayekFont(doc)
-  const W = 210, margin = 15
-  let y = margin
+  await ensureMayekFont(doc)
 
-  const checkPage = (need=10) => { if (y+need>285) { doc.addPage(); y=margin } }
+  // Pre-fetch diagram images so they can be embedded synchronously during layout
+  const diagramCache = {}
+  await Promise.all(
+    questions.filter(q => q.diagram_url).map(async q => {
+      diagramCache[q.id || q._id] = await fetchImageAsDataURL(q.diagram_url)
+    })
+  )
 
-  doc.setFillColor(30,58,95); doc.rect(0,0,W,30,'F')
-  doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255)
-  doc.text('Guidance Navodaya & Sainik Institute', margin, 12)
-  doc.setFontSize(9); doc.setFont('helvetica','normal')
-  doc.text('Khangabok, Thoubal, Manipur', margin, 19)
-  doc.text(`Date: ${today()}`, W-margin-40, 19)
-  y = 36
+  const W = 210, H = 297, margin = 16
+  const contentW = W - margin*2
+  const totalMarks = questions.reduce((s,q)=>s+(q.marks||1),0)
+  const HEADER_H = 40   // letterhead block height, repeated on every page
+  const FOOTER_Y = H - 12
 
-  doc.setDrawColor(30,58,95); doc.setLineWidth(.5)
-  doc.line(margin, y, W-margin, y); y+=6
-  doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
-  doc.text(title, margin, y); y+=6
-  doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
-  doc.text(`Subject: ${subject}  |  Chapter: ${chapter}  |  Questions: ${questions.length}  |  Total Marks: ${questions.reduce((s,q)=>s+(q.marks||1),0)}`, margin, y)
-  y+=5; doc.line(margin,y,W-margin,y); y+=8
+  // ── Letterhead — drawn identically on every page ──────────────────────────
+  const drawLetterhead = (pageLabel) => {
+    // Navy band with institute name + crest circle
+    doc.setFillColor(30,58,95); doc.rect(0, 0, W, 26, 'F')
+    doc.setDrawColor(201,162,75); doc.setLineWidth(1)
+    doc.line(0, 26, W, 26)
+    doc.setFillColor(201,162,75); doc.line(0, 27.3, W, 27.3) // thin gold accent line
 
+    // Crest circle (initials monogram, no external image dependency)
+    doc.setFillColor(255,255,255); doc.circle(margin+6, 13, 6.5, 'F')
+    doc.setTextColor(30,58,95); doc.setFontSize(10); doc.setFont('helvetica','bold')
+    doc.text('GN', margin+6, 12, { align:'center' })
+    doc.text('SI', margin+6, 16.3, { align:'center' })
+
+    doc.setTextColor(255,255,255)
+    doc.setFontSize(15); doc.setFont('helvetica','bold')
+    doc.text('Guidance Navodaya & Sainik Institute', margin+16, 11)
+    doc.setFontSize(8.5); doc.setFont('helvetica','normal')
+    doc.text('Khangabok, Thoubal, Manipur  ·  Est. 2016', margin+16, 16.5)
+    doc.setFontSize(7.5)
+    doc.text('AISSEE · JNVST · RMS Entrance Preparation', margin+16, 21.5)
+
+    doc.setFontSize(8); doc.setFont('helvetica','normal')
+    doc.text(pageLabel || '', W-margin, 11, { align:'right' })
+    doc.setFontSize(7.5)
+    doc.text(`Date: ${today()}`, W-margin, 16.5, { align:'right' })
+  }
+
+  // ── Footer — drawn identically on every page ──────────────────────────────
+  const drawFooter = (pageNum, pageCount) => {
+    doc.setDrawColor(226,232,240); doc.setLineWidth(.2)
+    doc.line(margin, FOOTER_Y-4, W-margin, FOOTER_Y-4)
+    doc.setFontSize(7.5); doc.setFont('helvetica','normal'); doc.setTextColor(148,163,184)
+    doc.text('GNSI Question Paper · Confidential — For Institute Use Only', margin, FOOTER_Y)
+    doc.text(`Page ${pageNum} of ${pageCount}`, W-margin, FOOTER_Y, { align:'right' })
+  }
+
+  let y = HEADER_H
+  drawLetterhead()
+
+  const checkPage = (need=10) => {
+    if (y + need > FOOTER_Y - 6) {
+      doc.addPage()
+      drawLetterhead()
+      y = HEADER_H
+    }
+  }
+
+  // ── Paper title block ───────────────────────────────────────────────────
+  doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+  doc.text(title, W/2, y, { align:'center' }); y += 6
+  doc.setFontSize(9.5); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
+  doc.text(`Subject: ${subject}   |   Chapter: ${chapter}`, W/2, y, { align:'center' }); y += 7
+
+  // ── Student info line — real exam-blank fields ─────────────────────────
+  doc.setDrawColor(148,163,184); doc.setLineWidth(.3)
+  const infoY = y
+  doc.setFontSize(9.5); doc.setFont('helvetica','normal'); doc.setTextColor(30,41,59)
+  doc.text('Name:', margin, infoY)
+  doc.line(margin+16, infoY+0.8, margin+78, infoY+0.8)
+  doc.text('Roll No.:', margin+84, infoY)
+  doc.line(margin+100, infoY+0.8, margin+130, infoY+0.8)
+  doc.text('Class:', margin+136, infoY)
+  doc.line(margin+148, infoY+0.8, W-margin, infoY+0.8)
+  y += 9
+
+  // ── Marks / time / instructions box ────────────────────────────────────
+  doc.setFillColor(240,246,255); doc.setDrawColor(191,219,254); doc.setLineWidth(.3)
+  const boxTop = y
+  const instrLines = doc.splitTextToSize(instructions || 'Attempt all questions. Each question carries the marks shown against it. No negative marking unless stated.', contentW-8)
+  const boxH = 14 + instrLines.length*4.2
+  doc.roundedRect(margin, boxTop, contentW, boxH, 1.5, 1.5, 'FD')
+  doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+  doc.text(`Time Allowed: ${timeMinutes || Math.max(15, Math.round(questions.length*1.5))} minutes`, margin+4, boxTop+6)
+  doc.text(`Maximum Marks: ${totalMarks}`, margin+contentW-4, boxTop+6, { align:'right' })
+  doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(51,65,85)
+  doc.text('General Instructions:', margin+4, boxTop+11.5)
+  doc.setFont('helvetica','normal'); doc.setTextColor(71,85,105)
+  doc.text(instrLines, margin+4, boxTop+16)
+  y = boxTop + boxH + 8
+
+  doc.setDrawColor(30,58,95); doc.setLineWidth(.6)
+  doc.line(margin, y, W-margin, y); y += 7
+
+  // ── Questions — two-column option layout (A/B on one row, C/D on next) ──
+  const optColW = (contentW - 12) / 2
   questions.forEach((q,i) => {
-    checkPage(24)
+    checkPage(26)
+    doc.setFontSize(10.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
     const qText = `Q${i+1}. ${q.question}`
-    doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
-    const lines = doc.splitTextToSize(qText, W-margin*2-6)
-    checkPage(lines.length*5+22)
-    doc.text(lines, margin, y); y+=lines.length*5.5+2
+    const qLines = doc.splitTextToSize(qText, contentW)
+    checkPage(qLines.length*5 + 24)
+    doc.text(qLines, margin, y)
+    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
+    doc.text(`[${q.marks||1} ${(q.marks||1)===1?'mark':'marks'}]`, W-margin, y, { align:'right' })
+    y += qLines.length*5 + 2
 
     if (q.question_mayek) {
-      checkPage(10)
-      doc.setFontSize(11); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
-      const mayekLines = doc.splitTextToSize(q.question_mayek, W-margin*2-6)
-      checkPage(mayekLines.length*5+10)
-      doc.text(mayekLines, margin, y); y+=mayekLines.length*5.5+2
-      doc.setFont('helvetica','normal') // switch back for options below
+      checkPage(9)
+      doc.setFontSize(10.5); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
+      const mLines = doc.splitTextToSize(q.question_mayek, contentW)
+      checkPage(mLines.length*5+8)
+      doc.text(mLines, margin, y); y += mLines.length*5 + 2
     }
 
-    ;['A','B','C','D'].forEach(l => {
-      checkPage(7)
-      const isCorrect = withAnswers && q.correct_option===l
-      if (isCorrect) { doc.setFillColor(220,252,231); doc.roundedRect(margin+3,y-4,W-margin*2-6,6.5,1,1,'F') }
-      doc.setFontSize(10); doc.setFont('helvetica', isCorrect?'bold':'normal')
-      doc.setTextColor(isCorrect?21:55, isCorrect?128:65, isCorrect?61:81)
-      const optText = `  ${l}. ${q[`option_${l.toLowerCase()}`]||'—'}${isCorrect?' ✓':''}`
-      const optLines = doc.splitTextToSize(optText, W-margin*2-12)
-      doc.text(optLines, margin+5, y); y+=optLines.length*5+1
+    const diagramData = diagramCache[q.id || q._id]
+    if (q.diagram_url && diagramData) {
+      checkPage(36)
+      try {
+        doc.addImage(diagramData, margin, y, 50, 32)
+        y += 35
+      } catch(e) { /* image failed to embed — skip silently, question text still stands */ }
+    }
 
-      const optMayek = q[`option_${l.toLowerCase()}_mayek`]
-      if (optMayek) {
-        checkPage(6)
-        doc.setFontSize(10); doc.setFont('NotoMayek','normal')
-        doc.setTextColor(isCorrect?21:55, isCorrect?128:65, isCorrect?61:81)
-        const optMayekLines = doc.splitTextToSize(`  ${optMayek}`, W-margin*2-12)
-        doc.text(optMayekLines, margin+5, y); y+=optMayekLines.length*5+1
-        doc.setFont('helvetica','normal')
-      }
+    // Options in a 2×2 grid: A B on one row, C D on next
+    const pairs = [['A','B'], ['C','D']]
+    pairs.forEach(([l1, l2]) => {
+      checkPage(8)
+      const rowY = y
+      let maxRowH = 6
+      ;[[l1, margin], [l2, margin + optColW + 12]].forEach(([l, x]) => {
+        const isCorrect = withAnswers && q.correct_option === l
+        const optText = `${l}.  ${q[`option_${l.toLowerCase()}`] || '—'}`
+        doc.setFontSize(9.5); doc.setFont('helvetica', isCorrect?'bold':'normal')
+        doc.setTextColor(isCorrect?21:51, isCorrect?128:65, isCorrect?61:85)
+        const lines = doc.splitTextToSize(optText, optColW)
+        if (isCorrect) {
+          doc.setFillColor(220,252,231)
+          doc.roundedRect(x-2, rowY-4, optColW+2, lines.length*4.6+2, 1, 1, 'F')
+          doc.setTextColor(21,128,61); doc.setFont('helvetica','bold')
+        }
+        doc.text(lines, x, rowY)
+        maxRowH = Math.max(maxRowH, lines.length*4.6+2)
+
+        const mayek = q[`option_${l.toLowerCase()}_mayek`]
+        if (mayek) {
+          doc.setFontSize(9); doc.setFont('NotoMayek','normal')
+          const mLines = doc.splitTextToSize(mayek, optColW)
+          doc.text(mLines, x, rowY + lines.length*4.6)
+          maxRowH = Math.max(maxRowH, lines.length*4.6 + mLines.length*4.6 + 2)
+        }
+      })
+      y += maxRowH + 1.5
     })
-    y+=5; doc.setDrawColor(226,232,240); doc.setLineWidth(.2)
-    doc.line(margin,y,W-margin,y); y+=5
+
+    y += 3
+    doc.setDrawColor(226,232,240); doc.setLineWidth(.15)
+    doc.line(margin, y, W-margin, y)
+    y += 5.5
   })
 
+  // ── Answer key on its own clean, boxed page ────────────────────────────
   if (!withAnswers) {
-    doc.addPage(); y=margin
-    doc.setFillColor(30,58,95); doc.rect(0,0,W,20,'F')
-    doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255)
-    doc.text('ANSWER KEY', margin, 13); y=28
-    const colW = (W-margin*2)/5
+    doc.addPage()
+    drawLetterhead('Answer Key')
+    y = HEADER_H
+    doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+    doc.text('Answer Key', W/2, y, { align:'center' }); y += 4
+    doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
+    doc.text(`${title}  ·  ${subject} — ${chapter}`, W/2, y, { align:'center' }); y += 8
+
+    const cols = 6, cellW = contentW/cols, cellH = 9
+    const rowsPerPage = Math.floor((FOOTER_Y - 10 - y) / cellH)
+    doc.setDrawColor(191,219,254); doc.setLineWidth(.3)
+    let pageStartY = y
     questions.forEach((q,i) => {
-      const col=i%5; if(col===0&&i>0) y+=9
-      checkPage(10)
-      doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(30,58,95)
-      doc.text(`Q${i+1}: ${q.correct_option||'?'}`, margin+col*colW, y)
+      const posOnPage = i % (cols * rowsPerPage)
+      const col = posOnPage % cols
+      const row = Math.floor(posOnPage / cols)
+      if (posOnPage === 0 && i > 0) {
+        doc.addPage(); drawLetterhead('Answer Key — contd.')
+        pageStartY = HEADER_H
+      }
+      const cx = margin + col*cellW
+      const cy = pageStartY + row*cellH
+      doc.setFillColor(240,246,255)
+      doc.roundedRect(cx, cy, cellW-2, cellH-2, 1, 1, 'F')
+      doc.setFontSize(9.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+      doc.text(`Q${i+1}`, cx+3, cy+5.5)
+      doc.setFont('helvetica','normal'); doc.setTextColor(21,128,61)
+      doc.text(q.correct_option || '—', cx+cellW-6, cy+5.5, { align:'right' })
     })
   }
 
+  // ── Footer on every page ────────────────────────────────────────────────
   const pages = doc.getNumberOfPages()
-  for (let p=1;p<=pages;p++) {
-    doc.setPage(p); doc.setFontSize(8); doc.setTextColor(148,163,184); doc.setFont('helvetica','normal')
-    doc.text(`Page ${p} of ${pages}  |  GNSI Question Paper  |  Confidential`, margin, 292)
+  for (let p=1; p<=pages; p++) {
+    doc.setPage(p)
+    drawFooter(p, pages)
   }
+
   doc.save(`${title.replace(/\s+/g,'_')}.pdf`)
 }
 
@@ -1270,6 +1641,8 @@ function TabPaper({ questions, showToast }) {
   const [difficulty,   setDifficulty]   = useState('All')
   const [title,        setTitle]        = useState('')
   const [withAnswers,  setWithAnswers]  = useState(false)
+  const [timeMinutes,  setTimeMinutes]  = useState('')
+  const [instructions, setInstructions] = useState('Attempt all questions. Each question carries the marks shown against it. No negative marking unless stated.')
   const [preview,      setPreview]      = useState(null)
   const [downloading,  setDownloading]  = useState(false)
   const chapters = subject ? SUBJECTS[subject] : []
@@ -1316,7 +1689,11 @@ function TabPaper({ questions, showToast }) {
     if (!preview?.length) return
     setDownloading(true)
     try {
-      await generatePDF({ title: title||'Question Paper', subject, chapter, questions:preview, withAnswers })
+      await generatePDF({
+        title: title||'Question Paper', subject, chapter, questions:preview, withAnswers,
+        timeMinutes: parseInt(timeMinutes) || undefined,
+        instructions: instructions.trim() || undefined,
+      })
       showToast('📄 PDF downloaded!', C.green)
     } catch(e) { showToast('PDF failed: '+e.message, C.rose) }
     setDownloading(false)
@@ -1354,6 +1731,17 @@ function TabPaper({ questions, showToast }) {
             <label style={lS}>Paper Title</label>
             <input style={iS} value={title} onChange={e => setTitle(e.target.value)}
               placeholder="e.g. Fractions — Unit Test" />
+          </div>
+          <div>
+            <label style={lS}>Time Allowed <span style={{ fontWeight:400, textTransform:'none' }}>(minutes, optional)</span></label>
+            <input type="number" min={1} style={iS} value={timeMinutes}
+              onChange={e => setTimeMinutes(e.target.value)}
+              placeholder="Auto (1.5 min/question)" />
+          </div>
+          <div style={{ gridColumn:'2/-1' }}>
+            <label style={lS}>General Instructions <span style={{ fontWeight:400, textTransform:'none' }}>(shown on the paper)</span></label>
+            <textarea style={{ ...iS, resize:'vertical' }} rows={2} value={instructions}
+              onChange={e => setInstructions(e.target.value)} />
           </div>
         </div>
 
@@ -1413,16 +1801,32 @@ function TabPaper({ questions, showToast }) {
 
       {preview && (
         <div style={cardS}>
-          <div style={{ border:`2px solid ${C.navy}`, borderRadius:10, padding:'20px 24px', marginBottom:16 }}>
+          <div id="qbank-paper-preview" style={{ border:`2px solid ${C.navy}`, borderRadius:10, padding:'20px 24px', marginBottom:16, background:'#fff' }}>
             <div style={{ textAlign:'center', borderBottom:`1px solid ${C.border}`, paddingBottom:12, marginBottom:14 }}>
               <div style={{ fontSize:18, fontWeight:800, color:C.navy }}>Guidance Navodaya & Sainik Institute</div>
-              <div style={{ fontSize:11, color:C.slate }}>Khangabok, Thoubal, Manipur</div>
+              <div style={{ fontSize:11, color:C.slate }}>Khangabok, Thoubal, Manipur · Est. 2016</div>
               <div style={{ fontSize:14, fontWeight:700, color:C.navy, marginTop:8 }}>{title}</div>
               <div style={{ fontSize:12, color:C.slate, marginTop:4 }}>
-                Subject: {subject} | Questions: {preview.length} |
-                Total Marks: {preview.reduce((s,q)=>s+(q.marks||1),0)} | Date: {today()}
+                Subject: {subject} | Chapter: {chapter} | Date: {today()}
               </div>
             </div>
+
+            <div style={{ display:'flex', gap:20, fontSize:12, color:'#374151', marginBottom:12 }}>
+              <span>Name: <span style={{ display:'inline-block', width:110, borderBottom:`1px solid ${C.border}` }}>&nbsp;</span></span>
+              <span>Roll No.: <span style={{ display:'inline-block', width:70, borderBottom:`1px solid ${C.border}` }}>&nbsp;</span></span>
+              <span>Class: <span style={{ display:'inline-block', width:60, borderBottom:`1px solid ${C.border}` }}>&nbsp;</span></span>
+            </div>
+
+            <div style={{ padding:'10px 14px', borderRadius:8, background:'#f0f6ff', border:'1px solid #bfdbfe', marginBottom:14 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700, color:C.navy, marginBottom:6 }}>
+                <span>Time Allowed: {timeMinutes || Math.max(15, Math.round(preview.length*1.5))} minutes</span>
+                <span>Maximum Marks: {preview.reduce((s,q)=>s+(q.marks||1),0)}</span>
+              </div>
+              <div style={{ fontSize:11, color:'#475569' }}>
+                <strong>General Instructions:</strong> {instructions}
+              </div>
+            </div>
+
             {preview.map((q,i) => (
               <div key={q.id||i} style={{ marginBottom:14 }}>
                 <div style={{ fontSize:13, fontWeight:600, color:'#1e293b', marginBottom:q.question_mayek ? 2 : 6 }}>
@@ -1461,6 +1865,7 @@ function TabPaper({ questions, showToast }) {
               {downloading ? '⏳ Generating PDF…' : '⬇ Download PDF'}
             </button>
             <button onClick={handlePreview} style={btn(C.navy)}>🔀 Reshuffle</button>
+            <CastButton presentTargetId="qbank-paper-preview" title={title} showToast={showToast} />
             <button onClick={() => setPreview(null)} style={btn(C.slate)}>✕ Close</button>
           </div>
         </div>
@@ -1472,6 +1877,58 @@ function TabPaper({ questions, showToast }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 5: ONLINE TEST (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
+// ── CAST QUESTION OVERLAY ─────────────────────────────────────────────────
+// A stripped-down, full-screen, question-text-only view for casting to a
+// classroom display during a live test. Deliberately omits options and any
+// answer/selection state — the whole point is the shared screen shows only
+// what the teacher is asking, not what any individual student has picked.
+function CastQuestionOverlay({ questions, index, onIndexChange, onClose }) {
+  const q = questions?.[index]
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight') onIndexChange(i => Math.min((questions?.length||1)-1, i+1))
+      if (e.key === 'ArrowLeft')  onIndexChange(i => Math.max(0, i-1))
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose, onIndexChange, questions])
+
+  if (!q) return null
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:100000, background:C.navy,
+      display:'flex', flexDirection:'column' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+        padding:'14px 22px', background:'rgba(0,0,0,.2)' }}>
+        <span style={{ color:'#fff', fontSize:13, fontWeight:700, opacity:.85 }}>
+          📡 Casting Question {index+1} of {questions.length} — options hidden on shared screen
+        </span>
+        <button onClick={onClose} style={{ ...btnSm('rgba(255,255,255,.15)', '#fff'), padding:'6px 16px' }}>✕ Close</button>
+      </div>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:40 }}>
+        <div style={{ fontSize:'clamp(22px, 3.2vw, 40px)', fontWeight:700, color:'#fff', textAlign:'center', maxWidth:1000, lineHeight:1.5 }}>
+          {q.question}
+        </div>
+        {q.question_mayek && (
+          <div style={{ fontSize:'clamp(18px, 2.4vw, 28px)', color:'#cbd5e1', textAlign:'center', maxWidth:1000, marginTop:20, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+            {q.question_mayek}
+          </div>
+        )}
+        {q.diagram_url && (
+          <img src={q.diagram_url} alt="diagram" style={{ maxWidth:'60%', maxHeight:300, marginTop:28, borderRadius:10 }} />
+        )}
+      </div>
+      <div style={{ display:'flex', justifyContent:'center', gap:16, padding:'20px 0 32px' }}>
+        <button onClick={() => onIndexChange(i => Math.max(0, i-1))} disabled={index===0}
+          style={btn('#334155', index===0)}>← Previous</button>
+        <button onClick={() => onIndexChange(i => Math.min(questions.length-1, i+1))} disabled={index===questions.length-1}
+          style={btn(C.green, index===questions.length-1)}>Next →</button>
+      </div>
+    </div>
+  )
+}
+
 function TabTest({ questions, showToast }) {
   const [studentName, setStudentName] = useState('')
   const [subject,     setSubject]     = useState('')
@@ -1484,7 +1941,28 @@ function TabTest({ questions, showToast }) {
   const [result,      setResult]      = useState(null)
   const [timeLeft,    setTimeLeft]    = useState(0)
   const [timerActive, setTimerActive] = useState(false)
+  const [history,     setHistory]     = useState([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [castOpen,      setCastOpen]      = useState(false)
+  const [castQIndex,    setCastQIndex]    = useState(0)
   const chapters = subject ? SUBJECTS[subject] : []
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setHistoryLoading(true)
+      const { data, error } = await supabase
+        .from('qbank_test_results')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (!cancelled) {
+        if (!error) setHistory(data || [])
+        setHistoryLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   const availableSubs = useMemo(() => {
     if (!subject || !chapter) return []
@@ -1492,12 +1970,43 @@ function TabTest({ questions, showToast }) {
     return [...ss].sort()
   }, [questions, subject, chapter])
 
+  const handleSubmit = useCallback(() => {
+    setTestQs(prevQs => {
+      if (!prevQs) return prevQs
+      setTimerActive(false)
+      setAnswers(prevAnswers => {
+        const correct = prevQs.filter(q => prevAnswers[q._testIdx] === q.correct_option).length
+        const wrong   = prevQs.filter(q => prevAnswers[q._testIdx] && prevAnswers[q._testIdx] !== q.correct_option).length
+        const skipped = prevQs.filter(q => !prevAnswers[q._testIdx]).length
+        const score   = prevQs.reduce((a, q) => prevAnswers[q._testIdx] === q.correct_option ? a + (q.marks||1) : a, 0)
+        const maxScore= prevQs.reduce((a, q) => a + (q.marks||1), 0)
+        const pct     = maxScore ? Math.round((score/maxScore)*100) : 0
+        setResult({ correct, wrong, skipped, score, maxScore, pct })
+        setSubmitted(true)
+        // Persist attempt — best-effort, doesn't block showing the result
+        supabase.from('qbank_test_results').insert({
+          student_name: studentName,
+          subject, chapter,
+          question_count: prevQs.length,
+          correct, wrong, skipped,
+          score, max_score: maxScore, percent: pct,
+        }).then(({ error }) => {
+          if (error) console.error('Failed to save test result:', error.message)
+          else supabase.from('qbank_test_results').select('*').order('created_at', { ascending: false }).limit(20)
+            .then(({ data }) => setHistory(data || []))
+        })
+        return prevAnswers
+      })
+      return prevQs
+    })
+  }, [studentName, subject, chapter])
+
   useEffect(() => {
-    if (!timerActive || timeLeft<=0) return
-    if (timeLeft===0) { handleSubmit(); return }
-    const t = setTimeout(() => setTimeLeft(v=>v-1), 1000)
+    if (!timerActive) return
+    if (timeLeft <= 0) { handleSubmit(); return }
+    const t = setTimeout(() => setTimeLeft(v => v - 1), 1000)
     return () => clearTimeout(t)
-  }, [timerActive, timeLeft])
+  }, [timerActive, timeLeft, handleSubmit])
 
   const formatTime = s => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
 
@@ -1513,18 +2022,7 @@ function TabTest({ questions, showToast }) {
     const indexedPool = pool.map((q,i) => ({...q, _testIdx: i}))
     setTestQs(indexedPool); setAnswers({}); setSubmitted(false); setResult(null)
     setTimeLeft(pool.length * 90); setTimerActive(true)
-  }
-
-  const handleSubmit = () => {
-    if (!testQs) return
-    setTimerActive(false)
-    const correct = testQs.filter(q=>answers[q._testIdx]===q.correct_option).length
-    const wrong   = testQs.filter(q=>answers[q._testIdx]&&answers[q._testIdx]!==q.correct_option).length
-    const skipped = testQs.filter(q=>!answers[q._testIdx]).length
-    const score   = testQs.reduce((a,q)=>answers[q._testIdx]===q.correct_option?a+(q.marks||1):a, 0)
-    const maxScore= testQs.reduce((a,q)=>a+(q.marks||1), 0)
-    const pct     = maxScore ? Math.round((score/maxScore)*100) : 0
-    setResult({ correct, wrong, skipped, score, maxScore, pct }); setSubmitted(true)
+    setCastOpen(false); setCastQIndex(0)
   }
 
   if (submitted && result) {
@@ -1578,7 +2076,7 @@ function TabTest({ questions, showToast }) {
             </div>
           )
         })}
-        <button onClick={() => { setTestQs(null); setSubmitted(false); setResult(null) }}
+        <button onClick={() => { setTestQs(null); setSubmitted(false); setResult(null); setCastOpen(false) }}
           style={{ ...btn(C.navy), marginTop:16 }}>← New Test</button>
       </div>
     )
@@ -1597,8 +2095,20 @@ function TabTest({ questions, showToast }) {
           <div style={{ fontSize:22, fontWeight:800, color: timeLeft<60?'#fca5a5':'#fff' }}>
             ⏱ {formatTime(timeLeft)}
           </div>
+          <button onClick={() => { setCastQIndex(0); setCastOpen(true) }} style={btnSm('rgba(255,255,255,.15)', '#fff')}>
+            📡 Cast Question
+          </button>
           <button onClick={() => confirm('Submit test?') && handleSubmit()} style={btn(C.green)}>✅ Submit</button>
         </div>
+
+        {castOpen && (
+          <CastQuestionOverlay
+            questions={testQs}
+            index={castQIndex}
+            onIndexChange={setCastQIndex}
+            onClose={() => setCastOpen(false)}
+          />
+        )}
         {testQs.map((q,i) => (
           <div key={i} style={{ ...cardS, marginBottom:12 }}>
             <div style={{ fontSize:14, fontWeight:600, color:'#1e293b', marginBottom:q.question_mayek ? 4 : 10, lineHeight:1.6 }}>
@@ -1708,6 +2218,35 @@ function TabTest({ questions, showToast }) {
         style={btn(C.navy, !subject||!chapter||!studentName.trim())}>
         ▶ Start Test
       </button>
+
+      {/* ── Test history — recent attempts, feature #8 ── */}
+      <div style={{ marginTop:22, paddingTop:18, borderTop:`1px solid ${C.border}` }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.navy, marginBottom:10 }}>📜 Recent Attempts</div>
+        {historyLoading ? (
+          <div style={{ fontSize:12, color:C.slate }}>Loading…</div>
+        ) : history.length === 0 ? (
+          <div style={{ fontSize:12, color:'#94a3b8' }}>No test attempts recorded yet.</div>
+        ) : (
+          <div style={{ display:'grid', gap:6 }}>
+            {history.map(h => {
+              const pct = h.percent ?? (h.max_score ? Math.round((h.score/h.max_score)*100) : 0)
+              const color = pct>=75 ? C.green : pct>=50 ? C.amber : C.rose
+              return (
+                <div key={h.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
+                  borderRadius:8, border:`1px solid ${C.border}`, background:'#fafafa', fontSize:12 }}>
+                  <span style={{ fontWeight:700, color:C.navy, flex:1 }}>{h.student_name}</span>
+                  <span style={{ color:C.slate }}>{h.subject} · {h.chapter}</span>
+                  <span style={{ color:C.slate }}>{h.correct}/{h.question_count}</span>
+                  <span style={{ padding:'2px 8px', borderRadius:99, fontWeight:700, color, background:'#fff', border:`1px solid ${color}` }}>{pct}%</span>
+                  <span style={{ color:'#94a3b8', fontSize:11 }}>
+                    {h.created_at ? new Date(h.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short' }) : ''}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1739,9 +2278,38 @@ function TabStats({ questions }) {
   const countBg    = (n) => n >= 20 ? '#dcfce7' : n >= 10 ? '#fef9c3' : '#fee2e2'
   const countLabel = (n) => n >= 20 ? '✅' : n >= 10 ? '⚠️' : '❌'
 
+  // ── CSV export — feature #9 ──
+  const handleExportCSV = () => {
+    const rows = [['Subject', 'Chapter', 'Subsection', 'Question Count']]
+    subjects.forEach(subj => {
+      const chapData = stats[subj] || {}
+      SUBJECTS[subj].forEach(ch => {
+        const chData = chapData[ch] || { total:0, subsections:{} }
+        if (Object.keys(chData.subsections).length === 0) {
+          rows.push([subj, ch, '', chData.total])
+        } else {
+          Object.entries(chData.subsections).forEach(([ss, cnt]) => {
+            rows.push([subj, ch, ss, cnt])
+          })
+        }
+      })
+    })
+    const csv = rows.map(r => r.map(cell => {
+      const s = String(cell)
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s
+    }).join(',')).join('\n')
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url
+    a.download = `qbank_coverage_${filterSubject==='All'?'all_subjects':filterSubject.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.csv`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <>
-      <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center' }}>
+      <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
         <select style={{ ...iS, width:'auto' }} value={filterSubject}
           onChange={e=>setFilterSubject(e.target.value)}>
           <option value="All">All Subjects</option>
@@ -1750,6 +2318,7 @@ function TabStats({ questions }) {
         <span style={{ fontSize:12, color:C.slate }}>
           Total: <strong>{questions.length}</strong> questions in bank
         </span>
+        <button onClick={handleExportCSV} style={btnSm('#eff6ff', C.navy)}>⬇ Export CSV</button>
         <div style={{ display:'flex', gap:12, marginLeft:'auto', fontSize:12 }}>
           <span>✅ 20+ Good</span><span>⚠️ 10–19 Low</span><span>❌ 0–9 Empty</span>
         </div>
@@ -1930,8 +2499,8 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       </div>
 
       {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} />}
-      {tab === 'manual' && <TabManualAdd refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
-      {tab === 'bulk'   && <TabBulkPaste refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
+      {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
+      {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'stats'  && <TabStats  questions={questions} />}
