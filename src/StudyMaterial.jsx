@@ -574,6 +574,56 @@ async function deleteCustomChapter(course, subject, chapter, showToast, onSaved)
   onSaved()
 }
 
+// ── BULK PASTE PARSER (no AI, no network) ───────────────────────────────────
+// Study-material pastes are line-oriented: each line is roughly
+// "<title> <optional URL>", sometimes with a type keyword ("formula sheet",
+// "practice set", etc.) embedded in the title. This mirrors the reliability
+// QuestionBank's Bulk Paste already gets from its regex parser — no API call,
+// so nothing here can fail with a network error.
+const MATERIAL_URL_RE = /(https?:\/\/[^\s]+)/i
+const MATERIAL_TYPE_KEYWORDS = [
+  { type: 'formula',        kws: ['formula sheet', 'formula', 'formulae'] },
+  { type: 'practice',       kws: ['practice set', 'practice', 'worksheet', 'exercise'] },
+  { type: 'solved',         kws: ['solved paper', 'solved', 'solution', 'answer key'] },
+  { type: 'mindmap',        kws: ['mind map', 'mindmap', 'concept map'] },
+  { type: 'currentaffairs', kws: ['current affairs', 'gk update', 'daily current'] },
+  { type: 'notes',          kws: ['notes', 'chapter notes', 'summary'] },
+]
+
+function detectMaterialType(title, url) {
+  const lower = title.toLowerCase()
+  if (url && /youtube\.com|youtu\.be/i.test(url)) return 'video'
+  for (const { type, kws } of MATERIAL_TYPE_KEYWORDS) {
+    if (kws.some(kw => lower.includes(kw))) return type
+  }
+  return 'notes'
+}
+
+function parseMaterialLines(rawText, chapters) {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean)
+  const chapterLower = chapters.map(c => ({ name: c, lower: c.toLowerCase() }))
+
+  return lines.map(line => {
+    const urlMatch = line.match(MATERIAL_URL_RE)
+    const url = urlMatch ? urlMatch[1].replace(/[),.]+$/, '') : ''
+    // Title is whatever's left after stripping the URL, cleaned of stray punctuation
+    let title = url ? line.replace(url, '').trim() : line
+    title = title.replace(/[-–—:|]+$/, '').replace(/^[-–—:|]+/, '').trim()
+    if (!title) title = url ? 'Untitled material' : line
+
+    // Best-effort chapter match: does the title contain a known chapter name?
+    const matchedChapter = chapterLower.find(c => title.toLowerCase().includes(c.lower))
+
+    return {
+      title,
+      material_type: detectMaterialType(title, url),
+      chapter: matchedChapter?.name || '',
+      file_url: url,
+      description: '',
+    }
+  }).filter(item => item.title)
+}
+
 // ── BULK PASTE MODAL ──────────────────────────────────────────────────────────
 function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast }) {
   const [step,    setStep]    = useState('paste')
@@ -588,29 +638,22 @@ function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast 
   const courseData = BASE_COURSES[course]
   const chapters   = courseData?.subjects[subject]?.chapters || []
 
-  const handleParse = async () => {
+  const handleParse = () => {
     if (!rawText.trim()) { showToast('Paste something first', C.amber); return }
     setParsing(true)
-    const systemPrompt = `You are a study-material parser for a coaching institute.
-Extract every distinct study material item from the user's pasted text.
-For each item output a JSON object:
-  title, material_type (notes|formula|practice|solved|mindmap|video|currentaffairs),
-  chapter (best match from: ${chapters.join(', ')} — or empty string),
-  subject ("${subject}"), file_url (url or ""), description (or "")
-Rules: YouTube→video, no invented URLs.
-Return ONLY a valid JSON array, no fences.`
-    try {
-      const res  = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: systemPrompt, messages: [{ role: 'user', content: rawText.trim() }] }),
-      })
-      const data   = await res.json()
-      const text   = (data.content || []).map(b => b.text || '').join('')
-      const parsed = JSON.parse(text.replace(/```json|```/gi, '').trim())
-      if (!Array.isArray(parsed) || !parsed.length) { showToast('No items detected', C.amber); setParsing(false); return }
-      setItems(parsed); setChecked(parsed.map((_, i) => i)); setStep('preview')
-    } catch (err) { showToast('Parse error: ' + err.message, C.rose) }
-    setParsing(false)
+    // Synchronous, local parsing — no network call, so this can't fail with
+    // "Failed to fetch". Wrapped in a rAF so the "Detecting…" state actually
+    // paints before the (near-instant) parse runs.
+    requestAnimationFrame(() => {
+      try {
+        const parsed = parseMaterialLines(rawText, chapters)
+        if (!parsed.length) { showToast('No items detected', C.amber); setParsing(false); return }
+        setItems(parsed); setChecked(parsed.map((_, i) => i)); setStep('preview')
+      } catch (err) {
+        showToast('Parse error: ' + err.message, C.rose)
+      }
+      setParsing(false)
+    })
   }
 
   const handleSave = async () => {
@@ -641,7 +684,7 @@ Return ONLY a valid JSON array, no fences.`
           {step === 'paste' && (
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ fontSize: 12, color: C.slate, background: '#f8fafc', padding: '10px 13px', borderRadius: 8, border: `1px solid ${C.border}`, lineHeight: 1.7 }}>
-                Paste anything — Drive links, YouTube links, titles, or a mix. AI detects each item.
+                One item per line — a title, optionally followed by a Drive/YouTube link. Each line becomes one material.
               </div>
               <div>
                 <label style={lS}>Paste your content *</label>
@@ -652,7 +695,7 @@ Return ONLY a valid JSON array, no fences.`
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={handleParse} disabled={parsing || !rawText.trim()}
                   style={{ ...btn(courseData?.color || C.navy, parsing || !rawText.trim()), flex: 1 }}>
-                  {parsing ? '⏳ Detecting…' : '🔍 Detect Items with AI'}
+                  {parsing ? '⏳ Detecting…' : '🔍 Detect Items'}
                 </button>
                 <button onClick={onClose} style={btn(C.slate)}>Cancel</button>
               </div>
