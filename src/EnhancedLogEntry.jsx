@@ -30,7 +30,7 @@ import { EventBus, GNSI_EVENTS } from './EventBus'
 const SUBJECTS = [
   'Mathematics','Mathematics I','Mathematics II','English Grammar',
   'General Knowledge','General Science','Reasoning','Mental Ability',
-  'Hindi','Vocabulary','Meitei Mayek','Environmental Studies',
+  'Hindi','Vocabulary','Meitei Mayek','Environmental Studies I','Environmental Studies II',
 ]
 
 const TEACHING_TECHNIQUES = [

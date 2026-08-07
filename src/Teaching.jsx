@@ -53,7 +53,7 @@ import TabReportCards from './TabReportCards'
 const SUBJECTS = [
   'Mathematics','Mathematics I','Mathematics II','English Grammar',
   'General Knowledge','General Science','Reasoning','Mental Ability',
-  'Hindi','Vocabulary','Meitei Mayek',
+  'Hindi','Vocabulary','Meitei Mayek','Environmental Studies I','Environmental Studies II',
 ]
 const DAYS    = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const PERIODS = [1,2,3,4,5,6,7]
@@ -90,6 +90,27 @@ const fmtDate          = d => { if (!d) return '-'; return new Date(d).toLocaleD
 const pct              = (s,m) => m > 0 ? Math.round((s/m)*100) : 0
 const scoreColor       = p => p >= 75 ? '#16a34a' : p >= 50 ? '#d97706' : '#dc2626'
 const scoreBg          = p => p >= 75 ? '#dcfce7' : p >= 50 ? '#fef9c3' : '#fee2e2'
+
+// ADV-1: CSV export for Class Test Scores (advanced feature)
+function exportScoresCSV(rows) {
+  if (!rows || rows.length===0) return
+  const headers = ['Date','Student','Batch','Subject','Topic','Score','Max','Percent','Notes']
+  const escape = v => { const s = String(v??''); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s }
+  const lines = [headers.join(',')]
+  rows.forEach(s => {
+    const p = pct(s.score, s.max_score)
+    lines.push([fmtDate(s.test_date), s.student_name, s.subtype||s.course||'', s.subject_name, s.topic, s.score, s.max_score, `${p}%`, s.notes||''].map(escape).join(','))
+  })
+  const blob = new Blob([lines.join('\n')], { type:'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `class_test_scores_${today()}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 const emptyLog = {
   course:'', subtype:'', class_name:'', batch_id:'',
@@ -1572,6 +1593,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
   const [confirmDel, setConfirmDel]   = useState(null)
   const { show: showToast, el: toastEl } = useToast()
   const { courses, subtypesFor, classesFor, batchIdFor } = courseData
+  const isMobile = useIsMobile()
 
   const blankForm = { student_id:'', student_name:'', batch_id:'', course:'', subtype:'', class_name:'', subject_name:'', topic:'', test_date:today(), score:'', max_score:'100', notes:'' }
   const [form, setForm] = useState(blankForm)
@@ -1581,6 +1603,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
   const [bulkMarks, setBulkMarks] = useState({})
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [lastSavedBatch, setLastSavedBatch] = useState(null)
 
   const fetchScores = async () => {
     setLoading(true)
@@ -1590,24 +1613,34 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
     setLoading(false)
   }
 
+  const studentsReqId = useRef(0)
   const fetchStudents = async (course, subtype) => {
     if (!course) { setStudents([]); setStudentsErr(''); return }
+    const reqId = ++studentsReqId.current
     setStudentsErr('')
     let q = supabase.from('students').select('id,name,roll_number').eq('status','Active').eq('course', course)
     if (subtype) q = q.eq('batch', subtype)
     const { data, error } = await q.order('name')
+    if (reqId !== studentsReqId.current) return // stale response, a newer request superseded this one
     if (error) { setStudentsErr('Could not load students: '+error.message); setStudents([]) }
     else setStudents(data||[])
   }
 
+  const bulkStudentsReqId = useRef(0)
   const fetchBulkStudents = async () => {
     if (!bulkForm.course) return
+    const reqId = ++bulkStudentsReqId.current
     setBulkLoading(true)
-    let q = supabase.from('students').select('id,name,roll_number,admission_no').eq('status','Active').eq('course', bulkForm.course)
+    let q = supabase.from('students').select('id,name,roll_number').eq('status','Active').eq('course', bulkForm.course)
     if (bulkForm.subtype) q = q.eq('batch', bulkForm.subtype)
     const { data, error } = await q.order('name')
+    if (reqId !== bulkStudentsReqId.current) return // stale response
     if (error) { showToast('Could not load students: '+error.message, '#dc2626'); setBulkLoading(false); return }
     setBulkStudents(data||[])
+    const ids = (data||[]).map(s => s.id)
+    if (new Set(ids).size !== ids.length) {
+      showToast('Warning: duplicate student IDs returned — marks entry may misbehave. Contact admin.', '#dc2626')
+    }
     const initMarks = {}
     ;(data||[]).forEach(s => { initMarks[s.id] = '' })
     setBulkMarks(initMarks)
@@ -1615,11 +1648,23 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
   }
 
   const handleBulkSave = async () => {
+    if (bulkSaving) return // prevent double-submit race (e.g. rapid double-click/tap)
     if (!bulkForm.subject_name || !bulkForm.topic || !bulkForm.test_date) {
       showToast('Fill Subject, Test Name and Date first', '#dc2626'); return
     }
+    const maxNum = parseFloat(bulkForm.max_score)
+    if (Number.isNaN(maxNum) || maxNum <= 0) { showToast('Enter a valid Max Marks value.', '#dc2626'); return }
     const entries = bulkStudents.filter(s => bulkMarks[s.id] !== '' && bulkMarks[s.id] !== undefined)
     if (!entries.length) { showToast('Enter at least one mark', '#dc2626'); return }
+    const nameless = entries.filter(s => !s.name || !String(s.name).trim())
+    if (nameless.length) { showToast(`${nameless.length} student record(s) have no name on file — fix the student record before scoring them.`, '#dc2626'); return }
+    const invalid = entries.filter(s => {
+      const v = parseFloat(bulkMarks[s.id])
+      return Number.isNaN(v) || v < 0 || v > maxNum
+    })
+    if (invalid.length) { showToast(`${invalid.length} mark(s) invalid or exceed max (${maxNum}) — fix: ${invalid.slice(0,3).map(s=>s.name).join(', ')}${invalid.length>3?'…':''}`, '#dc2626'); return }
+    const existingDupes = entries.filter(s => scores.some(sc => sc.student_name===s.name && sc.subject_name===bulkForm.subject_name && sc.topic===bulkForm.topic && sc.test_date===bulkForm.test_date))
+    if (existingDupes.length) { showToast(`${existingDupes.length} student(s) already have this test scored: ${existingDupes.slice(0,3).map(s=>s.name).join(', ')}${existingDupes.length>3?'…':''}`, '#dc2626'); return }
     setBulkSaving(true)
     const payload = entries.map(s => ({
       student_id: s.id,
@@ -1631,12 +1676,13 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
       topic: bulkForm.topic,
       test_date: bulkForm.test_date,
       score: parseFloat(bulkMarks[s.id]),
-      max_score: parseFloat(bulkForm.max_score)||100,
+      max_score: maxNum,
     }))
-    const { error } = await supabase.from('student_scores').insert(payload)
+    const { data: inserted, error } = await supabase.from('student_scores').insert(payload).select()
     if (error) showToast('Save failed: '+error.message, '#dc2626')
     else {
       showToast(`✅ ${payload.length} scores saved!`, '#16a34a')
+      setLastSavedBatch(inserted || payload)
       setBulkStudents([])
       setBulkMarks({})
       setBulkForm({ course:'', subtype:'', class_name:'', subject_name:'', topic:'', test_date:today(), max_score:'100' })
@@ -1669,6 +1715,14 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
   const handleSave = async e => {
     e.preventDefault()
     if (!form.student_id && !form.student_name) { showToast('Select or enter student name.', '#dc2626'); return }
+    const scoreNum = parseFloat(form.score), maxNum = parseFloat(form.max_score)
+    if (Number.isNaN(scoreNum) || Number.isNaN(maxNum) || maxNum <= 0) { showToast('Enter valid score and max marks.', '#dc2626'); return }
+    if (scoreNum < 0) { showToast('Score cannot be negative.', '#dc2626'); return }
+    if (scoreNum > maxNum) { showToast(`Score (${scoreNum}) cannot exceed max marks (${maxNum}).`, '#dc2626'); return }
+    if (!editingId) {
+      const dup = scores.some(s => s.student_name===form.student_name && s.subject_name===form.subject_name && s.topic===form.topic && s.test_date===form.test_date)
+      if (dup) { showToast('A score for this student/subject/topic/date already exists. Edit it instead.', '#dc2626'); return }
+    }
     setSaving(true)
     const payload = {
       student_id:form.student_id||null, student_name:form.student_name,
@@ -1699,18 +1753,28 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
 
   const allBatches  = [...new Set(scores.map(s => s.subtype).filter(Boolean))]
   const allSubjects = [...new Set(scores.map(s => s.subject_name).filter(Boolean))]
-  const allStudents = [...new Set(scores.map(s => s.student_name).filter(Boolean))]
+  // BUG FIX: dedupe students by student_id when available (falls back to name) so two
+  // different students who share a name in different batches aren't merged together.
+  const allStudents = useMemo(() => {
+    const seen = new Map()
+    scores.forEach(s => {
+      if (!s.student_name) return
+      const key = s.student_id || s.student_name
+      if (!seen.has(key)) seen.set(key, { id: s.student_id||null, name: s.student_name })
+    })
+    return [...seen.values()].sort((a,b) => a.name.localeCompare(b.name))
+  }, [scores])
 
   const filtered = useMemo(() => scores.filter(s =>
     (filterBatch==='All'||s.subtype===filterBatch) &&
     (filterSubject==='All'||s.subject_name===filterSubject) &&
-    (filterStudent==='All'||s.student_name===filterStudent)
+    (filterStudent==='All'||(filterStudent.id ? s.student_id===filterStudent.id : s.student_name===filterStudent.name))
   ), [scores, filterBatch, filterSubject, filterStudent])
 
   const weakAreas = useMemo(() => {
     const map = {}
     filtered.forEach(s => {
-      const key = `${s.student_name}||${s.subject_name}`
+      const key = `${s.student_id||s.student_name}||${s.subject_name}`
       if (!map[key]) map[key] = { student:s.student_name, subject:s.subject_name, scores:[], batch:s.subtype }
       map[key].scores.push(pct(s.score, s.max_score))
     })
@@ -1720,17 +1784,379 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
   const weakOnly  = weakAreas.filter(w => w.avg < 60)
   const trendData = useMemo(() => {
     if (filterStudent==='All') return []
-    return filtered.filter(s => s.student_name===filterStudent).sort((a,b) => (a.test_date ?? '').localeCompare(b.test_date ?? ''))
+    return filtered.filter(s => filterStudent.id ? s.student_id===filterStudent.id : s.student_name===filterStudent.name).sort((a,b) => (a.test_date ?? '').localeCompare(b.test_date ?? ''))
   }, [filtered, filterStudent])
 
   const avgScore = filtered.length > 0 ? Math.round(filtered.reduce((a,s) => a+pct(s.score,s.max_score),0)/filtered.length) : 0
   const topScore = filtered.length > 0 ? Math.max(...filtered.map(s => pct(s.score,s.max_score))) : 0
   const scoreClasses = form.score && form.max_score ? pct(parseFloat(form.score), parseFloat(form.max_score)) : null
 
+  // ADV-2: Analytics — subject averages, grade distribution, leaderboard (advanced feature)
+  const analytics = useMemo(() => {
+    const subjMap = {}
+    const dist = { 'A (90-100)':0, 'B (75-89)':0, 'C (50-74)':0, 'D (<50)':0 }
+    const studentMap = {}
+    filtered.forEach(s => {
+      const p = pct(s.score, s.max_score)
+      if (!subjMap[s.subject_name]) subjMap[s.subject_name] = []
+      subjMap[s.subject_name].push(p)
+      if (p>=90) dist['A (90-100)']++
+      else if (p>=75) dist['B (75-89)']++
+      else if (p>=50) dist['C (50-74)']++
+      else dist['D (<50)']++
+      const key = s.student_id || s.student_name
+      if (!studentMap[key]) studentMap[key] = { name:s.student_name, scores:[] }
+      studentMap[key].scores.push(p)
+    })
+    const subjectAverages = Object.entries(subjMap)
+      .map(([subject,vals]) => ({ subject, avg:Math.round(vals.reduce((a,b)=>a+b,0)/vals.length), count:vals.length }))
+      .sort((a,b) => b.avg-a.avg)
+    const leaderboard = Object.values(studentMap)
+      .map(m => ({ name:m.name, avg:Math.round(m.scores.reduce((a,b)=>a+b,0)/m.scores.length), count:m.scores.length }))
+      .sort((a,b) => b.avg-a.avg)
+    return { subjectAverages, dist, top5: leaderboard.slice(0,5), bottom5: [...leaderboard].sort((a,b)=>a.avg-b.avg).slice(0,5) }
+  }, [filtered])
+
+  // ═══ ADV-3..20: 20 advanced features ════════════════════════════════════
+
+  // ADV-3: student key helper — consistent identity across all features below
+  const studentKey = s => s.student_id || s.student_name
+
+  // ADV-4: per-student score history (all filtered scores, sorted by date) — feeds
+  // trend arrows, rank-over-time, consistency, most-improved, at-risk detection
+  const studentHistory = useMemo(() => {
+    const map = {}
+    filtered.forEach(s => {
+      const key = studentKey(s)
+      if (!map[key]) map[key] = { name:s.student_name, id:s.student_id, entries:[] }
+      map[key].entries.push(s)
+    })
+    Object.values(map).forEach(m => m.entries.sort((a,b) => (a.test_date??'').localeCompare(b.test_date??'')))
+    return map
+  }, [filtered])
+
+  // ADV-5: trend direction per student — compares latest test % vs previous test %
+  const studentTrend = useMemo(() => {
+    const map = {}
+    Object.entries(studentHistory).forEach(([key, m]) => {
+      if (m.entries.length < 2) { map[key] = { dir:'flat', delta:0 }; return }
+      const last = pct(m.entries[m.entries.length-1].score, m.entries[m.entries.length-1].max_score)
+      const prev = pct(m.entries[m.entries.length-2].score, m.entries[m.entries.length-2].max_score)
+      const delta = last - prev
+      map[key] = { dir: delta>3?'up':delta<-3?'down':'flat', delta }
+    })
+    return map
+  }, [studentHistory])
+
+  // ADV-6: sudden-drop alerts — latest test % fell 20+ points vs previous test
+  const suddenDrops = useMemo(() => Object.entries(studentHistory)
+    .filter(([key]) => studentTrend[key]?.delta <= -20)
+    .map(([key, m]) => ({ name:m.name, delta:studentTrend[key].delta, latest:m.entries[m.entries.length-1] }))
+    .sort((a,b) => a.delta-b.delta)
+  , [studentHistory, studentTrend])
+
+  // ADV-7: at-risk students — average below 50% across 2+ tests (needs sustained pattern, not one bad day)
+  const atRisk = useMemo(() => Object.values(studentHistory)
+    .filter(m => m.entries.length >= 2)
+    .map(m => ({ name:m.name, avg:Math.round(m.entries.reduce((a,e)=>a+pct(e.score,e.max_score),0)/m.entries.length), count:m.entries.length }))
+    .filter(m => m.avg < 50)
+    .sort((a,b) => a.avg-b.avg)
+  , [studentHistory])
+
+  // ADV-8/ADV-2b: consistency score per student — lower std deviation = more consistent
+  const consistency = useMemo(() => Object.values(studentHistory)
+    .filter(m => m.entries.length >= 2)
+    .map(m => {
+      const pcts = m.entries.map(e => pct(e.score,e.max_score))
+      const avg = pcts.reduce((a,b)=>a+b,0)/pcts.length
+      const variance = pcts.reduce((a,p)=>a+(p-avg)**2,0)/pcts.length
+      return { name:m.name, avg:Math.round(avg), stdDev:Math.round(Math.sqrt(variance)), count:pcts.length }
+    })
+    .sort((a,b) => a.stdDev-b.stdDev)
+  , [studentHistory])
+
+  // ADV-18: most-improved leaderboard — delta between first and latest test % (needs 2+ tests)
+  const mostImproved = useMemo(() => Object.values(studentHistory)
+    .filter(m => m.entries.length >= 2)
+    .map(m => {
+      const first = pct(m.entries[0].score, m.entries[0].max_score)
+      const latest = pct(m.entries[m.entries.length-1].score, m.entries[m.entries.length-1].max_score)
+      return { name:m.name, first, latest, delta:latest-first }
+    })
+    .sort((a,b) => b.delta-a.delta)
+  , [studentHistory])
+
+  // ═══ Class Wise Test view — pick a class/batch, see every test conducted
+  // for it, class average trend over time, subject breakdown, and full
+  // per-student roster for any selected test. Independent of the top
+  // filter bar so a teacher can browse class-to-class quickly.
+  const [cwBatch, setCwBatch]     = useState('All')
+  const [cwSubject, setCwSubject] = useState('All')
+  const [cwTestKey, setCwTestKey] = useState(null)
+
+  const classWiseScores = useMemo(() => scores.filter(s =>
+    (cwBatch==='All'||s.subtype===cwBatch) && (cwSubject==='All'||s.subject_name===cwSubject)
+  ), [scores, cwBatch, cwSubject])
+
+  const classWiseTests = useMemo(() => {
+    const map = {}
+    classWiseScores.forEach(s => {
+      const key = `${s.subject_name}||${s.topic}||${s.test_date}||${s.subtype}`
+      if (!map[key]) map[key] = { subject:s.subject_name, topic:s.topic, test_date:s.test_date, subtype:s.subtype, rows:[] }
+      map[key].rows.push(s)
+    })
+    return Object.entries(map).map(([key,t]) => {
+      const pcts = t.rows.map(r => pct(r.score, r.max_score))
+      const avg = Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length)
+      return { key, ...t, count:t.rows.length, avg, best:Math.max(...pcts), worst:Math.min(...pcts) }
+    }).sort((a,b) => (b.test_date??'').localeCompare(a.test_date??''))
+  }, [classWiseScores])
+
+  const classWiseTrend = useMemo(() => [...classWiseTests].reverse(), [classWiseTests])
+
+  const classWiseSubjectBreakdown = useMemo(() => {
+    const map = {}
+    classWiseScores.forEach(s => {
+      if (!map[s.subject_name]) map[s.subject_name] = []
+      map[s.subject_name].push(pct(s.score, s.max_score))
+    })
+    return Object.entries(map).map(([subject,vals]) => ({ subject, avg:Math.round(vals.reduce((a,b)=>a+b,0)/vals.length), count:vals.length })).sort((a,b) => b.avg-a.avg)
+  }, [classWiseScores])
+
+  const selectedClassTest = useMemo(() => classWiseTests.find(t => t.key===cwTestKey) || null, [classWiseTests, cwTestKey])
+
+  // ADV-1/2/3 (rank): rank + percentile of every filtered row within its own test
+  // (same subject+topic+test_date+subtype group) — used in the table view
+  const rankMap = useMemo(() => {
+    const groups = {}
+    filtered.forEach(s => {
+      const gkey = `${s.subject_name}||${s.topic}||${s.test_date}||${s.subtype}`
+      if (!groups[gkey]) groups[gkey] = []
+      groups[gkey].push(s)
+    })
+    const map = {}
+    Object.values(groups).forEach(group => {
+      const sorted = [...group].sort((a,b) => pct(b.score,b.max_score)-pct(a.score,a.max_score))
+      sorted.forEach((s,i) => {
+        const tied = sorted.filter(x => pct(x.score,x.max_score)===pct(s.score,s.max_score))
+        const rank = sorted.findIndex(x => pct(x.score,x.max_score)===pct(s.score,s.max_score)) + 1
+        map[s.id] = { rank, outOf: group.length, percentile: Math.round((1 - (rank-1)/group.length)*100) }
+      })
+    })
+    return map
+  }, [filtered])
+
+  // ADV-20: distinct test history — every unique test conducted, for quick jump-to-filter
+  const testHistory = useMemo(() => {
+    const map = {}
+    scores.forEach(s => {
+      const key = `${s.subject_name}||${s.topic}||${s.test_date}||${s.subtype}`
+      if (!map[key]) map[key] = { subject:s.subject_name, topic:s.topic, test_date:s.test_date, subtype:s.subtype, count:0, avgSum:0 }
+      map[key].count++
+      map[key].avgSum += pct(s.score, s.max_score)
+    })
+    return Object.values(map).map(t => ({ ...t, avg: Math.round(t.avgSum/t.count) })).sort((a,b) => (b.test_date??'').localeCompare(a.test_date??''))
+  }, [scores])
+
+  // ADV-15: search box state + filtered student suggestions
+  const [studentSearch, setStudentSearch] = useState('')
+  const searchResults = useMemo(() => {
+    if (!studentSearch.trim()) return []
+    const q = studentSearch.trim().toLowerCase()
+    return allStudents.filter(s => s.name.toLowerCase().includes(q)).slice(0,8)
+  }, [studentSearch, allStudents])
+
+  // ADV-16: sortable table column state
+  const [sortCol, setSortCol] = useState(null)
+  const [sortDir, setSortDir] = useState('asc')
+  const sortedFiltered = useMemo(() => {
+    if (!sortCol) return filtered
+    const arr = [...filtered]
+    arr.sort((a,b) => {
+      let av, bv
+      if (sortCol==='pct') { av = pct(a.score,a.max_score); bv = pct(b.score,b.max_score) }
+      else if (sortCol==='date') { av = a.test_date||''; bv = b.test_date||'' }
+      else if (sortCol==='student') { av = a.student_name||''; bv = b.student_name||'' }
+      else if (sortCol==='subject') { av = a.subject_name||''; bv = b.subject_name||'' }
+      else { av = a[sortCol]; bv = b[sortCol] }
+      if (typeof av==='string') return sortDir==='asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+      return sortDir==='asc' ? av-bv : bv-av
+    })
+    return arr
+  }, [filtered, sortCol, sortDir])
+  const toggleSort = col => { if (sortCol===col) setSortDir(d => d==='asc'?'desc':'asc'); else { setSortCol(col); setSortDir('asc') } }
+
+  // ADV-17: class/batch average for delta-vs-class indicator
+  const classAvgByGroup = useMemo(() => {
+    const groups = {}
+    filtered.forEach(s => {
+      const gkey = `${s.subject_name}||${s.subtype}`
+      if (!groups[gkey]) groups[gkey] = []
+      groups[gkey].push(pct(s.score, s.max_score))
+    })
+    const map = {}
+    Object.entries(groups).forEach(([k,vals]) => { map[k] = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) })
+    return map
+  }, [filtered])
+
+  // ADV-14: batch vs batch comparison (average % per batch, current filter set)
+  const batchComparison = useMemo(() => {
+    const groups = {}
+    scores.forEach(s => {
+      if (filterSubject!=='All' && s.subject_name!==filterSubject) return
+      const b = s.subtype||'Unassigned'
+      if (!groups[b]) groups[b] = []
+      groups[b].push(pct(s.score, s.max_score))
+    })
+    return Object.entries(groups).map(([batch,vals]) => ({ batch, avg:Math.round(vals.reduce((a,b)=>a+b,0)/vals.length), count:vals.length })).sort((a,b) => b.avg-a.avg)
+  }, [scores, filterSubject])
+
+  // ADV-13: subject comparison for one selected student (used in trend view)
+  const subjectComparisonForStudent = useMemo(() => {
+    if (filterStudent==='All') return []
+    const key = filterStudent.id || filterStudent.name
+    const m = studentHistory[key]
+    if (!m) return []
+    const bySubj = {}
+    m.entries.forEach(e => { if (!bySubj[e.subject_name]) bySubj[e.subject_name]=[]; bySubj[e.subject_name].push(pct(e.score,e.max_score)) })
+    return Object.entries(bySubj).map(([subject,vals]) => ({ subject, avg:Math.round(vals.reduce((a,b)=>a+b,0)/vals.length), count:vals.length })).sort((a,b)=>b.avg-a.avg)
+  }, [filterStudent, studentHistory])
+
+  // ADV-19: bulk delete an entire test (all rows matching subject+topic+date+batch)
+  const [confirmDeleteTest, setConfirmDeleteTest] = useState(null)
+  const handleDeleteTest = async t => {
+    const { error } = await supabase.from('student_scores').delete()
+      .eq('subject_name', t.subject).eq('topic', t.topic).eq('test_date', t.test_date)
+      .eq('subtype', t.subtype)
+    if (error) showToast('Delete failed: '+error.message, '#dc2626')
+    else { showToast(`Deleted all ${t.count} entries for this test`, '#dc2626'); setConfirmDeleteTest(null); fetchScores() }
+  }
+
+  // ADV-10: WhatsApp-shareable text summary for one student
+  const buildWhatsAppSummary = key => {
+    const m = studentHistory[key]
+    if (!m || !m.entries.length) return ''
+    const lines = [`📊 Test Score Summary — ${m.name}`, '']
+    m.entries.forEach(e => { const p = pct(e.score,e.max_score); lines.push(`${e.subject_name} (${e.topic}): ${e.score}/${e.max_score} — ${p}%`) })
+    const avg = Math.round(m.entries.reduce((a,e)=>a+pct(e.score,e.max_score),0)/m.entries.length)
+    lines.push('', `Overall Average: ${avg}%`)
+    return lines.join('\n')
+  }
+  const shareWhatsApp = key => {
+    const text = buildWhatsAppSummary(key)
+    if (!text) return
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+  }
+
+  // ADV-9/ADV-9b: printable reports — batch test report & individual student report
+  const printBatchReport = testKey => {
+    const t = testHistory.find(x => `${x.subject}||${x.topic}||${x.test_date}||${x.subtype}` === testKey)
+    if (!t) return
+    const rows = scores.filter(s => s.subject_name===t.subject && s.topic===t.topic && s.test_date===t.test_date && s.subtype===t.subtype)
+      .sort((a,b) => pct(b.score,b.max_score)-pct(a.score,a.max_score))
+    const win = window.open('', '_blank')
+    win.document.write(`<html><head><title>${t.subject} — ${t.topic}</title><style>
+      body{font-family:Georgia,serif;padding:32px;color:#1e293b} h1{font-size:20px;margin:0 0 4px} h2{font-size:13px;color:#64748b;font-weight:400;margin:0 0 20px}
+      table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0} th{background:#f8fafc}
+      @media print{body{padding:12px}}
+    </style></head><body>
+      <h1>GNSI — ${t.subject}: ${t.topic}</h1>
+      <h2>${t.subtype} Batch · ${fmtDate(t.test_date)} · Class Average: ${t.avg}%</h2>
+      <table><thead><tr><th>Rank</th><th>Student</th><th>Score</th><th>%</th></tr></thead><tbody>
+      ${rows.map((r,i) => `<tr><td>${i+1}</td><td>${r.student_name||'-'}</td><td>${r.score}/${r.max_score}</td><td>${pct(r.score,r.max_score)}%</td></tr>`).join('')}
+      </tbody></table>
+    </body></html>`)
+    win.document.close()
+    win.print()
+  }
+
+  const printStudentReport = key => {
+    const m = studentHistory[key]
+    if (!m || !m.entries.length) return
+    const avg = Math.round(m.entries.reduce((a,e)=>a+pct(e.score,e.max_score),0)/m.entries.length)
+    const win = window.open('', '_blank')
+    win.document.write(`<html><head><title>${m.name} — Progress Report</title><style>
+      body{font-family:Georgia,serif;padding:32px;color:#1e293b} h1{font-size:20px;margin:0 0 4px} h2{font-size:13px;color:#64748b;font-weight:400;margin:0 0 20px}
+      table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0} th{background:#f8fafc}
+      @media print{body{padding:12px}}
+    </style></head><body>
+      <h1>GNSI — Student Progress Report</h1>
+      <h2>${m.name} · Overall Average: ${avg}%</h2>
+      <table><thead><tr><th>Date</th><th>Subject</th><th>Topic</th><th>Score</th><th>%</th></tr></thead><tbody>
+      ${m.entries.map(e => `<tr><td>${fmtDate(e.test_date)}</td><td>${e.subject_name}</td><td>${e.topic}</td><td>${e.score}/${e.max_score}</td><td>${pct(e.score,e.max_score)}%</td></tr>`).join('')}
+      </tbody></table>
+    </body></html>`)
+    win.document.close()
+    win.print()
+  }
+
+  // ADV-12: PDF export (browser print-to-PDF) of the current filtered table
+  const printFilteredTable = () => {
+    const win = window.open('', '_blank')
+    win.document.write(`<html><head><title>Class Test Scores</title><style>
+      body{font-family:Georgia,serif;padding:32px;color:#1e293b} h1{font-size:20px;margin:0 0 16px}
+      table{width:100%;border-collapse:collapse;font-size:12px} th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0} th{background:#f8fafc}
+      @media print{body{padding:12px}}
+    </style></head><body>
+      <h1>GNSI — Class Test Scores${filterBatch!=='All'?` — ${filterBatch}`:''}${filterSubject!=='All'?` — ${filterSubject}`:''}</h1>
+      <table><thead><tr><th>Date</th><th>Student</th><th>Batch</th><th>Subject</th><th>Topic</th><th>Score</th><th>%</th></tr></thead><tbody>
+      ${sortedFiltered.map(s => `<tr><td>${fmtDate(s.test_date)}</td><td>${s.student_name||'-'}</td><td>${s.subtype||'-'}</td><td>${s.subject_name}</td><td>${s.topic}</td><td>${s.score}/${s.max_score}</td><td>${pct(s.score,s.max_score)}%</td></tr>`).join('')}
+      </tbody></table>
+    </body></html>`)
+    win.document.close()
+    win.print()
+  }
+
+  // ADV-11: CSV bulk import for marks
+  const csvFileRef = useRef(null)
+  const [csvImporting, setCsvImporting] = useState(false)
+  const [csvPreview, setCsvPreview] = useState(null)
+  const parseCSV = text => {
+    const lines = text.split(/\r?\n/).filter(l => l.trim())
+    if (lines.length < 2) return []
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+    return lines.slice(1).map(line => {
+      const cells = line.split(',').map(c => c.trim())
+      const row = {}
+      headers.forEach((h,i) => { row[h] = cells[i] })
+      return row
+    })
+  }
+  const handleCsvSelect = async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const text = await file.text()
+    const rows = parseCSV(text)
+    setCsvPreview(rows)
+    if (csvFileRef.current) csvFileRef.current.value = ''
+  }
+  const confirmCsvImport = async () => {
+    if (!csvPreview || !csvPreview.length) return
+    setCsvImporting(true)
+    // Expected CSV columns: student_name, subject_name, topic, test_date, score, max_score, subtype(optional), course(optional)
+    const invalid = csvPreview.filter(r => !r.student_name || !r.subject_name || !r.topic || !r.test_date || r.score===undefined || r.max_score===undefined)
+    if (invalid.length) { showToast(`${invalid.length} row(s) missing required columns — import cancelled`, '#dc2626'); setCsvImporting(false); return }
+    const matched = csvPreview.map(r => {
+      const stu = allStudents.find(s => s.name.toLowerCase()===r.student_name.toLowerCase())
+      return { ...r, student_id: stu?.id||null }
+    })
+    const payload = matched.map(r => ({
+      student_id: r.student_id, student_name: r.student_name,
+      course: r.course||null, subtype: r.subtype||null, class_name: r.class_name||null,
+      subject_name: r.subject_name, topic: r.topic, test_date: r.test_date,
+      score: parseFloat(r.score), max_score: parseFloat(r.max_score)||100,
+    }))
+    const { error } = await supabase.from('student_scores').insert(payload)
+    if (error) showToast('Import failed: '+error.message, '#dc2626')
+    else { showToast(`✅ Imported ${payload.length} scores from CSV`, '#16a34a'); setCsvPreview(null); fetchScores() }
+    setCsvImporting(false)
+  }
+
   return (
     <>
       {toastEl}
       {confirmDel && <ConfirmModal title="Delete Score" message="Delete this score entry?" confirmLabel="Delete" danger onConfirm={() => handleDelete(confirmDel)} onCancel={() => setConfirmDel(null)}/>}
+      {confirmDeleteTest && <ConfirmModal title="Delete Entire Test" message={`Delete all ${confirmDeleteTest.count} score entries for ${confirmDeleteTest.subject} — ${confirmDeleteTest.topic} (${fmtDate(confirmDeleteTest.test_date)})? This cannot be undone.`} confirmLabel="Delete All" danger onConfirm={() => handleDeleteTest(confirmDeleteTest)} onCancel={() => setConfirmDeleteTest(null)}/>}
 
       <div className="stat-grid-4" style={S.statGrid(4)}>
         {[
@@ -1747,11 +2173,49 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
         ))}
       </div>
 
+      {/* ADV-15: quick student search */}
+      <div style={{ position:'relative', marginBottom:14 }}>
+        <input value={studentSearch} onChange={e => setStudentSearch(e.target.value)} placeholder="🔍 Search student by name..." style={{ ...S.input, maxWidth:340 }}/>
+        {searchResults.length > 0 && (
+          <div style={{ position:'absolute', top:'100%', left:0, marginTop:4, width:340, maxWidth:'100%', background:'white', border:'1px solid #e2e8f0', borderRadius:8, boxShadow:'0 6px 20px rgba(0,0,0,.12)', zIndex:20, overflow:'hidden' }}>
+            {searchResults.map(s => (
+              <div key={s.id||s.name} onClick={() => { setFilterStudent(s); setStudentSearch(''); setViewMode('trend') }} style={{ padding:'10px 14px', cursor:'pointer', fontSize:13, borderBottom:'1px solid #f1f5f9' }} onMouseDown={e=>e.preventDefault()}>
+                {s.name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ADV-6/ADV-7: alert banners for sudden drops and at-risk students */}
+      {(suddenDrops.length > 0 || atRisk.length > 0) && (
+        <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:12, marginBottom:14 }}>
+          {suddenDrops.length > 0 && (
+            <div style={{ padding:'12px 14px', background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:10 }}>
+              <div style={{ fontSize:12, fontWeight:800, color:'#c2410c', marginBottom:6 }}>📉 Sudden Drop Alert ({suddenDrops.length})</div>
+              {suddenDrops.slice(0,4).map((d,i) => (
+                <div key={i} style={{ fontSize:12, color:'#9a3412', marginBottom:3 }}>{d.name} — {d.delta}% vs last test ({d.latest.subject_name})</div>
+              ))}
+            </div>
+          )}
+          {atRisk.length > 0 && (
+            <div style={{ padding:'12px 14px', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10 }}>
+              <div style={{ fontSize:12, fontWeight:800, color:'#dc2626', marginBottom:6 }}>🚨 At-Risk Students ({atRisk.length})</div>
+              {atRisk.slice(0,4).map((d,i) => (
+                <div key={i} style={{ fontSize:12, color:'#991b1b', marginBottom:3 }}>{d.name} — {d.avg}% avg over {d.count} tests</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={S.card}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: (showForm||bulkMode)?18:0, flexWrap:'wrap', gap:8 }}>
           <h2 style={{ fontSize:16, fontWeight:800, color:'#1e3a5f', margin:0 }}>🎯 {editingId?'Edit Score':'Add Score'}</h2>
-          <div style={{ display:'flex', gap:8 }}>
-            <button onClick={() => { setBulkMode(!bulkMode); setShowForm(false); setEditingId(null) }} style={S.btn(bulkMode?'#64748b':'#7c3aed')}>{bulkMode?'✖ Cancel':'📋 Bulk Entry'}</button>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <button onClick={() => csvFileRef.current?.click()} style={S.btn('#0891b2')}>📤 Import CSV</button>
+            <input ref={csvFileRef} type="file" accept=".csv" onChange={handleCsvSelect} style={{ display:'none' }}/>
+            <button onClick={() => { setBulkMode(!bulkMode); setShowForm(false); setEditingId(null); setLastSavedBatch(null) }} style={S.btn(bulkMode?'#64748b':'#7c3aed')}>{bulkMode?'✖ Cancel':'📋 Bulk Entry'}</button>
             <button onClick={() => { setShowForm(!showForm); setBulkMode(false); setEditingId(null); setForm(blankForm) }} style={S.btn(showForm?'#64748b':'#1e3a5f')}>{showForm?'✖ Cancel':'➕ Add Score'}</button>
           </div>
         </div>
@@ -1765,17 +2229,28 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:12, marginBottom:14 }}>
               <div>
                 <label style={S.label}>Course *</label>
-                <select value={bulkForm.course} onChange={e => setBulkForm(f=>({...f,course:e.target.value,subtype:'',class_name:''}))} style={S.select}>
+                <select value={bulkForm.course} onChange={e => { setBulkForm(f=>({...f,course:e.target.value,subtype:'',class_name:''})); setBulkStudents([]); setBulkMarks({}) }} style={S.select}>
                   <option value="">Select Course</option>
                   {courses.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
                 <label style={S.label}>Batch / Subtype</label>
-                <select value={bulkForm.subtype} onChange={e => setBulkForm(f=>({...f,subtype:e.target.value}))} disabled={!bulkForm.course} style={{ ...S.select, opacity:bulkForm.course?1:.5 }}>
+                <select value={bulkForm.subtype} onChange={e => { setBulkForm(f=>({...f,subtype:e.target.value})); setBulkStudents([]); setBulkMarks({}) }} disabled={!bulkForm.course} style={{ ...S.select, opacity:bulkForm.course?1:.5 }}>
                   <option value="">Select Batch</option>
                   {(bulkForm.course?subtypesFor(bulkForm.course):[]).map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
+              </div>
+              <div>
+                <label style={S.label}>Class</label>
+                {(bulkForm.course&&bulkForm.subtype ? classesFor(bulkForm.course,bulkForm.subtype) : []).length > 0 ? (
+                  <select value={bulkForm.class_name} onChange={e => setBulkForm(f=>({...f,class_name:e.target.value}))} disabled={!bulkForm.subtype} style={{ ...S.select, opacity:bulkForm.subtype?1:.5 }}>
+                    <option value="">Select Class</option>
+                    {classesFor(bulkForm.course, bulkForm.subtype).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                ) : (
+                  <input value={bulkForm.class_name} onChange={e => setBulkForm(f=>({...f,class_name:e.target.value}))} placeholder="e.g. Class 6" disabled={!bulkForm.subtype} style={{ ...S.input, opacity:bulkForm.subtype?1:.5 }}/>
+                )}
               </div>
               <div>
                 <label style={S.label}>Subject *</label>
@@ -1794,7 +2269,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
               </div>
               <div>
                 <label style={S.label}>Max Marks</label>
-                <input type="number" value={bulkForm.max_score} onChange={e => setBulkForm(f=>({...f,max_score:e.target.value}))} placeholder="100" style={S.input}/>
+                <input type="number" min="1" value={bulkForm.max_score} onChange={e => setBulkForm(f=>({...f,max_score:e.target.value}))} placeholder="100" style={S.input}/>
               </div>
             </div>
             <button onClick={fetchBulkStudents} disabled={!bulkForm.course||bulkLoading} style={{ ...S.btn('#0891b2', !bulkForm.course||bulkLoading), marginBottom:16 }}>
@@ -1808,7 +2283,11 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
                   <span style={{ marginLeft:12, fontSize:12, color:'#94a3b8', fontWeight:400 }}>Leave blank to skip a student</span>
                 </div>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
-                  <button onClick={() => { const m = {}; bulkStudents.forEach(s => { m[s.id] = bulkForm.max_score }); setBulkMarks(m) }} style={S.btnSm('#16a34a')}>✅ All Full Marks</button>
+                  <button onClick={() => {
+                    const alreadyFilled = bulkStudents.filter(s => bulkMarks[s.id] !== '' && bulkMarks[s.id] !== undefined)
+                    if (alreadyFilled.length > 0 && !window.confirm(`${alreadyFilled.length} mark(s) already entered will be overwritten with full marks. Continue?`)) return
+                    const mx = parseFloat(bulkForm.max_score)||100; const m = {}; bulkStudents.forEach(s => { if (s.name && String(s.name).trim()) m[s.id] = String(mx) }); setBulkMarks(m)
+                  }} style={S.btnSm('#16a34a')}>✅ All Full Marks</button>
                   <button onClick={() => { const m = {}; bulkStudents.forEach(s => { m[s.id] = '' }); setBulkMarks(m) }} style={S.btnSm('#94a3b8')}>✕ Clear All</button>
                 </div>
                 <div style={{ border:'1px solid #e2e8f0', borderRadius:10, overflow:'hidden', marginBottom:14 }}>
@@ -1825,12 +2304,13 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
                     <tbody>
                       {bulkStudents.map((s, i) => {
                         const mark = bulkMarks[s.id]
+                        const hasName = s.name && String(s.name).trim()
                         const p = mark !== '' && mark !== undefined ? pct(parseFloat(mark), parseFloat(bulkForm.max_score)||100) : null
                         return (
-                          <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9', background: p!==null?(p>=75?'#f0fdf4':p>=50?'#fffbeb':'#fff1f2'):'white' }}>
+                          <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9', background: !hasName ? '#fef2f2' : p!==null?(p>=75?'#f0fdf4':p>=50?'#fffbeb':'#fff1f2'):'white' }}>
                             <td style={{ padding:'8px 12px', color:'#94a3b8', fontSize:11 }}>{i+1}</td>
-                            <td style={{ padding:'8px 12px', fontWeight:600, color:'#1e293b' }}>
-                              {s.name}
+                            <td style={{ padding:'8px 12px', fontWeight:600, color: hasName ? '#1e293b' : '#dc2626' }}>
+                              {hasName ? s.name : '⚠️ No name on file'}
                               {s.roll_number && <span style={{ marginLeft:6, fontSize:11, color:'#94a3b8' }}>#{s.roll_number}</span>}
                             </td>
                             <td style={{ padding:'8px 12px' }}>
@@ -1840,9 +2320,10 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
                                 max={bulkForm.max_score}
                                 step="0.5"
                                 value={mark||''}
+                                disabled={!hasName}
                                 onChange={e => setBulkMarks(prev => ({ ...prev, [s.id]: e.target.value }))}
-                                placeholder="—"
-                                style={{ width:80, padding:'6px 10px', borderRadius:6, border:`1.5px solid ${p!==null?scoreColor(p):'#d1d5db'}`, fontSize:13, fontFamily:'inherit', textAlign:'center' }}
+                                placeholder={hasName ? '—' : 'skipped'}
+                                style={{ width:80, padding:'6px 10px', borderRadius:6, border:`1.5px solid ${p!==null?scoreColor(p):'#d1d5db'}`, fontSize:13, fontFamily:'inherit', textAlign:'center', opacity: hasName?1:.5 }}
                               />
                             </td>
                             <td style={{ padding:'8px 12px', fontWeight:700, color:p!==null?scoreColor(p):'#94a3b8', fontFamily:"'JetBrains Mono',monospace" }}>
@@ -1867,6 +2348,54 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
                 </div>
               </>
             )}
+            {lastSavedBatch && lastSavedBatch.length > 0 && (
+              <div style={{ marginTop:16, padding:14, background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:'#16a34a', marginBottom:8 }}>✅ Just saved — verify these values are correct:</div>
+                <div style={{ maxHeight:200, overflowY:'auto' }}>
+                  {lastSavedBatch.map((s,i) => (
+                    <div key={s.id||i} style={{ display:'flex', justifyContent:'space-between', padding:'4px 8px', fontSize:12, borderBottom:'1px solid #dcfce7' }}>
+                      <span style={{ color:'#1e293b' }}>{s.student_name}</span>
+                      <span style={{ fontWeight:700, color:'#16a34a', fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score}</span>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => setLastSavedBatch(null)} style={{ ...S.btnSm('#94a3b8'), marginTop:8 }}>Dismiss</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ADV-11: CSV import preview */}
+        {csvPreview && (
+          <div style={{ marginTop:16, padding:14, background:'#ecfeff', border:'1px solid #a5f3fc', borderRadius:10 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#0891b2', marginBottom:8 }}>
+              📤 Preview: {csvPreview.length} rows from CSV
+              <span style={{ marginLeft:10, fontSize:11, fontWeight:400, color:'#64748b' }}>Expected columns: student_name, subject_name, topic, test_date, score, max_score, subtype, course, class_name</span>
+            </div>
+            <div style={{ maxHeight:220, overflowY:'auto', border:'1px solid #cffafe', borderRadius:8, marginBottom:10 }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead><tr style={{ background:'#f0fdfa' }}>{['Student','Subject','Topic','Date','Score','Max'].map(h=><th key={h} style={{ padding:'6px 8px', textAlign:'left' }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {csvPreview.slice(0,50).map((r,i) => {
+                    const matched = allStudents.some(s => s.name.toLowerCase()===((r.student_name||'').toLowerCase()))
+                    return (
+                      <tr key={i} style={{ borderTop:'1px solid #ecfeff', background: matched?'white':'#fff7ed' }}>
+                        <td style={{ padding:'5px 8px' }}>{r.student_name}{!matched && <span style={{ marginLeft:6, fontSize:10, color:'#c2410c' }}>new/unmatched</span>}</td>
+                        <td style={{ padding:'5px 8px' }}>{r.subject_name}</td>
+                        <td style={{ padding:'5px 8px' }}>{r.topic}</td>
+                        <td style={{ padding:'5px 8px' }}>{r.test_date}</td>
+                        <td style={{ padding:'5px 8px' }}>{r.score}</td>
+                        <td style={{ padding:'5px 8px' }}>{r.max_score}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={confirmCsvImport} disabled={csvImporting} style={S.btn('#16a34a', csvImporting)}>{csvImporting?'⏳ Importing...':`✅ Import ${csvPreview.length} Rows`}</button>
+              <button onClick={() => setCsvPreview(null)} style={S.btn('#64748b')}>✖ Cancel</button>
+            </div>
           </div>
         )}
         {showForm && (
@@ -1879,7 +2408,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
             <div><label style={S.label}>Topic / Test Name</label><input value={form.topic} onChange={e => setForm(f => ({ ...f, topic:e.target.value }))} placeholder="e.g. Fractions Quiz" required style={S.input}/></div>
             <div><label style={S.label}>Test Date</label><input type="date" value={form.test_date} onChange={e => setForm(f => ({ ...f, test_date:e.target.value }))} required style={S.input}/></div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-              <div><label style={S.label}>Score</label><input type="number" min="0" step="0.5" value={form.score} onChange={e => setForm(f => ({ ...f, score:e.target.value }))} required placeholder="78" style={S.input}/></div>
+              <div><label style={S.label}>Score</label><input type="number" min="0" max={form.max_score||undefined} step="0.5" value={form.score} onChange={e => setForm(f => ({ ...f, score:e.target.value }))} required placeholder="78" style={S.input}/></div>
               <div><label style={S.label}>Out of</label><input type="number" min="1" value={form.max_score} onChange={e => setForm(f => ({ ...f, max_score:e.target.value }))} required placeholder="100" style={S.input}/></div>
             </div>
             {scoreClasses !== null && (
@@ -1899,20 +2428,31 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
         <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Batches</option>{allBatches.map(b=><option key={b} value={b}>{b}</option>)}</select>
         <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Subjects</option>{allSubjects.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        <select value={filterStudent} onChange={e => setFilterStudent(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 150px' }}><option value="All">All Students</option>{allStudents.map(s=><option key={s} value={s}>{s}</option>)}</select>
+        <select value={filterStudent==='All'?'All':(filterStudent.id||filterStudent.name)} onChange={e => { const v=e.target.value; setFilterStudent(v==='All'?'All':(allStudents.find(s=>(s.id||s.name)===v)||'All')) }} style={{ ...S.select, width:'auto', flex:'0 1 150px' }}><option value="All">All Students</option>{allStudents.map(s=><option key={s.id||s.name} value={s.id||s.name}>{s.name}</option>)}</select>
         <div style={{ display:'flex', gap:4, marginLeft:'auto' }}>
-          {[['table','📋'],['weak','⚠️'],['trend','📈']].map(([key,icon]) => (
-            <button key={key} onClick={() => setViewMode(key)} style={{ ...S.btnSm(viewMode===key?'#1e3a5f':'#e2e8f0'), color:viewMode===key?'white':'#374151' }}>{icon}</button>
+          {[['table','📋','Table'],['weak','⚠️','Weak'],['trend','📈','Trend'],['analytics','🧮','Analytics'],['insights','💡','Insights'],['tests','🗂️','Tests'],['classwise','🏫','Class Wise']].map(([key,icon,label]) => (
+            <button key={key} title={label} onClick={() => setViewMode(key)} style={{ ...S.btnSm(viewMode===key?'#1e3a5f':'#e2e8f0'), color:viewMode===key?'white':'#374151' }}>{icon}</button>
           ))}
+          <button title="Export CSV" onClick={() => exportScoresCSV(filtered)} style={{ ...S.btnSm('#0891b2'), color:'white' }}>⬇️</button>
+          <button title="Print / PDF" onClick={printFilteredTable} style={{ ...S.btnSm('#7c3aed'), color:'white' }}>🖨️</button>
         </div>
       </div>
 
       {viewMode==='table' && (loading ? <div style={{ textAlign:'center', padding:48, color:'#64748b' }}>⏳ Loading...</div> : (
         <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:600 }}>
-            <thead><tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>{['Date','Student','Batch','Subject','Topic','Score','%','Grade','Actions'].map(h => (<th key={h} style={{ padding:'11px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>{h}</th>))}</tr></thead>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:760 }}>
+            <thead><tr style={{ background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+              {[['date','Date'],['student','Student'],['batch','Batch'],['subject','Subject'],['topic','Topic'],['score','Score'],['pct','%'],['rank','Rank'],['trend','Trend'],['grade','Grade'],['actions','Actions']].map(([col,h]) => {
+                const sortable = ['date','student','subject','pct'].includes(col)
+                return (
+                  <th key={col} onClick={() => sortable && toggleSort(col)} style={{ padding:'11px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12, cursor:sortable?'pointer':'default', userSelect:'none' }}>
+                    {h}{sortable && sortCol===col && (sortDir==='asc'?' ▲':' ▼')}
+                  </th>
+                )
+              })}
+            </tr></thead>
             <tbody>
-              {filtered.map(s => { const p = pct(s.score, s.max_score); return (
+              {sortedFiltered.map(s => { const p = pct(s.score, s.max_score); const r = rankMap[s.id]; const key = studentKey(s); const trend = studentTrend[key]; return (
                 <tr key={s.id} style={{ borderBottom:'1px solid #f1f5f9' }}>
                   <td style={{ padding:'9px 12px', color:'#64748b', whiteSpace:'nowrap' }}>{fmtDate(s.test_date)}</td>
                   <td style={{ padding:'9px 12px', fontWeight:600, color:'#1e293b' }}>{s.student_name}</td>
@@ -1921,11 +2461,13 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
                   <td style={{ padding:'9px 12px', color:'#64748b', maxWidth:140 }}>{s.topic}</td>
                   <td style={{ padding:'9px 12px', fontWeight:700, color:'#1e293b', fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score}</td>
                   <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', alignItems:'center', gap:6 }}><div style={{ width:44, height:5, background:'#e2e8f0', borderRadius:3, overflow:'hidden' }}><div style={{ width:`${p}%`, height:'100%', background:scoreColor(p), borderRadius:3 }}/></div><span style={{ fontWeight:700, color:scoreColor(p), fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span></div></td>
+                  <td style={{ padding:'9px 12px', fontSize:12, color:'#64748b' }}>{r ? `#${r.rank}/${r.outOf}` : '-'}</td>
+                  <td style={{ padding:'9px 12px', fontSize:14 }}>{trend ? (trend.dir==='up'?'📈':trend.dir==='down'?'📉':'➡️') : '-'}</td>
                   <td style={{ padding:'9px 12px' }}><span style={{ ...S.badge(scoreColor(p), scoreBg(p)) }}>{p>=75?'Good':p>=50?'Avg':'Weak'}</span></td>
-                  <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', gap:5 }}><button onClick={() => startEdit(s)} style={S.btnSm('#7c3aed')}>✏️</button>{isAdmin && <button onClick={() => setConfirmDel(s.id)} style={S.btnSm('#dc2626')}>🗑</button>}</div></td>
+                  <td style={{ padding:'9px 12px' }}><div style={{ display:'flex', gap:5 }}><button onClick={() => startEdit(s)} style={S.btnSm('#7c3aed')}>✏️</button><button title="Share on WhatsApp" onClick={() => shareWhatsApp(key)} style={S.btnSm('#16a34a')}>💬</button>{isAdmin && <button onClick={() => setConfirmDel(s.id)} style={S.btnSm('#dc2626')}>🗑</button>}</div></td>
                 </tr>
               )})}
-              {filtered.length===0 && <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No score data.</td></tr>}
+              {filtered.length===0 && <tr><td colSpan={11} style={{ padding:32, textAlign:'center', color:'#94a3b8' }}>No score data.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1946,10 +2488,18 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
 
       {viewMode==='trend' && (
         <div style={S.card}>
-          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>📈 Score Trend — {filterStudent==='All'?'Select a student above':filterStudent}</h3>
-          {filterStudent==='All'?<div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>Select a student from the filter above.</div>:trendData.length===0?<div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No scores for {filterStudent}.</div>:(
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8, marginBottom:0 }}>
+            <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', margin:0 }}>📈 Score Trend — {filterStudent==='All'?'Select a student above':filterStudent.name}</h3>
+            {filterStudent!=='All' && trendData.length>0 && (
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => printStudentReport(filterStudent.id||filterStudent.name)} style={S.btnSm('#7c3aed')}>🖨️ Print Report</button>
+                <button onClick={() => shareWhatsApp(filterStudent.id||filterStudent.name)} style={S.btnSm('#16a34a')}>💬 Share</button>
+              </div>
+            )}
+          </div>
+          {filterStudent==='All'?<div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>Select a student from the filter above.</div>:trendData.length===0?<div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No scores for {filterStudent.name}.</div>:(
             <>
-              <div style={{ display:'flex', gap:8, alignItems:'flex-end', height:160, padding:'0 6px', borderBottom:'2px solid #e2e8f0', overflowX:'auto', marginBottom:14 }}>
+              <div style={{ display:'flex', gap:8, alignItems:'flex-end', height:160, padding:'0 6px', borderBottom:'2px solid #e2e8f0', overflowX:'auto', marginTop:14, marginBottom:14 }}>
                 {trendData.map((s,i) => { const p = pct(s.score, s.max_score); return (
                   <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:54 }}>
                     <span style={{ fontSize:11, fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{p}%</span>
@@ -1964,13 +2514,261 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
                   <div key={c.label} style={{ background:'#f8fafc', borderRadius:8, padding:'12px 14px' }}><div style={{ fontSize:12, color:'#64748b' }}>{c.label}</div><div style={{ fontSize:20, fontWeight:800, color:'#1e3a5f', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</div></div>
                 ))}
               </div>
-              {[...trendData].reverse().map(s => { const p = pct(s.score, s.max_score); return (
+
+              {/* ADV-13: subject comparison for this student */}
+              {subjectComparisonForStudent.length > 1 && (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:8 }}>Subject Comparison</div>
+                  {subjectComparisonForStudent.map(sc => (
+                    <div key={sc.subject} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                      <span style={{ width:120, fontSize:12, color:'#374151', flexShrink:0 }}>{sc.subject}</span>
+                      <div style={{ flex:1, height:8, background:'#f1f5f9', borderRadius:4, overflow:'hidden' }}><div style={{ width:`${sc.avg}%`, height:'100%', background:scoreColor(sc.avg), borderRadius:4 }}/></div>
+                      <span style={{ width:50, textAlign:'right', fontWeight:700, fontSize:12, color:scoreColor(sc.avg) }}>{sc.avg}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {[...trendData].reverse().map(s => { const p = pct(s.score, s.max_score); const g = classAvgByGroup[`${s.subject_name}||${s.subtype}`]; const delta = g!==undefined ? p-g : null; return (
                 <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 12px', border:'1px solid #f1f5f9', borderRadius:8, marginBottom:5, fontSize:13, flexWrap:'wrap' }}>
                   <span style={{ color:'#94a3b8', minWidth:70 }}>{fmtDate(s.test_date)}</span>
                   <span style={{ flex:1, color:'#374151' }}>{s.subject_name} — <em style={{ color:'#64748b' }}>{s.topic}</em></span>
                   <span style={{ fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{s.score}/{s.max_score} ({p}%)</span>
+                  {/* ADV-17: delta vs class average */}
+                  {delta!==null && <span style={{ fontSize:11, fontWeight:700, color: delta>=0?'#16a34a':'#dc2626' }}>{delta>=0?'▲':'▼'} {Math.abs(delta)} vs class avg</span>}
                 </div>
               )})}
+            </>
+          )}
+        </div>
+      )}
+
+      {viewMode==='analytics' && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🧮 Performance Analytics</h3>
+          {filtered.length===0 ? <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No score data for current filters.</div> : (
+            <>
+              <div style={{ fontSize:13, fontWeight:700, color:'#374151', margin:'4px 0 10px' }}>Subject-wise Average</div>
+              <div style={{ marginBottom:20 }}>
+                {analytics.subjectAverages.map(sa => (
+                  <div key={sa.subject} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                    <span style={{ width:130, fontSize:12, color:'#374151', flexShrink:0 }}>{sa.subject}</span>
+                    <div style={{ flex:1, height:10, background:'#f1f5f9', borderRadius:5, overflow:'hidden' }}>
+                      <div style={{ width:`${sa.avg}%`, height:'100%', background:scoreColor(sa.avg), borderRadius:5 }}/>
+                    </div>
+                    <span style={{ width:70, textAlign:'right', fontWeight:700, fontSize:12, color:scoreColor(sa.avg), fontFamily:"'JetBrains Mono',monospace" }}>{sa.avg}% ({sa.count})</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize:13, fontWeight:700, color:'#374151', margin:'4px 0 10px' }}>Grade Distribution</div>
+              <div className="stat-grid-4" style={{ ...S.statGrid(4), marginBottom:20 }}>
+                {Object.entries(analytics.dist).map(([label,count]) => (
+                  <div key={label} style={{ background:'#f8fafc', borderRadius:8, padding:'12px 14px', textAlign:'center' }}>
+                    <div style={{ fontSize:11, color:'#64748b' }}>{label}</div>
+                    <div style={{ fontSize:22, fontWeight:800, color:'#1e3a5f', fontFamily:"'JetBrains Mono',monospace" }}>{count}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:16 }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#16a34a', marginBottom:8 }}>🏆 Top 5 Performers</div>
+                  {analytics.top5.length===0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No data.</div> : analytics.top5.map((s,i) => (
+                    <div key={s.name+i} style={{ display:'flex', justifyContent:'space-between', padding:'8px 10px', borderRadius:8, background:'#f0fdf4', marginBottom:5, fontSize:13 }}>
+                      <span style={{ fontWeight:600, color:'#1e293b' }}>{i+1}. {s.name}</span>
+                      <span style={{ fontWeight:700, color:'#16a34a', fontFamily:"'JetBrains Mono',monospace" }}>{s.avg}% ({s.count})</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#dc2626', marginBottom:8 }}>📉 Needs Attention</div>
+                  {analytics.bottom5.length===0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No data.</div> : analytics.bottom5.map((s,i) => (
+                    <div key={s.name+i} style={{ display:'flex', justifyContent:'space-between', padding:'8px 10px', borderRadius:8, background:'#fff1f2', marginBottom:5, fontSize:13 }}>
+                      <span style={{ fontWeight:600, color:'#1e293b' }}>{i+1}. {s.name}</span>
+                      <span style={{ fontWeight:700, color:'#dc2626', fontFamily:"'JetBrains Mono',monospace" }}>{s.avg}% ({s.count})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ADV-14/18/8: most-improved, consistency, batch comparison */}
+      {viewMode==='insights' && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>💡 Deeper Insights</h3>
+          {filtered.length===0 ? <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No score data for current filters.</div> : (
+            <>
+              <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:16, marginBottom:20 }}>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#1e3a5f', marginBottom:8 }}>🚀 Most Improved (first → latest test)</div>
+                  {mostImproved.filter(m=>m.delta>0).length===0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No students with 2+ tests showing improvement yet.</div> : mostImproved.filter(m=>m.delta>0).slice(0,6).map((m,i) => (
+                    <div key={m.name+i} style={{ display:'flex', justifyContent:'space-between', padding:'8px 10px', borderRadius:8, background:'#eff6ff', marginBottom:5, fontSize:13 }}>
+                      <span style={{ fontWeight:600, color:'#1e293b' }}>{m.name}</span>
+                      <span style={{ fontWeight:700, color:'#16a34a', fontFamily:"'JetBrains Mono',monospace" }}>{m.first}% → {m.latest}% (+{m.delta})</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#1e3a5f', marginBottom:8 }}>🎯 Most Consistent (lowest variation)</div>
+                  {consistency.length===0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>Not enough data (needs 2+ tests per student).</div> : consistency.slice(0,6).map((c,i) => (
+                    <div key={c.name+i} style={{ display:'flex', justifyContent:'space-between', padding:'8px 10px', borderRadius:8, background:'#f8fafc', marginBottom:5, fontSize:13 }}>
+                      <span style={{ fontWeight:600, color:'#1e293b' }}>{c.name}</span>
+                      <span style={{ fontWeight:700, color:'#374151', fontFamily:"'JetBrains Mono',monospace" }}>avg {c.avg}% · ±{c.stdDev}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ fontSize:13, fontWeight:700, color:'#374151', margin:'4px 0 10px' }}>Batch Comparison{filterSubject!=='All'?` — ${filterSubject}`:' — all subjects'}</div>
+              {batchComparison.length===0 ? <div style={{ fontSize:12, color:'#94a3b8' }}>No data.</div> : batchComparison.map(b => (
+                <div key={b.batch} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                  <span style={{ width:100, fontSize:12, color:'#374151', flexShrink:0 }}>{b.batch}</span>
+                  <div style={{ flex:1, height:10, background:'#f1f5f9', borderRadius:5, overflow:'hidden' }}>
+                    <div style={{ width:`${b.avg}%`, height:'100%', background:scoreColor(b.avg), borderRadius:5 }}/>
+                  </div>
+                  <span style={{ width:80, textAlign:'right', fontWeight:700, fontSize:12, color:scoreColor(b.avg) }}>{b.avg}% ({b.count})</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ADV-9/19/20: test history browser — jump to any past test, print batch report, or delete it entirely */}
+      {viewMode==='tests' && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>🗂️ Test History</h3>
+          {testHistory.length===0 ? <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No tests recorded yet.</div> : (
+            <div style={{ maxHeight:480, overflowY:'auto' }}>
+              {testHistory.map((t,i) => {
+                const tkey = `${t.subject}||${t.topic}||${t.test_date}||${t.subtype}`
+                return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', border:'1px solid #f1f5f9', borderRadius:8, marginBottom:6, flexWrap:'wrap' }}>
+                    <div style={{ flex:1, minWidth:180 }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:'#1e293b' }}>{t.subject} — {t.topic}</div>
+                      <div style={{ fontSize:11, color:'#64748b' }}>{t.subtype||'-'} · {fmtDate(t.test_date)} · {t.count} students</div>
+                    </div>
+                    <span style={{ fontWeight:700, fontSize:14, color:scoreColor(t.avg), fontFamily:"'JetBrains Mono',monospace" }}>{t.avg}%</span>
+                    <button onClick={() => { setFilterBatch(t.subtype||'All'); setFilterSubject(t.subject); setViewMode('table') }} style={S.btnSm('#1e3a5f')}>🔎 View</button>
+                    <button onClick={() => printBatchReport(tkey)} style={S.btnSm('#7c3aed')}>🖨️</button>
+                    {isAdmin && <button onClick={() => setConfirmDeleteTest(t)} style={S.btnSm('#dc2626')}>🗑</button>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Class Wise Test — pick a class/batch, see its full test history,
+          class average trend, subject breakdown, and per-student roster
+          for any test — independent of the main filter bar above. */}
+      {viewMode==='classwise' && (
+        <div style={S.card}>
+          <h3 style={{ fontSize:15, fontWeight:800, color:'#1e3a5f', marginTop:0, marginBottom:14 }}>🏫 Class Wise Test</h3>
+
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+            <select value={cwBatch} onChange={e => { setCwBatch(e.target.value); setCwTestKey(null) }} style={{ ...S.select, width:'auto', flex:'0 1 160px' }}>
+              <option value="All">Select Class / Batch</option>
+              {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <select value={cwSubject} onChange={e => { setCwSubject(e.target.value); setCwTestKey(null) }} style={{ ...S.select, width:'auto', flex:'0 1 160px' }}>
+              <option value="All">All Subjects</option>
+              {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {cwBatch==='All' ? (
+            <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>Select a class/batch above to see its test history.</div>
+          ) : classWiseTests.length===0 ? (
+            <div style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No tests recorded for {cwBatch}{cwSubject!=='All'?` — ${cwSubject}`:''} yet.</div>
+          ) : (
+            <>
+              <div className="stat-grid-4" style={{ ...S.statGrid(4), marginBottom:18 }}>
+                {[
+                  { label:'Tests Conducted', value:classWiseTests.length, color:'#1e3a5f', bg:'#eff6ff' },
+                  { label:'Class Average',   value:`${Math.round(classWiseTests.reduce((a,t)=>a+t.avg,0)/classWiseTests.length)}%`, color:'#16a34a', bg:'#dcfce7' },
+                  { label:'Best Test Avg',   value:`${Math.max(...classWiseTests.map(t=>t.avg))}%`, color:'#16a34a', bg:'#dcfce7' },
+                  { label:'Weakest Test Avg',value:`${Math.min(...classWiseTests.map(t=>t.avg))}%`, color:'#dc2626', bg:'#fee2e2' },
+                ].map(c => (
+                  <div key={c.label} style={S.statCard(c.color, c.bg)}>
+                    <p style={{ fontSize:11, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
+                    <h2 style={{ fontSize:20, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
+                  </div>
+                ))}
+              </div>
+
+              {/* Class average trend over time */}
+              <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:8 }}>Class Average Trend</div>
+              <div style={{ display:'flex', gap:8, alignItems:'flex-end', height:120, padding:'0 6px', borderBottom:'2px solid #e2e8f0', overflowX:'auto', marginBottom:20 }}>
+                {classWiseTrend.map(t => (
+                  <div key={t.key} title={`${t.subject} — ${t.topic}: ${t.avg}% (${t.count} students)`} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:46, cursor:'pointer' }} onClick={() => setCwTestKey(t.key)}>
+                    <span style={{ fontSize:10, fontWeight:700, color:scoreColor(t.avg), fontFamily:"'JetBrains Mono',monospace" }}>{t.avg}%</span>
+                    <div style={{ width:30, height:`${Math.max(t.avg,4)}px`, background: cwTestKey===t.key ? '#7c3aed' : scoreColor(t.avg), borderRadius:'4px 4px 0 0', transition:'height .3s' }}/>
+                    <div style={{ fontSize:9, color:'#94a3b8' }}>{t.test_date?.slice(5)}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Subject-wise breakdown for this class */}
+              {cwSubject==='All' && classWiseSubjectBreakdown.length > 1 && (
+                <>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:8 }}>Subject Breakdown — {cwBatch}</div>
+                  <div style={{ marginBottom:20 }}>
+                    {classWiseSubjectBreakdown.map(sb => (
+                      <div key={sb.subject} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                        <span style={{ width:130, fontSize:12, color:'#374151', flexShrink:0 }}>{sb.subject}</span>
+                        <div style={{ flex:1, height:10, background:'#f1f5f9', borderRadius:5, overflow:'hidden' }}>
+                          <div style={{ width:`${sb.avg}%`, height:'100%', background:scoreColor(sb.avg), borderRadius:5 }}/>
+                        </div>
+                        <span style={{ width:70, textAlign:'right', fontWeight:700, fontSize:12, color:scoreColor(sb.avg) }}>{sb.avg}% ({sb.count})</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Test list for this class */}
+              <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:8 }}>Tests for {cwBatch}{cwSubject!=='All'?` — ${cwSubject}`:''}</div>
+              <div style={{ marginBottom: selectedClassTest ? 20 : 0 }}>
+                {classWiseTests.map(t => (
+                  <div key={t.key} onClick={() => setCwTestKey(cwTestKey===t.key?null:t.key)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', border: cwTestKey===t.key?'1.5px solid #7c3aed':'1px solid #f1f5f9', background: cwTestKey===t.key?'#f5f3ff':'white', borderRadius:8, marginBottom:6, cursor:'pointer', flexWrap:'wrap' }}>
+                    <div style={{ flex:1, minWidth:180 }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:'#1e293b' }}>{t.subject} — {t.topic}</div>
+                      <div style={{ fontSize:11, color:'#64748b' }}>{fmtDate(t.test_date)} · {t.count} students · best {t.best}% · lowest {t.worst}%</div>
+                    </div>
+                    <span style={{ fontWeight:700, fontSize:15, color:scoreColor(t.avg), fontFamily:"'JetBrains Mono',monospace" }}>{t.avg}%</span>
+                    <button onClick={e => { e.stopPropagation(); printBatchReport(t.key) }} style={S.btnSm('#7c3aed')}>🖨️</button>
+                    {isAdmin && <button onClick={e => { e.stopPropagation(); setConfirmDeleteTest({ subject:t.subject, topic:t.topic, test_date:t.test_date, subtype:t.subtype, count:t.count }) }} style={S.btnSm('#dc2626')}>🗑</button>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Full per-student roster for the selected test */}
+              {selectedClassTest && (
+                <div style={{ border:'1px solid #e2e8f0', borderRadius:10, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 14px', background:'#f5f3ff', borderBottom:'1px solid #e2e8f0', fontSize:13, fontWeight:700, color:'#7c3aed' }}>
+                    📋 {selectedClassTest.subject} — {selectedClassTest.topic} ({fmtDate(selectedClassTest.test_date)}) — full roster
+                  </div>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                    <thead><tr style={{ background:'#f8fafc' }}>{['Rank','Student','Score','%'].map(h=><th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:12 }}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {[...selectedClassTest.rows].sort((a,b) => pct(b.score,b.max_score)-pct(a.score,a.max_score)).map((r,i) => { const p = pct(r.score,r.max_score); return (
+                        <tr key={r.id} style={{ borderTop:'1px solid #f1f5f9' }}>
+                          <td style={{ padding:'7px 12px', color:'#94a3b8' }}>{i+1}</td>
+                          <td style={{ padding:'7px 12px', fontWeight:600, color:'#1e293b' }}>{r.student_name||'-'}</td>
+                          <td style={{ padding:'7px 12px', fontFamily:"'JetBrains Mono',monospace" }}>{r.score}/{r.max_score}</td>
+                          <td style={{ padding:'7px 12px', fontWeight:700, color:scoreColor(p), fontFamily:"'JetBrains Mono',monospace" }}>{p}%</td>
+                        </tr>
+                      )})}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </div>
