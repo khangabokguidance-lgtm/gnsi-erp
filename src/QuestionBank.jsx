@@ -2744,6 +2744,9 @@ function TabStats({ questions }) {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
   const isAdmin = currentUser?.role === 'admin'
+  // Question Bank is restricted to admin + computer staff only — teachers
+  // (and any other role) get no access at all, not even read-only viewing.
+  const isStaffAllowed = currentUser?.role === 'admin' || currentUser?.role === 'computer_staff'
 
   const [tab,           setTab]           = useState('bank')
   const [questions,     setQuestions]     = useState([])
@@ -2758,6 +2761,9 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
   }
 
   const refetch = useCallback(async () => {
+    // Skip the query entirely for non-staff — no data should ever leave
+    // Supabase for a role that isn't permitted to see it.
+    if (!isStaffAllowed) { setLoading(false); return }
     setLoading(true)
     const PAGE_SIZE = 1000
     let all = []
@@ -2789,13 +2795,15 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     if (hadError) showToast('Failed to load questions', C.rose)
     else setQuestions(all)
     setLoading(false)
-  }, [])
+  }, [isStaffAllowed])
 
   useEffect(() => { refetch() }, [refetch])
 
   // ── PATCH: listen for cross-module NAVIGATE_TO events ─────────────────────
   // When StudyMaterial's 📚 Q badge is clicked, this fires and switches to
-  // the Bank tab pre-filtered to that subject + chapter.
+  // the Bank tab pre-filtered to that subject + chapter. Non-staff users
+  // never see the module at all, so this listener is harmless for them —
+  // it just never has anywhere to navigate to.
   useEffect(() => {
     const unsub = EventBus.on(GNSI_EVENTS.NAVIGATE_TO, ({ module, params }) => {
       if (module === 'questionbank' && params) {
@@ -2816,6 +2824,26 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       setTab('bank')
     }
   }, [isAdmin, tab])
+
+  // Module-level gate — computer staff and admin only. This is a UI-layer
+  // convenience; Supabase RLS or an equivalent server-side check should also
+  // enforce this so the restriction doesn't depend solely on the client.
+  if (!isStaffAllowed) {
+    return (
+      <div style={{ padding:24, fontFamily:'system-ui,sans-serif', background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <div style={{ ...cardS, maxWidth:420, textAlign:'center', padding:'40px 32px' }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
+          <div style={{ fontSize:17, fontWeight:800, color:C.navy, marginBottom:8 }}>Question Bank is restricted</div>
+          <div style={{ fontSize:13, color:C.slate, lineHeight:1.6 }}>
+            This module is only available to admin and computer staff accounts.
+            If you need access to questions or papers for a class, please ask
+            an admin to prepare it or check <strong>Study Materials</strong> for
+            teaching content.
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const ALL_TABS = [
     { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length },

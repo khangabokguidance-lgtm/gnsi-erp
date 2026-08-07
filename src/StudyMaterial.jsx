@@ -814,12 +814,14 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
 }
 
 // ── SUBJECT PANEL ─────────────────────────────────────────────────────────────
-function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate, isAdmin }) {
+function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate, isAdmin, isStaffAllowed }) {
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [showUpload,      setShowUpload]      = useState(false)
   const [uploadChapter,   setUploadChapter]   = useState('')
   const [filterType,      setFilterType]      = useState('all')
-  const { counts: qCounts } = useQBankCountsByChapter(subjectName)
+  // Non-staff pass an empty subject so this never queries QBank data for a
+  // role that isn't permitted to see it (mirrors the same gate in LessonPrep).
+  const { counts: qCounts } = useQBankCountsByChapter(isStaffAllowed ? subjectName : '')
 
   const courseData = BASE_COURSES[course]
 
@@ -904,7 +906,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
   ? <Badge text={`${total}`} color={courseData.text} bg={courseData.bg} />
   : <Badge text="—" color="#94a3b8" bg="#f1f5f9" />
 }
-{qCounts[ch] > 0 && (
+{isStaffAllowed && qCounts[ch] > 0 && (
   <span
     onClick={e => {
       e.stopPropagation()
@@ -1016,7 +1018,7 @@ function CourseStats({ course, materials, mergedCourses }) {
 // A teacher opens this before class: pick a chapter, see materials AND
 // QBank question count side by side, with a clear warning when there's
 // practice content but nothing to teach from first (or vice versa).
-function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials, onNavigate, qCounts, qLoading }) {
+function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials, onNavigate, qCounts, qLoading, isStaffAllowed }) {
   const qCount = qCounts?.[chapter] || 0
 
   const chapterMats = useMemo(
@@ -1024,22 +1026,31 @@ function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials
     [materials, subject, chapter]
   )
   const hasMaterials = chapterMats.length > 0
-  const hasQuestions  = qCount > 0
+  // Non-staff never learn whether QBank has questions for this chapter —
+  // that's restricted-module information. Gap detection (which depends on
+  // knowing hasQuestions) is staff-only too; teachers just see material
+  // coverage on its own, no QBank-derived insight layered on top.
+  const hasQuestions = isStaffAllowed && qCount > 0
 
   // Gap logic — the actual "teacher helper" insight:
   // - Questions exist but nothing to study from first → students drilling blind
   // - Materials exist but no practice questions → no way to test understanding
   // - Neither exists → chapter is completely unprepared
   let gapLevel = null, gapMsg = ''
-  if (!hasMaterials && hasQuestions) {
-    gapLevel = 'warn'
-    gapMsg = `${qCount} practice question${qCount!==1?'s':''} but no notes/materials — students have nothing to study from first`
-  } else if (hasMaterials && !hasQuestions) {
-    gapLevel = 'info'
-    gapMsg = `Materials ready but no practice questions yet — add some via Question Bank`
-  } else if (!hasMaterials && !hasQuestions) {
+  if (isStaffAllowed) {
+    if (!hasMaterials && hasQuestions) {
+      gapLevel = 'warn'
+      gapMsg = `${qCount} practice question${qCount!==1?'s':''} but no notes/materials — students have nothing to study from first`
+    } else if (hasMaterials && !hasQuestions) {
+      gapLevel = 'info'
+      gapMsg = `Materials ready but no practice questions yet — add some via Question Bank`
+    } else if (!hasMaterials && !hasQuestions) {
+      gapLevel = 'empty'
+      gapMsg = `Nothing prepared for this chapter yet`
+    }
+  } else if (!hasMaterials) {
     gapLevel = 'empty'
-    gapMsg = `Nothing prepared for this chapter yet`
+    gapMsg = `No materials uploaded for this chapter yet`
   }
 
   const TYPE_ICON = { notes:'📄', formula:'🔣', practice:'✏️', solved:'✅', mindmap:'🗂️', video:'🎥', currentaffairs:'📰' }
@@ -1052,10 +1063,12 @@ function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials
           color: hasMaterials ? '#15803d' : '#94a3b8', background: hasMaterials ? '#dcfce7' : '#f1f5f9' }}>
           📄 {chapterMats.length} material{chapterMats.length!==1?'s':''}
         </span>
-        <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-          color: hasQuestions ? '#4f46e5' : '#94a3b8', background: hasQuestions ? '#eef2ff' : '#f1f5f9' }}>
-          {qLoading ? '⏳ …' : `📚 ${qCount} question${qCount!==1?'s':''}`}
-        </span>
+        {isStaffAllowed && (
+          <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+            color: hasQuestions ? '#4f46e5' : '#94a3b8', background: hasQuestions ? '#eef2ff' : '#f1f5f9' }}>
+            {qLoading ? '⏳ …' : `📚 ${qCount} question${qCount!==1?'s':''}`}
+          </span>
+        )}
         {gapLevel && (
           <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
             color: gapLevel==='warn' ? '#92400e' : gapLevel==='empty' ? '#991b1b' : '#0369a1',
@@ -1063,7 +1076,7 @@ function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials
             {gapLevel==='warn' ? '⚠️' : gapLevel==='empty' ? '❌' : 'ℹ️'} Gap
           </span>
         )}
-        {hasQuestions && (
+        {isStaffAllowed && hasQuestions && (
           <button
             onClick={() => {
               onNavigate?.('questionbank')
@@ -1094,7 +1107,7 @@ function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials
   )
 }
 
-function LessonPrep({ course, courseData, materials, onNavigate }) {
+function LessonPrep({ course, courseData, materials, onNavigate, isStaffAllowed }) {
   const subjectList = Object.keys(courseData.subjects)
   const [subject, setSubject] = useState(subjectList[0] || '')
   const [gapFilter, setGapFilter] = useState('all') // all | warn | empty
@@ -1108,10 +1121,12 @@ function LessonPrep({ course, courseData, materials, onNavigate }) {
 
   // Called once per subject — every chapter row reads from this shared map
   // instead of each row independently re-subscribing to the same query.
-  const { counts: qCounts, loading: qLoading } = useQBankCountsByChapter(subject)
+  // Non-staff pass an empty subject so the underlying query never runs and
+  // never returns QBank data to a role that shouldn't see it.
+  const { counts: qCounts, loading: qLoading } = useQBankCountsByChapter(isStaffAllowed ? subject : '')
 
   const visibleChapters = useMemo(() => {
-    if (gapFilter === 'all') return chapters
+    if (gapFilter === 'all' || !isStaffAllowed) return chapters
     return chapters.filter(ch => {
       const qCount = qCounts?.[ch] || 0
       const hasMaterials = materials.some(m => m.subject === subject && m.chapter === ch)
@@ -1120,7 +1135,7 @@ function LessonPrep({ course, courseData, materials, onNavigate }) {
       if (gapFilter === 'empty') return !hasQuestions && !hasMaterials
       return true
     })
-  }, [chapters, gapFilter, qCounts, materials, subject])
+  }, [chapters, gapFilter, qCounts, materials, subject, isStaffAllowed])
 
   return (
     <div>
@@ -1128,17 +1143,21 @@ function LessonPrep({ course, courseData, materials, onNavigate }) {
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>🧑‍🏫 Lesson Prep</div>
           <div style={{ fontSize: 11.5, color: C.slate, marginTop: 2 }}>
-            See materials and Question Bank coverage together, chapter by chapter — spot what's missing before class.
+            {isStaffAllowed
+              ? 'See materials and Question Bank coverage together, chapter by chapter — spot what\'s missing before class.'
+              : 'See what materials are ready for each chapter before class.'}
           </div>
         </div>
         <select style={{ ...iS, width: 'auto', minWidth: 180 }} value={subject} onChange={e => setSubject(e.target.value)}>
           {subjectList.map(s => <option key={s} value={s}>{courseData.subjects[s].icon} {s}</option>)}
         </select>
-        <select style={{ ...iS, width: 'auto' }} value={gapFilter} onChange={e => setGapFilter(e.target.value)}>
-          <option value="all">All chapters</option>
-          <option value="warn">⚠️ Questions but no materials</option>
-          <option value="empty">❌ Nothing prepared</option>
-        </select>
+        {isStaffAllowed && (
+          <select style={{ ...iS, width: 'auto' }} value={gapFilter} onChange={e => setGapFilter(e.target.value)}>
+            <option value="all">All chapters</option>
+            <option value="warn">⚠️ Questions but no materials</option>
+            <option value="empty">❌ Nothing prepared</option>
+          </select>
+        )}
       </div>
 
       {chapters.length === 0 ? (
@@ -1153,7 +1172,7 @@ function LessonPrep({ course, courseData, materials, onNavigate }) {
             <LessonPrepChapterRow
               key={ch} course={course} subject={subject} subjectData={subjectData}
               chapter={ch} materials={materials} onNavigate={onNavigate}
-              qCounts={qCounts} qLoading={qLoading}
+              qCounts={qCounts} qLoading={qLoading} isStaffAllowed={isStaffAllowed}
             />
           ))}
         </div>
@@ -1286,6 +1305,12 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StudyMaterial({ currentUser, perms, onNavigate }) {
   const isAdmin = currentUser?.role === 'admin'
+  // Question Bank is admin + computer_staff only. StudyMaterial itself stays
+  // open to teachers, but any UI that links across to Question Bank (the
+  // "N Q" badges, cross-nav buttons) needs to respect that boundary too —
+  // otherwise a teacher sees a live question count and a button that dead-
+  // ends on QuestionBank's access-denied screen.
+  const isStaffAllowed = currentUser?.role === 'admin' || currentUser?.role === 'computer_staff'
 
   const [activeCourse,   setActiveCourse]   = useState('sainik')
   const [activeSubject,  setActiveSubject]  = useState(null)
@@ -1461,7 +1486,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
       {activeView === 'stats' ? (
         <CourseStats course={activeCourse} materials={materials} mergedCourses={mergedCourses} />
       ) : activeView === 'lessonprep' ? (
-        <LessonPrep course={activeCourse} courseData={courseData} materials={courseMaterials} onNavigate={onNavigate} />
+        <LessonPrep course={activeCourse} courseData={courseData} materials={courseMaterials} onNavigate={onNavigate} isStaffAllowed={isStaffAllowed} />
       ) : activeView === 'smartppt' ? (
         <TabSmartPPTMaterials course={activeCourse} courseData={courseData} materials={courseMaterials} showToast={showToast} />
       ) : isMobile ? (
@@ -1492,7 +1517,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
               materials={search.trim() ? filteredMaterials : courseMaterials}
               customChapters={customChaptersBySubject[activeSubject] || []}
               onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
-              onNavigate={onNavigate} isAdmin={isAdmin}
+              onNavigate={onNavigate} isAdmin={isAdmin} isStaffAllowed={isStaffAllowed}
             />
           ) : (
             <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Select a subject above</div>
@@ -1539,7 +1564,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
                 materials={search.trim() ? filteredMaterials : courseMaterials}
                 customChapters={customChaptersBySubject[activeSubject] || []}
                 onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
-                onNavigate={onNavigate} isAdmin={isAdmin}
+                onNavigate={onNavigate} isAdmin={isAdmin} isStaffAllowed={isStaffAllowed}
               />
             ) : (
               <div style={{ ...cardS, textAlign: 'center', padding: 48, color: '#94a3b8' }}>Select a subject from the sidebar</div>
