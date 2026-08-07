@@ -1304,15 +1304,16 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StudyMaterial({ currentUser, perms, onNavigate }) {
-  // Confirmed via SQL against portal_users.role: "Teaching + Admin",
-  // "Teaching", "Non-Teaching" are the staff roles, and "Administrator" is
-  // a separate top-level role — both grant admin access.
+  // Confirmed via SQL against portal_users.role — full list: Receptionist,
+  // Teacher, Accountant, Superintendent, House Master, admin, Computer
+  // Staffs. "admin" is lowercase (not "Administrator"/"Teaching + Admin" —
+  // those were earlier incorrect guesses).
   const roleLower = (currentUser?.role || '').toLowerCase()
-  const isAdmin = roleLower === 'teaching + admin' || roleLower === 'administrator'
+  const isAdmin = roleLower === 'admin'
   // Question Bank access (used to gate the "N Q" badges and cross-nav
   // buttons in this file that link over to it) matches QuestionBank.jsx's
-  // own gate exactly — admin role only.
-  const isStaffAllowed = isAdmin
+  // own gate exactly — admin + Computer Staffs.
+  const isStaffAllowed = isAdmin || roleLower === 'computer staffs'
 
   const [activeCourse,   setActiveCourse]   = useState('sainik')
   const [activeSubject,  setActiveSubject]  = useState(null)

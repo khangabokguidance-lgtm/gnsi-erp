@@ -2743,14 +2743,17 @@ function TabStats({ questions }) {
 // Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
-  // Confirmed via SQL against portal_users.role: "Teaching + Admin",
-  // "Teaching", "Non-Teaching" are the staff roles, and "Administrator" is
-  // a separate top-level role — both grant admin access.
+  // Confirmed via SQL against portal_users.role — full list: Receptionist,
+  // Teacher, Accountant, Superintendent, House Master, admin, Computer
+  // Staffs. "admin" is lowercase (not "Administrator"/"Teaching + Admin" —
+  // those were earlier incorrect guesses). Question Bank access is
+  // admin + Computer Staffs only.
   const roleLower = (currentUser?.role || '').toLowerCase()
-  const isAdmin = roleLower === 'teaching + admin' || roleLower === 'administrator'
-  // Question Bank is restricted to the admin role only — "Teaching" and
-  // "Non-Teaching" get no access at all, not even read-only viewing.
-  const isStaffAllowed = isAdmin
+  const isAdmin = roleLower === 'admin'
+  // Question Bank is restricted to admin + Computer Staffs — every other
+  // role (Teacher, Receptionist, Accountant, Superintendent, House Master)
+  // gets no access at all, not even read-only viewing.
+  const isStaffAllowed = isAdmin || roleLower === 'computer staffs'
 
   const [tab,           setTab]           = useState('bank')
   const [questions,     setQuestions]     = useState([])
@@ -2839,7 +2842,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
           <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
           <div style={{ fontSize:17, fontWeight:800, color:C.navy, marginBottom:8 }}>Question Bank is restricted</div>
           <div style={{ fontSize:13, color:C.slate, lineHeight:1.6 }}>
-            This module is only available to Administrator and Teaching + Admin accounts.
+            This module is only available to admin and Computer Staffs accounts.
             If you need access to questions or papers for a class, please ask
             an admin to prepare it or check <strong>Study Materials</strong> for
             teaching content.
