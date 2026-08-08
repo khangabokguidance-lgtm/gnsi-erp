@@ -1678,7 +1678,9 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
       score: parseFloat(bulkMarks[s.id]),
       max_score: maxNum,
     }))
-    const { data: inserted, error } = await supabase.from('student_scores').insert(payload).select()
+    const { data: inserted, error } = await supabase.from('student_scores')
+      .upsert(payload, { onConflict: 'student_id,subject_name,topic,test_date' })
+      .select()
     if (error) showToast('Save failed: '+error.message, '#dc2626')
     else {
       showToast(`✅ ${payload.length} scores saved!`, '#16a34a')
@@ -2025,9 +2027,10 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
   // ADV-19: bulk delete an entire test (all rows matching subject+topic+date+batch)
   const [confirmDeleteTest, setConfirmDeleteTest] = useState(null)
   const handleDeleteTest = async t => {
-    const { error } = await supabase.from('student_scores').delete()
+    let q = supabase.from('student_scores').delete()
       .eq('subject_name', t.subject).eq('topic', t.topic).eq('test_date', t.test_date)
-      .eq('subtype', t.subtype)
+    q = t.subtype ? q.eq('subtype', t.subtype) : q.is('subtype', null)
+    const { error } = await q
     if (error) showToast('Delete failed: '+error.message, '#dc2626')
     else { showToast(`Deleted all ${t.count} entries for this test`, '#dc2626'); setConfirmDeleteTest(null); fetchScores() }
   }
@@ -2134,19 +2137,26 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
     if (!csvPreview || !csvPreview.length) return
     setCsvImporting(true)
     // Expected CSV columns: student_name, subject_name, topic, test_date, score, max_score, subtype(optional), course(optional)
-    const invalid = csvPreview.filter(r => !r.student_name || !r.subject_name || !r.topic || !r.test_date || r.score===undefined || r.max_score===undefined)
-    if (invalid.length) { showToast(`${invalid.length} row(s) missing required columns — import cancelled`, '#dc2626'); setCsvImporting(false); return }
+    const invalid = csvPreview.filter(r => !r.student_name || !r.subject_name || !r.topic || !r.test_date || r.score===undefined || r.score==='' || r.max_score===undefined || Number.isNaN(parseFloat(r.score)))
+    if (invalid.length) { showToast(`${invalid.length} row(s) missing required columns or invalid score — import cancelled`, '#dc2626'); setCsvImporting(false); return }
     const matched = csvPreview.map(r => {
       const stu = allStudents.find(s => s.name.toLowerCase()===r.student_name.toLowerCase())
       return { ...r, student_id: stu?.id||null }
     })
+    const unmatched = matched.filter(r => !r.student_id)
+    if (unmatched.length) {
+      showToast(`${unmatched.length} student name(s) not found — fix names or add students first: ${unmatched.slice(0,3).map(r=>r.student_name).join(', ')}${unmatched.length>3?'…':''}`, '#dc2626')
+      setCsvImporting(false)
+      return
+    }
     const payload = matched.map(r => ({
       student_id: r.student_id, student_name: r.student_name,
       course: r.course||null, subtype: r.subtype||null, class_name: r.class_name||null,
       subject_name: r.subject_name, topic: r.topic, test_date: r.test_date,
       score: parseFloat(r.score), max_score: parseFloat(r.max_score)||100,
     }))
-    const { error } = await supabase.from('student_scores').insert(payload)
+    const { error } = await supabase.from('student_scores')
+      .upsert(payload, { onConflict: 'student_id,subject_name,topic,test_date' })
     if (error) showToast('Import failed: '+error.message, '#dc2626')
     else { showToast(`✅ Imported ${payload.length} scores from CSV`, '#16a34a'); setCsvPreview(null); fetchScores() }
     setCsvImporting(false)
