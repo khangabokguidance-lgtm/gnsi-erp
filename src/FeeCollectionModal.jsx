@@ -348,9 +348,20 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     course, hostel_type: hostelType,
   })
 
+  // Non-Active students (Inactive / Passed Out / Withdrawn / Dropout) should
+  // never have new fee collections recorded against them — the Fee Dashboard
+  // already excludes them from every total, so a payment collected here
+  // would silently disappear from all reporting while still charging real
+  // money. Blank/missing status is treated as active, matching the
+  // `status:'Active'` default used when students are created.
+  const studentStatus = student?.status || 'Active'
+  const isStudentActive = studentStatus === 'Active'
+  const inactiveStatusMsg = `This student's status is "${studentStatus}", not Active. Fee collection is disabled — reactivate the student in Students first if this is a mistake.`
+
   // ── UNIFIED save — all fee types go through collectFee (feeEngine) ────────────────
   const saveAdmission = async () => {
     if (saving) return
+    if (!isStudentActive) return alert(inactiveStatusMsg)
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     if (isRepeater) return alert('This student is marked as a Repeater — Admission Fee, Dress Fee, and Prospectus Fee are waived. Use the Flat or Course tab instead.')
@@ -383,6 +394,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   const saveFlat = async () => {
     if (saving) return
+    if (!isStudentActive) return alert(inactiveStatusMsg)
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
@@ -410,6 +422,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   const saveCourse = async () => {
     if (saving) return
+    if (!isStudentActive) return alert(inactiveStatusMsg)
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
@@ -470,6 +483,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   📅 {sessionYear}
                 </span>
                 {hostelAutoFixed && <span style={{ fontSize:10, fontWeight:700, color:C.red, background:'#fef2f2', padding:'2px 7px', borderRadius:4, border:'1px solid #fca5a5' }}>⚠ AUTO-CORRECTED</span>}
+                {!isStudentActive && (
+                  <span style={{ fontSize:10, fontWeight:800, color:C.red, background:'#fef2f2', padding:'2px 9px', borderRadius:4, border:'1px solid #fca5a5', letterSpacing:'.04em' }}>
+                    ⛔ {studentStatus.toUpperCase()}
+                  </span>
+                )}
                 {isRepeater && (
                   <span style={{ fontSize:10, fontWeight:800, color:"#92400e", background:"#fef3c7", padding:"2px 9px", borderRadius:4, border:"1px solid #fcd34d", letterSpacing:".04em" }}>
                     🔁 REPEATER
@@ -502,6 +520,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
             </div>
             <button type="button" onClick={handleClose} style={{ width:30, height:30, borderRadius:8, border:`1px solid ${C.slate[200]}`, background:C.slate[50], cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
           </div>
+
+          {!isStudentActive && (
+            <div style={{ marginTop:12, background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'10px 14px' }}>
+              <div style={{ fontSize:12, color:'#991B1B', fontWeight:700 }}>⛔ {inactiveStatusMsg}</div>
+            </div>
+          )}
 
           {hostelWarning && (
             <div style={{ marginTop:12, background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>

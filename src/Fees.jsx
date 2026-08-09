@@ -257,7 +257,7 @@ function runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,stu
   Object.entries(flatKey).filter(([,v])=>v.length>1).forEach(([,recs])=>{const stu=students.find(s=>String(s.gcc_no)===String(recs[0].adm_app_id));push('dup_flat_'+recs[0].adm_app_id+'_'+recs[0].month,'CRITICAL','Duplicate',`Duplicate flat fee: ${recs[0].month} ${recs[0].year}`,`${stu?.name||'GCC-'+recs[0].adm_app_id} has ${recs.length} flat fee entries for the same month.`,recs.map(r=>({label:`₹${_inr(r.amount)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`,raw:r,_table:'adm_flat_fees'})))})
   const crsfKey={};adm_course_fees.forEach(r=>{const k=`${r.adm_app_id}|${r.for_month}|${r.year}|${r.course}`;if(!crsfKey[k])crsfKey[k]=[];crsfKey[k].push(r)})
   Object.entries(crsfKey).filter(([,v])=>v.length>1).forEach(([,recs])=>{const stu=students.find(s=>String(s.gcc_no)===String(recs[0].adm_app_id));push('dup_crsf_'+recs[0].adm_app_id+'_'+recs[0].for_month,'CRITICAL','Duplicate',`Duplicate course fee: ${recs[0].course} ${recs[0].for_month}`,`${stu?.name||'GCC-'+recs[0].adm_app_id} has ${recs.length} course fee entries for same month.`,recs.map(r=>({label:`₹${_inr(r.amount_paid)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`,raw:r,_table:'adm_course_fees'})))})
-  const admByGCC={};adm_fee_collections.filter(r=>r.fee_type==='admission').forEach(r=>{const g=String(r.adm_app_id);if(!admByGCC[g])admByGCC[g]=[];admByGCC[g].push(r)})
+  const admByGCC={};adm_fee_collections.filter(r=>r.fee_type==='admission'&&!r.reverted).forEach(r=>{const g=String(r.adm_app_id);if(!admByGCC[g])admByGCC[g]=[];admByGCC[g].push(r)})
   Object.entries(admByGCC).filter(([,v])=>v.length>1).forEach(([g,recs])=>{const stu=students.find(s=>String(s.gcc_no)===g);push('dup_adm_'+g,'CRITICAL','Duplicate',`Double admission fee: ${stu?.name||'GCC-'+g}`,`${stu?.name||'GCC-'+g} has ${recs.length} admission fee records. Total: ₹${_inr(recs.reduce((s,r)=>s+(Number(r.amount_paid)||0),0))}.`,recs.map(r=>({label:`₹${_inr(r.amount_paid)} on ${r.pay_date||'?'} via ${r.pay_mode||'?'}`,raw:r,_table:'adm_fee_collections'})))})
   const futureAll=allTagged.filter(r=>r.pay_date>todayStr)
   if(futureAll.length>0)push('future_date','CRITICAL','Date',`${futureAll.length} future-dated payment${futureAll.length!==1?'s':''}`,`${futureAll.length} record${futureAll.length!==1?'s':''} have payment dates after today (${todayStr}).`,futureAll.map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)} · ${r.pay_date}`,raw:r,_table:r._table}}))
@@ -268,7 +268,7 @@ function runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,stu
   const HIGH_AMT=50000;allTagged.filter(r=>Number(r.amount||r.amount_paid)>HIGH_AMT).forEach(r=>{const amt=Number(r.amount||r.amount_paid),stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id)),ft=r.month?'Flat Fee':r.for_month?'Course Fee':'Adm Fee';push('high_'+r.id,'HIGH','Amount',`Unusually high payment: ₹${_inr(amt)}`,`${stu?.name||'GCC-'+r.adm_app_id} paid ₹${_inr(amt)} as ${ft} on ${r.pay_date||'unknown'}.`,[{label:`${ft} · ₹${_inr(amt)} · ${r.pay_date||'?'} · ${r.pay_mode||'?'}`,raw:r,_table:r._table}])})
   const noDateAll=allTagged.filter(r=>!r.pay_date)
   if(noDateAll.length>0)push('no_date','MEDIUM','Integrity',`${noDateAll.length} record${noDateAll.length!==1?'s':''} missing payment date`,`${noDateAll.length} fee record${noDateAll.length!==1?'s':''} have no pay_date. Breaks daily reports and audit trails.`,noDateAll.slice(0,8).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)}`,raw:r,_table:r._table}}))
-  const rateAnom=adm_course_fees.filter(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));if(!stu||!r.course||!r.amount_paid)return false;const std=COURSE_RATES[r.course]?.[stu.hostel_type]||0;return std>0&&Math.abs(Number(r.amount_paid)-std)/std>0.25})
+  const rateAnom=adm_course_fees.filter(r=>{if(r.reverted)return false;const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));if(!stu||!r.course||!r.amount_paid)return false;const std=COURSE_RATES[r.course]?.[stu.hostel_type]||0;return std>0&&Math.abs(Number(r.amount_paid)-std)/std>0.25})
   if(rateAnom.length>0)push('rate_dev','MEDIUM','Rate',`${rateAnom.length} course fee${rateAnom.length!==1?'s':''} with >25% rate deviation`,`These payments deviate more than 25% from the standard rate.`,rateAnom.slice(0,10).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id)),std=COURSE_RATES[r.course]?.[stu?.hostel_type]||0;return{label:`${stu?.name||'GCC-'+r.adm_app_id} · paid ₹${_inr(r.amount_paid)} vs std ₹${_inr(std)} (${r.course}, ${r.for_month} ${r.year})`,raw:r,_table:'adm_course_fees'}}))
   const dayTotals={};allTagged.forEach(r=>{const d=r.pay_date;if(!d)return;dayTotals[d]=(dayTotals[d]||0)+(Number(r.amount||r.amount_paid)||0)})
   const last30=Object.entries(dayTotals).filter(([d])=>d>=new Date(now-30*86400000).toLocaleDateString('en-CA')&&d<=todayStr)
@@ -471,9 +471,9 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
   const n=v=>Number(v||0).toLocaleString('en-IN'),gcc=gccStr(student.gcc_no)
   const [tab,setTab]=useState('history'),[toast,setToast]=useState(null),[saving,setSaving]=useState(false)
   const showToast=(msg,color='#16a34a')=>{setToast({msg,color});setTimeout(()=>setToast(null),3500)}
-  const myAdm=adm_fee_collections.filter(r=>gccStr(r.adm_app_id)===gcc)
-  const myFlat=adm_flat_fees.filter(r=>gccStr(r.adm_app_id)===gcc)
-  const myCrsf=adm_course_fees.filter(r=>gccStr(r.adm_app_id)===gcc)
+  const myAdm=adm_fee_collections.filter(r=>gccStr(r.adm_app_id)===gcc&&!r.reverted)
+  const myFlat=adm_flat_fees.filter(r=>gccStr(r.adm_app_id)===gcc&&r.paid)
+  const myCrsf=adm_course_fees.filter(r=>gccStr(r.adm_app_id)===gcc&&!r.reverted)
   const admTotal=myAdm.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const flatTotal=myFlat.reduce((s,r)=>s+(r.amount||0),0)
   const crsfTotal=myCrsf.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
@@ -611,9 +611,9 @@ function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fee
   const stu=gcc=>students.find(s=>String(s.gcc_no)===String(gcc))
   const feeStatusRows=liveRows.map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Admission Fee':s.admTotal||0,'Flat Fees':s.flatTotal||0,'Course Fees':s.crsfTotal||0,'Total Paid':s.grandTotal,'Status':s.liveStatus,'Repeater':s.is_repeater?'Yes':'No'}))
   const pendingRows=liveRows.filter(s=>s.grandTotal===0).map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Status':'Pending'}))
-  const flatRows=adm_flat_fees.map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Hostel Type':s?.hostel_type||'—','Month':r.month||'—','Year':r.year||'—','Amount':r.amount||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
-  const crsfRows=adm_course_fees.map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':r.course||'—','Hostel Type':s?.hostel_type||'—','For Month':r.for_month||'—','Year':r.year||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
-  const admRows=adm_fee_collections.map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Fee Type':r.fee_type||'—','Description':r.description||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
+  const flatRows=adm_flat_fees.filter(r=>r.paid).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Hostel Type':s?.hostel_type||'—','Month':r.month||'—','Year':r.year||'—','Amount':r.amount||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
+  const crsfRows=adm_course_fees.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':r.course||'—','Hostel Type':s?.hostel_type||'—','For Month':r.for_month||'—','Year':r.year||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
+  const admRows=adm_fee_collections.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Fee Type':r.fee_type||'—','Description':r.description||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
   const courseRows=['Sainik','Navodaya','Foundation','Combined Course'].map(c=>{const ss=liveRows.filter(s=>s.course===c);return{'Course':c,'Total Students':ss.length,'Boarders':ss.filter(s=>s.hostel_type==='Boarder').length,'Day Boarders':ss.filter(s=>s.hostel_type==='Day Boarder').length,'Day Scholars':ss.filter(s=>s.hostel_type==='Day Scholar').length,'Total Adm Fees':ss.reduce((t,s)=>t+s.admTotal,0),'Total Flat Fees':ss.reduce((t,s)=>t+s.flatTotal,0),'Total Course Fees':ss.reduce((t,s)=>t+s.crsfTotal,0),'Grand Total':ss.reduce((t,s)=>t+s.grandTotal,0)}}).filter(r=>r['Total Students']>0)
   const monthMap={};const addToMonth=(mk,type,amt)=>{if(!monthMap[mk])monthMap[mk]={'Month':mk,'Flat Fee':0,'Course Fee':0,'Admission Fee':0};monthMap[mk][type]=(monthMap[mk][type]||0)+amt}
   adm_flat_fees.forEach(r=>{if(r.month&&r.year)addToMonth(`${r.month} ${r.year}`,'Flat Fee',r.amount||0)})
@@ -622,9 +622,9 @@ function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fee
   const monthlyRows=Object.values(monthMap).map(m=>({...m,'Total':(m['Flat Fee']||0)+(m['Course Fee']||0)+(m['Admission Fee']||0)}))
   const from=afDateFrom||'2020-01-01',to=afDateTo||todayStr,inRange=d=>d&&d>=from&&d<=to
   const dailyRows=[
-    ...adm_flat_fees.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Flat Fee','Description':`${r.month} ${r.year}`,'Amount':r.amount||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
-    ...adm_course_fees.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':r.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Course Fee','Description':`${r.course} — ${r.for_month} ${r.year}`,'Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
-    ...adm_fee_collections.filter(r=>inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Admission Fee','Description':r.description||r.fee_type||'—','Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
+    ...adm_flat_fees.filter(r=>r.paid && inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Flat Fee','Description':`${r.month} ${r.year}`,'Amount':r.amount||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
+    ...adm_course_fees.filter(r=>!r.reverted && inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':r.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Course Fee','Description':`${r.course} — ${r.for_month} ${r.year}`,'Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
+    ...adm_fee_collections.filter(r=>!r.reverted && inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Admission Fee','Description':r.description||r.fee_type||'—','Amount':Number(r.amount_paid)||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
   ].sort((a,b)=>b['Date'].localeCompare(a['Date']))
   return{feeStatusRows,pendingRows,flatRows,crsfRows,admRows,courseRows,monthlyRows,dailyRows}
 }
@@ -634,7 +634,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const n=v=>Number(v||0).toLocaleString('en-IN')
   const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
   const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr])
-  const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.reduce((s,r)=>s+(r.amount||0),0),crsfTotal=adm_course_fees.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+(r.amount||0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d1d5db',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
     {group:'Student Reports',icon:'👨‍🎓',color:'#1e3a5f',reports:[
@@ -811,9 +811,9 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
   // ── Totals ──────────────────────────────────────────────────────────────────
   const totalCollected  = liveRows.reduce((s, r) => s + r.grandTotal, 0)
-  const admTotal        = adm_fee_collections.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0)
+  const admTotal        = adm_fee_collections.filter(r => !r.reverted).reduce((s, c) => s + (Number(c.amount_paid) || 0), 0)
   const flatTotal       = adm_flat_fees.filter(r => r.paid).reduce((s, r) => s + (r.amount || 0), 0)
-  const crsfTotal       = adm_course_fees.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const crsfTotal       = adm_course_fees.filter(r => !r.reverted).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
 
   // This month collections
   // FIX: r.year is stored as a STRING in Supabase ("2026"), getFullYear() returns number (2026).
@@ -821,16 +821,16 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const thisYearStr     = String(thisYear)
   const thisMonthStart  = `${thisYearStr}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const thisMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === thisMonth && String(r.year) === thisYearStr).reduce((s, r) => s + (r.amount || 0), 0)
-  const thisMonthCrsf   = adm_course_fees.filter(r => r.for_month === thisMonth && String(r.year) === thisYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-  const thisMonthAdm    = adm_fee_collections.filter(r => r.pay_date >= thisMonthStart && r.pay_date <= todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const thisMonthCrsf   = adm_course_fees.filter(r => !r.reverted && r.for_month === thisMonth && String(r.year) === thisYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const thisMonthAdm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= thisMonthStart && r.pay_date <= todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const thisMonthTotal  = thisMonthFlat + thisMonthCrsf + thisMonthAdm
 
   const prevYearStr     = String(now.getMonth() === 0 ? thisYear - 1 : thisYear)
   const prevMonthStart  = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleDateString('en-CA')
   const prevMonthEnd    = new Date(now.getFullYear(), now.getMonth(), 0).toLocaleDateString('en-CA')
   const prevMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === prevMonth && String(r.year) === prevYearStr).reduce((s, r) => s + (r.amount || 0), 0)
-  const prevMonthCrsf   = adm_course_fees.filter(r => r.for_month === prevMonth && String(r.year) === prevYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-  const prevMonthAdm    = adm_fee_collections.filter(r => r.pay_date >= prevMonthStart && r.pay_date <= prevMonthEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const prevMonthCrsf   = adm_course_fees.filter(r => !r.reverted && r.for_month === prevMonth && String(r.year) === prevYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const prevMonthAdm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= prevMonthStart && r.pay_date <= prevMonthEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const prevMonthTotal  = prevMonthFlat + prevMonthCrsf + prevMonthAdm
   const monthChange     = prevMonthTotal > 0 ? Math.round(((thisMonthTotal - prevMonthTotal) / prevMonthTotal) * 100) : null
 
@@ -840,15 +840,15 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // between 12:00 AM and 5:30 AM — causing Fees and Accounts to disagree on
   // "today" and show different totals for payments made in that window.
   const todayStr        = new Date().toLocaleDateString('en-CA')
-  const todayFlat       = adm_flat_fees.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (r.amount || 0), 0)
-  const todayCrsf       = adm_course_fees.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-  const todayAdm        = adm_fee_collections.filter(r => r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const todayFlat       = adm_flat_fees.filter(r => r.paid && r.pay_date === todayStr).reduce((s, r) => s + (r.amount || 0), 0)
+  const todayCrsf       = adm_course_fees.filter(r => !r.reverted && r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const todayAdm        = adm_fee_collections.filter(r => !r.reverted && r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const todayTotal      = todayFlat + todayCrsf + todayAdm
 
   // ── Student alerts ──────────────────────────────────────────────────────────
   const paidFlatGccs    = new Set(adm_flat_fees.filter(r => r.paid).map(r => gccStr(r.adm_app_id)))
-  const paidCrsfGccs    = new Set(adm_course_fees.map(r => gccStr(r.adm_app_id)))
-  const paidAdmGccs     = new Set(adm_fee_collections.filter(r => r.fee_type === 'admission').map(r => gccStr(r.adm_app_id)))
+  const paidCrsfGccs    = new Set(adm_course_fees.filter(r => !r.reverted).map(r => gccStr(r.adm_app_id)))
+  const paidAdmGccs     = new Set(adm_fee_collections.filter(r => !r.reverted && r.fee_type === 'admission').map(r => gccStr(r.adm_app_id)))
 
   const zeroPayment     = liveRows.filter(s => s.grandTotal === 0)
   const admOnlyPaid     = liveRows.filter(s => paidAdmGccs.has(gccStr(s.gcc_no)) && !paidFlatGccs.has(gccStr(s.gcc_no)) && !paidCrsfGccs.has(gccStr(s.gcc_no)))
@@ -856,7 +856,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const fullyPaid       = liveRows.filter(s => paidFlatGccs.has(gccStr(s.gcc_no)) && paidCrsfGccs.has(gccStr(s.gcc_no)))
 
   // This month defaulters — paid no course fee this month
-  const paidThisMonthCrsf = new Set(adm_course_fees.filter(r => r.for_month === thisMonth && String(r.year) === thisYearStr).map(r => gccStr(r.adm_app_id)))
+  const paidThisMonthCrsf = new Set(adm_course_fees.filter(r => !r.reverted && r.for_month === thisMonth && String(r.year) === thisYearStr).map(r => gccStr(r.adm_app_id)))
   const defaultersThisMonth = liveRows.filter(s => !paidThisMonthCrsf.has(gccStr(s.gcc_no)))
 
   // ── Monthly trend (last 6 months) ───────────────────────────────────────────
@@ -868,8 +868,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     const mStart = d.toLocaleDateString('en-CA')
     const mEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0).toLocaleDateString('en-CA')
     const flat   = adm_flat_fees.filter(r => r.paid && r.month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (r.amount || 0), 0)
-    const crsf   = adm_course_fees.filter(r => r.for_month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-    const adm    = adm_fee_collections.filter(r => r.pay_date >= mStart && r.pay_date <= mEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+    const crsf   = adm_course_fees.filter(r => !r.reverted && r.for_month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+    const adm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= mStart && r.pay_date <= mEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
     // Flag the current calendar month — it's still in progress, so its total
     // isn't comparable to fully-elapsed past months (see: July showing a
     // "drop" that was actually just 26/31 days of collection so far).
@@ -904,7 +904,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const crsfByMonthGcc = useMemo(() => {
     const map = new Map()
     for (const r of adm_course_fees) {
-      if (!r.for_month || !r.year) continue
+      if (r.reverted || !r.for_month || !r.year) continue
       const key = `${r.for_month}|${r.year}|${gccStr(r.adm_app_id)}`
       const prev = map.get(key)
       map.set(key, {
@@ -917,13 +917,53 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adm_course_fees])
 
+  // Same per-month/per-student indexing for FLAT fee, mirroring crsfByMonthGcc
+  // above — needed because Feb/Mar only ever had flat fee (course fee starts
+  // April), so those months need real flat-fee numbers instead of the
+  // course-fee "no data" placeholder.
+  const flatByMonthGcc = useMemo(() => {
+    const map = new Map()
+    for (const r of adm_flat_fees) {
+      if (!r.paid || !r.month || !r.year) continue
+      const key = `${r.month}|${r.year}|${gccStr(r.adm_app_id)}`
+      const prev = map.get(key)
+      map.set(key, {
+        paid: (prev?.paid || 0) + (Number(r.amount) || 0),
+        hostel_type: r.hostel_type || prev?.hostel_type || null,
+      })
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adm_flat_fees])
+
   const monthwiseDues = useMemo(() => Array.from({ length: 6 }, (_, idx) => {
     const d       = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1)
     const label   = d.toLocaleString('default', { month: 'short' })
     const fullMon = d.toLocaleString('default', { month: 'long' })
     const yrStr   = String(d.getFullYear())
     const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-    const perStudent = liveRows.map(s => {
+
+    // Flat fee — tracked every month, always computed.
+    const flatPerStudent = liveRows.map(s => {
+      const rec  = flatByMonthGcc.get(`${fullMon}|${yrStr}|${gccStr(s.gcc_no)}`)
+      const paid = rec?.paid || 0
+      const expected = paid > 0
+        ? (FLAT_RATES[rec.hostel_type] ?? FLAT_RATES[s.hostel_type] ?? 0)
+        : (FLAT_RATES[s.hostel_type] ?? 0)
+      return { student: s, expected, paid, due: Math.max(0, expected - paid) }
+    }).filter(x => x.expected > 0)
+    const flatExpectedTotal  = flatPerStudent.reduce((s, x) => s + x.expected, 0)
+    const flatCollectedTotal = flatPerStudent.reduce((s, x) => s + x.paid, 0)
+    const flatDueTotal       = Math.max(0, flatExpectedTotal - flatCollectedTotal)
+    const flatDefaulters     = flatPerStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
+
+    // Course fee — only started from April of the current session (see note
+    // below); Jan/Feb/Mar are "not tracked" unless a payment actually exists.
+    const monthIdx0based = d.getMonth() // 0=Jan..11=Dec
+    const isPreSessionMonth = monthIdx0based < 3 // Jan/Feb/Mar
+    const hasAnyCrsfPayment = adm_course_fees.some(r => !r.reverted && r.for_month === fullMon && String(r.year) === yrStr)
+    const isCourseFeeTracked = !isPreSessionMonth || hasAnyCrsfPayment
+    const crsfPerStudent = !isCourseFeeTracked ? [] : liveRows.map(s => {
       const rec  = crsfByMonthGcc.get(`${fullMon}|${yrStr}|${gccStr(s.gcc_no)}`)
       const paid = rec?.paid || 0
       // Paid this month → price at the course/hostel_type recorded ON that
@@ -935,13 +975,32 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         : (COURSE_RATES[s.course]?.[s.hostel_type] ?? 0)
       return { student: s, expected, paid, due: Math.max(0, expected - paid) }
     }).filter(x => x.expected > 0)
-    const expectedTotal = perStudent.reduce((s, x) => s + x.expected, 0)
-    const collectedTotal= perStudent.reduce((s, x) => s + x.paid, 0)
-    const dueTotal       = Math.max(0, expectedTotal - collectedTotal)
-    const defaulters     = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
-    return { label, fullMon, year: yrStr, isCurrent, expectedTotal, collectedTotal, dueTotal, defaulterCount: defaulters.length, defaulters, dayOfMonth: now.getDate() }
+    const crsfExpectedTotal  = crsfPerStudent.reduce((s, x) => s + x.expected, 0)
+    const crsfCollectedTotal = crsfPerStudent.reduce((s, x) => s + x.paid, 0)
+    const crsfDueTotal       = Math.max(0, crsfExpectedTotal - crsfCollectedTotal)
+    const crsfDefaulters     = crsfPerStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
+
+    // Card headline: use course fee where it's tracked (Apr onward), fall
+    // back to flat fee for Feb/Mar so those cards show real numbers instead
+    // of "no course-fee data".
+    const useFlat = !isCourseFeeTracked
+    const expectedTotal  = useFlat ? flatExpectedTotal  : crsfExpectedTotal
+    const collectedTotal = useFlat ? flatCollectedTotal : crsfCollectedTotal
+    const dueTotal        = useFlat ? flatDueTotal        : crsfDueTotal
+    const defaulters      = useFlat ? flatDefaulters      : crsfDefaulters
+
+    return {
+      label, fullMon, year: yrStr, isCurrent, dayOfMonth: now.getDate(),
+      isTracked: useFlat ? flatExpectedTotal > 0 : isCourseFeeTracked,
+      headlineType: useFlat ? 'Flat Fee' : 'Course Fee',
+      expectedTotal, collectedTotal, dueTotal,
+      defaulterCount: defaulters.length, defaulters,
+      // Both breakdowns always available for the expanded/drill-down view.
+      flat:   { expectedTotal: flatExpectedTotal,  collectedTotal: flatCollectedTotal,  dueTotal: flatDueTotal,  defaulters: flatDefaulters },
+      course: { expectedTotal: crsfExpectedTotal, collectedTotal: crsfCollectedTotal, dueTotal: crsfDueTotal, defaulters: crsfDefaulters, isTracked: isCourseFeeTracked },
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [liveRows, crsfByMonthGcc])
+  }), [liveRows, crsfByMonthGcc, flatByMonthGcc, adm_course_fees])
   const selectedDues = monthwiseDues[duesMonthIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
 
   // ── Hostel breakdown ────────────────────────────────────────────────────────
@@ -1055,7 +1114,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>🗓️ Month-wise Dues (Course Fee)</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>🗓️ Month-wise Dues (Flat + Course Fee)</div>
             <div style={{ fontSize: 11, color: '#94a3b8' }}>Expected vs collected — tap a month to see who still owes</div>
           </div>
           <button onClick={() => setDuesExpanded(e => !e)}
@@ -1087,11 +1146,14 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#1e3a5f' }}>{m.label}{m.isCurrent ? ' •' : ''}</span>
                   {hasDue && <span style={{ fontSize: 9, fontWeight: 800, background: '#dc2626', color: 'white', padding: '1px 6px', borderRadius: 99 }}>{m.defaulterCount}</span>}
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 900, color: cardColor, marginTop: 4 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: m.headlineType === 'Flat Fee' ? '#059669' : '#7c3aed', marginTop: 3 }}>
+                  {m.headlineType}
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: cardColor, marginTop: 2 }}>
                   {m.expectedTotal > 0 ? `₹${n(m.dueTotal)}` : '—'}
                 </div>
                 <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 2 }}>
-                  {m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no course-fee data'}
+                  {m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no fee data'}
                 </div>
                 {m.isCurrent && (
                   <div style={{ fontSize: 8.5, fontWeight: 700, color: '#7c3aed', marginTop: 3 }}>
@@ -2501,7 +2563,33 @@ export default function Fees() {
   // — good enough for a dashboard-wide dues signal without an async call
   // per student on every render; billing/receipts still correctly use the
   // async getFeeRates path elsewhere in this file.
-  const liveRows = useMemo(() => students.map(s => {
+  // Students table's real status values (from Students.jsx STATUSES):
+  // 'Active', 'Inactive', 'Passed Out', 'Withdrawn', 'Dropout'. Only 'Active'
+  // is an ongoing fee-paying student — the other four all mean "no longer
+  // enrolled" for different reasons (paused, graduated, left voluntarily,
+  // dropped out) and must not appear in any fee dashboard, dues grid,
+  // defaulter list, or export. Checking FOR 'Active' rather than excluding
+  // 'Dropout' alone so any additional status value added later defaults to
+  // excluded rather than silently leaking into fee totals. Students with a
+  // missing/blank status are treated as active (matches the `status:'Active'`
+  // default used everywhere students are created).
+  // liveRows is the single source every downstream view reads from, so
+  // filtering here excludes non-active students everywhere at once.
+  const activeStudents = useMemo(() => students.filter(s => !s.status || s.status === 'Active'), [students])
+
+  // Same status-scoped filtering applied to the raw collection tables — used
+  // wherever a component sums these tables directly (FeeDashboardTab's
+  // header stats, monthly trend, month-wise dues; ReportsExportTab) instead
+  // of going through liveRows, so a non-active student's old payments don't
+  // keep inflating "Total Collected", "This Month", or the dues grid after
+  // they leave — those totals should reflect who the institute currently has
+  // to collect from, not historical records of everyone who ever paid.
+  const activeGccSet = useMemo(() => new Set(activeStudents.map(s => gccStr(s.gcc_no))), [activeStudents])
+  const activeAdmFeeCollections = useMemo(() => adm_fee_collections.filter(r => activeGccSet.has(gccStr(r.adm_app_id))), [adm_fee_collections, activeGccSet])
+  const activeAdmFlatFees       = useMemo(() => adm_flat_fees.filter(r => activeGccSet.has(gccStr(r.adm_app_id))), [adm_flat_fees, activeGccSet])
+  const activeAdmCourseFees     = useMemo(() => adm_course_fees.filter(r => activeGccSet.has(gccStr(r.adm_app_id))), [adm_course_fees, activeGccSet])
+
+  const liveRows = useMemo(() => activeStudents.map(s => {
     const live   = getLiveFees(s)
     const admRec = getAdmRec(s)
     const expectedFlat = getFlatFeeAmtSync(s.hostel_type || 'Day Scholar', s.course || '')
@@ -2512,7 +2600,7 @@ export default function Fees() {
         : (admRec?.status === 'Enrolled' ? 'Paid' : 'Partial')
     return { ...s, ...live, admRec, expectedFlat, liveStatus: status }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees])
+  }), [activeStudents, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees])
 
 
   const liveTtl = liveRows.reduce((a, s) => a + s.grandTotal, 0)
@@ -2668,10 +2756,10 @@ export default function Fees() {
 
       {tab === 'dashboard' && (
         <FeeDashboardTab
-          students={students}
-          adm_fee_collections={adm_fee_collections}
-          adm_flat_fees={adm_flat_fees}
-          adm_course_fees={adm_course_fees}
+          students={activeStudents}
+          adm_fee_collections={activeAdmFeeCollections}
+          adm_flat_fees={activeAdmFlatFees}
+          adm_course_fees={activeAdmCourseFees}
           liveRows={liveRows}
           onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
         />
@@ -3064,10 +3152,10 @@ export default function Fees() {
 
       {tab === 'reports' && (
         <ReportsExportTab
-          students={students}
-          adm_fee_collections={adm_fee_collections}
-          adm_flat_fees={adm_flat_fees}
-          adm_course_fees={adm_course_fees}
+          students={activeStudents}
+          adm_fee_collections={activeAdmFeeCollections}
+          adm_flat_fees={activeAdmFlatFees}
+          adm_course_fees={activeAdmCourseFees}
           liveRows={liveRows}
         />
       )}
