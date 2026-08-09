@@ -896,12 +896,22 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // (students × 6 × course-fee rows comparisons on every render). Pre-index
   // course-fee rows once per `adm_course_fees` change into a
   // `"month|year|gcc" -> amount` map, then each month/student lookup is O(1).
+  // Index BOTH the amount paid AND the course/hostel_type *that was actually
+  // recorded on the payment row* (collectFee stamps these at payment time —
+  // see feeEngine.js `adm_course_fees` upsert). This is the real historical
+  // snapshot: a student who changed course or hostel_type after March still
+  // shows March's payment priced at March's rate, not today's rate.
   const crsfByMonthGcc = useMemo(() => {
     const map = new Map()
     for (const r of adm_course_fees) {
       if (!r.for_month || !r.year) continue
       const key = `${r.for_month}|${r.year}|${gccStr(r.adm_app_id)}`
-      map.set(key, (map.get(key) || 0) + (Number(r.amount_paid) || 0))
+      const prev = map.get(key)
+      map.set(key, {
+        paid: (prev?.paid || 0) + (Number(r.amount_paid) || 0),
+        course: r.course || prev?.course || null,
+        hostel_type: r.hostel_type || prev?.hostel_type || null,
+      })
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -914,15 +924,22 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     const yrStr   = String(d.getFullYear())
     const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
     const perStudent = liveRows.map(s => {
-      const expected = COURSE_RATES[s.course]?.[s.hostel_type] ?? 0
-      const paid     = crsfByMonthGcc.get(`${fullMon}|${yrStr}|${gccStr(s.gcc_no)}`) || 0
+      const rec  = crsfByMonthGcc.get(`${fullMon}|${yrStr}|${gccStr(s.gcc_no)}`)
+      const paid = rec?.paid || 0
+      // Paid this month → price at the course/hostel_type recorded ON that
+      // payment (historical rate). Not yet paid → no snapshot exists yet,
+      // so fall back to their current course/hostel_type as the best
+      // available estimate of what they owe.
+      const expected = paid > 0
+        ? (COURSE_RATES[rec.course]?.[rec.hostel_type] ?? COURSE_RATES[s.course]?.[s.hostel_type] ?? 0)
+        : (COURSE_RATES[s.course]?.[s.hostel_type] ?? 0)
       return { student: s, expected, paid, due: Math.max(0, expected - paid) }
     }).filter(x => x.expected > 0)
     const expectedTotal = perStudent.reduce((s, x) => s + x.expected, 0)
     const collectedTotal= perStudent.reduce((s, x) => s + x.paid, 0)
     const dueTotal       = Math.max(0, expectedTotal - collectedTotal)
     const defaulters     = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
-    return { label, fullMon, year: yrStr, isCurrent, expectedTotal, collectedTotal, dueTotal, defaulterCount: defaulters.length, defaulters }
+    return { label, fullMon, year: yrStr, isCurrent, expectedTotal, collectedTotal, dueTotal, defaulterCount: defaulters.length, defaulters, dayOfMonth: now.getDate() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [liveRows, crsfByMonthGcc])
   const selectedDues = monthwiseDues[duesMonthIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
@@ -1048,7 +1065,14 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 10, marginTop: 14 }}>
           {monthwiseDues.map((m, idx) => {
-            const pct      = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
+            const pctRaw   = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
+            // Clamp for display: collected can legitimately exceed the
+            // "expected" estimate (advances, or a rate mismatch for a
+            // student who changed course/hostel mid-year) — showing 101%+
+            // reads as a data-integrity bug even when it's just an estimate
+            // ceiling, so cap what's shown at 100 and let the ₹ due (which
+            // is separately floored at 0) tell the true story.
+            const pct      = pctRaw === null ? null : Math.min(100, pctRaw)
             const isSel    = idx === duesMonthIdx
             const hasDue   = m.dueTotal > 0
             const cardColor= hasDue ? '#dc2626' : (m.expectedTotal > 0 ? '#059669' : '#94a3b8')
@@ -1069,6 +1093,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 2 }}>
                   {m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no course-fee data'}
                 </div>
+                {m.isCurrent && (
+                  <div style={{ fontSize: 8.5, fontWeight: 700, color: '#7c3aed', marginTop: 3 }}>
+                    in progress · day {m.dayOfMonth}
+                  </div>
+                )}
               </button>
             )
           })}
